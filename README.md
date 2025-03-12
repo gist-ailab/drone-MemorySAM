@@ -1,7 +1,5 @@
-# MMSS-SAM
 
-## Overview
-<p align="center"><strong>MemorySAM: Memorize Modalities and Semantics with Segment Anything Model 2 for Multi-modal Semantic Segmentation</strong></p>
+#<p align="center"><strong>MemorySAM: Memorize Modalities and Semantics with Segment Anything Model 2 for Multi-modal Semantic Segmentation</strong></p>
 ---
 
 ## Preparation
