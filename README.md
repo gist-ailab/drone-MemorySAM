@@ -1,5 +1,5 @@
 <p align="center"><strong>MemorySAM: Memorize Modalities and Semantics with Segment Anything Model 2 for Multi-modal Semantic Segmentation</strong></p>
-# Authors
+##Authors
 
 - **Chenfei Liao**<sup>1</sup>
 - **Xu Zheng**<sup>1,2</sup><sup>*</sup> (Project leader)
