@@ -1,7 +1,7 @@
 # <p align="center"><strong>MemorySAM: Memorize Modalities and Semantics with Segment Anything Model 2 for Multi-modal Semantic Segmentation</strong></p>
 
 <div align="center">
-Chenfei Liao<sup>1</sup>, Xu Zheng<sup>1,2</sup><sup></sup> (Project leader), Yuanhuiyi Lyu<sup>1</sup>, Haiwei Xue<sup>5</sup>, Yihong Cao<sup>4</sup>, 
+Chenfei Liao<sup>1</sup>, Xu Zheng<sup>1,2</sup><sup></sup> (Project lead), Yuanhuiyi Lyu<sup>1</sup>, Haiwei Xue<sup>5</sup>, Yihong Cao<sup>4</sup>, 
     
 Jiawen Wang<sup>6</sup>, Kailun Yang<sup>4</sup>, Xuming Hu<sup>1,3</sup><sup></sup> (Corresponding author)
 </div>
