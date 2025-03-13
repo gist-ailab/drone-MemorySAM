@@ -62,7 +62,7 @@ def sliding_predict(model, image, num_classes, flip=True):
             total_predictions[:, y_min:y_max, x_min:x_max] += predictions.squeeze(0)
 
     return total_predictions.unsqueeze(0)
-
+    
 @torch.no_grad()
 def evaluate(model, dataloader, device):
     print('Evaluating...')
@@ -70,13 +70,7 @@ def evaluate(model, dataloader, device):
     n_classes = dataloader.dataset.n_classes
     metrics = Metrics(n_classes, dataloader.dataset.ignore_label, device)
     sliding = False
-    save_dir = 'MCubes'
-    os.makedirs(save_dir, exist_ok=True)
-    if not os.path.exists(save_dir):
-        print(f"警告:目录 {save_dir} 创建失败")
-        return
-    for i, (images, labels) in enumerate(tqdm(dataloader)):
-
+    for images, labels in tqdm(dataloader):
         images = [x.to(device) for x in images]
         labels = labels.to(device)
         if sliding:
@@ -84,40 +78,16 @@ def evaluate(model, dataloader, device):
         else:
             output, _ = model(images, True)
             preds = output.softmax(dim=1)
+
             # preds = model.forward(images)
             # preds = preds.softmax(dim=1)
         metrics.update(preds, labels)
-        
-        pred_masks = preds.detach().cpu().numpy()
-        pred_labels = np.argmax(pred_masks, axis=1)
     
-        
-        for b in range(pred_labels.shape[0]):
-        
-            filename = f'pred_batch{i}_sample{b}_rgba.png'
-            label_filename = f'label_batch{i}_sample{b}.png'
-        
-        
-            plt.imsave(
-                os.path.join(save_dir, filename),
-                pred_labels[b],
-                cmap='tab20'
-            )
-        
-        
-            plt.imsave(
-                os.path.join(save_dir, label_filename),
-                labels[b].cpu().numpy(),
-                cmap='tab20'
-            )
-            print(save_dir, label_filename)
-
     ious, miou = metrics.compute_iou()
     acc, macc = metrics.compute_pixel_acc()
     f1, mf1 = metrics.compute_f1()
     
     return acc, macc, f1, mf1, ious, miou
-
 
 @torch.no_grad()
 def evaluate_msf(model, dataloader, device, scales, flip):
