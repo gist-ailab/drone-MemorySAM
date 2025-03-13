@@ -12,7 +12,7 @@ Jiawen Wang<sup>6</sup>, Kailun Yang<sup>4</sup>, Xuming Hu<sup>1,3</sup><sup></
 
 <div align="center">
     
-![arXiv](https://img.shields.io/badge/arXiv-2503.06700-brown?style=flat-square)
+[![arXiv](https://img.shields.io/badge/arXiv-2503.06700-brown?style=flat-square)](https://arxiv.org/abs/2503.06700)
 
 </div>
 
