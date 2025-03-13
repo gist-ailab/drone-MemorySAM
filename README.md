@@ -25,6 +25,8 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
 
 📧 lcfgreat624@gmail.com, cliao127@connect.hkust-gz.edu.cn
 
+🚩 2025/3/10 Our paper has been online on Arxiv: https://arxiv.org/pdf/2503.06700
+
 🚩 2025/3/13 We release the first version of our souce code! The weight will be released soon~
 
 ## Framework
@@ -44,8 +46,6 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
     ```
 
 2. Download SAM2 and upload it into the `semseg/models/` directory. [Facebook Research SAM2 Repository](https://github.com/facebookresearch/sam2)
-   Add the `sam_lora_image_encoder_seg.py` to the `semseg/models/sam2/sam2/` directory.
-   Add the `sam2_base` to the `semseg/models/sam2/sam2/modeling/` directory.
 
 2. Install PyTorch and related libraries:
     ```bash
@@ -72,7 +72,7 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
 
 ### Data Preparation
 
-1. Download the DELIVER dataset and place it into the `data/` directory.
+1. Download the DELIVER/MCubes dataset and place it into the `data/` directory.
 
 ### Running the Model
 
@@ -80,3 +80,21 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
     ```bash
     sh run_sam.sh
     ```
+
+
+## References
+
+If you find this project helpful, please consider citing the following paper:
+```
+@misc{liao2025memorysammemorizemodalitiessemantics,
+      title={MemorySAM: Memorize Modalities and Semantics with Segment Anything Model 2 for Multi-modal Semantic Segmentation}, 
+      author={Chenfei Liao and Xu Zheng and Yuanhuiyi Lyu and Haiwei Xue and Yihong Cao and Jiawen Wang and Kailun Yang and Xuming Hu},
+      year={2025},
+      eprint={2503.06700},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2503.06700}, 
+}
+```
+
+Thank you for your interest and support!
