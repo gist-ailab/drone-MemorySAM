@@ -20,6 +20,13 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
     <img src="Figure/Figure_Overview.png" alt="Overview" width="600"/>
 </div>
 
+## News
+⭐ If you find any problems in our code, please contact us! We will fix them as soon as possible! 
+
+📧 lcfgreat624@gmail.com, cliao127@connect.hkust-gz.edu.cn
+
+🚩 2025/3/13 We release the first version of our souce code! The weight will be released soon~
+
 ## Framework
 
 <div align="center">
