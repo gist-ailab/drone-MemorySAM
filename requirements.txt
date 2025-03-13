@@ -17,7 +17,7 @@ descartes==1.1.0
 easydict==1.9
 einops==0.4.1
 entrypoints==0.4
-executing==0.8.3
+executing==2.1.0
 fire==0.4.0
 fvcore==0.1.5.post20220512
 google-auth==2.11.0
@@ -111,3 +111,6 @@ widgetsnbextension==3.5.2
 yacs==0.1.8
 yapf==0.32.0
 zipp==3.7.0
+pycocotools
+safetensors
+icecream
