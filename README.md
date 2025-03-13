@@ -58,9 +58,6 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
 
 3. Install additional dependencies:
     ```bash
-    pip install pycocotools
-    pip install safetensors
-    pip install icecream
     pip install -r requirements.txt
     ```
 
