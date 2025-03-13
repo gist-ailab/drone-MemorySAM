@@ -10,12 +10,13 @@ Chenfei Liao<sup>1</sup>, Xu Zheng<sup>1,2</sup><sup>*</sup> (Project leader), Y
 Research has focused on Multi-Modal Semantic Segmentation (MMSS), where pixel-wise predictions are derived from multiple visual modalities captured by diverse sensors. Recently, the large vision model, Segment Anything Model 2 (SAM2), has shown strong zero-shot segmentation performance on both images and videos. When extending SAM2 to MMSS, two issues arise: 
 
 🔥1. How can SAM2 be adapted to multi-modal data?
+
 🔥2. How can SAM2 better understand semantics?
 
 Inspired by cross-frame correlation in videos, we propose to treat multi-modal data as a sequence of frames representing the same scene. Our key idea is to **"memorize"** the modality-agnostic information and **"memorize"** the semantics related to the targeted scene. To achieve this, we apply SAM2’s memory mechanisms across multi-modal data to capture modality-agnostic features. Meanwhile, to memorize the semantic knowledge, we propose a training-only Semantic Prototype Memory Module (SPMM) to store category-level prototypes across training for facilitating SAM2’s transition from instance to semantic segmentation. A prototypical adaptation loss is imposed between global and local prototypes iteratively to align and refine SAM2's semantic understanding. 
 
 ## Framework
-You can download the PDF version of this document [here](https://github.com/Chenfei-Liao/MemorySAM/Figure/Figure_Framework.png).
+You can download the PDF version of this document [here](https://github.com/Chenfei-Liao/MemorySAM/Figure/Figure_Framework.jpg).
 
 ## Preparation
 
