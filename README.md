@@ -91,6 +91,10 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
 
 Our work is based on project of [DELIVER](https://github.com/jamycheung/DELIVER) and [SAM2](https://github.com/facebookresearch/sam2). Thanks to their contributions to this community!!!
 
+Also, thanks to [DELIVER](https://github.com/jamycheung/DELIVER) and [MCubes](https://github.com/kyotovision-public/multimodal-material-segmentation) for their efforts to build such valuable datasets!!!
+
+Moreover, thanks to Xu Zheng (zhengxu128@gmail.com) for his great guidance and help for this project, who is the lead of this project!!!
+
 ## References
 
 If you find this project helpful, please consider citing the following paper:
