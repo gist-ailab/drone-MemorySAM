@@ -55,7 +55,7 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
     conda activate MMSS_SAM
     ```
 
-2. Download SAM2's weight and upload it into the `semseg/models/` directory. [Facebook Research SAM2 Repository](https://github.com/facebookresearch/sam2)
+2. Download SAM2's weight and upload it into the `semseg/models/sam2/checkpoints` directory. [Facebook Research SAM2 Repository](https://github.com/facebookresearch/sam2)
 
 2. Install PyTorch and related libraries:
     ```bash
@@ -87,7 +87,9 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
     ```bash
     sh run_sam.sh
     ```
+## Acknowledgements
 
+Our work is based on project of [DELIVER](https://github.com/jamycheung/DELIVER) and [SAM2](https://github.com/facebookresearch/sam2). Thanks to their contributions to this community!!!
 
 ## References
 
