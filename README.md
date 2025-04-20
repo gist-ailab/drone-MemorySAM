@@ -45,6 +45,10 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
     <img src="Figure/Figure_Framework.jpg" alt="Framework" width="1000"/>
 </div>
 
+## Code Structure Illustration
+
+About the entire model part, we use the same code as standard SAM2, which is in  "MemorySAM/semseg/models/sam2". We clone these files from SAM's official code at the beginning of our project. The MemorySAM model code is mainly in "MemorySAM/semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py", with the model named as LoRA_Sam. Finally, in "train_sam2_lora.py", we import this model and train.
+
 ## Preparation
 
 ### Environment Setup
