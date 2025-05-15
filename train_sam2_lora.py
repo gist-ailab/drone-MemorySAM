@@ -145,9 +145,9 @@ def main(cfg, gpu, save_dir):
     for param in model.sam.sam_mask_decoder.pred_obj_score_head.parameters():
         param.requires_grad = False
     for param in model.sam.memory_attention.parameters():
-        param.requires_grad = False
+        param.requires_grad = True
     for param in model.sam.memory_encoder.parameters():
-        param.requires_grad = False
+        param.requires_grad = True
     for param in model.sam.sam_prompt_encoder.parameters():
         param.requires_grad = False
     for k,v in model.named_parameters():
