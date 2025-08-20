@@ -41,7 +41,7 @@ Extensive experimental results demonstrate that our proposed MemorySAM outperfor
 
 🚩 2025/4/23 We release the weights of MemorySAM on DELIVER dataset! Click this: [Link](https://hkustgz-my.sharepoint.com/:f:/g/personal/cliao127_connect_hkust-gz_edu_cn/ElwQ8vuvX7dKmxWVsYiWpSkBtwI4ErJV7grSUqKyRdVysw?e=cJbLcI)
 
-🚩 2025/4/23 We release the weights of MemorySAM on MCubes dataset! Click this: [Link](https://hkustgz-my.sharepoint.com/:f:/g/personal/cliao127_connect_hkust-gz_edu_cn/ElwQ8vuvX7dKmxWVsYiWpSkBtwI4ErJV7grSUqKyRdVysw?e=cJbLcI)
+🚩 2025/8/20 We release the weights of MemorySAM on MCubes dataset! Click this: [Link](https://hkustgz-my.sharepoint.com/:f:/g/personal/cliao127_connect_hkust-gz_edu_cn/ElwQ8vuvX7dKmxWVsYiWpSkBtwI4ErJV7grSUqKyRdVysw?e=cJbLcI)
 
 ## Framework
 
