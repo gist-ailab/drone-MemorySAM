@@ -95,6 +95,7 @@ About the entire model part, we use the same code as standard SAM2, which is in¬
     ```bash
     sh run_sam.sh
     ```
+3. Attention: Line 233 in MemorySAM/semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py needs to be consistent with the number of modalities.
 ## Acknowledgements
 
 ü§ù Our work is based on project of [DELIVER](https://github.com/jamycheung/DELIVER) and [SAM2](https://github.com/facebookresearch/sam2). Thanks to their contributions to this community!!!
