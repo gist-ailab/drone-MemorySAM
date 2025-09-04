@@ -67,12 +67,14 @@ About the entire model part, we use the same code as standard SAM2, which is inÂ
 
 2. Install PyTorch and related libraries:
     ```bash
-    pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121
+    conda install pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11.0 cudatoolkit=11.3 -c pytorch
     ```
 
 3. Install additional dependencies:
     ```bash
+    pip install mmcv-full==1.6.1 -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.11.0/index.html
     pip install -r requirements.txt
+
     ```
 
 4. Navigate to the model directory and install:
