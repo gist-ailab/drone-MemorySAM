@@ -226,8 +226,6 @@ class LoRA_Sam(nn.Module):
             nn.init.zeros_(w_B.weight)
 
 
-
-
     def forward(self, batched_input, multimask_output):
 
         m = 2

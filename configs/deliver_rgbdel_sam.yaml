@@ -1,15 +1,15 @@
 DEVICE          : cuda              # device used for training and evaluation (cpu, cuda, cuda0, cuda1, ...)
-SAVE_DIR        : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/seg_exp/t' #AblationStudy_frozen_memorymechanism'          # output folder name used for saving the model, logs and inference results
+SAVE_DIR        : '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs' #AblationStudy_frozen_memorymechanism'          # output folder name used for saving the model, logs and inference results
 
 MODEL:
   NAME          : CMNeXt                                            # name of the model you are using
   BACKBONE      : CMNeXt-B2                                         # model variant
-  PRETRAINED    : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth'     # backbone model's weight 
+  PRETRAINED    : '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'     # backbone model's weight 
   RESUME        : ''                                                # checkpoint file 
 
 DATASET:
   NAME          : DELIVER                                       # dataset name to be trained with (camvid, cityscapes, ade20k)
-  ROOT          : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/data/DELIVER'                                   # dataset root path
+  ROOT          : '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/data/DELIVER'                                   # dataset root path
   IGNORE_LABEL  : 255 
   # MODALS        : ['img']
   # MODALS        : ['depth']
@@ -22,7 +22,7 @@ DATASET:
 
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]    # training image size in (h, w)
-  BATCH_SIZE    : 4         # batch size used to train
+  BATCH_SIZE    : 2         # batch size used to train
   EPOCHS        : 200             # number of epochs to train
   EVAL_START    : 0             # evaluation interval start
   EVAL_INTERVAL : 1               # evaluation interval during training

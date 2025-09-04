@@ -117,8 +117,8 @@ def main(cfg, gpu, save_dir):
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
     resume_checkpoint = None
-    
-    checkpoint = "/hpc2hdd/home/cliao127/MMSS-SAM-S1/semseg/models/sam2/checkpoints/sam2_hiera_base_plus.pt"
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    checkpoint = f"{cur_dir}/semseg/models/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     model_cfg = "sam2_hiera_b+.yaml"
 
     sam2 = build_sam2(model_cfg, checkpoint)
