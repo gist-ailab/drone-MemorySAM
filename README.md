@@ -120,4 +120,9 @@ If you find this project helpful, please consider citing the following paper:
 }
 ```
 
+
 Thank you for your interest and support!
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Chenfei-Liao/MemorySAM&type=date&logscale&legend=top-left)](https://www.star-history.com/#Chenfei-Liao/MemorySAM&type=date&logscale&legend=top-left)
