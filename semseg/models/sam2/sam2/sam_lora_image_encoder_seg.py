@@ -228,7 +228,8 @@ class LoRA_Sam(nn.Module):
 
     def forward(self, batched_input, multimask_output):
 
-        m = 2
+        # m = 2
+        m=4
         image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes,  output = [], [], [], [], [],[]
         for i in range(m):
             image_embedding.append(self.sam.forward_image(batched_input[i]))
