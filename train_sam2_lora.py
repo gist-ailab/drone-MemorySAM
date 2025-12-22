@@ -124,7 +124,9 @@ def main(cfg, gpu, save_dir):
     sam2 = build_sam2(model_cfg, checkpoint)
 
     # LoRA rank 증가: 4 → 16 (더 많은 표현력)
-    model = LoRA_Sam(sam2, 16).cpu()
+    # model = LoRA_Sam(sam2, 16).cpu()
+    lora_rank = cfg.get('LORA', {}).get('RANK', 4)
+
 
     model = model.to(device)
     for k,v in model.named_parameters():
