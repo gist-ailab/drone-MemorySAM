@@ -1,0 +1,63 @@
+# LoRA-SAM with Learnable Modal Attention Fusion 설정 파일
+# 기존 단순 평균 융합 대신 학습 가능한 가중치로 모달리티 융합
+
+DEVICE          : cuda              # device used for training and evaluation (cpu, cuda, cuda0, cuda1, ...)
+SAVE_DIR        : './outputs_att'   # ATT 버전용 별도 출력 폴더
+
+MODEL:
+  NAME          : CMNeXt                                            # name of the model you are using
+  BACKBONE      : CMNeXt-B2-ATT                                     # model variant (ATT suffix)
+  PRETRAINED    : '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+  RESUME        : ''                                                # checkpoint file 
+
+# LoRA 설정
+LORA:
+  RANK          : 16              # LoRA rank (기본값 16)
+
+DATASET:
+  NAME          : DELIVER                                       # dataset name to be trained with
+  ROOT          : '/ailab_mat2/dataset/DELIVER'                 # dataset root path
+  IGNORE_LABEL  : 255 
+  MODALS        : ['img', 'depth', 'event', 'lidar']           # 4개 모달리티 사용
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]    # training image size in (h, w)
+  BATCH_SIZE    : 1               # batch size used to train
+  EPOCHS        : 200             # number of epochs to train
+  EVAL_START    : 0               # evaluation interval start
+  EVAL_INTERVAL : 1               # evaluation interval during training
+  AMP           : false           # use AMP in training
+  DDP           : True            # use DDP training
+
+LOSS:
+  NAME          : OhemCrossEntropy          # loss function name 
+  CLS_WEIGHTS   : true                      # use class weights in loss calculation
+
+OPTIMIZER:
+  NAME          : adamw           # optimizer name
+  LR            : 0.0003          # 학습률 (Modal Attention 모듈 포함)
+  WEIGHT_DECAY  : 0.01            # decay rate used in optimizer
+
+SCHEDULER:
+  NAME          : warmuppolylr    # scheduler name
+  POWER         : 0.9             # scheduler power
+  WARMUP        : 10              # warmup epochs used in scheduler
+  WARMUP_RATIO  : 0.1             # warmup ratio
+  
+
+EVAL:
+  MODEL_PATH    : ''              # 학습 후 생성되는 체크포인트 경로 입력
+  IMAGE_SIZE    : [1024, 1024]    # evaluation image size in (h, w)        
+  BATCH_SIZE    : 5      
+  MSF: 
+    ENABLE      : false           # multi-scale and flip evaluation  
+    FLIP        : true            # use flip in evaluation  
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]       # scales used in MSF evaluation                
+
+
+TEST:
+  MODEL_PATH    : ''              # trained model file path
+  FILE          : '/ailab_mat2/dataset/DELIVER'           # filename or foldername 
+  IMAGE_SIZE    : [1024, 1024]    # inference image size in (h, w)
+  OVERLAY       : false           # save the overlay result (image_alpha+label_alpha)
+

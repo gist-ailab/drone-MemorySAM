@@ -263,3 +263,4 @@ fabric.properties
 output/
 data/
 outputs/
+pretrain_weights/

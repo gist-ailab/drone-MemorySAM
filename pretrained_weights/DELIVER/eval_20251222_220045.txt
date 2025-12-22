@@ -1,0 +1,31 @@
+/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM/pretrained_weights/DELIVER/RGBDEL_epoch95_65.38.pth
+============== Eval on None 2005 images =================
+
+Class           IoU     F1    Acc
+------------  -----  -----  -----
+Building      89.37  94.39  98.33
+Fence         41.21  58.37  53.27
+Other          0      0      0
+Pedestrian    73.16  84.5   83.93
+Pole          69.45  81.97  82.78
+RoadLine      83.79  91.18  86.81
+Road          98.11  99.05  98.97
+SideWalk      83.66  91.1   93.42
+Vegetation    87.57  93.38  92.97
+Cars          91.74  95.69  98.14
+Wall          56.17  71.94  66.5
+TrafficSign   67.43  80.55  76.84
+Sky           99.33  99.66  99.68
+Ground         2.3    4.49   5.71
+Bridge        53.96  70.1   55.28
+RailTrack     41.26  58.41  70.68
+GroundRail    74.91  85.66  80.92
+TrafficLight  75.89  86.29  79.94
+Static        34.9   51.74  37.69
+Dynamic       35.15  52.01  46.74
+Water         49.86  66.54  56.65
+Terrain       76.7   86.81  92.91
+TwoWheeler    66.64  79.98  77.24
+Bus           90.04  94.76  94.73
+Truck         91.94  95.8   94.54
+Mean          65.38  74.97  72.99

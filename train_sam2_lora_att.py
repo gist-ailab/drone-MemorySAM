@@ -1,3 +1,7 @@
+"""
+LoRA-SAM with Learnable Modal Attention Fusion 학습 코드
+기존 단순 평균 융합 대신 학습 가능한 가중치로 모달리티 융합
+"""
 import os
 import torch 
 import argparse
@@ -22,12 +26,12 @@ from semseg.losses import get_loss
 from semseg.schedulers import get_scheduler
 from semseg.optimizers import get_optimizer
 from semseg.utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp, get_logger, cal_flops, print_iou
-from val_mm_sam import evaluate
+from val_mm_sam_att import evaluate
 import numpy
 import random
 import torch
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_ATT
 import torch
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
@@ -55,9 +59,6 @@ class PrototypeSegmentation:
 
         # Compute the prototype matching loss
         prototype_loss = self.prototype_loss(batch_prototypes)
-
-        # Optionally, you can also compute segmentation loss here (e.g., CrossEntropyLoss)
-        # segmentation_loss = F.cross_entropy(logits, labels)
 
         # Combine the losses
         total_loss = prototype_loss
@@ -115,7 +116,6 @@ def main(cfg, gpu, save_dir):
     valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'])
     class_names = trainset.CLASSES
 
-    # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
     resume_checkpoint = None
     cur_dir = os.path.dirname(os.path.abspath(__file__))
     checkpoint = f"{cur_dir}/semseg/models/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
@@ -123,8 +123,10 @@ def main(cfg, gpu, save_dir):
 
     sam2 = build_sam2(model_cfg, checkpoint)
 
-    # LoRA rank 증가: 4 → 16 (더 많은 표현력)
-    model = LoRA_Sam(sam2, 16).cpu()
+    # LoRA_Sam_ATT: Learnable Modal Attention Fusion 사용
+    num_modals = len(dataset_cfg['MODALS'])
+    lora_rank = cfg.get('LORA', {}).get('RANK', 16)  # config에서 LoRA rank 읽기 (기본값 16)
+    model = LoRA_Sam_ATT(sam2, r=lora_rank, num_modals=num_modals).cpu()
 
     model = model.to(device)
     for k,v in model.named_parameters():
@@ -154,7 +156,7 @@ def main(cfg, gpu, save_dir):
         param.requires_grad = True
     for param in model.sam.obj_ptr_proj.parameters():
         param.requires_grad = False
-    # iou_prediction_head 학습 활성화 (이전: frozen → 현재: trainable)
+    # iou_prediction_head 학습 활성화
     for param in model.sam.sam_mask_decoder.iou_prediction_head.parameters():
         param.requires_grad = True
     # pred_obj_score_head도 학습 활성화
@@ -166,6 +168,11 @@ def main(cfg, gpu, save_dir):
         param.requires_grad = True
     for param in model.sam.sam_prompt_encoder.parameters():
         param.requires_grad = False
+    
+    # Modal Fusion 모듈 학습 가능 확인
+    for param in model.modal_fusion.parameters():
+        param.requires_grad = True
+    
     for k,v in model.named_parameters():
         print('{}: {}'.format(k, v.requires_grad))
 
@@ -174,11 +181,6 @@ def main(cfg, gpu, save_dir):
     # Class weights 계산 (클래스 불균형 해결)
     cls_weights = None
     if loss_cfg.get('CLS_WEIGHTS', False):
-        # DELIVER 데이터셋의 대략적인 class frequency 기반 inverse weights
-        # 실제 데이터셋 통계에 따라 조정 가능
-        cls_weights = torch.ones(trainset.n_classes, device=device)
-        # Building, Road, Vegetation 등 빈도가 높은 클래스는 낮은 weight
-        # Pedestrian, TwoWheeler, Bus, Truck 등 빈도가 낮은 클래스는 높은 weight
         freq_weights = torch.tensor([
             0.5,   # Building (high freq)
             1.5,   # Fence
@@ -242,12 +244,9 @@ def main(cfg, gpu, save_dir):
 
     if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
         writer = SummaryWriter(str(save_dir))
-        # logger.info('================== model complexity =====================')
-        # cal_flops(model, dataset_cfg['MODALS'], logger)
-        # logger.info('================== model structure =====================')
-        # logger.info(model)
         logger.info('================== training config =====================')
         logger.info(cfg)
+        logger.info(f'================== Using LoRA_Sam_ATT with {num_modals} modals =====================')
     
     num_classes = 25
     feature_dim = 32
@@ -275,17 +274,13 @@ def main(cfg, gpu, save_dir):
             lbl = lbl.to(device)
             
             with autocast(enabled=train_cfg['AMP']):
-                output, m_feat= model(sample, multimask_output=True)#  SAMed
+                output, m_feat= model(sample, multimask_output=True)
 
 
                 logits = output
                 
-                
-                # logits = model.forward(sample)
                 loss_orig = loss_fn(logits, lbl)
 
-                # low_logits = output['low_res_logits']
-                # loss_low = loss_fn(low_logits,low_lbl)
                 protoloss = prototypeseg.compute_loss(m_feat, lbl) * 256 * 256
                 
 
@@ -358,7 +353,7 @@ def main(cfg, gpu, save_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='configs/deliver_rgbdel.yaml', help='Configuration file to use')
+    parser.add_argument('--cfg', type=str, default='configs/deliver_rgbdel_sam_att.yaml', help='Configuration file to use')
     args = parser.parse_args()
 
     with open(args.cfg) as f:
@@ -369,7 +364,7 @@ if __name__ == '__main__':
     gpu = setup_ddp()
     modals = ''.join([m[0] for m in cfg['DATASET']['MODALS']])
     model = cfg['MODEL']['BACKBONE']
-    exp_name = '_'.join([cfg['DATASET']['NAME'], model, modals])
+    exp_name = '_'.join([cfg['DATASET']['NAME'], model, modals, 'ATT'])  # ATT suffix 추가
     save_dir = Path(cfg['SAVE_DIR'], exp_name)
     if os.path.isfile(cfg['MODEL']['RESUME']):
         save_dir =  Path(os.path.dirname(cfg['MODEL']['RESUME']))
@@ -377,3 +372,4 @@ if __name__ == '__main__':
     logger = get_logger(save_dir / 'train.log')
     main(cfg, gpu, save_dir)
     cleanup_ddp()
+

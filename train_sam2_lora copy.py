@@ -27,7 +27,7 @@ import numpy
 import random
 import torch
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam, LoRA_Sam_ATT
 import torch
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss

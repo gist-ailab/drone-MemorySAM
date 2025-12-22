@@ -291,3 +291,173 @@ class LoRA_Sam(nn.Module):
             m_output = m_output + output[i+1]
             m_feat = m_feat + image_embedding[i+1]['backbone_fpn'][0]
         return m_output/m, m_feat/m
+
+
+class ModalAttentionFusion(nn.Module):
+    """
+    Learnable Modal Attention Fusion Module
+    각 모달리티의 중요도를 동적으로 학습하여 가중 융합
+    """
+    def __init__(self, num_modals: int = 4, feat_dim: int = 256, reduction: int = 4):
+        super().__init__()
+        self.num_modals = num_modals
+        
+        # Output-level attention (for high_res_multimasks)
+        # Global context를 기반으로 각 모달리티의 중요도 학습
+        self.output_attention = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),  # Global Average Pooling
+            nn.Flatten(),
+        )
+        self.output_fc = nn.Sequential(
+            nn.Linear(num_modals, num_modals * reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(num_modals * reduction, num_modals),
+        )
+        
+        # Feature-level attention (for backbone features)
+        self.feat_attention = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+        )
+        self.feat_fc = nn.Sequential(
+            nn.Linear(feat_dim * num_modals, feat_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(feat_dim, num_modals),
+        )
+        
+        # Temperature parameter for softmax sharpening
+        self.temperature = nn.Parameter(torch.ones(1))
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+    
+    def forward_output_attention(self, outputs: list):
+        """
+        outputs: list of [B, C, H, W] tensors (각 모달리티의 segmentation output)
+        returns: weighted fused output, attention weights
+        """
+        B, C, H, W = outputs[0].shape
+        
+        # 각 모달리티 output에서 global feature 추출
+        # Channel-wise mean 후 global pooling
+        global_feats = []
+        for out in outputs:
+            # [B, C, H, W] -> [B, 1] (전체 평균)
+            feat = out.mean(dim=1, keepdim=True)  # [B, 1, H, W]
+            feat = self.output_attention(feat)     # [B, 1]
+            global_feats.append(feat)
+        
+        # Stack and compute attention weights
+        global_feats = torch.cat(global_feats, dim=1)  # [B, num_modals]
+        attn_weights = self.output_fc(global_feats)    # [B, num_modals]
+        attn_weights = F.softmax(attn_weights / self.temperature, dim=1)  # [B, num_modals]
+        
+        # Weighted fusion
+        fused_output = torch.zeros_like(outputs[0])
+        for i, out in enumerate(outputs):
+            weight = attn_weights[:, i:i+1, None, None]  # [B, 1, 1, 1]
+            fused_output = fused_output + weight * out
+        
+        return fused_output, attn_weights
+    
+    def forward_feat_attention(self, features: list):
+        """
+        features: list of [B, C, H, W] tensors (각 모달리티의 backbone feature)
+        returns: weighted fused feature, attention weights
+        """
+        B, C, H, W = features[0].shape
+        
+        # 각 feature의 global representation
+        global_feats = []
+        for feat in features:
+            gf = self.feat_attention(feat)  # [B, C]
+            global_feats.append(gf)
+        
+        # Concatenate and compute attention
+        concat_feats = torch.cat(global_feats, dim=1)  # [B, C * num_modals]
+        attn_weights = self.feat_fc(concat_feats)      # [B, num_modals]
+        attn_weights = F.softmax(attn_weights / self.temperature, dim=1)
+        
+        # Weighted fusion
+        fused_feat = torch.zeros_like(features[0])
+        for i, feat in enumerate(features):
+            weight = attn_weights[:, i:i+1, None, None]  # [B, 1, 1, 1]
+            fused_feat = fused_feat + weight * feat
+        
+        return fused_feat, attn_weights
+
+
+class LoRA_Sam_ATT(LoRA_Sam):
+    """
+    LoRA-SAM with Learnable Modal Attention Fusion
+    각 모달리티의 중요도를 동적으로 학습하여 더 효과적인 멀티모달 융합 수행
+    """
+    def __init__(self, sam_model: SAM2Base, r: int, num_modals: int = 4, lora_layer=None):
+        super(LoRA_Sam_ATT, self).__init__(sam_model, r, lora_layer)
+        
+        self.num_modals = num_modals
+        
+        # Modal Attention Fusion 모듈
+        # feat_dim은 backbone_fpn[0]의 채널 수 (기본 256)
+        self.modal_fusion = ModalAttentionFusion(
+            num_modals=num_modals, 
+            feat_dim=256,  # SAM2 base의 feature dimension
+            reduction=4
+        )
+        
+    def forward(self, batched_input, multimask_output):
+        m = self.num_modals
+        image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes, output = [], [], [], [], [], []
+        
+        # 1. 각 모달리티 개별 인코딩
+        for i in range(m):
+            image_embedding.append(self.sam.forward_image(batched_input[i]))
+            backbone_out_item, vision_feats_item, vision_pos_embeds_item, feat_sizes_item = \
+                self.sam._prepare_backbone_features(image_embedding[i])
+            
+            backbone_out.append(backbone_out_item)
+            vision_feats.append(vision_feats_item)
+            vision_pos_embeds.append(vision_pos_embeds_item)
+            feat_sizes.append(feat_sizes_item)
+        
+        # 2. Memory mechanism으로 각 모달리티 처리
+        output_dict = {
+            "cond_frame_outputs": {},
+            "non_cond_frame_outputs": {},
+        }
+        
+        for frame_idx in range(m):
+            is_init_cond_frame = (frame_idx == 0)
+            
+            multi_mask_output = self.sam.track_step(
+                frame_idx=frame_idx,
+                is_init_cond_frame=is_init_cond_frame,
+                current_vision_feats=vision_feats[frame_idx],
+                current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                feat_sizes=feat_sizes[frame_idx],
+                point_inputs=None,
+                mask_inputs=None,
+                output_dict=output_dict,
+                num_frames=m,
+                track_in_reverse=False,
+                run_mem_encoder=True,
+                prev_sam_mask_logits=None,
+            )
+            output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output
+            output.append(multi_mask_output["high_res_multimasks"])
+        
+        # 3. Learnable Attention Fusion (핵심 개선 부분)
+        # Output-level fusion: segmentation mask 가중 융합
+        m_output, output_attn = self.modal_fusion.forward_output_attention(output)
+        
+        # Feature-level fusion: backbone feature 가중 융합
+        backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+        m_feat, feat_attn = self.modal_fusion.forward_feat_attention(backbone_feats)
+        
+        return m_output, m_feat

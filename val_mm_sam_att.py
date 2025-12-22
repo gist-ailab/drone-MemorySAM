@@ -1,3 +1,6 @@
+"""
+LoRA-SAM with Learnable Modal Attention Fusion 평가 코드
+"""
 import torch
 import argparse
 import yaml
@@ -21,8 +24,9 @@ from torch import distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from semseg.utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp, get_logger, cal_flops, print_iou
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_ATT
 import matplotlib.pyplot as plt 
+
 def pad_image(img, target_size):
     rows_to_pad = max(target_size[0] - img.shape[2], 0)
     cols_to_pad = max(target_size[1] - img.shape[3], 0)
@@ -79,8 +83,6 @@ def evaluate(model, dataloader, device):
             output, _ = model(images, True)
             preds = output.softmax(dim=1)
 
-            # preds = model.forward(images)
-            # preds = preds.softmax(dim=1)
         metrics.update(preds, labels)
     
     ious, miou = metrics.compute_iou()
@@ -153,11 +155,12 @@ def main(cfg):
 
         sam2 = build_sam2(model_cfg, checkpoint)
 
-        # LoRA rank를 config에서 읽어오기 (기본값 4, 체크포인트와 일치해야 함)
-        lora_rank = cfg.get('LORA', {}).get('RANK', 4)
-        model = LoRA_Sam(sam2, r=lora_rank).cpu()
+        # LoRA_Sam_ATT: Learnable Modal Attention Fusion 사용
+        num_modals = len(cfg['DATASET']['MODALS'])
+        lora_rank = cfg.get('LORA', {}).get('RANK', 16)
+        model = LoRA_Sam_ATT(sam2, r=lora_rank, num_modals=num_modals).cpu()
         print(model)
-        msg = model.load_state_dict(torch.load(str(model_path), map_location='cpu'),strict = False)
+        msg = model.load_state_dict(torch.load(str(model_path), map_location='cpu'), strict=False)
         print(msg)
         model = model.to(device)
         sampler_val = None
@@ -187,13 +190,12 @@ def main(cfg):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='val')
+    parser.add_argument('--cfg', type=str, default='configs/deliver_rgbdel_sam_att.yaml')
     args = parser.parse_args()
 
     with open(args.cfg) as f:
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
 
     setup_cudnn()
-    # gpu = setup_ddp()
-    # main(cfg, gpu)
     main(cfg)
+
