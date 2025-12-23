@@ -118,7 +118,7 @@ def main(cfg, gpu, save_dir):
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
     resume_checkpoint = None
     
-    checkpoint = "/hpc2hdd/home/cliao127/MMSS-SAM-S1/semseg/models/sam2/checkpoints/sam2_hiera_base_plus.pt"
+    checkpoint = "/SSDb/jemo_maeng/src/Project/Drone/detection/MemorySAM/semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     model_cfg = "sam2_hiera_b+.yaml"
 
     sam2 = build_sam2(model_cfg, checkpoint)
@@ -224,7 +224,6 @@ def main(cfg, gpu, save_dir):
 
 
                 logits = output
-                
                 
                 # logits = model.forward(sample)
                 loss_orig = loss_fn(logits, lbl)
