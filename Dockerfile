@@ -3,7 +3,7 @@ FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 # 1. 기본 패키지 설치
 RUN apt-get update && apt-get install -y \
     wget git curl vim unzip build-essential \
-    && rm -rf /var/lib/apt/lists/*
+
 
 # 2. Miniconda 설치
 ENV CONDA_DIR /opt/conda
