@@ -262,3 +262,6 @@ fabric.properties
 
 output/
 data/
+output*/
+pretrained_weights/
+logs/

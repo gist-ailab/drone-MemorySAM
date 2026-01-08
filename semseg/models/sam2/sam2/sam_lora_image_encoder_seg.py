@@ -220,17 +220,29 @@ class LoRA_Sam(nn.Module):
         self.sam.load_state_dict(sam_dict)
 
     def reset_parameters(self) -> None:
+        # for w_A in self.w_As:
+        #     nn.init.kaiming_uniform_(w_A.weight, a=math.sqrt(5))
+        # for w_B in self.w_Bs:
+        #     nn.init.zeros_(w_B.weight)
+
         for w_A in self.w_As:
             nn.init.kaiming_uniform_(w_A.weight, a=math.sqrt(5))
         for w_B in self.w_Bs:
-            nn.init.zeros_(w_B.weight)
-
+            # nn.init.zeros_(w_B.weight)  <-- 기존 코드 (-1024의 원인)
+            # 아주 작은 가우시안 분포로 초기화하여 '프롬프트 의존성'을 강제로 깨뜨림
+            nn.init.normal_(w_B.weight, std=1e-3)
 
 
 
     def forward(self, batched_input, multimask_output):
 
-        m = 2
+        # m = 2
+        m = len(batched_input)
+        # for i in range(m):
+        #     # if batched_input[i].abs().sum() == 0:
+        #         # print(f"Warning: Modality {i} is empty (all zeros)!")
+        #     print(f"Modality {i} mean: {batched_input[i].mean().item()}")
+        # batched_input = [batched_input[1], batched_input[0], batched_input[2], batched_input[3]]
         image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes,  output = [], [], [], [], [],[]
         for i in range(m):
             image_embedding.append(self.sam.forward_image(batched_input[i]))
@@ -275,7 +287,6 @@ class LoRA_Sam(nn.Module):
                 prev_sam_mask_logits=None,
                 )
             output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output
-
             output.append(multi_mask_output["high_res_multimasks"])
         
     
@@ -291,4 +302,8 @@ class LoRA_Sam(nn.Module):
         for i in range(m-1):
             m_output = m_output + output[i+1]
             m_feat = m_feat + image_embedding[i+1]['backbone_fpn'][0]
+
+        # for i in range(len(output)):
+        #     print(f"Modality {i} mask mean: {output[i].mean().item()} | max: {output[i].max().item()} | min: {output[i].min().item()}")
+
         return m_output/m, m_feat/m

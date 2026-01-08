@@ -100,17 +100,13 @@ def main(cfg, gpu, save_dir):
     best_mIoU = 0.0
     best_epoch = 0
     num_workers = 8
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(cfg['DEVICE'])
     train_cfg, eval_cfg = cfg['TRAIN'], cfg['EVAL']
     dataset_cfg, model_cfg = cfg['DATASET'], cfg['MODEL']
     loss_cfg, optim_cfg, sched_cfg = cfg['LOSS'], cfg['OPTIMIZER'], cfg['SCHEDULER']
     epochs, lr = train_cfg['EPOCHS'], optim_cfg['LR']
     resume_path = cfg['MODEL']['RESUME']
-
-    train_cfg, eval_cfg = cfg['TRAIN'], cfg['EVAL']
-    dataset_cfg, model_cfg_yaml = cfg['DATASET'], cfg['MODEL']
-    loss_cfg, optim_cfg, sched_cfg = cfg['LOSS'], cfg['OPTIMIZER'], cfg['SCHEDULER']
-    epochs, lr = train_cfg['EPOCHS'], optim_cfg['LR']
+    gpus = int(os.environ['WORLD_SIZE'])
 
     traintransform = get_train_augmentation(train_cfg['IMAGE_SIZE'], seg_fill=dataset_cfg['IGNORE_LABEL'])
     valtransform = get_val_augmentation(eval_cfg['IMAGE_SIZE'])
@@ -122,7 +118,8 @@ def main(cfg, gpu, save_dir):
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
     resume_checkpoint = None
     
-    checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
+    # checkpoint = "/hpc2hdd/home/cliao127/MMSS-SAM-S1/semseg/models/sam2/checkpoints/sam2_hiera_base_plus.pt"
+    checkpoint = "semseg/models/sam2/checkpoints/sam2_hiera_base_plus.pt"
     model_cfg = "sam2_hiera_b+.yaml"
 
     sam2 = build_sam2(model_cfg, checkpoint)
@@ -157,7 +154,7 @@ def main(cfg, gpu, save_dir):
     for k,v in model.named_parameters():
         print('{}: {}'.format(k, v.requires_grad))
 
-    iters_per_epoch = len(trainset) // train_cfg['BATCH_SIZE']
+    iters_per_epoch = len(trainset) // train_cfg['BATCH_SIZE'] // gpus
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
@@ -228,6 +225,7 @@ def main(cfg, gpu, save_dir):
 
 
                 logits = output
+                
                 
                 # logits = model.forward(sample)
                 loss_orig = loss_fn(logits, lbl)

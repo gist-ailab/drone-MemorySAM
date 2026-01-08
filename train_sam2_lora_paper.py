@@ -31,6 +31,9 @@ from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam
 import torch
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.pyplot as plt
 torch.autograd.set_detect_anomaly(True)
 
 
@@ -95,22 +98,67 @@ class PrototypeSegmentation:
         loss = F.mse_loss(batch_prototypes, self.global_prototypes)
         return loss
 
+def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs):
+    """Plot and save training curves for Loss, Proto Loss, and LR"""
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12))
+    
+    # Plot Loss
+    axes[0].plot(epochs, losses, 'b-', linewidth=2, label='Train Loss')
+    axes[0].set_xlabel('Epoch', fontsize=12)
+    axes[0].set_ylabel('Loss', fontsize=12)
+    axes[0].set_title('Training Loss', fontsize=14, fontweight='bold')
+    axes[0].grid(True, alpha=0.3)
+    axes[0].legend()
+    
+    # Plot Proto Loss
+    axes[1].plot(epochs, proto_losses, 'r-', linewidth=2, label='Proto Loss')
+    axes[1].set_xlabel('Epoch', fontsize=12)
+    axes[1].set_ylabel('Proto Loss', fontsize=12)
+    axes[1].set_title('Prototype Loss', fontsize=14, fontweight='bold')
+    axes[1].grid(True, alpha=0.3)
+    axes[1].legend()
+    
+    # Plot LR
+    axes[2].plot(epochs, lrs, 'g-', linewidth=2, label='Learning Rate')
+    axes[2].set_xlabel('Epoch', fontsize=12)
+    axes[2].set_ylabel('Learning Rate', fontsize=12)
+    axes[2].set_title('Learning Rate Schedule', fontsize=14, fontweight='bold')
+    axes[2].grid(True, alpha=0.3)
+    axes[2].legend()
+    axes[2].set_yscale('log')  # Use log scale for LR
+    
+    plt.tight_layout()
+    plot_path = save_dir / 'training_curves.png'
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # Also save individual plots
+    # Combined Loss plot
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    ax.plot(epochs, losses, 'b-', linewidth=2, label='Train Loss')
+    ax.plot(epochs, proto_losses, 'r-', linewidth=2, label='Proto Loss')
+    ax.set_xlabel('Epoch', fontsize=12)
+    ax.set_ylabel('Loss', fontsize=12)
+    ax.set_title('Training Losses', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    plt.tight_layout()
+    plot_path = save_dir / 'training_losses.png'
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
 def main(cfg, gpu, save_dir):
     start = time.time()
     best_mIoU = 0.0
     best_epoch = 0
     num_workers = 8
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(cfg['DEVICE'])
     train_cfg, eval_cfg = cfg['TRAIN'], cfg['EVAL']
     dataset_cfg, model_cfg = cfg['DATASET'], cfg['MODEL']
     loss_cfg, optim_cfg, sched_cfg = cfg['LOSS'], cfg['OPTIMIZER'], cfg['SCHEDULER']
     epochs, lr = train_cfg['EPOCHS'], optim_cfg['LR']
     resume_path = cfg['MODEL']['RESUME']
-
-    train_cfg, eval_cfg = cfg['TRAIN'], cfg['EVAL']
-    dataset_cfg, model_cfg_yaml = cfg['DATASET'], cfg['MODEL']
-    loss_cfg, optim_cfg, sched_cfg = cfg['LOSS'], cfg['OPTIMIZER'], cfg['SCHEDULER']
-    epochs, lr = train_cfg['EPOCHS'], optim_cfg['LR']
+    gpus = int(os.environ['WORLD_SIZE'])
 
     traintransform = get_train_augmentation(train_cfg['IMAGE_SIZE'], seg_fill=dataset_cfg['IGNORE_LABEL'])
     valtransform = get_val_augmentation(eval_cfg['IMAGE_SIZE'])
@@ -125,9 +173,21 @@ def main(cfg, gpu, save_dir):
     checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     model_cfg = "sam2_hiera_b+.yaml"
 
-    sam2 = build_sam2(model_cfg, checkpoint)
-
+    # sam2 = build_sam2(model_cfg, checkpoint)
+    sam2 = build_sam2(
+        "sam2_hiera_b+.yaml",
+        checkpoint,
+        hydra_overrides_extra=[
+            "++model.pred_obj_scores=false",
+            "++model.fixed_no_obj_ptr=false",
+            "++model.pred_obj_scores_mlp=false"
+        ]
+    )
     model = LoRA_Sam(sam2, 4).cpu()
+
+    if train_cfg['DDP']:
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        logger.info("Using SyncBatchNorm to handle small batch size.")
 
     model = model.to(device)
     for k,v in model.named_parameters():
@@ -146,8 +206,10 @@ def main(cfg, gpu, save_dir):
         param.requires_grad = False
     for param in model.sam.sam_mask_decoder.iou_prediction_head.parameters():
         param.requires_grad = False
-    for param in model.sam.sam_mask_decoder.pred_obj_score_head.parameters():
-        param.requires_grad = False
+    # pred_obj_score_head only exists when pred_obj_scores=True
+    if hasattr(model.sam.sam_mask_decoder, 'pred_obj_score_head'):
+        for param in model.sam.sam_mask_decoder.pred_obj_score_head.parameters():
+            param.requires_grad = False
     for param in model.sam.memory_attention.parameters():
         param.requires_grad = True
     for param in model.sam.memory_encoder.parameters():
@@ -157,11 +219,24 @@ def main(cfg, gpu, save_dir):
     for k,v in model.named_parameters():
         print('{}: {}'.format(k, v.requires_grad))
 
-    iters_per_epoch = len(trainset) // train_cfg['BATCH_SIZE']
+    accumulation_steps = 2  # 8 GPUs * Batch 1 * 2 steps = Effective Batch 16
+    effective_batch_size = train_cfg['BATCH_SIZE'] * gpus * accumulation_steps
+    updates_per_epoch = len(trainset) // effective_batch_size
+    iters_per_epoch = len(trainset) // (train_cfg['BATCH_SIZE'] * gpus)
+
+    # iters_per_epoch = len(trainset) // train_cfg['BATCH_SIZE'] // gpus
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
-    scheduler = get_scheduler(sched_cfg['NAME'], optimizer, int((epochs+1)*iters_per_epoch), sched_cfg['POWER'], iters_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
+    # scheduler = get_scheduler(sched_cfg['NAME'], optimizer, int((epochs+1)*iters_per_epoch), sched_cfg['POWER'], iters_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
+    scheduler = get_scheduler(
+        sched_cfg['NAME'], 
+        optimizer, 
+        int((epochs + 1) * updates_per_epoch), # 총 업데이트 횟수
+        sched_cfg['POWER'], 
+        updates_per_epoch * sched_cfg['WARMUP'], 
+        sched_cfg['WARMUP_RATIO']
+        )
 
 
     if train_cfg['DDP']: 
@@ -202,6 +277,12 @@ def main(cfg, gpu, save_dir):
     feature_dim = 32
     prototypeseg = PrototypeSegmentation(num_classes, feature_dim)
     
+    # Initialize lists for tracking training metrics
+    train_losses = []
+    train_proto_losses = []
+    train_lrs = []
+    epochs_list = []
+    
     for epoch in range(start_epoch, epochs):
         model.train()
         if train_cfg['DDP']: sampler.set_epoch(epoch)
@@ -213,10 +294,8 @@ def main(cfg, gpu, save_dir):
         lr = sum(lr) / len(lr)
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch, desc=f"Epoch: [{epoch+1}/{epochs}] Iter: [{0}/{iters_per_epoch}] LR: {lr:.8f} Loss: {train_loss:.8f}")
         
-        
-
         for iter, (sample, lbl) in pbar:
-            optimizer.zero_grad(set_to_none=True)
+            # optimizer.zero_grad(set_to_none=True)
             for param_group in optimizer.param_groups:
                 param_group['lr'] = float(param_group['lr'])
 
@@ -224,36 +303,34 @@ def main(cfg, gpu, save_dir):
             lbl = lbl.to(device)
             
             with autocast(enabled=train_cfg['AMP']):
-                output, m_feat= model(sample, multimask_output=True)#  SAMed
-
-
+                output, m_feat = model(sample, multimask_output=True)
                 logits = output
                 
-                # logits = model.forward(sample)
                 loss_orig = loss_fn(logits, lbl)
-
-                # low_logits = output['low_res_logits']
-                # loss_low = loss_fn(low_logits,low_lbl)
                 protoloss = prototypeseg.compute_loss(m_feat, lbl) * 256 * 256
                 
-
-              
-                loss = loss_orig+protoloss
+                # [수정] 전체 Loss를 accumulation_steps로 나누어야 정확한 그라디언트 평균이 계산됩니다.
+                total_loss_unscaled = loss_orig + protoloss
+                loss = total_loss_unscaled / accumulation_steps
 
             scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
+            if (iter + 1) % accumulation_steps == 0:
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad(set_to_none=True)
+                scheduler.step()
             torch.cuda.synchronize()
 
             lr = scheduler.get_lr()
             lr = sum(lr) / len(lr)
             if lr.real <= 1e-8:
                 lr = 1e-8 # minimum of lr
-                
                 lr = float(lr.real)
+            else:
+                lr = float(lr.real) if hasattr(lr, 'real') else float(lr)
                 
-            train_loss += loss.item()
+            # train_loss += loss.item()
+            train_loss += total_loss_unscaled.item()
             proto_loss += protoloss.item()
             
             
@@ -261,9 +338,24 @@ def main(cfg, gpu, save_dir):
         
         train_loss /= iter+1
         proto_loss /= iter+1
+        avg_lr = scheduler.get_lr()
+        avg_lr = sum(avg_lr) / len(avg_lr)
+        avg_lr = float(avg_lr.real) if hasattr(avg_lr, 'real') else float(avg_lr)
+        
         if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
+            # Save metrics for plotting
+            train_losses.append(train_loss)
+            train_proto_losses.append(proto_loss)
+            train_lrs.append(avg_lr)
+            epochs_list.append(epoch + 1)
             
+            # Add to TensorBoard
             writer.add_scalar('train/loss', train_loss, epoch)
+            writer.add_scalar('train/proto_loss', proto_loss, epoch)
+            writer.add_scalar('train/lr', avg_lr, epoch)
+            
+            # Plot and save graphs
+            plot_training_curves(save_dir, epochs_list, train_losses, train_proto_losses, train_lrs)
         torch.cuda.empty_cache()
 
         if ((epoch+1) % train_cfg['EVAL_INTERVAL'] == 0 and (epoch+1)>train_cfg['EVAL_START']) or (epoch+1) == epochs:

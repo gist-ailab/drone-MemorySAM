@@ -147,7 +147,8 @@ def main(cfg):
         # --- test set
         # dataset = eval(cfg['DATASET']['NAME'])(cfg['DATASET']['ROOT'], 'test', transform, cfg['DATASET']['MODALS'], case)
 
-        checkpoint = "/hpc2hdd/home/cliao127/MMSS-SAM-S3/semseg/models/sam2/checkpoints/sam2_hiera_base_plus.pt"
+        # checkpoint = "/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM/semseg/models/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
+        checkpoint = "semseg/models/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
         model_cfg = "sam2_hiera_b+.yaml"
 
         sam2 = build_sam2(model_cfg, checkpoint)
@@ -184,7 +185,8 @@ def main(cfg):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='val')
+    # parser.add_argument('--cfg', type=str, default='val')
+    parser.add_argument('--cfg', type=str, default='/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM/configs/levine_deliver_rgbdel_sam_eval.yaml')
     args = parser.parse_args()
 
     with open(args.cfg) as f:
