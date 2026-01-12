@@ -55,7 +55,7 @@ EVAL:
   # MODEL_PATH    : 'output/DELIVER/cmnext_b2_deliver_rgbdl.pth'
   MODEL_PATH    : '/hpc2hdd/home/cliao127/MMSS-SAM-Logs/Main/AblationStudy_RGBD_mo08_weight1lr0.00045/DELIVER_CMNeXt-B2_id/epoch154_63.48.pth'
   IMAGE_SIZE    : [1024, 1024]                            # evaluation image size in (h, w)        
-  BATCH_SIZE    : 5      
+  BATCH_SIZE    : 1     
   MSF: 
     ENABLE      : false                                   # multi-scale and flip evaluation  
     FLIP        : true                                    # use flip in evaluation  

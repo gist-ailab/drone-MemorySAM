@@ -118,12 +118,12 @@ def main(cfg, gpu, save_dir):
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
     resume_checkpoint = None
     
-    checkpoint = "/SSDb/jemo_maeng/src/Project/Drone/detection/MemorySAM/semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
+    checkpoint = "semseg/models/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     model_cfg = "sam2_hiera_b+.yaml"
 
     sam2 = build_sam2(model_cfg, checkpoint)
 
-    model = LoRA_Sam(sam2, 4).cpu()
+    model = LoRA_Sam(sam2, 1).cpu()
 
     model = model.to(device)
     for k,v in model.named_parameters():
