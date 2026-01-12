@@ -32,6 +32,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 import matplotlib
+import math
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 torch.autograd.set_detect_anomaly(True)
@@ -219,16 +220,18 @@ def main(cfg, gpu, save_dir):
     for k,v in model.named_parameters():
         print('{}: {}'.format(k, v.requires_grad))
 
-    accumulation_steps = 2  # 8 GPUs * Batch 1 * 2 steps = Effective Batch 16
+
+    # Auto calculate accumulation steps
+    purposed_batch_size = 16
+    # accumulation_steps = 2  # 8 GPUs * Batch 1 * 2 steps = Effective Batch 16
+    accumulation_steps = math.ceil(purposed_batch_size / (train_cfg['BATCH_SIZE'] * gpus))
     effective_batch_size = train_cfg['BATCH_SIZE'] * gpus * accumulation_steps
     updates_per_epoch = len(trainset) // effective_batch_size
     iters_per_epoch = len(trainset) // (train_cfg['BATCH_SIZE'] * gpus)
 
-    # iters_per_epoch = len(trainset) // train_cfg['BATCH_SIZE'] // gpus
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
-    # scheduler = get_scheduler(sched_cfg['NAME'], optimizer, int((epochs+1)*iters_per_epoch), sched_cfg['POWER'], iters_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
     scheduler = get_scheduler(
         sched_cfg['NAME'], 
         optimizer, 
