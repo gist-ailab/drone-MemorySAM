@@ -1,0 +1,2 @@
+python MISC/dataset_analysis.py --mode video --split test --max_frames -1 --output /ailab_mat2/dataset/DELIVER/analysis/test
+python MISC/dataset_analysis.py --mode video --split train --max_frames -1 --output /ailab_mat2/dataset/DELIVER/analysis/train

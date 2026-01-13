@@ -1,0 +1,71 @@
+=== Brightness Analysis Results ===
+
+CLOUD:
+  Count: 794
+  RGB Brightness: 0.3233 ± 0.1485
+  Depth Brightness: 0.3404 ± 0.0351
+  LiDAR Brightness: 0.0068 ± 0.0012
+  Event Brightness: 0.0293 ± 0.0135
+
+FOG:
+  Count: 795
+  RGB Brightness: 0.5075 ± 0.1655
+  Depth Brightness: 0.3388 ± 0.0398
+  LiDAR Brightness: 0.0069 ± 0.0013
+  Event Brightness: 0.0042 ± 0.0062
+
+NIGHT:
+  Count: 797
+  RGB Brightness: 0.1052 ± 0.1359
+  Depth Brightness: 0.3399 ± 0.0385
+  LiDAR Brightness: 0.0068 ± 0.0013
+  Event Brightness: 0.0325 ± 0.0157
+
+RAIN:
+  Count: 3983
+  RGB Brightness: 0.3673 ± 0.2238
+  Depth Brightness: 0.3409 ± 0.0367
+  LiDAR Brightness: 0.0068 ± 0.0012
+  Event Brightness: 0.0248 ± 0.0190
+
+SUN:
+  Count: 798
+  RGB Brightness: 0.5737 ± 0.1536
+  Depth Brightness: 0.3434 ± 0.0330
+  LiDAR Brightness: 0.0068 ± 0.0012
+  Event Brightness: 0.0161 ± 0.0129
+
+MOTIONBLUR:
+  Count: 600
+  RGB Brightness: 0.3707 ± 0.1960
+  Depth Brightness: 0.3423 ± 0.0347
+  LiDAR Brightness: 0.0068 ± 0.0013
+  Event Brightness: 0.0253 ± 0.0188
+
+OVEREXPOSURE:
+  Count: 200
+  RGB Brightness: 0.8733 ± 0.1109
+  Depth Brightness: 0.3354 ± 0.0340
+  LiDAR Brightness: 0.0067 ± 0.0012
+  Event Brightness: 0.0256 ± 0.0189
+
+UNDEREXPOSURE:
+  Count: 199
+  RGB Brightness: 0.0359 ± 0.0265
+  Depth Brightness: 0.3424 ± 0.0326
+  LiDAR Brightness: 0.0067 ± 0.0012
+  Event Brightness: 0.0274 ± 0.0203
+
+LIDARJITTER:
+  Count: 199
+  RGB Brightness: 0.3552 ± 0.1808
+  Depth Brightness: 0.3352 ± 0.0359
+  LiDAR Brightness: 0.0067 ± 0.0013
+  Event Brightness: 0.0240 ± 0.0178
+
+EVENTLOWRES:
+  Count: 200
+  RGB Brightness: 0.3602 ± 0.1894
+  Depth Brightness: 0.3442 ± 0.0337
+  LiDAR Brightness: 0.0066 ± 0.0012
+  Event Brightness: 0.0233 ± 0.0185
