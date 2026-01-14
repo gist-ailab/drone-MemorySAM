@@ -27,7 +27,9 @@ import numpy
 import random
 import torch
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1
+
 import torch
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
@@ -184,7 +186,16 @@ def main(cfg, gpu, save_dir):
             "++model.pred_obj_scores_mlp=false"
         ]
     )
-    model = LoRA_Sam(sam2, 4).cpu()
+    # model = LoRA_Sam(sam2, 4).cpu()
+    # model = LoRA_Sam_P1(sam2, 4).cpu()
+    # model = LoRA_Sam_P2(sam2, 4).cpu()
+    model = LoRA_Sam_P3(
+        sam2, 
+        r=4, 
+        qamu_threshold=0.4, 
+        num_experts=4,  # 전문가 수 = 모달리티 수
+        top_k=2         # 추천 값
+    ).cpu()
 
     if train_cfg['DDP']:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)

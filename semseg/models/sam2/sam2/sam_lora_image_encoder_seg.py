@@ -200,6 +200,127 @@ def random_element_swap(tensor_list):
     return [tensor1, tensor2]
 
 
+class MoE_LoRA_Layer(nn.Module):
+    """
+    Implements a Mixture-of-Experts (MoE) LoRA layer.
+    Instead of one pair of A/B matrices, it holds 'num_experts' pairs.
+    A gating network selects top-k experts for each token.
+    """
+    def __init__(self, in_features, rank, num_experts=4, top_k=2):
+        super().__init__()
+        self.num_experts = num_experts
+        self.top_k = top_k
+        self.rank = rank
+        self.in_features = in_features
+        
+        # Gating Network: Linear projection to expert scores
+        self.gate = nn.Linear(in_features, num_experts)
+        
+        # Experts: ModuleList of LoRA Adapters
+        # Expert A: in -> rank
+        self.experts_a = nn.ModuleList([
+            nn.Linear(in_features, rank, bias=False) for _ in range(num_experts)
+        ])
+        # Expert B: rank -> in
+        self.experts_b = nn.ModuleList([
+            nn.Linear(rank, in_features, bias=False) for _ in range(num_experts)
+        ])
+        
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # Initialize Gate: Near zero to start with uniform routing
+        nn.init.normal_(self.gate.weight, std=0.01)
+        nn.init.zeros_(self.gate.bias)
+        
+        # Initialize Experts
+        for i in range(self.num_experts):
+            # A: Kaiming Uniform
+            nn.init.kaiming_uniform_(self.experts_a[i].weight, a=math.sqrt(5))
+            # B: Zero init to ensure identity function at start
+            nn.init.zeros_(self.experts_b[i].weight)
+
+    def forward(self, x):
+        # x shape: (B, N, C)
+        original_shape = x.shape
+        x_flat = x.view(-1, self.in_features) # (B*N, C)
+        
+        # 1. Calculate Routing Logits
+        gate_logits = self.gate(x_flat) # (B*N, num_experts)
+        gate_probs = F.softmax(gate_logits, dim=-1)
+        
+        # 2. Select Top-K Experts
+        # weights: (B*N, k), indices: (B*N, k)
+        weights, indices = torch.topk(gate_probs, self.top_k, dim=-1)
+        
+        # Normalize weights so they sum to 1
+        weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-8)
+        
+        # 3. Compute Expert Outputs
+        # Optimization: We compute output as weighted sum of selected experts.
+        # Since rank is small, we can iterate experts or use efficient gathering.
+        # Here we iterate for clarity and stability.
+        
+        final_output = torch.zeros_like(x_flat)
+        
+        # Create a mask for efficient computation/addition
+        # mask: (B*N, num_experts)
+        mask = torch.zeros_like(gate_probs)
+        mask.scatter_(1, indices, 1.0)
+        
+        # Apply mask to probabilities to zero out non-top-k
+        masked_probs = gate_probs * mask
+        # Re-normalize over the top-k selection
+        masked_probs = masked_probs / (masked_probs.sum(dim=-1, keepdim=True) + 1e-8)
+
+        for i in range(self.num_experts):
+            # Check if this expert contributes to any token (Optimization)
+            expert_weight = masked_probs[:, i].unsqueeze(-1) # (B*N, 1)
+            if expert_weight.sum() == 0:
+                continue
+            
+            # Compute expert output: B(A(x))
+            # Note: We compute for all tokens. For very large models, we would only compute for selected tokens.
+            # But for LoRA (low rank), computing all is often faster than gather/scatter overhead in PyTorch.
+            expert_out = self.experts_b[i](self.experts_a[i](x_flat))
+            
+            final_output += expert_weight * expert_out
+            
+        return final_output.view(original_shape)
+
+class _MoE_LoRA_qkv(nn.Module):
+    """
+    QKV layer wrapper that replaces standard LoRA with MoE-LoRA.
+    """
+    def __init__(
+            self,
+            qkv: nn.Module,
+            moe_layer_q: MoE_LoRA_Layer,
+            moe_layer_v: MoE_LoRA_Layer,
+    ):
+        super().__init__()
+        self.qkv = qkv
+        self.moe_layer_q = moe_layer_q
+        self.moe_layer_v = moe_layer_v
+        self.dim = qkv.in_features
+        
+    def forward(self, x):
+        # Original QKV
+        qkv = self.qkv(x)  # B, N, 3*dim
+        
+        # MoE-LoRA Update for Query
+        new_q = self.moe_layer_q(x)
+        
+        # MoE-LoRA Update for Value
+        new_v = self.moe_layer_v(x)
+        
+        # Add residual connection
+        qkv[:, :, :, : self.dim] += new_q
+        qkv[:, :, :, -self.dim:] += new_v
+        
+        return qkv
+
+
 class ConfidenceHead(nn.Module):
     """
     Lightweight module to estimate the confidence of a modality based on its features.
@@ -482,3 +603,136 @@ class LoRA_Sam_P2(LoRA_Sam_P1):
             m_feat = m_feat + image_embedding[i]['backbone_fpn'][0] * wi
 
         return m_output, m_feat
+
+
+class LoRA_Sam_P3(LoRA_Sam_P2):
+    """
+    LoRA_Sam_P3: The Ultimate Architecture.
+    Combines:
+    1. Adaptive Output Fusion (Inherited from P1)
+    2. Quality-Aware Memory Update (QAMU) (Inherited from P2)
+    3. Mixture-of-Experts (MoE) LoRA (New in P3)
+    
+    This class overrides __init__ to inject MoE layers instead of standard LoRA.
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None, qamu_threshold=0.4, num_experts=4, top_k=2):
+        # We cannot call super().__init__ easily because we want to inject different layers.
+        # So we reconstruct the initialization logic here.
+        nn.Module.__init__(self) # Base Module init
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # MoE-LoRA Surgery
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+                
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+            
+            # Create MoE Layers for Q and V
+            moe_q = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            moe_v = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+            
+            # Replace QKV
+            blk.attn.qkv = _MoE_LoRA_qkv(
+                w_qkv_linear,
+                moe_q,
+                moe_v,
+            )
+            
+        self.sam = sam_model
+        
+        # P1/P2 Features: Adaptive Fusion & QAMU
+        fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+        self.confidence_head = ConfidenceHead(in_channels=fusion_dim)
+        self.qamu_threshold = qamu_threshold
+
+    def save_lora_parameters(self, filename: str) -> None:
+        """
+        Custom save function for MoE structure.
+        """
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        # Collect MoE parameters
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+            
+        # Collect Confidence Head
+        confidence_tensors = {f"confidence_head.{k}": v for k, v in self.confidence_head.state_dict().items()}
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+        
+        # Handle DDP wrapping
+        model_ref = self.sam.module if isinstance(self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.sam
+        state_dict = model_ref.state_dict()
+            
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors, 
+            **mask_decoder_tensors, 
+            **confidence_tensors
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        """
+        Custom load function for MoE structure.
+        """
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        # Load MoE Layers
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            
+            if q_key in state_dict:
+                mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict:
+                mv.load_state_dict(state_dict[v_key])
+        
+        # Load Confidence Head
+        confidence_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("confidence_head."):
+                confidence_dict[k.replace("confidence_head.", "")] = v
+        if confidence_dict:
+            self.confidence_head.load_state_dict(confidence_dict)
+
+        # Load SAM parts
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+            
+        self.sam.load_state_dict(sam_dict)
