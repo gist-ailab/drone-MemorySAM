@@ -11,6 +11,7 @@ from icecream import ic
 from .modeling.sam2_base import SAM2Base
 import torch.nn.init as init
 import random
+from sam_lora_image_encoder_seg_bkup import LoRA_Sam 
 
 
 '''CUSTOM VISUALIZATIOM'''
@@ -120,6 +121,7 @@ def _save_pca(data, filename, title, save_dir):
 
 '''---'''
 
+
 class MLP_my(nn.Module):
     def __init__(
         self,
@@ -197,219 +199,286 @@ def random_element_swap(tensor_list):
 
     return [tensor1, tensor2]
 
-class LoRA_Sam(nn.Module):
-    """Applies low-rank adaptation to a Sam model's image encoder.
 
-    Args:
-        sam_model: a vision transformer model, see base_vit.py
-        r: rank of LoRA
-        num_classes: how many classes the model output, default to the vit model
-        lora_layer: which layer we apply LoRA.
+class ConfidenceHead(nn.Module):
+    """
+    Lightweight module to estimate the confidence of a modality based on its features.
+    Architecture: GlobalAvgPool -> MLP -> Linear (Logits for Softmax)
+    """
+    def __init__(self, in_channels, hidden_dim=64):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(in_channels, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
 
-    Examples::
-        >>> model = ViT('B_16_imagenet1k')
-        >>> lora_model = LoRA_ViT(model, r=4)
-        >>> preds = lora_model(img)
-        >>> print(preds.shape)
-        torch.Size([1, 1000])
+    def forward(self, x):
+        return self.net(x)
+
+class LoRA_Sam_P1(LoRA_Sam):
+    """
+    LoRA_Sam with Adaptive Output Fusion (P1 Contribution).
+    Inherits from LoRA_Sam to reuse LoRA injection and initialization logic.
     """
 
     def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None):
-        super(LoRA_Sam, self).__init__()
+        # 1. 부모 클래스(LoRA_Sam)의 __init__ 호출
+        # 여기서 LoRA 레이어 주입(Surgery)과 초기화가 자동으로 수행됩니다.
+        super().__init__(sam_model, r, lora_layer)
+        
+        # 2. [P1 Contribution] Adaptive Fusion을 위한 Confidence Head 추가
+        # Transformer dimension (일반적으로 256)을 가져옵니다.
+        fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+        self.confidence_head = ConfidenceHead(in_channels=fusion_dim)
 
-        assert r > 0
-        # base_vit_dim = sam_model.image_encoder.patch_embed.proj.out_channels
-        # dim = base_vit_dim
-        if lora_layer:
-            self.lora_layer = lora_layer
-        else:
-            self.lora_layer = list(
-                range(len(sam_model.image_encoder.trunk.blocks)))  # Only apply lora to the image encoder by default
-        # create for storage, then we can init them or load weights
-        self.w_As = []  # These are linear layers
-        self.w_Bs = []
+    def forward(self, batched_input, multimask_output):
+        """
+        Override forward to implement Adaptive Output Fusion.
+        """
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes, output = [], [], [], [], [], []
+        
+        # 1. Image Encoding Loop (Base logic reuse)
+        for i in range(m):
+            img_emb = self.sam.forward_image(batched_input[i])
+            image_embedding.append(img_emb)
+            bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+            backbone_out.append(bb_out)
+            vision_feats.append(v_feats)
+            vision_pos_embeds.append(v_pos)
+            feat_sizes.append(f_sizes)
+        
+        output_dict={
+            "cond_frame_outputs": {},
+            "non_cond_frame_outputs": {},
+        }
+        
+        # 2. Modality Tracking Loop (MAM)
+        for frame_idx in range(m):
+            is_init = (frame_idx == 0)
+            multi_mask_output_step = self.sam.track_step(
+                frame_idx=frame_idx,
+                is_init_cond_frame=is_init,
+                current_vision_feats=vision_feats[frame_idx],
+                current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                feat_sizes=feat_sizes[frame_idx],
+                point_inputs=None,
+                mask_inputs=None,
+                output_dict=output_dict,
+                num_frames=m,
+                track_in_reverse=False,
+                run_mem_encoder=True,
+                prev_sam_mask_logits=None,
+                )
+            output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+            output.append(multi_mask_output_step["high_res_multimasks"])
+        
+        # 3. [P1 Contribution] Adaptive Output Fusion Logic
+        # Calculate confidence scores for each modality
+        confidences = []
+        for i in range(m):
+            # Use the high-res FPN feature for confidence estimation
+            # image_embedding[i]['backbone_fpn'][0] shape: (B, C, H, W)
+            feat = image_embedding[i]['backbone_fpn'][0]
+            conf = self.confidence_head(feat) # (B, 1)
+            confidences.append(conf)
+            
+        # Stack scores: (B, m)
+        confidences = torch.cat(confidences, dim=1)
+        
+        # Normalize weights across modalities using Softmax
+        # This makes the weights sum to 1, acting as a soft-selection mechanism
+        weights = F.softmax(confidences, dim=1) # (B, m)
+        
+        # Perform Weighted Sum
+        # Weights need to be reshaped to (B, 1, 1, 1) for broadcasting
+        w0 = weights[:, 0].view(-1, 1, 1, 1)
+        m_output = output[0] * w0
+        m_feat = image_embedding[0]['backbone_fpn'][0] * w0
+        
+        for i in range(1, m):
+            wi = weights[:, i].view(-1, 1, 1, 1)
+            m_output = m_output + output[i] * wi
+            m_feat = m_feat + image_embedding[i]['backbone_fpn'][0] * wi
 
-        # lets freeze first
-        for param in sam_model.image_encoder.parameters():
-            param.requires_grad = False
-
-        # Here, we do the surgery
-        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
-            # If we only want few lora layer instead of all
-            if t_layer_i not in self.lora_layer:
-                continue
-            w_qkv_linear = blk.attn.qkv
-            self.dim = w_qkv_linear.in_features
-            w_a_linear_q = nn.Linear(self.dim, r, bias=False)
-            w_b_linear_q = nn.Linear(r, self.dim, bias=False)
-            w_a_linear_v = nn.Linear(self.dim, r, bias=False)
-            w_b_linear_v = nn.Linear(r, self.dim, bias=False)
-            self.w_As.append(w_a_linear_q)
-            self.w_Bs.append(w_b_linear_q)
-            self.w_As.append(w_a_linear_v)
-            self.w_Bs.append(w_b_linear_v)
-            blk.attn.qkv = _LoRA_qkv(
-                w_qkv_linear,
-                w_a_linear_q,
-                w_b_linear_q,
-                w_a_linear_v,
-                w_b_linear_v,
-            )
-        self.reset_parameters()
-        self.sam = sam_model
-
-        transformer_dim = self.sam.sam_mask_decoder.transformer_dim
+        return m_output, m_feat
 
     def save_lora_parameters(self, filename: str) -> None:
-        """Only safetensors is supported now.
-
-        pip install safetensor if you do not have one installed yet.
-
-        save both lora and fc parameters.
         """
-
+        Override to save confidence_head parameters along with LoRA weights.
+        """
         assert filename.endswith(".pt") or filename.endswith('.pth')
 
-        num_layer = len(self.w_As)  # actually, it is half
+        # Construct dictionary similar to parent, but including confidence_head
+        num_layer = len(self.w_As)
         a_tensors = {f"w_a_{i:03d}": self.w_As[i].weight for i in range(num_layer)}
         b_tensors = {f"w_b_{i:03d}": self.w_Bs[i].weight for i in range(num_layer)}
+        
+        # [New] Save Confidence Head
+        confidence_tensors = {f"confidence_head.{k}": v for k, v in self.confidence_head.state_dict().items()}
+
         prompt_encoder_tensors = {}
         mask_decoder_tensors = {}
-
-        # save prompt encoder, only `state_dict`, the `named_parameter` is not permitted
+        
         if isinstance(self.sam, torch.nn.DataParallel) or isinstance(self.sam, torch.nn.parallel.DistributedDataParallel):
             state_dict = self.sam.module.state_dict()
         else:
             state_dict = self.sam.state_dict()
+            
         for key, value in state_dict.items():
             if 'prompt_encoder' in key:
                 prompt_encoder_tensors[key] = value
             if 'mask_decoder' in key:
                 mask_decoder_tensors[key] = value
 
-        merged_dict = {**a_tensors, **b_tensors, **prompt_encoder_tensors, **mask_decoder_tensors}
+        merged_dict = {
+            **a_tensors, 
+            **b_tensors, 
+            **prompt_encoder_tensors, 
+            **mask_decoder_tensors, 
+            **confidence_tensors
+        }
         torch.save(merged_dict, filename)
 
     def load_lora_parameters(self, filename: str) -> None:
-        r"""Only safetensors is supported now.
-
-        pip install safetensor if you do not have one installed yet.\
-
-        load both lora and fc parameters.
         """
-
+        Override to load confidence_head parameters.
+        """
         assert filename.endswith(".pt") or filename.endswith('.pth')
-
         state_dict = torch.load(filename)
 
+        # 1. Load LoRA weights (same logic as parent)
         for i, w_A_linear in enumerate(self.w_As):
             saved_key = f"w_a_{i:03d}"
-            saved_tensor = state_dict[saved_key]
-            w_A_linear.weight = Parameter(saved_tensor)
+            if saved_key in state_dict:
+                w_A_linear.weight = Parameter(state_dict[saved_key])
 
         for i, w_B_linear in enumerate(self.w_Bs):
             saved_key = f"w_b_{i:03d}"
-            saved_tensor = state_dict[saved_key]
-            w_B_linear.weight = Parameter(saved_tensor)
+            if saved_key in state_dict:
+                w_B_linear.weight = Parameter(state_dict[saved_key])
+        
+        # 2. [New] Load Confidence Head
+        confidence_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("confidence_head."):
+                confidence_dict[k.replace("confidence_head.", "")] = v
+        if confidence_dict:
+            self.confidence_head.load_state_dict(confidence_dict)
 
+        # 3. Load SAM parts
         sam_dict = self.sam.state_dict()
         sam_keys = sam_dict.keys()
 
-        # load prompt encoder
-        prompt_encoder_keys = [k for k in sam_keys if 'prompt_encoder' in k]
-        prompt_encoder_values = [state_dict[k] for k in prompt_encoder_keys]
-        prompt_encoder_new_state_dict = {k: v for k, v in zip(prompt_encoder_keys, prompt_encoder_values)}
-        sam_dict.update(prompt_encoder_new_state_dict)
-
-        # load mask decoder
-        mask_decoder_keys = [k for k in sam_keys if 'mask_decoder' in k]
-        mask_decoder_values = [state_dict[k] for k in mask_decoder_keys]
-        mask_decoder_new_state_dict = {k: v for k, v in zip(mask_decoder_keys, mask_decoder_values)}
-        sam_dict.update(mask_decoder_new_state_dict)
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+            
         self.sam.load_state_dict(sam_dict)
 
-    def reset_parameters(self) -> None:
-        # for w_A in self.w_As:
-        #     nn.init.kaiming_uniform_(w_A.weight, a=math.sqrt(5))
-        # for w_B in self.w_Bs:
-        #     nn.init.zeros_(w_B.weight)
+class LoRA_Sam_P2(LoRA_Sam_P1):
+    """
+    LoRA_Sam_P2: Adds Quality-Aware Memory Update (QAMU) on top of Adaptive Output Fusion (P1).
+    
+    Inheritance Chain: LoRA_Sam -> LoRA_Sam_P1 -> LoRA_Sam_P2
+    - LoRA_Sam: Basic LoRA injection
+    - LoRA_Sam_P1: Adds Adaptive Output Fusion (Weighted Sum)
+    - LoRA_Sam_P2: Adds QAMU (Selective Memory Encoding based on Confidence)
+    """
 
-        for w_A in self.w_As:
-            nn.init.kaiming_uniform_(w_A.weight, a=math.sqrt(5))
-        for w_B in self.w_Bs:
-            # nn.init.zeros_(w_B.weight)  <-- 기존 코드 (-1024의 원인)
-            # 아주 작은 가우시안 분포로 초기화하여 '프롬프트 의존성'을 강제로 깨뜨림
-            nn.init.normal_(w_B.weight, std=1e-3)
-
-
+    def __init__(self, sam_model, r: int, lora_layer=None, qamu_threshold=0.4):
+        # Initialize P1 (which initializes LoRA_Sam)
+        # This sets up LoRA layers and the ConfidenceHead
+        super().__init__(sam_model, r, lora_layer)
+        
+        # Hyperparameter for QAMU
+        # If confidence < threshold, we skip memory encoding for that modality
+        self.qamu_threshold = qamu_threshold
 
     def forward(self, batched_input, multimask_output):
-
-        # m = 2
         m = len(batched_input)
-        # for i in range(m):
-        #     # if batched_input[i].abs().sum() == 0:
-        #         # print(f"Warning: Modality {i} is empty (all zeros)!")
-        #     print(f"Modality {i} mean: {batched_input[i].mean().item()}")
-        # batched_input = [batched_input[1], batched_input[0], batched_input[2], batched_input[3]]
-        image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes,  output = [], [], [], [], [],[]
+        image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes, output = [], [], [], [], [], []
+        
+        # 1. Image Encoding Loop
         for i in range(m):
-            image_embedding.append(self.sam.forward_image(batched_input[i]))
-            backbone_out_item, vision_feats_item, vision_pos_embeds_item, feat_sizes_item = self.sam._prepare_backbone_features(image_embedding[i])
-            backbone_out.append(backbone_out_item)
-            vision_feats.append(vision_feats_item)
-            vision_pos_embeds.append(vision_pos_embeds_item)
-            feat_sizes.append(feat_sizes_item)
+            img_emb = self.sam.forward_image(batched_input[i])
+            image_embedding.append(img_emb)
+            bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+            backbone_out.append(bb_out)
+            vision_feats.append(v_feats)
+            vision_pos_embeds.append(v_pos)
+            feat_sizes.append(f_sizes)
         
-        
-        #multi_mask_output = self.sam._forward_sam_heads(image_embedding['vision_features'], high_res_features=image_embedding['backbone_fpn'][:2], multimask_output=multimask_output) 
-        #vision_feats2 = [(vision_feats0[0] + vision_feats1[0])*0.5, (vision_feats0[1] + vision_feats1[1])*0.5, (vision_feats0[2] + vision_feats1[2])*0.5]
-        #vision_pos_embeds2 = [(vision_pos_embeds0[0] +vision_pos_embeds1[0])*0.5, (vision_pos_embeds0[1] +vision_pos_embeds1[1])*0.5, (vision_pos_embeds0[2] +vision_pos_embeds1[2])*0.5]
-        #feat_sizes2 = feat_sizes1
-        
-        output_dict={
-            "cond_frame_outputs": {},  # dict containing {frame_idx: <out>}
-            "non_cond_frame_outputs": {},  # dict containing {frame_idx: <out>}
+        output_dict = {
+            "cond_frame_outputs": {},
+            "non_cond_frame_outputs": {},
         }
         
-        
+        # --- Pre-calculate Confidences for QAMU & Adaptive Fusion ---
+        # We need confidence scores *during* the tracking loop to decide on memory update
+        confidences_list = []
+        for i in range(m):
+            feat = image_embedding[i]['backbone_fpn'][0] # (B, C, H, W)
+            # Use the ConfidenceHead inherited from P1
+            conf = self.confidence_head(feat) # (B, 1)
+            confidences_list.append(conf)
+            
+        # 2. Modality Tracking Loop with QAMU
         for frame_idx in range(m):
-            if frame_idx == 0:
-                is_init_cond_frame=True
+            is_init = (frame_idx == 0)
+            
+            # [QAMU Logic]
+            # Determine if we should update memory based on confidence
+            current_conf = torch.sigmoid(confidences_list[frame_idx]) # Normalize to 0~1
+            
+            # We use the average confidence of the batch to make the decision
+            # (Alternatively, could be per-sample decision but SAM2 memory API is batch-centric)
+            avg_conf = current_conf.mean().item()
+            
+            # Rule: Always encode the first frame (to initialize memory), 
+            # otherwise encode only if quality is sufficient.
+            if is_init:
+                run_mem_encoder = True
             else:
-                is_init_cond_frame=False
-                
-            multi_mask_output = self.sam.track_step(
-                frame_idx= frame_idx,
-                is_init_cond_frame=is_init_cond_frame,
+                run_mem_encoder = avg_conf > self.qamu_threshold
+            
+
+            multi_mask_output_step = self.sam.track_step(
+                frame_idx=frame_idx,
+                is_init_cond_frame=is_init,
                 current_vision_feats=vision_feats[frame_idx],
                 current_vision_pos_embeds=vision_pos_embeds[frame_idx],
                 feat_sizes=feat_sizes[frame_idx],
                 point_inputs=None,
                 mask_inputs=None,
-                output_dict = output_dict,
+                output_dict=output_dict,
                 num_frames=m,
                 track_in_reverse=False,
-                run_mem_encoder=True,
+                # [QAMU Injection] Apply the decision here
+                run_mem_encoder=run_mem_encoder,
                 prev_sam_mask_logits=None,
-                )
-            output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output
-            output.append(multi_mask_output["high_res_multimasks"])
+            )
+            output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+            output.append(multi_mask_output_step["high_res_multimasks"])
         
-    
-        #multi_mask_output = self.sam._forward_sam_heads(image_embedding['vision_features'], high_res_features=image_embedding['backbone_fpn'][:2], multimask_output=multimask_output)
-        #m_output = multi_mask_output[1]
-        #_,fc, fh,fw = m_output.size()
-        #m_output = m_output.reshape(m,b,fc,fh,fw)
-        #m_output = torch.mean(m_output, dim=0)
-        #print(m_output.size())
-        m_output = output[0]
-        m_feat = image_embedding[0]['backbone_fpn'][0]
+        # 3. Adaptive Output Fusion (Logic from P1)
+        # We reuse the pre-calculated confidences
+        confidences = torch.cat(confidences_list, dim=1) # (B, m)
+        weights = F.softmax(confidences, dim=1) # (B, m)
         
-        for i in range(m-1):
-            m_output = m_output + output[i+1]
-            m_feat = m_feat + image_embedding[i+1]['backbone_fpn'][0]
+        w0 = weights[:, 0].view(-1, 1, 1, 1)
+        m_output = output[0] * w0
+        m_feat = image_embedding[0]['backbone_fpn'][0] * w0
+        
+        for i in range(1, m):
+            wi = weights[:, i].view(-1, 1, 1, 1)
+            m_output = m_output + output[i] * wi
+            m_feat = m_feat + image_embedding[i]['backbone_fpn'][0] * wi
 
-        # save_visualizations(image_embedding, vision_feats, feat_sizes, output)
-
-        return m_output/m, m_feat/m
+        return m_output, m_feat
