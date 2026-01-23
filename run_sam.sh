@@ -1,8 +1,8 @@
 export cur_dir=`pwd`
-export save_exp_name="0114_DELIVER_RGBDE_LORA_SAM2_P3_lora_lr00006"
-export CUDA_VISIBLE_DEVICES="1,2,5,6"
+export save_exp_name="0119_DELIVER_RGBDE_LORA_SAM2_P3_lora_lr00006"
+export CUDA_VISIBLE_DEVICES="4,5,6,7"
 
-folder_name="0114_DELIVER_RGBDE_LORA_SAM2_P3_lora_lr00006"
+folder_name="0119_DELIVER_RGBDE_LORA_SAM2_P3_lora_lr00006"
 mkdir -p logs/${folder_name}
 timestamp=$(date +%Y%m%d_%H%M%S)
 

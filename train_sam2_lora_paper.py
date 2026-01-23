@@ -193,9 +193,9 @@ def main(cfg, gpu, save_dir):
         sam2, 
         r=4, 
         qamu_threshold=0.4, 
-        num_experts=4,  # 전문가 수 = 모달리티 수
-        # top_k=2         # 추천 값
-        top_k=1         # 추천 값
+        num_experts=4,  # num of modalities
+        top_k=2         # Proposed
+        # top_k=1         # second trial
     ).cpu()
 
     if train_cfg['DDP']:
