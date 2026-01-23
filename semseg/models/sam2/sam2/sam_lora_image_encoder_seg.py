@@ -616,6 +616,7 @@ class _MoE_LoRA_qkv(nn.Module):
         
         return qkv
 
+
 class LoRA_Sam_P3(LoRA_Sam_P2):
     """
     LoRA_Sam_P3 with Fixed Dimension Handling and MoE Integration.
@@ -664,6 +665,384 @@ class LoRA_Sam_P3(LoRA_Sam_P2):
 
         self.confidence_head = ConfidenceHead(in_channels=fusion_dim)
         self.qamu_threshold = qamu_threshold
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+            
+        confidence_tensors = {f"confidence_head.{k}": v for k, v in self.confidence_head.state_dict().items()}
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+        
+        model_ref = self.sam.module if isinstance(self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.sam
+        state_dict = model_ref.state_dict()
+            
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors, 
+            **mask_decoder_tensors, 
+            **confidence_tensors
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict: mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict: mv.load_state_dict(state_dict[v_key])
+        
+        confidence_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("confidence_head."):
+                confidence_dict[k.replace("confidence_head.", "")] = v
+        if confidence_dict:
+            self.confidence_head.load_state_dict(confidence_dict)
+
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+            
+        self.sam.load_state_dict(sam_dict)
+
+class LoRA_Sam_P4(nn.Module):
+    """
+    LoRA_Sam_P4: MoE-LoRA + Adaptive Mask Fusion (AMF).
+    (QAMU Removed)
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None, num_experts=4, top_k=2):
+        super().__init__()
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Apply MoE-LoRA Surgery
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+                
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+            
+            moe_q = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            moe_v = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+            
+            blk.attn.qkv = _MoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+            
+        self.sam = sam_model
+        
+        # [Bug Fix] Correctly set AMF input channels
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        
+        if use_high_res:
+            # When True, feature channel is reduced (e.g., 256 -> 32)
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        self.confidence_head = ConfidenceHead(in_channels=fusion_dim)
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes, output = [], [], [], [], [], []
+        
+        # 1. Image Encoding Loop
+        for i in range(m):
+            img_emb = self.sam.forward_image(batched_input[i])
+            image_embedding.append(img_emb)
+            bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+            backbone_out.append(bb_out)
+            vision_feats.append(v_feats)
+            vision_pos_embeds.append(v_pos)
+            feat_sizes.append(f_sizes)
+        
+        output_dict = {
+            "cond_frame_outputs": {},
+            "non_cond_frame_outputs": {},
+        }
+        
+        # 2. Modality Tracking Loop (MAM)
+        # Note: QAMU is removed, so we run memory encoder for all frames (Standard behavior)
+        for frame_idx in range(m):
+            is_init = (frame_idx == 0)
+            
+            multi_mask_output_step = self.sam.track_step(
+                frame_idx=frame_idx,
+                is_init_cond_frame=is_init,
+                current_vision_feats=vision_feats[frame_idx],
+                current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                feat_sizes=feat_sizes[frame_idx],
+                point_inputs=None,
+                mask_inputs=None,
+                output_dict=output_dict,
+                num_frames=m,
+                track_in_reverse=False,
+                run_mem_encoder=True, # Always memorize
+                prev_sam_mask_logits=None,
+            )
+            output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+            output.append(multi_mask_output_step["high_res_multimasks"])
+        
+        # 3. Adaptive Mask Fusion (AMF)
+        confidences = []
+        for i in range(m):
+            feat = image_embedding[i]['backbone_fpn'][0]
+            conf = self.confidence_head(feat) # (B, 1)
+            confidences.append(conf)
+            
+        # Stack scores & Softmax
+        confidences = torch.cat(confidences, dim=1) # (B, m)
+        weights = F.softmax(confidences, dim=1)     # (B, m)
+        
+        # Weighted Sum
+        w0 = weights[:, 0].view(-1, 1, 1, 1)
+        m_output = output[0] * w0
+        m_feat = image_embedding[0]['backbone_fpn'][0] * w0
+        
+        for i in range(1, m):
+            wi = weights[:, i].view(-1, 1, 1, 1)
+            m_output = m_output + output[i] * wi
+            m_feat = m_feat + image_embedding[i]['backbone_fpn'][0] * wi
+
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+            
+        confidence_tensors = {f"confidence_head.{k}": v for k, v in self.confidence_head.state_dict().items()}
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+        
+        model_ref = self.sam.module if isinstance(self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.sam
+        state_dict = model_ref.state_dict()
+            
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors, 
+            **mask_decoder_tensors, 
+            **confidence_tensors
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict: mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict: mv.load_state_dict(state_dict[v_key])
+        
+        confidence_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("confidence_head."):
+                confidence_dict[k.replace("confidence_head.", "")] = v
+        if confidence_dict:
+            self.confidence_head.load_state_dict(confidence_dict)
+
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+            
+        self.sam.load_state_dict(sam_dict)
+
+class LoRA_Sam_P5(nn.Module):
+    """
+    LoRA_Sam_P5:
+    1. MoE-LoRA (Structure)
+    2. Differentiable Soft-Gating Memory (New QAMU logic)
+    3. Adaptive Mask Fusion (AMF)
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None, num_experts=4, top_k=2):
+        super().__init__()
+        # [Feedback Applied] Removed qamu_threshold argument
+        
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Apply MoE-LoRA Surgery
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+            
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+            
+            moe_q = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            moe_v = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+            
+            blk.attn.qkv = _MoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+            
+        self.sam = sam_model
+        
+        # [Bug Fix] Correct Dimension Logic
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        self.confidence_head = ConfidenceHead(in_channels=fusion_dim)
+
+    def modulate_features_with_soft_gating(self, vision_feats_list, score_source_feat):
+        """
+        [New Contribution Logic] Differentiable Memory Modulation
+        Calculates a confidence score (0~1) and multiplies it to the features.
+        If score is low (uncertain), features become near-zero (suppressed).
+        """
+        # 1. Calculate Confidence (Logits -> Sigmoid)
+        logits = self.confidence_head(score_source_feat) # (B, 1)
+        scores = torch.sigmoid(logits) # (B, 1) -> Range [0, 1]
+        
+        # 2. Reshape for Broadcasting (B, 1, 1, 1)
+        # Note: vision_feats_list contains tensors of shape (B, C, H, W)
+        scores_expanded = scores.view(scores.shape[0], 1, 1, 1)
+        
+        # 3. Apply Soft Gating (Modulation)
+        # Multiply score to ALL feature levels in the list
+        modulated_list = [feat * scores_expanded for feat in vision_feats_list]
+        
+        return modulated_list, logits # Return logits for AMF later (or scores)
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes, output = [], [], [], [], [], []
+        
+        # 1. Image Encoding Loop
+        for i in range(m):
+            img_emb = self.sam.forward_image(batched_input[i])
+            image_embedding.append(img_emb)
+            bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+            backbone_out.append(bb_out)
+            vision_feats.append(v_feats)
+            vision_pos_embeds.append(v_pos)
+            feat_sizes.append(f_sizes)
+        
+        output_dict = {
+            "cond_frame_outputs": {},
+            "non_cond_frame_outputs": {},
+        }
+        
+        # Store logits/scores for Adaptive Fusion (AMF)
+        modality_logits = []
+
+        # 2. Modality Tracking Loop with Soft Gating
+        for frame_idx in range(m):
+            is_init = (frame_idx == 0)
+            
+            # [Step A] Apply Differentiable Soft-Gating
+            # We use the FPN feature to estimate confidence
+            score_source = image_embedding[frame_idx]['backbone_fpn'][0]
+            
+            # Modulate the features BEFORE they enter the tracking/memory system
+            # modulated_vision_feats: List of scaled tensors
+            # current_logits: (B, 1)
+            modulated_vision_feats, current_logits = self.modulate_features_with_soft_gating(
+                vision_feats[frame_idx], 
+                score_source
+            )
+            modality_logits.append(current_logits)
+
+            # [Step B] Track Step with Modulated Features
+            # We ALWAYS run memory encoder (run_mem_encoder=True), 
+            # because "Noise Suppression" is handled by the modulation itself.
+            # (Features with 0 value don't pollute memory attention)
+            multi_mask_output_step = self.sam.track_step(
+                frame_idx=frame_idx,
+                is_init_cond_frame=is_init,
+                current_vision_feats=modulated_vision_feats, # <-- Modulated Feats Injected
+                current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                feat_sizes=feat_sizes[frame_idx],
+                point_inputs=None,
+                mask_inputs=None,
+                output_dict=output_dict,
+                num_frames=m,
+                track_in_reverse=False,
+                run_mem_encoder=True, # Always True (Soft Gating handles quality)
+                prev_sam_mask_logits=None,
+            )
+            output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+            output.append(multi_mask_output_step["high_res_multimasks"])
+        
+        # 3. Adaptive Mask Fusion (AMF)
+        # Reuse the logits calculated during the loop to maintain consistency
+        all_logits = torch.cat(modality_logits, dim=1) # (B, m)
+        weights = F.softmax(all_logits, dim=1)         # (B, m)
+        
+        # Weighted Sum
+        w0 = weights[:, 0].view(-1, 1, 1, 1)
+        m_output = output[0] * w0
+        m_feat = image_embedding[0]['backbone_fpn'][0] * w0
+        
+        for i in range(1, m):
+            wi = weights[:, i].view(-1, 1, 1, 1)
+            m_output = m_output + output[i] * wi
+            m_feat = m_feat + image_embedding[i]['backbone_fpn'][0] * wi
+
+        return m_output, m_feat
 
     def save_lora_parameters(self, filename: str) -> None:
         assert filename.endswith(".pt") or filename.endswith('.pth')

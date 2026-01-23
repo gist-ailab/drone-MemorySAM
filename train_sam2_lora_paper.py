@@ -28,7 +28,7 @@ import random
 import torch
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4
 
 import torch
 import torch.nn.functional as F
@@ -189,13 +189,19 @@ def main(cfg, gpu, save_dir):
     # model = LoRA_Sam(sam2, 4).cpu()
     # model = LoRA_Sam_P1(sam2, 4).cpu()
     # model = LoRA_Sam_P2(sam2, 4).cpu()
-    model = LoRA_Sam_P3(
+    # model = LoRA_Sam_P3(
+    #     sam2, 
+    #     r=4, 
+    #     qamu_threshold=0.4, 
+    #     num_experts=4,  # num of modalities
+    #     top_k=2         # Proposed
+    #     # top_k=1         # second trial
+    # ).cpu()
+    model = LoRA_Sam_P5(
         sam2, 
         r=4, 
-        qamu_threshold=0.4, 
-        num_experts=4,  # num of modalities
-        top_k=2         # Proposed
-        # top_k=1         # second trial
+        num_experts=4, 
+        top_k=2
     ).cpu()
 
     if train_cfg['DDP']:
