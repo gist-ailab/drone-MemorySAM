@@ -895,17 +895,17 @@ class LoRA_Sam_P4(nn.Module):
             
         self.sam.load_state_dict(sam_dict)
 
+
 class LoRA_Sam_P5(nn.Module):
     """
     LoRA_Sam_P5:
     1. MoE-LoRA (Structure)
-    2. Differentiable Soft-Gating Memory (New QAMU logic)
+    2. Differentiable Soft-Gating Memory (Fixed Tensor Shape Bug)
     3. Adaptive Mask Fusion (AMF)
     """
 
     def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None, num_experts=4, top_k=2):
         super().__init__()
-        # [Feedback Applied] Removed qamu_threshold argument
         
         assert r > 0
         if lora_layer:
@@ -916,11 +916,9 @@ class LoRA_Sam_P5(nn.Module):
         self.moe_layers_q = nn.ModuleList()
         self.moe_layers_v = nn.ModuleList()
 
-        # Freeze original parameters
         for param in sam_model.image_encoder.parameters():
             param.requires_grad = False
 
-        # Apply MoE-LoRA Surgery
         for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
             if t_layer_i not in self.lora_layer:
                 continue
@@ -938,7 +936,6 @@ class LoRA_Sam_P5(nn.Module):
             
         self.sam = sam_model
         
-        # [Bug Fix] Correct Dimension Logic
         use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
         if use_high_res:
             fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
@@ -949,29 +946,28 @@ class LoRA_Sam_P5(nn.Module):
 
     def modulate_features_with_soft_gating(self, vision_feats_list, score_source_feat):
         """
-        [New Contribution Logic] Differentiable Memory Modulation
-        Calculates a confidence score (0~1) and multiplies it to the features.
-        If score is low (uncertain), features become near-zero (suppressed).
+        [Corrected] Differentiable Memory Modulation
         """
-        # 1. Calculate Confidence (Logits -> Sigmoid)
+        # 1. Calculate Confidence
         logits = self.confidence_head(score_source_feat) # (B, 1)
-        scores = torch.sigmoid(logits) # (B, 1) -> Range [0, 1]
+        scores = torch.sigmoid(logits) # (B, 1)
         
-        # 2. Reshape for Broadcasting (B, 1, 1, 1)
-        # Note: vision_feats_list contains tensors of shape (B, C, H, W)
-        scores_expanded = scores.view(scores.shape[0], 1, 1, 1)
+        # 2. [FIXED] Correct Reshape for Broadcasting
+        # vision_feats_list elements are (HW, B, C) - 3 Dimensions
+        # We need scores to match the Batch dimension (dim 1)
+        # scores: (B, 1) -> (1, B, 1) to match (HW, B, C)
+        scores_expanded = scores.transpose(0, 1).unsqueeze(-1) # (1, B, 1)
         
-        # 3. Apply Soft Gating (Modulation)
-        # Multiply score to ALL feature levels in the list
+        # 3. Apply Modulation
+        # (HW, B, C) * (1, B, 1) = (HW, B, C) -> Maintains 3D structure!
         modulated_list = [feat * scores_expanded for feat in vision_feats_list]
         
-        return modulated_list, logits # Return logits for AMF later (or scores)
+        return modulated_list, logits
 
     def forward(self, batched_input, multimask_output):
         m = len(batched_input)
         image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes, output = [], [], [], [], [], []
         
-        # 1. Image Encoding Loop
         for i in range(m):
             img_emb = self.sam.forward_image(batched_input[i])
             image_embedding.append(img_emb)
@@ -986,34 +982,24 @@ class LoRA_Sam_P5(nn.Module):
             "non_cond_frame_outputs": {},
         }
         
-        # Store logits/scores for Adaptive Fusion (AMF)
         modality_logits = []
 
-        # 2. Modality Tracking Loop with Soft Gating
         for frame_idx in range(m):
             is_init = (frame_idx == 0)
             
-            # [Step A] Apply Differentiable Soft-Gating
-            # We use the FPN feature to estimate confidence
             score_source = image_embedding[frame_idx]['backbone_fpn'][0]
             
-            # Modulate the features BEFORE they enter the tracking/memory system
-            # modulated_vision_feats: List of scaled tensors
-            # current_logits: (B, 1)
+            # Use corrected modulation function
             modulated_vision_feats, current_logits = self.modulate_features_with_soft_gating(
                 vision_feats[frame_idx], 
                 score_source
             )
             modality_logits.append(current_logits)
 
-            # [Step B] Track Step with Modulated Features
-            # We ALWAYS run memory encoder (run_mem_encoder=True), 
-            # because "Noise Suppression" is handled by the modulation itself.
-            # (Features with 0 value don't pollute memory attention)
             multi_mask_output_step = self.sam.track_step(
                 frame_idx=frame_idx,
                 is_init_cond_frame=is_init,
-                current_vision_feats=modulated_vision_feats, # <-- Modulated Feats Injected
+                current_vision_feats=modulated_vision_feats, # Now guaranteed to be 3D
                 current_vision_pos_embeds=vision_pos_embeds[frame_idx],
                 feat_sizes=feat_sizes[frame_idx],
                 point_inputs=None,
@@ -1021,18 +1007,15 @@ class LoRA_Sam_P5(nn.Module):
                 output_dict=output_dict,
                 num_frames=m,
                 track_in_reverse=False,
-                run_mem_encoder=True, # Always True (Soft Gating handles quality)
+                run_mem_encoder=True,
                 prev_sam_mask_logits=None,
             )
             output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
             output.append(multi_mask_output_step["high_res_multimasks"])
         
-        # 3. Adaptive Mask Fusion (AMF)
-        # Reuse the logits calculated during the loop to maintain consistency
         all_logits = torch.cat(modality_logits, dim=1) # (B, m)
         weights = F.softmax(all_logits, dim=1)         # (B, m)
         
-        # Weighted Sum
         w0 = weights[:, 0].view(-1, 1, 1, 1)
         m_output = output[0] * w0
         m_feat = image_embedding[0]['backbone_fpn'][0] * w0
