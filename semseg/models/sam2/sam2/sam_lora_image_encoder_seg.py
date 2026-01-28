@@ -900,7 +900,7 @@ class LoRA_Sam_P5(nn.Module):
     """
     LoRA_Sam_P5:
     1. MoE-LoRA (Structure)
-    2. Differentiable Soft-Gating Memory (Fixed Tensor Shape Bug)
+    2. Differentiable Soft-Gating Memory 
     3. Adaptive Mask Fusion (AMF)
     """
 
