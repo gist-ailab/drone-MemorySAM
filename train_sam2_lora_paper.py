@@ -200,8 +200,10 @@ def main(cfg, gpu, save_dir):
     model = LoRA_Sam_P5(
         sam2, 
         r=4, 
-        num_experts=4, 
-        top_k=2
+        qamu_threshold=0.4, 
+        num_experts=4,  # 전문가 수 = 모달리티 수
+        top_k=2         # 추천 값
+        # top_k=1         # 추천 값
     ).cpu()
 
     if train_cfg['DDP']:
