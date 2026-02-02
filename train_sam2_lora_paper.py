@@ -28,7 +28,7 @@ import random
 import torch
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4, LoRA_Sam_P6
 
 import torch
 import torch.nn.functional as F
@@ -172,9 +172,9 @@ def main(cfg, gpu, save_dir):
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
     resume_checkpoint = None
-    
     checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     model_cfg = "sam2_hiera_b+.yaml"
+    num_modalities = len(dataset_cfg['MODALS'])
 
     # sam2 = build_sam2(model_cfg, checkpoint)
     sam2 = build_sam2(
@@ -186,21 +186,23 @@ def main(cfg, gpu, save_dir):
             "++model.pred_obj_scores_mlp=false"
         ]
     )
-    # model = LoRA_Sam(sam2, 4).cpu()
-    # model = LoRA_Sam_P1(sam2, 4).cpu()
-    # model = LoRA_Sam_P2(sam2, 4).cpu()
-    # model = LoRA_Sam_P3(
-    #     sam2, 
-    #     r=4, 
-    #     qamu_threshold=0.4, 
-    #     num_experts=4,  # num of modalities
-    #     top_k=2         # Proposed
-    #     # top_k=1         # second trial
-    # ).cpu()
-    model = LoRA_Sam_P5(
+    '''
+        # model = LoRA_Sam(sam2, 4).cpu()
+        # model = LoRA_Sam_P1(sam2, 4).cpu()
+        # model = LoRA_Sam_P2(sam2, 4).cpu()
+        # model = LoRA_Sam_P3(
+        #     sam2, 
+        #     r=4, 
+        #     qamu_threshold=0.4, 
+        #     num_experts=4,  # num of modalities
+        #     top_k=2         # Proposed
+        #     # top_k=1         # second trial
+        # ).cpu()
+    '''
+    model = LoRA_Sam_P6(
         sam2, 
         r=4, 
-        num_experts=4, 
+        num_experts=num_modalities, 
         top_k=2
     ).cpu()
 
