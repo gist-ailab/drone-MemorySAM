@@ -21,32 +21,96 @@ class DELIVER(Dataset):
                 "Cars", "Wall", "TrafficSign", "Sky", "Ground", "Bridge", "RailTrack", "GroundRail", 
                 "TrafficLight", "Static", "Dynamic", "Water", "Terrain", "TwoWheeler", "Bus", "Truck"]
 
-    PALETTE = torch.tensor([[70, 70, 70],
-            [100, 40, 40],
-            [55, 90, 80],
-            [220, 20, 60],
-            [153, 153, 153],
-            [157, 234, 50],
-            [128, 64, 128],
-            [244, 35, 232],
-            [107, 142, 35],
-            [0, 0, 142],
-            [102, 102, 156],
-            [220, 220, 0],
-            [70, 130, 180],
-            [81, 0, 81],
-            [150, 100, 100],
-            [230, 150, 140],
-            [180, 165, 180],
-            [250, 170, 30],
-            [110, 190, 160],
-            [170, 120, 50],
-            [45, 60, 150],
-            [145, 170, 100],
-            [  0,  0, 230], 
-            [  0, 60, 100],
-            [  0,  0, 70],
+    # 원본 GT 인덱스와 매칭되는 Palette (1-based 인덱싱)
+    # 원본 GT: 클래스 1, 2, 3, ..., 25 (ignore: 255)
+    # 학습용 변환: label -= 1 (0-based: 0, 1, 2, ..., 24)
+    # Palette[0] = 클래스 1 (Building), Palette[1] = 클래스 2 (Fence), ...
+    PALETTE = torch.tensor([[70, 70, 70],        # 0: Building (원본 GT 클래스 1)
+            [100, 40, 40],                       # 1: Fence (원본 GT 클래스 2)
+            [55, 90, 80],                        # 2: Other (원본 GT 클래스 3)
+            [220, 20, 60],                       # 3: Pedestrian (원본 GT 클래스 4)
+            [153, 153, 153],                     # 4: Pole (원본 GT 클래스 5)
+            [157, 234, 50],                      # 5: RoadLine (원본 GT 클래스 6)
+            [128, 64, 128],                      # 6: Road (원본 GT 클래스 7)
+            [244, 35, 232],                      # 7: SideWalk (원본 GT 클래스 8)
+            [107, 142, 35],                      # 8: Vegetation (원본 GT 클래스 9)
+            [0, 0, 142],                         # 9: Cars (원본 GT 클래스 10)
+            [102, 102, 156],                     # 10: Wall (원본 GT 클래스 11)
+            [220, 220, 0],                       # 11: TrafficSign (원본 GT 클래스 12)
+            [70, 130, 180],                      # 12: Sky (원본 GT 클래스 13)
+            [81, 0, 81],                         # 13: Ground (원본 GT 클래스 14)
+            [150, 100, 100],                     # 14: Bridge (원본 GT 클래스 15)
+            [230, 150, 140],                     # 15: RailTrack (원본 GT 클래스 16)
+            [180, 165, 180],                     # 16: GroundRail (원본 GT 클래스 17)
+            [250, 170, 30],                      # 17: TrafficLight (원본 GT 클래스 18)
+            [110, 190, 160],                     # 18: Static (원본 GT 클래스 19)
+            [170, 120, 50],                      # 19: Dynamic (원본 GT 클래스 20)
+            [45, 60, 150],                       # 20: Water (원본 GT 클래스 21)
+            [145, 170, 100],                     # 21: Terrain (원본 GT 클래스 22)
+            [  0,  0, 230],                      # 22: TwoWheeler (원본 GT 클래스 23)
+            [  0, 60, 100],                      # 23: Bus (원본 GT 클래스 24)
+            [  0,  0, 70],                       # 24: Truck (원본 GT 클래스 25)
             ])
+    
+    @staticmethod
+    def decode_segmap(label, palette=None):
+        """
+        학습용 label (0-based: 0~24)을 원본 GT 색상으로 변환
+        Args:
+            label: 학습용 label tensor/array (0-based, 0~24)
+            palette: 사용할 palette (None이면 기본 PALETTE 사용)
+        Returns:
+            colored_label: RGB 이미지 (H, W, 3)
+        """
+        if palette is None:
+            palette = DELIVER.PALETTE
+        
+        if isinstance(label, torch.Tensor):
+            label = label.cpu().numpy()
+        
+        h, w = label.shape
+        colored_label = np.zeros((h, w, 3), dtype=np.uint8)
+        
+        # 학습용 label (0-based)을 palette 인덱스로 직접 사용
+        for cls_id in range(len(palette)):
+            mask = label == cls_id
+            colored_label[mask] = palette[cls_id].cpu().numpy() if isinstance(palette, torch.Tensor) else palette[cls_id]
+        
+        # ignore label (255) 처리 - 검은색으로 표시
+        ignore_mask = label == 255
+        colored_label[ignore_mask] = [0, 0, 0]
+        
+        return colored_label
+    
+    @staticmethod
+    def decode_segmap_from_original(label_original, palette=None):
+        """
+        원본 GT label (1-based: 1~25)을 원본 GT 색상으로 변환
+        Args:
+            label_original: 원본 GT label tensor/array (1-based, 1~25, ignore: 255)
+            palette: 사용할 palette (None이면 기본 PALETTE 사용)
+        Returns:
+            colored_label: RGB 이미지 (H, W, 3)
+        """
+        if palette is None:
+            palette = DELIVER.PALETTE
+        
+        if isinstance(label_original, torch.Tensor):
+            label_original = label_original.cpu().numpy()
+        
+        h, w = label_original.shape
+        colored_label = np.zeros((h, w, 3), dtype=np.uint8)
+        
+        # 원본 GT는 1-based이므로 palette 인덱스는 (label - 1)
+        for cls_id in range(1, len(palette) + 1):  # 1~25
+            mask = label_original == cls_id
+            colored_label[mask] = palette[cls_id - 1].cpu().numpy() if isinstance(palette, torch.Tensor) else palette[cls_id - 1]
+        
+        # ignore label (255) 처리 - 검은색으로 표시
+        ignore_mask = label_original == 255
+        colored_label[ignore_mask] = [0, 0, 0]
+        
+        return colored_label
     
     def __init__(self, root: str = 'data/DELIVER', split: str = 'train', transform = None, modals = ['img'], case = None) -> None:
         super().__init__()

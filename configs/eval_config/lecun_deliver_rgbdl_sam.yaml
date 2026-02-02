@@ -15,15 +15,9 @@ MODEL:
 
 DATASET:
   NAME          : DELIVER                                       # dataset name to be trained with (camvid, cityscapes, ade20k)
-  ROOT          : '/SSDe/jemo_maeng/dset/DELIVER'                                    # dataset root path
+  # ROOT          : '/SSDe/jemo_maeng/dset/DELIVER'
+  ROOT          : '/ailab_mat2/dataset/DELIVER'                                    # dataset root path
   IGNORE_LABEL  : 255 
-  # MODALS        : ['img']
-  # MODALS        : ['depth']
-  # MODALS        : ['img', 'depth']
-  # MODALS        : ['img', 'event']
-  # MODALS        : ['img', 'lidar']
-  # MODALS        : ['img', 'depth', 'event']
-  # MODALS        : ['img', 'depth', 'lidar']
   MODALS        : ['img', 'depth', 'lidar']
 
 
@@ -53,7 +47,7 @@ SCHEDULER:
   
 
 EVAL:
-  MODEL_PATH    : '/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM/outputs/MMSamP3/levine_deliver_rgbdl_sam/DELIVER_CMNeXt-B2_idl/epoch115_65.25_checkpoint.pth'
+  MODEL_PATH    : '/SSDc/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSam_P3/levine_deliver_rgbdl_sam/epoch115_65.25_checkpoint.pth'
   IMAGE_SIZE    : [1024, 1024]                            # evaluation image size in (h, w)        
   BATCH_SIZE    : 1      
   MSF: 
@@ -64,6 +58,7 @@ EVAL:
 
 TEST:
   MODEL_PATH    : ''    # trained model file path
-  FILE          : '/SSDe/jemo_maeng/dset/DELIVER'           # filename or foldername 
+  # FILE          : '/SSDe/jemo_maeng/dset/DELIVER'           # filename or foldername 
+  FILE          : '/ailab_mat2/dataset/DELIVER'           # filename or foldername 
   IMAGE_SIZE    : [1024, 1024]                            # inference image size in (h, w)
   OVERLAY       : false                                   # save the overlay result (image_alpha+label_alpha)

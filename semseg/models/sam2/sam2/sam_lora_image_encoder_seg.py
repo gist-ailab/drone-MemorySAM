@@ -228,6 +228,8 @@ class ConfidenceHeadV2(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, 1)
         )
+        nn.init.constant_(self.net[-1].weight, 0)
+        nn.init.constant_(self.net[-1].bias, 0)
 
     def forward(self, x):
         return self.net(x)
@@ -976,6 +978,7 @@ class LoRA_Sam_P5(nn.Module):
 
         self.confidence_head = ConfidenceHead(in_channels=fusion_dim)
 
+
     def modulate_features_with_soft_gating(self, vision_feats_list, score_source_feat):
         """
         [Corrected] Differentiable Memory Modulation
@@ -991,7 +994,6 @@ class LoRA_Sam_P5(nn.Module):
         scores_expanded = scores.transpose(0, 1).unsqueeze(-1) # (1, B, 1)
         
         # 3. Apply Modulation
-        # (HW, B, C) * (1, B, 1) = (HW, B, C) -> Maintains 3D structure!
         modulated_list = [feat * scores_expanded for feat in vision_feats_list]
         
         return modulated_list, logits
