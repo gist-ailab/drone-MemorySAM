@@ -22,7 +22,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from semseg.utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp, get_logger, cal_flops, print_iou
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4, LoRA_Sam_P6
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4, LoRA_Sam_P6, LoRA_Sam_P7
 import inspect
 import matplotlib
 matplotlib.use('Agg')
@@ -128,112 +128,86 @@ class AnalysisWrapper(torch.nn.Module):
         super().__init__()
         self.model = model
         self.modality_logits_list = []
+        self.modality_weights_list = []  # New: softmax weights
         self.vision_feats_before = []
         self.vision_feats_after = []
         self.image_embeddings_list = []
         self.moe_gating_per_modality = defaultdict(list)
         
     def forward(self, batched_input, multimask_output=True):
-        if isinstance(self.model, (LoRA_Sam_P5, LoRA_Sam_P6)):
+        if isinstance(self.model, (LoRA_Sam_P5, LoRA_Sam_P6, LoRA_Sam_P7)):
             m = len(batched_input)
-            image_embedding, vision_feats = [], []
             
-            # Clear actual_modality_logits for this batch
-            global actual_modality_logits
-            actual_modality_logits = []
-            
-            # Extract features before modulation
-            for i in range(m):
-                img_emb = self.model.sam.forward_image(batched_input[i])
-                image_embedding.append(img_emb)
-                _, v_feats, _, _ = self.model.sam._prepare_backbone_features(img_emb)
-                vision_feats.append(v_feats)
-                
-                # Store before modulation
-                if len(v_feats) > 0:
-                    self.vision_feats_before.append(v_feats[0].detach().cpu())
-            
-            # Store image embeddings for visualization
-            self.image_embeddings_list.append([img_emb['backbone_fpn'][0].detach().cpu() for img_emb in image_embedding])
-            
-            # Forward through model (this will call modulate_features_with_soft_gating)
-            # and actual_modality_logits will be populated by the patched function
+            # Forward through model - new implementation computes softmax weights internally
             output, m_feat = self.model(batched_input, multimask_output)
             
-            # Use the actual logits captured from modulate_features_with_soft_gating
-            if len(actual_modality_logits) == m:
-                # actual_modality_logits contains one logit tensor per modality: each is (B, 1)
-                # Concatenate them: (B, m)
-                modality_logits_tensor = torch.cat(actual_modality_logits, dim=1)
-                self.modality_logits_list.append(modality_logits_tensor)
+            # Get logits and weights from model's instance variables (new approach)
+            if hasattr(self.model, 'last_modality_logits') and self.model.last_modality_logits is not None:
+                modality_logits_tensor = self.model.last_modality_logits.detach().cpu()  # (B, m)
+                modality_weights_tensor = self.model.last_modality_weights.detach().cpu()  # (B, m)
                 
-                # Debug: print first batch's logits
+                self.modality_logits_list.append(modality_logits_tensor)
+                self.modality_weights_list.append(modality_weights_tensor)
+                
+                # Debug: print first batch's values
                 if len(self.modality_logits_list) == 1 and modality_logits_tensor.shape[0] > 0:
-                    print(f"\nDebug - Captured actual confidence logits from modulate_features_with_soft_gating:")
-                    print(f"  Shape: {modality_logits_tensor.shape}")
-                    print(f"  First sample logits: {modality_logits_tensor[0].numpy()}")
-                    print(f"  First sample sigmoid scores: {torch.sigmoid(modality_logits_tensor[0]).numpy()}")
+                    print(f"\n" + "="*80)
+                    print(f"[NEW] Confidence Analysis (Softmax-based Relative Weights)")
+                    print(f"="*80)
+                    print(f"  Logits shape: {modality_logits_tensor.shape}")
+                    print(f"  First sample raw logits: {modality_logits_tensor[0].numpy()}")
+                    print(f"  First sample SOFTMAX weights: {modality_weights_tensor[0].numpy()}")
+                    print(f"  → These weights SUM TO 1 and show RELATIVE importance!")
+                    print(f"="*80 + "\n")
             else:
-                # Fallback: re-run confidence head if patching didn't work
-                print(f"Warning: Expected {m} modality logits but got {len(actual_modality_logits)}, using fallback")
+                # Fallback for older model versions
+                print(f"Warning: Model doesn't have last_modality_logits, using fallback")
                 modality_logits = []
                 for i in range(m):
-                    score_source = image_embedding[i]['backbone_fpn'][0]
+                    img_emb = self.model.sam.forward_image(batched_input[i])
+                    score_source = img_emb['backbone_fpn'][0]
                     logits = self.model.confidence_head(score_source)
                     modality_logits.append(logits.detach().cpu())
-                self.modality_logits_list.append(torch.cat(modality_logits, dim=1))
+                logits_tensor = torch.cat(modality_logits, dim=1)
+                weights_tensor = F.softmax(logits_tensor, dim=1)
+                self.modality_logits_list.append(logits_tensor)
+                self.modality_weights_list.append(weights_tensor)
             
             self.vision_feats_after.append(m_feat.detach().cpu())
             
             # Capture MoE gating for each modality and each sample in batch
             if hasattr(self.model, 'moe_layers_q'):
-                # Get batch size from first input
                 batch_size = batched_input[0].shape[0]
                 
                 for mod_idx in range(m):
-                    # Collect gate_probs from all layers for this modality
-                    # We need to reshape from (B*N, num_experts) to (B, N, num_experts) to get per-sample values
                     all_layer_gate_probs = []
                     
                     for layer in self.model.moe_layers_q:
                         if hasattr(layer, '_gate_probs'):
-                            gate_probs = layer._gate_probs.detach().cpu().numpy()  # (B*N, num_experts)
+                            gate_probs = layer._gate_probs.detach().cpu().numpy()
                             
                             if len(gate_probs.shape) == 2:
-                                # Reshape to (B, N, num_experts) - need to know N
-                                # For SAM2, N is typically H*W/16 (after patch embedding)
-                                # We can infer N from gate_probs.shape[0] / batch_size
                                 total_tokens = gate_probs.shape[0]
                                 num_tokens = total_tokens // batch_size
                                 
                                 if total_tokens % batch_size == 0:
-                                    # Reshape to (B, N, num_experts)
                                     gate_probs_reshaped = gate_probs.reshape(batch_size, num_tokens, -1)
-                                    # Average across tokens for each sample: (B, num_experts)
                                     gate_probs_per_sample = np.mean(gate_probs_reshaped, axis=1)
                                     all_layer_gate_probs.append(gate_probs_per_sample)
                                 else:
-                                    # Fallback: average across all tokens
                                     gate_probs_per_sample = np.mean(gate_probs, axis=0)
-                                    # Broadcast to batch_size
                                     gate_probs_per_sample = np.tile(gate_probs_per_sample, (batch_size, 1))
                                     all_layer_gate_probs.append(gate_probs_per_sample)
                             else:
-                                # Already 1D or unexpected shape
                                 gate_probs_per_sample = gate_probs if len(gate_probs.shape) == 2 else gate_probs.reshape(1, -1)
                                 if gate_probs_per_sample.shape[0] != batch_size:
-                                    # Broadcast to batch_size
                                     gate_probs_per_sample = np.tile(gate_probs_per_sample[0], (batch_size, 1))
                                 all_layer_gate_probs.append(gate_probs_per_sample)
                     
                     if all_layer_gate_probs:
-                        # Average across layers: (B, num_experts)
-                        # Stack: (num_layers, B, num_experts) -> (B, num_experts)
-                        stacked = np.stack(all_layer_gate_probs, axis=0)  # (num_layers, B, num_experts)
-                        avg_gate_probs_per_sample = np.mean(stacked, axis=0)  # (B, num_experts)
+                        stacked = np.stack(all_layer_gate_probs, axis=0)
+                        avg_gate_probs_per_sample = np.mean(stacked, axis=0)
                         
-                        # Store as tensor: (batch_size, num_experts) - one per batch
-                        # This allows easy access per sample: moe_gating_per_modality[mod_idx][-1][b]
                         if mod_idx not in self.moe_gating_per_modality:
                             self.moe_gating_per_modality[mod_idx] = []
                         self.moe_gating_per_modality[mod_idx].append(avg_gate_probs_per_sample)
@@ -829,52 +803,53 @@ def evaluate_with_visualization(model, dataloader, device, modals, dataset, save
             
             for b in range(samples_to_process):
                 # Get confidence scores for this batch sample
+                # Now using SOFTMAX weights (relative comparison) instead of sigmoid
                 conf_scores = None
-                if wrapped_model.modality_logits_list and len(wrapped_model.modality_logits_list) > 0:
-                    # Get the current batch's logits (last appended item corresponds to current batch)
-                    # Each item in modality_logits_list is (batch_size, num_modals)
-                    current_batch_logits = wrapped_model.modality_logits_list[-1]
+                logits_np = None
+                
+                if wrapped_model.modality_weights_list and len(wrapped_model.modality_weights_list) > 0:
+                    # Get the current batch's weights and logits
+                    current_batch_weights = wrapped_model.modality_weights_list[-1]  # (B, m) softmax weights
+                    current_batch_logits = wrapped_model.modality_logits_list[-1]    # (B, m) raw logits
                     
-                    # Check if we have enough samples in the current batch
-                    if b < current_batch_logits.shape[0]:
-                        # Get logits for this specific sample: shape (num_modals,)
+                    if b < current_batch_weights.shape[0]:
+                        # Get weights and logits for this specific sample
+                        weights_sample = current_batch_weights[b]
                         logits_sample = current_batch_logits[b]
                         
-                        # Convert to numpy and apply sigmoid
+                        # Convert to numpy
+                        if isinstance(weights_sample, torch.Tensor):
+                            conf_scores = weights_sample.numpy()
+                        else:
+                            conf_scores = np.asarray(weights_sample)
+                        
                         if isinstance(logits_sample, torch.Tensor):
                             logits_np = logits_sample.numpy()
                         else:
                             logits_np = np.asarray(logits_sample)
                         
-                        # Ensure logits_np is 1D array with shape (num_modals,)
-                        if logits_np.ndim == 0:
-                            # Scalar - this shouldn't happen but handle it
-                            logits_np = np.array([logits_np])
-                        elif logits_np.ndim > 1:
-                            # Flatten if needed
+                        # Ensure 1D arrays
+                        if conf_scores.ndim > 1:
+                            conf_scores = conf_scores.flatten()
+                        if logits_np.ndim > 1:
                             logits_np = logits_np.flatten()
-                        
-                        # Apply sigmoid to get confidence scores
-                        conf_scores = 1 / (1 + np.exp(-logits_np))  # sigmoid
                         
                         # Get file name for debugging output
                         file_name = None
                         if file_names is not None and b < len(file_names) and file_names[b] is not None:
                             file_name = Path(file_names[b]).stem
                         
-                        # Print confidence scores for each test image
+                        # Print SOFTMAX-based confidence scores for each test image
                         print(f"\n[Batch {batch_idx}, Sample {sample_idx}] File: {file_name if file_name else f'sample_{sample_idx}_{b}'}")
-                        print(f"  Logits (raw): {logits_np}")
-                        print(f"  Confidence Scores (sigmoid):")
+                        print(f"  Raw Logits: {logits_np}")
+                        print(f"  Softmax Weights (상대적 중요도, 합=1):")
                         for modal_idx, modal_name in enumerate(modals):
                             if modal_idx < len(conf_scores):
-                                # Calculate sigmoid more precisely
-                                sigmoid_val = 1.0 / (1.0 + np.exp(-logits_np[modal_idx]))
-                                print(f"    {modal_name}: {sigmoid_val:.10f} (logit: {logits_np[modal_idx]:.6f})")
-                                # Also show how close to 1.0
-                                diff_from_one = 1.0 - sigmoid_val
-                                if diff_from_one < 0.0001:
-                                    print(f"      → 거의 1에 가까움 (1.0과의 차이: {diff_from_one:.2e})")
+                                weight_val = conf_scores[modal_idx]
+                                logit_val = logits_np[modal_idx]
+                                # Show relative importance
+                                importance = "★" * int(weight_val * 10)  # Visual indicator
+                                print(f"    {modal_name}: {weight_val:.4f} (logit: {logit_val:.4f}) {importance}")
                             else:
                                 print(f"    {modal_name}: N/A")
                         
@@ -884,19 +859,24 @@ def evaluate_with_visualization(model, dataloader, device, modals, dataset, save
                             if len(conf_scores) > len(modals):
                                 conf_scores = conf_scores[:len(modals)]
                             else:
-                                # Pad with zeros if needed
                                 conf_scores = np.pad(conf_scores, (0, len(modals) - len(conf_scores)), 'constant')
                     else:
-                        # Fallback: use the last available sample from current batch
-                        if current_batch_logits.shape[0] > 0:
+                        # Fallback
+                        if current_batch_weights.shape[0] > 0:
+                            weights_sample = current_batch_weights[-1]
                             logits_sample = current_batch_logits[-1]
+                            if isinstance(weights_sample, torch.Tensor):
+                                conf_scores = weights_sample.numpy()
+                            else:
+                                conf_scores = np.asarray(weights_sample)
                             if isinstance(logits_sample, torch.Tensor):
                                 logits_np = logits_sample.numpy()
                             else:
                                 logits_np = np.asarray(logits_sample)
+                            if conf_scores.ndim > 1:
+                                conf_scores = conf_scores.flatten()
                             if logits_np.ndim > 1:
                                 logits_np = logits_np.flatten()
-                            conf_scores = 1 / (1 + np.exp(-logits_np))
                             if len(conf_scores) != len(modals):
                                 if len(conf_scores) > len(modals):
                                     conf_scores = conf_scores[:len(modals)]

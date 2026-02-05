@@ -981,15 +981,14 @@ class LoRA_Sam_P5(nn.Module):
 
     def modulate_features_with_soft_gating(self, vision_feats_list, score_source_feat):
         """
-        [Corrected] Differentiable Memory Modulation
+        [Original] Differentiable Memory Modulation using sigmoid.
         """
         # 1. Calculate Confidence
         logits = self.confidence_head(score_source_feat) # (B, 1)
         scores = torch.sigmoid(logits) # (B, 1)
         
-        # 2. [FIXED] Correct Reshape for Broadcasting
+        # 2. Correct Reshape for Broadcasting
         # vision_feats_list elements are (HW, B, C) - 3 Dimensions
-        # We need scores to match the Batch dimension (dim 1)
         # scores: (B, 1) -> (1, B, 1) to match (HW, B, C)
         scores_expanded = scores.transpose(0, 1).unsqueeze(-1) # (1, B, 1)
         
@@ -1033,7 +1032,7 @@ class LoRA_Sam_P5(nn.Module):
             multi_mask_output_step = self.sam.track_step(
                 frame_idx=frame_idx,
                 is_init_cond_frame=is_init,
-                current_vision_feats=modulated_vision_feats, # Now guaranteed to be 3D
+                current_vision_feats=modulated_vision_feats,
                 current_vision_pos_embeds=vision_pos_embeds[frame_idx],
                 feat_sizes=feat_sizes[frame_idx],
                 point_inputs=None,
@@ -1140,3 +1139,231 @@ class LoRA_Sam_P6(LoRA_Sam_P5):
 
         # Replace the head
         self.confidence_head = ConfidenceHeadV2(in_channels=fusion_dim)
+
+
+class LoRA_Sam_P7(nn.Module):
+    """
+    LoRA_Sam_P7: Improved Modality-Aware Adaptive Fusion
+    
+    Key Improvement over P5/P6:
+    - P5/P6: Uses sigmoid for modulation → saturates when logit > 3 (all ~0.97)
+    - P7: Uses SOFTMAX for modulation → always relative comparison (sum to 1)
+    
+    This ensures meaningful differentiation between modalities regardless of logit magnitude.
+    
+    Architecture:
+    1. MoE-LoRA (Mixture of Experts LoRA for multi-modal adaptation)
+    2. Softmax-based Relative Modulation (NOT sigmoid!)
+    3. Adaptive Mask Fusion (AMF) with softmax weights
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None, num_experts=4, top_k=2):
+        super().__init__()
+        
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+            
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+            
+            moe_q = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            moe_v = MoE_LoRA_Layer(dim, r, num_experts=num_experts, top_k=top_k)
+            
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+            
+            blk.attn.qkv = _MoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+            
+        self.sam = sam_model
+        
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        # Use ConfidenceHeadV2 for better uncertainty estimation
+        self.confidence_head = ConfidenceHeadV2(in_channels=fusion_dim)
+        
+        # Store for analysis
+        self.last_modality_logits = None
+        self.last_modality_weights = None
+
+    def modulate_features_with_relative_weight(self, vision_feats_list, modulation_weight):
+        """
+        [P7 Key Innovation] Differentiable Memory Modulation using RELATIVE weights.
+        
+        Unlike P5/P6 which uses sigmoid(logits) leading to saturation,
+        P7 uses softmax-normalized weights ensuring meaningful differentiation.
+        
+        Args:
+            vision_feats_list: List of vision features (HW, B, C)
+            modulation_weight: Softmax-normalized weight for this modality (B, 1)
+                              Range: [0, 1], sum across modalities = 1
+        
+        Returns:
+            modulated_list: Modulated vision features
+        """
+        # Reshape for broadcasting: (B, 1) -> (1, B, 1) to match (HW, B, C)
+        weight_expanded = modulation_weight.transpose(0, 1).unsqueeze(-1)  # (1, B, 1)
+        
+        # Apply modulation with relative weight
+        modulated_list = [feat * weight_expanded for feat in vision_feats_list]
+        
+        return modulated_list
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats, vision_pos_embeds, feat_sizes, output = [], [], [], [], [], []
+        
+        # ============================================
+        # Phase 1: Extract features from ALL modalities first
+        # ============================================
+        for i in range(m):
+            img_emb = self.sam.forward_image(batched_input[i])
+            image_embedding.append(img_emb)
+            bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+            backbone_out.append(bb_out)
+            vision_feats.append(v_feats)
+            vision_pos_embeds.append(v_pos)
+            feat_sizes.append(f_sizes)
+        
+        # ============================================
+        # Phase 2: Compute confidence logits for ALL modalities
+        # Then apply SOFTMAX for relative comparison
+        # ============================================
+        modality_logits = []
+        for i in range(m):
+            score_source = image_embedding[i]['backbone_fpn'][0]  # (B, C, H, W)
+            logits = self.confidence_head(score_source)  # (B, 1)
+            modality_logits.append(logits)
+        
+        # Stack logits and compute SOFTMAX weights (not sigmoid!)
+        # This ensures relative comparison: weights sum to 1 per sample
+        all_logits = torch.cat(modality_logits, dim=1)  # (B, m)
+        modality_weights = F.softmax(all_logits, dim=1)  # (B, m)
+        
+        # Store for analysis
+        self.last_modality_logits = all_logits.detach()
+        self.last_modality_weights = modality_weights.detach()
+        
+        # ============================================
+        # Phase 3: Apply modulation with RELATIVE weights, then track
+        # ============================================
+        output_dict = {
+            "cond_frame_outputs": {},
+            "non_cond_frame_outputs": {},
+        }
+
+        for frame_idx in range(m):
+            is_init = (frame_idx == 0)
+            
+            # Get the softmax weight for this modality: (B,) -> (B, 1)
+            current_weight = modality_weights[:, frame_idx].unsqueeze(1)  # (B, 1)
+            
+            # Modulate features using RELATIVE weight (softmax-based)
+            modulated_vision_feats = self.modulate_features_with_relative_weight(
+                vision_feats[frame_idx], 
+                current_weight
+            )
+
+            multi_mask_output_step = self.sam.track_step(
+                frame_idx=frame_idx,
+                is_init_cond_frame=is_init,
+                current_vision_feats=modulated_vision_feats,
+                current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                feat_sizes=feat_sizes[frame_idx],
+                point_inputs=None,
+                mask_inputs=None,
+                output_dict=output_dict,
+                num_frames=m,
+                track_in_reverse=False,
+                run_mem_encoder=True,
+                prev_sam_mask_logits=None,
+            )
+            output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+            output.append(multi_mask_output_step["high_res_multimasks"])
+        
+        # ============================================
+        # Phase 4: Adaptive Mask Fusion using the same softmax weights
+        # ============================================
+        w0 = modality_weights[:, 0].view(-1, 1, 1, 1)
+        m_output = output[0] * w0
+        m_feat = image_embedding[0]['backbone_fpn'][0] * w0
+        
+        for i in range(1, m):
+            wi = modality_weights[:, i].view(-1, 1, 1, 1)
+            m_output = m_output + output[i] * wi
+            m_feat = m_feat + image_embedding[i]['backbone_fpn'][0] * wi
+
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+            
+        confidence_tensors = {f"confidence_head.{k}": v for k, v in self.confidence_head.state_dict().items()}
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+        
+        model_ref = self.sam.module if isinstance(self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.sam
+        state_dict = model_ref.state_dict()
+            
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors, 
+            **mask_decoder_tensors, 
+            **confidence_tensors
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict: mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict: mv.load_state_dict(state_dict[v_key])
+        
+        confidence_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("confidence_head."):
+                confidence_dict[k.replace("confidence_head.", "")] = v
+        if confidence_dict:
+            self.confidence_head.load_state_dict(confidence_dict)
+
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+            
+        self.sam.load_state_dict(sam_dict)
