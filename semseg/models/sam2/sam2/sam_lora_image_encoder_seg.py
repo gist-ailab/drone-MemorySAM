@@ -200,6 +200,40 @@ def random_element_swap(tensor_list):
     return [tensor1, tensor2]
 
 
+class ConfidenceHeadV2(nn.Module):
+    """
+    A deeper Confidence Head using CNN layers to capture spatial features
+    before global pooling. This helps in detecting local noise (like rain drops)
+    better than a simple MLP on avg-pooled features.
+    """
+    def __init__(self, in_channels, hidden_dim=64):
+        super().__init__()
+        self.net = nn.Sequential(
+            # 1. Feature Extraction (Reduce spatial dim, keep spatial context)
+            nn.Conv2d(in_channels, hidden_dim, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU(),
+            
+            # 2. Deeper Abstraction
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU(),
+            
+            # 3. Global Aggregation
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            
+            # 4. Scoring
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1)
+        )
+        nn.init.constant_(self.net[-1].weight, 0)
+        nn.init.constant_(self.net[-1].bias, 0)
+
+    def forward(self, x):
+        return self.net(x)
+
 
 class ConfidenceHead(nn.Module):
     """
@@ -944,6 +978,7 @@ class LoRA_Sam_P5(nn.Module):
 
         self.confidence_head = ConfidenceHead(in_channels=fusion_dim)
 
+
     def modulate_features_with_soft_gating(self, vision_feats_list, score_source_feat):
         """
         [Corrected] Differentiable Memory Modulation
@@ -959,7 +994,6 @@ class LoRA_Sam_P5(nn.Module):
         scores_expanded = scores.transpose(0, 1).unsqueeze(-1) # (1, B, 1)
         
         # 3. Apply Modulation
-        # (HW, B, C) * (1, B, 1) = (HW, B, C) -> Maintains 3D structure!
         modulated_list = [feat * scores_expanded for feat in vision_feats_list]
         
         return modulated_list, logits
@@ -1083,3 +1117,26 @@ class LoRA_Sam_P5(nn.Module):
                 sam_dict.update(module_new_state_dict)
             
         self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P6(LoRA_Sam_P5):
+    """
+    LoRA_Sam_P6:
+    Inherits from LoRA_Sam_P5 (MoE-LoRA + UDMM + AMF)
+    but uses a deeper ConfidenceHeadV2 for better uncertainty estimation.
+    """
+
+    def __init__(self, sam_model, r: int, lora_layer=None, num_experts=4, top_k=2):
+        # Initialize P5 first (this sets up MoE-LoRA layers and basic structure)
+        super().__init__(sam_model, r, lora_layer, num_experts, top_k)
+        
+        # Override the confidence_head with the V2 (Deep) version
+        # We need to determine the correct input dimension again
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        # Replace the head
+        self.confidence_head = ConfidenceHeadV2(in_channels=fusion_dim)

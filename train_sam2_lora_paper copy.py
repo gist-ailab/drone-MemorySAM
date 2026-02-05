@@ -160,8 +160,7 @@ def main(cfg, gpu, save_dir):
     dataset_cfg, model_cfg = cfg['DATASET'], cfg['MODEL']
     loss_cfg, optim_cfg, sched_cfg = cfg['LOSS'], cfg['OPTIMIZER'], cfg['SCHEDULER']
     epochs, lr = train_cfg['EPOCHS'], optim_cfg['LR']
-    resume_enable = model_cfg.get('RESUME_ENABLE', False)
-    resume_path = model_cfg.get('RESUME_PATH', '')
+    resume_path = cfg['MODEL']['RESUME']
     gpus = int(os.environ['WORLD_SIZE'])
 
     traintransform = get_train_augmentation(train_cfg['IMAGE_SIZE'], seg_fill=dataset_cfg['IGNORE_LABEL'])
@@ -172,19 +171,10 @@ def main(cfg, gpu, save_dir):
     class_names = trainset.CLASSES
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
+    resume_checkpoint = None
     checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     sam2_config_file = "sam2_hiera_b+.yaml"
     num_modalities = len(dataset_cfg['MODALS'])
-    
-    # Load resume checkpoint if enabled
-    resume_checkpoint = None
-    if resume_enable and resume_path and os.path.isfile(resume_path):
-        print(f"Loading checkpoint from: {resume_path}")
-        resume_checkpoint = torch.load(resume_path, map_location='cpu')
-        print(f"Resuming from epoch: {resume_checkpoint.get('epoch', 0)}")
-    elif resume_enable and resume_path:
-        print(f"Warning: Resume enabled but checkpoint not found at: {resume_path}")
-        print("Starting training from scratch...")
 
     # sam2 = build_sam2(sam2_config_file, checkpoint)
     sam2 = build_sam2(
@@ -227,19 +217,12 @@ def main(cfg, gpu, save_dir):
     
     model = lora_model_class(**model_kwargs).cpu()
     
-    # Load model weights from checkpoint if resuming
-    if resume_checkpoint:
-        model_state = resume_checkpoint.get('model_state_dict', resume_checkpoint.get('model_state_dict'))
-        if model_state:
-            model.load_state_dict(model_state, strict=False)
-            print("Model weights loaded from checkpoint")
-    
     print(f"Using LoRA model: {lora_model_name}")
     print(f"LoRA parameters: r={lora_r}, num_experts={lora_num_experts}, top_k={lora_top_k}, lora_layer={lora_layer}")
 
     if train_cfg['DDP']:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-        print("Using SyncBatchNorm to handle small batch size.")
+        logger.info("Using SyncBatchNorm to handle small batch size.")
 
     model = model.to(device)
     for k,v in model.named_parameters():
@@ -302,25 +285,12 @@ def main(cfg, gpu, save_dir):
         sampler = RandomSampler(trainset)
         sampler_val = None
     
-    # Restore training state from checkpoint
     if resume_checkpoint:
-        start_epoch = resume_checkpoint.get('epoch', 0)
-        best_mIoU = resume_checkpoint.get('best_miou', 0.0)
-        best_epoch = resume_checkpoint.get('best_epoch', 0)
-        
-        if 'optimizer_state_dict' in resume_checkpoint:
-            optimizer.load_state_dict(resume_checkpoint['optimizer_state_dict'])
-            print("Optimizer state restored")
-        
-        if 'scheduler_state_dict' in resume_checkpoint:
-            scheduler.load_state_dict(resume_checkpoint['scheduler_state_dict'])
-            print("Scheduler state restored")
-        
-        if 'scaler_state_dict' in resume_checkpoint and train_cfg['AMP']:
-            scaler.load_state_dict(resume_checkpoint['scaler_state_dict'])
-            print("Scaler state restored")
-        
-        print(f"Resuming training from epoch {start_epoch + 1}, best mIoU: {best_mIoU:.4f}")
+        start_epoch = resume_checkpoint['epoch'] - 1
+        optimizer.load_state_dict(resume_checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(resume_checkpoint['scheduler_state_dict'])
+        loss = resume_checkpoint['loss']        
+        best_mIoU = resume_checkpoint['best_miou']
         
 
     trainloader = DataLoader(trainset, batch_size=train_cfg['BATCH_SIZE'], num_workers=num_workers, drop_last=True, pin_memory=False, sampler=sampler)
@@ -347,18 +317,10 @@ def main(cfg, gpu, save_dir):
     prototypeseg = PrototypeSegmentation(num_classes, feature_dim)
     
     # Initialize lists for tracking training metrics
-    # Restore from checkpoint if resuming
-    if resume_checkpoint and 'train_losses' in resume_checkpoint:
-        train_losses = resume_checkpoint['train_losses']
-        train_proto_losses = resume_checkpoint['train_proto_losses']
-        train_lrs = resume_checkpoint['train_lrs']
-        epochs_list = resume_checkpoint['epochs_list']
-        print(f"Restored training metrics: {len(epochs_list)} epochs")
-    else:
-        train_losses = []
-        train_proto_losses = []
-        train_lrs = []
-        epochs_list = []
+    train_losses = []
+    train_proto_losses = []
+    train_lrs = []
+    epochs_list = []
     
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -433,25 +395,6 @@ def main(cfg, gpu, save_dir):
             
             # Plot and save graphs
             plot_training_curves(save_dir, epochs_list, train_losses, train_proto_losses, train_lrs)
-            
-            # Save last checkpoint after each epoch
-            last_ckp_path = save_dir / 'last_checkpoint.pth'
-            torch.save({
-                'epoch': epoch + 1,
-                'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'scaler_state_dict': scaler.state_dict() if train_cfg['AMP'] else None,
-                'loss': train_loss,
-                'proto_loss': proto_loss,
-                'best_miou': best_mIoU,
-                'best_epoch': best_epoch,
-                'train_losses': train_losses,
-                'train_proto_losses': train_proto_losses,
-                'train_lrs': train_lrs,
-                'epochs_list': epochs_list,
-            }, last_ckp_path)
-            
         torch.cuda.empty_cache()
 
         if ((epoch+1) % train_cfg['EVAL_INTERVAL'] == 0 and (epoch+1)>train_cfg['EVAL_START']) or (epoch+1) == epochs:
@@ -507,14 +450,8 @@ if __name__ == '__main__':
     model = cfg['MODEL']['BACKBONE']
     exp_name = '_'.join([cfg['DATASET']['NAME'], model, modals])
     save_dir = Path(cfg['SAVE_DIR'], exp_name)
-    
-    # If resuming, set save_dir from resume path
-    resume_enable = cfg['MODEL'].get('RESUME_ENABLE', False)
-    resume_path = cfg['MODEL'].get('RESUME_PATH', '')
-    if resume_enable and resume_path and os.path.isfile(resume_path):
-        save_dir = Path(os.path.dirname(resume_path))
-        print(f"Resume enabled: Using save_dir from checkpoint: {save_dir}")
-    
+    if os.path.isfile(cfg['MODEL']['RESUME']):
+        save_dir =  Path(os.path.dirname(cfg['MODEL']['RESUME']))
     os.makedirs(save_dir, exist_ok=True)
     logger = get_logger(save_dir / 'train.log')
     main(cfg, gpu, save_dir)
