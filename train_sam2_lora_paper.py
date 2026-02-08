@@ -28,7 +28,8 @@ import random
 import torch
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4, LoRA_Sam_P6
+# from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4, LoRA_Sam_P6, LoRA_Sam_P7
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
 
 import torch
 import torch.nn.functional as F
