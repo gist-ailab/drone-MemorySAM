@@ -255,22 +255,17 @@ class SoftMoE_LoRA_Layer(nn.Module):
             nn.init.zeros_(self.experts_b[i].weight)
 
     def forward(self, x):
-        # x shape: (B, N_tokens, C)
-        
-        # 1. Routing Weights 계산 (Softmax over all experts)
-        gate_logits = self.gate(x) # (B, N, num_experts)
-        gate_weights = F.softmax(gate_logits, dim=-1) # (B, N, num_experts)
-        
-        # 2. 모든 Expert 연산 및 가중 합 (Weighted Sum)
+        # x shape: (B, N, C) 또는 (B, H, W, C) — Hiera 백본은 4D (B, H, W, C) 사용
+        gate_logits = self.gate(x)  # (..., num_experts)
+        gate_weights = F.softmax(gate_logits, dim=-1)  # (..., num_experts)
+
         final_output = 0
         for i in range(self.num_experts):
-            # Expert Output: B(A(x)) -> (B, N, C)
             expert_out = self.experts_b[i](self.experts_a[i](x))
-            
-            # Weighting: (B, N, 1) * (B, N, C)
-            weight = gate_weights[:, :, i].unsqueeze(-1)
-            final_output += weight * expert_out
-            
+            # Expert 인덱스는 항상 마지막 차원: gate_weights[..., i] -> (..., 1)
+            weight = gate_weights[..., i].unsqueeze(-1)
+            final_output = final_output + weight * expert_out
+
         return final_output
 
 class _SoftMoE_LoRA_qkv(nn.Module):

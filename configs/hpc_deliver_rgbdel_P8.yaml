@@ -10,7 +10,7 @@ MODEL:
   LORA_MODEL    : LoRA_Sam_P8                                       # LoRA model name (LoRA_Sam, LoRA_Sam_P1, LoRA_Sam_P2, LoRA_Sam_P3, LoRA_Sam_P4, LoRA_Sam_P5, LoRA_Sam_P6)
   LORA_R        : 4                                                 # LoRA rank
   LORA_NUM_EXPERTS : null                                           # number of experts for MoE (null = auto from num_modalities)
-  LORA_TOP_K    : 2                                                 # top_k for MoE routing
+  LORA_TOP_K    : None                                                 # top_k for MoE routing
   LORA_LAYER    : null                                                # checkpoint file 
 
 DATASET:
