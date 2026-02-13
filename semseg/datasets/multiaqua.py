@@ -133,12 +133,17 @@ class MULTIAQUA(Dataset):
             thermal_path = self.thermal_dir / f"{stem}_thermal.png"
             sample["thermal"] = self._open_img(thermal_path, H, W)
 
-        label = io.read_image(str(lbl_path))[0, ...].unsqueeze(0)
+        label = io.read_image(str(lbl_path))[0, ...]  # (H, W)
         # MULTIAQUA: 0=Recording Boat(ignore), 1=Static, 2=Dynamic, 3=Water, 4=Sky
         # Output: 0=Static, 1=Dynamic, 2=Water, 3=Sky, 255=ignore
         label = label.numpy().astype(np.int64)
         out = np.where(label == 0, 255, np.where(label == 255, 255, label - 1))
-        sample["mask"] = torch.from_numpy(out).unsqueeze(0)
+        sample["mask"] = torch.from_numpy(out).unsqueeze(0)  # (1, H, W)
+
+        # RGB와 annotation은 동일 해상도 (scripts/check_multiaqua_rgb_ann_shape.py로 검증됨)
+        # torch.Size/tuple/np.int64 혼합 비교 회피: tuple + int로 정규화
+        mh, mw = int(sample["mask"].shape[1]), int(sample["mask"].shape[2])
+        assert (mh, mw) == (int(H), int(W)), f"stem={stem} img={H}x{W} mask={mh}x{mw}"
 
         if self.transform:
             sample = self.transform(sample)
