@@ -213,6 +213,7 @@ class _MoE_LoRA_qkv(nn.Module):
         qkv[:, :, :, : self.dim] += new_q
         qkv[:, :, :, -self.dim:] += new_v
         return qkv
+        
 class SoftMoE_LoRA_Layer(nn.Module):
     """
     Soft-MoE (Soft Mixture-of-Experts) LoRA Layer.

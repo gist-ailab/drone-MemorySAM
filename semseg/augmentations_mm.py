@@ -24,9 +24,17 @@ class Compose:
 
 
 class Normalize:
-    def __init__(self, mean: list = (0.485, 0.456, 0.406), std: list = (0.229, 0.224, 0.225)):
+    def __init__(
+        self,
+        mean: list = (0.485, 0.456, 0.406),
+        std: list = (0.229, 0.224, 0.225),
+        thermal_mean: Optional[float] = None,
+        thermal_std: Optional[float] = None,
+    ):
         self.mean = mean
         self.std = std
+        self.thermal_mean = thermal_mean
+        self.thermal_std = thermal_std
 
     def __call__(self, sample: list) -> list:
         for k, v in sample.items():
@@ -36,10 +44,15 @@ class Normalize:
                 sample[k] = sample[k].float()
                 sample[k] /= 255
                 sample[k] = TF.normalize(sample[k], self.mean, self.std)
+            elif k == 'thermal' and self.thermal_mean is not None and self.thermal_std is not None:
+                # z-score on raw 0-255 scale (mean/std from cal_meanstd_thermal.py)
+                sample[k] = sample[k].float()
+                m = (self.thermal_mean,) * 3
+                s = (self.thermal_std,) * 3
+                sample[k] = TF.normalize(sample[k], m, s)
             else:
                 sample[k] = sample[k].float()
                 sample[k] /= 255
-        
         return sample
 
 
@@ -246,6 +259,42 @@ class Pad:
         return TF.pad(img, padding), TF.pad(mask, padding, self.seg_fill)
 
 
+class ResizeWidthPadToSquare:
+    """
+    MULTIAQUA 전용: 가로가 긴 이미지를 target_size x target_size로 변환.
+    가로를 target_size로 리사이즈, 세로는 위아래 패딩으로 맞춤.
+    Normalize 전에 적용하여 thermal 패딩 값 불일치 방지.
+    """
+    def __init__(self, target_size: int, seg_fill: int = 0) -> None:
+        self.target_size = target_size if isinstance(target_size, int) else target_size[0]
+        self.seg_fill = seg_fill
+
+    def __call__(self, sample: dict) -> dict:
+        H, W = sample['img'].shape[1:]
+        t = self.target_size
+        if W >= H:
+            scale = t / W
+            nH, nW = round(H * scale), t
+            pad_top = (t - nH) // 2
+            pad_bottom = t - nH - pad_top
+            padding = [0, pad_top, 0, pad_bottom]  # (left, top, right, bottom)
+        else:
+            scale = t / H
+            nH, nW = t, round(W * scale)
+            pad_left = (t - nW) // 2
+            pad_right = t - nW - pad_left
+            padding = [pad_left, 0, pad_right, 0]  # (left, top, right, bottom)
+
+        for k, v in sample.items():
+            if k == 'mask':
+                sample[k] = TF.resize(v, (nH, nW), TF.InterpolationMode.NEAREST)
+                sample[k] = TF.pad(sample[k], padding, fill=self.seg_fill)
+            else:
+                sample[k] = TF.resize(v, (nH, nW), TF.InterpolationMode.BILINEAR)
+                sample[k] = TF.pad(sample[k], padding, fill=0)
+        return sample
+
+
 class ResizePad:
     def __init__(self, size: Union[int, Tuple[int], List[int]], seg_fill: int = 0) -> None:
         """Resize the input image to the given size.
@@ -362,20 +411,60 @@ class RandomResizedCrop:
 
 
 
-def get_train_augmentation(size: Union[int, Tuple[int], List[int]], seg_fill: int = 0):
-    return Compose([
-        RandomColorJitter(p=0.2), # 
-        RandomHorizontalFlip(p=0.5), #
-        RandomGaussianBlur((3, 3), p=0.2), #
-        RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill), #
-        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
+def _get_thermal_stats(dataset_cfg: Optional[dict]) -> Tuple[Optional[float], Optional[float]]:
+    """MULTIAQUA + thermal일 때만 thermal mean/std 반환. 그 외 None."""
+    if not dataset_cfg:
+        return None, None
+    if dataset_cfg.get('NAME') != 'MULTIAQUA':
+        return None, None
+    modals = dataset_cfg.get('MODALS') or []
+    if 'thermal' not in modals:
+        return None, None
+    # config에 있으면 사용, 없으면 MULTIAQUA thermal 기본값 (cal_meanstd_thermal 결과)
+    m = dataset_cfg.get('THERMAL_MEAN', 84.1594)
+    s = dataset_cfg.get('THERMAL_STD', 11.9157)
+    return float(m), float(s)
 
-def get_val_augmentation(size: Union[int, Tuple[int], List[int]]):
-    return Compose([
-        Resize(size),
-        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+def _use_multiaqua_resize_pad(dataset_cfg: Optional[dict]) -> bool:
+    """MULTIAQUA일 때만 2208x1242 → 1024x1024 (가로 리사이즈 + 위아래 패딩) 적용."""
+    return bool(dataset_cfg and dataset_cfg.get('NAME') == 'MULTIAQUA')
+
+
+def get_train_augmentation(
+    size: Union[int, Tuple[int], List[int]],
+    seg_fill: int = 0,
+    dataset_cfg: Optional[dict] = None,
+):
+    tm, ts = _get_thermal_stats(dataset_cfg)
+    t_size = size if isinstance(size, int) else (size[0] if isinstance(size, (list, tuple)) else size)
+    transforms = []
+    if _use_multiaqua_resize_pad(dataset_cfg):
+        transforms.append(ResizeWidthPadToSquare(t_size, seg_fill=seg_fill))
+    transforms.extend([
+        RandomColorJitter(p=0.2),
+        RandomHorizontalFlip(p=0.5),
+        RandomGaussianBlur((3, 3), p=0.2),
+        RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill),
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
     ])
+    return Compose(transforms)
+
+
+def get_val_augmentation(
+    size: Union[int, Tuple[int], List[int]],
+    dataset_cfg: Optional[dict] = None,
+):
+    tm, ts = _get_thermal_stats(dataset_cfg)
+    t_size = size if isinstance(size, int) else (size[0] if isinstance(size, (list, tuple)) else size)
+    transforms = []
+    if _use_multiaqua_resize_pad(dataset_cfg):
+        transforms.append(ResizeWidthPadToSquare(t_size, seg_fill=dataset_cfg.get('IGNORE_LABEL', 255) if dataset_cfg else 255))
+    transforms.extend([
+        Resize(size),
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
+    ])
+    return Compose(transforms)
 
 
 if __name__ == '__main__':
