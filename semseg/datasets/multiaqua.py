@@ -1,11 +1,14 @@
 """
 MULTIAQUA dataset (DELIVER-style interface).
 
+Ref: https://arxiv.org/pdf/2512.17450
+- Sky, Water, Static obstacle, Dynamic obstacle, Recording boat (ignored during training)
+
 Dataset root: .../MULTIAQUA_night
-- train.txt, val.txt, test.txt: one stem per line (e.g. bl1_0_051235)
+- train.txt, val.txt, test.txt: one stem per line
 - MULTIAQUA_night/annotations/: segmentation masks {stem}.png
 - MULTIAQUA_night/data/zed/: RGB images {stem}.png
-- MULTIAQUA_night/data/lidar_processed/: {stem}_lidar.png, {stem}_lidar_color.png
+- MULTIAQUA_night/data/lidar_processed/: {stem}_lidar.png
 - MULTIAQUA_night/data/thermal_processed/: {stem}_thermal.png
 """
 
@@ -17,32 +20,54 @@ from torch.utils.data import Dataset
 import torchvision.transforms.functional as TF
 from torchvision import io
 from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from semseg.augmentations_mm import get_train_augmentation
 from torch.utils.data import DataLoader
 
 
+def count_num_classes_from_annotations(
+    ann_dir: Path,
+    ignore_labels: Tuple[int, ...] = (255,),
+    max_files: int = 500,
+) -> int:
+    """
+    Scan annotation images to infer the number of classes.
+    Returns max(unique_values) + 1, excluding ignore_labels.
+    """
+    from PIL import Image
+    all_vals = set()
+    for f in list(ann_dir.glob("*.png"))[:max_files]:
+        arr = np.array(Image.open(str(f)))
+        if arr.ndim >= 3:
+            arr = arr[:, :, 0]
+        for v in np.unique(arr):
+            if int(v) not in ignore_labels:
+                all_vals.add(int(v))
+    if not all_vals:
+        return 0
+    return max(all_vals) + 1
+
+
 class MULTIAQUA(Dataset):
     """
     MULTIAQUA multimodal semantic segmentation.
+    Paper: https://arxiv.org/pdf/2512.17450
+    Classes: Sky, Water, Static obstacle, Dynamic obstacle. Recording boat is ignored during training.
     modals: ['img'], ['img','lidar'], ['img','thermal'], ['img','lidar','thermal'], etc.
     """
 
-    # Same 25 classes as DELIVER for compatibility; adjust if MULTIAQUA uses different taxonomy
-    CLASSES = [
-        "Building", "Fence", "Other", "Pedestrian", "Pole", "RoadLine", "Road", "SideWalk", "Vegetation",
-        "Cars", "Wall", "TrafficSign", "Sky", "Ground", "Bridge", "RailTrack", "GroundRail",
-        "TrafficLight", "Static", "Dynamic", "Water", "Terrain", "TwoWheeler", "Bus", "Truck",
-    ]
-
-    PALETTE = torch.tensor([
-        [70, 70, 70], [100, 40, 40], [55, 90, 80], [220, 20, 60], [153, 153, 153],
-        [157, 234, 50], [128, 64, 128], [244, 35, 232], [107, 142, 35], [0, 0, 142],
-        [102, 102, 156], [220, 220, 0], [70, 130, 180], [81, 0, 81], [150, 100, 100],
-        [230, 150, 140], [180, 165, 180], [250, 170, 30], [110, 190, 160], [170, 120, 50],
-        [45, 60, 150], [145, 170, 100], [0, 0, 230], [0, 60, 100], [0, 0, 70],
+    # Annotation: 0=Recording Boat (ignore), 1=Static, 2=Dynamic, 3=Water, 4=Sky
+    # n_classes=4: Static, Dynamic, Water, Sky (Recording Boat 제외)
+    _BASE_CLASSES = ["Static", "Dynamic", "Water", "Sky"]
+    _BASE_PALETTE = torch.tensor([
+        [107, 142, 35],   # 0: Static
+        [220, 20, 60],    # 1: Dynamic
+        [45, 60, 150],   # 2: Water
+        [70, 130, 180],   # 3: Sky
     ], dtype=torch.uint8)
+    CLASSES = _BASE_CLASSES
+    PALETTE = _BASE_PALETTE
 
     def __init__(
         self,
@@ -50,6 +75,7 @@ class MULTIAQUA(Dataset):
         split: str = "train",
         transform=None,
         modals: List[str] = None,
+        n_classes: Optional[int] = None,
     ) -> None:
         super().__init__()
         assert split in ["train", "val", "test"]
@@ -57,7 +83,6 @@ class MULTIAQUA(Dataset):
         self.split = split
         self.transform = transform
         self.modals = modals if modals is not None else ["img"]
-        self.n_classes = len(self.CLASSES)
         self.ignore_label = 255
 
         # Paths under root
@@ -66,6 +91,11 @@ class MULTIAQUA(Dataset):
         self.lidar_dir = self.data_root / "data" / "lidar_processed"
         self.thermal_dir = self.data_root / "data" / "thermal_processed"
         self.ann_dir = self.data_root / "annotations"
+
+        # n_classes=4 (Static, Dynamic, Water, Sky). Recording Boat(0)는 ignore.
+        self.n_classes = n_classes if n_classes is not None else 4
+        self.CLASSES = self._BASE_CLASSES
+        self.PALETTE = self._BASE_PALETTE
 
         # Load stem list from {split}.txt
         split_file = self.root / f"{split}.txt"
@@ -104,9 +134,11 @@ class MULTIAQUA(Dataset):
             sample["thermal"] = self._open_img(thermal_path, H, W)
 
         label = io.read_image(str(lbl_path))[0, ...].unsqueeze(0)
-        label[label == 255] = 0
-        label = label - 1
-        sample["mask"] = label
+        # MULTIAQUA: 0=Recording Boat(ignore), 1=Static, 2=Dynamic, 3=Water, 4=Sky
+        # Output: 0=Static, 1=Dynamic, 2=Water, 3=Sky, 255=ignore
+        label = label.numpy().astype(np.int64)
+        out = np.where(label == 0, 255, np.where(label == 255, 255, label - 1))
+        sample["mask"] = torch.from_numpy(out).unsqueeze(0)
 
         if self.transform:
             sample = self.transform(sample)
@@ -134,9 +166,9 @@ class MULTIAQUA(Dataset):
 
     @staticmethod
     def decode_segmap(label, palette=None):
-        """0-based label (0~24) to RGB visualization."""
+        """0-based label to RGB visualization."""
         if palette is None:
-            palette = MULTIAQUA.PALETTE
+            palette = MULTIAQUA._BASE_PALETTE
         if isinstance(label, torch.Tensor):
             label = label.cpu().numpy()
         h, w = label.shape
