@@ -76,6 +76,7 @@ class MULTIAQUA(Dataset):
         transform=None,
         modals: List[str] = None,
         n_classes: Optional[int] = None,
+        require_annotation: bool = True,
     ) -> None:
         super().__init__()
         assert split in ["train", "val", "test"]
@@ -84,6 +85,7 @@ class MULTIAQUA(Dataset):
         self.transform = transform
         self.modals = modals if modals is not None else ["img"]
         self.ignore_label = 255
+        self.require_annotation = require_annotation
 
         # Paths under root
         self.data_root = self.root / "MULTIAQUA_night"
@@ -103,15 +105,20 @@ class MULTIAQUA(Dataset):
             raise FileNotFoundError(f"Split file not found: {split_file}")
         with open(split_file) as f:
             stems = [line.strip() for line in f if line.strip()]
-        # Keep only stems that have RGB and annotation (required)
+        # require_annotation=True: RGB+annotation 둘 다 필요 (val, train)
+        # require_annotation=False: RGB만 필요 (test inference, annotation 없음)
         self.stems = []
         for s in stems:
             rgb_path = self.rgb_dir / f"{s}.png"
-            ann_path = self.ann_dir / f"{s}.png"
-            if rgb_path.exists() and ann_path.exists():
-                self.stems.append(s)
+            if not rgb_path.exists():
+                continue
+            if require_annotation:
+                ann_path = self.ann_dir / f"{s}.png"
+                if not ann_path.exists():
+                    continue
+            self.stems.append(s)
         if not self.stems:
-            raise Exception(f"No samples found for {split} in {self.root}")
+            raise Exception(f"No samples found for {split} in {self.root} (require_annotation={require_annotation})")
         print(f"Found {len(self.stems)} {split} images.")
 
     def __len__(self) -> int:
@@ -120,7 +127,6 @@ class MULTIAQUA(Dataset):
     def __getitem__(self, index: int) -> Tuple:
         stem = self.stems[index]
         rgb_path = self.rgb_dir / f"{stem}.png"
-        lbl_path = self.ann_dir / f"{stem}.png"
 
         sample = {}
         sample["img"] = io.read_image(str(rgb_path))[:3, ...]
@@ -133,17 +139,19 @@ class MULTIAQUA(Dataset):
             thermal_path = self.thermal_dir / f"{stem}_thermal.png"
             sample["thermal"] = self._open_img(thermal_path, H, W)
 
-        label = io.read_image(str(lbl_path))[0, ...]  # (H, W)
-        # MULTIAQUA: 0=Recording Boat(ignore), 1=Static, 2=Dynamic, 3=Water, 4=Sky
-        # Output: 0=Static, 1=Dynamic, 2=Water, 3=Sky, 255=ignore
-        label = label.numpy().astype(np.int64)
-        out = np.where(label == 0, 255, np.where(label == 255, 255, label - 1))
-        sample["mask"] = torch.from_numpy(out).unsqueeze(0)  # (1, H, W)
-
-        # RGB와 annotation은 동일 해상도 (scripts/check_multiaqua_rgb_ann_shape.py로 검증됨)
-        # torch.Size/tuple/np.int64 혼합 비교 회피: tuple + int로 정규화
-        mh, mw = int(sample["mask"].shape[1]), int(sample["mask"].shape[2])
-        assert (mh, mw) == (int(H), int(W)), f"stem={stem} img={H}x{W} mask={mh}x{mw}"
+        if self.require_annotation:
+            lbl_path = self.ann_dir / f"{stem}.png"
+            label = io.read_image(str(lbl_path))[0, ...]  # (H, W)
+            # MULTIAQUA: 0=Recording Boat(ignore), 1=Static, 2=Dynamic, 3=Water, 4=Sky
+            # Output: 0=Static, 1=Dynamic, 2=Water, 3=Sky, 255=ignore
+            label = label.numpy().astype(np.int64)
+            out = np.where(label == 0, 255, np.where(label == 255, 255, label - 1))
+            sample["mask"] = torch.from_numpy(out).unsqueeze(0)  # (1, H, W)
+            mh, mw = int(sample["mask"].shape[1]), int(sample["mask"].shape[2])
+            assert (mh, mw) == (int(H), int(W)), f"stem={stem} img={H}x{W} mask={mh}x{mw}"
+        else:
+            # inference only: dummy mask (not used)
+            sample["mask"] = torch.zeros(1, H, W, dtype=torch.long)
 
         if self.transform:
             sample = self.transform(sample)
