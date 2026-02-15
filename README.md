@@ -97,6 +97,15 @@ About the entire model part, we use the same code as standard SAM2, which is in�
     ```
 3. 🚨 <span style="color:red;">ATTENTION!!!</span> 🚨
  Line 233 in MemorySAM/semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py needs to be consistent with the number of modalities.
+
+### MaCVi / MULTIAQUA 제출 (Multimodal Semantic Segmentation Challenge)
+- [MaCVi 리더보드](https://macvi.org/workshop/cvpr/challenges/multimodal_semantic)는 **1-indexed** (1=Static, 2=Dynamic, 3=Water, 4=Sky)를 기대합니다.
+- `--macvi` 플래그로 실행하면 eval_macvi/에 세그멘테이션 마스크만 저장됩니다 (val/test 공통 폴더):
+  ```bash
+  python val_multiaqua.py --cfg ... --mode val --model_path ... --macvi
+  python val_multiaqua.py --cfg ... --mode test --model_path ... --macvi
+  ```
+
 ## Acknowledgements
 
 🤝 Our work is based on project of [DELIVER](https://github.com/jamycheung/DELIVER) and [SAM2](https://github.com/facebookresearch/sam2). Thanks to their contributions to this community!!!

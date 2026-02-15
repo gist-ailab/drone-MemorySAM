@@ -11,3 +11,4 @@ python3 -u -m torch.distributed.launch --nproc_per_node=4 --master_port=21612 --
  --cfg configs/lecun_multiaqua_rgbtl_P8.yaml \
 2>&1 | tee "logs/${folder_name}/${save_exp_name}_${timestamp}.log"
 
+r

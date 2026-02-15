@@ -77,6 +77,7 @@ class MULTIAQUA(Dataset):
         modals: List[str] = None,
         n_classes: Optional[int] = None,
         require_annotation: bool = True,
+        return_meta: bool = False,
     ) -> None:
         super().__init__()
         assert split in ["train", "val", "test"]
@@ -86,6 +87,7 @@ class MULTIAQUA(Dataset):
         self.modals = modals if modals is not None else ["img"]
         self.ignore_label = 255
         self.require_annotation = require_annotation
+        self.return_meta = return_meta
 
         # Paths under root
         self.data_root = self.root / "MULTIAQUA_night"
@@ -145,8 +147,8 @@ class MULTIAQUA(Dataset):
             # MULTIAQUA: 0=Recording Boat(ignore), 1=Static, 2=Dynamic, 3=Water, 4=Sky
             # Output: 0=Static, 1=Dynamic, 2=Water, 3=Sky, 255=ignore
             label = label.numpy().astype(np.int64)
-            out = np.where(label == 0, 255, np.where(label == 255, 255, label - 1))
-            sample["mask"] = torch.from_numpy(out).unsqueeze(0)  # (1, H, W)
+            orig_label = np.where(label == 0, 255, np.where(label == 255, 255, label - 1))
+            sample["mask"] = torch.from_numpy(orig_label.copy()).unsqueeze(0)  # (1, H, W)
             mh, mw = int(sample["mask"].shape[1]), int(sample["mask"].shape[2])
             assert (mh, mw) == (int(H), int(W)), f"stem={stem} img={H}x{W} mask={mh}x{mw}"
         else:
@@ -159,6 +161,12 @@ class MULTIAQUA(Dataset):
         del sample["mask"]
         label = self.encode(label.squeeze().numpy()).long()
         sample = [sample[k] for k in self.modals]
+
+        if self.return_meta:
+            meta = {"stem": stem, "orig_h": int(H), "orig_w": int(W)}
+            if self.require_annotation:
+                meta["orig_label"] = torch.from_numpy(orig_label).long()
+            return sample, label, meta
         return sample, label
 
     def _open_img(self, path: Path, H: int, W: int) -> Tensor:

@@ -45,7 +45,7 @@ SCHEDULER:
   
 
 EVAL:
-  MODEL_PATH    : '/SSDc/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP8/lecun_multiaqua_rgbtl_P8/MULTIAQUA_CMNeXt-B2_ilt/epoch15_93.95_checkpoint.pth'    # trained model file path (e.g., ./outputs/MMSamP7/levine_multiaqua_rgbtl_P8/.../best_checkpoint.pth)
+  MODEL_PATH    : '/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP8/lecun_multiaqua_rgbtl_P8/MULTIAQUA_CMNeXt-B2_ilt/epoch15_93.95_checkpoint.pth'    # trained model file path (e.g., ./outputs/MMSamP7/levine_multiaqua_rgbtl_P8/.../best_checkpoint.pth)
   IMAGE_SIZE    : [1024, 1024]                            # evaluation image size in (h, w)        
   BATCH_SIZE    : 1      
   MSF: 

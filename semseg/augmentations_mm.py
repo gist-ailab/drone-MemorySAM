@@ -71,6 +71,88 @@ class RandomColorJitter:
         return sample
 
 
+class RandomRGBNightSimulation:
+    """
+    RGB만 야간/저조도로 시뮬레이션. thermal, lidar는 유지 → 모델이 보조 모달리티에 집중하도록 유도.
+    MULTIAQUA 야간(lj4) 도메인 적응용. Ref: https://arxiv.org/pdf/2512.17450
+    """
+    def __init__(self, p: float = 0.3, brightness_range: Tuple[float, float] = (0.03, 0.25),
+                 contrast_range: Tuple[float, float] = (0.3, 0.7), gamma_range: Tuple[float, float] = (0.4, 0.8),
+                 noise_std: float = 0.02) -> None:
+        self.p = p
+        self.brightness_range = brightness_range
+        self.contrast_range = contrast_range
+        self.gamma_range = gamma_range
+        self.noise_std = noise_std
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+        img = sample['img'].float() / 255.0
+        # 1) Extreme brightness reduction (야간 시뮬레이션)
+        brightness = random.uniform(*self.brightness_range)
+        img = img * brightness
+        # 2) Contrast reduction
+        contrast = random.uniform(*self.contrast_range)
+        img = (img - img.mean()) * contrast + img.mean()
+        # 3) Gamma (gamma < 1 → shadows darker)
+        gamma = random.uniform(*self.gamma_range)
+        img = torch.clamp(img, 1e-6, 1.0) ** gamma
+        img = torch.clamp(img, 0.0, 1.0)
+        # 4) Optional sensor noise (저조도에서 증가)
+        if self.noise_std > 0:
+            noise = torch.randn_like(img) * self.noise_std
+            img = torch.clamp(img + noise, 0.0, 1.0)
+        sample['img'] = (img * 255).clamp(0, 255).to(sample['img'].dtype)
+        return sample
+
+
+class RandomRGBComplementaryMasking:
+    """
+    CRM (Complementary Random Masking): RGB의 일부 영역을 0으로 마스킹.
+    thermal/lidar는 그대로 유지 → 보조 모달리티 활용 강제. Ref: CRM paper, MULTIAQUA
+    """
+    def __init__(self, p: float = 0.3, mask_ratio_range: Tuple[float, float] = (0.2, 0.5),
+                 num_patches: int = 4) -> None:
+        self.p = p
+        self.mask_ratio_range = mask_ratio_range
+        self.num_patches = num_patches
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+        img = sample['img']
+        C, H, W = img.shape
+        total_masked = 0
+        target_ratio = random.uniform(*self.mask_ratio_range)
+        for _ in range(self.num_patches):
+            h_size = random.randint(int(H * 0.15), int(H * 0.4))
+            w_size = random.randint(int(W * 0.15), int(W * 0.4))
+            y = random.randint(0, max(0, H - h_size))
+            x = random.randint(0, max(0, W - w_size))
+            img[:, y : y + h_size, x : x + w_size] = 0
+            total_masked += h_size * w_size
+            if total_masked / (H * W) >= target_ratio:
+                break
+        sample['img'] = img
+        return sample
+
+
+class RandomRGBZeroOut:
+    """
+    RGB 전체를 0으로 대체 (확률 p). Double forward pass와 유사한 효과.
+    야간 극한 상황(완전 암실) 시뮬레이션.
+    """
+    def __init__(self, p: float = 0.15) -> None:
+        self.p = p
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+        sample['img'] = torch.zeros_like(sample['img'])
+        return sample
+
+
 class AdjustGamma:
     def __init__(self, gamma: float, gain: float = 1) -> None:
         """
@@ -431,6 +513,13 @@ def _use_multiaqua_resize_pad(dataset_cfg: Optional[dict]) -> bool:
     return bool(dataset_cfg and dataset_cfg.get('NAME') == 'MULTIAQUA')
 
 
+def _get_night_aug_config(dataset_cfg: Optional[dict]) -> dict:
+    """MULTIAQUA 야간 도메인 적응용 augmentation 설정."""
+    if not dataset_cfg or dataset_cfg.get('NAME') != 'MULTIAQUA':
+        return {}
+    return dataset_cfg.get('NIGHT_AUG', {})
+
+
 def get_train_augmentation(
     size: Union[int, Tuple[int], List[int]],
     seg_fill: int = 0,
@@ -441,8 +530,27 @@ def get_train_augmentation(
     transforms = []
     if _use_multiaqua_resize_pad(dataset_cfg):
         transforms.append(ResizeWidthPadToSquare(t_size, seg_fill=seg_fill))
+    transforms.append(RandomColorJitter(p=0.2))
+
+    # MULTIAQUA 전용: RGB 야간 시뮬레이션 augmentation (thermal/lidar는 유지)
+    night_cfg = _get_night_aug_config(dataset_cfg)
+    if night_cfg.get('ENABLE', False):
+        transforms.append(RandomRGBNightSimulation(
+            p=night_cfg.get('NIGHT_SIM_P', 0.35),
+            brightness_range=tuple(night_cfg.get('BRIGHTNESS_RANGE', [0.03, 0.25])),
+            contrast_range=tuple(night_cfg.get('CONTRAST_RANGE', [0.3, 0.7])),
+            gamma_range=tuple(night_cfg.get('GAMMA_RANGE', [0.4, 0.8])),
+            noise_std=night_cfg.get('NOISE_STD', 0.02),
+        ))
+        if night_cfg.get('CRM_P', 0) > 0:
+            transforms.append(RandomRGBComplementaryMasking(
+                p=night_cfg.get('CRM_P', 0.3),
+                mask_ratio_range=tuple(night_cfg.get('CRM_MASK_RATIO', [0.2, 0.5])),
+            ))
+        if night_cfg.get('ZERO_P', 0) > 0:
+            transforms.append(RandomRGBZeroOut(p=night_cfg.get('ZERO_P', 0.15)))
+
     transforms.extend([
-        RandomColorJitter(p=0.2),
         RandomHorizontalFlip(p=0.5),
         RandomGaussianBlur((3, 3), p=0.2),
         RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill),
