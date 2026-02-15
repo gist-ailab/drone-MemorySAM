@@ -24,9 +24,17 @@ class Compose:
 
 
 class Normalize:
-    def __init__(self, mean: list = (0.485, 0.456, 0.406), std: list = (0.229, 0.224, 0.225)):
+    def __init__(
+        self,
+        mean: list = (0.485, 0.456, 0.406),
+        std: list = (0.229, 0.224, 0.225),
+        thermal_mean: Optional[float] = None,
+        thermal_std: Optional[float] = None,
+    ):
         self.mean = mean
         self.std = std
+        self.thermal_mean = thermal_mean
+        self.thermal_std = thermal_std
 
     def __call__(self, sample: list) -> list:
         for k, v in sample.items():
@@ -36,10 +44,15 @@ class Normalize:
                 sample[k] = sample[k].float()
                 sample[k] /= 255
                 sample[k] = TF.normalize(sample[k], self.mean, self.std)
+            elif k == 'thermal' and self.thermal_mean is not None and self.thermal_std is not None:
+                # z-score on raw 0-255 scale (mean/std from cal_meanstd_thermal.py)
+                sample[k] = sample[k].float()
+                m = (self.thermal_mean,) * 3
+                s = (self.thermal_std,) * 3
+                sample[k] = TF.normalize(sample[k], m, s)
             else:
                 sample[k] = sample[k].float()
                 sample[k] /= 255
-        
         return sample
 
 
@@ -55,6 +68,88 @@ class RandomColorJitter:
             sample['img'] = TF.adjust_contrast(sample['img'], self.contrast)
             self.saturation = random.uniform(0.5, 1.5)
             sample['img'] = TF.adjust_saturation(sample['img'], self.saturation)
+        return sample
+
+
+class RandomRGBNightSimulation:
+    """
+    RGB만 야간/저조도로 시뮬레이션. thermal, lidar는 유지 → 모델이 보조 모달리티에 집중하도록 유도.
+    MULTIAQUA 야간(lj4) 도메인 적응용. Ref: https://arxiv.org/pdf/2512.17450
+    """
+    def __init__(self, p: float = 0.3, brightness_range: Tuple[float, float] = (0.03, 0.25),
+                 contrast_range: Tuple[float, float] = (0.3, 0.7), gamma_range: Tuple[float, float] = (0.4, 0.8),
+                 noise_std: float = 0.02) -> None:
+        self.p = p
+        self.brightness_range = brightness_range
+        self.contrast_range = contrast_range
+        self.gamma_range = gamma_range
+        self.noise_std = noise_std
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+        img = sample['img'].float() / 255.0
+        # 1) Extreme brightness reduction (야간 시뮬레이션)
+        brightness = random.uniform(*self.brightness_range)
+        img = img * brightness
+        # 2) Contrast reduction
+        contrast = random.uniform(*self.contrast_range)
+        img = (img - img.mean()) * contrast + img.mean()
+        # 3) Gamma (gamma < 1 → shadows darker)
+        gamma = random.uniform(*self.gamma_range)
+        img = torch.clamp(img, 1e-6, 1.0) ** gamma
+        img = torch.clamp(img, 0.0, 1.0)
+        # 4) Optional sensor noise (저조도에서 증가)
+        if self.noise_std > 0:
+            noise = torch.randn_like(img) * self.noise_std
+            img = torch.clamp(img + noise, 0.0, 1.0)
+        sample['img'] = (img * 255).clamp(0, 255).to(sample['img'].dtype)
+        return sample
+
+
+class RandomRGBComplementaryMasking:
+    """
+    CRM (Complementary Random Masking): RGB의 일부 영역을 0으로 마스킹.
+    thermal/lidar는 그대로 유지 → 보조 모달리티 활용 강제. Ref: CRM paper, MULTIAQUA
+    """
+    def __init__(self, p: float = 0.3, mask_ratio_range: Tuple[float, float] = (0.2, 0.5),
+                 num_patches: int = 4) -> None:
+        self.p = p
+        self.mask_ratio_range = mask_ratio_range
+        self.num_patches = num_patches
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+        img = sample['img']
+        C, H, W = img.shape
+        total_masked = 0
+        target_ratio = random.uniform(*self.mask_ratio_range)
+        for _ in range(self.num_patches):
+            h_size = random.randint(int(H * 0.15), int(H * 0.4))
+            w_size = random.randint(int(W * 0.15), int(W * 0.4))
+            y = random.randint(0, max(0, H - h_size))
+            x = random.randint(0, max(0, W - w_size))
+            img[:, y : y + h_size, x : x + w_size] = 0
+            total_masked += h_size * w_size
+            if total_masked / (H * W) >= target_ratio:
+                break
+        sample['img'] = img
+        return sample
+
+
+class RandomRGBZeroOut:
+    """
+    RGB 전체를 0으로 대체 (확률 p). Double forward pass와 유사한 효과.
+    야간 극한 상황(완전 암실) 시뮬레이션.
+    """
+    def __init__(self, p: float = 0.15) -> None:
+        self.p = p
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+        sample['img'] = torch.zeros_like(sample['img'])
         return sample
 
 
@@ -246,6 +341,42 @@ class Pad:
         return TF.pad(img, padding), TF.pad(mask, padding, self.seg_fill)
 
 
+class ResizeWidthPadToSquare:
+    """
+    MULTIAQUA 전용: 가로가 긴 이미지를 target_size x target_size로 변환.
+    가로를 target_size로 리사이즈, 세로는 위아래 패딩으로 맞춤.
+    Normalize 전에 적용하여 thermal 패딩 값 불일치 방지.
+    """
+    def __init__(self, target_size: int, seg_fill: int = 0) -> None:
+        self.target_size = target_size if isinstance(target_size, int) else target_size[0]
+        self.seg_fill = seg_fill
+
+    def __call__(self, sample: dict) -> dict:
+        H, W = sample['img'].shape[1:]
+        t = self.target_size
+        if W >= H:
+            scale = t / W
+            nH, nW = round(H * scale), t
+            pad_top = (t - nH) // 2
+            pad_bottom = t - nH - pad_top
+            padding = [0, pad_top, 0, pad_bottom]  # (left, top, right, bottom)
+        else:
+            scale = t / H
+            nH, nW = t, round(W * scale)
+            pad_left = (t - nW) // 2
+            pad_right = t - nW - pad_left
+            padding = [pad_left, 0, pad_right, 0]  # (left, top, right, bottom)
+
+        for k, v in sample.items():
+            if k == 'mask':
+                sample[k] = TF.resize(v, (nH, nW), TF.InterpolationMode.NEAREST)
+                sample[k] = TF.pad(sample[k], padding, fill=self.seg_fill)
+            else:
+                sample[k] = TF.resize(v, (nH, nW), TF.InterpolationMode.BILINEAR)
+                sample[k] = TF.pad(sample[k], padding, fill=0)
+        return sample
+
+
 class ResizePad:
     def __init__(self, size: Union[int, Tuple[int], List[int]], seg_fill: int = 0) -> None:
         """Resize the input image to the given size.
@@ -362,20 +493,86 @@ class RandomResizedCrop:
 
 
 
-def get_train_augmentation(size: Union[int, Tuple[int], List[int]], seg_fill: int = 0):
-    return Compose([
-        RandomColorJitter(p=0.2), # 
-        RandomHorizontalFlip(p=0.5), #
-        RandomGaussianBlur((3, 3), p=0.2), #
-        RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill), #
-        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
+def _get_thermal_stats(dataset_cfg: Optional[dict]) -> Tuple[Optional[float], Optional[float]]:
+    """MULTIAQUA + thermal일 때만 thermal mean/std 반환. 그 외 None."""
+    if not dataset_cfg:
+        return None, None
+    if dataset_cfg.get('NAME') != 'MULTIAQUA':
+        return None, None
+    modals = dataset_cfg.get('MODALS') or []
+    if 'thermal' not in modals:
+        return None, None
+    # config에 있으면 사용, 없으면 MULTIAQUA thermal 기본값 (cal_meanstd_thermal 결과)
+    m = dataset_cfg.get('THERMAL_MEAN', 84.1594)
+    s = dataset_cfg.get('THERMAL_STD', 11.9157)
+    return float(m), float(s)
 
-def get_val_augmentation(size: Union[int, Tuple[int], List[int]]):
-    return Compose([
-        Resize(size),
-        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+def _use_multiaqua_resize_pad(dataset_cfg: Optional[dict]) -> bool:
+    """MULTIAQUA일 때만 2208x1242 → 1024x1024 (가로 리사이즈 + 위아래 패딩) 적용."""
+    return bool(dataset_cfg and dataset_cfg.get('NAME') == 'MULTIAQUA')
+
+
+def _get_night_aug_config(dataset_cfg: Optional[dict]) -> dict:
+    """MULTIAQUA 야간 도메인 적응용 augmentation 설정."""
+    if not dataset_cfg or dataset_cfg.get('NAME') != 'MULTIAQUA':
+        return {}
+    return dataset_cfg.get('NIGHT_AUG', {})
+
+
+def get_train_augmentation(
+    size: Union[int, Tuple[int], List[int]],
+    seg_fill: int = 0,
+    dataset_cfg: Optional[dict] = None,
+):
+    tm, ts = _get_thermal_stats(dataset_cfg)
+    t_size = size if isinstance(size, int) else (size[0] if isinstance(size, (list, tuple)) else size)
+    transforms = []
+    if _use_multiaqua_resize_pad(dataset_cfg):
+        transforms.append(ResizeWidthPadToSquare(t_size, seg_fill=seg_fill))
+    transforms.append(RandomColorJitter(p=0.2))
+
+    # MULTIAQUA 전용: RGB 야간 시뮬레이션 augmentation (thermal/lidar는 유지)
+    night_cfg = _get_night_aug_config(dataset_cfg)
+    if night_cfg.get('ENABLE', False):
+        transforms.append(RandomRGBNightSimulation(
+            p=night_cfg.get('NIGHT_SIM_P', 0.35),
+            brightness_range=tuple(night_cfg.get('BRIGHTNESS_RANGE', [0.03, 0.25])),
+            contrast_range=tuple(night_cfg.get('CONTRAST_RANGE', [0.3, 0.7])),
+            gamma_range=tuple(night_cfg.get('GAMMA_RANGE', [0.4, 0.8])),
+            noise_std=night_cfg.get('NOISE_STD', 0.02),
+        ))
+        if night_cfg.get('CRM_P', 0) > 0:
+            transforms.append(RandomRGBComplementaryMasking(
+                p=night_cfg.get('CRM_P', 0.3),
+                mask_ratio_range=tuple(night_cfg.get('CRM_MASK_RATIO', [0.2, 0.5])),
+            ))
+        if night_cfg.get('ZERO_P', 0) > 0:
+            transforms.append(RandomRGBZeroOut(p=night_cfg.get('ZERO_P', 0.15)))
+
+    transforms.extend([
+        RandomHorizontalFlip(p=0.5),
+        RandomGaussianBlur((3, 3), p=0.2),
+        RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill),
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
     ])
+    return Compose(transforms)
+
+
+def get_val_augmentation(
+    size: Union[int, Tuple[int], List[int]],
+    dataset_cfg: Optional[dict] = None,
+):
+    tm, ts = _get_thermal_stats(dataset_cfg)
+    t_size = size if isinstance(size, int) else (size[0] if isinstance(size, (list, tuple)) else size)
+    transforms = []
+    if _use_multiaqua_resize_pad(dataset_cfg):
+        transforms.append(ResizeWidthPadToSquare(t_size, seg_fill=dataset_cfg.get('IGNORE_LABEL', 255) if dataset_cfg else 255))
+    transforms.extend([
+        Resize(size),
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
+    ])
+    return Compose(transforms)
 
 
 if __name__ == '__main__':

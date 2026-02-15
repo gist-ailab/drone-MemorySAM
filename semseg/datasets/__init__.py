@@ -4,6 +4,7 @@ from .nyu import NYU
 from .mfnet import MFNet
 from .urbanlf import UrbanLF
 from .mcubes import MCubeS
+from .multiaqua import MULTIAQUA
 
 __all__ = [
     'DELIVER',
@@ -11,5 +12,6 @@ __all__ = [
     'NYU',
     'MFNet',
     'UrbanLF',
-    'MCubeS'
+    'MCubeS',
+    'MULTIAQUA'
 ]

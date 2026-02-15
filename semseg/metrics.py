@@ -11,8 +11,14 @@ class Metrics:
 
     def update(self, pred: Tensor, target: Tensor) -> None:
         pred = pred.argmax(dim=1)
-        keep = target != self.ignore_label
-        self.hist += torch.bincount(target[keep] * self.num_classes + pred[keep], minlength=self.num_classes**2).view(self.num_classes, self.num_classes)
+        # SAM mask decoder는 num_multimask_outputs=25로 고정 → pred 0~24 가능
+        # target도 augmentation/코드 오류로 num_classes 이상 가능 → 둘 다 유효 범위만
+        keep = (target != self.ignore_label) & (target < self.num_classes) & (pred < self.num_classes)
+        flat = target[keep] * self.num_classes + pred[keep]
+        if flat.numel() == 0:
+            return
+        bc = torch.bincount(flat, minlength=self.num_classes**2)
+        self.hist += bc[: self.num_classes**2].view(self.num_classes, self.num_classes)
 
     def compute_iou(self) -> Tuple[Tensor, Tensor]:
         ious = self.hist.diag() / (self.hist.sum(0) + self.hist.sum(1) - self.hist.diag())

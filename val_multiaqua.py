@@ -1,0 +1,361 @@
+"""
+MULTIAQUA 데이터셋용 Validation 및 Test Inference 스크립트.
+- val: validation set 평가 (mIoU, mAcc, Dynamic IoU) + seg/seg_viz 저장. mIoU는 원본 이미지 크기에서 계산.
+- test: test set 인퍼런스만 - seg/, seg_viz/ 저장
+
+저장 구조 (val, test 공통):
+  save_dir/seg/      : 클래스값 0,1,2,3 (uint8) raw segmentation (원본 크기) - 로컬 평가용
+  save_dir/seg_viz/  : [RGB | Seg(colored) | Overlay] 가로 concat 시각화 (원본 크기)
+
+MaCVi 리더보드 제출 시:
+  --macvi 플래그로 실행하면 eval_macvi/에 세그멘테이션 마스크만 1-indexed 저장 (val/test 공통)
+  예: python val_multiaqua.py ... --macvi
+
+사용:
+  python val_multiaqua.py --cfg configs/lecun_multiaqua_rgbtl_P8.yaml --mode val --model_path outputs/.../epoch15_93.95_checkpoint.pth
+  python val_multiaqua.py --cfg ... --mode val --model_path ... --save_dir outputs/.../val_pred
+  python val_multiaqua.py --cfg ... --mode test --model_path ... --save_dir outputs/.../test_pred
+"""
+import torch
+import argparse
+import yaml
+import os
+import time
+from pathlib import Path
+from tqdm import tqdm
+from tabulate import tabulate
+from torch.utils.data import DataLoader
+import torch.nn.functional as F
+import numpy as np
+import inspect
+
+from semseg.models import *
+from semseg.datasets import *
+from semseg.augmentations_mm import get_val_augmentation
+from semseg.metrics import Metrics
+from semseg.utils.utils import setup_cudnn
+from semseg.models.sam2.sam2.build_sam import build_sam2
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+
+
+def load_model(cfg, model_path, device):
+    """Config 기반 LoRA 모델 로드."""
+    model_cfg = cfg['MODEL']
+    dataset_cfg = cfg['DATASET']
+    eval_cfg = cfg['EVAL']
+
+    checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
+    sam2_config_file = "sam2_hiera_b+.yaml"
+    num_modalities = len(dataset_cfg['MODALS'])
+
+    sam2 = build_sam2(
+        sam2_config_file,
+        checkpoint,
+        hydra_overrides_extra=[
+            "++model.pred_obj_scores=false",
+            "++model.fixed_no_obj_ptr=false",
+            "++model.pred_obj_scores_mlp=false"
+        ]
+    )
+
+    lora_model_name = model_cfg.get('LORA_MODEL', 'LoRA_Sam_P8')
+    lora_r = model_cfg.get('LORA_R', 4)
+    lora_num_experts = model_cfg.get('LORA_NUM_EXPERTS')
+    if lora_num_experts is None:
+        lora_num_experts = num_modalities
+    lora_top_k = model_cfg.get('LORA_TOP_K')
+    lora_layer = model_cfg.get('LORA_LAYER')
+
+    lora_model_class = eval(lora_model_name)
+    model_kwargs = {
+        'sam_model': sam2,
+        'r': lora_r,
+        'lora_layer': lora_layer,
+    }
+    sig = inspect.signature(lora_model_class.__init__)
+    if 'num_experts' in sig.parameters:
+        model_kwargs['num_experts'] = lora_num_experts
+    if 'top_k' in sig.parameters:
+        model_kwargs['top_k'] = lora_top_k
+
+    model = lora_model_class(**model_kwargs)
+
+    ckpt = torch.load(str(model_path), map_location='cpu')
+    state = ckpt.get('model_state_dict', ckpt)
+    msg = model.load_state_dict(state, strict=False)
+    print(f"Model load: {msg}")
+
+    model = model.to(device)
+    model.eval()
+    return model
+
+
+def _unpad_resize_to_orig(pred: torch.Tensor, orig_h: int, orig_w: int, model_size: int = 1024) -> torch.Tensor:
+    """
+    ResizeWidthPadToSquare의 역변환.
+    모델 출력 (model_size x model_size)에서 패딩 제거 후 원본 크기로 리사이즈.
+    """
+    H, W = orig_h, orig_w
+    t = model_size
+    if W >= H:
+        scale = t / W
+        nH, nW = round(H * scale), t
+        pad_top = (t - nH) // 2
+        pad_bottom = t - nH - pad_top
+        # pred에서 패딩 제거: [pad_top:pad_top+nH, 0:nW] = (nH, nW)
+        pred_content = pred[pad_top : pad_top + nH, :nW]
+    else:
+        scale = t / H
+        nH, nW = t, round(W * scale)
+        pad_left = (t - nW) // 2
+        pad_right = t - nW - pad_left
+        pred_content = pred[:nH, pad_left : pad_left + nW]
+    # (nH, nW) -> (orig_h, orig_w)
+    if pred_content.shape[0] != H or pred_content.shape[1] != W:
+        pred_content = pred_content.unsqueeze(0).unsqueeze(0).float()
+        pred_resized = F.interpolate(pred_content, size=(H, W), mode="nearest")
+        pred_resized = pred_resized.squeeze(0).squeeze(0).long()
+    else:
+        pred_resized = pred_content.long()
+    return pred_resized
+
+
+def _collate_multiaqua(batch):
+    """(sample, label, meta) 배치화. val/test 공통."""
+    samples = [b[0] for b in batch]
+    labels = [b[1] for b in batch]
+    metas = [b[2] for b in batch]
+    images = [torch.stack([s[i] for s in samples]) for i in range(len(samples[0]))]
+    labels = torch.stack(labels)
+    return images, labels, metas
+
+
+@torch.no_grad()
+def evaluate(model, dataloader, device, save_dir=None, macvi_format=False):
+    """
+    Validation 평가. mIoU는 원본 이미지 크기에서 계산.
+    macvi_format=False: save_dir/seg/, save_dir/seg_viz/ 생성
+    macvi_format=True: save_dir/에 세그멘테이션 마스크만 1-indexed 저장 (시각화 없음)
+    """
+    from PIL import Image
+
+    model.eval()
+    n_classes = dataloader.dataset.n_classes
+    palette = dataloader.dataset.PALETTE
+    metrics = Metrics(n_classes, dataloader.dataset.ignore_label, device)
+
+    total_inference_time = 0.0
+    num_frames = 0
+
+    if save_dir:
+        save_dir = Path(save_dir)
+        if macvi_format:
+            save_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            seg_dir = save_dir / "seg"
+            seg_viz_dir = save_dir / "seg_viz"
+            seg_dir.mkdir(parents=True, exist_ok=True)
+            seg_viz_dir.mkdir(parents=True, exist_ok=True)
+
+    for images, labels, metas in tqdm(dataloader, desc="Val"):
+        images = [x.to(device) for x in images]
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        output, _ = model(images, multimask_output=True)
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        total_inference_time += time.perf_counter() - t0
+        num_frames += images[0].shape[0]
+        preds = output.softmax(dim=1)
+        pred_labels = preds[:, :n_classes].argmax(dim=1)  # (B, H, W)
+
+        for b in range(pred_labels.shape[0]):
+            meta = metas[b]
+            orig_h, orig_w = meta["orig_h"], meta["orig_w"]
+            orig_label = meta["orig_label"]  # (H, W)
+            pred_b = pred_labels[b]  # (model_size, model_size) after ResizeWidthPadToSquare
+
+            # ResizeWidthPadToSquare 역변환: 패딩 제거 후 원본 크기로 리사이즈
+            pred_resized = _unpad_resize_to_orig(pred_b, orig_h, orig_w, model_size=pred_b.shape[0])
+
+            # mIoU는 원본 크기에서 (pred_resized vs orig_label)
+            pred_softmax_orig = F.one_hot(pred_resized.long().clamp(0, n_classes - 1), n_classes).unsqueeze(0).permute(0, 3, 1, 2).float().to(device)
+            metrics.update(pred_softmax_orig, orig_label.unsqueeze(0).to(device))
+
+            if save_dir:
+                stem = meta["stem"]
+                pred_np = pred_resized.cpu().numpy().astype(np.uint8)  # (orig_h, orig_w)
+                if macvi_format:
+                    seg_save = (pred_np + 1).clip(1, 4).astype(np.uint8)
+                    Image.fromarray(seg_save).save(str(save_dir / f"{stem}.png"))
+                else:
+                    Image.fromarray(pred_np).save(str(seg_dir / f"{stem}.png"))
+                    colored = MULTIAQUA.decode_segmap(pred_np, palette)
+                    rgb_path = dataloader.dataset.rgb_dir / f"{stem}.png"
+                    rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
+                    overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
+                    viz_row = np.concatenate([rgb, colored, overlay], axis=1)
+                    Image.fromarray(viz_row).save(str(seg_viz_dir / f"{stem}.png"))
+
+    ious, miou = metrics.compute_iou()
+    acc, macc = metrics.compute_pixel_acc()
+    f1, mf1 = metrics.compute_f1()
+    dynamic_iou = float(ious[1])
+    fps = num_frames / total_inference_time if total_inference_time > 0 else 0.0
+    return acc, macc, f1, mf1, ious, miou, dynamic_iou, fps
+
+
+@torch.no_grad()
+def run_test_inference(model, dataloader, device, save_dir, macvi_format=False):
+    """
+    Test set 인퍼런스 후 원본 크기로 저장.
+    macvi_format=True: eval_macvi/에 세그멘테이션 마스크만 (1-indexed)
+    macvi_format=False: seg/, seg_viz/ 생성
+    """
+    from PIL import Image
+
+    model.eval()
+    n_classes = dataloader.dataset.n_classes
+    palette = dataloader.dataset.PALETTE
+
+    save_dir = Path(save_dir)
+    if macvi_format:
+        save_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        seg_dir = save_dir / "seg"
+        seg_viz_dir = save_dir / "seg_viz"
+        seg_dir.mkdir(parents=True, exist_ok=True)
+        seg_viz_dir.mkdir(parents=True, exist_ok=True)
+
+    idx = 0
+    total_inference_time = 0.0
+    for images, _, metas in tqdm(dataloader, desc="Test inference"):
+        images = [x.to(device) for x in images]
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        output, _ = model(images, multimask_output=True)
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        total_inference_time += time.perf_counter() - t0
+        preds = output.softmax(dim=1)
+        pred_labels = preds[:, :n_classes].argmax(dim=1)  # (B, H, W)
+
+        for b in range(pred_labels.shape[0]):
+            meta = metas[b]
+            stem, orig_h, orig_w = meta["stem"], meta["orig_h"], meta["orig_w"]
+            pred_b = pred_labels[b]
+
+            pred_resized = _unpad_resize_to_orig(pred_b, orig_h, orig_w, model_size=pred_b.shape[0])
+            pred_np = pred_resized.cpu().numpy().astype(np.uint8)
+
+            if macvi_format:
+                seg_save = (pred_np + 1).clip(1, 4).astype(np.uint8)
+                Image.fromarray(seg_save).save(str(save_dir / f"{stem}.png"))
+            else:
+                Image.fromarray(pred_np).save(str(seg_dir / f"{stem}.png"))
+                colored = MULTIAQUA.decode_segmap(pred_np, palette)
+                rgb_path = dataloader.dataset.rgb_dir / f"{stem}.png"
+                rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
+                overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
+                viz_row = np.concatenate([rgb, colored, overlay], axis=1)
+                Image.fromarray(viz_row).save(str(seg_viz_dir / f"{stem}.png"))
+            idx += 1
+
+    fps = idx / total_inference_time if total_inference_time > 0 else 0.0
+    if macvi_format:
+        print(f"Saved {idx} segmentation masks to {save_dir} (MaCVi 1-indexed)")
+    else:
+        print(f"Saved {idx} predictions (original size): seg/ and seg_viz/ under {save_dir}")
+    print(f"Inference FPS: {fps:.2f}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cfg', type=str, default='configs/lecun_multiaqua_rgbtl_P8.yaml')
+    parser.add_argument('--mode', type=str, choices=['val', 'test'], default='val')
+    parser.add_argument('--model_path', type=str, required=True)
+    parser.add_argument('--save_dir', type=str, default=None)
+    parser.add_argument('--macvi', action='store_true', help='eval_macvi/에 세그멘테이션 마스크만 1-indexed 저장 (val/test 공통)')
+    args = parser.parse_args()
+
+    with open(args.cfg) as f:
+        cfg = yaml.load(f, Loader=yaml.SafeLoader)
+
+    model_path = Path(args.model_path)
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    device = torch.device(cfg['DEVICE'])
+    setup_cudnn()
+
+    dataset_cfg = cfg['DATASET']
+    eval_cfg = cfg['EVAL']
+    test_cfg = cfg.get('TEST', {})
+
+    image_size = eval_cfg['IMAGE_SIZE'] if args.mode == 'val' else test_cfg.get('IMAGE_SIZE', eval_cfg['IMAGE_SIZE'])
+    transform = get_val_augmentation(image_size, dataset_cfg=dataset_cfg)
+
+    split = 'val' if args.mode == 'val' else 'test'
+    require_annotation = args.mode == 'val'  # val=평가용(annotation필요), test=인퍼런스만(RGB만)
+    dataset = MULTIAQUA(
+        dataset_cfg['ROOT'],
+        split=split,
+        transform=transform,
+        modals=dataset_cfg['MODALS'],
+        require_annotation=require_annotation,
+        return_meta=True,
+    )
+    collate_fn = _collate_multiaqua
+    dataloader = DataLoader(
+        dataset,
+        batch_size=eval_cfg['BATCH_SIZE'],
+        num_workers=4,
+        pin_memory=False,
+        collate_fn=collate_fn,
+    )
+
+    model = load_model(cfg, model_path, device)
+
+    if args.mode == 'val':
+        default_name = "eval_macvi" if args.macvi else "val_pred"
+        save_dir = args.save_dir or (model_path.parent / default_name)
+        acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
+            model, dataloader, device, save_dir=save_dir, macvi_format=args.macvi
+        )
+        table = {
+            'Class': list(dataset.CLASSES) + ['Mean'],
+            'IoU': [f"{iou:.2f}" for iou in ious] + [f"{miou:.2f}"],
+            'Acc': [f"{a:.2f}" for a in acc] + [f"{macc:.2f}"],
+        }
+        print("\n" + "=" * 60)
+        print(f"MULTIAQUA Validation ({len(dataset)} images)")
+        print("=" * 60)
+        print(tabulate(table, headers='keys', tablefmt='grid'))
+        print(f"\nmIoU (original size): {miou:.2f}  mAcc: {macc:.2f}")
+        print(f"Dynamic IoU (class 1): {dynamic_iou:.2f}")
+        print(f"Inference FPS: {fps:.2f}")
+        if save_dir:
+            if args.macvi:
+                print(f"Saved segmentation masks to {save_dir} (eval_macvi, MaCVi 1-indexed)")
+            else:
+                print(f"Saved seg/ and seg_viz/ to {save_dir}")
+
+        out_txt = model_path.parent / f"eval_{split}_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(out_txt, 'w') as f:
+            f.write(f"Model: {model_path}\n")
+            f.write(f"Split: {split}  N={len(dataset)}\n")
+            f.write(tabulate(table, headers='keys') + "\n")
+            f.write(f"\nDynamic IoU (class 1): {dynamic_iou:.2f}\n")
+            f.write(f"Inference FPS: {fps:.2f}\n")
+        print(f"Results saved to {out_txt}")
+
+    else:
+        default_name = "eval_macvi" if args.macvi else "test_pred"
+        save_dir = args.save_dir or (model_path.parent / default_name)
+        run_test_inference(model, dataloader, device, save_dir, macvi_format=args.macvi)
+
+
+if __name__ == '__main__':
+    main()
