@@ -1,0 +1,37 @@
+\section{Introduction}
+\label{sec:intro}
+
+Reliable scene understanding is a critical capability for unmanned surface vehicles (USVs) operating in maritime environments.
+Unlike structured road scenes, waterways present unique challenges: water surfaces exhibit highly variable reflectance, obstacles appear at unpredictable scales and distances, and visibility conditions can shift dramatically between day and night.
+Multi-modal sensing---combining RGB cameras with thermal and LiDAR sensors---offers a principled approach to address these challenges, as each modality provides complementary information robust to different environmental degradations~\cite{zhang2023delivering, zhang2022cmx}.
+
+However, effectively fusing heterogeneous modalities remains an open problem.
+Traditional multi-modal segmentation methods~\cite{zhang2023delivering, li2024stitchfusion, reza2024mmsformer} design modality-specific encoders or fusion modules, which scale poorly as the number of modalities increases.
+Meanwhile, foundation models such as SAM~\cite{kirillov2023sam} and SAM2~\cite{ravi2024sam2} have demonstrated remarkable segmentation capabilities through large-scale pretraining, but they are fundamentally designed for single-modal (RGB) input and instance-level tasks.
+Bridging foundation models to multi-modal semantic segmentation thus requires addressing two fundamental gaps: enabling multi-modal input processing and transitioning from instance-level to semantic-level understanding.
+
+Recently, MemorySAM~\cite{chen2025memorysam} proposed an elegant solution by reinterpreting SAM2's temporal memory mechanism for cross-modal aggregation.
+By treating each modality as a sequential ``frame'', the memory bank naturally captures modality-agnostic features, while a Semantic Prototype Memory Module (SPMM) guides the model toward semantic-level segmentation.
+Concurrently, MoE-LoRA~\cite{zhu2024moe} introduced Mixture-of-Experts routing into SAM's Low-Rank Adaptation~\cite{hu2022lora} layers, enabling modality-adaptive parameter specialization with minimal overhead.
+
+In this work, we build upon these advances and present our solution for the \textbf{4th Workshop on Maritime Computer Vision (MaCVi)} USV Semantic Segmentation Challenge at CVPR 2026.
+The challenge employs the MULTIAQUA dataset~\cite{muhovic2025multiaqua}, which provides synchronized RGB, thermal, and LiDAR data captured from USVs across daytime and nighttime conditions, with four semantic classes: static obstacle, dynamic obstacle, water, and sky.
+A key difficulty is that models are trained on daytime data but must generalize to a nighttime test set where RGB sensors become severely degraded.
+
+Our approach adapts the MemorySAM framework to the maritime domain with the following design choices:
+
+\noindent\textbf{(1) Soft-MoE gating for LoRA adaptation.}
+MoE-LoRA~\cite{zhu2024moe} employs hard top-$k$ routing, where only $k$ out of $N$ experts are activated per token.
+When the number of experts is small (\eg, 3 experts matching 3 modalities), top-$k$ routing discards significant expert capacity.
+Following insights from Soft Mixtures of Experts~\cite{puigcerver2024softmoe}, we adopt soft gating where all experts contribute via softmax-weighted combination, ensuring full expert utilization in this low-expert regime.
+
+\noindent\textbf{(2) Hybrid modulation for memory and fusion.}
+We employ sigmoid-based scoring for memory modulation, allowing each modality's features to be independently suppressed when unreliable, and L1-normalized scoring for output fusion, enabling relative comparison across modalities.
+This separation reflects the different roles of the two operations: absolute quality gating versus relative importance weighting.
+
+\noindent\textbf{(3) Night-robust RGB augmentation.}
+To bridge the day-night domain gap using only daytime training data, we apply aggressive RGB corruption including extreme brightness reduction (factor 0.03--0.25), complementary random masking~\cite{shin2024crm} that zeros out 20--50\% of spatial regions, and stochastic full-channel zeroing simulating complete RGB failure.
+These augmentations encourage the model to rely on thermal and LiDAR when RGB is degraded.
+
+We empirically validate each component through controlled experiments and report our challenge results on the MULTIAQUA benchmark.
+The remainder of this paper is organized as follows: \cref{sec:related} reviews related work, \cref{sec:method} details our method, and \cref{sec:experiments} presents experimental results.

@@ -23,7 +23,6 @@ DATASET:
     ENABLE      : true
     NIGHT_SIM_P : 0.35       # 확률로 RGB 극단적 어둡게 (brightness 0.03~0.25)
     BRIGHTNESS_RANGE : [0.03, 0.25]
-    BRIGHTNESS_SAMPLING : uniform    # 기존 동작 유지
     CONTRAST_RANGE   : [0.3, 0.7]
     GAMMA_RANGE     : [0.4, 0.8]
     NOISE_STD       : 0.02
@@ -57,7 +56,7 @@ SCHEDULER:
   
 
 EVAL:
-  MODEL_PATH    : ''    # trained model file path (e.g., ./outputs/MMSamP7/levine_multiaqua_rgbtl_P8/.../best_checkpoint.pth)
+  MODEL_PATH    : '/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP8/lecun_multiaqua_rgbtl_P8/MULTIAQUA_CMNeXt-B2_ilt/epoch45_94.0_checkpoint.pth'    # trained model file path (e.g., ./outputs/MMSamP7/levine_multiaqua_rgbtl_P8/.../best_checkpoint.pth)
   IMAGE_SIZE    : [1024, 1024]                            # evaluation image size in (h, w)        
   BATCH_SIZE    : 1      
   MSF: 
@@ -67,7 +66,7 @@ EVAL:
 
 
 TEST:
-  MODEL_PATH    : ''    # trained model file path
+  MODEL_PATH    : '/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP8/lecun_multiaqua_rgbtl_P8/MULTIAQUA_CMNeXt-B2_ilt/epoch45_94.0_checkpoint.pth'    # trained model file path
   FILE          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'    # filename or foldername 
   IMAGE_SIZE    : [1024, 1024]                            # inference image size in (h, w)
   OVERLAY       : false                                   # save the overlay result (image_alpha+label_alpha)

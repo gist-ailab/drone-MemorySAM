@@ -1,0 +1,108 @@
+\section{Method}
+\label{sec:method}
+
+% TODO: Add architecture overview figure
+% \begin{figure*}[t]
+%   \centering
+%   \includegraphics[width=\linewidth]{fig/overview.pdf}
+%   \caption{Overview of our approach. (a) Each modality is processed by SAM2's frozen image encoder augmented with Soft-MoE LoRA layers. (b) A ConfidenceHead estimates per-modality quality scores, which are used for sigmoid-based memory modulation (UAMM) before SAM2's track step. (c) The per-modality outputs are fused via L1-normalized score weighting (AMF).}
+%   \label{fig:overview}
+% \end{figure*}
+
+Our method adapts MemorySAM~\cite{chen2025memorysam} for the MULTIAQUA maritime segmentation task.
+We retain the core idea of treating each modality as a sequential frame processed through SAM2's~\cite{ravi2024sam2} memory-based tracking pipeline, and modify the LoRA adaptation strategy, modality modulation, and output fusion.
+An overview of our pipeline is as follows: given $M$ input modalities (RGB, thermal, LiDAR), each is independently encoded by SAM2's frozen image encoder with Soft-MoE LoRA layers injected into the attention blocks.
+A confidence head estimates a quality score for each modality, which is used to modulate the vision features before they enter SAM2's memory-augmented tracking step.
+The per-modality mask outputs are then fused using normalized confidence scores.
+
+
+\subsection{Soft-MoE LoRA}
+\label{sec:soft_moe_lora}
+
+We keep SAM2's image encoder frozen and inject low-rank adaptation matrices into the query and value projections of each attention block, following the standard LoRA~\cite{hu2022lora} formulation.
+Rather than using a single pair of low-rank matrices, we maintain $N$ expert pairs $\{(\mathbf{A}_i, \mathbf{B}_i)\}_{i=1}^{N}$, where $\mathbf{A}_i \in \mathbb{R}^{d \times r}$ and $\mathbf{B}_i \in \mathbb{R}^{r \times d}$, with $r$ being the LoRA rank and $d$ the feature dimension.
+
+Following the Soft Mixture-of-Experts formulation~\cite{puigcerver2024softmoe}, instead of selecting the top-$k$ experts via hard routing~\cite{zhu2024moe, shazeer2017moe}, we compute a softmax-weighted combination over all experts for each input token $\mathbf{x}$:
+\begin{equation}
+  \Delta \mathbf{x} = \sum_{i=1}^{N} \alpha_i(\mathbf{x}) \cdot \mathbf{B}_i \mathbf{A}_i \mathbf{x},
+  \quad \alpha_i(\mathbf{x}) = \frac{\exp(g_i(\mathbf{x}))}{\sum_{j=1}^{N} \exp(g_j(\mathbf{x}))},
+  \label{eq:soft_moe}
+\end{equation}
+where $g(\mathbf{x}) = \mathbf{W}_g \mathbf{x} + \mathbf{b}_g$ is a lightweight gating network with $\mathbf{W}_g \in \mathbb{R}^{N \times d}$.
+The output of the original QKV projection is augmented as $\mathbf{q} \leftarrow \mathbf{q} + \Delta \mathbf{q}$ and $\mathbf{v} \leftarrow \mathbf{v} + \Delta \mathbf{v}$.
+
+When the number of experts $N$ is small (\eg, $N{=}3$ matching three modalities), hard top-$k$ routing with $k{=}2$ permanently disables one expert per token.
+Soft gating avoids this issue by ensuring gradient flow to every expert at every step, enabling all experts to specialize without the dead expert problem.
+We use $N{=}3$ experts and $r{=}4$ throughout our experiments.
+
+
+\subsection{Uncertainty-Aware Memory Modulation}
+\label{sec:uamm}
+
+Before each modality's features enter SAM2's memory-augmented tracking step, we modulate them based on an estimated modality quality score.
+A ConfidenceHead takes the backbone feature map $\mathbf{F}_i \in \mathbb{R}^{B \times C \times H \times W}$ for modality $i$ and produces a scalar logit $l_i \in \mathbb{R}^{B \times 1}$:
+\begin{equation}
+  s_i = \sigma(l_i), \quad \hat{\mathbf{f}}_i^{(k)} = s_i \cdot \mathbf{f}_i^{(k)}, \quad \forall k,
+  \label{eq:uamm}
+\end{equation}
+where $\sigma$ denotes the sigmoid function, $\mathbf{f}_i^{(k)}$ are the multi-scale vision features for modality $i$, and $s_i \in [0, 1]$ acts as a per-modality gate.
+
+The sigmoid activation is chosen deliberately: each modality's score is independent of others, allowing the model to suppress a degraded modality (\eg, RGB at night with $s_\text{rgb} \approx 0$) without artificially boosting other modalities.
+This contrasts with softmax-based modulation where suppressing one modality necessarily inflates the others.
+
+The ConfidenceHead uses a CNN-based architecture (two strided convolutions followed by global average pooling and an MLP) with zero-initialized output weights to ensure stable training from the start.
+
+The modulated features $\hat{\mathbf{f}}_i$ are then processed by SAM2's \texttt{track\_step}, which updates the memory bank with cross-attention.
+The first modality serves as the initialization frame, and subsequent modalities attend to accumulated memory, enabling cross-modal feature exchange through SAM2's built-in temporal attention mechanism.
+
+
+\subsection{Adaptive Mask Fusion}
+\label{sec:amf}
+
+After obtaining per-modality mask predictions $\mathbf{o}_i$ and backbone features $\mathbf{F}_i$ from the tracking loop, we fuse them using the same confidence scores from the UAMM stage.
+However, for fusion we apply L1 normalization instead of using the raw sigmoid scores:
+\begin{equation}
+  w_i = \frac{s_i}{\sum_{j=1}^{M} s_j + \epsilon},
+  \quad \mathbf{o}_\text{fused} = \sum_{i=1}^{M} w_i \cdot \mathbf{o}_i,
+  \label{eq:amf}
+\end{equation}
+where $\epsilon = 10^{-8}$ prevents division by zero.
+
+The key distinction from the UAMM stage is that fusion requires \textit{relative} comparison: the weights must sum to one so that the fused output has consistent scale regardless of absolute score magnitudes.
+This is complementary to UAMM's absolute gating: a modality with $s_i = 0.9$ and another with $s_j = 0.3$ would receive UAMM modulation of $0.9$ and $0.3$ respectively (preserving the good modality, suppressing the bad one), but fusion weights of $0.75$ and $0.25$ (relative contribution).
+
+
+\subsection{Prototype Segmentation Loss}
+\label{sec:proto_loss}
+
+Following MemorySAM~\cite{chen2025memorysam}, we use a Semantic Prototype Memory Module to guide SAM2 toward semantic-level understanding.
+For each class $c$, a global prototype $\mathbf{p}_c$ is maintained via exponential moving average (momentum $= 0.8$).
+At each training step, batch prototypes $\hat{\mathbf{p}}_c$ are computed by averaging the fused feature vectors $\mathbf{F}_\text{fused}$ belonging to class $c$ (determined by resizing the ground-truth labels to the feature map resolution).
+The prototype loss is defined as:
+\begin{equation}
+  \mathcal{L}_\text{proto} = \text{MSE}(\hat{\mathbf{p}}, \mathbf{p}),
+  \label{eq:proto}
+\end{equation}
+and the total training loss is:
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_\text{OHEM} + \lambda \cdot \mathcal{L}_\text{proto},
+  \label{eq:total_loss}
+\end{equation}
+where $\mathcal{L}_\text{OHEM}$ is the Online Hard Example Mining cross-entropy loss and $\lambda$ is a scaling factor.
+
+
+\subsection{Night-Robust RGB Augmentation}
+\label{sec:night_aug}
+
+The MULTIAQUA dataset requires generalization from daytime training to nighttime evaluation, where RGB quality degrades severely while thermal and LiDAR remain relatively stable.
+Inspired by the augmentation strategies proposed in the MULTIAQUA paper~\cite{muhovic2025multiaqua} and CRM~\cite{shin2024crm}, we apply three complementary RGB corruptions during training (applied only to the RGB modality, leaving thermal and LiDAR unchanged):
+
+\noindent\textbf{Night Simulation} (probability 0.35): extreme brightness reduction (factor sampled from $[0.03, 0.25]$), followed by contrast reduction ($[0.3, 0.7]$), gamma correction ($\gamma \in [0.4, 0.8]$), and additive Gaussian noise ($\sigma = 0.02$).
+
+\noindent\textbf{Complementary Random Masking} (probability 0.30): rectangular patches are randomly placed on the RGB image, zeroing out 20--50\% of spatial regions.
+This forces the model to rely on thermal and LiDAR for the masked areas.
+
+\noindent\textbf{Full-Channel Zeroing} (probability 0.12): the entire RGB input is replaced with zeros, simulating complete RGB failure.
+This is the most extreme case, requiring the model to produce reasonable segmentation from thermal and LiDAR alone.
+
+These augmentations are stacked sequentially: an image may undergo night simulation and then additionally be partially masked, creating diverse degradation patterns.

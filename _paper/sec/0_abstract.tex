@@ -1,0 +1,8 @@
+\begin{abstract}
+This paper describes our solution for the MaCVi USV Semantic Segmentation Challenge at CVPR 2026, which targets the MULTIAQUA dataset featuring RGB, thermal, and LiDAR modalities with a challenging nighttime test set.
+We adapt the MemorySAM framework---which repurposes SAM2's temporal memory mechanism for cross-modal feature aggregation---to the maritime domain and investigate effective strategies for multi-modal fusion under severe illumination changes.
+Specifically, we adopt soft mixture-of-experts gating in SAM2's LoRA layers to improve expert utilization when the number of experts is small, and employ a hybrid modulation scheme that uses sigmoid-based scoring for memory modulation and L1-normalized scoring for output fusion.
+To bridge the day-night domain gap without nighttime training data, we apply aggressive RGB corruption augmentations including extreme darkening, complementary random masking~\cite{shin2024crm}, and stochastic full-channel zeroing.
+We empirically validate each design choice and report our results on the MULTIAQUA benchmark.
+% Our method achieves XX.X\% mIoU on the challenge test set.
+\end{abstract}

@@ -75,22 +75,49 @@ class RandomRGBNightSimulation:
     """
     RGB만 야간/저조도로 시뮬레이션. thermal, lidar는 유지 → 모델이 보조 모달리티에 집중하도록 유도.
     MULTIAQUA 야간(lj4) 도메인 적응용. Ref: https://arxiv.org/pdf/2512.17450
+
+    brightness_sampling: "uniform" | "log_uniform" | "dark_biased"
+    - uniform: random.uniform(min, max)
+    - log_uniform: 10^U(log10(min), log10(max)) → 어두운 값 더 자주
+    - dark_biased: 70% 확률로 [dark_min, dark_max], 30%로 [moderate_min, moderate_max]
     """
     def __init__(self, p: float = 0.3, brightness_range: Tuple[float, float] = (0.03, 0.25),
                  contrast_range: Tuple[float, float] = (0.3, 0.7), gamma_range: Tuple[float, float] = (0.4, 0.8),
-                 noise_std: float = 0.02) -> None:
+                 noise_std: float = 0.02, brightness_sampling: str = "dark_biased",
+                 dark_biased_ratio: float = 0.7, dark_range: Optional[Tuple[float, float]] = None,
+                 moderate_range: Optional[Tuple[float, float]] = None) -> None:
         self.p = p
         self.brightness_range = brightness_range
         self.contrast_range = contrast_range
         self.gamma_range = gamma_range
         self.noise_std = noise_std
+        self.brightness_sampling = brightness_sampling
+        self.dark_biased_ratio = dark_biased_ratio
+        self.dark_range = dark_range or (0.03, 0.15)
+        self.moderate_range = moderate_range or (0.15, 0.5)
+
+    def _sample_brightness(self) -> float:
+        if self.brightness_sampling == "uniform":
+            return random.uniform(*self.brightness_range)
+        elif self.brightness_sampling == "log_uniform":
+            import math
+            lo, hi = self.brightness_range
+            log_lo, log_hi = math.log10(max(lo, 1e-6)), math.log10(max(hi, 1e-6))
+            return 10 ** random.uniform(log_lo, log_hi)
+        elif self.brightness_sampling == "dark_biased":
+            if random.random() < self.dark_biased_ratio:
+                return random.uniform(*self.dark_range)
+            else:
+                return random.uniform(*self.moderate_range)
+        else:
+            return random.uniform(*self.brightness_range)
 
     def __call__(self, sample: dict) -> dict:
         if 'img' not in sample or random.random() >= self.p:
             return sample
         img = sample['img'].float() / 255.0
-        # 1) Extreme brightness reduction (야간 시뮬레이션)
-        brightness = random.uniform(*self.brightness_range)
+        # 1) Brightness reduction (다양한 강도, 어두운 쪽 편향)
+        brightness = self._sample_brightness()
         img = img * brightness
         # 2) Contrast reduction
         contrast = random.uniform(*self.contrast_range)
@@ -536,11 +563,15 @@ def get_train_augmentation(
     night_cfg = _get_night_aug_config(dataset_cfg)
     if night_cfg.get('ENABLE', False):
         transforms.append(RandomRGBNightSimulation(
-            p=night_cfg.get('NIGHT_SIM_P', 0.35),
-            brightness_range=tuple(night_cfg.get('BRIGHTNESS_RANGE', [0.03, 0.25])),
+            p=night_cfg.get('NIGHT_SIM_P', 0.5),
+            brightness_range=tuple(night_cfg.get('BRIGHTNESS_RANGE', [0.03, 0.5])),
             contrast_range=tuple(night_cfg.get('CONTRAST_RANGE', [0.3, 0.7])),
             gamma_range=tuple(night_cfg.get('GAMMA_RANGE', [0.4, 0.8])),
             noise_std=night_cfg.get('NOISE_STD', 0.02),
+            brightness_sampling=night_cfg.get('BRIGHTNESS_SAMPLING', 'dark_biased'),
+            dark_biased_ratio=night_cfg.get('DARK_BIASED_RATIO', 0.7),
+            dark_range=tuple(night_cfg.get('DARK_RANGE', [0.03, 0.15])) if night_cfg.get('DARK_RANGE') else None,
+            moderate_range=tuple(night_cfg.get('MODERATE_RANGE', [0.15, 0.5])) if night_cfg.get('MODERATE_RANGE') else None,
         ))
         if night_cfg.get('CRM_P', 0) > 0:
             transforms.append(RandomRGBComplementaryMasking(

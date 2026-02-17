@@ -1,0 +1,116 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Dataset and Setup}
+
+\noindent\textbf{Dataset.}
+We evaluate on the MULTIAQUA dataset~\cite{muhovic2025multiaqua}, which provides synchronized RGB, thermal, and LiDAR data captured from unmanned surface vehicles.
+The dataset contains four semantic classes: static obstacle, dynamic obstacle, water, and sky.
+Models are trained on daytime data and evaluated on both a daytime validation set and a nighttime test set, where RGB quality degrades significantly.
+
+\noindent\textbf{Implementation details.}
+We use SAM2 (Hiera-based backbone) as the foundation model with LoRA rank $r{=}4$ and $N{=}3$ Soft-MoE experts.
+All images are resized to $1024 \times 1024$.
+We train for 200 epochs with AdamW optimizer (learning rate $6 \times 10^{-4}$, weight decay $0.01$) using a warmup-polynomial learning rate schedule (10 warmup epochs, power $0.9$).
+The batch size is 1 per GPU with gradient accumulation, and we use Online Hard Example Mining (OHEM) cross-entropy loss with the prototype segmentation loss (\cref{sec:proto_loss}).
+SAM2's image encoder is frozen; only the Soft-MoE LoRA layers, confidence head, prompt encoder, and mask decoder are trained.
+Training is conducted with PyTorch DDP on NVIDIA GPUs.
+
+\noindent\textbf{Evaluation metric.}
+We report mean Intersection-over-Union (mIoU) averaged over the four semantic classes.
+
+
+\subsection{Main Results}
+
+% TODO: Update with final challenge test results
+\begin{table}[t]
+  \caption{Main results on the MULTIAQUA benchmark. Daytime val mIoU and nighttime test mIoU are reported. $^\dagger$Results from the MaCVi challenge leaderboard.}
+  \label{tab:main_results}
+  \centering
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Method & Modalities & Val mIoU & Test mIoU \\
+    \midrule
+    % TODO: Add baseline comparisons from MULTIAQUA paper or challenge
+    CMNeXt~\cite{zhang2023delivering} & RGB+T+L & \TODO{XX.X} & \TODO{XX.X} \\
+    \midrule
+    Ours & RGB+T+L & 94.00 & \TODO{XX.X} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\cref{tab:main_results} presents our results on the MULTIAQUA benchmark.
+On the daytime validation set, our method achieves 94.00\% mIoU.
+% TODO: Add analysis of test set results when available.
+
+\cref{tab:classwise} shows the per-class breakdown on the validation set.
+The model achieves strong performance on water (99.08\%) and sky (98.84\%), which occupy large contiguous regions, and on static obstacles (97.25\%).
+The dynamic obstacle class is the most challenging at 80.82\%, which is expected given the smaller object sizes and higher appearance variability of moving vessels.
+
+\begin{table}[t]
+  \caption{Per-class IoU (\%) on the MULTIAQUA validation set.}
+  \label{tab:classwise}
+  \centering
+  \begin{tabular}{@{}lcccc|c@{}}
+    \toprule
+     & Static & Dynamic & Water & Sky & mIoU \\
+    \midrule
+    Ours & 97.25 & 80.82 & 99.08 & 98.84 & 94.00 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+
+\subsection{Ablation Studies}
+
+\noindent\textbf{Effect of night augmentation.}
+To validate the importance of our night-robust augmentation pipeline (\cref{sec:night_aug}), we train an identical model without any RGB corruption augmentations and compare performance.
+
+% TODO: Fill in after running the ablation experiment
+\begin{table}[t]
+  \caption{Ablation on night-robust RGB augmentation. ``Night Aug'' includes night simulation, CRM, and full-channel zeroing.}
+  \label{tab:ablation_nightaug}
+  \centering
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Night Aug & Val mIoU & Test mIoU \\
+    \midrule
+    \xmark & \TODO{XX.X} & \TODO{XX.X} \\
+    \cmark & 94.00 & \TODO{XX.X} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% TODO: Add analysis after experiment results are available.
+% Expected: val mIoU may be similar or slightly higher without augmentation (since val is daytime),
+% but test mIoU (nighttime) should show a significant drop without augmentation.
+% This would demonstrate that the augmentation trades minor daytime accuracy for substantial nighttime robustness.
+
+
+\noindent\textbf{Effect of modality combination.}
+We investigate the contribution of each modality by training models with different subsets.
+
+% TODO: Fill in after running the ablation experiment
+\begin{table}[t]
+  \caption{Ablation on input modalities.}
+  \label{tab:ablation_modality}
+  \centering
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Modalities & Val mIoU & Test mIoU \\
+    \midrule
+    RGB only          & \TODO{XX.X} & \TODO{XX.X} \\
+    RGB + Thermal     & \TODO{XX.X} & \TODO{XX.X} \\
+    RGB + Thermal + LiDAR & 94.00 & \TODO{XX.X} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% TODO: Add analysis after experiment results are available.
+% Expected: RGB-only should suffer most on nighttime test set. Adding thermal should provide
+% significant improvement for night scenes. LiDAR should provide additional gains for obstacle classes.
+
+% \subsection{Qualitative Results}
+% TODO: Add visualization of segmentation results on daytime and nighttime samples.
+% Show how the model handles RGB degradation by relying on thermal/LiDAR.
