@@ -28,6 +28,9 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import numpy as np
 import inspect
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 from semseg.models import *
 from semseg.datasets import *
@@ -120,6 +123,66 @@ def _unpad_resize_to_orig(pred: torch.Tensor, orig_h: int, orig_w: int, model_si
     return pred_resized
 
 
+def _draw_bar_chart(values, labels, title, target_h, fig_w=180):
+    """Draw a horizontal bar chart and return RGB numpy array resized to target_h height."""
+    fig, ax = plt.subplots(figsize=(fig_w / 100, max(2, target_h / 100)), dpi=100)
+    n = len(values)
+    y_pos = np.arange(n)
+    colors = plt.cm.viridis(np.linspace(0.2, 0.9, n))
+    bars = ax.barh(y_pos, values, color=colors, height=0.6)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=8)
+    ax.set_xlim(0, 1.05)
+    ax.set_title(title, fontsize=9)
+    ax.set_xlabel('Weight' if 'Weight' in title or 'weight' in title else 'Score', fontsize=7)
+    fig.tight_layout(pad=0.5)
+    fig.canvas.draw()
+    buf = fig.canvas.buffer_rgba()
+    w, h = fig.canvas.get_width_height()
+    img = np.asarray(buf).reshape((h, w, 4))
+    img = img[:, :, :3].copy()  # RGB only
+    plt.close(fig)
+    # Resize to target height
+    from PIL import Image
+    pil_img = Image.fromarray(img)
+    scale = target_h / img.shape[0]
+    new_w = int(img.shape[1] * scale)
+    pil_img = pil_img.resize((new_w, target_h), Image.Resampling.LANCZOS)
+    return np.array(pil_img)
+
+
+def _get_uamm_amf_moe_viz(model, batch_idx, modals, target_h):
+    """
+    Build [UAMM | AMF | MoE] visualization strips for one sample.
+    Returns list of numpy arrays or empty list if not available.
+    """
+    core = model.module if hasattr(model, 'module') else model
+    if not hasattr(core, '_last_uamm_scores'):
+        return []
+
+    uamm = getattr(core, '_last_uamm_scores', None)
+    amf = getattr(core, '_last_amf_weights', None)
+    moe = getattr(core, '_last_moe_gates', None)
+
+    strips = []
+    modal_labels = modals if modals else [f'M{i}' for i in range(uamm.shape[1] if uamm is not None else 0)]
+
+    if uamm is not None and batch_idx < uamm.shape[0]:
+        arr = uamm[batch_idx]
+        strips.append(_draw_bar_chart(arr, modal_labels, 'UAMM (Memory Mod)', target_h))
+
+    if amf is not None and batch_idx < amf.shape[0]:
+        arr = amf[batch_idx]
+        strips.append(_draw_bar_chart(arr, modal_labels, 'AMF (Fusion)', target_h))
+
+    if moe is not None and batch_idx < moe.shape[0]:
+        arr = np.atleast_1d(np.asarray(moe[batch_idx]))
+        exp_labels = [f'E{i}' for i in range(len(arr))]
+        strips.append(_draw_bar_chart(arr, exp_labels, 'MoE LoRA (Experts)', target_h))
+
+    return strips
+
+
 def _collate_multiaqua(batch):
     """(sample, label, meta) 배치화. val/test 공통."""
     samples = [b[0] for b in batch]
@@ -131,10 +194,11 @@ def _collate_multiaqua(batch):
 
 
 @torch.no_grad()
-def evaluate(model, dataloader, device, save_dir=None, macvi_format=False):
+def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modals=None):
     """
     Validation 평가. mIoU는 원본 이미지 크기에서 계산.
     macvi_format=False: save_dir/seg/, save_dir/seg_viz/ 생성
+      - LoRA_Sam_P8인 경우 seg_viz에 UAMM/AMF/MoE 시각화 함께 저장
     macvi_format=True: save_dir/에 세그멘테이션 마스크만 1-indexed 저장 (시각화 없음)
     """
     from PIL import Image
@@ -156,6 +220,8 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False):
             seg_viz_dir = save_dir / "seg_viz"
             seg_dir.mkdir(parents=True, exist_ok=True)
             seg_viz_dir.mkdir(parents=True, exist_ok=True)
+
+    modals = modals or getattr(dataloader.dataset, 'modals', ['img', 'lidar', 'thermal'])
 
     for images, labels, metas in tqdm(dataloader, desc="Val"):
         images = [x.to(device) for x in images]
@@ -196,6 +262,9 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False):
                     rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
                     overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
                     viz_row = np.concatenate([rgb, colored, overlay], axis=1)
+                    extra_strips = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0])
+                    if extra_strips:
+                        viz_row = np.concatenate([viz_row] + extra_strips, axis=1)
                     Image.fromarray(viz_row).save(str(seg_viz_dir / f"{stem}.png"))
 
     ious, miou = metrics.compute_iou()
@@ -207,11 +276,11 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False):
 
 
 @torch.no_grad()
-def run_test_inference(model, dataloader, device, save_dir, macvi_format=False):
+def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, modals=None):
     """
     Test set 인퍼런스 후 원본 크기로 저장.
     macvi_format=True: eval_macvi/에 세그멘테이션 마스크만 (1-indexed)
-    macvi_format=False: seg/, seg_viz/ 생성
+    macvi_format=False: seg/, seg_viz/ 생성 (LoRA_Sam_P8일 때 UAMM/AMF/MoE 시각화 포함)
     """
     from PIL import Image
 
@@ -228,6 +297,7 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False):
         seg_dir.mkdir(parents=True, exist_ok=True)
         seg_viz_dir.mkdir(parents=True, exist_ok=True)
 
+    modals = modals or getattr(dataloader.dataset, 'modals', ['img', 'lidar', 'thermal'])
     idx = 0
     total_inference_time = 0.0
     for images, _, metas in tqdm(dataloader, desc="Test inference"):
@@ -260,6 +330,9 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False):
                 rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
                 overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
                 viz_row = np.concatenate([rgb, colored, overlay], axis=1)
+                extra_strips = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0])
+                if extra_strips:
+                    viz_row = np.concatenate([viz_row] + extra_strips, axis=1)
                 Image.fromarray(viz_row).save(str(seg_viz_dir / f"{stem}.png"))
             idx += 1
 
@@ -322,7 +395,8 @@ def main():
         default_name = "eval_macvi" if args.macvi else "val_pred"
         save_dir = args.save_dir or (model_path.parent / default_name)
         acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
-            model, dataloader, device, save_dir=save_dir, macvi_format=args.macvi
+            model, dataloader, device, save_dir=save_dir, macvi_format=args.macvi,
+            modals=dataset_cfg.get('MODALS')
         )
         table = {
             'Class': list(dataset.CLASSES) + ['Mean'],
@@ -354,7 +428,10 @@ def main():
     else:
         default_name = "eval_macvi" if args.macvi else "test_pred"
         save_dir = args.save_dir or (model_path.parent / default_name)
-        run_test_inference(model, dataloader, device, save_dir, macvi_format=args.macvi)
+        run_test_inference(
+            model, dataloader, device, save_dir, macvi_format=args.macvi,
+            modals=dataset_cfg.get('MODALS')
+        )
 
 
 if __name__ == '__main__':

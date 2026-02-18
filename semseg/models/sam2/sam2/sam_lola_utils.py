@@ -260,6 +260,11 @@ class SoftMoE_LoRA_Layer(nn.Module):
         gate_logits = self.gate(x)  # (..., num_experts)
         gate_weights = F.softmax(gate_logits, dim=-1)  # (..., num_experts)
 
+        # For visualization: store spatial-mean gate weights (B, num_experts)
+        if hasattr(self, '_gate_callback') and self._gate_callback is not None:
+            gw_mean = gate_weights.mean(dim=tuple(range(gate_weights.dim()-1))).detach().cpu().numpy()
+            self._gate_callback(gw_mean)
+
         final_output = 0
         for i in range(self.num_experts):
             expert_out = self.experts_b[i](self.experts_a[i](x))
