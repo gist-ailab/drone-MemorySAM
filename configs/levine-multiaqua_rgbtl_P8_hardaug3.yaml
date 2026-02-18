@@ -18,16 +18,16 @@ DATASET:
   ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'    # dataset root path
   IGNORE_LABEL  : 255 
   MODALS        : ['img', 'lidar', 'thermal']                      # rgb + thermal + lidar (rgbtl)
-  # hardaug3: lj4 밝기 분포 기반 (DELIVER NIGHT mean 0.105, std 0.136 참고)
-  # 분석 스크립트: python scripts/analyze_lj4_brightness.py --root <DATASET_ROOT>
+  # hardaug3: lj4 밝기 분포 분석 결과 반영 (n=200, mean=0.055, std=0.04, p95=0.12)
+  # 분석: python scripts/analyze_lj4_brightness.py --root /ailab_mat2/.../MULTIAQUA_night
   NIGHT_AUG     :
     ENABLE      : true
-    NIGHT_SIM_P : 0.4        # 0.5→0.4. 과도한 야간 비율 완화
-    BRIGHTNESS_RANGE : [0.025, 0.42]   # lj4 p5~p95 근사 (분석 후 조정)
-    BRIGHTNESS_SAMPLING : dark_biased # uniform | log_uniform | dark_biased
+    NIGHT_SIM_P : 0.4        # 과도한 야간 비율 완화
+    BRIGHTNESS_RANGE : [0.020, 0.203]  # lj4 p5~p95+ (분석 결과)
+    BRIGHTNESS_SAMPLING : dark_biased  # uniform | log_uniform | dark_biased
     DARK_BIASED_RATIO  : 0.35          # 35% 극저조도, 65% moderate (실제 분포 정렬)
-    DARK_RANGE    : [0.03, 0.10]       # 극심한 저조도 (p5~p25 근사, 암실·그림자)
-    MODERATE_RANGE: [0.08, 0.38]       # moderate (p25~p95, 달빛·가로등·수면 반사)
+    DARK_RANGE    : [0.020, 0.035]     # 극심한 저조도 (lj4 p5~p25)
+    MODERATE_RANGE: [0.034, 0.173]     # moderate (lj4 p25~p95, 달빛·가로등·수면 반사)
     CONTRAST_RANGE   : [0.35, 0.72]
     GAMMA_RANGE     : [0.42, 0.82]
     NOISE_STD       : 0.02

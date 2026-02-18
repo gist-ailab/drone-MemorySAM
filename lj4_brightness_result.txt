@@ -1,0 +1,5 @@
+# lj4 brightness analysis - 200 samples
+# mean=0.0551 std=0.0400
+DARK_RANGE: [0.020, 0.035]
+MODERATE_RANGE: [0.034, 0.173]
+BRIGHTNESS_RANGE: [0.020, 0.203]
