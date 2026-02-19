@@ -1,6 +1,6 @@
 """
-LoRA/LoLA 공통 유틸: 실험 모델(LoRA_Sam_P1~P7)이 아닌 보조 클래스·함수.
-- MLP_my, _LoRA_qkv, ConfidenceHead, ConfidenceHeadV2
+LoRA/LoLA 공통 유틸: 실험 모델(LoRA_Sam_P1~P9)이 아닌 보조 클래스·함수.
+- MLP_my, _LoRA_qkv, ConfidenceHead, ConfidenceHeadV2, CrossModalFusionHead
 - MoE_LoRA_Layer, _MoE_LoRA_qkv
 - random_element_swap
 """
@@ -114,6 +114,55 @@ class ConfidenceHeadV2(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+
+class CrossModalFusionHead(nn.Module):
+    """
+    Cross-Modal Fusion Head (P9): 모든 모달리티 feature를 동시에 비교하여
+    상대적 융합 가중치를 산출.
+
+    기존 ConfidenceHeadV2는 각 모달리티를 독립 평가(sigmoid → 포화 → 균등화)하지만,
+    이 모듈은 모든 모달리티를 동시에 보고 상대 중요도를 비교한다.
+
+    구조: 공유 Compress(GAP+Linear) → Concat → Compare MLP → Softmax
+    """
+    def __init__(self, in_channels, num_modalities=3, hidden_dim=64, temperature=1.0):
+        super().__init__()
+        self.num_modalities = num_modalities
+        self.temperature = temperature
+
+        # 각 모달리티 feature를 동일한 compact space로 압축 (가중치 공유)
+        self.compress = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(in_channels, hidden_dim),
+            nn.ReLU()
+        )
+
+        # concat된 feature로 모달리티 간 상대 비교
+        self.compare = nn.Sequential(
+            nn.Linear(hidden_dim * num_modalities, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_modalities)
+        )
+
+        # Zero-init: 초기에 균등 (softmax([0,0,0])=[1/3,1/3,1/3]) → 학습 진행 시 차별화
+        nn.init.constant_(self.compare[-1].weight, 0)
+        nn.init.constant_(self.compare[-1].bias, 0)
+
+    def forward(self, features_list):
+        """
+        Args:
+            features_list: List of (B, C, H, W) — 각 모달리티의 backbone feature
+        Returns:
+            weights: (B, num_modalities) softmax 정규화된 가중치
+            logits:  (B, num_modalities) raw logits (시각화/디버깅용)
+        """
+        compressed = [self.compress(f) for f in features_list]
+        concat = torch.cat(compressed, dim=1)       # (B, hidden_dim * m)
+        logits = self.compare(concat)                # (B, m)
+        weights = F.softmax(logits / self.temperature, dim=1)  # (B, m)
+        return weights, logits
 
 
 class ConfidenceHead(nn.Module):

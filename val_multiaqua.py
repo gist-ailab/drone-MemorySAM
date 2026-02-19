@@ -5,7 +5,8 @@ MULTIAQUA 데이터셋용 Validation 및 Test Inference 스크립트.
 
 저장 구조 (val, test 공통):
   save_dir/seg/      : 클래스값 0,1,2,3 (uint8) raw segmentation (원본 크기) - 로컬 평가용
-  save_dir/seg_viz/  : [RGB | Seg(colored) | Overlay] 가로 concat 시각화 (원본 크기)
+  save_dir/seg_viz/  : [RGB | Seg(colored) | Overlay] + 하단 [UAMM | AMF | MoE] 시각화 (LoRA_Sam_P8)
+  save_dir/uamm_amf_moe_log.json : 이미지별 UAMM/AMF/MoE LoRA 수치 (LoRA_Sam_P8, --macvi 미사용시)
 
 MaCVi 리더보드 제출 시:
   --macvi 플래그로 실행하면 eval_macvi/에 세그멘테이션 마스크만 1-indexed 저장 (val/test 공통)
@@ -21,6 +22,7 @@ import argparse
 import yaml
 import os
 import time
+import json
 from pathlib import Path
 from tqdm import tqdm
 from tabulate import tabulate
@@ -123,64 +125,120 @@ def _unpad_resize_to_orig(pred: torch.Tensor, orig_h: int, orig_w: int, model_si
     return pred_resized
 
 
-def _draw_bar_chart(values, labels, title, target_h, fig_w=180):
-    """Draw a horizontal bar chart and return RGB numpy array resized to target_h height."""
-    fig, ax = plt.subplots(figsize=(fig_w / 100, max(2, target_h / 100)), dpi=100)
+def _draw_bar_chart(values, labels, title, target_h, target_w=None):
+    """Draw a horizontal bar chart with value labels. Returns RGB numpy array (target_h x target_w)."""
+    fig_w = target_w or max(320, target_h * 2)
+    fig, ax = plt.subplots(figsize=(fig_w / 80, target_h / 80), dpi=80)
     n = len(values)
     y_pos = np.arange(n)
     colors = plt.cm.viridis(np.linspace(0.2, 0.9, n))
-    bars = ax.barh(y_pos, values, color=colors, height=0.6)
+    bars = ax.barh(y_pos, values, color=colors, height=0.65)
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels, fontsize=8)
-    ax.set_xlim(0, 1.05)
-    ax.set_title(title, fontsize=9)
-    ax.set_xlabel('Weight' if 'Weight' in title or 'weight' in title else 'Score', fontsize=7)
-    fig.tight_layout(pad=0.5)
+    ax.set_yticklabels(labels, fontsize=22)
+    ax.set_xlim(0, 1.08)
+    ax.set_title(title, fontsize=24)
+    ax.set_xlabel('Weight' if 'Fusion' in title else 'Score', fontsize=18)
+    # 숫자 값 막대 옆에 표시
+    for i, (bar, val) in enumerate(zip(bars, values)):
+        txt = f'{val:.3f}' if val < 0.01 or val >= 0.1 else f'{val:.2f}'
+        ax.text(bar.get_width() + 0.015, bar.get_y() + bar.get_height() / 2, txt,
+                va='center', ha='left', fontsize=18, fontweight='bold')
+    fig.tight_layout(pad=0.8)
     fig.canvas.draw()
     buf = fig.canvas.buffer_rgba()
     w, h = fig.canvas.get_width_height()
     img = np.asarray(buf).reshape((h, w, 4))
     img = img[:, :, :3].copy()  # RGB only
     plt.close(fig)
-    # Resize to target height
     from PIL import Image
     pil_img = Image.fromarray(img)
-    scale = target_h / img.shape[0]
-    new_w = int(img.shape[1] * scale)
-    pil_img = pil_img.resize((new_w, target_h), Image.Resampling.LANCZOS)
+    out_w = target_w if target_w else int(img.shape[1] * (target_h / img.shape[0]))
+    pil_img = pil_img.resize((out_w, target_h), Image.Resampling.LANCZOS)
     return np.array(pil_img)
 
 
-def _get_uamm_amf_moe_viz(model, batch_idx, modals, target_h):
+def _get_uamm_amf_moe_log(model, batch_idx, modals):
     """
-    Build [UAMM | AMF | MoE] visualization strips for one sample.
-    Returns list of numpy arrays or empty list if not available.
+    Extract UAMM, AMF, MoE LoRA values for one sample as a dict for JSON logging.
+    Returns dict or None if model has no such attributes.
     """
     core = model.module if hasattr(model, 'module') else model
     if not hasattr(core, '_last_uamm_scores'):
-        return []
+        return None
 
     uamm = getattr(core, '_last_uamm_scores', None)
     amf = getattr(core, '_last_amf_weights', None)
     moe = getattr(core, '_last_moe_gates', None)
 
-    strips = []
     modal_labels = modals if modals else [f'M{i}' for i in range(uamm.shape[1] if uamm is not None else 0)]
+    log = {}
 
     if uamm is not None and batch_idx < uamm.shape[0]:
         arr = uamm[batch_idx]
-        strips.append(_draw_bar_chart(arr, modal_labels, 'UAMM (Memory Mod)', target_h))
+        log['uamm'] = {k: round(float(v), 4) for k, v in zip(modal_labels, arr)}
 
     if amf is not None and batch_idx < amf.shape[0]:
         arr = amf[batch_idx]
-        strips.append(_draw_bar_chart(arr, modal_labels, 'AMF (Fusion)', target_h))
+        log['amf'] = {k: round(float(v), 4) for k, v in zip(modal_labels, arr)}
 
-    if moe is not None and batch_idx < moe.shape[0]:
-        arr = np.atleast_1d(np.asarray(moe[batch_idx]))
+    if moe is not None:
+        moe_arr = np.asarray(moe)
+        if moe_arr.ndim == 1:
+            arr = moe_arr
+        else:
+            arr = moe_arr[batch_idx] if batch_idx < moe_arr.shape[0] else moe_arr[0]
+        log['moe'] = {f'E{i}': round(float(v), 4) for i, v in enumerate(arr)}
+
+    return log if log else None
+
+
+def _get_uamm_amf_moe_viz(model, batch_idx, modals, main_h, main_w):
+    """
+    Build [UAMM | AMF | MoE] visualization row for one sample.
+    - UAMM/AMF: modality labels = config MODALS (img, lidar, thermal) - 각 모달리티별 점수/가중치
+    - MoE: expert labels (E0,E1,...) - LoRA expert 선택 비율 (모달리티와 무관)
+    Returns single numpy array (viz_h x main_w) or None.
+    """
+    core = model.module if hasattr(model, 'module') else model
+    if not hasattr(core, '_last_uamm_scores'):
+        return None
+
+    uamm = getattr(core, '_last_uamm_scores', None)
+    amf = getattr(core, '_last_amf_weights', None)
+    moe = getattr(core, '_last_moe_gates', None)
+
+    viz_h = int(main_h * 0.55)  # 아래 row 높이: 메인의 55%
+    chart_w = (main_w + 2) // 3  # 3개 차트 가로 배분
+
+    modal_labels = modals if modals else [f'M{i}' for i in range(uamm.shape[1] if uamm is not None else 0)]
+    strips = []
+
+    if uamm is not None and batch_idx < uamm.shape[0]:
+        arr = uamm[batch_idx]
+        strips.append(_draw_bar_chart(arr, modal_labels, 'UAMM (Memory Mod)', viz_h, chart_w))
+
+    if amf is not None and batch_idx < amf.shape[0]:
+        arr = amf[batch_idx]
+        strips.append(_draw_bar_chart(arr, modal_labels, 'AMF (Fusion)', viz_h, chart_w))
+
+    if moe is not None:
+        # _last_moe_gates: (num_experts,) - batch dim 없음. (B,num_experts)일 수도 있음.
+        moe_arr = np.asarray(moe)
+        if moe_arr.ndim == 1:
+            arr = np.atleast_1d(moe_arr)  # (num_experts,) -> 전체 사용
+        else:
+            arr = np.atleast_1d(moe_arr[batch_idx])
         exp_labels = [f'E{i}' for i in range(len(arr))]
-        strips.append(_draw_bar_chart(arr, exp_labels, 'MoE LoRA (Experts)', target_h))
+        strips.append(_draw_bar_chart(arr, exp_labels, 'MoE LoRA (Experts)', viz_h, chart_w))
 
-    return strips
+    if not strips:
+        return None
+    bottom = np.concatenate(strips, axis=1)
+    # 너비가 main_w와 다를 수 있으므로 리사이즈
+    if bottom.shape[1] != main_w:
+        from PIL import Image
+        bottom = np.array(Image.fromarray(bottom).resize((main_w, viz_h), Image.Resampling.LANCZOS))
+    return bottom
 
 
 def _collate_multiaqua(batch):
@@ -222,6 +280,7 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
             seg_viz_dir.mkdir(parents=True, exist_ok=True)
 
     modals = modals or getattr(dataloader.dataset, 'modals', ['img', 'lidar', 'thermal'])
+    uamm_amf_moe_log = {}  # per-image UAMM/AMF/MoE for JSON
 
     for images, labels, metas in tqdm(dataloader, desc="Val"):
         images = [x.to(device) for x in images]
@@ -262,10 +321,24 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
                     rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
                     overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
                     viz_row = np.concatenate([rgb, colored, overlay], axis=1)
-                    extra_strips = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0])
-                    if extra_strips:
-                        viz_row = np.concatenate([viz_row] + extra_strips, axis=1)
+                    viz_bottom = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0], viz_row.shape[1])
+                    if viz_bottom is not None:
+                        viz_row = np.concatenate([viz_row, viz_bottom], axis=0)
                     Image.fromarray(viz_row).save(str(seg_viz_dir / f"{stem}.png"))
+                    # JSON 로깅: 이미지별 UAMM, AMF, MoE LoRA
+                    img_log = _get_uamm_amf_moe_log(model, b, modals)
+                    if img_log is not None:
+                        uamm_amf_moe_log[stem] = img_log
+
+    # save_dir에 uamm_amf_moe_log.json 저장
+    if save_dir and not macvi_format and uamm_amf_moe_log:
+        log_path = save_dir / "uamm_amf_moe_log.json"
+        with open(log_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "meta": {"modals": modals, "split": "val", "n_images": len(uamm_amf_moe_log)},
+                "images": uamm_amf_moe_log,
+            }, f, indent=2, ensure_ascii=False)
+        print(f"UAMM/AMF/MoE log saved to {log_path}")
 
     ious, miou = metrics.compute_iou()
     acc, macc = metrics.compute_pixel_acc()
@@ -298,6 +371,7 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
         seg_viz_dir.mkdir(parents=True, exist_ok=True)
 
     modals = modals or getattr(dataloader.dataset, 'modals', ['img', 'lidar', 'thermal'])
+    uamm_amf_moe_log = {}  # per-image UAMM/AMF/MoE for JSON
     idx = 0
     total_inference_time = 0.0
     for images, _, metas in tqdm(dataloader, desc="Test inference"):
@@ -330,11 +404,25 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
                 rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
                 overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
                 viz_row = np.concatenate([rgb, colored, overlay], axis=1)
-                extra_strips = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0])
-                if extra_strips:
-                    viz_row = np.concatenate([viz_row] + extra_strips, axis=1)
+                viz_bottom = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0], viz_row.shape[1])
+                if viz_bottom is not None:
+                    viz_row = np.concatenate([viz_row, viz_bottom], axis=0)
                 Image.fromarray(viz_row).save(str(seg_viz_dir / f"{stem}.png"))
+                # JSON 로깅: 이미지별 UAMM, AMF, MoE LoRA
+                img_log = _get_uamm_amf_moe_log(model, b, modals)
+                if img_log is not None:
+                    uamm_amf_moe_log[stem] = img_log
             idx += 1
+
+    # save_dir에 uamm_amf_moe_log.json 저장
+    if not macvi_format and uamm_amf_moe_log:
+        log_path = save_dir / "uamm_amf_moe_log.json"
+        with open(log_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "meta": {"modals": modals, "split": "test", "n_images": len(uamm_amf_moe_log)},
+                "images": uamm_amf_moe_log,
+            }, f, indent=2, ensure_ascii=False)
+        print(f"UAMM/AMF/MoE log saved to {log_path}")
 
     fps = idx / total_inference_time if total_inference_time > 0 else 0.0
     if macvi_format:
