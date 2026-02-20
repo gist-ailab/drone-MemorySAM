@@ -147,7 +147,12 @@ class MULTIAQUA(Dataset):
             # MULTIAQUA: 0=Recording Boat(ignore), 1=Static, 2=Dynamic, 3=Water, 4=Sky
             # Output: 0=Static, 1=Dynamic, 2=Water, 3=Sky, 255=ignore
             label = label.numpy().astype(np.int64)
-            orig_label = np.where(label == 0, 255, np.where(label == 255, 255, label - 1))
+            # 유효 클래스(1~4)만 리매핑, 나머지(0, 5+, 255 등)는 모두 ignore(255)
+            orig_label = np.where(
+                (label >= 1) & (label <= 4),
+                label - 1,   # 1→0, 2→1, 3→2, 4→3
+                255           # 0(Recording Boat), 255, 기타 → ignore
+            )
             sample["mask"] = torch.from_numpy(orig_label.copy()).unsqueeze(0)  # (1, H, W)
             mh, mw = int(sample["mask"].shape[1]), int(sample["mask"].shape[2])
             assert (mh, mw) == (int(H), int(W)), f"stem={stem} img={H}x{W} mask={mh}x{mw}"
