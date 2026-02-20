@@ -1661,10 +1661,6 @@ class LoRA_Sam_P10(nn.Module):
             for _ in range(num_modalities)
         ])
 
-        # Runtime buffers
-        self._aux_outputs = None        # List[(B, num_classes, H_feat, W_feat)], training 시 gradient 유지
-        self._amf_weights_grad = None   # (B, m) with gradients, training 시 gradient 유지
-
         # Visualization buffers (항상 detach)
         self._last_uamm_scores = None
         self._last_amf_weights = None
@@ -1754,14 +1750,6 @@ class LoRA_Sam_P10(nn.Module):
                 m_output = m_output + output[i] * wi
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
-            # [P10] Training용 버퍼 저장 (gradient 유지 — gating aux loss 계산에 사용)
-            if self.training:
-                self._aux_outputs = aux_outputs        # List[(B, C, H_feat, W_feat)]
-                self._amf_weights_grad = amf_weights   # (B, m) — gradient 유지
-            else:
-                self._aux_outputs = None
-                self._amf_weights_grad = None
-
             # Visualization용 버퍼 (detach)
             self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
             self._last_amf_weights = amf_weights.detach().cpu().numpy()
@@ -1774,6 +1762,10 @@ class LoRA_Sam_P10(nn.Module):
             for layer in self.moe_layers_q + self.moe_layers_v:
                 layer._gate_callback = None
 
+        # [P10] aux_outputs, amf_weights를 리턴값에 포함
+        # → DDP가 aux_heads 파라미터를 "used"로 인식하여 gradient hook 충돌 방지
+        if self.training:
+            return m_output, m_feat, aux_outputs, amf_weights
         return m_output, m_feat
 
     def save_lora_parameters(self, filename: str) -> None:

@@ -390,22 +390,27 @@ def main(cfg, gpu, save_dir):
             lbl = lbl.to(device)
             
             with autocast(enabled=train_cfg['AMP']):
-                output, m_feat = model(sample, multimask_output=True)
+                # P10+: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
+                # 그 외: (output, m_feat) 리턴
+                model_out = model(sample, multimask_output=True)
+                if len(model_out) == 4:
+                    output, m_feat, aux_outputs, amf_weights = model_out
+                else:
+                    output, m_feat = model_out
+                    aux_outputs, amf_weights = None, None
                 logits = output
 
                 loss_orig = loss_fn(logits, lbl)
                 protoloss = prototypeseg.compute_loss(m_feat, lbl) * 256 * 256
 
                 # [P10] Gating Auxiliary Loss
-                # 모델이 _aux_outputs를 갖고 있을 때만 (LoRA_Sam_P10+)
+                # forward에서 aux_outputs를 리턴받았을 때만 (LoRA_Sam_P10+)
                 gating_loss = torch.tensor(0.0, device=device)
-                core = model.module if hasattr(model, 'module') else model
-                if (getattr(core, '_aux_outputs', None) is not None
-                        and core._amf_weights_grad is not None):
+                if aux_outputs is not None and amf_weights is not None:
                     lbl_size = lbl.shape[-2:]
                     # Per-image, per-modality aux loss (reduction='none' → (B,))
                     aux_losses_per_img = []
-                    for ao in core._aux_outputs:
+                    for ao in aux_outputs:
                         ao_up = F.interpolate(ao, size=lbl_size,
                                               mode='bilinear', align_corners=False)
                         loss_per_img = F.cross_entropy(
@@ -419,7 +424,7 @@ def main(cfg, gpu, save_dir):
                         oracle = F.softmax(-aux_losses_stacked.detach(), dim=1)  # (B, m)
 
                     # KL(AMF || oracle): gating이 oracle 분포를 따르도록
-                    amf = core._amf_weights_grad  # (B, m), gradient 유지
+                    amf = amf_weights  # (B, m), gradient 유지
                     gating_kl = F.kl_div(
                         (amf + 1e-8).log(), oracle, reduction='batchmean'
                     )
@@ -428,8 +433,8 @@ def main(cfg, gpu, save_dir):
                     aux_seg = sum(
                         loss_fn(F.interpolate(ao, size=lbl_size,
                                               mode='bilinear', align_corners=False), lbl)
-                        for ao in core._aux_outputs
-                    ) / len(core._aux_outputs)
+                        for ao in aux_outputs
+                    ) / len(aux_outputs)
 
                     gating_loss = gating_kl + 0.3 * aux_seg
 
