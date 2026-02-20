@@ -25,9 +25,13 @@ MoE-LoRA~\cite{zhu2024moe} employs hard top-$k$ routing, where only $k$ out of $
 When the number of experts is small (\eg, 3 experts matching 3 modalities), top-$k$ routing discards significant expert capacity.
 Following insights from Soft Mixtures of Experts~\cite{puigcerver2024softmoe}, we adopt soft gating where all experts contribute via softmax-weighted combination, ensuring full expert utilization in this low-expert regime.
 
-\noindent\textbf{(2) Hybrid modulation for memory and fusion.}
-We employ sigmoid-based scoring for memory modulation, allowing each modality's features to be independently suppressed when unreliable, and L1-normalized scoring for output fusion, enabling relative comparison across modalities.
-This separation reflects the different roles of the two operations: absolute quality gating versus relative importance weighting.
+\noindent\textbf{(2) Quality-aware cross-modal scoring with gating oracle supervision.}
+Prior approaches~\cite{chen2025memorysam} estimate each modality's quality independently, which can suffer from sigmoid saturation---when all logits are large, scores converge to ${\sim}1.0$ regardless of actual quality differences.
+We replace independent scoring with a cross-modal fusion head that jointly compares all modality features, producing softmax-normalized relative weights.
+To enable the gating to respond to per-image quality variation rather than converging to static weights, we enrich the feature representation with quality-sensitive statistics (global average pooling, global max pooling, and channel-wise standard deviation) and use modality-specific compression networks.
+Crucially, the segmentation objective alone provides insufficient gradient signal to drive adaptive gating, since a fixed weighting can already minimize this loss.
+We therefore introduce per-modality auxiliary segmentation heads that produce independent per-image quality estimates; oracle gating weights are derived from these estimates and used to supervise the fusion head via KL divergence, providing a direct training signal for adaptivity.
+The learned weights are applied through two distinct paths: max-normalized for memory modulation (preserving the best modality at full strength) and as raw softmax for output fusion (weighting contributions proportionally).
 
 \noindent\textbf{(3) Night-robust RGB augmentation.}
 To bridge the day-night domain gap using only daytime training data, we apply aggressive RGB corruption including extreme brightness reduction (factor 0.03--0.25), complementary random masking~\cite{shin2024crm} that zeros out 20--50\% of spatial regions, and stochastic full-channel zeroing simulating complete RGB failure.

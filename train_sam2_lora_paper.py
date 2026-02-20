@@ -228,6 +228,9 @@ def main(cfg, gpu, save_dir):
         model_kwargs['num_experts'] = lora_num_experts
     if 'top_k' in sig.parameters:
         model_kwargs['top_k'] = lora_top_k
+    if 'num_classes' in sig.parameters:
+        # P10+: num_classes는 config의 LORA_NUM_CLASSES 또는 기본값 4
+        model_kwargs['num_classes'] = model_cfg.get('LORA_NUM_CLASSES', 4)
     
     model = lora_model_class(**model_kwargs).cpu()
     
@@ -285,6 +288,8 @@ def main(cfg, gpu, save_dir):
     iters_per_epoch = len(trainset) // (train_cfg['BATCH_SIZE'] * gpus)
 
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
+    # [P10] Gating aux loss 가중치: config에서 읽거나 기본값 사용
+    lambda_gate = train_cfg.get('LAMBDA_GATE', 0.5)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     scheduler = get_scheduler(
@@ -367,8 +372,9 @@ def main(cfg, gpu, save_dir):
     for epoch in range(start_epoch, epochs):
         model.train()
         if train_cfg['DDP']: sampler.set_epoch(epoch)
-        train_loss = 0.0  
-        proto_loss = 0.0 
+        train_loss = 0.0
+        proto_loss = 0.0
+        gate_loss_accum = 0.0
        
     
         lr = scheduler.get_lr()
@@ -386,12 +392,49 @@ def main(cfg, gpu, save_dir):
             with autocast(enabled=train_cfg['AMP']):
                 output, m_feat = model(sample, multimask_output=True)
                 logits = output
-                
+
                 loss_orig = loss_fn(logits, lbl)
                 protoloss = prototypeseg.compute_loss(m_feat, lbl) * 256 * 256
-                
+
+                # [P10] Gating Auxiliary Loss
+                # 모델이 _aux_outputs를 갖고 있을 때만 (LoRA_Sam_P10+)
+                gating_loss = torch.tensor(0.0, device=device)
+                core = model.module if hasattr(model, 'module') else model
+                if (getattr(core, '_aux_outputs', None) is not None
+                        and core._amf_weights_grad is not None):
+                    lbl_size = lbl.shape[-2:]
+                    # Per-image, per-modality aux loss (reduction='none' → (B,))
+                    aux_losses_per_img = []
+                    for ao in core._aux_outputs:
+                        ao_up = F.interpolate(ao, size=lbl_size,
+                                              mode='bilinear', align_corners=False)
+                        loss_per_img = F.cross_entropy(
+                            ao_up, lbl, ignore_index=255, reduction='none'
+                        ).mean(dim=[-2, -1])  # (B,)
+                        aux_losses_per_img.append(loss_per_img)
+
+                    # Oracle: 낮은 aux loss → 높은 oracle weight
+                    aux_losses_stacked = torch.stack(aux_losses_per_img, dim=1)  # (B, m)
+                    with torch.no_grad():
+                        oracle = F.softmax(-aux_losses_stacked.detach(), dim=1)  # (B, m)
+
+                    # KL(AMF || oracle): gating이 oracle 분포를 따르도록
+                    amf = core._amf_weights_grad  # (B, m), gradient 유지
+                    gating_kl = F.kl_div(
+                        (amf + 1e-8).log(), oracle, reduction='batchmean'
+                    )
+
+                    # Aux seg loss: aux head 자체도 segmentation을 잘 하도록
+                    aux_seg = sum(
+                        loss_fn(F.interpolate(ao, size=lbl_size,
+                                              mode='bilinear', align_corners=False), lbl)
+                        for ao in core._aux_outputs
+                    ) / len(core._aux_outputs)
+
+                    gating_loss = gating_kl + 0.3 * aux_seg
+
                 # [수정] 전체 Loss를 accumulation_steps로 나누어야 정확한 그라디언트 평균이 계산됩니다.
-                total_loss_unscaled = loss_orig + protoloss
+                total_loss_unscaled = loss_orig + protoloss + lambda_gate * gating_loss
                 loss = total_loss_unscaled / accumulation_steps
 
             scaler.scale(loss).backward()
@@ -413,9 +456,14 @@ def main(cfg, gpu, save_dir):
             # train_loss += loss.item()
             train_loss += total_loss_unscaled.item()
             proto_loss += protoloss.item()
-            
-            
-            pbar.set_description(f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] LR: {lr:.8f} Loss: {train_loss / (iter+1):.8f} Proto Loss: {proto_loss / (iter+1):.8f}")
+            gate_loss_accum += gating_loss.item()
+
+            pbar.set_description(
+                f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "
+                f"LR: {lr:.8f} Loss: {train_loss/(iter+1):.6f} "
+                f"Proto: {proto_loss/(iter+1):.6f} "
+                f"Gate: {gate_loss_accum/(iter+1):.6f}"
+            )
         
         train_loss /= iter+1
         proto_loss /= iter+1

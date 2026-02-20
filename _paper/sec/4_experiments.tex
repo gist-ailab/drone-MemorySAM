@@ -13,7 +13,7 @@ We use SAM2 (Hiera-based backbone) as the foundation model with LoRA rank $r{=}4
 All images are resized to $1024 \times 1024$.
 We train for 200 epochs with AdamW optimizer (learning rate $6 \times 10^{-4}$, weight decay $0.01$) using a warmup-polynomial learning rate schedule (10 warmup epochs, power $0.9$).
 The batch size is 1 per GPU with gradient accumulation, and we use Online Hard Example Mining (OHEM) cross-entropy loss with the prototype segmentation loss (\cref{sec:proto_loss}).
-SAM2's image encoder is frozen; only the Soft-MoE LoRA layers, confidence head, prompt encoder, and mask decoder are trained.
+SAM2's image encoder is frozen; only the Soft-MoE LoRA layers, cross-modal fusion head, prompt encoder, and mask decoder are trained.
 Training is conducted with PyTorch DDP on NVIDIA GPUs.
 
 \noindent\textbf{Evaluation metric.}

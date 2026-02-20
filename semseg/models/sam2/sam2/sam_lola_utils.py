@@ -165,6 +165,92 @@ class CrossModalFusionHead(nn.Module):
         return weights, logits
 
 
+class CrossModalFusionHeadV2(nn.Module):
+    """
+    Cross-Modal Fusion Head V2 (P10): Quality-Aware Adaptive Gating
+
+    P9(V1) 문제:
+      - 공유 GAP+Linear가 semantic feature만 압축 → 이미지 품질 정보 소실
+      - 모든 장면에서 동일한 압축 → gating이 상수로 수렴 (thermal≈1.0, lidar≈0.96, img≈0.74 고정)
+
+    P10(V2) 개선:
+      1. Multi-pool: GAP + GMP + Channel Std → 품질 proxy 정보 포함
+         - Std: 텍스처/노이즈 정도 (값이 클수록 정보량 많음)
+         - GMP: 가장 강한 활성 (peak signal 강도)
+      2. Per-modality 별도 compress: 모달리티별 특성(온도/반사율/색상) 독립 학습
+    """
+
+    def __init__(self, in_channels, num_modalities=3, hidden_dim=64, temperature=1.0):
+        super().__init__()
+        self.num_modalities = num_modalities
+        self.temperature = temperature
+
+        # Per-modality 별도 compress: GAP+GMP+Std → (B, C*3) → (B, hidden_dim)
+        self.compresses = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(in_channels * 3, hidden_dim),
+                nn.ReLU()
+            )
+            for _ in range(num_modalities)
+        ])
+
+        # concat된 feature로 모달리티 간 상대 비교 (P9와 동일 구조)
+        self.compare = nn.Sequential(
+            nn.Linear(hidden_dim * num_modalities, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_modalities)
+        )
+
+        # Zero-init: 초기에 균등 (softmax([0,0,0])=[1/3,1/3,1/3])
+        nn.init.constant_(self.compare[-1].weight, 0)
+        nn.init.constant_(self.compare[-1].bias, 0)
+
+    def _multi_pool(self, x):
+        """(B, C, H, W) → (B, C*3): GAP + GMP + Channel Std"""
+        gap = F.adaptive_avg_pool2d(x, 1).flatten(1)   # (B, C) — 평균 신호 강도
+        gmp = F.adaptive_max_pool2d(x, 1).flatten(1)   # (B, C) — 최대 활성 (salient)
+        std = x.flatten(2).std(dim=2)                   # (B, C) — 텍스처/노이즈 정도
+        return torch.cat([gap, gmp, std], dim=1)        # (B, C*3)
+
+    def forward(self, features_list):
+        """
+        Args:
+            features_list: List of (B, C, H, W)
+        Returns:
+            weights: (B, num_modalities) softmax 정규화된 가중치
+            logits:  (B, num_modalities) raw logits
+        """
+        pooled = [self._multi_pool(f) for f in features_list]              # List of (B, C*3)
+        compressed = [self.compresses[i](p) for i, p in enumerate(pooled)] # List of (B, hidden)
+        concat = torch.cat(compressed, dim=1)                               # (B, hidden*m)
+        logits = self.compare(concat)                                       # (B, m)
+        weights = F.softmax(logits / self.temperature, dim=1)
+        return weights, logits
+
+
+class ModalAuxHead(nn.Module):
+    """
+    Per-modality lightweight auxiliary segmentation head (P10).
+
+    목적: 각 모달리티의 독립 예측 품질을 측정 → gating oracle 생성
+    구조: backbone_fpn feature → (B, num_classes, H_feat, W_feat)
+    학습 신호: per-modality aux loss → oracle weight → KL로 gating 지도
+    """
+
+    def __init__(self, in_channels, num_classes):
+        super().__init__()
+        mid = max(in_channels // 4, 32)
+        self.head = nn.Sequential(
+            nn.Conv2d(in_channels, mid, 1, bias=False),
+            nn.BatchNorm2d(mid),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid, num_classes, 1)
+        )
+
+    def forward(self, x):
+        return self.head(x)   # (B, num_classes, H_feat, W_feat)
+
+
 class ConfidenceHead(nn.Module):
     """
     Lightweight module to estimate the confidence of a modality based on its features.
