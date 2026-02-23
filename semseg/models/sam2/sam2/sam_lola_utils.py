@@ -261,89 +261,57 @@ class InputQualityEstimator(nn.Module):
       near-uniform oracle을 생성한다.
 
     해결:
-      Encoder 이전의 raw input에서 직접 품질 metrics를 추출하여
-      encoder-independent quality signal을 생성한다.
+      Encoder 이전의 raw input에서 직접 품질을 추정하는 lightweight CNN.
+      Per-modality 독립 네트워크로, 각 센서 타입(RGB/Thermal/LiDAR)이
+      자신만의 quality metric을 학습한다.
 
-    Quality features per modality (K=5):
-      1. brightness:  mean pixel intensity (정규화된 평균 밝기)
-      2. contrast:    std of pixel intensities (대비)
-      3. entropy:     spatial information content (정보 엔트로피 proxy)
-      4. high_freq:   Laplacian energy (texture/noise 에너지)
-      5. snr:         signal-to-noise ratio (mean / (std + eps))
+      - RGB: 야간 brightness 저하, noise 증가 등을 학습
+      - Thermal: thermal contrast 패턴, saturation 등을 학습
+      - LiDAR: point density, spatial coverage 등을 학습
+
+    구조 (per modality, ~15K params):
+      Conv(3→16, 7×7, stride=8) → ReLU → Conv(16→32, 5×5, stride=4)
+      → ReLU → GAP → Linear(32→1)
+
+    설계 원칙:
+      - Fully learnable: handcrafted feature 없이 end-to-end 학습
+      - Per-modality: 센서별 독립 네트워크 (RGB/Thermal/LiDAR 특성 차이 반영)
+      - Lightweight: aggressive stride로 1024→128→32→1 빠른 축소
+      - Zero-init output: 학습 초기 uniform weight 보장
     """
 
-    def __init__(self, num_modalities=3, hidden_dim=32):
+    def __init__(self, num_modalities=3, in_channels=3, hidden_dim=32):
         super().__init__()
-        self.num_features = 5  # brightness, contrast, entropy, high_freq, snr
 
-        # Per-modality MLP: (B, K) → (B, 1)
-        self.quality_mlps = nn.ModuleList([
+        # Per-modality lightweight CNN: raw input → quality score
+        self.quality_nets = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(self.num_features, hidden_dim),
+                nn.Conv2d(in_channels, 16, 7, stride=8, padding=3),   # 1024→128
                 nn.ReLU(),
+                nn.Conv2d(16, hidden_dim, 5, stride=4, padding=2),    # 128→32
+                nn.ReLU(),
+                nn.AdaptiveAvgPool2d(1),                              # 32→1
+                nn.Flatten(),
                 nn.Linear(hidden_dim, 1),
             )
             for _ in range(num_modalities)
         ])
 
-        # Zero-init: 초기에 모든 quality score = 0 → oracle uniform
-        for mlp in self.quality_mlps:
-            nn.init.constant_(mlp[-1].weight, 0)
-            nn.init.constant_(mlp[-1].bias, 0)
-
-        # Laplacian kernel (fixed, non-learnable)
-        lap = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]],
-                           dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1,1,3,3)
-        self.register_buffer('laplacian_kernel', lap)
-
-    @torch.no_grad()
-    def _compute_quality_features(self, x):
-        """
-        Raw input → quality features.
-        Args:
-            x: (B, C, H, W) raw modality input (0~1 normalized)
-        Returns:
-            (B, K) quality feature vector
-        """
-        # Channel-mean grayscale
-        gray = x.mean(dim=1, keepdim=True)  # (B, 1, H, W)
-
-        # 1. brightness: mean pixel intensity
-        brightness = gray.mean(dim=[2, 3]).squeeze(1)  # (B,)
-
-        # 2. contrast: std of pixel intensities
-        contrast = gray.flatten(2).std(dim=2).squeeze(1)  # (B,)
-
-        # 3. entropy proxy: normalized histogram variance
-        # (differentiability 불필요 - detach 영역이므로 simple 구현)
-        flat = gray.flatten(2)  # (B, 1, H*W)
-        # Bin-free entropy proxy: log of the number of unique intensity levels
-        # → 빠른 대안: pixel value의 분산과 범위의 곱
-        val_range = flat.max(dim=2)[0] - flat.min(dim=2)[0]  # (B, 1)
-        entropy_proxy = (contrast * val_range.squeeze(1)).clamp(min=1e-8).log()  # (B,)
-
-        # 4. high_freq: Laplacian energy (texture/noise)
-        lap_kernel = self.laplacian_kernel.expand(1, 1, 3, 3)
-        laplacian = F.conv2d(gray, lap_kernel, padding=1)  # (B, 1, H, W)
-        high_freq = (laplacian ** 2).mean(dim=[1, 2, 3])   # (B,)
-
-        # 5. snr: signal-to-noise ratio
-        snr = brightness / (contrast + 1e-8)  # (B,)
-
-        features = torch.stack([brightness, contrast, entropy_proxy, high_freq, snr], dim=1)  # (B, 5)
-        return features
+        # Zero-init output layer: 초기에 모든 quality score = 0 → uniform gating
+        for net in self.quality_nets:
+            nn.init.constant_(net[-1].weight, 0)
+            nn.init.constant_(net[-1].bias, 0)
 
     def forward(self, raw_inputs):
         """
         Args:
-            raw_inputs: List of (B, C, H, W) — 각 modality의 raw input (0~1 정규화)
+            raw_inputs: List of (B, C, H, W) — 각 modality의 raw input
         Returns:
             quality_scores: (B, num_modalities) — per-modality quality score (logit)
         """
         scores = []
         for i, x in enumerate(raw_inputs):
-            feats = self._compute_quality_features(x)  # (B, 5), no grad
-            score = self.quality_mlps[i](feats)         # (B, 1), with grad
+            score = self.quality_nets[i](x)  # (B, 1)
             scores.append(score)
         return torch.cat(scores, dim=1)  # (B, m)
 
@@ -578,6 +546,12 @@ class SoftMoE_LoRA_Layer(nn.Module):
         if hasattr(self, '_gate_callback') and self._gate_callback is not None:
             gw_mean = gate_weights.mean(dim=tuple(range(gate_weights.dim()-1))).detach().cpu().numpy()
             self._gate_callback(gw_mean)
+
+        # [P11] MI loss용: gradient 유지한 채 spatial mean gate distribution 수집
+        if hasattr(self, '_grad_gate_collector') and self._grad_gate_collector is not None:
+            # (B, H, W, E) → (B, E) or (B, N, E) → (B, E)
+            gate_mean = gate_weights.mean(dim=tuple(range(1, gate_weights.dim() - 1)))
+            self._grad_gate_collector.append(gate_mean)
 
         final_output = 0
         for i in range(self.num_experts):

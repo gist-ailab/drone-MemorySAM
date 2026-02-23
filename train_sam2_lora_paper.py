@@ -290,6 +290,8 @@ def main(cfg, gpu, save_dir):
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     # [P10] Gating aux loss 가중치: config에서 읽거나 기본값 사용
     lambda_gate = train_cfg.get('LAMBDA_GATE', 0.5)
+    # [P11] MI routing loss 가중치
+    lambda_mi = train_cfg.get('LAMBDA_MI', 1.0)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     scheduler = get_scheduler(
@@ -375,6 +377,7 @@ def main(cfg, gpu, save_dir):
         train_loss = 0.0
         proto_loss = 0.0
         gate_loss_accum = 0.0
+        mi_loss_accum = 0.0
        
     
         lr = scheduler.get_lr()
@@ -390,29 +393,28 @@ def main(cfg, gpu, save_dir):
             lbl = lbl.to(device)
             
             with autocast(enabled=train_cfg['AMP']):
-                # P11: forward가 (output, m_feat, aux_outputs, amf_weights, iq_scores) 리턴
+                # P11: forward가 (output, m_feat, aux_outputs, amf_weights, gate_dists) 리턴
                 # P10: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
                 # 그 외: (output, m_feat) 리턴
                 model_out = model(sample, multimask_output=True)
                 if len(model_out) == 5:
-                    output, m_feat, aux_outputs, amf_weights, iq_scores = model_out
+                    output, m_feat, aux_outputs, amf_weights, gate_dists = model_out
                 elif len(model_out) == 4:
                     output, m_feat, aux_outputs, amf_weights = model_out
-                    iq_scores = None
+                    gate_dists = None
                 else:
                     output, m_feat = model_out
                     aux_outputs, amf_weights = None, None
-                    iq_scores = None
+                    gate_dists = None
                 logits = output
 
                 loss_orig = loss_fn(logits, lbl)
                 protoloss = prototypeseg.compute_loss(m_feat, lbl) * 256 * 256
 
-                # [P10/P11] Gating Auxiliary Loss
+                # [P10/P11] Gating Auxiliary Loss (oracle KL + aux seg)
                 gating_loss = torch.tensor(0.0, device=device)
                 if aux_outputs is not None and amf_weights is not None:
                     lbl_size = lbl.shape[-2:]
-                    # Per-image, per-modality aux loss (reduction='none' → (B,))
                     aux_losses_per_img = []
                     for ao in aux_outputs:
                         ao_up = F.interpolate(ao, size=lbl_size,
@@ -422,48 +424,42 @@ def main(cfg, gpu, save_dir):
                         ).mean(dim=[-2, -1])  # (B,)
                         aux_losses_per_img.append(loss_per_img)
 
-                    # Oracle: 낮은 aux loss → 높은 oracle weight
                     aux_losses_stacked = torch.stack(aux_losses_per_img, dim=1)  # (B, m)
                     with torch.no_grad():
                         oracle = F.softmax(-aux_losses_stacked.detach(), dim=1)  # (B, m)
 
-                    if iq_scores is not None:
-                        # [P11] Dual oracle loss: IQE oracle + Feature oracle
-                        # 1) IQ oracle KL: IQE 점수가 oracle을 따르도록
-                        iq_weights = F.softmax(iq_scores, dim=1)  # (B, m)
-                        iq_oracle_kl = F.kl_div(
-                            (iq_weights + 1e-8).log(), oracle, reduction='batchmean'
-                        )
-                        # 2) Feature oracle KL: AMF gating이 oracle을 따르도록
-                        feat_oracle_kl = F.kl_div(
-                            (amf_weights + 1e-8).log(), oracle, reduction='batchmean'
-                        )
-                        # 3) Aux seg loss
-                        aux_seg = sum(
-                            loss_fn(F.interpolate(ao, size=lbl_size,
-                                                  mode='bilinear', align_corners=False), lbl)
-                            for ao in aux_outputs
-                        ) / len(aux_outputs)
+                    amf = amf_weights  # (B, m), gradient 유지
+                    gating_kl = F.kl_div(
+                        (amf + 1e-8).log(), oracle, reduction='batchmean'
+                    )
+                    aux_seg = sum(
+                        loss_fn(F.interpolate(ao, size=lbl_size,
+                                              mode='bilinear', align_corners=False), lbl)
+                        for ao in aux_outputs
+                    ) / len(aux_outputs)
 
-                        gating_loss = iq_oracle_kl + feat_oracle_kl + 0.3 * aux_seg
-                    else:
-                        # [P10] Single oracle loss
-                        amf = amf_weights  # (B, m), gradient 유지
-                        gating_kl = F.kl_div(
-                            (amf + 1e-8).log(), oracle, reduction='batchmean'
-                        )
+                    gating_loss = gating_kl + 0.3 * aux_seg
 
-                        # Aux seg loss: aux head 자체도 segmentation을 잘 하도록
-                        aux_seg = sum(
-                            loss_fn(F.interpolate(ao, size=lbl_size,
-                                                  mode='bilinear', align_corners=False), lbl)
-                            for ao in aux_outputs
-                        ) / len(aux_outputs)
+                # [P11] MI Routing Loss: MoE expert specialization
+                mi_loss = torch.tensor(0.0, device=device)
+                if gate_dists is not None and len(gate_dists) > 1:
+                    stacked = torch.stack(gate_dists, dim=0)  # (m, B, E)
 
-                        gating_loss = gating_kl + 0.3 * aux_seg
+                    # Conditional entropy: 각 입력이 decisive하게 routing하는가 (낮을수록 좋음)
+                    cond_ent = -(stacked * (stacked + 1e-8).log()).sum(dim=-1)  # (m, B)
+                    cond_entropy = cond_ent.mean()
 
-                # [수정] 전체 Loss를 accumulation_steps로 나누어야 정확한 그라디언트 평균이 계산됩니다.
-                total_loss_unscaled = loss_orig + protoloss + lambda_gate * gating_loss
+                    # Marginal entropy: 전체적으로 expert를 골고루 쓰는가 (높을수록 좋음)
+                    marginal = stacked.mean(dim=0)  # (B, E)
+                    marg_entropy = -(marginal * (marginal + 1e-8).log()).sum(dim=-1).mean()
+
+                    # MI = marg_entropy - cond_entropy → maximize → minimize (cond - marg)
+                    mi_loss = cond_entropy - marg_entropy
+
+                # 전체 Loss
+                total_loss_unscaled = (loss_orig + protoloss
+                                       + lambda_gate * gating_loss
+                                       + lambda_mi * mi_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             scaler.scale(loss).backward()
@@ -486,12 +482,14 @@ def main(cfg, gpu, save_dir):
             train_loss += total_loss_unscaled.item()
             proto_loss += protoloss.item()
             gate_loss_accum += gating_loss.item()
+            mi_loss_accum += mi_loss.item()
 
             pbar.set_description(
                 f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "
                 f"LR: {lr:.8f} Loss: {train_loss/(iter+1):.6f} "
                 f"Proto: {proto_loss/(iter+1):.6f} "
-                f"Gate: {gate_loss_accum/(iter+1):.6f}"
+                f"Gate: {gate_loss_accum/(iter+1):.6f} "
+                f"MI: {mi_loss_accum/(iter+1):.6f}"
             )
         
         train_loss /= iter+1

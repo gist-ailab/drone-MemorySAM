@@ -7,7 +7,7 @@ MODEL:
   PRETRAINED    : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth'
   RESUME_ENABLE : false
   RESUME_PATH   : ''
-  LORA_MODEL    : LoRA_Sam_P11                                      # P11: Input-Level Quality-Aware Adaptive Gating
+  LORA_MODEL    : LoRA_Sam_P11                                      # P11: MI-based MoE Expert Specialization
   LORA_R        : 4
   LORA_NUM_EXPERTS : null                                           # null = auto (num_modalities)
   LORA_TOP_K    : None
@@ -43,7 +43,8 @@ TRAIN:
   EVAL_INTERVAL : 1
   AMP           : false
   DDP           : True
-  LAMBDA_GATE   : 0.5             # [P11] Gating aux loss 가중치 (total = seg + proto + 0.5 * gate)
+  LAMBDA_GATE   : 0.5             # Gating aux loss 가중치 (oracle KL + aux seg)
+  LAMBDA_MI     : 1.0             # [P11] MI routing loss 가중치 (MoE expert specialization)
 
 LOSS:
   NAME          : OhemCrossEntropy

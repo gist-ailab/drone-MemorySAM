@@ -1,0 +1,140 @@
+\documentclass[tikz,border=10pt]{standalone}
+\usepackage{tikz}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usetikzlibrary{arrows.meta,fit,backgrounds}
+
+\definecolor{cFeat} {RGB}{60,  110, 200}
+\definecolor{cPool} {RGB}{90,  160, 220}
+\definecolor{cComp} {RGB}{150,  80, 200}
+\definecolor{cMLP}  {RGB}{185,  45,  45}
+\definecolor{cAMF}  {RGB}{40,  150,  70}
+\definecolor{cUAMM} {RGB}{120,  50, 180}
+\definecolor{cNote} {RGB}{90,   90,  90}
+
+\tikzset{
+  B/.style    = {draw, thick, rounded corners=3pt, text centered,
+                 minimum height=10mm, font=\small},
+  feat/.style = {B, fill=cFeat!15, draw=cFeat!70, minimum width=28mm},
+  pool/.style = {B, fill=cPool!15, draw=cPool!70, minimum width=32mm},
+  comp/.style = {B, fill=cComp!15, draw=cComp!70, minimum width=28mm},
+  mlpB/.style = {B, fill=cMLP!15,  draw=cMLP!70,  minimum width=34mm},
+  amfB/.style = {B, fill=cAMF!15,  draw=cAMF!80,  minimum width=36mm},
+  uamB/.style = {B, fill=cUAMM!15, draw=cUAMM!80, minimum width=36mm},
+  note/.style = {draw=cNote!40, rounded corners=4pt, fill=gray!5,
+                 font=\scriptsize, text=cNote, inner sep=5pt, align=left},
+  A/.style    = {-Stealth, thick},
+}
+
+\begin{document}
+\begin{tikzpicture}
+
+%% Layout:
+%% x: 0=feat, 3.8=pool, 7.4=compress, 11.2=concat/mlp, 15.4=logits, 19.6=amf/uamm
+%% y: 2.4=rgb, 0.0=thm, -2.4=lid
+
+%% ─── Title ───────────────────────────────────────────────────────
+\node[font=\large\bfseries, text=cMLP] at (9.8, 4.2)
+  {CrossModalFusionHead V2 --- Phase~2};
+
+%% ─── backbone features ──────────────────────────────────────────
+\node[feat] (fR) at (0, 2.4)  {$F_\text{rgb}$\\{\scriptsize backbone\_fpn[0]}};
+\node[feat] (fT) at (0, 0.0)  {$F_\text{thm}$\\{\scriptsize backbone\_fpn[0]}};
+\node[feat] (fL) at (0,-2.4)  {$F_\text{lid}$\\{\scriptsize backbone\_fpn[0]}};
+
+%% ─── multi-pool ──────────────────────────────────────────────────
+\node[pool, minimum height=18mm] (pR) at (3.8, 2.4)
+  {\textbf{multi\_pool}\\{\scriptsize GAP ; GMP ; Std}\\{\scriptsize $(B,\;C{\times}3)$}};
+\node[pool, minimum height=18mm] (pT) at (3.8, 0.0)
+  {\textbf{multi\_pool}\\{\scriptsize GAP ; GMP ; Std}\\{\scriptsize $(B,\;C{\times}3)$}};
+\node[pool, minimum height=18mm] (pL) at (3.8,-2.4)
+  {\textbf{multi\_pool}\\{\scriptsize GAP ; GMP ; Std}\\{\scriptsize $(B,\;C{\times}3)$}};
+
+\draw[A, cPool!80] (fR)--(pR);
+\draw[A, cPool!80] (fT)--(pT);
+\draw[A, cPool!80] (fL)--(pL);
+
+%% ─── per-modality compress ───────────────────────────────────────
+\node[comp, minimum height=18mm] (cR) at (7.4, 2.4)
+  {$\phi_\text{rgb}$\\{\scriptsize Linear($3C$, 64)}\\{\scriptsize ReLU $\to$ $(B,64)$}};
+\node[comp, minimum height=18mm] (cT) at (7.4, 0.0)
+  {$\phi_\text{thm}$\\{\scriptsize Linear($3C$, 64)}\\{\scriptsize ReLU $\to$ $(B,64)$}};
+\node[comp, minimum height=18mm] (cL) at (7.4,-2.4)
+  {$\phi_\text{lid}$\\{\scriptsize Linear($3C$, 64)}\\{\scriptsize ReLU $\to$ $(B,64)$}};
+
+\draw[A, cComp!80] (pR)--(cR);
+\draw[A, cComp!80] (pT)--(cT);
+\draw[A, cComp!80] (pL)--(cL);
+
+%% ─── concat ──────────────────────────────────────────────────────
+\node[mlpB, minimum height=9mm] (cat) at (11.4, 0.6)
+  {\textbf{concat}\\{\scriptsize $(B,\;192)$}};
+
+\draw[A, cMLP!60] (cR.east)--++(6mm,0) |- (cat.north west);
+\draw[A, cMLP!60] (cT.east)--++(6mm,0) |- (cat.west);
+\draw[A, cMLP!60] (cL.east)--++(6mm,0) |- (cat.south west);
+
+%% ─── compare MLP ─────────────────────────────────────────────────
+\node[mlpB, minimum height=22mm, text width=33mm] (mlp) at (11.4,-1.6)
+  {\textbf{feature\_compare}\\[3pt]
+   {\scriptsize Linear(192,64)+ReLU}\\[-1pt]
+   {\scriptsize Linear(64,3) \textbf{[zero-init]}}\\[2pt]
+   {\scriptsize $\to$ \textbf{logits} $(B,3)$}};
+
+\draw[A, cMLP!80] (cat.south)--(mlp.north);
+
+%% ─── logits ──────────────────────────────────────────────────────
+\node[mlpB, minimum height=14mm, minimum width=26mm,
+      fill=cMLP!25, draw=cMLP!90] (log) at (15.4, -0.5)
+  {\textbf{logits} $(B,3)$};
+
+\draw[A, cMLP!90, line width=1.3pt]
+  (mlp.east)--++(6mm,0) |- (log.south);
+
+%% ─── AMF weights ─────────────────────────────────────────────────
+\node[amfB, minimum height=18mm] (amf) at (19.8,  0.8)
+  {\textbf{AMF weights}\\[2pt]
+   {\scriptsize softmax(logits / 1.0)}\\
+   {\scriptsize sum $= 1$, used for output fusion}};
+
+%% ─── UAMM scores ─────────────────────────────────────────────────
+\node[uamB, minimum height=18mm] (uam) at (19.8, -1.8)
+  {\textbf{UAMM scores}\\[2pt]
+   {\scriptsize softmax(logits / 2.0) $\times$ 3}\\
+   {\scriptsize mean $= 1.0$, modulates vision feats}};
+
+\draw[A, cAMF!80,  thick] (log.east)--++(5mm,0) |- (amf.west);
+\draw[A, cUAMM!80, thick] (log.east)--++(5mm,0) |- (uam.west);
+
+%% ─── annotations ─────────────────────────────────────────────────
+\node[note, text width=52mm] at (7.4,-5.4) {
+  \textbf{Why per-modality compress?}\\[2pt]
+  P9 shared: modality cues averaged away\\[2pt]
+  P10/P11 separate Linear per modality:\\
+  \textbullet\ RGB learns brightness/color cues\\
+  \textbullet\ Thermal learns contrast/saturation\\
+  \textbullet\ LiDAR learns spatial density\\[2pt]
+  \textbf{multi\_pool = GAP + GMP + Std:}\\
+  GAP: mean signal; GMP: peak signal\\
+  Std: texture/noise level
+};
+
+\node[note, text width=42mm] at (19.0,-4.6) {
+  \textbf{Zero-init strategy:}\\[2pt]
+  feature\_compare[-1] = 0\\
+  $\Rightarrow$ logits$_\text{init} = 0$\\
+  $\Rightarrow$ AMF init = [1/3, 1/3, 1/3]\\[2pt]
+  Oracle KL loss gradually\\
+  differentiates gating weights
+};
+
+%% ─── background ──────────────────────────────────────────────────
+\begin{scope}[on background layer]
+  \fill[cPool!6, rounded corners=5pt]
+    (1.8,-3.2) rectangle (9.2, 3.2);
+  \node[font=\scriptsize\bfseries, text=cPool!80]
+    at (5.5, 3.6) {Feature-level path};
+\end{scope}
+
+\end{tikzpicture}
+\end{document}

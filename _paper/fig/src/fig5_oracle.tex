@@ -1,0 +1,177 @@
+\documentclass[tikz,border=12pt]{standalone}
+\usepackage{tikz}
+\usepackage{amsmath}
+\usetikzlibrary{arrows.meta,fit,backgrounds}
+
+\definecolor{cFeat} {RGB}{130, 130, 130}
+\definecolor{cAux}  {RGB}{70,  165,  80}
+\definecolor{cLoss} {RGB}{185,  45,  45}
+\definecolor{cOra}  {RGB}{35,  145,  65}
+\definecolor{cKL}   {RGB}{120,  50, 195}
+\definecolor{cMI}   {RGB}{50,  120, 200}
+\definecolor{cFus}  {RGB}{185,  45,  45}
+
+\tikzset{
+  BX/.style    = {draw, thick, rounded corners=4pt, text centered, font=\small,
+                  minimum height=11mm},
+  featB/.style = {BX, fill=cFeat!12, draw=cFeat!55, minimum width=28mm},
+  auxB/.style  = {BX, fill=cAux!14,  draw=cAux!70,  minimum width=42mm},
+  predB/.style = {BX, fill=cAux!7,   draw=cAux!35,  minimum width=30mm},
+  lossB/.style = {BX, fill=cLoss!14, draw=cLoss!70, minimum width=28mm},
+  gtB/.style   = {BX, fill=gray!10,  draw=gray!50,  minimum width=20mm},
+  oraB/.style  = {BX, fill=cOra!14,  draw=cOra!80,
+                  minimum width=40mm, minimum height=26mm},
+  klB/.style   = {BX, fill=cKL!12,   draw=cKL!65,
+                  minimum width=72mm, minimum height=14mm},
+  miB/.style   = {BX, fill=cMI!12,   draw=cMI!65,
+                  minimum width=72mm, minimum height=22mm},
+  totB/.style  = {BX, fill=cKL!20,   draw=cKL!85,
+                  minimum width=72mm, minimum height=28mm},
+  fusB/.style  = {BX, fill=cFus!10,  draw=cFus!50,  minimum width=32mm},
+  trBox/.style = {draw=gray!45, dashed, rounded corners=6pt, fill=gray!3,
+                  inner sep=10pt},
+  note/.style  = {draw=gray!40, rounded corners=4pt, fill=cOra!5,
+                  font=\scriptsize, inner sep=6pt, align=left},
+  A/.style  = {-Stealth, thick},
+  Ad/.style = {-Stealth, dashed, thick, opacity=0.65},
+}
+
+\begin{document}
+\begin{tikzpicture}
+
+%% ─── Title ───────────────────────────────────────────────────────
+\node[font=\large\bfseries, text=cOra] at (14.0, 0.6)
+  {P11 Loss Structure --- Gating + MI Routing};
+\node[font=\small\itshape, text=gray!65] at (14.0, 0.0)
+  {Dashed region: training only --- disabled at inference};
+
+%% ─── Backbone features ───────────────────────────────────────────
+\node[featB] (fR) at (0.0,-1.2) {$F_\text{rgb}$};
+\node[featB] (fT) at (0.0,-3.0) {$F_\text{thm}$};
+\node[featB] (fL) at (0.0,-4.8) {$F_\text{lid}$};
+\node[font=\scriptsize, text=gray!65, align=center] at (0.0,-5.9)
+  {backbone\\fpn[0]};
+
+%% ─── AuxHeads ────────────────────────────────────────────────────
+\node[auxB] (hR) at (3.8,-1.2) {AuxHead$_\text{rgb}$\\{\scriptsize Conv+BN+ReLU+Conv}};
+\node[auxB] (hT) at (3.8,-3.0) {AuxHead$_\text{thm}$\\{\scriptsize Conv+BN+ReLU+Conv}};
+\node[auxB] (hL) at (3.8,-4.8) {AuxHead$_\text{lid}$\\{\scriptsize Conv+BN+ReLU+Conv}};
+
+\draw[A, cAux!70] (fR)--(hR);
+\draw[A, cAux!70] (fT)--(hT);
+\draw[A, cAux!70] (fL)--(hL);
+
+%% ─── Predictions ─────────────────────────────────────────────────
+\node[predB] (pR) at (8.0,-1.2) {pred$_\text{rgb}$\\{\scriptsize(B,4,H,W)}};
+\node[predB] (pT) at (8.0,-3.0) {pred$_\text{thm}$\\{\scriptsize(B,4,H,W)}};
+\node[predB] (pL) at (8.0,-4.8) {pred$_\text{lid}$\\{\scriptsize(B,4,H,W)}};
+
+\draw[A, cAux!50] (hR)--(pR);
+\draw[A, cAux!50] (hT)--(pT);
+\draw[A, cAux!50] (hL)--(pL);
+
+%% ─── GT ──────────────────────────────────────────────────────────
+\node[gtB] (GT) at (11.0,-3.0) {GT};
+
+\draw[Ad] (GT.north) to[out=90,in=0]  (pR.east);
+\draw[Ad] (GT.west)  --               (pT.east);
+\draw[Ad] (GT.south) to[out=270,in=0] (pL.east);
+
+%% ─── CE Losses ───────────────────────────────────────────────────
+\node[lossB] (lR) at (13.4,-1.2) {$\mathcal{L}_\text{aux}^\text{rgb}$\\{\scriptsize CE}};
+\node[lossB] (lT) at (13.4,-3.0) {$\mathcal{L}_\text{aux}^\text{thm}$\\{\scriptsize CE}};
+\node[lossB] (lL) at (13.4,-4.8) {$\mathcal{L}_\text{aux}^\text{lid}$\\{\scriptsize CE}};
+
+\draw[A, cLoss!70] (pR)--(lR);
+\draw[A, cLoss!70] (pT)--(lT);
+\draw[A, cLoss!70] (pL)--(lL);
+
+%% ─── Oracle weights ──────────────────────────────────────────────
+\node[oraB] (ORA) at (17.4,-3.0)
+  {\textbf{Oracle} $\tilde{\mathbf{w}}$\\[5pt]
+   $\tilde{w}_i = \dfrac{e^{-\mathcal{L}_\text{aux}^{(i)}}}
+                        {\sum_j e^{-\mathcal{L}_\text{aux}^{(j)}}}$\\[4pt]
+   {\scriptsize(detach --- no grad)}};
+
+\draw[A, cOra!80, thick] (lR.east)--++(5mm,0) |- (ORA.north west);
+\draw[A, cOra!80, thick] (lT.east)--               (ORA.west);
+\draw[A, cOra!80, thick] (lL.east)--++(5mm,0) |- (ORA.south west);
+
+%% ─── AMF weights input ───────────────────────────────────────────
+\node[fusB] (AMF) at (21.6,-3.0) {amf\_weights\\{\scriptsize from FusionHead V2}};
+
+%% ─── Gating KL Loss ──────────────────────────────────────────────
+\node[klB] (KL) at (25.4,-3.0)
+  {$\mathcal{L}_\text{gate} = D_\text{KL}\!\bigl(\tilde{\mathbf{w}}\,\big\|\,
+     w_\text{AMF}\bigr)$\\[2pt]
+   {\scriptsize supervises fusion gating}};
+
+\draw[A, cKL!70, thick] (ORA.east)--(KL.west);
+\draw[Ad, cFus!70] (AMF.east)--(KL.west);
+
+%% ─── Aux seg loss ────────────────────────────────────────────────
+\node[klB] (AS) at (25.4,-5.2)
+  {$\mathcal{L}_\text{aux\_seg} = \tfrac{1}{3}\sum_i \mathcal{L}_\text{aux}^{(i)}$\\[2pt]
+   {\scriptsize per-modality aux seg loss (mean)}};
+
+\draw[Ad, cAux!70] (lR.east)--++(3mm,0) |- (AS.west);
+\draw[Ad, cAux!70] (lT.east)--++(3mm,0) |- (AS.west);
+\draw[Ad, cAux!70] (lL.east)--++(3mm,0) |- (AS.west);
+
+%% ─── Gating combined ─────────────────────────────────────────────
+\node[klB] (GC) at (25.4,-7.0)
+  {\textbf{Gating Loss}
+   $= \mathcal{L}_\text{gate} + 0.3\cdot\mathcal{L}_\text{aux\_seg}$};
+
+\draw[A, cKL!70] (KL.south)--(GC.north);
+\draw[A, cKL!70] (AS.south)--(GC.north);
+
+%% ─── MI Loss block ───────────────────────────────────────────────
+\node[miB, text width=70mm] (MI) at (25.4,-10.4)
+  {\textbf{MI Routing Loss}\\[4pt]
+   $g_i = \frac{1}{L}\sum_\ell \mathrm{gate\_weights}_\ell(x_i)$\quad(B,E)\\[3pt]
+   $\mathcal{L}_\text{MI} =
+     \underbrace{H(g | x)}_{\text{cond. entropy (min)}}
+     - \underbrace{H(g_\text{marg})}_{\text{marg. entropy (max)}}$\\[3pt]
+   {\scriptsize minimize $\Rightarrow$ decisive routing + diverse expert use}};
+
+%% gate dists from encoders
+\node[featB, minimum width=28mm] (GD) at (17.4,-10.4)
+  {gate dists\\$g_0, g_1, g_2$\\{\scriptsize from SoftMoE}};
+
+\draw[A, cMI!70, thick] (GD.east)--(MI.west);
+
+%% ─── Total Loss ──────────────────────────────────────────────────
+\node[totB, text width=70mm] (TOT) at (25.4,-14.0)
+  {\textbf{Total Loss}\\[5pt]
+   $\mathcal{L} = \mathcal{L}_\text{seg} + \mathcal{L}_\text{proto}$\\[2pt]
+   $\quad + 0.5\,\mathcal{L}_\text{gating}$\\[2pt]
+   $\quad + 1.0\,\mathcal{L}_\text{MI}$};
+
+\draw[A, cKL!80, thick] (GC.south)--++(0,-3mm) -| (TOT.north);
+\draw[A, cMI!80, thick] (MI.south)--++(0,-2mm) -| (TOT.north);
+
+%% ─── Training-only boundary ──────────────────────────────────────
+\begin{scope}[on background layer]
+  \node[trBox, fit=(hR)(hT)(hL)(pR)(pT)(pL)(lR)(lT)(lL)
+               (ORA)(KL)(AS)(GC)(AMF)(GD)(GT),
+        label={[font=\small\itshape, text=gray!55]above left:Training Only}] {};
+\end{scope}
+
+%% ─── Intuition note ──────────────────────────────────────────────
+\node[note, text width=52mm] at (6.2,-9.2)
+  {\textbf{Oracle intuition:}\\[3pt]
+   Night RGB $\to$ high $\mathcal{L}_\text{aux}^\text{rgb}$
+   $\Rightarrow$ low $\tilde{w}_\text{rgb}$\\
+   Thermal $\to$ low $\mathcal{L}_\text{aux}^\text{thm}$
+   $\Rightarrow$ high $\tilde{w}_\text{thm}$\\[3pt]
+   KL forces fusion head to match\\
+   this per-image quality signal.\\[3pt]
+   \textbf{MI routing intuition:}\\
+   cond. entropy low = each input\\
+   routes to specific experts\\
+   marg. entropy high = experts\\
+   used diversely across dataset};
+
+\end{tikzpicture}
+\end{document}

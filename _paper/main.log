@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.2.16)  20 FEB 2026 00:24
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.2.16)  23 FEB 2026 18:21
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -452,22 +452,22 @@ LaTeX Font Info:    Trying to load font information for U+msb on input line 50.
  (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) (./sec/0_abstract.tex) (./sec/1_intro.tex
-LaTeX Font Info:    Trying to load font information for OT1+phv on input line 27.
+LaTeX Font Info:    Trying to load font information for OT1+phv on input line 20.
  (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1phv.fd
 File: ot1phv.fd 2020/03/25 scalable font definitions for OT1/phv.
 ) [1{/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc}
 
 
 ]) (./sec/2_related.tex [2]) (./sec/3_method.tex [3]
-LaTeX Font Info:    Trying to load font information for OT1+pcr on input line 79.
+LaTeX Font Info:    Trying to load font information for OT1+pcr on input line 114.
  (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1pcr.fd
 File: ot1pcr.fd 2001/06/04 font definitions for OT1/pcr.
-)) (./sec/4_experiments.tex [4]
+) [4]) (./sec/4_experiments.tex
 Overfull \hbox (19.14224pt too wide) in paragraph at lines 31--41
  [][] 
  []
 
-
+[5]
 Overfull \hbox (24.02219pt too wide) in paragraph at lines 99--108
  [][] 
  []
@@ -476,7 +476,7 @@ Overfull \hbox (24.02219pt too wide) in paragraph at lines 99--108
 \tf@brf=\write4
 \openout4 = `main.brf'.
 
- [5]) [6
+ [6]) [7
 
 ] (./main.aux)
  ***********
@@ -484,23 +484,23 @@ LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
  ***********
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 55635659FF3B7E00C69E12C4F1E349F9;2492.
+(rerunfilecheck)             Checksum: 962147DCC9E93AEF3FFAE1259F7F3CA9;2754.
 Package rerunfilecheck Info: File `main.brf' has not changed.
-(rerunfilecheck)             Checksum: 032A818E51D1EB0C9B9E576EEA0A0AE2;2269.
+(rerunfilecheck)             Checksum: 5BE88F1B02A97CB759A6707FE12359EF;2269.
  ) 
 Here is how much of TeX's memory you used:
- 15233 strings out of 475662
- 250939 string characters out of 5784442
+ 15250 strings out of 475662
+ 251150 string characters out of 5784442
  1960975 words of memory out of 5000000
- 37095 multiletter control sequences out of 15000+600000
+ 37107 multiletter control sequences out of 15000+600000
  591244 words of font info for 106 fonts, out of 8000000 for 9000
  264 hyphenation exceptions out of 8191
- 90i,9n,93p,643b,638s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 90i,9n,93p,903b,648s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/zapfding/uzdr.pfb>
-Output written on main.pdf (6 pages, 215532 bytes).
+Output written on main.pdf (7 pages, 223578 bytes).
 PDF statistics:
- 314 PDF objects out of 1000 (max. 8388607)
- 269 compressed objects within 3 object streams
- 51 named destinations out of 1000 (max. 500000)
- 129 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 326 PDF objects out of 1000 (max. 8388607)
+ 280 compressed objects within 3 object streams
+ 56 named destinations out of 1000 (max. 500000)
+ 137 words of extra memory for PDF output out of 10000 (max. 10000000)
 

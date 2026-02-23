@@ -20,8 +20,6 @@ from .sam_lola_utils import (
     ConfidenceHead,
     CrossModalFusionHead,
     CrossModalFusionHeadV2,
-    CrossModalFusionHeadV3,
-    InputQualityEstimator,
     ModalAuxHead,
     MoE_LoRA_Layer,
     _MoE_LoRA_qkv,
@@ -1857,40 +1855,35 @@ class LoRA_Sam_P10(nn.Module):
 
 class LoRA_Sam_P11(nn.Module):
     """
-    LoRA_Sam_P11: Input-Level Quality-Aware Adaptive Gating
+    LoRA_Sam_P11: MI-based MoE Expert Specialization
 
-    P10 문제:
-      - ModalAuxHead oracle이 backbone feature(deep)에서 품질 측정
-        → SAM2 encoder가 modality 간 품질 차이를 정규화
-        → oracle ≈ uniform → KL gradient ≈ 0 → gating 무학습
-      - UAMM max-norm이 img=1.0으로 고정 → RGB 억제 불가
-      - AMF ≈ uniform (0.34/0.31/0.33): 실질적 gating 미작동
+    P9/P10 문제:
+      - Soft-MoE gate가 uniform으로 수렴 (E0≈0.33, E1≈0.32, E2≈0.35)
+        → 사실상 단일 LoRA와 동일 → expert specialization 미발생
+      - 원인: seg_loss 단독으로는 expert 분화 gradient 부족
+      - AMF/UAMM도 상수로 수렴 (연쇄 문제)
 
-    P11 개선:
-      1. InputQualityEstimator (IQE): encoder 이전 raw input에서 품질 직접 측정
-         - brightness, contrast, entropy, high_freq, SNR → per-modality MLP
-         - 야간 RGB(밝기 0.03) vs thermal: input-level에서 품질 차이가 극명
-      2. CrossModalFusionHeadV3: Dual-level gating
-         - Input quality (IQE) → strong prior (encoder 무관)
-         - Feature quality (multi-pool) → fine-grained 조정
-         - feat_logits + iq_scale * iq_scores → softmax
-      3. UAMM: max-norm → softmax with temperature
-         - 모든 modality가 독립적으로 조절 가능 (특정 modality 고정 방지)
-      4. ModalAuxHead oracle 유지 (feature-level 보조 신호)
-         - IQE oracle이 primary, feature oracle이 secondary
-         - Dual oracle → 더 강한 gating gradient
+    P11 해결:
+      Mutual Information Maximization으로 MoE routing 학습.
+      MI(Input, Expert) = H(Expert_marginal) - H(Expert|Input)
+      = "전체적으로 expert를 골고루 쓰되, 각 입력에 대해선 특정 expert를 확실히 써라"
+
+      - Modality label 불사용, for문 순서 불사용
+      - 순수 정보이론 기반, gradient가 gate network로 직접 흐름
+      - MoE expert 분화 → feature가 modality-adaptive → feature-level oracle 강화
 
     Loss 구조:
-      total = seg_loss + proto_loss + λ_gate * gating_loss
-      gating_loss = iq_oracle_kl + feat_oracle_kl + 0.3 * aux_seg
+      total = seg_loss + proto_loss + λ_gate * gating_loss + λ_mi * mi_loss
+      gating_loss = oracle_kl + 0.3 * aux_seg  (P10 동일)
+      mi_loss = H(gate|input) - H(gate_marginal)  (minimize → MI 최대화)
 
-    Components:
-      1. Structure: Soft-MoE LoRA (P8/P9/P10과 동일)
-      2. IQE: InputQualityEstimator (raw input → quality scores)
-      3. Gating: CrossModalFusionHeadV3 (dual-level: IQE + feature)
-      4. UAMM: softmax-normalized → Feature Modulation (max-norm 제거)
-      5. AMF: raw softmax → Output Fusion
-      6. Aux Heads: ModalAuxHead × num_modalities (feature-level oracle)
+    Components (P10 base + MI loss):
+      1. Structure: Soft-MoE LoRA (동일) + gradient-enabled gate 수집
+      2. Gating: CrossModalFusionHeadV2 (P10 동일)
+      3. UAMM: softmax with temperature (max-norm 대체)
+      4. AMF: raw softmax weights (P10 동일)
+      5. Aux Heads: ModalAuxHead × num_modalities (P10 동일)
+      6. NEW: per-modality gate distribution → MI routing loss
     """
 
     def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
@@ -1934,54 +1927,51 @@ class LoRA_Sam_P11(nn.Module):
         else:
             fusion_dim = self.sam.sam_mask_decoder.transformer_dim
 
-        # [P11] InputQualityEstimator: raw input → quality scores
-        self.iq_estimator = InputQualityEstimator(
-            num_modalities=num_modalities,
-            hidden_dim=32,
-        )
-
-        # [P11] CrossModalFusionHeadV3: dual-level gating (IQE + feature)
-        self.cross_modal_head = CrossModalFusionHeadV3(
+        # [P10 계승] CrossModalFusionHeadV2: multi-pool + per-modality compress
+        self.cross_modal_head = CrossModalFusionHeadV2(
             in_channels=fusion_dim,
             num_modalities=num_modalities,
         )
 
-        # [P11] Per-modality auxiliary segmentation heads (feature-level oracle)
+        # [P10 계승] Per-modality auxiliary segmentation heads (gating oracle)
         self.aux_heads = nn.ModuleList([
             ModalAuxHead(in_channels=fusion_dim, num_classes=num_classes)
             for _ in range(num_modalities)
         ])
 
-        # UAMM temperature (softmax normalization, max-norm 대체)
+        # [P11] UAMM: softmax with temperature (max-norm 대체)
         self.uamm_temperature = 2.0
 
         # Visualization buffers (항상 detach)
         self._last_uamm_scores = None
         self._last_amf_weights = None
         self._last_moe_gates = None
-        self._last_iq_scores = None
 
     def forward(self, batched_input, multimask_output):
         m = len(batched_input)
         image_embedding, backbone_out, vision_feats = [], [], []
         vision_pos_embeds, feat_sizes, output = [], [], []
 
+        # Visualization용 (detach)
         moe_gate_collector = []
         def _moe_gate_cb(gw):
             moe_gate_collector.append(gw)
-        for layer in self.moe_layers_q + self.moe_layers_v:
-            layer._gate_callback = _moe_gate_cb
+
+        all_moe_layers = list(self.moe_layers_q) + list(self.moe_layers_v)
 
         try:
             # ============================================================
-            # Phase 0: Input-Level Quality Estimation (encoder 이전!)
+            # Phase 1: 모든 모달리티 Image Encoding + Gate Distribution 수집
             # ============================================================
-            iq_scores = self.iq_estimator(batched_input)  # (B, m)
+            per_modal_gate_dists = []  # List of (B, E) per modality
 
-            # ============================================================
-            # Phase 1: 모든 모달리티 Image Encoding
-            # ============================================================
             for i in range(m):
+                # 각 modality encoding 시 gradient gate 수집
+                grad_collector = []
+                for layer in all_moe_layers:
+                    layer._gate_callback = _moe_gate_cb
+                    layer._grad_gate_collector = grad_collector
+
                 img_emb = self.sam.forward_image(batched_input[i])
                 image_embedding.append(img_emb)
                 bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
@@ -1990,21 +1980,26 @@ class LoRA_Sam_P11(nn.Module):
                 vision_pos_embeds.append(v_pos)
                 feat_sizes.append(f_sizes)
 
+                # 이 modality의 평균 gate distribution (전 layer 평균)
+                if grad_collector:
+                    modal_gate = torch.stack(grad_collector, dim=0).mean(dim=0)  # (B, E)
+                    per_modal_gate_dists.append(modal_gate)
+
+                # Collector 정리 (다음 modality를 위해)
+                for layer in all_moe_layers:
+                    layer._grad_gate_collector = None
+
             # ============================================================
-            # Phase 2: Dual-Level Gating (CrossModalFusionHeadV3)
+            # Phase 2: Cross-Modal 가중치 산출 (CrossModalFusionHeadV2)
             # ============================================================
             all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
-            cross_weights, cross_logits = self.cross_modal_head(
-                all_backbone_feats, iq_scores=iq_scores
-            )  # (B, m)
+            cross_weights, cross_logits = self.cross_modal_head(all_backbone_feats)  # (B, m)
 
             # [P11] UAMM: softmax with temperature (max-norm 대체)
-            # → 모든 modality가 독립적으로 조절 가능
             uamm_scores = F.softmax(cross_logits / self.uamm_temperature, dim=1)  # (B, m)
-            # Scale to [0, 1] range: softmax 합=1이므로, m을 곱하면 평균=1
-            uamm_scores = uamm_scores * m  # (B, m), 범위 [0, m], 평균=1
+            uamm_scores = uamm_scores * m  # 범위 [0, m], 평균=1
 
-            # [P11] Per-modality aux predictions
+            # Per-modality aux predictions
             aux_outputs = [self.aux_heads[i](all_backbone_feats[i]) for i in range(m)]
 
             # ============================================================
@@ -2040,7 +2035,7 @@ class LoRA_Sam_P11(nn.Module):
                 output.append(multi_mask_output_step["high_res_multimasks"])
 
             # ============================================================
-            # Phase 4: AMF — raw softmax weights로 Output Fusion
+            # Phase 4: AMF — Output Fusion
             # ============================================================
             amf_weights = cross_weights  # (B, m)
 
@@ -2056,19 +2051,18 @@ class LoRA_Sam_P11(nn.Module):
             # Visualization용 버퍼 (detach)
             self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
             self._last_amf_weights = amf_weights.detach().cpu().numpy()
-            self._last_iq_scores = iq_scores.detach().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
                 self._last_moe_gates = None
 
         finally:
-            for layer in self.moe_layers_q + self.moe_layers_v:
+            for layer in all_moe_layers:
                 layer._gate_callback = None
+                layer._grad_gate_collector = None
 
-        # [P11] aux_outputs, amf_weights, iq_scores를 리턴값에 포함
         if self.training:
-            return m_output, m_feat, aux_outputs, amf_weights, iq_scores
+            return m_output, m_feat, aux_outputs, amf_weights, per_modal_gate_dists
         return m_output, m_feat
 
     def save_lora_parameters(self, filename: str) -> None:
@@ -2087,11 +2081,6 @@ class LoRA_Sam_P11(nn.Module):
         aux_heads_tensors = {
             f"aux_heads.{k}": v
             for k, v in self.aux_heads.state_dict().items()
-        }
-
-        iq_estimator_tensors = {
-            f"iq_estimator.{k}": v
-            for k, v in self.iq_estimator.state_dict().items()
         }
 
         prompt_encoder_tensors = {}
@@ -2114,7 +2103,6 @@ class LoRA_Sam_P11(nn.Module):
             **mask_decoder_tensors,
             **cross_modal_tensors,
             **aux_heads_tensors,
-            **iq_estimator_tensors,
         }
         torch.save(merged_dict, filename)
 
@@ -2130,7 +2118,7 @@ class LoRA_Sam_P11(nn.Module):
             if v_key in state_dict:
                 mv.load_state_dict(state_dict[v_key])
 
-        # CrossModalFusionHeadV3
+        # CrossModalFusionHeadV2
         cross_modal_dict = {
             k.replace("cross_modal_head.", ""): v
             for k, v in state_dict.items()
@@ -2147,15 +2135,6 @@ class LoRA_Sam_P11(nn.Module):
         }
         if aux_heads_dict:
             self.aux_heads.load_state_dict(aux_heads_dict)
-
-        # InputQualityEstimator
-        iq_dict = {
-            k.replace("iq_estimator.", ""): v
-            for k, v in state_dict.items()
-            if k.startswith("iq_estimator.")
-        }
-        if iq_dict:
-            self.iq_estimator.load_state_dict(iq_dict)
 
         # SAM components
         sam_dict = self.sam.state_dict()
