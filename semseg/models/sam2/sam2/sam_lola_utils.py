@@ -549,8 +549,9 @@ class SoftMoE_LoRA_Layer(nn.Module):
 
         # [P11] MI loss용: gradient 유지한 채 spatial mean gate distribution 수집
         if hasattr(self, '_grad_gate_collector') and self._grad_gate_collector is not None:
-            # (B, H, W, E) → (B, E) or (B, N, E) → (B, E)
-            gate_mean = gate_weights.mean(dim=tuple(range(1, gate_weights.dim() - 1)))
+            # Hiera windowed attention에서 batch dim에 num_windows가 곱해질 수 있음
+            # → 모든 공간/윈도우 차원을 평균하여 (E,) 스칼라 벡터로 통일
+            gate_mean = gate_weights.mean(dim=tuple(range(gate_weights.dim() - 1)))  # (E,)
             self._grad_gate_collector.append(gate_mean)
 
         final_output = 0

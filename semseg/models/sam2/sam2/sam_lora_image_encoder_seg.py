@@ -1963,7 +1963,7 @@ class LoRA_Sam_P11(nn.Module):
             # ============================================================
             # Phase 1: 모든 모달리티 Image Encoding + Gate Distribution 수집
             # ============================================================
-            per_modal_gate_dists = []  # List of (B, E) per modality
+            per_modal_gate_dists = []  # List of (E,) per modality
 
             for i in range(m):
                 # 각 modality encoding 시 gradient gate 수집
@@ -1982,7 +1982,7 @@ class LoRA_Sam_P11(nn.Module):
 
                 # 이 modality의 평균 gate distribution (전 layer 평균)
                 if grad_collector:
-                    modal_gate = torch.stack(grad_collector, dim=0).mean(dim=0)  # (B, E)
+                    modal_gate = torch.stack(grad_collector, dim=0).mean(dim=0)  # (E,)
                     per_modal_gate_dists.append(modal_gate)
 
                 # Collector 정리 (다음 modality를 위해)

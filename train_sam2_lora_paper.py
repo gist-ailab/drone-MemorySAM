@@ -443,15 +443,13 @@ def main(cfg, gpu, save_dir):
                 # [P11] MI Routing Loss: MoE expert specialization
                 mi_loss = torch.tensor(0.0, device=device)
                 if gate_dists is not None and len(gate_dists) > 1:
-                    stacked = torch.stack(gate_dists, dim=0)  # (m, B, E)
+                    stacked = torch.stack(gate_dists, dim=0)  # (m, E)
 
-                    # Conditional entropy: 각 입력이 decisive하게 routing하는가 (낮을수록 좋음)
-                    cond_ent = -(stacked * (stacked + 1e-8).log()).sum(dim=-1)  # (m, B)
+                    cond_ent = -(stacked * (stacked + 1e-8).log()).sum(dim=-1)  # (m,)
                     cond_entropy = cond_ent.mean()
 
-                    # Marginal entropy: 전체적으로 expert를 골고루 쓰는가 (높을수록 좋음)
-                    marginal = stacked.mean(dim=0)  # (B, E)
-                    marg_entropy = -(marginal * (marginal + 1e-8).log()).sum(dim=-1).mean()
+                    marginal = stacked.mean(dim=0)  # (E,)
+                    marg_entropy = -(marginal * (marginal + 1e-8).log()).sum(dim=-1)
 
                     # MI = marg_entropy - cond_entropy → maximize → minimize (cond - marg)
                     mi_loss = cond_entropy - marg_entropy
