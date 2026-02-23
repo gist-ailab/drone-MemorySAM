@@ -251,6 +251,185 @@ class ModalAuxHead(nn.Module):
         return self.head(x)   # (B, num_classes, H_feat, W_feat)
 
 
+class InputQualityEstimator(nn.Module):
+    """
+    Input-level Modality Quality Estimator (P11).
+
+    핵심 인사이트:
+      SAM2의 강력한 pretrained encoder는 feature space에서 modality 품질 차이를
+      정규화해버려, feature-level quality assessment (P10 ModalAuxHead)가
+      near-uniform oracle을 생성한다.
+
+    해결:
+      Encoder 이전의 raw input에서 직접 품질 metrics를 추출하여
+      encoder-independent quality signal을 생성한다.
+
+    Quality features per modality (K=5):
+      1. brightness:  mean pixel intensity (정규화된 평균 밝기)
+      2. contrast:    std of pixel intensities (대비)
+      3. entropy:     spatial information content (정보 엔트로피 proxy)
+      4. high_freq:   Laplacian energy (texture/noise 에너지)
+      5. snr:         signal-to-noise ratio (mean / (std + eps))
+    """
+
+    def __init__(self, num_modalities=3, hidden_dim=32):
+        super().__init__()
+        self.num_features = 5  # brightness, contrast, entropy, high_freq, snr
+
+        # Per-modality MLP: (B, K) → (B, 1)
+        self.quality_mlps = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(self.num_features, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, 1),
+            )
+            for _ in range(num_modalities)
+        ])
+
+        # Zero-init: 초기에 모든 quality score = 0 → oracle uniform
+        for mlp in self.quality_mlps:
+            nn.init.constant_(mlp[-1].weight, 0)
+            nn.init.constant_(mlp[-1].bias, 0)
+
+        # Laplacian kernel (fixed, non-learnable)
+        lap = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]],
+                           dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1,1,3,3)
+        self.register_buffer('laplacian_kernel', lap)
+
+    @torch.no_grad()
+    def _compute_quality_features(self, x):
+        """
+        Raw input → quality features.
+        Args:
+            x: (B, C, H, W) raw modality input (0~1 normalized)
+        Returns:
+            (B, K) quality feature vector
+        """
+        # Channel-mean grayscale
+        gray = x.mean(dim=1, keepdim=True)  # (B, 1, H, W)
+
+        # 1. brightness: mean pixel intensity
+        brightness = gray.mean(dim=[2, 3]).squeeze(1)  # (B,)
+
+        # 2. contrast: std of pixel intensities
+        contrast = gray.flatten(2).std(dim=2).squeeze(1)  # (B,)
+
+        # 3. entropy proxy: normalized histogram variance
+        # (differentiability 불필요 - detach 영역이므로 simple 구현)
+        flat = gray.flatten(2)  # (B, 1, H*W)
+        # Bin-free entropy proxy: log of the number of unique intensity levels
+        # → 빠른 대안: pixel value의 분산과 범위의 곱
+        val_range = flat.max(dim=2)[0] - flat.min(dim=2)[0]  # (B, 1)
+        entropy_proxy = (contrast * val_range.squeeze(1)).clamp(min=1e-8).log()  # (B,)
+
+        # 4. high_freq: Laplacian energy (texture/noise)
+        lap_kernel = self.laplacian_kernel.expand(1, 1, 3, 3)
+        laplacian = F.conv2d(gray, lap_kernel, padding=1)  # (B, 1, H, W)
+        high_freq = (laplacian ** 2).mean(dim=[1, 2, 3])   # (B,)
+
+        # 5. snr: signal-to-noise ratio
+        snr = brightness / (contrast + 1e-8)  # (B,)
+
+        features = torch.stack([brightness, contrast, entropy_proxy, high_freq, snr], dim=1)  # (B, 5)
+        return features
+
+    def forward(self, raw_inputs):
+        """
+        Args:
+            raw_inputs: List of (B, C, H, W) — 각 modality의 raw input (0~1 정규화)
+        Returns:
+            quality_scores: (B, num_modalities) — per-modality quality score (logit)
+        """
+        scores = []
+        for i, x in enumerate(raw_inputs):
+            feats = self._compute_quality_features(x)  # (B, 5), no grad
+            score = self.quality_mlps[i](feats)         # (B, 1), with grad
+            scores.append(score)
+        return torch.cat(scores, dim=1)  # (B, m)
+
+
+class CrossModalFusionHeadV3(nn.Module):
+    """
+    Cross-Modal Fusion Head V3 (P11): Dual-Level Quality-Aware Gating
+
+    P10(V2) 문제:
+      - backbone feature(deep)에서만 품질을 평가 → SAM2 encoder가 품질 차이를 정규화
+      - AMF weights가 near-uniform으로 수렴 (gating 무력화)
+
+    P11(V3) 개선:
+      1. Input-level quality (IQE): encoder 이전 raw input에서 직접 품질 측정
+      2. Feature-level quality (V2 계승): GAP+GMP+Std multi-pool
+      3. Dual-level fusion: input quality + feature quality를 결합하여 gating 결정
+         - Input quality가 strong prior 제공 (야간: RGB 어두움 → 낮은 weight)
+         - Feature quality가 fine-grained 조정 (encoding 후 실제 feature 품질)
+
+    UAMM 개선: max-normalization → softmax with temperature
+      - P10: max modality = 1.0 고정 → 특정 modality 억제 불가
+      - P11: softmax → 모든 modality가 독립적으로 조절 가능
+    """
+
+    def __init__(self, in_channels, num_modalities=3, hidden_dim=64, temperature=1.0):
+        super().__init__()
+        self.num_modalities = num_modalities
+        self.temperature = temperature
+
+        # Feature-level path (P10 V2 계승): multi-pool → per-modality compress
+        self.compresses = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(in_channels * 3, hidden_dim),
+                nn.ReLU()
+            )
+            for _ in range(num_modalities)
+        ])
+
+        # Dual-level fusion: feature_hidden + input_quality_score → final gating
+        # feature path: (B, hidden*m) → (B, hidden)
+        # input quality: (B, m) → (B, m) (직접 logit에 더함)
+        self.feature_compare = nn.Sequential(
+            nn.Linear(hidden_dim * num_modalities, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_modalities)
+        )
+
+        # Input quality → gating logit에 대한 residual scale (learnable)
+        self.iq_scale = nn.Parameter(torch.tensor(1.0))
+
+        # Zero-init feature path: 초기에는 input quality만 gating 결정
+        nn.init.constant_(self.feature_compare[-1].weight, 0)
+        nn.init.constant_(self.feature_compare[-1].bias, 0)
+
+    def _multi_pool(self, x):
+        """(B, C, H, W) → (B, C*3): GAP + GMP + Channel Std"""
+        gap = F.adaptive_avg_pool2d(x, 1).flatten(1)
+        gmp = F.adaptive_max_pool2d(x, 1).flatten(1)
+        std = x.flatten(2).std(dim=2)
+        return torch.cat([gap, gmp, std], dim=1)
+
+    def forward(self, features_list, iq_scores=None):
+        """
+        Args:
+            features_list: List of (B, C, H, W) backbone features
+            iq_scores: (B, m) input quality scores from IQE (optional)
+        Returns:
+            weights: (B, m) softmax gating weights
+            logits:  (B, m) raw logits
+        """
+        # Feature-level path
+        pooled = [self._multi_pool(f) for f in features_list]
+        compressed = [self.compresses[i](p) for i, p in enumerate(pooled)]
+        concat = torch.cat(compressed, dim=1)
+        feat_logits = self.feature_compare(concat)  # (B, m)
+
+        # Dual-level fusion
+        if iq_scores is not None:
+            logits = feat_logits + self.iq_scale * iq_scores
+        else:
+            logits = feat_logits
+
+        weights = F.softmax(logits / self.temperature, dim=1)
+        return weights, logits
+
+
 class ConfidenceHead(nn.Module):
     """
     Lightweight module to estimate the confidence of a modality based on its features.

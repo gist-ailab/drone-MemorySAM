@@ -390,21 +390,25 @@ def main(cfg, gpu, save_dir):
             lbl = lbl.to(device)
             
             with autocast(enabled=train_cfg['AMP']):
-                # P10+: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
+                # P11: forward가 (output, m_feat, aux_outputs, amf_weights, iq_scores) 리턴
+                # P10: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
                 # 그 외: (output, m_feat) 리턴
                 model_out = model(sample, multimask_output=True)
-                if len(model_out) == 4:
+                if len(model_out) == 5:
+                    output, m_feat, aux_outputs, amf_weights, iq_scores = model_out
+                elif len(model_out) == 4:
                     output, m_feat, aux_outputs, amf_weights = model_out
+                    iq_scores = None
                 else:
                     output, m_feat = model_out
                     aux_outputs, amf_weights = None, None
+                    iq_scores = None
                 logits = output
 
                 loss_orig = loss_fn(logits, lbl)
                 protoloss = prototypeseg.compute_loss(m_feat, lbl) * 256 * 256
 
-                # [P10] Gating Auxiliary Loss
-                # forward에서 aux_outputs를 리턴받았을 때만 (LoRA_Sam_P10+)
+                # [P10/P11] Gating Auxiliary Loss
                 gating_loss = torch.tensor(0.0, device=device)
                 if aux_outputs is not None and amf_weights is not None:
                     lbl_size = lbl.shape[-2:]
@@ -423,20 +427,40 @@ def main(cfg, gpu, save_dir):
                     with torch.no_grad():
                         oracle = F.softmax(-aux_losses_stacked.detach(), dim=1)  # (B, m)
 
-                    # KL(AMF || oracle): gating이 oracle 분포를 따르도록
-                    amf = amf_weights  # (B, m), gradient 유지
-                    gating_kl = F.kl_div(
-                        (amf + 1e-8).log(), oracle, reduction='batchmean'
-                    )
+                    if iq_scores is not None:
+                        # [P11] Dual oracle loss: IQE oracle + Feature oracle
+                        # 1) IQ oracle KL: IQE 점수가 oracle을 따르도록
+                        iq_weights = F.softmax(iq_scores, dim=1)  # (B, m)
+                        iq_oracle_kl = F.kl_div(
+                            (iq_weights + 1e-8).log(), oracle, reduction='batchmean'
+                        )
+                        # 2) Feature oracle KL: AMF gating이 oracle을 따르도록
+                        feat_oracle_kl = F.kl_div(
+                            (amf_weights + 1e-8).log(), oracle, reduction='batchmean'
+                        )
+                        # 3) Aux seg loss
+                        aux_seg = sum(
+                            loss_fn(F.interpolate(ao, size=lbl_size,
+                                                  mode='bilinear', align_corners=False), lbl)
+                            for ao in aux_outputs
+                        ) / len(aux_outputs)
 
-                    # Aux seg loss: aux head 자체도 segmentation을 잘 하도록
-                    aux_seg = sum(
-                        loss_fn(F.interpolate(ao, size=lbl_size,
-                                              mode='bilinear', align_corners=False), lbl)
-                        for ao in aux_outputs
-                    ) / len(aux_outputs)
+                        gating_loss = iq_oracle_kl + feat_oracle_kl + 0.3 * aux_seg
+                    else:
+                        # [P10] Single oracle loss
+                        amf = amf_weights  # (B, m), gradient 유지
+                        gating_kl = F.kl_div(
+                            (amf + 1e-8).log(), oracle, reduction='batchmean'
+                        )
 
-                    gating_loss = gating_kl + 0.3 * aux_seg
+                        # Aux seg loss: aux head 자체도 segmentation을 잘 하도록
+                        aux_seg = sum(
+                            loss_fn(F.interpolate(ao, size=lbl_size,
+                                                  mode='bilinear', align_corners=False), lbl)
+                            for ao in aux_outputs
+                        ) / len(aux_outputs)
+
+                        gating_loss = gating_kl + 0.3 * aux_seg
 
                 # [수정] 전체 Loss를 accumulation_steps로 나누어야 정확한 그라디언트 평균이 계산됩니다.
                 total_loss_unscaled = loss_orig + protoloss + lambda_gate * gating_loss

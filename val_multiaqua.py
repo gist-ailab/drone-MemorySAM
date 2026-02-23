@@ -5,7 +5,7 @@ MULTIAQUA 데이터셋용 Validation 및 Test Inference 스크립트.
 
 저장 구조 (val, test 공통):
   save_dir/seg/      : 클래스값 0,1,2,3 (uint8) raw segmentation (원본 크기) - 로컬 평가용
-  save_dir/seg_viz/  : [RGB | Seg(colored) | Overlay] + 하단 [UAMM | AMF | MoE] 시각화 (LoRA_Sam_P8)
+  save_dir/seg_viz/  : Row1 [RGB|Thermal|LiDAR], Row2 [Legend|Seg|Overlay], Row3 [UAMM|AMF|MoE] (LoRA_Sam_P8)
   save_dir/uamm_amf_moe_log.json : 이미지별 UAMM/AMF/MoE LoRA 수치 (LoRA_Sam_P8, --macvi 미사용시)
 
 MaCVi 리더보드 제출 시:
@@ -123,6 +123,63 @@ def _unpad_resize_to_orig(pred: torch.Tensor, orig_h: int, orig_w: int, model_si
     else:
         pred_resized = pred_content.long()
     return pred_resized
+
+
+def _draw_legend(classes, palette, target_h, target_w):
+    """
+    Draw segmentation class color legend. Returns RGB numpy array (target_h x target_w).
+    """
+    fig, ax = plt.subplots(figsize=(target_w / 80, target_h / 80), dpi=80)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis('off')
+    ax.set_facecolor('#f8f8f8')
+
+    n = len(classes)
+    patch_h = 0.9 / max(n, 1)
+    for i, (cls_name, color) in enumerate(zip(classes, palette)):
+        if isinstance(color, torch.Tensor):
+            color = (color.cpu().numpy() / 255.0).tolist()
+        else:
+            color = np.asarray(color)
+            if color.max() > 1:
+                color = (color / 255.0).tolist()
+            else:
+                color = color.tolist()
+        y = 0.95 - (i + 0.5) * patch_h
+        rect = plt.Rectangle((0.05, y - patch_h * 0.4), patch_h * 0.8, patch_h * 0.8,
+                              facecolor=color, edgecolor='#333', linewidth=1)
+        ax.add_patch(rect)
+        ax.text(0.05 + patch_h + 0.02, y, cls_name, fontsize=min(18, int(target_h / 35)),
+                va='center', ha='left', fontweight='bold')
+    ax.set_title('Classes', fontsize=min(22, int(target_h / 30)))
+    fig.tight_layout(pad=0.5)
+    fig.canvas.draw()
+    buf = fig.canvas.buffer_rgba()
+    w, h = fig.canvas.get_width_height()
+    img = np.asarray(buf).reshape((h, w, 4))[:, :, :3].copy()
+    plt.close(fig)
+    from PIL import Image
+    return np.array(Image.fromarray(img).resize((target_w, target_h), Image.Resampling.LANCZOS))
+
+
+def _load_modality_image(dataset, modal_key, stem, target_h, target_w):
+    """Load single modality image from disk and resize. Returns (H,W,3) uint8."""
+    from PIL import Image
+    if modal_key == 'img':
+        path = dataset.rgb_dir / f"{stem}.png" if hasattr(dataset, 'rgb_dir') else None
+    elif modal_key == 'lidar':
+        path = dataset.lidar_dir / f"{stem}_lidar.png" if hasattr(dataset, 'lidar_dir') else None
+    elif modal_key == 'thermal':
+        path = dataset.thermal_dir / f"{stem}_thermal.png" if hasattr(dataset, 'thermal_dir') else None
+    else:
+        path = None
+    if path is None or not path.exists():
+        return np.zeros((target_h, target_w, 3), dtype=np.uint8)
+    img = np.array(Image.open(str(path)).convert("RGB"))
+    if img.shape[0] != target_h or img.shape[1] != target_w:
+        img = np.array(Image.fromarray(img).resize((target_w, target_h), Image.Resampling.LANCZOS))
+    return img
 
 
 def _draw_bar_chart(values, labels, title, target_h, target_w=None):
@@ -317,10 +374,22 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
                 else:
                     Image.fromarray(pred_np).save(str(seg_dir / f"{stem}.png"))
                     colored = MULTIAQUA.decode_segmap(pred_np, palette)
-                    rgb_path = dataloader.dataset.rgb_dir / f"{stem}.png"
-                    rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
+                    ds = dataloader.dataset
+                    # Layout: Row1 [RGB|Thermal|LiDAR], Row2 [Legend|Seg|Overlay], Row3 [UAMM|AMF|MoE]
+                    modality_cols = []
+                    for mk in modals:
+                        mimg = _load_modality_image(ds, mk, stem, orig_h, orig_w)
+                        modality_cols.append(mimg)
+                    rgb = modality_cols[0] if modality_cols else np.array(Image.open(str(ds.rgb_dir / f"{stem}.png")).convert("RGB"))
+                    if rgb.shape[0] != orig_h or rgb.shape[1] != orig_w:
+                        rgb = np.array(Image.fromarray(rgb).resize((orig_w, orig_h), Image.Resampling.LANCZOS))
                     overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
-                    viz_row = np.concatenate([rgb, colored, overlay], axis=1)
+                    classes = getattr(ds, 'CLASSES', MULTIAQUA.CLASSES)
+                    palette = getattr(ds, 'PALETTE', MULTIAQUA.PALETTE)
+                    legend_img = _draw_legend(classes, palette, orig_h, orig_w)
+                    row1 = np.concatenate(modality_cols, axis=1)
+                    row2 = np.concatenate([legend_img, colored, overlay], axis=1)
+                    viz_row = np.concatenate([row1, row2], axis=0)
                     viz_bottom = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0], viz_row.shape[1])
                     if viz_bottom is not None:
                         viz_row = np.concatenate([viz_row, viz_bottom], axis=0)
@@ -400,10 +469,21 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
             else:
                 Image.fromarray(pred_np).save(str(seg_dir / f"{stem}.png"))
                 colored = MULTIAQUA.decode_segmap(pred_np, palette)
-                rgb_path = dataloader.dataset.rgb_dir / f"{stem}.png"
-                rgb = np.array(Image.open(str(rgb_path)).convert("RGB"))
+                ds = dataloader.dataset
+                modality_cols = []
+                for mk in modals:
+                    mimg = _load_modality_image(ds, mk, stem, orig_h, orig_w)
+                    modality_cols.append(mimg)
+                rgb = modality_cols[0] if modality_cols else np.array(Image.open(str(ds.rgb_dir / f"{stem}.png")).convert("RGB"))
+                if rgb.shape[0] != orig_h or rgb.shape[1] != orig_w:
+                    rgb = np.array(Image.fromarray(rgb).resize((orig_w, orig_h), Image.Resampling.LANCZOS))
                 overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
-                viz_row = np.concatenate([rgb, colored, overlay], axis=1)
+                classes = getattr(ds, 'CLASSES', MULTIAQUA.CLASSES)
+                palette = getattr(ds, 'PALETTE', MULTIAQUA.PALETTE)
+                legend_img = _draw_legend(classes, palette, orig_h, orig_w)
+                row1 = np.concatenate(modality_cols, axis=1)
+                row2 = np.concatenate([legend_img, colored, overlay], axis=1)
+                viz_row = np.concatenate([row1, row2], axis=0)
                 viz_bottom = _get_uamm_amf_moe_viz(model, b, modals, viz_row.shape[0], viz_row.shape[1])
                 if viz_bottom is not None:
                     viz_row = np.concatenate([viz_row, viz_bottom], axis=0)
