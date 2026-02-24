@@ -1,12 +1,8 @@
 \begin{abstract}
 Adapting vision foundation models to multi-modal semantic segmentation is challenging because these models are designed for single-modal input, and naively fusing heterogeneous modalities often fails when sensor quality varies across conditions.
-We propose a method that adapts SAM2 via MemorySAM's memory-based cross-modal aggregation and addresses two key failure modes of multi-modal fusion with foundation models.
-First, when Mixture-of-Experts (MoE) LoRA layers are used for modality-adaptive encoding, soft gating causes all experts to converge to a uniform routing distribution, producing modality-agnostic features that prevent downstream fusion from distinguishing sensor quality.
-We resolve this by maximizing the mutual information (MI) between modality identity and expert routing, driving each modality to utilize distinct experts and producing differentiated backbone features.
-Second, the segmentation objective alone provides insufficient gradient signal for the fusion head to learn input-adaptive gating weights.
-We introduce quality-aware cross-modal scoring---enriching each modality's representation with multi-pool statistics through modality-specific compression networks---combined with gating oracle supervision via KL divergence from per-modality auxiliary segmentation heads.
-The resulting weights are applied with temperature-scaled normalization for memory modulation and as raw softmax for output fusion.
-To bridge the day-night domain gap, we apply aggressive RGB corruption augmentations including extreme darkening, complementary random masking~\cite{shin2024crm}, and stochastic full-channel zeroing.
-We validate each design choice on the MULTIAQUA benchmark~\cite{muhovic2025multiaqua}, achieving 94.00\% mIoU on the daytime validation set.
+We propose a method that adapts SAM2 via MemorySAM's memory-based cross-modal aggregation and addresses a key failure mode of multi-modal fusion with foundation models: when per-modality confidence is estimated independently via sigmoid activation, all scores saturate to ${\sim}1.0$ for rich backbone features, effectively disabling modality-adaptive weighting.
+We replace independent scoring with a cross-modal fusion head that jointly compares all modality features through a shared compression and comparison network, producing softmax-normalized relative weights that inherently differentiate between modalities.
+These weights are applied through two complementary paths: max-normalized for uncertainty-aware memory modulation---preserving the best modality's features at full strength while suppressing degraded ones---and as raw softmax for adaptive output fusion.
+Combined with Soft Mixture-of-Experts gating in SAM2's LoRA layers for full expert utilization, and aggressive RGB corruption augmentations for day-to-night generalization, we validate each design choice on the MULTIAQUA benchmark~\cite{muhovic2025multiaqua}, achieving 94.00\% mIoU on the daytime validation set.
 % Our method achieves XX.X\% mIoU on the nighttime test set.
 \end{abstract}

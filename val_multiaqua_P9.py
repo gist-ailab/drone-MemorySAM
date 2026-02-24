@@ -217,6 +217,9 @@ def _draw_bar_chart(values, labels, title, target_h, target_w=None):
 # Representative layers: early, mid, late
 REPRESENTATIVE_LAYERS = [0, 9, 18]  # Block indices
 
+# Modal display names
+MODAL_TITLES = {'img': 'RGB', 'lidar': 'LiDAR', 'thermal': 'Thermal'}
+
 # Expert colors for routing map
 EXPERT_COLORS = np.array([
     [220, 50, 50],    # E0: Red
@@ -478,23 +481,24 @@ def build_routing_map_row(capture, modals, target_h, target_w, block_idx=9):
 
     row = np.concatenate(cols, axis=1)
     if row.shape[1] != target_w:
-        row = np.array(Image.fromarray(row).resize((target_w, map_h), Image.Resampling.LANCZOS))
+        row = np.array(Image.fromarray(row).resize((target_w, row.shape[0]), Image.Resampling.LANCZOS))
     return row
 
 
 def _add_title_to_image(img, title):
-    """Add a title bar on top of an image."""
+    """Add a large title bar on top of an image."""
     h, w = img.shape[:2]
-    title_h = max(30, h // 15)
-    title_bar = np.ones((title_h, w, 3), dtype=np.uint8) * 40  # Dark gray
+    title_h = max(56, h // 8)
 
-    # Use matplotlib to render text
-    fig, ax = plt.subplots(figsize=(w / 80, title_h / 80), dpi=80)
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
-    ax.set_facecolor('#282828')
-    ax.text(0.5, 0.5, title, fontsize=min(16, int(title_h * 0.6)),
+    dpi = 100
+    fig = plt.figure(figsize=(w / dpi, title_h / dpi), dpi=dpi)
+    fig.patch.set_facecolor('#1a1a2e')
+    ax = fig.add_axes([0, 0, 1, 1])  # fill entire figure, no margin
+    ax.set_facecolor('#1a1a2e')
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+    ax.axis('off')
+    ax.text(0.5, 0.5, title, fontsize=min(36, max(18, int(title_h * 0.55))),
             color='white', ha='center', va='center', fontweight='bold')
-    fig.tight_layout(pad=0)
     fig.canvas.draw()
     buf = fig.canvas.buffer_rgba()
     fw, fh = fig.canvas.get_width_height()
@@ -606,32 +610,38 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None):
                 # Build visualization
                 colored = MULTIAQUA.decode_segmap(pred_np, palette)
                 ds = dataloader.dataset
+                # Recording Boat 영역(ignore=255)을 시각화에서 마스킹
+                ignore_mask = orig_label.cpu().numpy() == 255
+                colored[ignore_mask] = [30, 30, 30]
 
-                # Row 1: modality images
-                modality_cols = [_load_modality_image(ds, mk, stem, orig_h, orig_w) for mk in modals]
-                rgb = modality_cols[0]
+                # Row 1: modality images with titles
+                raw_modals = [_load_modality_image(ds, mk, stem, orig_h, orig_w) for mk in modals]
+                rgb = raw_modals[0]
                 if rgb.shape[0] != orig_h or rgb.shape[1] != orig_w:
                     rgb = np.array(Image.fromarray(rgb).resize((orig_w, orig_h), Image.Resampling.LANCZOS))
                 overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
+                overlay[ignore_mask] = [30, 30, 30]
 
-                classes = getattr(ds, 'CLASSES', MULTIAQUA.CLASSES)
-                pal = getattr(ds, 'PALETTE', MULTIAQUA.PALETTE)
-                legend_img = _draw_legend(classes, pal, orig_h, orig_w)
-
+                modality_cols = [_add_title_to_image(img, MODAL_TITLES.get(mk, mk))
+                                 for img, mk in zip(raw_modals, modals)]
                 row1 = np.concatenate(modality_cols, axis=1)
-                row2 = np.concatenate([legend_img, colored, overlay], axis=1)
                 main_w = row1.shape[1]
 
-                # Row 3: UAMM + AMF + Per-Token Stats
+                # Row 2: GT | Prediction | Overlay
+                gt_colored = MULTIAQUA.decode_segmap(
+                    orig_label.cpu().numpy().astype(np.uint8), palette)
+                row2 = np.concatenate([
+                    _add_title_to_image(gt_colored, 'GT'),
+                    _add_title_to_image(colored, 'Prediction'),
+                    _add_title_to_image(overlay, 'Overlay'),
+                ], axis=1)
+
+                # Row 3: MoE per-token stats
                 row3_h = int(orig_h * 0.55)
-                row3_left = build_uamm_amf_row(model, b, modals, orig_h, main_w)
+                stats_row = build_stats_row(capture, modals, row3_h, main_w)
 
-                # Replace the third bar with routing stats
-                stats_row = build_stats_row(capture, modals, row3_left.shape[0], main_w)
-
-                # Row 4: Spatial routing maps
+                # Row 4: Spatial routing maps (titles added inside)
                 map_h = int(orig_h * 0.6)
-                # Use the mid-level block for spatial map
                 mid_block = REPRESENTATIVE_LAYERS[len(REPRESENTATIVE_LAYERS) // 2]
                 row4 = build_routing_map_row(capture, modals, map_h, main_w, block_idx=mid_block)
 
@@ -732,18 +742,29 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None):
             Image.fromarray(pred_np).save(str(seg_dir / f"{stem}.png"))
             colored = MULTIAQUA.decode_segmap(pred_np, palette)
             ds = dataloader.dataset
-            modality_cols = [_load_modality_image(ds, mk, stem, orig_h, orig_w) for mk in modals]
-            rgb = modality_cols[0]
+
+            # Row 1: modality images with titles
+            raw_modals = [_load_modality_image(ds, mk, stem, orig_h, orig_w) for mk in modals]
+            rgb = raw_modals[0]
             if rgb.shape[0] != orig_h or rgb.shape[1] != orig_w:
                 rgb = np.array(Image.fromarray(rgb).resize((orig_w, orig_h), Image.Resampling.LANCZOS))
             overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
+
+            modality_cols = [_add_title_to_image(img, MODAL_TITLES.get(mk, mk))
+                             for img, mk in zip(raw_modals, modals)]
+            row1 = np.concatenate(modality_cols, axis=1)
+            main_w = row1.shape[1]
+
+            # Row 2: Legend | Prediction | Overlay (no GT in test)
             classes = getattr(ds, 'CLASSES', MULTIAQUA.CLASSES)
             pal = getattr(ds, 'PALETTE', MULTIAQUA.PALETTE)
             legend_img = _draw_legend(classes, pal, orig_h, orig_w)
+            row2 = np.concatenate([
+                _add_title_to_image(legend_img, 'Legend'),
+                _add_title_to_image(colored, 'Prediction'),
+                _add_title_to_image(overlay, 'Overlay'),
+            ], axis=1)
 
-            row1 = np.concatenate(modality_cols, axis=1)
-            row2 = np.concatenate([legend_img, colored, overlay], axis=1)
-            main_w = row1.shape[1]
             stats_row = build_stats_row(capture, modals, int(orig_h * 0.55), main_w)
             mid_block = REPRESENTATIVE_LAYERS[len(REPRESENTATIVE_LAYERS) // 2]
             row4 = build_routing_map_row(capture, modals, int(orig_h * 0.6), main_w, block_idx=mid_block)

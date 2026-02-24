@@ -118,15 +118,19 @@ class ConfidenceHeadV2(nn.Module):
 
 class CrossModalFusionHead(nn.Module):
     """
-    Cross-Modal Fusion Head (P9): 모든 모달리티 feature를 동시에 비교하여
+    Cross-Modal Fusion Head (P9/P12): 모든 모달리티 feature를 동시에 비교하여
     상대적 융합 가중치를 산출.
 
     기존 ConfidenceHeadV2는 각 모달리티를 독립 평가(sigmoid → 포화 → 균등화)하지만,
     이 모듈은 모든 모달리티를 동시에 보고 상대 중요도를 비교한다.
 
     구조: 공유 Compress(GAP+Linear) → Concat → Compare MLP → Softmax
+
+    [P12] cond_dim > 0 이면 Input-Conditioned Scoring 활성화:
+    raw input statistics를 추가 경로로 받아 logit에 bias를 더함.
+    이를 통해 frozen encoder가 지운 quality 정보를 보충.
     """
-    def __init__(self, in_channels, num_modalities=3, hidden_dim=64, temperature=1.0):
+    def __init__(self, in_channels, num_modalities=3, hidden_dim=64, temperature=1.0, cond_dim=0):
         super().__init__()
         self.num_modalities = num_modalities
         self.temperature = temperature
@@ -150,10 +154,23 @@ class CrossModalFusionHead(nn.Module):
         nn.init.constant_(self.compare[-1].weight, 0)
         nn.init.constant_(self.compare[-1].bias, 0)
 
-    def forward(self, features_list):
+        # [P12] Input condition path: raw stats → logit bias
+        self.cond_dim = cond_dim
+        if cond_dim > 0:
+            self.cond_compare = nn.Sequential(
+                nn.Linear(cond_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, num_modalities)
+            )
+            # Zero-init: 초기에는 condition 영향 없음
+            nn.init.zeros_(self.cond_compare[-1].weight)
+            nn.init.zeros_(self.cond_compare[-1].bias)
+
+    def forward(self, features_list, condition=None):
         """
         Args:
             features_list: List of (B, C, H, W) — 각 모달리티의 backbone feature
+            condition: (B, cond_dim) or None — [P12] raw input statistics
         Returns:
             weights: (B, num_modalities) softmax 정규화된 가중치
             logits:  (B, num_modalities) raw logits (시각화/디버깅용)
@@ -161,6 +178,11 @@ class CrossModalFusionHead(nn.Module):
         compressed = [self.compress(f) for f in features_list]
         concat = torch.cat(compressed, dim=1)       # (B, hidden_dim * m)
         logits = self.compare(concat)                # (B, m)
+
+        # [P12] Add condition bias to logits
+        if condition is not None and self.cond_dim > 0:
+            logits = logits + self.cond_compare(condition)
+
         weights = F.softmax(logits / self.temperature, dim=1)  # (B, m)
         return weights, logits
 
@@ -499,24 +521,34 @@ class _MoE_LoRA_qkv(nn.Module):
 class SoftMoE_LoRA_Layer(nn.Module):
     """
     Soft-MoE (Soft Mixture-of-Experts) LoRA Layer.
-    
+
     기존의 Top-k 방식(Hard Routing) 대신, 입력에 따라 모든 전문가(Expert)의 출력을
     Softmax 가중치로 섞어서 사용합니다.
-    
+
     장점:
     1. 전문가 수가 적을 때(예: 4개) Top-k보다 정보 손실이 적음.
     2. 모든 전문가에게 Gradient가 흘러 Dead Expert 문제가 완화됨.
     3. 미분 가능성이 완벽하게 보장됨.
+
+    [P12] cond_dim > 0 이면 Input-Conditioned Gating 활성화:
+    외부에서 set_condition()으로 설정한 (B, cond_dim) 벡터를 gate logit에 bias로 더함.
+    Zero-init → 초기에는 기존과 동일하게 동작, 학습 진행 시 condition 활용.
     """
-    def __init__(self, in_features, rank, num_experts=4):
+    def __init__(self, in_features, rank, num_experts=4, cond_dim=0):
         super().__init__()
         self.num_experts = num_experts
         self.rank = rank
         self.in_features = in_features
-        
+
         # Gating Network: 입력 토큰별로 전문가 가중치를 계산
         self.gate = nn.Linear(in_features, num_experts)
-        
+
+        # [P12] Input condition → gate bias projection
+        self.cond_dim = cond_dim
+        if cond_dim > 0:
+            self.cond_proj = nn.Linear(cond_dim, num_experts)
+        self._condition = None  # set externally via set_condition()
+
         # Experts: LoRA 어댑터들
         self.experts_a = nn.ModuleList([
             nn.Linear(in_features, rank, bias=False) for _ in range(num_experts)
@@ -524,22 +556,49 @@ class SoftMoE_LoRA_Layer(nn.Module):
         self.experts_b = nn.ModuleList([
             nn.Linear(rank, in_features, bias=False) for _ in range(num_experts)
         ])
-        
+
         self.reset_parameters()
 
     def reset_parameters(self):
         # Gate 초기화: 초기에는 모든 전문가를 균등하게 사용하도록 0 근처로 설정
         nn.init.normal_(self.gate.weight, std=0.01)
         nn.init.zeros_(self.gate.bias)
-        
+
+        # [P12] Condition projection zero-init: 초기에는 condition 영향 없음
+        if self.cond_dim > 0:
+            nn.init.zeros_(self.cond_proj.weight)
+            nn.init.zeros_(self.cond_proj.bias)
+
         # Expert 초기화
         for i in range(self.num_experts):
             nn.init.kaiming_uniform_(self.experts_a[i].weight, a=math.sqrt(5))
             nn.init.zeros_(self.experts_b[i].weight)
 
+    def set_condition(self, cond):
+        """Set input condition for gating. cond: (B, cond_dim) or None."""
+        self._condition = cond
+
     def forward(self, x):
         # x shape: (B, N, C) 또는 (B, H, W, C) — Hiera 백본은 4D (B, H, W, C) 사용
         gate_logits = self.gate(x)  # (..., num_experts)
+
+        # [P12] Add condition bias to gate logits
+        if self._condition is not None and self.cond_dim > 0:
+            cond = self._condition  # (B, cond_dim)
+            B = cond.shape[0]
+            x_B = x.shape[0]  # could be B * num_windows (windowed attention)
+
+            if x_B > B:
+                # Windowed attention: expand condition to match B*nw
+                nw = x_B // B
+                cond = cond.repeat_interleave(nw, dim=0)  # (B*nw, cond_dim)
+
+            cond_bias = self.cond_proj(cond)  # (x_B, num_experts)
+            # Broadcast over spatial dims: add 1-dims for H, W (or N)
+            for _ in range(x.dim() - 2):
+                cond_bias = cond_bias.unsqueeze(1)
+            gate_logits = gate_logits + cond_bias
+
         gate_weights = F.softmax(gate_logits, dim=-1)  # (..., num_experts)
 
         # For visualization: store spatial-mean gate weights (B, num_experts)

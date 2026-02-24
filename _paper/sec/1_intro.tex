@@ -11,7 +11,7 @@ Meanwhile, foundation models such as SAM~\cite{kirillov2023sam} and SAM2~\cite{r
 Bridging foundation models to multi-modal semantic segmentation thus requires addressing two fundamental gaps: enabling multi-modal input processing and transitioning from instance-level to semantic-level understanding.
 
 Recently, MemorySAM~\cite{chen2025memorysam} proposed an elegant solution by reinterpreting SAM2's temporal memory mechanism for cross-modal aggregation.
-By treating each modality as a sequential ``frame'', the memory bank naturally captures modality-agnostic features, while a Semantic Prototype Memory Module (SPMM) guides the model toward semantic-level segmentation.
+By treating each modality as a sequential ``frame'', the memory bank naturally captures cross-modal features, while a Semantic Prototype Memory Module (SPMM) guides the model toward semantic-level segmentation.
 Concurrently, MoE-LoRA~\cite{zhu2024moe} introduced Mixture-of-Experts routing into SAM's Low-Rank Adaptation~\cite{hu2022lora} layers, enabling modality-adaptive parameter specialization with minimal overhead.
 
 In this work, we build upon these advances and investigate how to effectively adapt foundation models for multi-modal maritime segmentation under varying sensor conditions.
@@ -20,20 +20,16 @@ A key difficulty is that models are trained on daytime data but must generalize 
 
 Our approach adapts the MemorySAM framework to the maritime domain with the following design choices:
 
-\noindent\textbf{(1) Soft-MoE LoRA with MI-driven expert specialization.}
+\noindent\textbf{(1) Soft-MoE gating for LoRA adaptation.}
 MoE-LoRA~\cite{zhu2024moe} employs hard top-$k$ routing, where only $k$ out of $N$ experts are activated per token.
 When the number of experts is small (\eg, 3 experts matching 3 modalities), top-$k$ routing discards significant expert capacity.
-Following insights from Soft Mixtures of Experts~\cite{puigcerver2024softmoe}, we adopt soft gating where all experts contribute via softmax-weighted combination.
-However, we observe that soft gating causes expert routing to converge to a near-uniform distribution, producing modality-agnostic backbone features.
-To address this, we introduce an MI routing loss that maximizes the mutual information between modality identity and expert selection, driving each modality to route through distinct experts.
+Following insights from Soft Mixtures of Experts~\cite{puigcerver2024softmoe}, we adopt soft gating where all experts contribute via softmax-weighted combination, ensuring full expert utilization in this low-expert regime.
 
-\noindent\textbf{(2) Quality-aware cross-modal scoring with gating oracle supervision.}
-Prior approaches~\cite{chen2025memorysam} estimate each modality's quality independently, which can suffer from sigmoid saturation---when all logits are large, scores converge to ${\sim}1.0$ regardless of actual quality differences.
+\noindent\textbf{(2) Cross-modal fusion head with dual-path weight application.}
+Prior approaches~\cite{chen2025memorysam} estimate each modality's quality independently using a CNN with sigmoid activation.
+However, when backbone features are rich, the sigmoid saturates---all scores converge to ${\sim}1.0$ regardless of actual quality differences, effectively disabling modality-adaptive weighting.
 We replace independent scoring with a cross-modal fusion head that jointly compares all modality features, producing softmax-normalized relative weights.
-To enrich the feature representation, we extract quality-sensitive statistics (global average pooling, global max pooling, and channel-wise standard deviation) through modality-specific compression networks.
-Crucially, the segmentation objective alone provides insufficient gradient signal to drive adaptive gating.
-We therefore introduce per-modality auxiliary segmentation heads that produce independent per-image quality estimates; oracle gating weights are derived from these estimates and used to supervise the fusion head via KL divergence.
-The learned weights are applied through two paths: temperature-scaled for memory modulation (UAMM) and as raw softmax for output fusion (AMF).
+These weights are applied through two complementary paths: max-normalized for memory modulation (preserving the best modality at full strength) and as raw softmax for output fusion (weighting contributions proportionally).
 
 \noindent\textbf{(3) Night-robust RGB augmentation.}
 To bridge the day-night domain gap using only daytime training data, we apply aggressive RGB corruption including extreme brightness reduction (factor 0.03--0.25), complementary random masking~\cite{shin2024crm} that zeros out 20--50\% of spatial regions, and stochastic full-channel zeroing simulating complete RGB failure.

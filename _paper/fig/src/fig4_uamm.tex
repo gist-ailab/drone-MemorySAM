@@ -3,22 +3,20 @@
 \usepackage{amsmath}
 \usetikzlibrary{arrows.meta,fit,backgrounds}
 
-\definecolor{cOld}  {RGB}{150, 150, 150}
-\definecolor{cNew}  {RGB}{120,  50, 180}
+\definecolor{cUAMM} {RGB}{40,  145, 70}
+\definecolor{cAMF}  {RGB}{220, 110, 20}
 \definecolor{cTrack}{RGB}{60,  110, 200}
-\definecolor{cAMF}  {RGB}{40,  150,  70}
-\definecolor{cNote} {RGB}{90,   90,  90}
+\definecolor{cFus}  {RGB}{185,  45, 45}
+\definecolor{cNote} {RGB}{90,   90, 90}
 
 \tikzset{
   B/.style      = {draw, thick, rounded corners=3pt, text centered, font=\small},
-  oldB/.style   = {B, fill=cOld!15, draw=cOld!70,   minimum width=55mm, minimum height=9mm},
-  newB/.style   = {B, fill=cNew!15, draw=cNew!70,   minimum width=55mm, minimum height=9mm},
+  wgtB/.style   = {B, fill=cUAMM!14, draw=cUAMM!65, minimum width=52mm},
   trackB/.style = {B, fill=cTrack!12, draw=cTrack!65,
-                   minimum width=40mm, minimum height=20mm},
+                   minimum width=40mm, minimum height=22mm},
   outB/.style   = {B, fill=cAMF!15, draw=cAMF!70,   minimum width=30mm},
   fusB/.style   = {B, fill=cAMF!22, draw=cAMF!85,
                    minimum width=80mm, minimum height=14mm, font=\normalsize},
-  wgtB/.style   = {B, fill=cNew!14, draw=cNew!65,   minimum width=50mm},
   note/.style   = {draw=cNote!40, rounded corners=4pt, fill=gray!5,
                    font=\scriptsize, text=cNote, inner sep=5pt, align=left},
   A/.style  = {-Stealth, thick},
@@ -29,106 +27,102 @@
 \begin{tikzpicture}
 
 %% ─── Title ───────────────────────────────────────────────────────
-\node[font=\large\bfseries, text=cNew] at (7.0, 0.6)
+\node[font=\large\bfseries, text=cUAMM] at (7.0, 0.6)
   {UAMM (Uncertainty-Aware Memory Modulation) --- Phase~3};
 
-%% ════════════════════════════════════════════════════════════
-%%  TOP: Comparison Panel
-%% ════════════════════════════════════════════════════════════
-\node[font=\normalsize\bfseries, text=cOld!80] at (2.8,-0.6) {P9/P10: max-norm};
-\node[font=\normalsize\bfseries, text=cNew]    at (9.8,-0.6) {P11: softmax $\times m$};
-\node[font=\Large\bfseries, text=gray!50]      at (6.3,-0.6) {vs.};
+%% ─── Formula box ─────────────────────────────────────────────────
+\node[B, fill=cUAMM!10, draw=cUAMM!65, minimum width=100mm,
+      minimum height=18mm, text width=98mm] (FML) at (7.0,-0.8)
+  {\textbf{Max-Normalization:}\quad
+   $\hat{w}_i = \dfrac{w_i}{\max_j w_j + \varepsilon}$
+   \qquad{\small best modality $= 1.0$,\; others $\in (0,1]$}};
 
-%% max-norm panel
-\node[oldB, minimum height=9mm] at (2.8,-1.4)
-  {Formula:\; $\hat{w}_i = \dfrac{w_i}{\max_j w_j + \varepsilon}$};
-\node[oldB, minimum height=9mm] at (2.8,-2.5)
-  {Example: $w=[0.30,\;0.60,\;0.80]$};
-\node[oldB, minimum height=9mm] at (2.8,-3.6)
-  {$\hat{w}=[0.375,\;0.75,\;\mathbf{1.0}]$};
-\node[B, fill=red!10, draw=red!50, minimum width=55mm, font=\scriptsize]
-  at (2.8,-4.5)
-  {{\color{red}best modality ALWAYS = 1.0}\\[-1pt]
-   {\color{orange!80!black}even if all modalities are bad}};
+%% ─── Intuition comparison boxes ──────────────────────────────────
+\node[B, fill=gray!8, draw=gray!45, minimum width=48mm, minimum height=28mm,
+      text width=46mm, font=\scriptsize] at (2.2,-3.0)
+  {\textbf{Example: daytime scene}\\[4pt]
+   Cross-modal weights:\\
+   $w = [0.40,\;0.35,\;0.25]$\\
+   \quad (rgb, thm, lid)\\[3pt]
+   UAMM scores:\\
+   $\hat{w} = [1.00,\;0.875,\;0.625]$\\[3pt]
+   {\color{cUAMM}RGB dominates (best visible)}\\
+   Others relatively suppressed};
 
-%% softmax x m panel
-\node[newB, minimum height=9mm] at (9.8,-1.4)
-  {Formula:\; $\hat{w}_i = \mathrm{softmax}\!\left(\tfrac{\mathbf{l}}{\tau_u}\right)_i \times m$};
-\node[newB, minimum height=9mm] at (9.8,-2.5)
-  {$\tau_u = 2.0$,\quad $m = 3$};
-\node[newB, minimum height=9mm] at (9.8,-3.6)
-  {Example: logits $=[0,0,0]$ $\to$ $\hat{w}=[1.0,1.0,1.0]$};
-\node[B, fill=cNew!8, draw=cNew!50, minimum width=55mm, font=\scriptsize]
-  at (9.8,-4.5)
-  {{\color{cNew}mean=1.0, all independently controlled}\\[-1pt]
-   {\color{cAMF}best: boost $>1.0$;\; worst: suppress $<1.0$}};
+\node[B, fill=gray!8, draw=gray!45, minimum width=48mm, minimum height=28mm,
+      text width=46mm, font=\scriptsize] at (11.8,-3.0)
+  {\textbf{Example: night scene}\\[4pt]
+   Cross-modal weights:\\
+   $w = [0.20,\;0.50,\;0.30]$\\
+   \quad (rgb, thm, lid)\\[3pt]
+   UAMM scores:\\
+   $\hat{w} = [0.400,\;1.000,\;0.600]$\\[3pt]
+   {\color{cUAMM}Thermal dominates (night vision)}\\
+   RGB heavily suppressed};
 
-%% separator
-\draw[gray!30, very thick] (6.3,-0.3)--(6.3,-5.1);
+%% ─── P9 UAMM Forward Flow ────────────────────────────────────────
+\draw[gray!25, thick] (-0.2,-5.0)--(14.8,-5.0);
+\node[font=\normalsize\bfseries, text=cUAMM] at (3.0,-5.5)
+  {P9 UAMM Forward Flow};
 
-%% ════════════════════════════════════════════════════════════
-%%  BOTTOM: P11 Forward Flow
-%% ════════════════════════════════════════════════════════════
-\draw[gray!25, thick] (-0.2,-5.7)--(14.8,-5.7);
-\node[font=\normalsize\bfseries, text=cNew] at (3.0,-6.2)
-  {P11 UAMM Forward Flow};
-
-%% uamm_scores from fusion head
-\node[wgtB] (US) at (6.8,-7.0)
+%% uamm_scores
+\node[wgtB] (US) at (6.8,-6.3)
   {\textbf{uamm\_scores} $(B,3)$\\
-   {\scriptsize softmax(logits / $\tau_u$) $\times$ 3}};
+   {\scriptsize $\hat{w}_i = w_i / \max_j(w_j)$\qquad best $= 1.0$}};
 
 %% Three track_step boxes
-\node[trackB] (T0) at (1.6,-9.8)
+\node[trackB] (T0) at (1.6,-9.2)
   {\textbf{frame 0: RGB}\\[3pt]
-   {\scriptsize $vf \times \hat{w}_0$}\\
+   {\scriptsize $vf_\text{rgb} \times \hat{w}_0$}\\
    {\scriptsize track\_step(\textbf{init})}};
-\node[trackB] (T1) at (6.8,-9.8)
+\node[trackB] (T1) at (6.8,-9.2)
   {\textbf{frame 1: Thermal}\\[3pt]
-   {\scriptsize $vf \times \hat{w}_1$}\\
+   {\scriptsize $vf_\text{thm} \times \hat{w}_1$}\\
    {\scriptsize track\_step(\textit{memory})}};
-\node[trackB] (T2) at (12.0,-9.8)
+\node[trackB] (T2) at (12.0,-9.2)
   {\textbf{frame 2: LiDAR}\\[3pt]
-   {\scriptsize $vf \times \hat{w}_2$}\\
+   {\scriptsize $vf_\text{lid} \times \hat{w}_2$}\\
    {\scriptsize track\_step(\textit{memory})}};
 
-\draw[A, cNew!70] (US.south)--++(0,-3mm) -| (T0.north);
-\draw[A, cNew!70] (US.south)--(T1.north);
-\draw[A, cNew!70] (US.south)--++(0,-3mm) -| (T2.north);
+\draw[A, cUAMM!70] (US.south)--++(0,-3mm) -| (T0.north);
+\draw[A, cUAMM!70] (US.south)--(T1.north);
+\draw[A, cUAMM!70] (US.south)--++(0,-3mm) -| (T2.north);
 
-%% memory arrows
 \draw[Ad, cTrack!60, bend left=20] (T0.north east)
   to node[above, font=\scriptsize, text=cTrack!70]{memory} (T1.north west);
 \draw[Ad, cTrack!60, bend left=20] (T1.north east)
   to node[above, font=\scriptsize, text=cTrack!70]{memory} (T2.north west);
 
 %% mask outputs
-\node[outB] (O0) at (1.6,-12.2)  {mask\_out$_0$};
-\node[outB] (O1) at (6.8,-12.2)  {mask\_out$_1$};
-\node[outB] (O2) at (12.0,-12.2) {mask\_out$_2$};
+\node[outB] (O0) at (1.6,-11.4)  {mask\_out$_0$};
+\node[outB] (O1) at (6.8,-11.4)  {mask\_out$_1$};
+\node[outB] (O2) at (12.0,-11.4) {mask\_out$_2$};
 
 \draw[A, cAMF!70] (T0.south)--(O0.north);
 \draw[A, cAMF!70] (T1.south)--(O1.north);
 \draw[A, cAMF!70] (T2.south)--(O2.north);
 
 %% AMF fused output
-\node[fusB] (FUS) at (6.8,-13.6)
-  {\textbf{fused\_output} $= \sum_i w_i \cdot \mathrm{mask\_out}_i$\quad(AMF)};
+\node[fusB] (FUS) at (6.8,-12.8)
+  {\textbf{AMF:}\quad fused\_output $= \sum_i w_i \cdot \text{mask\_out}_i$
+   \quad{\small($w_i$ from softmax, not max-norm)}};
 
 \draw[A, cAMF!80, thick] (O0.south)--++(0,-3mm) -| (FUS.west);
 \draw[A, cAMF!80, thick] (O1.south)--(FUS.north);
 \draw[A, cAMF!80, thick] (O2.south)--++(0,-3mm) -| (FUS.east);
 
 %% note
-\node[note, text width=50mm] at (13.4,-11.2) {
-  \textbf{Why softmax $\times m$?}\\[3pt]
-  \textbullet\ mean scale = 1.0\\
-  \textbullet\ best modality: boost $>1.0$\\
-  \textbullet\ worst modality: suppress $<1.0$\\
-  \textbullet\ $\tau_u{=}2.0$: soft (avoids extremes)\\[3pt]
-  P10 max-norm: best always $=1.0$\\
-  $\Rightarrow$ cannot boost best;\\
-  \hphantom{$\Rightarrow$} can only suppress others.
+\node[note, text width=54mm] at (13.4,-10.2) {
+  \textbf{Max-norm design rationale:}\\[3pt]
+  \textbullet\ Best modality always $= 1.0$\\
+  \quad (feature fully preserved)\\
+  \textbullet\ Others: relative suppression\\
+  \quad (proportional to quality)\\
+  \textbullet\ Avoids sigmoid saturation\\
+  \quad (P8 problem: score $\approx 1$ always)\\[3pt]
+  \textbf{UAMM vs AMF use different norms:}\\
+  UAMM: max-norm (feature modulation)\\
+  AMF: softmax (output fusion, sum=1)
 };
 
 \end{tikzpicture}

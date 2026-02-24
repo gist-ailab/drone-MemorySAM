@@ -375,6 +375,9 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
                     Image.fromarray(pred_np).save(str(seg_dir / f"{stem}.png"))
                     colored = MULTIAQUA.decode_segmap(pred_np, palette)
                     ds = dataloader.dataset
+                    # Recording Boat 영역(ignore=255)을 시각화에서 마스킹
+                    ignore_mask = orig_label.cpu().numpy() == 255
+                    colored[ignore_mask] = [30, 30, 30]
                     # Layout: Row1 [RGB|Thermal|LiDAR], Row2 [Legend|Seg|Overlay], Row3 [UAMM|AMF|MoE]
                     modality_cols = []
                     for mk in modals:
@@ -384,6 +387,7 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
                     if rgb.shape[0] != orig_h or rgb.shape[1] != orig_w:
                         rgb = np.array(Image.fromarray(rgb).resize((orig_w, orig_h), Image.Resampling.LANCZOS))
                     overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
+                    overlay[ignore_mask] = [30, 30, 30]
                     classes = getattr(ds, 'CLASSES', MULTIAQUA.CLASSES)
                     palette = getattr(ds, 'PALETTE', MULTIAQUA.PALETTE)
                     legend_img = _draw_legend(classes, palette, orig_h, orig_w)
