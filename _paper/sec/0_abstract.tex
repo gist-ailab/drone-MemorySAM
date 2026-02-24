@@ -1,11 +1,12 @@
 \begin{abstract}
-This paper describes our solution for the MaCVi USV Semantic Segmentation Challenge at CVPR 2026, which targets the MULTIAQUA dataset featuring RGB, thermal, and LiDAR modalities with a challenging nighttime test set.
-We adapt the MemorySAM framework---which repurposes SAM2's temporal memory mechanism for cross-modal feature aggregation---to the maritime domain and investigate effective strategies for multi-modal fusion under severe illumination changes.
-Specifically, we adopt soft mixture-of-experts gating in SAM2's LoRA layers to improve expert utilization when the number of experts is small, and introduce a quality-aware cross-modal fusion head that jointly compares all modality features to produce relative importance weights.
-Unlike prior independent per-modality scoring that suffers from sigmoid saturation, our fusion head extracts quality-sensitive statistics---global average, global max, and channel-wise standard deviation---through modality-specific compression networks, enabling the gating to respond to per-image quality variation rather than converging to fixed weights.
-To provide direct training supervision for the gating network, we attach a lightweight auxiliary segmentation head to each modality's backbone features and derive oracle gating weights from per-modality prediction quality; the fusion head is trained to match these oracle weights via KL divergence.
-The resulting weights are used with max-normalization for memory modulation---preserving the best modality's features while suppressing degraded ones---and as raw softmax weights for output fusion.
-To bridge the day-night domain gap without nighttime training data, we apply aggressive RGB corruption augmentations including extreme darkening, complementary random masking~\cite{shin2024crm}, and stochastic full-channel zeroing.
-We empirically validate each design choice and report our results on the MULTIAQUA benchmark.
-% Our method achieves XX.X\% mIoU on the challenge test set.
+Adapting vision foundation models to multi-modal semantic segmentation is challenging because these models are designed for single-modal input, and naively fusing heterogeneous modalities often fails when sensor quality varies across conditions.
+We propose a method that adapts SAM2 via MemorySAM's memory-based cross-modal aggregation and addresses two key failure modes of multi-modal fusion with foundation models.
+First, when Mixture-of-Experts (MoE) LoRA layers are used for modality-adaptive encoding, soft gating causes all experts to converge to a uniform routing distribution, producing modality-agnostic features that prevent downstream fusion from distinguishing sensor quality.
+We resolve this by maximizing the mutual information (MI) between modality identity and expert routing, driving each modality to utilize distinct experts and producing differentiated backbone features.
+Second, the segmentation objective alone provides insufficient gradient signal for the fusion head to learn input-adaptive gating weights.
+We introduce quality-aware cross-modal scoring---enriching each modality's representation with multi-pool statistics through modality-specific compression networks---combined with gating oracle supervision via KL divergence from per-modality auxiliary segmentation heads.
+The resulting weights are applied with temperature-scaled normalization for memory modulation and as raw softmax for output fusion.
+To bridge the day-night domain gap, we apply aggressive RGB corruption augmentations including extreme darkening, complementary random masking~\cite{shin2024crm}, and stochastic full-channel zeroing.
+We validate each design choice on the MULTIAQUA benchmark~\cite{muhovic2025multiaqua}, achieving 94.00\% mIoU on the daytime validation set.
+% Our method achieves XX.X\% mIoU on the nighttime test set.
 \end{abstract}

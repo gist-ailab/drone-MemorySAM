@@ -5,16 +5,16 @@
 % \begin{figure*}[t]
 %   \centering
 %   \includegraphics[width=\linewidth]{fig/overview.pdf}
-%   \caption{Overview of our approach. (a) Each modality is processed by SAM2's frozen image encoder augmented with Soft-MoE LoRA layers. (b) A cross-modal fusion head jointly compares all modality features and produces softmax-normalized relative weights. (c) These weights are max-normalized for memory modulation (UAMM) and used as raw softmax for output fusion (AMF).}
+%   \caption{Overview of our approach. (a) Each modality is processed by SAM2's frozen image encoder augmented with Soft-MoE LoRA layers. (b) A cross-modal fusion head jointly compares all modality features and produces softmax-normalized relative weights. (c) These weights are temperature-scaled for memory modulation (UAMM) and used as raw softmax for output fusion (AMF).}
 %   \label{fig:overview}
 % \end{figure*}
 
 Our method adapts MemorySAM~\cite{chen2025memorysam} for the MULTIAQUA maritime segmentation task.
 We retain the core idea of treating each modality as a sequential frame processed through SAM2's~\cite{ravi2024sam2} memory-based tracking pipeline, and modify the LoRA adaptation strategy, modality scoring, and output fusion.
-Our pipeline operates in four phases: given $M$ input modalities (RGB, thermal, LiDAR), (1) all modalities are first encoded by SAM2's frozen image encoder with Soft-MoE LoRA layers; (2) a cross-modal fusion head jointly compares the backbone features of all modalities and produces softmax-normalized relative weights; (3) these weights are max-normalized and used to modulate vision features before SAM2's memory-augmented tracking step (UAMM); and (4) the per-modality mask outputs are fused using the raw softmax weights (AMF).
+Our pipeline operates in four phases: given $M$ input modalities (RGB, thermal, LiDAR), (1) all modalities are encoded by SAM2's frozen image encoder with Soft-MoE LoRA layers, where an MI routing loss drives modality-specific expert specialization; (2) a cross-modal fusion head jointly compares the backbone features and produces softmax-normalized relative weights; (3) these weights are re-normalized with a higher temperature and scaled by $M$ to modulate vision features before SAM2's memory-augmented tracking step (UAMM); and (4) the per-modality mask outputs are fused using the raw softmax weights (AMF).
 
 
-\subsection{Soft-MoE LoRA}
+\subsection{Soft-MoE LoRA with MI Specialization}
 \label{sec:soft_moe_lora}
 
 We keep SAM2's image encoder frozen and inject low-rank adaptation matrices into the query and value projections of each attention block, following the standard LoRA~\cite{hu2022lora} formulation.
@@ -28,140 +28,127 @@ Following the Soft Mixture-of-Experts formulation~\cite{puigcerver2024softmoe}, 
 \end{equation}
 where $g(\mathbf{x}) = \mathbf{W}_g \mathbf{x} + \mathbf{b}_g$ is a lightweight gating network with $\mathbf{W}_g \in \mathbb{R}^{N \times d}$.
 The output of the original QKV projection is augmented as $\mathbf{q} \leftarrow \mathbf{q} + \Delta \mathbf{q}$ and $\mathbf{v} \leftarrow \mathbf{v} + \Delta \mathbf{v}$.
-
-When the number of experts $N$ is small (\eg, $N{=}3$ matching three modalities), hard top-$k$ routing with $k{=}2$ permanently disables one expert per token.
-Soft gating avoids this issue by ensuring gradient flow to every expert at every step, enabling all experts to specialize without the dead expert problem.
+When the number of experts $N$ is small (\eg, $N{=}3$), hard top-$k$ routing with $k{=}2$ permanently disables one expert per token; soft gating avoids this by ensuring gradient flow to every expert at every step.
 We use $N{=}3$ experts and $r{=}4$ throughout our experiments.
 
+\noindent\textbf{MI routing loss.}
+However, soft gating introduces a different problem: without explicit specialization pressure, all experts receive similar gradients and the gate converges to a near-uniform distribution (\eg, $\boldsymbol{\alpha} \approx [0.33, 0.33, 0.34]$ for all modalities).
+When every modality passes through the same weighted combination of experts, the resulting backbone features become modality-agnostic, making it impossible for the downstream fusion head to distinguish modality quality.
 
-\subsection{Quality-Aware Cross-Modal Scoring}
+To address this, we maximize the mutual information (MI) between the modality identity and the expert selection.
+During encoding, we collect each modality's gate distribution $\boldsymbol{\alpha}_i \in \mathbb{R}^{N}$ by averaging the softmax gate weights across all spatial positions and all Soft-MoE LoRA layers.
+The MI is decomposed as $I = H(\bar{\boldsymbol{\alpha}}) - H(\boldsymbol{\alpha} \mid \text{modality})$, where:
+\begin{equation}
+  H(\boldsymbol{\alpha} \mid \text{mod.}) = \frac{1}{M}\sum_{i=1}^{M} \left[-\sum_{n=1}^{N} \alpha_{i,n} \log \alpha_{i,n}\right],
+  \label{eq:cond_ent}
+\end{equation}
+\begin{equation}
+  H(\bar{\boldsymbol{\alpha}}) = -\sum_{n=1}^{N} \bar{\alpha}_n \log \bar{\alpha}_n,
+  \;\; \bar{\boldsymbol{\alpha}} = \frac{1}{M}\sum_{i=1}^{M} \boldsymbol{\alpha}_i.
+  \label{eq:marg_ent}
+\end{equation}
+The MI routing loss minimizes the negative MI:
+\begin{equation}
+  \mathcal{L}_\text{MI} = H(\boldsymbol{\alpha} \mid \text{mod.}) - H(\bar{\boldsymbol{\alpha}}).
+  \label{eq:mi_loss}
+\end{equation}
+Minimizing $\mathcal{L}_\text{MI}$ simultaneously reduces the conditional entropy (each modality concentrates on fewer experts) and increases the marginal entropy (all experts are utilized overall), driving modality-specific expert specialization while preventing expert collapse.
+
+
+\subsection{Adaptive Cross-Modal Fusion}
 \label{sec:cross_modal}
 
+\noindent\textbf{Quality-aware scoring.}
 A central challenge in multi-modal fusion is estimating the relative quality of each modality.
-Prior approaches~\cite{chen2025memorysam} use independent per-modality heads (\eg, a CNN followed by sigmoid activation) to produce scalar confidence scores.
-However, when the backbone features are rich and all modalities produce large logits, the sigmoid function saturates---all scores converge to ${\sim}1.0$ regardless of actual quality differences.
-This effectively disables modality-adaptive weighting.
-Moreover, global average pooling alone encodes semantic content rather than quality: a degraded RGB frame and a clear RGB frame may yield similar GAP vectors after backbone processing, preventing the network from identifying which modality is degraded.
+Prior approaches~\cite{chen2025memorysam} use independent per-modality heads (\eg, a CNN followed by sigmoid activation), but when backbone features are rich, the sigmoid saturates---all scores converge to ${\sim}1.0$ regardless of actual quality differences.
+Moreover, global average pooling alone encodes semantic content rather than quality: a degraded RGB frame and a clear one may yield similar GAP vectors after backbone processing.
 
-We address this by enriching each modality's representation with quality-sensitive statistics.
-Given backbone feature maps $\{\mathbf{F}_i\}_{i=1}^{M}$ from Phase~1, we compute a multi-pool descriptor for each modality:
+We address both issues by enriching each modality's representation with quality-sensitive statistics.
+Given backbone feature maps $\{\mathbf{F}_i\}_{i=1}^{M}$, we compute a multi-pool descriptor for each modality:
 \begin{equation}
   \mathbf{q}_i = [\operatorname{GAP}(\mathbf{F}_i)\,;\,\operatorname{GMP}(\mathbf{F}_i)\,;\,\sigma(\mathbf{F}_i)],
   \label{eq:multipool}
 \end{equation}
-where $\operatorname{GAP}$ and $\operatorname{GMP}$ denote global average and max pooling respectively, and $\sigma(\mathbf{F}_i) \in \mathbb{R}^{C}$ is the channel-wise standard deviation computed over spatial locations.
-Together, the triple $(\operatorname{GAP}, \operatorname{GMP}, \sigma)$ captures mean activation level, peak response, and spatial variability---statistics that change when a sensor degrades.
-
-Each modality's descriptor $\mathbf{q}_i \in \mathbb{R}^{3C}$ is compressed by a modality-specific network $\phi_i$:
+where $\operatorname{GAP}$ and $\operatorname{GMP}$ denote global average and max pooling respectively, and $\sigma(\mathbf{F}_i) \in \mathbb{R}^{C}$ is the channel-wise standard deviation.
+Each descriptor $\mathbf{q}_i \in \mathbb{R}^{3C}$ is compressed by a modality-specific network $\phi_i$:
 \begin{equation}
   \mathbf{z}_i = \phi_i(\mathbf{q}_i) = \operatorname{ReLU}(\mathbf{W}_c^{(i)} \cdot \mathbf{q}_i + \mathbf{b}_c^{(i)}),
   \label{eq:compress}
 \end{equation}
-where $\mathbf{W}_c^{(i)} \in \mathbb{R}^{h \times 3C}$ are modality-specific weights, allowing each sensor type to learn its own quality-relevant feature extraction.
-The compressed vectors are concatenated and passed through a comparison MLP to produce modality weights:
+where $\mathbf{W}_c^{(i)} \in \mathbb{R}^{h \times 3C}$ are modality-specific weights.
+The compressed vectors are concatenated and passed through a comparison MLP $\psi$ to produce modality weights:
 \begin{equation}
-  \mathbf{l} = \psi([\mathbf{z}_1; \mathbf{z}_2; \ldots; \mathbf{z}_M]),
+  \mathbf{l} = \psi([\mathbf{z}_1; \ldots; \mathbf{z}_M]),
   \quad w_i = \frac{\exp(l_i / \tau)}{\sum_{j=1}^{M} \exp(l_j / \tau)},
   \label{eq:cross_modal}
 \end{equation}
-where $\psi$ is a two-layer MLP and $\tau$ is a temperature parameter.
-The softmax normalization inherently produces relative weights: even when all modalities are high quality, the network can express fine-grained preferences; when one modality degrades, its weight decreases and others increase.
-We initialize the output layer of $\psi$ to zero, so that $\mathbf{l} = \mathbf{0}$ at the start of training and all modalities receive uniform weight $1/M$, ensuring stable initialization.
+where $\tau$ is a temperature parameter.
+The output layer of $\psi$ is zero-initialized so that all modalities receive uniform weight $1/M$ at the start of training.
 
-
-\subsection{Gating Oracle Supervision}
+\noindent\textbf{Gating oracle supervision.}
 \label{sec:oracle}
-
-The segmentation objective alone provides an insufficient gradient signal to drive adaptive gating.
-A network that assigns fixed average weights (\eg, $\mathbf{w} \approx [0.27, 0.36, 0.37]$) already minimizes the main segmentation loss because the downstream mask fusion can compensate.
-We observed this in practice: without additional supervision, the learned weights converge to near-constant values regardless of input, effectively behaving as a static weighted average.
-
-To address this, we attach a lightweight auxiliary segmentation head $\mathcal{H}_i$ to each modality's backbone features.
-Each head independently predicts the full segmentation map for its modality, providing a per-image estimate of that modality's discriminative quality.
-We derive oracle gating weights from these auxiliary predictions:
+The segmentation objective alone provides an insufficient gradient signal to drive adaptive gating: a network assigning near-constant weights already minimizes the main loss because the downstream mask fusion can compensate.
+To provide a direct per-image training signal, we attach a lightweight auxiliary segmentation head $\mathcal{H}_i$ to each modality's backbone features.
+We derive oracle gating weights from their predictions:
 \begin{equation}
   \tilde{w}_i = \frac{\exp(-\mathcal{L}_\text{aux}^{(i)})}{\sum_{j=1}^{M} \exp(-\mathcal{L}_\text{aux}^{(j)})},
   \label{eq:oracle}
 \end{equation}
 where $\mathcal{L}_\text{aux}^{(i)}$ is the per-image cross-entropy loss for modality $i$'s auxiliary head.
-Intuitively, the oracle assigns higher weight to modalities whose backbone features independently support accurate segmentation, and lower weight when a modality is degraded (\eg, dark RGB at night yields high $\mathcal{L}_\text{aux}^\text{rgb}$, reducing $\tilde{w}_\text{rgb}$).
-
 The fusion head is trained to match these oracle weights via KL divergence:
 \begin{equation}
   \mathcal{L}_\text{gate} = D_\text{KL}(\tilde{\mathbf{w}} \,\|\, \mathbf{w}),
   \label{eq:gate_kl}
 \end{equation}
-where $\tilde{\mathbf{w}}$ is treated as a fixed target (detached from the computation graph).
-This provides a direct, per-image training signal that forces the fusion head to respond to input quality variation rather than converging to static modality preferences.
+where $\tilde{\mathbf{w}}$ is detached from the computation graph.
+Combined with the MI routing loss that differentiates backbone features across modalities (\cref{sec:soft_moe_lora}), the oracle supervision ensures that the fusion head learns to translate these feature differences into input-adaptive gating weights.
 
-
-\subsection{Uncertainty-Aware Memory Modulation}
-\label{sec:uamm}
-
-Before each modality's features enter SAM2's memory-augmented tracking step, we modulate them based on the cross-modal weights.
-To preserve the best modality's features at full strength while suppressing degraded ones, we apply max-normalization to the softmax weights:
+\noindent\textbf{UAMM and AMF.}
+The cross-modal weights are applied in two complementary paths.
+For \textit{Uncertainty-Aware Memory Modulation} (UAMM), the raw logits $\mathbf{l}$ are re-normalized with a higher temperature $\tau_u$ and scaled by $M$:
 \begin{equation}
-  \hat{w}_i = \frac{w_i}{\max_{j} w_j + \epsilon},
-  \quad \hat{\mathbf{f}}_i^{(k)} = \hat{w}_i \cdot \mathbf{f}_i^{(k)}, \quad \forall k,
+  \hat{w}_i = M \cdot \frac{\exp(l_i / \tau_u)}{\sum_{j=1}^{M} \exp(l_j / \tau_u)},
+  \quad \hat{\mathbf{f}}_i^{(k)} = \hat{w}_i \cdot \mathbf{f}_i^{(k)},
   \label{eq:uamm}
 \end{equation}
-where $\mathbf{f}_i^{(k)}$ are the multi-scale vision features for modality $i$ and $\epsilon = 10^{-8}$.
+where $\tau_u{=}2.0$.
+The $M$-scaling preserves the average feature magnitude at $1.0$: when all modalities are equally reliable, $\hat{w}_i = 1.0$ for all; when one degrades, its features are suppressed while the best modality is amplified.
+The modulated features are processed by SAM2's \texttt{track\_step}, where the first modality initializes the memory and subsequent modalities attend to it via cross-attention.
 
-The max-normalization ensures that the highest-scoring modality always receives $\hat{w} = 1.0$ (no attenuation), while other modalities are scaled down proportionally.
-This addresses the sigmoid saturation problem: unlike sigmoid-based gating where all scores can converge to ${\sim}1.0$, the softmax-based relative comparison always differentiates between modalities, and max-normalization preserves the absolute feature magnitude of the best modality.
-For instance, if thermal is the most reliable modality at night ($w_\text{thermal} = 0.6$, $w_\text{lidar} = 0.3$, $w_\text{rgb} = 0.1$), the UAMM scores become $\hat{w}_\text{thermal} = 1.0$, $\hat{w}_\text{lidar} = 0.5$, $\hat{w}_\text{rgb} = 0.17$---thermal features pass through unmodified while RGB is strongly suppressed.
-
-The modulated features $\hat{\mathbf{f}}_i$ are then processed by SAM2's \texttt{track\_step}, which updates the memory bank with cross-attention.
-The first modality serves as the initialization frame, and subsequent modalities attend to accumulated memory, enabling cross-modal feature exchange through SAM2's built-in temporal attention mechanism.
-
-
-\subsection{Adaptive Mask Fusion}
-\label{sec:amf}
-
-After obtaining per-modality mask predictions $\mathbf{o}_i$ from the tracking loop, we fuse them using the raw softmax weights from the cross-modal fusion head:
+For \textit{Adaptive Mask Fusion} (AMF), the per-modality mask predictions $\mathbf{o}_i$ from the tracking loop are fused using the raw softmax weights:
 \begin{equation}
-  \mathbf{o}_\text{fused} = \sum_{i=1}^{M} w_i \cdot \mathbf{o}_i,
+  \mathbf{o}_\text{fused} = \sum_{i=1}^{M} w_i \cdot \mathbf{o}_i.
   \label{eq:amf}
 \end{equation}
-where $w_i$ are the softmax weights from \cref{eq:cross_modal}, which already sum to one.
-
-This dual-path design---max-normalized weights for UAMM, raw softmax weights for AMF---serves complementary purposes.
-UAMM requires \textit{absolute} preservation: the best modality should contribute its full feature magnitude to the memory bank.
-AMF requires \textit{relative} weighting: each modality's mask output should be weighted proportionally to its estimated quality.
-Reusing the same cross-modal fusion head for both paths avoids redundant computation while tailoring the weight application to each stage's requirements.
+UAMM uses a softer distribution ($\tau_u > \tau$) to gently redistribute feature magnitudes, while AMF uses the sharper distribution from $\tau$ for decisive output weighting.
 
 
-\subsection{Prototype Segmentation Loss}
-\label{sec:proto_loss}
+\subsection{Training Objectives}
+\label{sec:training}
 
-Following MemorySAM~\cite{chen2025memorysam}, we use a Semantic Prototype Memory Module to guide SAM2 toward semantic-level understanding.
-For each class $c$, a global prototype $\mathbf{p}_c$ is maintained via exponential moving average (momentum $= 0.8$).
-At each training step, batch prototypes $\hat{\mathbf{p}}_c$ are computed by averaging the fused feature vectors $\mathbf{F}_\text{fused}$ belonging to class $c$ (determined by resizing the ground-truth labels to the feature map resolution).
-The prototype loss is defined as:
+Following MemorySAM~\cite{chen2025memorysam}, we use a Semantic Prototype Memory Module: for each class $c$, a global prototype $\mathbf{p}_c$ is maintained via exponential moving average (momentum $= 0.8$), and the prototype loss is $\mathcal{L}_\text{proto} = \text{MSE}(\hat{\mathbf{p}}, \mathbf{p})$.
+The total training loss is:
 \begin{equation}
-  \mathcal{L}_\text{proto} = \text{MSE}(\hat{\mathbf{p}}, \mathbf{p}),
-  \label{eq:proto}
-\end{equation}
-and the total training loss is:
-\begin{equation}
-  \mathcal{L} = \mathcal{L}_\text{OHEM} + \lambda_\text{proto} \cdot \mathcal{L}_\text{proto} + \lambda_\text{gate} \!\left( \mathcal{L}_\text{gate} + \gamma \cdot \frac{1}{M}\sum_{i=1}^{M} \mathcal{L}_\text{aux}^{(i)} \right),
+  \begin{split}
+  \mathcal{L} = \mathcal{L}_\text{OHEM} + \mathcal{L}_\text{proto}
+  + \lambda_\text{gate}\!\left(\mathcal{L}_\text{gate} + \gamma \cdot \textstyle\frac{1}{M}\sum_{i} \mathcal{L}_\text{aux}^{(i)}\right)
+  + \lambda_\text{MI} \cdot \mathcal{L}_\text{MI},
+  \end{split}
   \label{eq:total_loss}
 \end{equation}
-where $\mathcal{L}_\text{OHEM}$ is the Online Hard Example Mining cross-entropy loss, $\gamma{=}0.3$ controls the auxiliary segmentation contribution, and $\lambda_\text{gate}{=}0.5$ in all experiments.
+where $\mathcal{L}_\text{OHEM}$ is the Online Hard Example Mining cross-entropy loss, $\gamma{=}0.3$, $\lambda_\text{gate}{=}0.5$, and $\lambda_\text{MI}{=}1.0$.
 
 
 \subsection{Night-Robust RGB Augmentation}
 \label{sec:night_aug}
 
 The MULTIAQUA dataset requires generalization from daytime training to nighttime evaluation, where RGB quality degrades severely while thermal and LiDAR remain relatively stable.
-Inspired by the augmentation strategies proposed in the MULTIAQUA paper~\cite{muhovic2025multiaqua} and CRM~\cite{shin2024crm}, we apply three complementary RGB corruptions during training (applied only to the RGB modality, leaving thermal and LiDAR unchanged):
+Inspired by~\cite{muhovic2025multiaqua} and CRM~\cite{shin2024crm}, we apply three complementary RGB corruptions during training (leaving thermal and LiDAR unchanged):
 
 \noindent\textbf{Night Simulation} (probability 0.35): extreme brightness reduction (factor sampled from $[0.03, 0.25]$), followed by contrast reduction ($[0.3, 0.7]$), gamma correction ($\gamma \in [0.4, 0.8]$), and additive Gaussian noise ($\sigma = 0.02$).
 
-\noindent\textbf{Complementary Random Masking} (probability 0.30): rectangular patches are randomly placed on the RGB image, zeroing out 20--50\% of spatial regions.
-This forces the model to rely on thermal and LiDAR for the masked areas.
+\noindent\textbf{Complementary Random Masking} (probability 0.30): rectangular patches are randomly placed on the RGB image, zeroing out 20--50\% of spatial regions, forcing the model to rely on thermal and LiDAR for the masked areas.
 
 \noindent\textbf{Full-Channel Zeroing} (probability 0.12): the entire RGB input is replaced with zeros, simulating complete RGB failure.
-This is the most extreme case, requiring the model to produce reasonable segmentation from thermal and LiDAR alone.
 
 These augmentations are stacked sequentially: an image may undergo night simulation and then additionally be partially masked, creating diverse degradation patterns.

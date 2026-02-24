@@ -14,28 +14,30 @@ Recently, MemorySAM~\cite{chen2025memorysam} proposed an elegant solution by rei
 By treating each modality as a sequential ``frame'', the memory bank naturally captures modality-agnostic features, while a Semantic Prototype Memory Module (SPMM) guides the model toward semantic-level segmentation.
 Concurrently, MoE-LoRA~\cite{zhu2024moe} introduced Mixture-of-Experts routing into SAM's Low-Rank Adaptation~\cite{hu2022lora} layers, enabling modality-adaptive parameter specialization with minimal overhead.
 
-In this work, we build upon these advances and present our solution for the \textbf{4th Workshop on Maritime Computer Vision (MaCVi)} USV Semantic Segmentation Challenge at CVPR 2026.
-The challenge employs the MULTIAQUA dataset~\cite{muhovic2025multiaqua}, which provides synchronized RGB, thermal, and LiDAR data captured from USVs across daytime and nighttime conditions, with four semantic classes: static obstacle, dynamic obstacle, water, and sky.
-A key difficulty is that models are trained on daytime data but must generalize to a nighttime test set where RGB sensors become severely degraded.
+In this work, we build upon these advances and investigate how to effectively adapt foundation models for multi-modal maritime segmentation under varying sensor conditions.
+We evaluate on the MULTIAQUA dataset~\cite{muhovic2025multiaqua}, which provides synchronized RGB, thermal, and LiDAR data captured from USVs across daytime and nighttime conditions, with four semantic classes: static obstacle, dynamic obstacle, water, and sky.
+A key difficulty is that models are trained on daytime data but must generalize to nighttime conditions where RGB sensors become severely degraded.
 
 Our approach adapts the MemorySAM framework to the maritime domain with the following design choices:
 
-\noindent\textbf{(1) Soft-MoE gating for LoRA adaptation.}
+\noindent\textbf{(1) Soft-MoE LoRA with MI-driven expert specialization.}
 MoE-LoRA~\cite{zhu2024moe} employs hard top-$k$ routing, where only $k$ out of $N$ experts are activated per token.
 When the number of experts is small (\eg, 3 experts matching 3 modalities), top-$k$ routing discards significant expert capacity.
-Following insights from Soft Mixtures of Experts~\cite{puigcerver2024softmoe}, we adopt soft gating where all experts contribute via softmax-weighted combination, ensuring full expert utilization in this low-expert regime.
+Following insights from Soft Mixtures of Experts~\cite{puigcerver2024softmoe}, we adopt soft gating where all experts contribute via softmax-weighted combination.
+However, we observe that soft gating causes expert routing to converge to a near-uniform distribution, producing modality-agnostic backbone features.
+To address this, we introduce an MI routing loss that maximizes the mutual information between modality identity and expert selection, driving each modality to route through distinct experts.
 
 \noindent\textbf{(2) Quality-aware cross-modal scoring with gating oracle supervision.}
 Prior approaches~\cite{chen2025memorysam} estimate each modality's quality independently, which can suffer from sigmoid saturation---when all logits are large, scores converge to ${\sim}1.0$ regardless of actual quality differences.
 We replace independent scoring with a cross-modal fusion head that jointly compares all modality features, producing softmax-normalized relative weights.
-To enable the gating to respond to per-image quality variation rather than converging to static weights, we enrich the feature representation with quality-sensitive statistics (global average pooling, global max pooling, and channel-wise standard deviation) and use modality-specific compression networks.
-Crucially, the segmentation objective alone provides insufficient gradient signal to drive adaptive gating, since a fixed weighting can already minimize this loss.
-We therefore introduce per-modality auxiliary segmentation heads that produce independent per-image quality estimates; oracle gating weights are derived from these estimates and used to supervise the fusion head via KL divergence, providing a direct training signal for adaptivity.
-The learned weights are applied through two distinct paths: max-normalized for memory modulation (preserving the best modality at full strength) and as raw softmax for output fusion (weighting contributions proportionally).
+To enrich the feature representation, we extract quality-sensitive statistics (global average pooling, global max pooling, and channel-wise standard deviation) through modality-specific compression networks.
+Crucially, the segmentation objective alone provides insufficient gradient signal to drive adaptive gating.
+We therefore introduce per-modality auxiliary segmentation heads that produce independent per-image quality estimates; oracle gating weights are derived from these estimates and used to supervise the fusion head via KL divergence.
+The learned weights are applied through two paths: temperature-scaled for memory modulation (UAMM) and as raw softmax for output fusion (AMF).
 
 \noindent\textbf{(3) Night-robust RGB augmentation.}
 To bridge the day-night domain gap using only daytime training data, we apply aggressive RGB corruption including extreme brightness reduction (factor 0.03--0.25), complementary random masking~\cite{shin2024crm} that zeros out 20--50\% of spatial regions, and stochastic full-channel zeroing simulating complete RGB failure.
 These augmentations encourage the model to rely on thermal and LiDAR when RGB is degraded.
 
-We empirically validate each component through controlled experiments and report our challenge results on the MULTIAQUA benchmark.
+We empirically validate each component through controlled experiments and report results on the MULTIAQUA benchmark.
 The remainder of this paper is organized as follows: \cref{sec:related} reviews related work, \cref{sec:method} details our method, and \cref{sec:experiments} presents experimental results.

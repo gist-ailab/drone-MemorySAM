@@ -1,8 +1,6 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented our solution for the MaCVi USV Semantic Segmentation Challenge at CVPR 2026.
-By adapting MemorySAM's memory-based multi-modal framework to the maritime domain, we investigated three complementary design choices: (1) soft mixture-of-experts gating for LoRA adaptation, which avoids the dead-expert problem when the number of experts is small; (2) a quality-aware cross-modal fusion head that enriches each modality's representation with multi-pool statistics (GAP, GMP, channel-wise standard deviation) and uses modality-specific compression networks---combined with gating oracle supervision via KL divergence from per-modality auxiliary segmentation heads, providing a direct per-image training signal that prevents the fusion weights from collapsing to static modality preferences; and (3) aggressive RGB corruption augmentations for day-to-night generalization.
-% TODO: Summarize test set results when available.
-% Our method achieved XX.X\% mIoU on the nighttime test set, demonstrating the effectiveness of multi-modal fusion with foundation model adaptation for maritime scene understanding.
-Our experiments on the MULTIAQUA benchmark validate each design choice and demonstrate the importance of explicit training supervision for adaptive modality gating in degraded sensing conditions.
+We presented a method for adapting foundation models to multi-modal maritime semantic segmentation under varying sensor conditions.
+By building on MemorySAM's memory-based cross-modal framework, we identified and addressed two key failure modes: (1) soft MoE gating converges to uniform expert routing, producing modality-agnostic features---resolved by an MI routing loss that drives modality-specific expert specialization; and (2) the segmentation objective alone cannot train adaptive fusion weights---resolved by quality-aware cross-modal scoring with gating oracle supervision via per-modality auxiliary heads.
+Combined with aggressive RGB corruption augmentations for day-to-night generalization, our experiments on the MULTIAQUA benchmark validate each design choice and demonstrate the importance of explicit training supervision for both expert routing and modality gating in degraded sensing conditions.
