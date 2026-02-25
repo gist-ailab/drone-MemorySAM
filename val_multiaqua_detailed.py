@@ -1,11 +1,12 @@
 """
-MULTIAQUA P9 Validation & Per-Token MoE Routing Visualization
-==============================================================
+MULTIAQUA Detailed Validation & Per-Token MoE Routing Visualization
+====================================================================
 
-P9 전용 평가 + 시각화 스크립트. val_multiaqua.py 기반이지만 MoE 분석을 대폭 강화.
+P8~P13 모든 모델 지원. val_multiaqua.py 기반이지만 MoE 분석을 대폭 강화.
 
 기존 `_last_moe_gates`가 공간 평균만 저장하여 per-token routing 다양성을 숨기는 문제를 해결.
 Per-token entropy, argmax fraction, spatial routing map을 시각화.
+모든 MoE 블록의 Q/V gating 데이터를 JSON으로 기록.
 
 저장 구조:
   save_dir/seg/         : raw segmentation (원본 크기)
@@ -14,14 +15,14 @@ Per-token entropy, argmax fraction, spatial routing map을 시각화.
     Row 2: [Legend | Segmentation | Overlay]
     Row 3: [UAMM Bar | AMF Bar | MoE Per-Token Stats]
     Row 4: [MoE Map (img) | MoE Map (lidar) | MoE Map (thermal)]
-  save_dir/uamm_amf_moe_log.json : 확장된 per-token MoE 통계
+  save_dir/detailed_log.json : 전체 블록 per-token MoE 통계 + fusion + prediction 분석
 
 사용:
-  python val_multiaqua_P9.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml \\
+  python val_multiaqua_detailed.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml \\
       --mode val --model_path outputs/MMSamP9/.../epoch47_94.18.pth
 
   # TTA (horizontal flip, 2 passes/image):
-  python val_multiaqua_P9.py --cfg ... --mode val --model_path ... --tta
+  python val_multiaqua_detailed.py --cfg ... --mode val --model_path ... --tta
 
 NOTE: Use the MMSS_SAM conda environment.
 """
@@ -50,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13
 )
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
 
@@ -88,6 +89,8 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P9': LoRA_Sam_P9,
         'LoRA_Sam_P10': LoRA_Sam_P10,
         'LoRA_Sam_P11': LoRA_Sam_P11,
+        'LoRA_Sam_P12': LoRA_Sam_P12,
+        'LoRA_Sam_P13': LoRA_Sam_P13,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
@@ -233,44 +236,43 @@ EXPERT_COLORS = np.array([
 
 
 class MoERoutingCapture:
-    """Captures per-token MoE routing data during forward pass."""
+    """Captures per-token MoE routing data during forward pass.
 
-    def __init__(self, model, target_block_indices=None):
+    두 가지 모드:
+    - viz_blocks: 시각화용 (대표 블록만, argmax_map 포함 → 메모리 큼)
+    - 모든 블록: JSON 로그용 (통계만, argmax_map 미포함 → 가벼움)
+    """
+
+    def __init__(self, model, viz_block_indices=None):
         self.model = model
-        self.target_blocks = target_block_indices or REPRESENTATIVE_LAYERS
+        self.viz_blocks = viz_block_indices or REPRESENTATIVE_LAYERS
         self.hooks = []
         self.call_counter = 0
-        self.num_moe_layers = len(model.moe_layers_q) + len(model.moe_layers_v)
-        self.num_layers_per_modal = self.num_moe_layers  # all hooks fire per modality
+        self.num_q = len(model.moe_layers_q)
+        self.num_v = len(model.moe_layers_v)
+        self.num_moe_layers = self.num_q + self.num_v
 
-        # Storage: {block_idx: {modality_idx: {stats dict}}}
-        self.routing_data = {}
-
-        # Only hook Q layers at target block indices for spatial maps
-        self._layer_to_block = {}
-        for idx, layer in enumerate(model.moe_layers_q):
-            self._layer_to_block[id(layer)] = idx
+        # Storage: {'Q': {block_idx: {modal_idx: stats}}, 'V': {block_idx: ...}}
+        self.routing_data = {'Q': {}, 'V': {}}
 
     def _get_modality_idx(self):
-        """Determine which modality is being processed based on call count."""
         return self.call_counter // self.num_moe_layers
 
-    def _get_layer_idx_in_modal(self):
-        """Get layer index within the current modality's forward pass."""
-        return self.call_counter % self.num_moe_layers
-
     def register_hooks(self):
-        """Register forward hooks on target Q layers."""
+        """Register forward hooks on ALL Q and V MoE layers."""
         self.call_counter = 0
-        self.routing_data = {}
+        self.routing_data = {'Q': {}, 'V': {}}
 
-        for block_idx in self.target_blocks:
-            if block_idx < len(self.model.moe_layers_q):
-                layer = self.model.moe_layers_q[block_idx]
-                h = layer.register_forward_hook(self._make_hook(block_idx))
-                self.hooks.append(h)
+        for block_idx, layer in enumerate(self.model.moe_layers_q):
+            save_map = (block_idx in self.viz_blocks)
+            h = layer.register_forward_hook(self._make_hook(block_idx, 'Q', save_map))
+            self.hooks.append(h)
 
-    def _make_hook(self, block_idx):
+        for block_idx, layer in enumerate(self.model.moe_layers_v):
+            h = layer.register_forward_hook(self._make_hook(block_idx, 'V', save_map=False))
+            self.hooks.append(h)
+
+    def _make_hook(self, block_idx, qv_type, save_map):
         def hook_fn(module, input, output):
             x = input[0]
             modal_idx = self._get_modality_idx()
@@ -280,21 +282,28 @@ class MoERoutingCapture:
                 gate_weights = F.softmax(gate_logits, dim=-1)  # (..., E)
                 ne = module.num_experts
 
-                # Per-token statistics
                 per_token_entropy = -(gate_weights * (gate_weights + 1e-8).log()).sum(dim=-1)
                 max_entropy = math.log(ne)
                 per_token_max = gate_weights.max(dim=-1).values
                 argmax = gate_weights.argmax(dim=-1)
                 expert_counts = [(argmax == i).float().mean().item() for i in range(ne)]
 
-                # Spatial routing map: reshape argmax to 2D
-                # Input shape could be (B, H, W, E) or (B*nw, wh, ww, E)
-                argmax_2d = argmax.cpu().numpy()
+                # Gate logit statistics (expert differentiation 정도)
+                logit_std = gate_logits.std(dim=-1).mean().cpu().item()
+                logit_range = (gate_logits.max(dim=-1).values - gate_logits.min(dim=-1).values).mean().cpu().item()
 
-                if block_idx not in self.routing_data:
-                    self.routing_data[block_idx] = {}
+                # Top-2 gap: 1위와 2위 expert weight 차이 (routing 결정력)
+                topk2 = gate_weights.topk(min(2, ne), dim=-1).values
+                if ne >= 2:
+                    top2_gap = (topk2[..., 0] - topk2[..., 1]).mean().cpu().item()
+                else:
+                    top2_gap = 0.0
 
-                self.routing_data[block_idx][modal_idx] = {
+                storage = self.routing_data[qv_type]
+                if block_idx not in storage:
+                    storage[block_idx] = {}
+
+                stats = {
                     'entropy_ratio': per_token_entropy.mean().cpu().item() / max_entropy,
                     'per_token_max_mean': per_token_max.mean().cpu().item(),
                     'per_token_max_std': per_token_max.std().cpu().item(),
@@ -302,12 +311,17 @@ class MoERoutingCapture:
                     'spatial_mean': gate_weights.mean(
                         dim=tuple(range(gate_weights.dim() - 1))
                     ).cpu().numpy().tolist(),
-                    'logit_range': (gate_logits.max(dim=-1).values - gate_logits.min(dim=-1).values).mean().cpu().item(),
-                    # For spatial map: store argmax in original spatial shape
-                    'argmax_map': argmax_2d,
-                    'spatial_shape': list(argmax.shape),
+                    'logit_range': logit_range,
+                    'logit_std': logit_std,
+                    'top2_gap': top2_gap,
                     'num_experts': ne,
                 }
+
+                if save_map:
+                    stats['argmax_map'] = argmax.cpu().numpy()
+                    stats['spatial_shape'] = list(argmax.shape)
+
+                storage[block_idx][modal_idx] = stats
         return hook_fn
 
     def register_counter_hook(self):
@@ -325,23 +339,22 @@ class MoERoutingCapture:
         self.hooks.clear()
 
     def get_routing_map_image(self, block_idx, modal_idx, target_h, target_w):
-        """Generate a colored spatial routing map for one block+modality."""
-        if block_idx not in self.routing_data or modal_idx not in self.routing_data[block_idx]:
+        """Generate a colored spatial routing map for one block+modality (Q only)."""
+        q_data = self.routing_data['Q']
+        if block_idx not in q_data or modal_idx not in q_data[block_idx]:
             return np.zeros((target_h, target_w, 3), dtype=np.uint8)
 
-        data = self.routing_data[block_idx][modal_idx]
-        argmax_map = data['argmax_map']  # Could be (B*nw, wh, ww) or (B, H, W)
-        ne = data['num_experts']
+        data = q_data[block_idx][modal_idx]
+        if 'argmax_map' not in data:
+            return np.zeros((target_h, target_w, 3), dtype=np.uint8)
 
-        # Flatten all but last dims to get per-token expert assignment
-        # For window-partitioned input: (B*nw, wh, ww) → collapse to approx spatial map
+        argmax_map = data['argmax_map']
+        ne = data['num_experts']
         shape = data['spatial_shape']
 
         if len(shape) == 3:
-            # (B or B*nw, H, W) — take first batch/window group
-            map_2d = argmax_map[0]  # (H, W)
+            map_2d = argmax_map[0]
         elif len(shape) == 2:
-            # (N, ) — try to reshape to square
             n = shape[0]
             side = int(math.sqrt(n))
             if side * side == n:
@@ -351,31 +364,29 @@ class MoERoutingCapture:
         else:
             map_2d = argmax_map.reshape(-1)[:1024].reshape(32, 32)
 
-        # Color map
         h, w = map_2d.shape
         colored = np.zeros((h, w, 3), dtype=np.uint8)
         for e in range(min(ne, len(EXPERT_COLORS))):
             mask = map_2d == e
             colored[mask] = EXPERT_COLORS[e]
 
-        # Resize to target
         pil_img = Image.fromarray(colored).resize((target_w, target_h), Image.Resampling.NEAREST)
         return np.array(pil_img)
 
     def get_stats_bar_chart(self, block_idx, modals, target_h, target_w):
-        """Draw per-token stats as a bar chart for one representative block."""
-        if block_idx not in self.routing_data:
+        """Draw per-token stats as a bar chart for one representative block (Q layer)."""
+        q_data = self.routing_data['Q']
+        if block_idx not in q_data:
             return np.zeros((target_h, target_w, 3), dtype=np.uint8)
 
         fig, axes = plt.subplots(1, 2, figsize=(target_w / 80, target_h / 80), dpi=80)
 
-        # Left: Entropy ratio per modality
         ax = axes[0]
         er_values = []
         labels = []
         for m_idx, mname in enumerate(modals):
-            if m_idx in self.routing_data[block_idx]:
-                er_values.append(self.routing_data[block_idx][m_idx]['entropy_ratio'])
+            if m_idx in q_data[block_idx]:
+                er_values.append(q_data[block_idx][m_idx]['entropy_ratio'])
                 labels.append(mname)
         if er_values:
             colors = ['#e74c3c', '#2ecc71', '#3498db'][:len(er_values)]
@@ -383,18 +394,17 @@ class MoERoutingCapture:
             ax.set_yticks(range(len(labels)))
             ax.set_yticklabels(labels, fontsize=16)
             ax.set_xlim(0, 1.1)
-            ax.set_title(f'Entropy Ratio (B{block_idx})', fontsize=16)
+            ax.set_title(f'Entropy Ratio (B{block_idx}_Q)', fontsize=16)
             ax.axvline(x=1.0, color='gray', linestyle='--', alpha=0.5, label='uniform')
             for bar, val in zip(bars, er_values):
                 ax.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height() / 2,
                         f'{val:.3f}', va='center', fontsize=14, fontweight='bold')
 
-        # Right: Argmax fraction (stacked horizontal bar)
         ax = axes[1]
         ne = 3
         for m_idx, mname in enumerate(modals):
-            if m_idx in self.routing_data[block_idx]:
-                fracs = self.routing_data[block_idx][m_idx]['argmax_fraction']
+            if m_idx in q_data[block_idx]:
+                fracs = q_data[block_idx][m_idx]['argmax_fraction']
                 ne = len(fracs)
                 left = 0
                 for e_idx, frac in enumerate(fracs):
@@ -407,8 +417,7 @@ class MoERoutingCapture:
         ax.set_yticks(range(len(modals)))
         ax.set_yticklabels(modals, fontsize=16)
         ax.set_xlim(0, 1.0)
-        ax.set_title(f'Expert Selection (B{block_idx})', fontsize=16)
-        # Legend
+        ax.set_title(f'Expert Selection (B{block_idx}_Q)', fontsize=16)
         for e in range(ne):
             ax.barh([], [], color=EXPERT_COLORS[e].astype(float) / 255.0, label=f'E{e}')
         ax.legend(fontsize=11, loc='lower right')
@@ -422,21 +431,69 @@ class MoERoutingCapture:
         return np.array(Image.fromarray(img).resize((target_w, target_h), Image.Resampling.LANCZOS))
 
     def get_log_dict(self, modals):
-        """Get JSON-serializable routing statistics."""
+        """Get JSON-serializable routing statistics for ALL blocks, Q and V."""
         log = {}
-        for block_idx in sorted(self.routing_data.keys()):
-            block_log = {}
-            for m_idx in sorted(self.routing_data[block_idx].keys()):
-                mname = modals[m_idx] if m_idx < len(modals) else f'M{m_idx}'
-                d = self.routing_data[block_idx][m_idx]
-                block_log[mname] = {
-                    'entropy_ratio': round(d['entropy_ratio'], 4),
-                    'per_token_max': round(d['per_token_max_mean'], 4),
-                    'argmax_fraction': {f'E{i}': round(v, 4) for i, v in enumerate(d['argmax_fraction'])},
-                    'spatial_mean': {f'E{i}': round(v, 4) for i, v in enumerate(d['spatial_mean'])},
-                }
-            log[f'Block{block_idx}_Q'] = block_log
+        for qv_type in ['Q', 'V']:
+            for block_idx in sorted(self.routing_data[qv_type].keys()):
+                block_log = {}
+                for m_idx in sorted(self.routing_data[qv_type][block_idx].keys()):
+                    mname = modals[m_idx] if m_idx < len(modals) else f'M{m_idx}'
+                    d = self.routing_data[qv_type][block_idx][m_idx]
+                    block_log[mname] = {
+                        'entropy_ratio': round(d['entropy_ratio'], 4),
+                        'per_token_max': round(d['per_token_max_mean'], 4),
+                        'per_token_max_std': round(d['per_token_max_std'], 4),
+                        'argmax_fraction': {f'E{i}': round(v, 4) for i, v in enumerate(d['argmax_fraction'])},
+                        'spatial_mean': {f'E{i}': round(v, 4) for i, v in enumerate(d['spatial_mean'])},
+                        'logit_range': round(d['logit_range'], 4),
+                        'logit_std': round(d['logit_std'], 4),
+                        'top2_gap': round(d['top2_gap'], 4),
+                    }
+                log[f'Block{block_idx}_{qv_type}'] = block_log
         return log
+
+    def get_summary_stats(self, modals):
+        """전체 블록에 걸친 요약 통계. expert collapse, Q/V 차이 등 빠르게 확인용."""
+        summary = {}
+        for qv_type in ['Q', 'V']:
+            data = self.routing_data[qv_type]
+            if not data:
+                continue
+            all_entropy = []
+            all_top2_gap = []
+            expert_usage_per_modal = {m: [] for m in modals}
+            for block_idx in sorted(data.keys()):
+                for m_idx, mname in enumerate(modals):
+                    if m_idx in data[block_idx]:
+                        d = data[block_idx][m_idx]
+                        all_entropy.append(d['entropy_ratio'])
+                        all_top2_gap.append(d['top2_gap'])
+                        fracs = d['argmax_fraction']
+                        expert_usage_per_modal[mname].append(fracs)
+
+            # Expert collapse detection: min usage across all blocks per expert
+            collapse_report = {}
+            for mname in modals:
+                usages = expert_usage_per_modal[mname]
+                if not usages:
+                    continue
+                ne = len(usages[0])
+                per_expert_min = [min(u[e] for u in usages) for e in range(ne)]
+                per_expert_mean = [np.mean([u[e] for u in usages]) for e in range(ne)]
+                collapsed = [e for e in range(ne) if per_expert_mean[e] < 0.05]
+                collapse_report[mname] = {
+                    f'E{e}': {'min': round(per_expert_min[e], 4), 'mean': round(per_expert_mean[e], 4)}
+                    for e in range(ne)
+                }
+                if collapsed:
+                    collapse_report[mname]['collapsed_experts'] = [f'E{e}' for e in collapsed]
+
+            summary[qv_type] = {
+                'avg_entropy_ratio': round(float(np.mean(all_entropy)), 4) if all_entropy else None,
+                'avg_top2_gap': round(float(np.mean(all_top2_gap)), 4) if all_top2_gap else None,
+                'expert_usage': collapse_report,
+            }
+        return summary
 
 
 # ============================================================================
@@ -606,8 +663,8 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
     for images, labels, metas in tqdm(dataloader, desc="Val"):
         images = [x.to(device) for x in images]
 
-        # Set up routing capture
-        capture = MoERoutingCapture(core, target_block_indices=REPRESENTATIVE_LAYERS)
+        # Set up routing capture (all blocks Q+V, viz maps on representative blocks only)
+        capture = MoERoutingCapture(core, viz_block_indices=REPRESENTATIVE_LAYERS)
         capture.register_hooks()
         capture.register_counter_hook()
 
@@ -690,8 +747,10 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                 viz = np.concatenate([row1, row2, stats_row, row4], axis=0)
                 Image.fromarray(viz).save(str(seg_viz_dir / f"{stem}.png"))
 
-                # JSON log with per-token MoE stats
+                # JSON log — fusion + all-block MoE routing + prediction analysis
                 img_log = {}
+
+                # Fusion weights (UAMM / AMF)
                 uamm = getattr(core, '_last_uamm_scores', None)
                 amf = getattr(core, '_last_amf_weights', None)
                 if uamm is not None and b < uamm.shape[0]:
@@ -699,33 +758,58 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                 if amf is not None and b < amf.shape[0]:
                     img_log['amf'] = {k: round(float(v), 4) for k, v in zip(modals, amf[b])}
 
-                # Per-token MoE routing stats
-                img_log['moe_routing'] = capture.get_log_dict(modals)
+                # Per-image prediction quality
+                pred_np_i = pred_resized.cpu().numpy()
+                gt_np_i = orig_label.cpu().numpy()
+                per_class_iou = {}
+                for c_idx, c_name in enumerate(dataloader.dataset.CLASSES):
+                    pred_c = (pred_np_i == c_idx)
+                    gt_c = (gt_np_i == c_idx)
+                    inter = (pred_c & gt_c).sum()
+                    union = (pred_c | gt_c).sum()
+                    per_class_iou[c_name] = round(float(inter / (union + 1e-8)), 4) if union > 0 else None
+                img_log['per_class_iou'] = per_class_iou
 
-                # Legacy: spatial mean for comparison
-                moe = getattr(core, '_last_moe_gates', None)
-                if moe is not None:
-                    moe_arr = np.asarray(moe)
-                    arr = moe_arr if moe_arr.ndim == 1 else moe_arr[b]
-                    img_log['moe_spatial_mean'] = {f'E{i}': round(float(v), 4) for i, v in enumerate(arr)}
+                # Prediction confidence (softmax entropy)
+                softmax_b = preds[b]  # (C, H, W)
+                pred_entropy = -(softmax_b * (softmax_b + 1e-8).log()).sum(dim=0)  # (H, W)
+                img_log['pred_confidence'] = {
+                    'mean_entropy': round(float(pred_entropy.mean().cpu()), 4),
+                    'max_entropy': round(float(pred_entropy.max().cpu()), 4),
+                    'high_uncertainty_ratio': round(float((pred_entropy > 0.5).float().mean().cpu()), 4),
+                }
+
+                # All-block MoE routing (Q + V)
+                img_log['moe_routing'] = capture.get_log_dict(modals)
+                img_log['moe_summary'] = capture.get_summary_stats(modals)
 
                 uamm_amf_moe_log[stem] = img_log
 
     # Save JSON
     if save_dir and uamm_amf_moe_log:
-        log_path = save_dir / "uamm_amf_moe_log.json"
+        log_path = save_dir / "detailed_log.json"
         with open(log_path, 'w', encoding='utf-8') as f:
             json.dump({
                 "meta": {
                     "modals": modals,
                     "split": "val",
                     "n_images": len(uamm_amf_moe_log),
-                    "representative_blocks": REPRESENTATIVE_LAYERS,
-                    "note": "moe_routing shows per-token stats; moe_spatial_mean is the misleading average"
+                    "num_moe_blocks_q": len(core.moe_layers_q),
+                    "num_moe_blocks_v": len(core.moe_layers_v),
+                    "viz_blocks": REPRESENTATIVE_LAYERS,
+                    "lora_model": core.__class__.__name__,
+                    "fields": {
+                        "moe_routing": "All blocks Q+V per-token gating stats",
+                        "moe_summary": "Cross-block aggregation, expert collapse detection",
+                        "per_class_iou": "Per-image IoU by class (val only)",
+                        "pred_confidence": "Prediction uncertainty (softmax entropy)",
+                        "uamm": "Uncertainty-Aware Modality Mixing scores",
+                        "amf": "Adaptive Modality Fusion weights",
+                    },
                 },
                 "images": uamm_amf_moe_log,
             }, f, indent=2, ensure_ascii=False)
-        print(f"Enhanced MoE log saved to {log_path}")
+        print(f"Detailed log saved to {log_path}")
 
     ious, miou = metrics.compute_iou()
     acc, macc = metrics.compute_pixel_acc()
@@ -758,7 +842,7 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
     for images, _, metas in tqdm(dataloader, desc="Test inference"):
         images = [x.to(device) for x in images]
 
-        capture = MoERoutingCapture(core, target_block_indices=REPRESENTATIVE_LAYERS)
+        capture = MoERoutingCapture(core, viz_block_indices=REPRESENTATIVE_LAYERS)
         capture.register_hooks()
         capture.register_counter_hook()
 
@@ -821,7 +905,7 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
             viz = np.concatenate([row1, row2, stats_row, row4], axis=0)
             Image.fromarray(viz).save(str(seg_viz_dir / f"{stem}.png"))
 
-            # JSON log
+            # JSON log — fusion + all-block MoE routing
             img_log = {}
             uamm = getattr(core, '_last_uamm_scores', None)
             amf = getattr(core, '_last_amf_weights', None)
@@ -829,24 +913,37 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
                 img_log['uamm'] = {k: round(float(v), 4) for k, v in zip(modals, uamm[b])}
             if amf is not None and b < amf.shape[0]:
                 img_log['amf'] = {k: round(float(v), 4) for k, v in zip(modals, amf[b])}
+
+            # Prediction confidence
+            softmax_b = preds[b]
+            pred_entropy = -(softmax_b * (softmax_b + 1e-8).log()).sum(dim=0)
+            img_log['pred_confidence'] = {
+                'mean_entropy': round(float(pred_entropy.mean().cpu()), 4),
+                'max_entropy': round(float(pred_entropy.max().cpu()), 4),
+                'high_uncertainty_ratio': round(float((pred_entropy > 0.5).float().mean().cpu()), 4),
+            }
+
             img_log['moe_routing'] = capture.get_log_dict(modals)
-            moe = getattr(core, '_last_moe_gates', None)
-            if moe is not None:
-                moe_arr = np.asarray(moe)
-                arr = moe_arr if moe_arr.ndim == 1 else moe_arr[b]
-                img_log['moe_spatial_mean'] = {f'E{i}': round(float(v), 4) for i, v in enumerate(arr)}
+            img_log['moe_summary'] = capture.get_summary_stats(modals)
             uamm_amf_moe_log[stem] = img_log
             idx += 1
 
     if uamm_amf_moe_log:
-        log_path = save_dir / "uamm_amf_moe_log.json"
+        log_path = save_dir / "detailed_log.json"
         with open(log_path, 'w', encoding='utf-8') as f:
             json.dump({
-                "meta": {"modals": modals, "split": "test", "n_images": len(uamm_amf_moe_log),
-                         "representative_blocks": REPRESENTATIVE_LAYERS},
+                "meta": {
+                    "modals": modals,
+                    "split": "test",
+                    "n_images": len(uamm_amf_moe_log),
+                    "num_moe_blocks_q": len(core.moe_layers_q),
+                    "num_moe_blocks_v": len(core.moe_layers_v),
+                    "viz_blocks": REPRESENTATIVE_LAYERS,
+                    "lora_model": core.__class__.__name__,
+                },
                 "images": uamm_amf_moe_log,
             }, f, indent=2, ensure_ascii=False)
-        print(f"Enhanced MoE log saved to {log_path}")
+        print(f"Detailed log saved to {log_path}")
 
     fps = idx / total_inference_time if total_inference_time > 0 else 0.0
     print(f"Saved {idx} predictions: seg/ and seg_viz/ under {save_dir}")
@@ -910,8 +1007,12 @@ def main():
     if tta_flip:
         print("TTA enabled: horizontal flip (2 passes/image)")
 
+    lora_model_name = cfg['MODEL'].get('LORA_MODEL', 'LoRA_Sam_P9')
+    short_name = lora_model_name.replace('LoRA_Sam_', '')  # e.g. "P9", "P13"
+    tta_suffix = "_tta" if tta_flip else ""
+
     if args.mode == 'val':
-        save_dir = args.save_dir or (model_path.parent / ("val_pred_P9_tta" if tta_flip else "val_pred_P9"))
+        save_dir = args.save_dir or (model_path.parent / f"val_pred_{short_name}{tta_suffix}")
         acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
             model, dataloader, device, save_dir=save_dir,
             modals=dataset_cfg.get('MODALS'),
@@ -924,7 +1025,7 @@ def main():
         }
         tta_tag = " [TTA-flip]" if tta_flip else ""
         print("\n" + "=" * 60)
-        print(f"MULTIAQUA P9 Validation ({len(dataset)} images){tta_tag}")
+        print(f"MULTIAQUA {short_name} Validation ({len(dataset)} images){tta_tag}")
         print("=" * 60)
         print(tabulate(table, headers='keys', tablefmt='grid'))
         print(f"\nmIoU: {miou:.2f}  mAcc: {macc:.2f}")
@@ -933,7 +1034,7 @@ def main():
         if save_dir:
             print(f"Saved to {save_dir}")
     else:
-        save_dir = args.save_dir or (model_path.parent / ("test_pred_P9_tta" if tta_flip else "test_pred_P9"))
+        save_dir = args.save_dir or (model_path.parent / f"test_pred_{short_name}{tta_suffix}")
         run_test_inference(
             model, dataloader, device, save_dir=save_dir,
             modals=dataset_cfg.get('MODALS'),

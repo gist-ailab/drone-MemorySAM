@@ -606,6 +606,59 @@ def get_val_augmentation(
     return Compose(transforms)
 
 
+def get_nightval_augmentation(
+    size: Union[int, Tuple[int], List[int]],
+    dataset_cfg: Optional[dict] = None,
+):
+    """MULTIAQUA 야간 조건 Validation augmentation (ISSUE-001 대응).
+
+    기존 get_val_augmentation()은 수정하지 않고, 야간 시뮬레이션을 추가한 별도 함수.
+    NightSim p=1.0 (항상 적용) → dice-roll 없이 모든 이미지에 야간 조건 부여.
+    CRM / Zero-out은 config 확률 그대로 유지 (더 realistic한 mixed-condition 평가).
+    기하학적 증강(Flip, Crop)은 적용하지 않음 (val 특성 유지).
+
+    best checkpoint 기준:
+      - 기존 val   → day-val  best (주간 성능 기준)
+      - 이 함수    → night-val best (야간 시뮬 성능 기준) → test와 더 가까운 체크포인트
+    """
+    tm, ts = _get_thermal_stats(dataset_cfg)
+    t_size = size if isinstance(size, int) else (size[0] if isinstance(size, (list, tuple)) else size)
+    transforms = []
+
+    if _use_multiaqua_resize_pad(dataset_cfg):
+        transforms.append(ResizeWidthPadToSquare(
+            t_size,
+            seg_fill=dataset_cfg.get('IGNORE_LABEL', 255) if dataset_cfg else 255,
+        ))
+
+    night_cfg = _get_night_aug_config(dataset_cfg)
+    if night_cfg.get('ENABLE', False):
+        transforms.append(RandomRGBNightSimulation(
+            p=1.0,  # val 시 항상 적용 — dice-roll 제거로 모든 샘플에 야간 조건 부여
+            brightness_range=tuple(night_cfg.get('BRIGHTNESS_RANGE', [0.03, 0.45])),
+            contrast_range=tuple(night_cfg.get('CONTRAST_RANGE', [0.3, 0.7])),
+            gamma_range=tuple(night_cfg.get('GAMMA_RANGE', [0.4, 0.8])),
+            noise_std=night_cfg.get('NOISE_STD', 0.02),
+            brightness_sampling=night_cfg.get('BRIGHTNESS_SAMPLING', 'dark_biased'),
+            dark_biased_ratio=night_cfg.get('DARK_BIASED_RATIO', 0.7),
+            dark_range=tuple(night_cfg.get('DARK_RANGE', [0.03, 0.15])) if night_cfg.get('DARK_RANGE') else None,
+            moderate_range=tuple(night_cfg.get('MODERATE_RANGE', [0.15, 0.5])) if night_cfg.get('MODERATE_RANGE') else None,
+        ))
+        if night_cfg.get('CRM_P', 0) > 0:
+            transforms.append(RandomRGBComplementaryMasking(
+                p=night_cfg.get('CRM_P', 0.3),
+                mask_ratio_range=tuple(night_cfg.get('CRM_MASK_RATIO', [0.2, 0.5])),
+            ))
+        if night_cfg.get('ZERO_P', 0) > 0:
+            transforms.append(RandomRGBZeroOut(p=night_cfg.get('ZERO_P', 0.09)))
+
+    transforms.extend([
+        Resize(size),
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
+    ])
+    return Compose(transforms)
+
+
 if __name__ == '__main__':
     h = 230
     w = 420

@@ -17,7 +17,7 @@ from torch.utils.data import DistributedSampler, RandomSampler
 from torch import distributed as dist
 from semseg.models import *
 from semseg.datasets import * 
-from semseg.augmentations_mm import get_train_augmentation, get_val_augmentation
+from semseg.augmentations_mm import get_train_augmentation, get_val_augmentation, get_nightval_augmentation
 from semseg.losses import get_loss
 from semseg.schedulers import get_scheduler
 from semseg.optimizers import get_optimizer
@@ -155,6 +155,8 @@ def main(cfg, gpu, save_dir):
     start = time.time()
     best_mIoU = 0.0
     best_epoch = 0
+    best_night_mIoU = 0.0   # [Night-Val] 야간 시뮬 기준 best
+    best_night_epoch = 0
     num_workers = 8
     device = torch.device(cfg['DEVICE'])
     train_cfg, eval_cfg = cfg['TRAIN'], cfg['EVAL']
@@ -168,11 +170,17 @@ def main(cfg, gpu, save_dir):
     traintransform = get_train_augmentation(train_cfg['IMAGE_SIZE'], seg_fill=dataset_cfg['IGNORE_LABEL'], dataset_cfg=dataset_cfg)
     valtransform = get_val_augmentation(eval_cfg['IMAGE_SIZE'], dataset_cfg=dataset_cfg)
 
+    # [Night-Val] NIGHT_AUG.ENABLE 시 야간 시뮬 val set 별도 생성 (ISSUE-001 대응)
+    night_aug_enabled = dataset_cfg.get('NIGHT_AUG', {}).get('ENABLE', False)
+    if night_aug_enabled:
+        nightvaltransform = get_nightval_augmentation(eval_cfg['IMAGE_SIZE'], dataset_cfg=dataset_cfg)
+
     ds_kwargs = {}
     if dataset_cfg.get('NAME') == 'MULTIAQUA' and 'NUM_CLASSES' in dataset_cfg:
         ds_kwargs['n_classes'] = dataset_cfg['NUM_CLASSES']
     trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
     valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
+    nightvalset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', nightvaltransform, dataset_cfg['MODALS'], **ds_kwargs) if night_aug_enabled else None
     class_names = trainset.CLASSES
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
@@ -320,6 +328,8 @@ def main(cfg, gpu, save_dir):
         start_epoch = resume_checkpoint.get('epoch', 0)
         best_mIoU = resume_checkpoint.get('best_miou', 0.0)
         best_epoch = resume_checkpoint.get('best_epoch', 0)
+        best_night_mIoU = resume_checkpoint.get('best_night_miou', 0.0)
+        best_night_epoch = resume_checkpoint.get('best_night_epoch', 0)
         
         if 'optimizer_state_dict' in resume_checkpoint:
             optimizer.load_state_dict(resume_checkpoint['optimizer_state_dict'])
@@ -338,6 +348,8 @@ def main(cfg, gpu, save_dir):
 
     trainloader = DataLoader(trainset, batch_size=train_cfg['BATCH_SIZE'], num_workers=num_workers, drop_last=True, pin_memory=False, sampler=sampler)
     valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val)
+    # [Night-Val] 야간 시뮬 val loader (NIGHT_AUG.ENABLE 시에만 생성)
+    night_valloader = DataLoader(nightvalset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val) if nightvalset is not None else None
 
 
     scaler = GradScaler(enabled=train_cfg['AMP'])
@@ -550,6 +562,8 @@ def main(cfg, gpu, save_dir):
                 'proto_loss': proto_loss,
                 'best_miou': best_mIoU,
                 'best_epoch': best_epoch,
+                'best_night_miou': best_night_mIoU,   # [Night-Val]
+                'best_night_epoch': best_night_epoch,  # [Night-Val]
                 'train_losses': train_losses,
                 'train_proto_losses': train_proto_losses,
                 'train_lrs': train_lrs,
@@ -573,16 +587,49 @@ def main(cfg, gpu, save_dir):
                     cur_best_ckp = save_dir / f"epoch{best_epoch}_{best_mIoU}_checkpoint.pth"
                     cur_best = save_dir / f"epoch{best_epoch}_{best_mIoU}.pth"
                     torch.save(model.module.state_dict() if train_cfg['DDP'] else model.state_dict(), cur_best)
-                    # --- 
+                    # ---
                     torch.save({'epoch': best_epoch,
                                 'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
                                 'optimizer_state_dict': optimizer.state_dict(),
                                 'loss': train_loss,
                                 'scheduler_state_dict': scheduler.state_dict(),
                                 'best_miou': best_mIoU,
+                                'best_night_miou': best_night_mIoU,
                                 }, cur_best_ckp)
                     logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
                 logger.info(f"Current epoch:{epoch} mIoU: {miou} Best mIoU: {best_mIoU} Loss: {train_loss :.8f} Proto Loss: {proto_loss :.8f}")
+
+                # ── [Night-Val] 야간 시뮬 조건 평가 (ISSUE-001) ──────────────────────
+                if night_valloader is not None:
+                    night_acc, night_macc, _, _, night_ious, night_miou = evaluate(model, night_valloader, device)
+                    writer.add_scalar('val_night/mIoU', night_miou, epoch)
+
+                    if night_miou > best_night_mIoU:
+                        # 이전 night-best 체크포인트 삭제
+                        prev_night_ckp = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}_checkpoint.pth"
+                        prev_night = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}.pth"
+                        if os.path.isfile(prev_night): os.remove(prev_night)
+                        if os.path.isfile(prev_night_ckp): os.remove(prev_night_ckp)
+
+                        best_night_mIoU = night_miou
+                        best_night_epoch = epoch + 1
+                        cur_night_ckp = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}_checkpoint.pth"
+                        cur_night = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}.pth"
+
+                        torch.save(model.module.state_dict() if train_cfg['DDP'] else model.state_dict(), cur_night)
+                        torch.save({
+                            'epoch': best_night_epoch,
+                            'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'loss': train_loss,
+                            'scheduler_state_dict': scheduler.state_dict(),
+                            'best_miou': best_mIoU,
+                            'best_night_miou': best_night_mIoU,
+                        }, cur_night_ckp)
+                        logger.info(f"[Night-Val] NEW BEST  epoch{best_night_epoch}  Night mIoU: {best_night_mIoU:.4f}")
+                        logger.info(print_iou(epoch, night_ious, night_miou, night_acc, night_macc, class_names))
+
+                    logger.info(f"[Night-Val] epoch:{epoch}  Night mIoU: {night_miou:.4f}  Best Night mIoU: {best_night_mIoU:.4f}")
 
     if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
         writer.close()
@@ -590,7 +637,8 @@ def main(cfg, gpu, save_dir):
     end = time.gmtime(time.time() - start)
 
     table = [
-        ['Best mIoU', f"{best_mIoU:.2f}"],
+        ['Best Day-Val mIoU',   f"{best_mIoU:.2f}  (epoch {best_epoch})"],
+        ['Best Night-Val mIoU', f"{best_night_mIoU:.2f}  (epoch {best_night_epoch})" if best_night_mIoU > 0 else "N/A (NIGHT_AUG disabled)"],
         ['Total Training Time', time.strftime("%H:%M:%S", end)]
     ]
     logger.info(tabulate(table, numalign='right'))

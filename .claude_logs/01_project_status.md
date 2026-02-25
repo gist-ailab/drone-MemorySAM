@@ -2,16 +2,29 @@
 
 > 최종 업데이트: 2026-02-25
 
-## 현재 상태: P9가 최선 모델, P13 설계 완료 (구현 대기)
+## 현재 상태: P9가 최선 모델, P13 구현 완료 (학습 대기), Night-Val 평가 파이프라인 추가 완료
 
-### 다음 단계: P13 구현
+### 다음 단계: P13 학습 실행
 
 - 설계 가이드: `.claude_logs/P13_design_guide.md`
+- Config: `configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml`
 - 핵심 변경 2가지:
   1. CrossModalFusionHead → ConfidenceAuxHead + Energy Score 기반 fusion weight
   2. SoftMoE_LoRA_Layer experts_b zero-init → kaiming*0.01 (expert collapse 방지)
 - P10/P11과 달리 fusion weight에 학습 가능 파라미터/GT supervision 없음
 - P12는 스킵 (MoE gate는 이미 정상 작동, 모달리티 conditioning 불필요)
+
+### P13 구현 상세 (2026-02-25 완료)
+
+**변경 파일:**
+- `sam_lora_image_encoder_seg.py` (line 2427~2743): `ConfidenceAuxHead`, `compute_energy_confidence()`, `LoRA_Sam_P13` 추가
+- `configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml`: 새 config (LORA_MODEL=P13, LAMBDA_AUX=0.3, LORA_NUM_CLASSES=4)
+- `train_sam2_lora_paper.py`: lambda_aux, 3-tuple dispatch, P13 aux CE loss, pbar/TensorBoard 로깅
+- `val_mm_sam.py`: wildcard import + config 기반 동적 모델 선택
+
+**디자인 가이드 대비 의도적 차이:**
+- experts_b init: `sam_lola_utils.py` 수정 대신 P13 `__init__`에서 직접 재초기화 (P9 체크포인트 호환성 유지)
+- Aux loss: GT downsample 대신 logits upsample (P10/P11과 동일 패턴)
 
 ### 최선 모델
 
@@ -53,10 +66,12 @@
    - Per-token 분석: entropy_ratio=0.55, max_weight=0.72 → 결정적 routing 수행 중
    - Block9_Q: lidar→E2(83%), thermal→E0(84%)
 
-6. **val_multiaqua_P9.py (시각화 스크립트)**
-   - P9 전용 평가 + MoE routing 시각화
+6. **val_multiaqua_detailed.py (상세 분석 스크립트)** ← val_multiaqua_P9.py에서 리네임
+   - P8~P13 모든 모델 지원, config의 LORA_MODEL로 동적 선택
    - 4-row grid: 모달리티 입력 / GT+Prediction+Overlay / Per-block stats / Spatial routing map
    - Val/Test 모두 지원 (Test에는 GT 대신 Legend)
+   - **전체 블록 Q+V gating 로깅** → `detailed_log.json` (기존 `uamm_amf_moe_log.json` 대체)
+   - 추가 로깅: per-class IoU, prediction confidence(entropy), expert collapse detection, top2_gap, logit_std
 
 ### P10/P11 취소 이유 상세
 
