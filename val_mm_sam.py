@@ -21,6 +21,7 @@ from torch import distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from semseg.utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp, get_logger, cal_flops, print_iou
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam
 import matplotlib.pyplot as plt 
 def pad_image(img, target_size):
@@ -153,7 +154,25 @@ def main(cfg):
 
         sam2 = build_sam2(model_cfg, checkpoint)
 
-        model = LoRA_Sam(sam2, 4).cpu()
+        # Dynamically select LoRA model class from config
+        import inspect
+        lora_model_name = cfg['MODEL'].get('LORA_MODEL', 'LoRA_Sam')
+        lora_r = cfg['MODEL'].get('LORA_R', 4)
+        lora_layer = cfg['MODEL'].get('LORA_LAYER', None)
+        lora_model_class = eval(lora_model_name)
+        model_kwargs = {'sam_model': sam2, 'r': lora_r, 'lora_layer': lora_layer}
+        sig = inspect.signature(lora_model_class.__init__)
+        if 'num_experts' in sig.parameters:
+            lora_num_experts = cfg['MODEL'].get('LORA_NUM_EXPERTS')
+            if lora_num_experts is None:
+                lora_num_experts = len(cfg['DATASET'].get('MODALS', ['img']))
+            model_kwargs['num_experts'] = lora_num_experts
+        if 'top_k' in sig.parameters:
+            model_kwargs['top_k'] = cfg['MODEL'].get('LORA_TOP_K', 2)
+        if 'num_classes' in sig.parameters:
+            model_kwargs['num_classes'] = cfg['MODEL'].get('LORA_NUM_CLASSES', 4)
+        model = lora_model_class(**model_kwargs).cpu()
+        print(f"Using LoRA model: {lora_model_name}")
         print(model)
         msg = model.load_state_dict(torch.load(str(model_path), map_location='cpu'),strict = False)
         print(msg)

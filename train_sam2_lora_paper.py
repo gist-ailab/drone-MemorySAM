@@ -292,6 +292,8 @@ def main(cfg, gpu, save_dir):
     lambda_gate = train_cfg.get('LAMBDA_GATE', 0.5)
     # [P11] MI routing loss 가중치
     lambda_mi = train_cfg.get('LAMBDA_MI', 1.0)
+    # [P13] Aux loss 가중치
+    lambda_aux = train_cfg.get('LAMBDA_AUX', 0.3)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     scheduler = get_scheduler(
@@ -378,6 +380,7 @@ def main(cfg, gpu, save_dir):
         proto_loss = 0.0
         gate_loss_accum = 0.0
         mi_loss_accum = 0.0
+        aux_loss_accum = 0.0
        
     
         lr = scheduler.get_lr()
@@ -395,17 +398,26 @@ def main(cfg, gpu, save_dir):
             with autocast(enabled=train_cfg['AMP']):
                 # P11: forward가 (output, m_feat, aux_outputs, amf_weights, gate_dists) 리턴
                 # P10: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
+                # P13: forward가 (output, m_feat, aux_logits_list) 리턴
                 # 그 외: (output, m_feat) 리턴
                 model_out = model(sample, multimask_output=True)
                 if len(model_out) == 5:
                     output, m_feat, aux_outputs, amf_weights, gate_dists = model_out
+                    p13_aux_logits = None
                 elif len(model_out) == 4:
                     output, m_feat, aux_outputs, amf_weights = model_out
+                    gate_dists = None
+                    p13_aux_logits = None
+                elif len(model_out) == 3:
+                    # [P13] (output, m_feat, aux_logits_list)
+                    output, m_feat, p13_aux_logits = model_out
+                    aux_outputs, amf_weights = None, None
                     gate_dists = None
                 else:
                     output, m_feat = model_out
                     aux_outputs, amf_weights = None, None
                     gate_dists = None
+                    p13_aux_logits = None
                 logits = output
 
                 loss_orig = loss_fn(logits, lbl)
@@ -454,10 +466,22 @@ def main(cfg, gpu, save_dir):
                     # MI = marg_entropy - cond_entropy → maximize → minimize (cond - marg)
                     mi_loss = cond_entropy - marg_entropy
 
+                # [P13] Aux CE Loss: aux head가 각 modality에서 segmentation 학습
+                p13_aux_loss = torch.tensor(0.0, device=device)
+                if p13_aux_logits is not None:
+                    lbl_size = lbl.shape[-2:]
+                    for al in p13_aux_logits:
+                        al_up = F.interpolate(al, size=lbl_size,
+                                              mode='bilinear', align_corners=False)
+                        p13_aux_loss = p13_aux_loss + F.cross_entropy(
+                            al_up, lbl, ignore_index=255)
+                    p13_aux_loss = p13_aux_loss / len(p13_aux_logits)
+
                 # 전체 Loss
                 total_loss_unscaled = (loss_orig + protoloss
                                        + lambda_gate * gating_loss
-                                       + lambda_mi * mi_loss)
+                                       + lambda_mi * mi_loss
+                                       + lambda_aux * p13_aux_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             scaler.scale(loss).backward()
@@ -481,13 +505,15 @@ def main(cfg, gpu, save_dir):
             proto_loss += protoloss.item()
             gate_loss_accum += gating_loss.item()
             mi_loss_accum += mi_loss.item()
+            aux_loss_accum += p13_aux_loss.item()
 
             pbar.set_description(
                 f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "
                 f"LR: {lr:.8f} Loss: {train_loss/(iter+1):.6f} "
                 f"Proto: {proto_loss/(iter+1):.6f} "
                 f"Gate: {gate_loss_accum/(iter+1):.6f} "
-                f"MI: {mi_loss_accum/(iter+1):.6f}"
+                f"MI: {mi_loss_accum/(iter+1):.6f} "
+                f"Aux: {aux_loss_accum/(iter+1):.6f}"
             )
         
         train_loss /= iter+1
@@ -506,6 +532,7 @@ def main(cfg, gpu, save_dir):
             # Add to TensorBoard
             writer.add_scalar('train/loss', train_loss, epoch)
             writer.add_scalar('train/proto_loss', proto_loss, epoch)
+            writer.add_scalar('train/aux_loss', aux_loss_accum / (iter + 1), epoch)
             writer.add_scalar('train/lr', avg_lr, epoch)
             
             # Plot and save graphs

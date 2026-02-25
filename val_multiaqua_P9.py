@@ -20,6 +20,9 @@ Per-token entropy, argmax fraction, spatial routing map을 시각화.
   python val_multiaqua_P9.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml \\
       --mode val --model_path outputs/MMSamP9/.../epoch47_94.18.pth
 
+  # TTA (horizontal flip, 2 passes/image):
+  python val_multiaqua_P9.py --cfg ... --mode val --model_path ... --tta
+
 NOTE: Use the MMSS_SAM conda environment.
 """
 import torch
@@ -543,11 +546,43 @@ def _collate_multiaqua(batch):
 
 
 # ============================================================================
+# TTA (Test-Time Augmentation) Helper
+# ============================================================================
+
+@torch.no_grad()
+def _tta_accumulate(model, images, base_output, tta_flip):
+    """Accumulate flip TTA softmax on top of base_output (scale=1.0, no flip).
+
+    SAM2 requires fixed input size (1024x1024) due to sam_image_embedding_size
+    assertion in the decoder, so multi-scale TTA is not supported.
+    Only horizontal flip TTA is available.
+
+    Args:
+        model: The model (already in eval mode).
+        images: List of modality tensors [(B,C,H,W), ...] at original scale.
+        base_output: Raw logits from scale=1.0 no-flip forward, (B, n_cls, H, W).
+        tta_flip: Whether to run horizontal flip augmentation.
+
+    Returns:
+        Accumulated softmax tensor (B, n_cls, H, W). NOT normalized (just summed).
+    """
+    accumulated = base_output.softmax(dim=1)
+
+    if tta_flip:
+        flipped = [torch.flip(img, dims=(3,)) for img in images]
+        logits_f, _ = model(flipped, multimask_output=True)
+        accumulated += torch.flip(logits_f, dims=(3,)).softmax(dim=1)
+
+    return accumulated
+
+
+# ============================================================================
 # Evaluation Loop
 # ============================================================================
 
 @torch.no_grad()
-def evaluate(model, dataloader, device, save_dir=None, modals=None):
+def evaluate(model, dataloader, device, save_dir=None, modals=None,
+             tta_flip=False):
     model.eval()
     n_classes = dataloader.dataset.n_classes
     palette = dataloader.dataset.PALETTE
@@ -579,16 +614,23 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None):
         if device.type == 'cuda':
             torch.cuda.synchronize()
         t0 = time.perf_counter()
+
+        # Main forward (with routing hooks at scale=1.0, no flip)
         output, _ = model(images, multimask_output=True)
+
+        capture.remove_hooks()
+
+        # TTA: horizontal flip augmentation
+        if tta_flip:
+            preds = _tta_accumulate(model, images, output, tta_flip=True)
+        else:
+            preds = output.softmax(dim=1)
+        pred_labels = preds[:, :n_classes].argmax(dim=1)
+
         if device.type == 'cuda':
             torch.cuda.synchronize()
         total_inference_time += time.perf_counter() - t0
         num_frames += images[0].shape[0]
-
-        capture.remove_hooks()
-
-        preds = output.softmax(dim=1)
-        pred_labels = preds[:, :n_classes].argmax(dim=1)
 
         for b in range(pred_labels.shape[0]):
             meta = metas[b]
@@ -694,7 +736,8 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None):
 
 
 @torch.no_grad()
-def run_test_inference(model, dataloader, device, save_dir, modals=None):
+def run_test_inference(model, dataloader, device, save_dir, modals=None,
+                       tta_flip=False):
     """Test inference with routing visualization."""
     model.eval()
     n_classes = dataloader.dataset.n_classes
@@ -722,15 +765,22 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None):
         if device.type == 'cuda':
             torch.cuda.synchronize()
         t0 = time.perf_counter()
+
+        # Main forward (with routing hooks at scale=1.0, no flip)
         output, _ = model(images, multimask_output=True)
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        total_inference_time += time.perf_counter() - t0
 
         capture.remove_hooks()
 
-        preds = output.softmax(dim=1)
+        # TTA: horizontal flip augmentation
+        if tta_flip:
+            preds = _tta_accumulate(model, images, output, tta_flip=True)
+        else:
+            preds = output.softmax(dim=1)
         pred_labels = preds[:, :n_classes].argmax(dim=1)
+
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        total_inference_time += time.perf_counter() - t0
 
         for b in range(pred_labels.shape[0]):
             meta = metas[b]
@@ -815,6 +865,8 @@ def main():
     parser.add_argument('--save_dir', type=str, default=None)
     parser.add_argument('--blocks', type=int, nargs='+', default=None,
                         help='Representative block indices for routing map (default: 0, 9, 18)')
+    parser.add_argument('--tta', action='store_true',
+                        help='Enable TTA (horizontal flip). SAM2 fixed input size prevents multi-scale.')
     args = parser.parse_args()
 
     if args.blocks:
@@ -853,19 +905,26 @@ def main():
     model = load_model(cfg, model_path, device)
     print(f"Representative blocks for routing map: {REPRESENTATIVE_LAYERS}")
 
+    # TTA settings (flip only — SAM2 requires fixed 1024x1024 input)
+    tta_flip = args.tta
+    if tta_flip:
+        print("TTA enabled: horizontal flip (2 passes/image)")
+
     if args.mode == 'val':
-        save_dir = args.save_dir or (model_path.parent / "val_pred_P9")
+        save_dir = args.save_dir or (model_path.parent / ("val_pred_P9_tta" if tta_flip else "val_pred_P9"))
         acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
             model, dataloader, device, save_dir=save_dir,
-            modals=dataset_cfg.get('MODALS')
+            modals=dataset_cfg.get('MODALS'),
+            tta_flip=tta_flip,
         )
         table = {
             'Class': list(dataset.CLASSES) + ['Mean'],
             'IoU': [f"{iou:.2f}" for iou in ious] + [f"{miou:.2f}"],
             'Acc': [f"{a:.2f}" for a in acc] + [f"{macc:.2f}"],
         }
+        tta_tag = " [TTA-flip]" if tta_flip else ""
         print("\n" + "=" * 60)
-        print(f"MULTIAQUA P9 Validation ({len(dataset)} images)")
+        print(f"MULTIAQUA P9 Validation ({len(dataset)} images){tta_tag}")
         print("=" * 60)
         print(tabulate(table, headers='keys', tablefmt='grid'))
         print(f"\nmIoU: {miou:.2f}  mAcc: {macc:.2f}")
@@ -874,10 +933,11 @@ def main():
         if save_dir:
             print(f"Saved to {save_dir}")
     else:
-        save_dir = args.save_dir or (model_path.parent / "test_pred_P9")
+        save_dir = args.save_dir or (model_path.parent / ("test_pred_P9_tta" if tta_flip else "test_pred_P9"))
         run_test_inference(
             model, dataloader, device, save_dir=save_dir,
-            modals=dataset_cfg.get('MODALS')
+            modals=dataset_cfg.get('MODALS'),
+            tta_flip=tta_flip,
         )
 
 

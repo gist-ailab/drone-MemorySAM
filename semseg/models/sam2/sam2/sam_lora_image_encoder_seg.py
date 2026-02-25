@@ -2422,3 +2422,322 @@ class LoRA_Sam_P11(nn.Module):
                 sam_dict.update(module_new_state_dict)
 
         self.sam.load_state_dict(sam_dict)
+
+
+# ================================================================
+# P13: Energy-Confidence Fusion + Expert Collapse Fix
+# ================================================================
+
+class ConfidenceAuxHead(nn.Module):
+    """공유 auxiliary segmentation head.
+    모든 모달리티가 동일한 head를 사용하여 파라미터 최소화.
+    Energy score 계산을 위한 raw logit을 출력한다 (softmax 적용 전).
+    """
+
+    def __init__(self, in_channels, num_classes=4):
+        super().__init__()
+        mid_channels = max(in_channels // 4, 32)
+        self.head = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, 1, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, num_classes, 1),
+        )
+
+    def forward(self, feat):
+        """
+        Args:
+            feat: backbone feature (B, C, H, W)
+        Returns:
+            logits: (B, num_classes, H, W) — raw logits
+        """
+        return self.head(feat)
+
+
+def compute_energy_confidence(aux_logits_list, temperature=1.0):
+    """Energy score 기반 modality confidence 계산.
+
+    학습 가능 파라미터 없음 — computed signal이므로 상수로 수렴 불가.
+    학습/추론 동일 메커니즘 — oracle-at-train / guess-at-test 불일치 없음.
+
+    Args:
+        aux_logits_list: List[Tensor], 길이 = num_modalities
+            각 원소: (B, num_classes, H, W) raw logits
+        temperature: energy score temperature (default 1.0)
+    Returns:
+        weights: (B, num_modalities) — softmax normalized fusion weights
+    """
+    confidences = []
+    for z in aux_logits_list:
+        # Energy score: E(x) = -T * log(sum(exp(z_k / T)))
+        energy = -temperature * torch.logsumexp(z / temperature, dim=1)  # (B, H, W)
+        # 높은 confidence = 낮은 energy (더 음수) → -energy가 클수록 confident
+        conf = -energy.mean(dim=[1, 2])  # (B,)
+        confidences.append(conf)
+
+    confidences = torch.stack(confidences, dim=1)  # (B, num_modalities)
+    weights = F.softmax(confidences / temperature, dim=1)  # (B, num_modalities)
+    return weights
+
+
+class LoRA_Sam_P13(nn.Module):
+    """
+    LoRA_Sam_P13: Energy-Confidence Fusion + Expert Collapse Fix
+
+    P9 기반, 두 가지 핵심 변경:
+      1. CrossModalFusionHead → ConfidenceAuxHead + Energy Score 기반 fusion weight
+         - 학습 가능 파라미터로 weight를 직접 예측하지 않음 (상수 수렴 방지)
+         - aux head의 raw logit에서 energy score를 계산 → computed signal
+         - 학습/추론 동일 메커니즘 (P10의 oracle 불일치 문제 해결)
+      2. SoftMoE_LoRA_Layer experts_b: zero-init → kaiming*0.01
+         - 대칭 시작 → rich-get-richer 방지
+         - expert collapse (Block6-20에서 E1 사망) 해결
+
+    P9에서 유지:
+      - UAMM: max-norm (best modality = 1.0, 나머지 억제)
+      - AMF: softmax weights로 output fusion
+      - SoftMoE LoRA 구조 자체
+      - Memory attention, mask decoder, prompt encoder
+
+    Loss 구조:
+      total = seg_loss + proto_loss + λ_aux * aux_loss
+      aux_loss = mean(CE(aux_head(feat_i), gt) for i in modalities)
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_experts=4, num_modalities=3, num_classes=4):
+        nn.Module.__init__(self)
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Inject SoftMoE-LoRA (P9과 동일, experts_b init은 아래에서 재초기화)
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+
+            moe_q = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+            moe_v = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+
+            # [P13] Expert collapse fix: experts_b를 비영 초기화로 대칭 깨기
+            for expert_b in moe_q.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+            for expert_b in moe_v.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+
+            blk.attn.qkv = _SoftMoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+
+        self.sam = sam_model
+
+        # Determine fusion dim (P9과 동일 로직)
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        # [P13] ConfidenceAuxHead: 공유 1개 (CrossModalFusionHead 대체)
+        self.aux_head = ConfidenceAuxHead(
+            in_channels=fusion_dim,
+            num_classes=num_classes,
+        )
+
+        # [P13] Energy temperature
+        self.energy_temperature = 1.0
+
+        # Visualization buffers
+        self._last_uamm_scores = None
+        self._last_amf_weights = None
+        self._last_moe_gates = None
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats = [], [], []
+        vision_pos_embeds, feat_sizes, output = [], [], []
+
+        # MoE gate visualization collector
+        moe_gate_collector = []
+        def _moe_gate_cb(gw):
+            moe_gate_collector.append(gw)
+        for layer in self.moe_layers_q + self.moe_layers_v:
+            layer._gate_callback = _moe_gate_cb
+
+        try:
+            # ============================================
+            # Phase 1: 모든 모달리티 Image Encoding (P9 동일)
+            # ============================================
+            for i in range(m):
+                img_emb = self.sam.forward_image(batched_input[i])
+                image_embedding.append(img_emb)
+                bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+                backbone_out.append(bb_out)
+                vision_feats.append(v_feats)
+                vision_pos_embeds.append(v_pos)
+                feat_sizes.append(f_sizes)
+
+            # ============================================
+            # Phase 2: Aux Prediction + Energy Confidence (P13 NEW)
+            # ============================================
+            all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+
+            # 공유 aux head로 각 modality의 독립 segmentation logit 계산
+            aux_logits_list = [self.aux_head(feat) for feat in all_backbone_feats]
+
+            # Energy score → fusion weights (학습 가능 파라미터 없음)
+            cross_weights = compute_energy_confidence(
+                aux_logits_list,
+                temperature=self.energy_temperature,
+            )  # (B, m)
+
+            # ============================================
+            # Phase 3: UAMM max-norm + Tracking (P9 동일)
+            # ============================================
+            max_w = cross_weights.max(dim=1, keepdim=True)[0]
+            uamm_scores = cross_weights / (max_w + 1e-8)  # (B, m)
+
+            output_dict = {
+                "cond_frame_outputs": {},
+                "non_cond_frame_outputs": {},
+            }
+
+            for frame_idx in range(m):
+                is_init = (frame_idx == 0)
+
+                current_score = uamm_scores[:, frame_idx].unsqueeze(1)        # (B, 1)
+                score_expanded = current_score.transpose(0, 1).unsqueeze(-1)   # (1, B, 1)
+                modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
+
+                multi_mask_output_step = self.sam.track_step(
+                    frame_idx=frame_idx,
+                    is_init_cond_frame=is_init,
+                    current_vision_feats=modulated_vision_feats,
+                    current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                    feat_sizes=feat_sizes[frame_idx],
+                    point_inputs=None,
+                    mask_inputs=None,
+                    output_dict=output_dict,
+                    num_frames=m,
+                    track_in_reverse=False,
+                    run_mem_encoder=True,
+                    prev_sam_mask_logits=None,
+                )
+                output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+                output.append(multi_mask_output_step["high_res_multimasks"])
+
+            # ============================================
+            # Phase 4: AMF — Output Fusion (P9 동일)
+            # ============================================
+            amf_weights = cross_weights  # (B, m)
+
+            w0 = amf_weights[:, 0].view(-1, 1, 1, 1)
+            m_output = output[0] * w0
+            m_feat = all_backbone_feats[0] * w0
+
+            for i in range(1, m):
+                wi = amf_weights[:, i].view(-1, 1, 1, 1)
+                m_output = m_output + output[i] * wi
+                m_feat = m_feat + all_backbone_feats[i] * wi
+
+            # Visualization buffers
+            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            if moe_gate_collector:
+                self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
+            else:
+                self._last_moe_gates = None
+
+        finally:
+            for layer in self.moe_layers_q + self.moe_layers_v:
+                layer._gate_callback = None
+
+        if self.training:
+            return m_output, m_feat, aux_logits_list
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+
+        aux_head_tensors = {
+            f"aux_head.{k}": v
+            for k, v in self.aux_head.state_dict().items()
+        }
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+
+        model_ref = self.sam.module if isinstance(
+            self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)
+        ) else self.sam
+        state_dict = model_ref.state_dict()
+
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors,
+            **mask_decoder_tensors,
+            **aux_head_tensors,
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        # Load SoftMoE Layers
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict:
+                mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict:
+                mv.load_state_dict(state_dict[v_key])
+
+        # Load ConfidenceAuxHead
+        aux_head_dict = {
+            k.replace("aux_head.", ""): v
+            for k, v in state_dict.items()
+            if k.startswith("aux_head.")
+        }
+        if aux_head_dict:
+            self.aux_head.load_state_dict(aux_head_dict)
+
+        # Load SAM components
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+
+        self.sam.load_state_dict(sam_dict)
