@@ -211,20 +211,26 @@ Sky가 가장 심각한 이유: 야간 하늘은 near-zero RGB → CRM/ZERO의 e
 
 ---
 
-### ISSUE-004: Spatial-wise Energy Weighting 확장 가능성 [아이디어]
+### ISSUE-004: Spatial-wise Energy Weighting → P15 구현 예정
 
-**상태**: 보류 (P13 결과 확인 완료, 추가 개선 후보)
-**영향**: P13 이후
+**상태**: **P15로 구현 예정** (P14 결과 확인 후)
+**영향**: P15
 
 **아이디어**:
-- 현재 P13: Energy Score를 spatial mean → 이미지당 스칼라 1개
-- 확장: mean 없이 (B, H_feat, W_feat) 유지 → feature map 위치마다 다른 가중치
+- P13/P14: Energy Score를 spatial mean → 이미지당 스칼라 1개 `(B, m)`
+- P15: mean 없이 `(B, m, H_feat, W_feat)` 유지 → **위치마다 다른 모달리티 가중치**
 - 예: 가로등 근처 RGB 토큰 → 높은 가중치, 어두운 영역 RGB 토큰 → 낮은 가중치
 
-**보류 이유**:
-- image-level만으로도 P9 대비 큰 개선 예상 (상수→가변)
-- 한번에 두 가지 바꾸면 효과 분리 불가
-- P13 결과 확인 후 추가 개선으로 시도
+**P15 구현 범위** (상세 설계는 `02_model_arch.md` P15 섹션 참조):
+1. `compute_energy_confidence()` 수정: spatial mean 제거, `(B, m, H, W)` 반환
+2. UAMM: `(B, m)` 스칼라 → `(B, m, H, W)` spatial map으로 변경
+3. AMF: output fusion도 spatial weight map 적용
+4. P14의 모달리티별 독립 AuxDecoder 유지
+
+**기대 효과**:
+- Sky 영역: LiDAR 억제 (LiDAR는 상공 포인트 없음) → Sky IoU 하락 방지
+- Water 영역: RGB 억제 (야간 수면 암전) → LiDAR/Thermal 활용
+- Dynamic 영역: 위치별 최적 모달리티 선택 → Dynamic IoU 개선
 
 ---
 

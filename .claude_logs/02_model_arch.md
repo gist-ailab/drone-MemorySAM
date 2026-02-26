@@ -362,16 +362,143 @@ for expert_b in moe_q.experts_b:
 
 ---
 
+## P14: Per-Modality Separate Aux Decoders
+
+파일: `sam_lora_image_encoder_seg.py` line 2780, 클래스: `LoRA_Sam_P14`
+
+### P13에서의 변경 동기
+
+P13의 ConfidenceAuxHead는 **공유 1개** → 모든 모달리티가 동일 decoder를 공유.
+RGB 텍스처, LiDAR 점군, Thermal gradient는 특성이 완전히 다름 → 공유 head로는 각 모달리티에 특화된 예측 불가.
+시각화에서 aux mask 품질이 모두 GT와 큰 괴리 확인.
+
+### 아키텍처 변경
+
+```
+P13: ConfidenceAuxHead×1 (공유) → 모든 모달리티 동일 head
+P14: ModalAuxDecoder×3 (독립) → 모달리티별 전용 head
+     · 첫 conv를 3×3으로 변경 → 텍스처/경계 패턴 특화
+     · 각 모달리티가 고유 파라미터 → inter-modality gradient interference 제거
+```
+
+나머지(Energy Score fusion, UAMM max-norm, AMF, MoE init)는 P13과 동일.
+
+### 상태
+
+- **구현 완료**, 학습 대기 (hardaug5 config 준비됨)
+- hardaug5: CRM/ZERO 완전 제거 + test셋 실측 밝기 분포 정렬
+
+---
+
+## P15: Spatial-wise Energy Weighting (설계 단계)
+
+### P14에서의 변경 동기
+
+P13/P14의 Energy Score fusion은 이미지 전체에 대해 **스칼라 1개** `(B, m)`:
+
+```python
+energy = -T * logsumexp(z / T, dim=1)  # (B, H, W)
+conf = -energy.mean(dim=[1, 2])          # (B,)  ← spatial mean으로 정보 소실
+```
+
+문제: 이미지 내에서 **영역별로 최적 모달리티가 다름**
+
+- Sky 영역: LiDAR 무의미 (상공 포인트 없음), RGB/Thermal이 유용
+- Water 영역: 야간 RGB 암전, LiDAR/Thermal이 유용
+- Dynamic 영역: 위치·조명에 따라 최적 모달리티 변동
+
+스칼라 fusion은 이 차이를 반영할 수 없음. 위치별 가중치가 필요.
+
+### 핵심 변경: spatial mean 제거
+
+```python
+# P13/P14 (image-level)
+def compute_energy_confidence(aux_logits_list, temperature=1.0):
+    confs = []
+    for z in aux_logits_list:
+        energy = -T * logsumexp(z / T, dim=1)       # (B, H, W)
+        conf = -energy.mean(dim=[1, 2])               # (B,)  ← 여기서 소실
+    weights = softmax(stack(confs) / T, dim=1)        # (B, m)
+
+# P15 (spatial-level)
+def compute_spatial_energy_confidence(aux_logits_list, temperature=1.0):
+    energy_maps = []
+    for z in aux_logits_list:
+        energy = -T * logsumexp(z / T, dim=1)        # (B, H, W)
+        conf_map = -energy                             # (B, H, W)  ← mean 없이 유지
+        energy_maps.append(conf_map)
+    stacked = torch.stack(energy_maps, dim=1)          # (B, m, H, W)
+    weights = softmax(stacked / T, dim=1)              # (B, m, H, W)  ← 위치별 softmax
+    return weights
+```
+
+### UAMM 변경
+
+```python
+# P14: 스칼라 UAMM
+current_score = uamm_scores[:, frame_idx]                # (B,)
+score_expanded = current_score.unsqueeze(1).unsqueeze(-1) # (1, B, 1)
+modulated = [feat * score_expanded for feat in vision_feats]
+
+# P15: spatial UAMM
+# vision_feats[level]: (num_tokens, B, C) — 각 level별 spatial 크기 다름
+# uamm_scores: (B, m, H, W) — aux head 출력 해상도
+# → 각 level의 spatial 크기에 맞게 interpolate 필요
+spatial_score = uamm_scores[:, frame_idx]                 # (B, H, W)
+for level, feat in enumerate(vision_feats):
+    h, w = feat_sizes[level]
+    score_resized = F.interpolate(
+        spatial_score.unsqueeze(1), size=(h, w), mode='bilinear'
+    )  # (B, 1, h, w)
+    score_flat = score_resized.flatten(2).permute(2, 0, 1)  # (h*w, B, 1)
+    modulated_feat = feat * score_flat
+```
+
+### AMF 변경
+
+```python
+# P14: 스칼라 AMF
+w0 = amf_weights[:, 0].view(-1, 1, 1, 1)        # (B, 1, 1, 1)
+m_output = output[0] * w0
+
+# P15: spatial AMF
+# output[i]: (B, C, H_out, W_out) — 고해상도 mask 출력
+# amf_weights: (B, m, H_feat, W_feat) — aux head 해상도
+w0 = F.interpolate(
+    amf_weights[:, 0:1], size=output[0].shape[2:], mode='bilinear'
+)  # (B, 1, H_out, W_out)
+m_output = output[0] * w0
+```
+
+### 구현 시 주의사항
+
+1. **해상도 정합**: aux head 출력 `(H_feat, W_feat)`와 vision_feats/output의 해상도가 다름 → `F.interpolate` 필수
+2. **vision_feats 형상**: SAM2 Hiera는 `(num_tokens, B, C)` 형태의 flattened feature 사용 → reshape/flatten 처리 필요
+3. **feat_sizes**: `_prepare_backbone_features()`에서 반환하는 각 level의 (h, w) 사용
+4. **backward compatibility**: train 시 `(output, m_feat, aux_logits_list)` 반환 형식 유지
+
+### P15 vs P14 차이 요약
+
+| 구분 | P14 | P15 |
+| --- | --- | --- |
+| Energy Score 형태 | `(B, m)` 스칼라 | `(B, m, H, W)` spatial map |
+| UAMM 적용 | 이미지 전체 동일 비율 | **위치별 다른 비율** |
+| AMF 적용 | 이미지 전체 동일 가중치 | **위치별 다른 가중치** |
+| Aux Decoder | ModalAuxDecoder×3 (P14 유지) | ModalAuxDecoder×3 (P14 유지) |
+| 추가 연산 | 없음 | `F.interpolate` × (num_levels + 1) |
+
+---
+
 ## 버전 비교 총괄
 
-| 구분 | P8 | P9 | P10 | P11 | P12 | P13 |
-| --- | --- | --- | --- | --- | --- | --- |
-| Head | ConfidenceHeadV2 | CrossModalFusionHead | CrossModalFusionHeadV2 | CrossModalFusionHeadV2 | CrossModalFusionHead | **ConfidenceAuxHead + Energy Score** |
-| UAMM | sigmoid (0~1) | max-norm | max-norm | softmax+temperature | max-norm | **max-norm (energy 기반)** |
-| AMF | norm(sigmoid) | raw softmax | raw softmax | raw softmax | raw softmax | **energy softmax** |
-| Aux Head | 없음 | 없음 | ModalAuxHead×3 | ModalAuxHead×3 | 없음 | **ConfidenceAuxHead×1 (공유)** |
-| 추가 Loss | 없음 | 없음 | oracle KL (λ=0.5) | oracle KL + MI (λ=1.0) | 없음 | **aux CE (λ=0.3)** |
-| MoE init | zero | zero | zero | zero | zero | **kaiming*0.01** |
-| 학습 반환 | (out, feat) | (out, feat) | (out, feat, aux, amf_w) | (out, feat, aux, amf_w, gates) | (out, feat) | **(out, feat, aux_list)** |
-| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 |
-| 교훈 | sigmoid saturation | 상대비교가 핵심 | oracle 과적합 | 진단이 먼저 | cond 효과 미미 | **방향 유효, 정확도 부족** |
+| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Head | ConfidenceHeadV2 | CrossModalFusionHead | CrossModalFusionHeadV2 | CrossModalFusionHeadV2 | CrossModalFusionHead | ConfidenceAuxHead + Energy Score | ModalAuxDecoder×3 + Energy Score | ModalAuxDecoder×3 + **Spatial Energy** |
+| UAMM | sigmoid (0~1) | max-norm | max-norm | softmax+temperature | max-norm | max-norm (energy) | max-norm (energy) | **spatial max-norm** `(B,m,H,W)` |
+| AMF | norm(sigmoid) | raw softmax | raw softmax | raw softmax | raw softmax | energy softmax | energy softmax | **spatial energy softmax** |
+| Aux Head | 없음 | 없음 | ModalAuxHead×3 | ModalAuxHead×3 | 없음 | ConfidenceAuxHead×1 (공유) | **ModalAuxDecoder×3** | ModalAuxDecoder×3 |
+| 추가 Loss | 없음 | 없음 | oracle KL (λ=0.5) | oracle KL + MI (λ=1.0) | 없음 | aux CE (λ=0.3) | aux CE (λ=0.3) | aux CE (λ=0.3) |
+| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 |
+| 학습 반환 | (out, feat) | (out, feat) | (out, feat, aux, amf_w) | (out, feat, aux, amf_w, gates) | (out, feat) | (out, feat, aux_list) | (out, feat, aux_list) | (out, feat, aux_list) |
+| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 학습 대기 | 설계 단계 |
+| 교훈 | sigmoid saturation | 상대비교가 핵심 | oracle 과적합 | 진단이 먼저 | cond 효과 미미 | 방향 유효, 정확도 부족 | aux 독립화 | spatial 적응 |
