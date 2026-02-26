@@ -151,12 +151,54 @@ def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs):
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
 
+def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
+                             ckpt_dict, k=5):
+    """Top-K 체크포인트 관리. rank를 postfix로 파일명에 기재.
+
+    Args:
+        topk_list: 현재 top-k 목록 List[(miou, epoch)], 내림차순 정렬 유지
+        new_miou, new_epoch: 새로 저장할 값
+        save_dir: 저장 디렉토리 (Path)
+        prefix: 파일명 prefix ('' = day-val, 'night_' = night-val)
+        ckpt_dict: torch.save에 넘길 dict
+        k: 유지할 최대 개수
+
+    Returns:
+        updated topk_list (내림차순)
+    """
+    topk_list = list(topk_list) + [(new_miou, new_epoch)]
+    topk_list.sort(key=lambda x: x[0], reverse=True)
+
+    # k 초과 항목의 파일 삭제
+    if len(topk_list) > k:
+        for miou, ep in topk_list[k:]:
+            for f in save_dir.glob(f"{prefix}epoch{ep}_{miou}_top*_checkpoint.pth"):
+                f.unlink(missing_ok=True)
+        topk_list = topk_list[:k]
+
+    # 전체 파일명을 현재 순위에 맞게 저장/rename
+    for rank, (miou, ep) in enumerate(topk_list, 1):
+        target = save_dir / f"{prefix}epoch{ep}_{miou}_top{rank}_checkpoint.pth"
+        if (miou, ep) == (new_miou, new_epoch):
+            torch.save(ckpt_dict, target)
+        else:
+            # 순위 변경으로 rename 필요한 경우
+            for old_f in save_dir.glob(f"{prefix}epoch{ep}_{miou}_top*_checkpoint.pth"):
+                if old_f != target:
+                    old_f.rename(target)
+                    break
+
+    return topk_list
+
+
 def main(cfg, gpu, save_dir):
     start = time.time()
     best_mIoU = 0.0
     best_epoch = 0
     best_night_mIoU = 0.0   # [Night-Val] 야간 시뮬 기준 best
     best_night_epoch = 0
+    top_day_ckpts = []       # List[(miou, epoch)] 내림차순, 상위 5개 유지
+    top_night_ckpts = []     # [Night-Val] 상위 5개
     num_workers = 8
     device = torch.device(cfg['DEVICE'])
     train_cfg, eval_cfg = cfg['TRAIN'], cfg['EVAL']
@@ -330,6 +372,8 @@ def main(cfg, gpu, save_dir):
         best_epoch = resume_checkpoint.get('best_epoch', 0)
         best_night_mIoU = resume_checkpoint.get('best_night_miou', 0.0)
         best_night_epoch = resume_checkpoint.get('best_night_epoch', 0)
+        top_day_ckpts = resume_checkpoint.get('top_day_ckpts', [])
+        top_night_ckpts = resume_checkpoint.get('top_night_ckpts', [])
         
         if 'optimizer_state_dict' in resume_checkpoint:
             optimizer.load_state_dict(resume_checkpoint['optimizer_state_dict'])
@@ -564,6 +608,8 @@ def main(cfg, gpu, save_dir):
                 'best_epoch': best_epoch,
                 'best_night_miou': best_night_mIoU,   # [Night-Val]
                 'best_night_epoch': best_night_epoch,  # [Night-Val]
+                'top_day_ckpts': top_day_ckpts,
+                'top_night_ckpts': top_night_ckpts,
                 'train_losses': train_losses,
                 'train_proto_losses': train_proto_losses,
                 'train_lrs': train_lrs,
@@ -577,26 +623,25 @@ def main(cfg, gpu, save_dir):
                 acc, macc, _, _, ious, miou = evaluate(model, valloader, device)
                 writer.add_scalar('val/mIoU', miou, epoch)
 
-                if miou > best_mIoU:
-                    prev_best_ckp = save_dir / f"epoch{best_epoch}_{best_mIoU}_checkpoint.pth"
-                    prev_best = save_dir / f"epoch{best_epoch}_{best_mIoU}.pth"
-                    if os.path.isfile(prev_best): os.remove(prev_best)
-                    if os.path.isfile(prev_best_ckp): os.remove(prev_best_ckp)
-                    best_mIoU = miou
-                    best_epoch = epoch+1
-                    cur_best_ckp = save_dir / f"epoch{best_epoch}_{best_mIoU}_checkpoint.pth"
-                    cur_best = save_dir / f"epoch{best_epoch}_{best_mIoU}.pth"
-                    torch.save(model.module.state_dict() if train_cfg['DDP'] else model.state_dict(), cur_best)
-                    # ---
-                    torch.save({'epoch': best_epoch,
-                                'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
-                                'optimizer_state_dict': optimizer.state_dict(),
-                                'loss': train_loss,
-                                'scheduler_state_dict': scheduler.state_dict(),
-                                'best_miou': best_mIoU,
-                                'best_night_miou': best_night_mIoU,
-                                }, cur_best_ckp)
-                    logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
+                # Top-5 유지: 현재 top_day_ckpts 최하위보다 높거나 5개 미만이면 저장
+                worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
+                if miou > worst_day:
+                    new_epoch_day = epoch + 1
+                    top_day_ckpts = _update_topk_checkpoints(
+                        top_day_ckpts, miou, new_epoch_day, save_dir, prefix='',
+                        ckpt_dict={
+                            'epoch': new_epoch_day,
+                            'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'loss': train_loss,
+                            'scheduler_state_dict': scheduler.state_dict(),
+                            'best_miou': miou,
+                            'best_night_miou': best_night_mIoU,
+                        }, k=5)
+                    if miou > best_mIoU:
+                        best_mIoU = miou
+                        best_epoch = new_epoch_day
+                        logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
                 logger.info(f"Current epoch:{epoch} mIoU: {miou} Best mIoU: {best_mIoU} Loss: {train_loss :.8f} Proto Loss: {proto_loss :.8f}")
 
                 # ── [Night-Val] 야간 시뮬 조건 평가 (ISSUE-001) ──────────────────────
@@ -604,30 +649,25 @@ def main(cfg, gpu, save_dir):
                     night_acc, night_macc, _, _, night_ious, night_miou = evaluate(model, night_valloader, device)
                     writer.add_scalar('val_night/mIoU', night_miou, epoch)
 
-                    if night_miou > best_night_mIoU:
-                        # 이전 night-best 체크포인트 삭제
-                        prev_night_ckp = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}_checkpoint.pth"
-                        prev_night = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}.pth"
-                        if os.path.isfile(prev_night): os.remove(prev_night)
-                        if os.path.isfile(prev_night_ckp): os.remove(prev_night_ckp)
-
-                        best_night_mIoU = night_miou
-                        best_night_epoch = epoch + 1
-                        cur_night_ckp = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}_checkpoint.pth"
-                        cur_night = save_dir / f"night_epoch{best_night_epoch}_{best_night_mIoU}.pth"
-
-                        torch.save(model.module.state_dict() if train_cfg['DDP'] else model.state_dict(), cur_night)
-                        torch.save({
-                            'epoch': best_night_epoch,
-                            'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict(),
-                            'loss': train_loss,
-                            'scheduler_state_dict': scheduler.state_dict(),
-                            'best_miou': best_mIoU,
-                            'best_night_miou': best_night_mIoU,
-                        }, cur_night_ckp)
-                        logger.info(f"[Night-Val] NEW BEST  epoch{best_night_epoch}  Night mIoU: {best_night_mIoU:.4f}")
-                        logger.info(print_iou(epoch, night_ious, night_miou, night_acc, night_macc, class_names))
+                    worst_night = top_night_ckpts[-1][0] if len(top_night_ckpts) >= 5 else -1.0
+                    if night_miou > worst_night:
+                        new_epoch_night = epoch + 1
+                        top_night_ckpts = _update_topk_checkpoints(
+                            top_night_ckpts, night_miou, new_epoch_night, save_dir, prefix='night_',
+                            ckpt_dict={
+                                'epoch': new_epoch_night,
+                                'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
+                                'optimizer_state_dict': optimizer.state_dict(),
+                                'loss': train_loss,
+                                'scheduler_state_dict': scheduler.state_dict(),
+                                'best_miou': best_mIoU,
+                                'best_night_miou': night_miou,
+                            }, k=5)
+                        if night_miou > best_night_mIoU:
+                            best_night_mIoU = night_miou
+                            best_night_epoch = new_epoch_night
+                            logger.info(f"[Night-Val] NEW BEST  epoch{best_night_epoch}  Night mIoU: {best_night_mIoU:.4f}")
+                            logger.info(print_iou(epoch, night_ious, night_miou, night_acc, night_macc, class_names))
 
                     logger.info(f"[Night-Val] epoch:{epoch}  Night mIoU: {night_miou:.4f}  Best Night mIoU: {best_night_mIoU:.4f}")
 
