@@ -1,30 +1,38 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-02-25
+> 최종 업데이트: 2026-02-26
 
-## 현재 상태: P9가 최선 모델, P13 구현 완료 (학습 대기), Night-Val 평가 파이프라인 추가 완료
+## 현재 상태: P9가 최선 모델 (M=81.47). P12(80.80), P13(81.21) 모두 미달. M=85 목표에 Night Aug만으로는 불가능.
 
-### 다음 단계: P13 학습 실행
+### P13 실험 결과 (2026-02-26 완료)
 
-- 설계 가이드: `.claude_logs/P13_design_guide.md`
-- Config: `configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml`
-- 핵심 변경 2가지:
-  1. CrossModalFusionHead → ConfidenceAuxHead + Energy Score 기반 fusion weight
-  2. SoftMoE_LoRA_Layer experts_b zero-init → kaiming*0.01 (expert collapse 방지)
-- P10/P11과 달리 fusion weight에 학습 가능 파라미터/GT supervision 없음
-- P12는 스킵 (MoE gate는 이미 정상 작동, 모달리티 conditioning 불필요)
+- **M-score: 81.21** (P9: 81.47 대비 -0.26)
+- Submission ID: 15997
+- Checkpoint: `night_epoch17_87.71_checkpoint.pth` (night-val 기준 선택)
+- **Dynamic IoU: 27.41** (P9: 21.86, **+5.55 개선** — 가장 큰 단일 클래스 개선)
+- Static -1.49pp, Sky -1.42pp 하락 → Dynamic 개선을 상쇄
+- Val mIoU: 92.45 (P9: 93.32, **-0.87 하락**) → M-score에서 불리
+- **설계 목표 달성**:
+  1. Expert collapse 해결: **실패** (17.4%, P12와 동일 수준)
+  2. Energy Score fusion: **부분 성공** (UAMM 변동성 5-22x 증가, 하지만 test LiDAR 고정)
+- 상세 분석: `.claude_logs/06_result_analysis_P13.md`
 
-### P13 구현 상세 (2026-02-25 완료)
+### P12 실험 결과 (2026-02-25 완료)
 
-**변경 파일:**
-- `sam_lora_image_encoder_seg.py` (line 2427~2743): `ConfidenceAuxHead`, `compute_energy_confidence()`, `LoRA_Sam_P13` 추가
-- `configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml`: 새 config (LORA_MODEL=P13, LAMBDA_AUX=0.3, LORA_NUM_CLASSES=4)
-- `train_sam2_lora_paper.py`: lambda_aux, 3-tuple dispatch, P13 aux CE loss, pbar/TensorBoard 로깅
-- `val_mm_sam.py`: wildcard import + config 기반 동적 모델 선택
+- **M-score: 80.80** (P9: 81.47 대비 -0.67)
+- Submission ID: 15949
+- Dynamic IoU: 25.27 (P9: 21.25, **+4.02 개선**)
+- Sky IoU: Test에서 P9 대비 **-6.81pp 하락** → 전체 M-score 하락의 주원인
+- Expert collapse가 P9보다 심화 (Block0 lidar 단일 expert 독점)
+- 상세 분석: `.claude_logs/05_result_analysis_P9_P12.md`
 
-**디자인 가이드 대비 의도적 차이:**
-- experts_b init: `sam_lola_utils.py` 수정 대신 P13 `__init__`에서 직접 재초기화 (P9 체크포인트 호환성 유지)
-- Aux loss: GT downsample 대신 logits upsample (P10/P11과 동일 패턴)
+### Night Augmentation 포화 판정 (2026-02-26)
+
+- P8 동일 아키텍처에서 4가지 aug 변종 실험: basic-aug → best hardaug 차이 **+1.43pp만**
+- no-aug → basic-aug: **+26.57pp** (전체 gain의 80%)
+- **Aug 튜닝은 포화 상태. M=85 달성에는 +7.4pp 필요하나 aug로는 +1~2pp가 한계.**
+- 병목 클래스: Dynamic(gap -38pp), Sky(gap -21pp) — 전역 밝기 변환으로 해결 불가
+- **필요한 접근**: Diffusion 기반 night 합성, TTA, Ensemble 등 근본적으로 다른 방법
 
 ### 최선 모델
 
@@ -46,57 +54,38 @@
    - **현재까지 최선 모델**
 
 3. **P10 (CrossModalFusionHeadV2 + ModalAuxHead + oracle KL loss)**
-   - P9의 near-constant cross-modal weight 문제 해결 시도
-   - Multi-pool (GAP+GMP+Std) + per-modality auxiliary segmentation으로 oracle 생성
-   - Val mIoU 93.23 (P9과 유사)이지만 Test mIoU **65.30** (P9 대비 -4.3)
-   - M-score 79.27 → **P9보다 나쁨**
-   - hardaug3은 더 나쁨 (M=76.05)
-   - **취소 결정**: 복잡도 증가가 test generalization을 악화시킴
+   - 취소: 복잡도 증가가 test generalization을 악화시킴 (M=79.27)
 
 4. **P11 (P10 + MI routing loss)**
-   - MoE gate uniform 문제 해결 시도: Mutual Information loss 추가
-   - Val mIoU 93.17, Test mIoU **61.01** → P10보다도 나쁨
-   - M-score 77.09 → **P9 대비 -4.4**
-   - **취소 결정**: loss 추가가 해결책이 아님
+   - 취소: loss 추가가 해결책이 아님 (M=77.09)
 
 5. **MoE Gate 진단 (diagnose_moe_gate.py)**
-   - 지도교수 피드백: "loss를 넣어볼게 아니라 왜 gating이 안되는지 분석이 먼저"
-   - 4가지 가설 검증 (H1~H4)
-   - **핵심 발견**: MoE gate는 실제로 분화되어 있음! "uniform"은 공간 평균의 측정 artifact
-   - Per-token 분석: entropy_ratio=0.55, max_weight=0.72 → 결정적 routing 수행 중
-   - Block9_Q: lidar→E2(83%), thermal→E0(84%)
+   - 핵심 발견: MoE gate는 실제로 분화되어 있음! "uniform"은 공간 평균의 측정 artifact
 
-6. **val_multiaqua_detailed.py (상세 분석 스크립트)** ← val_multiaqua_P9.py에서 리네임
-   - P8~P13 모든 모델 지원, config의 LORA_MODEL로 동적 선택
-   - 4-row grid: 모달리티 입력 / GT+Prediction+Overlay / Per-block stats / Spatial routing map
-   - Val/Test 모두 지원 (Test에는 GT 대신 Legend)
-   - **전체 블록 Q+V gating 로깅** → `detailed_log.json` (기존 `uamm_amf_moe_log.json` 대체)
-   - 추가 로깅: per-class IoU, prediction confidence(entropy), expert collapse detection, top2_gap, logit_std
+6. **P12 (Input-Conditioned Soft MoE LoRA)**
+   - Dynamic +4.02pp 개선했으나 Sky -6.81pp 하락. M=80.80 (P9 미달)
 
-### P10/P11 취소 이유 상세
-
-**P10 취소 이유:**
-- Val에서는 P9과 거의 동일 (93.23 vs 93.32)하지만 Test에서 크게 하락 (65.30 vs 69.62)
-- ModalAuxHead + oracle KL이 학습 데이터(주간)에 과적합
-- CrossModalFusionHeadV2의 multi-pool이 test(야간)에서 부정확한 quality estimation
-- 파라미터 증가 (aux_heads × 3) 대비 성능 저하
-
-**P11 취소 이유:**
-- P10의 문제를 해결하지 못하고 MI loss만 추가 → 오히려 악화
-- MI loss가 gate를 강제로 분산시키지만, expert가 이미 분화되어 있으므로 불필요
-- 지도교수 피드백에 따라 loss 추가가 아닌 근본 원인 분석으로 방향 전환
-- 진단 결과 MoE gate는 이미 정상 작동 중이었음
+7. **P13 (Energy Score Fusion + Expert Collapse Fix)**
+   - Dynamic +5.55pp 개선. Energy Score fusion으로 UAMM 변동성 증가.
+   - 하지만 val -0.87pp 하락으로 M=81.21 (P9 미달)
+   - Expert collapse 해결 실패 (collapse rate 동일)
 
 ### 미해결 과제
 
-1. **Val vs Test 갭 (93% vs 70%)**: 야간 test에서의 성능 저하가 여전히 큰 문제
-2. **Dynamic 클래스 IoU**: Test에서 Dynamic IoU가 특히 낮음 (21-28%)
-3. **P12 설계 완료**: Input-Conditioned Soft MoE LoRA (cond_dim으로 모달리티 조건부 gating) — 아직 학습 미실행
-4. **TTA (Test Time Augmentation)**: val_multiaqua_P9.py에 `--tta` 플래그 추가됨, 효과 미검증
+1. **M=85 목표**: 현재 81.47 → +3.53pp 필요. Night Aug 포화로 새로운 접근 필수
+2. **Val vs Test 갭 (93% vs 70%)**: 야간 test에서의 성능 저하가 여전히 핵심 문제
+3. **Dynamic 클래스 IoU**: Test에서 21-27%. Gap -38pp이 가장 심각한 병목
+4. **TTA (Test Time Augmentation)**: val_multiaqua_P9.py에 `--tta` 플래그 추가됨, **효과 미검증**
+5. **P13 best day-val checkpoint test 재평가**: epoch14(93.48)로 M-score 역전 가능성 확인 필요
+6. **Diffusion 기반 Night 합성** (ISSUE-005): M=85 도달을 위한 최유력 접근, 미구현
+7. **Ensemble**: P9(Sky 우세) + P13(Dynamic 우세) 상보성 활용 가능
 
 ### 중요 발견사항
 
-- **NIGHT_AUG hardaug4가 최적**: hardaug2/3보다 test 성능이 일관되게 좋음
-- **MoE gate는 정상 작동**: spatial mean이 uniform처럼 보이는 것은 Central Limit Theorem에 의한 artifact
-- **모델 복잡도 ≠ 성능**: P10/P11의 추가 모듈이 오히려 test generalization 악화
-- **P9의 CrossModalFusionHead가 가장 효과적**: 간단한 relative comparison이 최선
+- **NIGHT_AUG hardaug4가 최적이나 포화 상태**: 추가 튜닝으로는 +1~2pp가 한계
+- **MoE gate는 정상 작동**: spatial mean이 uniform처럼 보이는 것은 CLT artifact
+- **모델 복잡도 ≠ 성능**: P10/P11/P12/P13 모두 P9보다 복잡하지만 M-score는 낮음
+- **P9의 단순한 CrossModalFusionHead가 가장 효과적**: near-constant이지만 좋은 기본 비율
+- **LiDAR routing 야간 고정**: 모든 P 버전에서 공통. LiDAR 데이터의 물리적 한계 (물 반사 없음, 원거리 미감지)
+- **Energy Score fusion 방향은 유효**: Dynamic +5.55pp 개선. aux head 정확도가 관건
+- **Night-val checkpoint 선택**: test 개선에 효과적이나 M-score 공식에서 val 하락이 불리

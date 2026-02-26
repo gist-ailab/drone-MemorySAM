@@ -1,6 +1,6 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-02-25
+> 최종 업데이트: 2026-02-26
 
 ## 공통 기반: MemorySAM
 
@@ -259,33 +259,119 @@ UAMM: softmax with temperature (τ=2.0) 로 변경 (max-norm 대신)
 
 ---
 
-## P12: Input-Conditioned Soft MoE LoRA (설계만 완료)
+## P12: Input-Conditioned Soft MoE LoRA
 
-파일: `sam_lola_utils.py` 내 `SoftMoE_LoRA_Layer` 에 `cond_dim` 파라미터 추가
+파일: `sam_lora_image_encoder_seg.py` line 1585, 클래스: `LoRA_Sam_P12`
 
-### 설계 아이디어
+### P9에서의 변경 동기
 
-- 기존: gate(x) → softmax → weights (입력 x만으로 routing)
-- P12: gate(x) + cond_proj(condition) → softmax → weights
-- `condition` = 모달리티 타입 임베딩 또는 외부 신호
-- `cond_proj`: Linear(cond_dim, num_experts), zero-init (초기에는 P9과 동일)
+MoE gate 진단 결과 정상이었으나, 모달리티별로 다른 routing 패턴이 필요하다는 가설
+→ RGB 채널 통계(mean+std)를 gate에 condition으로 주입
 
-### 미실행 이유
+### 아키텍처 변경
 
-- MoE gate가 이미 정상 작동한다는 진단 결과 → 구조 변경 우선순위 낮아짐
-- P10/P11의 실패로 복잡도 추가에 대한 경계심
+```
+gate(x) + cond_proj(condition) → softmax → weights
+condition = RGB channel mean+std (cond_dim=6), lidar/thermal은 cond=None
+cond_proj: Linear(cond_dim, num_experts), zero-init
+```
+
+### 실험 결과
+
+- M-score 80.80 (P9: 81.47, **-0.67**)
+- Dynamic +4.02pp 개선, Sky -6.81pp 하락
+- Expert collapse P9보다 심화 (15% → 20%)
+- Test LiDAR routing 48/48 블록 완전 고정
+
+---
+
+## P13: Energy Score Fusion + Expert Collapse Fix
+
+파일: `sam_lora_image_encoder_seg.py` line 2483, 클래스: `LoRA_Sam_P13`
+
+### P9에서의 변경 동기
+
+1. CrossModalFusionHead의 near-constant 출력 문제 (ISSUE-003) → 학습 가능 파라미터 없는 fusion weight
+2. SoftMoE_LoRA_Layer의 expert collapse (ISSUE-002) → 비영 초기화로 대칭 깨기
+
+### 아키텍처
+
+```
+Phase 2: Aux Prediction + Energy Confidence (P9 Phase 2 대체)
+  all_backbone_feats → ConfidenceAuxHead(공유) → aux_logits_list
+  aux_logits_list → compute_energy_confidence(T=1.0) → cross_weights (B, m)
+
+나머지 Phase (1, 3, 4)는 P9과 동일
+```
+
+### ConfidenceAuxHead
+
+```python
+class ConfidenceAuxHead(nn.Module):
+    # 공유 1개 (모든 모달리티가 동일 head 사용)
+    head = Sequential(
+        Conv2d(in_ch, in_ch//4, 1),  # mid_channels = max(in_ch//4, 32)
+        BatchNorm2d, ReLU,
+        Conv2d(mid_ch, num_classes, 1),
+    )
+    # 출력: raw logits (B, C, H, W)
+```
+
+### compute_energy_confidence
+
+```python
+def compute_energy_confidence(aux_logits_list, temperature=1.0):
+    for z in aux_logits_list:
+        energy = -T * logsumexp(z / T, dim=1)  # (B, H, W)
+        conf = -energy.mean(dim=[1, 2])          # (B,) spatial average
+    weights = softmax(stack(confs) / T, dim=1)   # (B, m)
+    return weights
+```
+
+핵심 특징:
+- **학습 가능 파라미터 없음** — computed signal이므로 상수 수렴 불가
+- **학습/추론 동일 메커니즘** — P10의 oracle-at-train / guess-at-test 불일치 없음
+- aux head는 학습됨 (seg loss + λ_aux * aux_CE)
+
+### Expert Collapse Fix
+
+```python
+# P13 __init__에서 experts_b 재초기화
+for expert_b in moe_q.experts_b:
+    nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+    expert_b.weight.data *= 0.01
+```
+
+### 실험 결과 및 설계 목표 달성 여부
+
+| 설계 목표 | 판정 | 결과 |
+| --- | --- | --- |
+| Expert collapse 해결 | **실패** | collapse rate 17.4% (P12: 16.0%와 동일) |
+| Energy Score fusion | **부분 성공** | UAMM CV 5-22x 증가, Dynamic +5.55pp |
+
+- M-score 81.21 (P9: 81.47, **-0.26**)
+- Val mIoU 92.45 (-0.87), Test mIoU 69.98 (+0.36)
+- Night-val checkpoint 선택으로 test 개선 but val 희생
+
+### 한계점 (관찰됨)
+
+1. **Expert collapse 미해결**: kaiming*0.01 init은 resume 학습으로 무력화, 스케일도 미미
+2. **Test LiDAR UAMM = 1.0 고정**: aux head가 LiDAR를 항상 "가장 confident"로 판정 (실제 LiDAR 품질은 가장 낮음)
+3. **Val mIoU 하락**: Energy Score의 adaptive weight가 P9의 안정적 상수 비율보다 val에서 불리
+4. **17 epochs 학습**: P9(47 epochs) 대비 짧지만, P9도 epoch 17(93.57) → 46(94.18)은 +0.61pp만 개선
 
 ---
 
 ## 버전 비교 총괄
 
-| 구분 | P8 | P9 | P10 | P11 |
-| --- | --- | --- | --- | --- |
-| Head | ConfidenceHeadV2 | CrossModalFusionHead | CrossModalFusionHeadV2 | CrossModalFusionHeadV2 |
-| UAMM | sigmoid (0~1) | max-norm | max-norm | softmax+temperature |
-| AMF | norm(sigmoid) | raw softmax | raw softmax | raw softmax |
-| Aux Head | 없음 | 없음 | ModalAuxHead×3 | ModalAuxHead×3 |
-| 추가 Loss | 없음 | 없음 | oracle KL (λ=0.5) | oracle KL + MI (λ=1.0) |
-| 학습 반환 | (out, feat) | (out, feat) | (out, feat, aux, amf_w) | (out, feat, aux, amf_w, gates) |
-| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 |
-| 교훈 | sigmoid saturation | 상대비교가 핵심 | oracle 과적합 | 진단이 먼저 |
+| 구분 | P8 | P9 | P10 | P11 | P12 | P13 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Head | ConfidenceHeadV2 | CrossModalFusionHead | CrossModalFusionHeadV2 | CrossModalFusionHeadV2 | CrossModalFusionHead | **ConfidenceAuxHead + Energy Score** |
+| UAMM | sigmoid (0~1) | max-norm | max-norm | softmax+temperature | max-norm | **max-norm (energy 기반)** |
+| AMF | norm(sigmoid) | raw softmax | raw softmax | raw softmax | raw softmax | **energy softmax** |
+| Aux Head | 없음 | 없음 | ModalAuxHead×3 | ModalAuxHead×3 | 없음 | **ConfidenceAuxHead×1 (공유)** |
+| 추가 Loss | 없음 | 없음 | oracle KL (λ=0.5) | oracle KL + MI (λ=1.0) | 없음 | **aux CE (λ=0.3)** |
+| MoE init | zero | zero | zero | zero | zero | **kaiming*0.01** |
+| 학습 반환 | (out, feat) | (out, feat) | (out, feat, aux, amf_w) | (out, feat, aux, amf_w, gates) | (out, feat) | **(out, feat, aux_list)** |
+| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 |
+| 교훈 | sigmoid saturation | 상대비교가 핵심 | oracle 과적합 | 진단이 먼저 | cond 효과 미미 | **방향 유효, 정확도 부족** |

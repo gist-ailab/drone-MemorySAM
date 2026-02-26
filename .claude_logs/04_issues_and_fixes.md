@@ -1,6 +1,6 @@
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-02-25
+> 최종 업데이트: 2026-02-26
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -50,8 +50,8 @@
 
 ### ISSUE-002: MoE Expert Collapse — Block 6-20에서 E1 사망 [중요]
 
-**상태**: P13에서 수정됨 (검증 필요)
-**영향**: P8, P9, P10, P11 (experts_b zero-init 사용하는 모든 버전)
+**상태**: ❌ P13에서 수정 시도했으나 **해결 실패** (2026-02-26 검증 완료)
+**영향**: P8, P9, P10, P11, P12, P13 (전 버전)
 
 **문제**:
 - `SoftMoE_LoRA_Layer.reset_parameters()` (`sam_lola_utils.py` line 562~575)
@@ -68,19 +68,27 @@ Block9_Q argmax_fraction:
   → E1 거의 미사용
 ```
 
-**P13 수정 방법**:
+**P13 수정 시도**:
 - `LoRA_Sam_P13.__init__`에서 experts_b를 `kaiming_uniform_ * 0.01`로 재초기화
 - `sam_lola_utils.py`는 수정하지 않음 (P9 체크포인트 호환성 유지)
 
-**검증 방법**:
-- P13 학습 후 Block9_Q에서 E1 argmax_fraction > 10% 확인
-- 학습 초기(epoch 1~5)에 expert usage 로깅
+**P13 검증 결과 (2026-02-26)**:
+- Collapse rate: P13 val 17.4% vs P12 val 16.0% → **개선 없음 (오히려 소폭 악화)**
+- LiDAR collapse: ~27% (P12와 동일)
+- Q blocks: 23-25% collapse, V blocks: 10-11% (P12와 동일 패턴)
+- Stage별: S1(44-55%) > S4(30%) > S2(20%) > S3(9-13%)
+- 실패 원인:
+  1. Resume 학습 → 이전 gate weights가 로드되면서 init 효과 무력화
+  2. kaiming * 0.01 (~0.005 수준)은 zero-init과 실질적 차이 미미
+  3. 근본 원인이 init이 아니라 soft-MoE softmax의 winner-take-all 특성
+
+**미해결**: 근본적인 해결책 필요 (load balancing loss, top-k routing, expert dropout 등)
 
 ---
 
 ### ISSUE-003: CrossModalFusionHead 상수 출력 [중요]
 
-**상태**: P13에서 수정됨 (검증 필요)
+**상태**: ⚠️ P13에서 수정됨 — **부분 성공** (2026-02-26 검증 완료)
 **영향**: P9 (P10/P11은 HeadV2 사용하지만 유사 문제)
 
 **문제**:
@@ -95,15 +103,76 @@ Block9_Q argmax_fraction:
 - Energy Score는 aux head의 raw logit에서 계산 (학습 파라미터 없음)
 - 학습/추론 동일 메커니즘 (P10의 train≠test 문제 없음)
 
-**검증 방법**:
-- P13 학습 후 uamm_amf_moe_log.json에서 이미지별 UAMM/AMF 값이 다른지 확인
-- 특히 밤(어두운) 이미지 vs 밝은 이미지에서 img 가중치 차이 확인
+**P13 검증 결과 (2026-02-26)**:
+- UAMM CV (이미지별 변동성): img val 0.112 (P12: 0.005, **22x 증가**) → **상수 수렴 문제 해결**
+- Test에서도 img CV=0.073 (P12: 0.014, 5x 증가)
+- **단, test LiDAR UAMM = 1.0 고정 (CV=0.000)** — LiDAR aux head가 항상 가장 높은 energy 출력
+- Dynamic IoU +5.55pp 개선 → energy fusion이 모달리티 가중치를 유의미하게 변경
+- Val mIoU -0.87pp → adaptive weight의 정확도가 P9의 안정적 상수 비율보다 val에서 불리
+
+**결론**: 상수 출력 문제 자체는 해결됨. 하지만 adaptive weight의 **정확도**가 새로운 병목.
+
+---
+
+### ISSUE-006: Aux Head Mask 시각화 — Energy Score 검증 [구현 필요]
+
+**상태**: 🔲 미구현
+**우선순위**: 높음 — P13 Energy Score fusion의 실제 동작 검증 및 P14 방향 설정에 필수
+**영향**: P13 평가/분석
+
+**목적**:
+- Aux head가 모달리티별로 무엇을 보고 있는지 시각적 확인
+- Energy Score가 "잘못된 confidence"를 주는 케이스 식별 (특히 test LiDAR UAMM=1.0 문제)
+- Thermal aux mask가 야간에 RGB보다 Dynamic/Sky를 더 잘 잡는 프레임 확인
+- P14 설계에 필요한 실증 데이터 수집
+
+**구현 사양**:
+
+1. **저장 대상** (각 이미지에 대해):
+   - RGB / LiDAR / Thermal 입력 이미지 (3장)
+   - Aux head prediction mask — 모달리티별 argmax 컬러맵 (3장)
+     - `aux_logits_img`, `aux_logits_lidar`, `aux_logits_thermal` 각각에 argmax
+     - 컬러맵: Static=빨강, Dynamic=초록, Water=파랑, Sky=노랑, ignore=회색
+   - Final prediction mask (1장)
+   - Ground truth (val에서만, test는 없음)
+   - Energy confidence weights: img/lidar/thermal 각 스칼라 값 (이미지 파일명에 포함 또는 별도 JSON)
+   - UAMM/AMF weights: 이미지당 값
+
+2. **출력 형식**:
+   - 한 이미지당 1개의 panorama 이미지 (가로 배치):
+     ```
+     [RGB] [LiDAR] [Thermal] | [Aux_RGB] [Aux_LiDAR] [Aux_Thermal] | [Pred] [GT]
+     ```
+   - 각 aux mask 위에 energy confidence 값 표시 (e.g., "img: 0.28, E=3.42")
+   - 파일명: `{image_id}_auxmask.png`
+   - 별도 JSON: `{image_id}_energy.json` (수치 데이터)
+
+3. **실행 위치**:
+   - `val_multiaqua_P9.py`의 P13 평가 경로에 추가
+   - `--save-auxmask` 플래그로 활성화
+   - 출력 디렉토리: `val_pred_P13/auxmask/`
+
+4. **코드 변경 필요 사항**:
+   - `LoRA_Sam_P13.forward()`에서 `aux_logits`를 반환하도록 수정 (현재는 loss 계산에만 사용)
+   - 또는 eval 모드에서 별도로 aux head forward를 호출
+   - `compute_energy_confidence()`의 중간 값 (per-modality energy)도 저장
+
+5. **분석 포인트** (시각화 결과 확인 시):
+   - [ ] LiDAR aux mask가 Water/Dynamic을 못 잡는데 UAMM=1.0인 프레임 확인
+   - [ ] Thermal aux mask가 Dynamic을 RGB보다 잘 잡는 프레임 비율
+   - [ ] RGB aux mask가 야간에 완전히 깨지는 프레임에서 Energy Score가 RGB weight를 낮추는지
+   - [ ] Sky를 잘못 예측하는 모달리티가 어느 것인지 (Sky -1.42pp 하락 원인)
+
+**관련 파일**:
+- `val_multiaqua_P9.py`: 평가 스크립트 (시각화 추가 대상)
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: LoRA_Sam_P13, ConfidenceAuxHead
+- `val_pred_P13/`: 기존 P13 평가 결과 디렉토리
 
 ---
 
 ### ISSUE-004: Spatial-wise Energy Weighting 확장 가능성 [아이디어]
 
-**상태**: 보류 (P13 image-level 결과 보고 결정)
+**상태**: 보류 (P13 결과 확인 완료, 추가 개선 후보)
 **영향**: P13 이후
 
 **아이디어**:
@@ -120,9 +189,9 @@ Block9_Q argmax_fraction:
 
 ### ISSUE-005: 야간 합성 데이터 생성 — Diffusion 기반 Day→Night [아이디어]
 
-**상태**: 보류 (P13 + Night-Val 결과 확인 후 결정)
+**상태**: **M=85 달성을 위한 최유력 접근** (Night Aug 포화 확인됨)
 **영향**: 전체 학습 파이프라인
-**우선순위**: P13 학습 → 결과 분석 → 이후 병렬 진행 가능
+**우선순위**: 높음 — Night Aug만으로는 +1~2pp가 한계, +7.4pp 필요
 
 **배경**:
 - Val(주간) 93% vs Test(야간) 70% 갭이 핵심 병목

@@ -2567,6 +2567,7 @@ class LoRA_Sam_P13(nn.Module):
         self._last_uamm_scores = None
         self._last_amf_weights = None
         self._last_moe_gates = None
+        self._last_aux_logits = None  # [P13] List[(B, C, H_feat, W_feat)] per modality
 
     def forward(self, batched_input, multimask_output):
         m = len(batched_input)
@@ -2659,6 +2660,8 @@ class LoRA_Sam_P13(nn.Module):
             # Visualization buffers
             self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
             self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            # [P13] aux logits per modality: List[(B, C, H_feat, W_feat)]
+            self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:

@@ -545,6 +545,81 @@ def build_routing_map_row(capture, modals, target_h, target_w, block_idx=9):
     return row
 
 
+def build_aux_mask_row(aux_logits_list, modals, batch_idx, palette,
+                       orig_h, orig_w, target_w, ignore_mask=None):
+    """P13 전용: ConfidenceAuxHead의 per-modality aux segmentation 시각화.
+
+    각 모달리티의 aux logit을 argmax → colormap으로 변환해 나란히 배치.
+    마지막 칼럼에는 3모달 energy confidence bar를 표시.
+
+    Args:
+        aux_logits_list: List[Tensor(B, C, H_feat, W_feat)] — P13 _last_aux_logits
+        modals: ['img', 'lidar', 'thermal']
+        batch_idx: 배치 내 인덱스
+        palette: MULTIAQUA color palette
+        orig_h, orig_w: 원본 이미지 크기 (resize 기준)
+        target_w: 전체 row 가로 크기
+        ignore_mask: (H, W) bool — Recording Boat 영역
+    Returns:
+        np.ndarray (row_h, target_w, 3)
+    """
+    if aux_logits_list is None or len(aux_logits_list) == 0:
+        return None
+
+    row_h = orig_h  # 원본 이미지와 동일 높이
+    n_modals = len(aux_logits_list)
+    col_w = target_w // (n_modals + 1)  # +1은 energy bar 칼럼
+
+    cols = []
+    energy_scores = []
+
+    for m_idx, (mname, logits) in enumerate(zip(modals, aux_logits_list)):
+        if batch_idx >= logits.shape[0]:
+            cols.append(np.zeros((row_h, col_w, 3), dtype=np.uint8))
+            energy_scores.append(0.0)
+            continue
+
+        logit_b = logits[batch_idx]  # (C, H_feat, W_feat)
+
+        # Energy score: -T * log(sum(exp(z)))
+        energy = -torch.logsumexp(logit_b, dim=0).mean().item()  # 높을수록 낮은 confidence
+        energy_scores.append(-energy)  # confidence: 낮은 energy = 높은 confidence
+
+        # Aux prediction (argmax)
+        aux_pred = logit_b.argmax(dim=0).numpy().astype(np.uint8)  # (H_feat, W_feat)
+
+        # upsample to orig size
+        aux_pred_img = Image.fromarray(aux_pred).resize(
+            (orig_w, orig_h), Image.Resampling.NEAREST)
+        aux_pred_np = np.array(aux_pred_img)
+
+        # colorize
+        colored = MULTIAQUA.decode_segmap(aux_pred_np, palette)
+        if ignore_mask is not None:
+            colored[ignore_mask] = [30, 30, 30]
+
+        # resize to col_w
+        colored_resized = np.array(
+            Image.fromarray(colored).resize((col_w, row_h), Image.Resampling.LANCZOS))
+        titled = _add_title_to_image(colored_resized, f'Aux ({mname})')
+        cols.append(titled)
+
+    # Energy confidence bar (마지막 칼럼)
+    total = sum(energy_scores) + 1e-8
+    norm_conf = [e / total for e in energy_scores]
+    bar_img = _draw_bar_chart(
+        np.array(norm_conf), modals,
+        title='Energy Conf', target_h=row_h, target_w=col_w
+    )
+    cols.append(_add_title_to_image(bar_img, 'Energy Conf'))
+
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != target_w:
+        row = np.array(Image.fromarray(row).resize(
+            (target_w, row.shape[0]), Image.Resampling.LANCZOS))
+    return row
+
+
 def _add_title_to_image(img, title):
     """Add a large title bar on top of an image."""
     h, w = img.shape[:2]
@@ -744,7 +819,19 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                 mid_block = REPRESENTATIVE_LAYERS[len(REPRESENTATIVE_LAYERS) // 2]
                 row4 = build_routing_map_row(capture, modals, map_h, main_w, block_idx=mid_block)
 
-                viz = np.concatenate([row1, row2, stats_row, row4], axis=0)
+                rows = [row1, row2, stats_row, row4]
+
+                # Row 5 (P13 only): ConfidenceAuxHead per-modality aux mask
+                aux_logits = getattr(core, '_last_aux_logits', None)
+                if aux_logits is not None:
+                    aux_row = build_aux_mask_row(
+                        aux_logits, modals, b, palette,
+                        orig_h, orig_w, main_w, ignore_mask=ignore_mask,
+                    )
+                    if aux_row is not None:
+                        rows.append(aux_row)
+
+                viz = np.concatenate(rows, axis=0)
                 Image.fromarray(viz).save(str(seg_viz_dir / f"{stem}.png"))
 
                 # JSON log — fusion + all-block MoE routing + prediction analysis
@@ -902,7 +989,20 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
             stats_row = build_stats_row(capture, modals, int(orig_h * 0.55), main_w)
             mid_block = REPRESENTATIVE_LAYERS[len(REPRESENTATIVE_LAYERS) // 2]
             row4 = build_routing_map_row(capture, modals, int(orig_h * 0.6), main_w, block_idx=mid_block)
-            viz = np.concatenate([row1, row2, stats_row, row4], axis=0)
+
+            rows = [row1, row2, stats_row, row4]
+
+            # Row 5 (P13 only): ConfidenceAuxHead per-modality aux mask
+            aux_logits = getattr(core, '_last_aux_logits', None)
+            if aux_logits is not None:
+                aux_row = build_aux_mask_row(
+                    aux_logits, modals, b, palette,
+                    orig_h, orig_w, main_w, ignore_mask=None,
+                )
+                if aux_row is not None:
+                    rows.append(aux_row)
+
+            viz = np.concatenate(rows, axis=0)
             Image.fromarray(viz).save(str(seg_viz_dir / f"{stem}.png"))
 
             # JSON log — fusion + all-block MoE routing

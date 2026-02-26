@@ -1,10 +1,11 @@
 # 실험 기록 (Experiment Log)
 
-> 최종 업데이트: 2026-02-25
+> 최종 업데이트: 2026-02-26
 
 ## MACVi Challenge 평가 지표
 
-- **M-score** = 0.75 × val_mIoU + 0.25 × test_mIoU (challenge 공식 랭킹)
+- **M-score** = (val_mIoU + test_mIoU) / 2 (challenge 공식 랭킹)
+- ~~이전 기록에 0.75×val + 0.25×test로 적혀있었으나, 실제 계산 검증 결과 0.5/0.5 동일 비중~~
 - Val: 주간 145장 (로컬 평가 가능)
 - Test: 야간 (challenge server에서만 평가, `--macvi` 플래그로 제출 파일 생성)
 - 클래스: Static(0), Dynamic(1), Water(2), Sky(3)
@@ -16,14 +17,16 @@
 | 순위 | 모델 | Config | Val mIoU | Test mIoU | Val Obstacle | Test Obstacle | M-score | Submission ID |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | **P9** | hardaug4 | 93.32 | 69.62 | 78.85 | 21.25 | **81.47** | 15635 |
-| 2 | P10 | hardaug4 | 93.23 | 65.30 | 78.84 | 28.31 | 79.27 | 15731 |
-| 3 | P8 | hardaug (기본) | 92.96 | 63.93 | 77.91 | 23.08 | 78.45 | 15561 |
-| 4 | P8 | hardaug2 | 93.29 | 63.45 | 79.27 | 21.66 | 78.37 | 15589 |
-| 5 | P8 | basic-aug | 93.13 | 62.50 | 78.36 | 26.01 | 77.82 | 15541 |
-| 6 | P8 | hardaug3 | 93.36 | 61.57 | 79.12 | 27.17 | 77.46 | 15616 |
-| 7 | P11 | hardaug4 | 93.17 | 61.01 | 78.40 | 20.95 | 77.09 | 15851 |
-| 8 | P10 | hardaug3 | 93.18 | 58.93 | 78.57 | 22.36 | 76.05 | 15757 |
-| 9 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
+| 2 | **P13** | hardaug4 | 92.45 | 69.98 | 75.93 | 25.38 | **81.21** | 15997 |
+| 3 | **P12** | hardaug4 | 93.23 | 68.37 | 78.47 | 25.27 | **80.80** | 15949 |
+| 4 | P10 | hardaug4 | 93.23 | 65.30 | 78.84 | 28.31 | 79.27 | 15731 |
+| 5 | P8 | hardaug (기본) | 92.96 | 63.93 | 77.91 | 23.08 | 78.45 | 15561 |
+| 6 | P8 | hardaug2 | 93.29 | 63.45 | 79.27 | 21.66 | 78.37 | 15589 |
+| 7 | P8 | basic-aug | 93.13 | 62.50 | 78.36 | 26.01 | 77.82 | 15541 |
+| 8 | P8 | hardaug3 | 93.36 | 61.57 | 79.12 | 27.17 | 77.46 | 15616 |
+| 9 | P11 | hardaug4 | 93.17 | 61.01 | 78.40 | 20.95 | 77.09 | 15851 |
+| 10 | P10 | hardaug3 | 93.18 | 58.93 | 78.57 | 22.36 | 76.05 | 15757 |
+| 11 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
 
 ---
 
@@ -125,6 +128,76 @@
 - **Challenge result**: `outputs/MMSamP11/levine_multiaqua_rgbtl_P11_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/P11_hardaug4_15851_results/`
 - **비고**: MI loss 추가했으나 P10보다도 약간 나음. 그러나 P9 대비 -4.4 하락. 진단 결과 MoE gate는 이미 정상이었으므로 MI loss가 불필요했음.
 - **추가 파라미터**: LAMBDA_GATE=0.5, LAMBDA_MI=1.0
+
+### P12 Experiments
+
+#### P12-1: hardaug4
+
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P12_hardaug4.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P12_hardaug4.yaml`
+- **Checkpoint**: `outputs/MMSamP12/levine_multiaqua_rgbtl_P12_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch40_94.02_checkpoint.pth`
+- **결과**: Val 93.23 / Test 68.37 / M **80.80**
+- **Challenge result**: `outputs/MMSamP12/levine_multiaqua_rgbtl_P12_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/P12_15949_results/`
+- **비고**: Input-Conditioned Soft MoE LoRA. P9 대비 M-score -0.67 하락.
+  - Dynamic IoU +4.02 (21.25→25.27) 개선, 하지만 Sky 클래스 대폭 하락 (-6.81pp)
+  - UAMM/AMF 변동성 소폭 증가 (std 0.0001→0.01)하나 여전히 near-constant
+  - Expert collapse P9보다 심화 (Block0 lidar E0=E2=0%, Block18 lidar E0=1.6% E1=0.4%)
+  - Tail-end failure 증가: mIoU<55 프레임이 P9 5장→P12 18장
+- **상세 분석**: `.claude_logs/05_result_analysis_P9_P12.md`
+
+---
+
+### P13 Experiments
+
+#### P13-1: hardaug4
+
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml` (bengio 서버)
+- **Config 평가**: `configs/eval_config/bengio-multiaqua_rgbtl_P13_hardaug4.yaml`
+- **Checkpoint**: `outputs/MMSamP13/bengio_multiaqua_rgbtl_P13_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/night_epoch17_87.71_checkpoint.pth`
+- **체크포인트 선택**: **Night-Val 기준** (87.71 mIoU). Best day-val은 epoch14 (93.48)이었으나 night-val이 87.24로 낮았음.
+- **결과**: Val 92.45 / Test 69.98 / M **81.21**
+- **Challenge result**: `outputs/MMSamP13/.../P13_15997_results/`
+- **학습 에폭**: 17 epochs (resume from previous run). P9는 47 epochs.
+- **Per-class Test IoU**: Static 79.80 / Dynamic **27.41** (+5.55 vs P9) / Water 94.27 / Sky 75.12
+- **설계 목표 달성 여부**:
+  1. Expert collapse 해결 (kaiming*0.01 init): **실패** — collapse rate 17.4% (P12: 16.0%와 동일 수준)
+  2. Energy Score fusion: **부분 성공** — UAMM CV가 P12 대비 5-22x 증가. 하지만 test LiDAR UAMM = 1.0 고정 (모든 P 버전 공통)
+- **핵심 발견**:
+  - Dynamic class +5.55pp 개선 (Dynamic=0 프레임: P9 38개 → P13 20개)
+  - Static -1.49pp, Sky -1.42pp 하락 → net test mIoU +0.36pp
+  - Val mIoU -0.87pp → M-score 오히려 -0.26pp 하락
+  - Night-val 선택이 test 개선에 효과적이나 M-score 공식에서 val 하락이 불리
+  - P9 epoch 17에서 val 93.57이었고 epoch 46까지 +0.61pp만 추가 상승 → P13도 유사한 포화 예상
+- **상세 분석**: `.claude_logs/06_result_analysis_P13.md`
+
+---
+
+## Night Augmentation 포화 분석
+
+### Augmentation 효과 정량화 (P8 동일 아키텍처)
+
+| Aug | Test mIoU | vs no-aug | Marginal gain |
+|-----|--------:|--------:|--------:|
+| no-aug | 35.93 | - | - |
+| basic-aug | 62.50 | +26.57 | **+26.57** |
+| hardaug | 63.93 | +28.00 | +1.43 |
+| hardaug2 | 63.45 | +27.52 | -0.48 |
+| hardaug3 | 61.57 | +25.64 | -1.88 |
+
+**결론: Augmentation 포화**
+- no-aug → basic-aug: **+26.57pp** (전체 gain의 80%)
+- basic-aug → best hardaug 변종: **+1.43pp** (전체 gain의 4%)
+- 나머지 gain은 아키텍처 변경(P9의 CrossModalFusionHead)에서 발생
+
+### M=85 달성 가능성
+
+- 목표: test ≥ 77 (val 93 유지 가정)
+- 현재: test = 69.62 → **+7.4pp 필요**
+- Augmentation 튜닝 최대 기대 효과: **+1~2pp** → **부족**
+- 클래스별 병목:
+  - Dynamic gap -38pp: 밝기 augmentation으로 해결 불가 (소형 객체 + 어두운 수면)
+  - Sky gap -21pp: 하늘/물 경계 혼동은 전역 밝기 변환으로 해결 불가
+- **Night Aug만으로 M=85는 불가능. 근본적으로 다른 접근(데이터 합성, 추론 시 기법) 필요.**
 
 ---
 
