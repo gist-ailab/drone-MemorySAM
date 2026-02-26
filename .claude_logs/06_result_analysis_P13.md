@@ -243,10 +243,88 @@ Dynamic +5.55pp 개선은 유의미하지만, Static -1.49pp + Sky -1.42pp + Wat
 | Aux loss (λ=0.3) | **효과 제한** | Energy 추정 기반 제공하나 정확도 부족 |
 | Night-val checkpoint | **효과적** | test +0.36pp, 하지만 M-score 공식에서 불리 |
 
-### 향후 실험 우선순위
+### 향후 실험 우선순위 (epoch39 crash 이전)
 
 1. **P13 best day-val checkpoint (epoch14_93.48)로 test 재평가** — M-score 역전 가능성 확인
-2. **P13 epoch 40-50까지 추가 학습** — aux head 정확도 향상 및 val mIoU 회복 기대 (단 marginal)
+2. ~~P13 epoch 40-50까지 추가 학습~~ — **취소: epoch39에서 test crash 확인 (ISSUE-007)**
 3. **Diffusion 기반 night 데이터 합성** (ISSUE-005) — M=85 도달을 위한 필수 접근
 4. **TTA 적용** — P9/P13 모두에 미검증, 저비용 개선 가능
 5. **P9 + P13 Ensemble** — Dynamic(P13 우세) + Sky(P9 우세) 상보성 활용
+
+---
+
+## 10. P13 Epoch39 Test Crash 분석 (Submission #16044)
+
+> 분석일: 2026-02-26
+> 비교 대상: Epoch17 (#15997) vs Epoch39 (#16044)
+
+### 10.1 핵심 수치
+
+| 지표 | Epoch17 | Epoch39 | Δ |
+| --- | --- | --- | --- |
+| Val mIoU | 92.45 | 92.86 | +0.41 |
+| Night-val | 87.71 | **89.53** | +1.82 |
+| **Test mIoU** | 69.98 | **50.48** | **-19.50** |
+| **M-score** | 81.21 | **71.67** | **-9.54** |
+
+Val과 night-val 모두 개선, test 폭락 → **전형적인 overfitting**
+
+### 10.2 Per-Class Test 비교
+
+| Class | Epoch17 | Epoch39 | Δ | Crash 기여도 |
+| --- | --- | --- | --- | --- |
+| **Sky** | 75.12 | 23.36 | **-51.76** | **67%** |
+| Dynamic | 27.41 | 15.44 | -11.97 | 15% |
+| Static | 79.80 | 66.27 | -13.53 | 17% |
+| Water | 94.27 | 94.42 | +0.15 | 0% |
+
+Sky 붕괴가 crash의 67%. Epoch17에서 Sky=0 프레임 5개 → epoch39에서 **80/200 프레임**.
+192/200 프레임에서 전체적으로 성능 하락.
+
+### 10.3 근본 원인: CRM/ZERO Overfitting (ISSUE-007)
+
+#### 메커니즘
+
+1. **CRM** (p=0.35): RGB에 1-4개 랜덤 직사각형을 exact 0으로 마스킹 (면적 20-50%)
+2. **ZERO** (p=0.09): RGB 전체를 exact 0으로 대체
+3. 합산 **학습 샘플 ~44%**에 exact-zero 픽셀 존재
+
+#### Exact zero가 문제인 이유
+
+- 실제 야간 센서: noise가 있는 near-zero (0.001~0.01), 절대 exact 0이 아님
+- ImageNet normalize 후: `(0-mean)/std = (-2.118, -2.036, -1.804)` — 자연 이미지에서 불가능한 극단값
+- 모델이 학습하는 shortcut: "exact zero 감지 → RGB 무시" — train/night-val에서는 유효, test에서는 무효
+
+#### Night-val 오염
+
+`get_nightval_augmentation()`에도 CRM/ZERO가 동일 확률로 적용됨.
+
+| | Night-val | Real Test |
+| --- | --- | --- |
+| CRM/ZERO 적용 | 있음 (p=0.35+0.09) | **없음** |
+| RGB 값 패턴 | exact zero 포함 | noisy near-zero |
+| Shortcut 유효 | **유효** | **무효** |
+
+Night-val 87.71→89.53 개선 = shortcut을 더 잘 학습한 결과. 하지만 이 shortcut은 test에서 무효.
+
+#### Sky가 가장 취약한 이유
+
+야간 하늘 = near-zero RGB → CRM/ZERO의 exact zero와 가장 유사 → shortcut이 Sky 영역에서 가장 강하게 활성화 → Sky→Water 오분류 폭증.
+Water는 thermal/LiDAR로 충분히 구분 가능 → RGB shortcut 영향 적음.
+
+### 10.4 시사점
+
+| 발견 | 대응 |
+| --- | --- |
+| Night-val↑ + Test↓ = CRM/ZERO shortcut 과적합 | Night-val에서 CRM/ZERO 제거 |
+| Epoch17→39로 학습할수록 shortcut 강화 | Early stopping 필수 (epoch17이 sweet spot) |
+| Sky 붕괴가 crash의 67% | Sky/Water 구분은 RGB의 미세한 차이에 의존 |
+| 44% exact-zero 패턴 = train-test 분포 불일치 | CRM/ZERO 확률 대폭 축소 또는 noisy near-zero로 대체 |
+
+### 10.5 수정된 향후 실험 우선순위
+
+1. **Night-val에서 CRM/ZERO 제거** — 즉시 적용 가능, 신뢰할 수 있는 test proxy 확보
+2. **CRM/ZERO 확률 축소 (CRM 0.35→0.10, ZERO 0.09→0.03)** 또는 noisy near-zero로 대체
+3. **P13 epoch17 checkpoint 확정** — 추가 학습은 역효과
+4. **Diffusion 기반 night 합성** (ISSUE-005) — M=85 달성의 유일한 경로
+5. **TTA / Ensemble** — 저비용 개선

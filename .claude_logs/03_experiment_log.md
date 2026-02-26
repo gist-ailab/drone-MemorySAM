@@ -170,6 +170,29 @@
   - P9 epoch 17에서 val 93.57이었고 epoch 46까지 +0.61pp만 추가 상승 → P13도 유사한 포화 예상
 - **상세 분석**: `.claude_logs/06_result_analysis_P13.md`
 
+#### P13-2: hardaug4 epoch39 (Test Crash)
+
+- **Config**: 동일 (P13-1과 동일 학습, 더 긴 에폭)
+- **Checkpoint**: `outputs/MMSamP13/bengio_multiaqua_rgbtl_P13_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/night_epoch39_89.53_checkpoint.pth`
+- **결과**: Val 92.86 / Test **50.48** / M **71.67**
+- **Challenge result**: `outputs/MMSamP13/.../P13_16044_results/`
+- **Submission ID**: 16044
+- **Night-Val**: 89.53 (epoch17: 87.71, +1.82 개선)
+- **Per-class Test IoU**: Static 66.27 / Dynamic 15.44 / Water 94.42 / Sky **23.36**
+- **Epoch17→39 변화**:
+  - Val: 92.45→92.86 (+0.41) ✅
+  - Night-val: 87.71→89.53 (+1.82) ✅
+  - **Test: 69.98→50.48 (-19.50)** ❌ — **치명적 하락**
+  - Sky: 75.12→23.36 (-51.76pp) — crash의 67%
+  - 80/200 프레임에서 Sky IoU=0 (epoch17에서는 5개)
+  - 192/200 프레임에서 성능 하락
+- **원인 분석**: **CRM/ZERO Overfitting (ISSUE-007)**
+  - CRM(p=0.35) + ZERO(p=0.09) → 학습 샘플 44%에 exact-zero RGB 패턴
+  - Exact zero는 실제 센서 데이터에 없는 artifact → train-test 분포 불일치
+  - Night-val에도 CRM/ZERO 동일 적용 → 오염된 proxy, shortcut 학습이 night-val도 개선
+  - 더 많이 학습할수록 shortcut 강화 → test 성능 역행
+- **교훈**: Night-val에서 CRM/ZERO를 제거해야 신뢰 가능한 test proxy. Epoch17이 P13 sweet spot.
+
 ---
 
 ## Night Augmentation 포화 분석

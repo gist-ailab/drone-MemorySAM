@@ -170,6 +170,47 @@ Block9_Q argmax_fraction:
 
 ---
 
+### ISSUE-007: CRM/ZERO Overfitting — Night-Val↑ Test↓ 역전 현상 [심각]
+
+**상태**: 🔴 확인됨 (2026-02-26). 즉시 대응 필요.
+**영향**: P13 (epoch39에서 발견), 잠재적으로 모든 P 버전
+**우선순위**: 최고 — P13 epoch39에서 test mIoU -19.5pp 폭락 유발
+
+**문제**:
+
+CRM (`RandomRGBComplementaryMasking`, p=0.35)과 ZERO (`RandomRGBZeroOut`, p=0.09)가 RGB에 **exact zero** 값을 삽입하여 train-test 분포 불일치를 유발.
+
+1. **Exact zero는 실제 센서 데이터에 없음**: 야간 RGB는 noise가 있는 near-zero (0.001~0.01), 절대 exact 0이 아님
+2. **Normalize 후 고유한 feature vector 생성**: `(0-mean)/std = (-2.118, -2.036, -1.804)` — 자연 이미지에서 나타나지 않는 극단값
+3. **Shortcut 학습**: "exact zero 감지 → RGB 무시, thermal/LiDAR 의존" — train/night-val에서는 유효, test에서는 무효
+4. **Night-val 오염**: `get_nightval_augmentation()`에도 CRM/ZERO가 동일 확률로 적용 → night-val이 shortcut을 보상 → checkpoint 선택 오염
+
+**정량적 증거** (P13):
+
+| 지표 | Epoch17 | Epoch39 | Δ |
+| --- | --- | --- | --- |
+| Night-val | 87.71 | **89.53** (+1.82) | ✅ shortcut 학습 강화 |
+| Test mIoU | 69.98 | **50.48** (-19.50) | ❌ shortcut 무효 |
+| Test Sky | 75.12 | **23.36** (-51.76) | Sky가 가장 취약 |
+| Test Sky=0 프레임 | 5/200 | **80/200** | 16배 증가 |
+
+Sky가 가장 심각한 이유: 야간 하늘은 near-zero RGB → CRM/ZERO의 exact zero와 가장 유사 → shortcut이 가장 활성화되는 영역
+
+**권장 조치**:
+
+1. **Night-val에서 CRM/ZERO 제거** (`get_nightval_augmentation()`에서 CRM/ZERO 비활성화)
+   - NightSim만 적용 → 실제 test 조건에 더 가까운 proxy
+2. **학습 시 CRM/ZERO 확률 축소**: CRM_P 0.35→0.10, ZERO_P 0.09→0.03
+3. **Exact zero → Noisy near-zero 대체**: `img[mask] = torch.randn_like(...) * 0.01`
+4. **Early stopping 기준 개선**: night-val (CRM/ZERO 제거 버전)을 checkpoint 선택 기준으로 사용
+
+**관련 코드**:
+
+- `semseg/augmentations_mm.py`: `RandomRGBComplementaryMasking` (line 142), `RandomRGBZeroOut` (line 168), `get_nightval_augmentation` (line 609)
+- Train config의 `NIGHT_AUG.CRM_P`, `NIGHT_AUG.ZERO_P`
+
+---
+
 ### ISSUE-004: Spatial-wise Energy Weighting 확장 가능성 [아이디어]
 
 **상태**: 보류 (P13 결과 확인 완료, 추가 개선 후보)

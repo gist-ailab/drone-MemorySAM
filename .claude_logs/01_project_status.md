@@ -7,7 +7,7 @@
 ### P13 실험 결과 (2026-02-26 완료)
 
 - **M-score: 81.21** (P9: 81.47 대비 -0.26)
-- Submission ID: 15997
+- Submission ID: 15997 (epoch17), **16044 (epoch39 — test crash)**
 - Checkpoint: `night_epoch17_87.71_checkpoint.pth` (night-val 기준 선택)
 - **Dynamic IoU: 27.41** (P9: 21.86, **+5.55 개선** — 가장 큰 단일 클래스 개선)
 - Static -1.49pp, Sky -1.42pp 하락 → Dynamic 개선을 상쇄
@@ -16,6 +16,18 @@
   1. Expert collapse 해결: **실패** (17.4%, P12와 동일 수준)
   2. Energy Score fusion: **부분 성공** (UAMM 변동성 5-22x 증가, 하지만 test LiDAR 고정)
 - 상세 분석: `.claude_logs/06_result_analysis_P13.md`
+
+#### P13 Epoch39 Test Crash (Submission #16044)
+
+- **Night-val: 89.53** (epoch17: 87.71, +1.82 개선)
+- **Test mIoU: 50.48** (epoch17: 69.98, **-19.50pp 폭락**)
+- **M-score: 71.67** (epoch17: 81.21, -9.54pp)
+- **원인**: CRM/ZERO overfitting — Night Aug의 exact-zero 마스킹 패턴에 과적합
+  - Sky 클래스 -51.76pp 붕괴 (crash의 67%), 80/200 프레임에서 Sky IoU=0
+  - Night-val에도 CRM/ZERO 적용 → 오염된 proxy로 checkpoint 선택
+  - 학습 샘플 44%에 exact-zero 패턴 → 실제 test에는 없는 artifact
+- **교훈**: Night-val은 CRM/ZERO 제거 후 사용해야 신뢰 가능한 test proxy
+- 상세 분석: `.claude_logs/06_result_analysis_P13.md` §10
 
 ### P12 실험 결과 (2026-02-25 완료)
 
@@ -72,20 +84,22 @@
 
 ### 미해결 과제
 
-1. **M=85 목표**: 현재 81.47 → +3.53pp 필요. Night Aug 포화로 새로운 접근 필수
-2. **Val vs Test 갭 (93% vs 70%)**: 야간 test에서의 성능 저하가 여전히 핵심 문제
-3. **Dynamic 클래스 IoU**: Test에서 21-27%. Gap -38pp이 가장 심각한 병목
-4. **TTA (Test Time Augmentation)**: val_multiaqua_P9.py에 `--tta` 플래그 추가됨, **효과 미검증**
-5. **P13 best day-val checkpoint test 재평가**: epoch14(93.48)로 M-score 역전 가능성 확인 필요
-6. **Diffusion 기반 Night 합성** (ISSUE-005): M=85 도달을 위한 최유력 접근, 미구현
-7. **Ensemble**: P9(Sky 우세) + P13(Dynamic 우세) 상보성 활용 가능
+1. **🔴 ISSUE-007: CRM/ZERO Overfitting**: Night-val에서 CRM/ZERO 제거 필요. P13 epoch39에서 test -19.5pp crash 유발
+2. **M=85 목표**: 현재 81.47 → +3.53pp 필요. Night Aug 포화로 새로운 접근 필수
+3. **Val vs Test 갭 (93% vs 70%)**: 야간 test에서의 성능 저하가 여전히 핵심 문제
+4. **Dynamic 클래스 IoU**: Test에서 21-27%. Gap -38pp이 가장 심각한 병목
+5. **TTA (Test Time Augmentation)**: val_multiaqua_P9.py에 `--tta` 플래그 추가됨, **효과 미검증**
+6. **P13 best day-val checkpoint test 재평가**: epoch14(93.48)로 M-score 역전 가능성 확인 필요
+7. **Diffusion 기반 Night 합성** (ISSUE-005): M=85 도달을 위한 최유력 접근, 미구현
+8. **Ensemble**: P9(Sky 우세) + P13(Dynamic 우세) 상보성 활용 가능
 
 ### 중요 발견사항
 
+- **🔴 CRM/ZERO Overfitting 발견**: 학습 44%에 exact-zero RGB → test에는 없는 shortcut 학습. P13 epoch39에서 test -19.5pp crash, Sky -51.76pp. Night-val도 오염됨 (CRM/ZERO 동일 적용)
 - **NIGHT_AUG hardaug4가 최적이나 포화 상태**: 추가 튜닝으로는 +1~2pp가 한계
 - **MoE gate는 정상 작동**: spatial mean이 uniform처럼 보이는 것은 CLT artifact
 - **모델 복잡도 ≠ 성능**: P10/P11/P12/P13 모두 P9보다 복잡하지만 M-score는 낮음
 - **P9의 단순한 CrossModalFusionHead가 가장 효과적**: near-constant이지만 좋은 기본 비율
 - **LiDAR routing 야간 고정**: 모든 P 버전에서 공통. LiDAR 데이터의 물리적 한계 (물 반사 없음, 원거리 미감지)
 - **Energy Score fusion 방향은 유효**: Dynamic +5.55pp 개선. aux head 정확도가 관건
-- **Night-val checkpoint 선택**: test 개선에 효과적이나 M-score 공식에서 val 하락이 불리
+- **Night-val checkpoint 선택**: CRM/ZERO 제거 후에만 신뢰 가능한 test proxy

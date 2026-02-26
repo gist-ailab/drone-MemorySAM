@@ -51,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14
 )
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
 
@@ -91,6 +91,7 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P11': LoRA_Sam_P11,
         'LoRA_Sam_P12': LoRA_Sam_P12,
         'LoRA_Sam_P13': LoRA_Sam_P13,
+        'LoRA_Sam_P14': LoRA_Sam_P14,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
@@ -646,7 +647,7 @@ def _add_title_to_image(img, title):
 
 def build_stats_row(capture, modals, target_h, target_w):
     """Row 3 alternative: per-block routing stats bars."""
-    blocks = sorted(capture.routing_data.keys())
+    blocks = sorted(capture.routing_data['Q'].keys())
     if not blocks:
         return np.ones((target_h, target_w, 3), dtype=np.uint8) * 240
 

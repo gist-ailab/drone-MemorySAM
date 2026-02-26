@@ -454,7 +454,7 @@ def main(cfg, gpu, save_dir):
             with autocast(enabled=train_cfg['AMP']):
                 # P11: forward가 (output, m_feat, aux_outputs, amf_weights, gate_dists) 리턴
                 # P10: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
-                # P13: forward가 (output, m_feat, aux_logits_list) 리턴
+                # P13/P14: forward가 (output, m_feat, aux_logits_list) 리턴
                 # 그 외: (output, m_feat) 리턴
                 model_out = model(sample, multimask_output=True)
                 if len(model_out) == 5:
