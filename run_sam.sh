@@ -2,7 +2,7 @@ export cur_dir=`pwd`
 export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
 
 # ── 실행할 config 파일 설정 ────────────────────────────────────────────────
-CFG="configs/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml"
+CFG="configs/levine-multiaqua_rgbtl_P15_hardaug5.yaml"
 # CFG="configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml"
 # CFG="configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml"
 
