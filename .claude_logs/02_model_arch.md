@@ -390,60 +390,103 @@ P14: ModalAuxDecoder×3 (독립) → 모달리티별 전용 head
 
 ---
 
-## P15: Spatial-wise Energy Weighting (설계 단계)
+## P15: Calibrated Spatial Entropy Fusion (설계 단계)
 
-### P14에서의 변경 동기
+### 변경 동기 — P12~P14 실패 분석에서의 교훈
 
-P13/P14의 Energy Score fusion은 이미지 전체에 대해 **스칼라 1개** `(B, m)`:
+**1. UAMM/AMF 개념은 유효하다**
+
+| 모델 | Fusion | Val mIoU | 비고 |
+| --- | --- | --- | --- |
+| Baseline (LoRA_Sam) | 단순 평균 (1/3) | 92.86 | AMF 없음 |
+| **P9** | UAMM + AMF (학습된 가중치) | 93.32 | **Baseline 대비 개선** |
+
+Baseline(단순 평균) < P9(UAMM/AMF) → modality fusion 개념 자체의 가치 확인.
+
+**2. Energy Score 방향은 맞지만 정확도가 부족**
+
+P13의 Energy Score fusion은 **낮/밤 적응을 실제로 수행**:
+
+| 모달리티 | P9 Val AMF | P9 Test AMF | P13 Val AMF | P13 Test AMF |
+| --- | --- | --- | --- | --- |
+| img | 0.275 | 0.275 (**동일**) | 0.404 | **0.289 (↓28%)** |
+| lidar | 0.355 | 0.355 (**동일**) | 0.429 | **0.517 (↑20%)** |
+| thermal | 0.370 | 0.370 (**동일**) | 0.167 | 0.194 |
+
+P9는 345장 전체에서 소수점 4자리까지 동일한 **학습된 상수** (std ≈ 0.0000).
+P13은 밤에 RGB↓ LiDAR↑ 적응 → **방향은 맞지만** LiDAR Sky 맹신으로 실패.
+
+**3. 실패의 직접 원인 3가지**
+
+1. **Energy Score = confidence, not correctness** → "confident but wrong" (ISSUE-008)
+2. **Gradient 오염**: `.detach()` 없음 → main loss가 aux head 왜곡
+3. **Image-level scalar**: 위치별 모달리티 차이 무시
+
+P15는 이 3가지를 동시에 수정.
+
+### P15 핵심 변경 4가지
+
+#### Fix 1: Gradient 격리 — `.detach()`
 
 ```python
-energy = -T * logsumexp(z / T, dim=1)  # (B, H, W)
-conf = -energy.mean(dim=[1, 2])          # (B,)  ← spatial mean으로 정보 소실
+# P13/P14 (현재 — gradient 오염)
+cross_weights = compute_energy_confidence(aux_logits_list, ...)
+
+# P15 (수정 — gradient 차단)
+cross_weights = compute_spatial_entropy_confidence(
+    [z.detach() for z in aux_logits_list], ...
+)
 ```
 
-문제: 이미지 내에서 **영역별로 최적 모달리티가 다름**
+aux head는 **자기 자신의 CE loss만으로** 학습 → 정직한 confidence 출력.
+Main loss gradient가 energy→aux→LoRA로 역전파되는 경로 차단.
 
-- Sky 영역: LiDAR 무의미 (상공 포인트 없음), RGB/Thermal이 유용
-- Water 영역: 야간 RGB 암전, LiDAR/Thermal이 유용
-- Dynamic 영역: 위치·조명에 따라 최적 모달리티 변동
+#### Fix 2: Energy Score → Calibrated Entropy 교체
 
-스칼라 fusion은 이 차이를 반영할 수 없음. 위치별 가중치가 필요.
+Energy Score 문제: `E(x) = -T * logsumexp(z/T)` → logit magnitude 기반.
+LiDAR가 4클래스 중 하나에 높은 logit → 높은 energy → "confident" → **하지만 틀림** (Sky에서).
 
-### 핵심 변경: spatial mean 제거
+Entropy 기반 대안: **예측 분포의 불확실성**을 직접 측정.
 
 ```python
-# P13/P14 (image-level)
-def compute_energy_confidence(aux_logits_list, temperature=1.0):
-    confs = []
-    for z in aux_logits_list:
-        energy = -T * logsumexp(z / T, dim=1)       # (B, H, W)
-        conf = -energy.mean(dim=[1, 2])               # (B,)  ← 여기서 소실
-    weights = softmax(stack(confs) / T, dim=1)        # (B, m)
+# P15: Calibrated Spatial Entropy Confidence
+def compute_spatial_entropy_confidence(aux_logits_list, temperature=1.0, num_classes=4):
+    """
+    Energy Score 대신 calibrated entropy로 per-pixel confidence 계산.
 
-# P15 (spatial-level)
-def compute_spatial_energy_confidence(aux_logits_list, temperature=1.0):
-    energy_maps = []
-    for z in aux_logits_list:
-        energy = -T * logsumexp(z / T, dim=1)        # (B, H, W)
-        conf_map = -energy                             # (B, H, W)  ← mean 없이 유지
-        energy_maps.append(conf_map)
-    stacked = torch.stack(energy_maps, dim=1)          # (B, m, H, W)
-    weights = softmax(stacked / T, dim=1)              # (B, m, H, W)  ← 위치별 softmax
+    핵심 차이:
+    - Energy: logit magnitude → "자신있게 틀리면" 높은 점수 (dangerous)
+    - Entropy: 확률 분포 균등도 → 4클래스에 골고루 분산 = 낮은 confidence (safe)
+
+    LiDAR가 Sky에서 Water로 확신있게 오예측 → Energy 높음 (나쁨)
+    LiDAR가 Sky에서 불확실 → Entropy 높음 → confidence 낮음 (좋음)
+    """
+    conf_maps = []
+    for z in aux_logits_list:  # z: (B, C, H, W), C=num_classes
+        # Temperature scaling for calibration
+        probs = F.softmax(z / temperature, dim=1)               # (B, C, H, W)
+        log_probs = F.log_softmax(z / temperature, dim=1)       # (B, C, H, W)
+        entropy = -(probs * log_probs).sum(dim=1)               # (B, H, W)
+        # Normalize: 0 (완전 확신) ~ 1 (완전 균등)
+        max_entropy = math.log(num_classes)
+        confidence = 1.0 - entropy / max_entropy                # (B, H, W)
+        conf_maps.append(confidence)
+
+    stacked = torch.stack(conf_maps, dim=1)                     # (B, m, H, W)
+    weights = F.softmax(stacked / temperature, dim=1)           # (B, m, H, W)
     return weights
 ```
 
-### UAMM 변경
+Entropy의 장점:
+- **"자신있게 틀리는" 케이스 감지**: LiDAR가 Sky에서 단일 클래스(Water)에 높은 확률을 주면 aux head가 정확해야만 높은 confidence → aux head가 부정확하면 자연스럽게 분산된 예측 → 높은 entropy → 낮은 confidence
+- **Calibration 가능**: temperature T를 val에서 최적화하여 confidence를 보정
+
+#### Fix 3: Spatial-wise (공간별 가중치)
+
+기존 `(B, m)` 스칼라 → `(B, m, H, W)` spatial map:
 
 ```python
-# P14: 스칼라 UAMM
-current_score = uamm_scores[:, frame_idx]                # (B,)
-score_expanded = current_score.unsqueeze(1).unsqueeze(-1) # (1, B, 1)
-modulated = [feat * score_expanded for feat in vision_feats]
-
-# P15: spatial UAMM
-# vision_feats[level]: (num_tokens, B, C) — 각 level별 spatial 크기 다름
-# uamm_scores: (B, m, H, W) — aux head 출력 해상도
-# → 각 level의 spatial 크기에 맞게 interpolate 필요
+# UAMM: vision_feats 각 level에 spatial weight 적용
 spatial_score = uamm_scores[:, frame_idx]                 # (B, H, W)
 for level, feat in enumerate(vision_feats):
     h, w = feat_sizes[level]
@@ -452,23 +495,77 @@ for level, feat in enumerate(vision_feats):
     )  # (B, 1, h, w)
     score_flat = score_resized.flatten(2).permute(2, 0, 1)  # (h*w, B, 1)
     modulated_feat = feat * score_flat
+
+# AMF: output fusion에 spatial weight 적용
+w_i = F.interpolate(
+    amf_weights[:, i:i+1], size=output[0].shape[2:], mode='bilinear'
+)  # (B, 1, H_out, W_out)
+m_output += output[i] * w_i
 ```
 
-### AMF 변경
+#### Fix 4: Aux Warmup Schedule
+
+Aux head가 충분히 학습된 후에 UAMM/AMF 활성화:
 
 ```python
-# P14: 스칼라 AMF
-w0 = amf_weights[:, 0].view(-1, 1, 1, 1)        # (B, 1, 1, 1)
-m_output = output[0] * w0
+# Config
+TRAIN:
+  AUX_WARMUP_EPOCHS: 10    # 초기 N epoch는 aux CE만 학습
+  LAMBDA_AUX: 0.3
 
-# P15: spatial AMF
-# output[i]: (B, C, H_out, W_out) — 고해상도 mask 출력
-# amf_weights: (B, m, H_feat, W_feat) — aux head 해상도
-w0 = F.interpolate(
-    amf_weights[:, 0:1], size=output[0].shape[2:], mode='bilinear'
-)  # (B, 1, H_out, W_out)
-m_output = output[0] * w0
+# Forward에서
+if current_epoch < aux_warmup_epochs:
+    # Uniform weights (P9의 near-constant와 유사)
+    cross_weights = torch.ones(B, m, H, W) / m
+else:
+    # Calibrated entropy weights
+    cross_weights = compute_spatial_entropy_confidence(
+        [z.detach() for z in aux_logits_list], ...
+    )
 ```
+
+첫 N epoch 동안:
+- Aux head: CE loss로 학습 → 기본적인 segmentation 능력 확보
+- UAMM/AMF: uniform(1/m) → P9처럼 안정적 학습
+- Main decoder: 정상 학습
+
+N epoch 이후:
+- Aux head의 entropy가 UAMM/AMF에 반영 시작
+- 점진적 전환 (abrupt하지 않도록 linear ramp 고려)
+
+### 전체 Forward 흐름 (P15)
+
+```
+Phase 1: 모달리티별 인코딩 (P14 동일)
+  for modal in [img, lidar, thermal]:
+    backbone_feat = SAM2_encoder(modal)  # Hiera-B+ + SoftMoE_LoRA
+
+Phase 2: Spatial Entropy Confidence
+  aux_logits[i] = aux_heads[i](backbone_feat[i])        # 독립 aux decoder × 3
+  conf_maps = entropy_confidence([z.detach() for z])     # (B, m, H, W)
+
+Phase 3: Spatial UAMM + Tracking
+  for each modality:
+    spatial_uamm = conf_maps[:, i, :, :]                 # (B, H, W)
+    modulated_vision_feats = vision_feats * spatial_uamm  # level별 interpolate
+    output[i] = track_step(modulated_vision_feats, memory)
+
+Phase 4: Spatial AMF
+  amf_weights = conf_maps                                # (B, m, H, W)
+  final = sum(output[i] * interpolate(amf_weights[:, i]))
+```
+
+### P15 vs 이전 버전 차이 요약
+
+| 구분 | P13 | P14 | **P15** |
+| --- | --- | --- | --- |
+| Confidence 방식 | Energy Score (logit) | Energy Score (logit) | **Calibrated Entropy** |
+| Gradient 격리 | 없음 (오염) | 없음 (오염) | **`.detach()` 적용** |
+| Weight 형태 | `(B, m)` 스칼라 | `(B, m)` 스칼라 | **`(B, m, H, W)` spatial** |
+| Aux Decoder | 공유 1개 | 독립 3개 | 독립 3개 (P14 유지) |
+| Warmup | 없음 | 없음 | **AUX_WARMUP_EPOCHS** |
+| UAMM | max-norm 스칼라 | max-norm 스칼라 | **spatial max-norm** |
+| AMF | energy softmax 스칼라 | energy softmax 스칼라 | **spatial entropy softmax** |
 
 ### 구현 시 주의사항
 
@@ -476,16 +573,8 @@ m_output = output[0] * w0
 2. **vision_feats 형상**: SAM2 Hiera는 `(num_tokens, B, C)` 형태의 flattened feature 사용 → reshape/flatten 처리 필요
 3. **feat_sizes**: `_prepare_backbone_features()`에서 반환하는 각 level의 (h, w) 사용
 4. **backward compatibility**: train 시 `(output, m_feat, aux_logits_list)` 반환 형식 유지
-
-### P15 vs P14 차이 요약
-
-| 구분 | P14 | P15 |
-| --- | --- | --- |
-| Energy Score 형태 | `(B, m)` 스칼라 | `(B, m, H, W)` spatial map |
-| UAMM 적용 | 이미지 전체 동일 비율 | **위치별 다른 비율** |
-| AMF 적용 | 이미지 전체 동일 가중치 | **위치별 다른 가중치** |
-| Aux Decoder | ModalAuxDecoder×3 (P14 유지) | ModalAuxDecoder×3 (P14 유지) |
-| 추가 연산 | 없음 | `F.interpolate` × (num_levels + 1) |
+5. **Temperature 최적화**: `temperature` 파라미터를 config에 노출 (기본 1.0, val에서 grid search 가능)
+6. **Warmup→Active 전환**: abrupt 전환은 학습 불안정 유발 가능 → linear ramp (N~N+5 epoch) 고려
 
 ---
 
@@ -493,12 +582,14 @@ m_output = output[0] * w0
 
 | 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Head | ConfidenceHeadV2 | CrossModalFusionHead | CrossModalFusionHeadV2 | CrossModalFusionHeadV2 | CrossModalFusionHead | ConfidenceAuxHead + Energy Score | ModalAuxDecoder×3 + Energy Score | ModalAuxDecoder×3 + **Spatial Energy** |
+| Head | ConfidenceHeadV2 | CrossModalFusionHead | CrossModalFusionHeadV2 | CrossModalFusionHeadV2 | CrossModalFusionHead | ConfidenceAuxHead + Energy Score | ModalAuxDecoder×3 + Energy Score | ModalAuxDecoder×3 + **Calibrated Entropy** |
 | UAMM | sigmoid (0~1) | max-norm | max-norm | softmax+temperature | max-norm | max-norm (energy) | max-norm (energy) | **spatial max-norm** `(B,m,H,W)` |
-| AMF | norm(sigmoid) | raw softmax | raw softmax | raw softmax | raw softmax | energy softmax | energy softmax | **spatial energy softmax** |
+| AMF | norm(sigmoid) | raw softmax | raw softmax | raw softmax | raw softmax | energy softmax | energy softmax | **spatial entropy softmax** |
 | Aux Head | 없음 | 없음 | ModalAuxHead×3 | ModalAuxHead×3 | 없음 | ConfidenceAuxHead×1 (공유) | **ModalAuxDecoder×3** | ModalAuxDecoder×3 |
 | 추가 Loss | 없음 | 없음 | oracle KL (λ=0.5) | oracle KL + MI (λ=1.0) | 없음 | aux CE (λ=0.3) | aux CE (λ=0.3) | aux CE (λ=0.3) |
+| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | **`.detach()` 적용** |
+| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | **AUX_WARMUP (10ep)** |
 | MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 |
 | 학습 반환 | (out, feat) | (out, feat) | (out, feat, aux, amf_w) | (out, feat, aux, amf_w, gates) | (out, feat) | (out, feat, aux_list) | (out, feat, aux_list) | (out, feat, aux_list) |
-| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 학습 대기 | 설계 단계 |
-| 교훈 | sigmoid saturation | 상대비교가 핵심 | oracle 과적합 | 진단이 먼저 | cond 효과 미미 | 방향 유효, 정확도 부족 | aux 독립화 | spatial 적응 |
+| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 설계 단계 |
+| 교훈 | sigmoid saturation | 상대비교가 핵심 | oracle 과적합 | 진단이 먼저 | cond 효과 미미 | 방향 유효, 정확도 부족 | aux 독립화만 불충분 | **정확도+spatial+격리** |

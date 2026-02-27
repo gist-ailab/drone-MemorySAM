@@ -1,8 +1,19 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-02-26
+> 최종 업데이트: 2026-02-27
 
-## 현재 상태: P9가 최선 모델 (M=81.47). P12(80.80), P13(81.21) 모두 미달. M=85 목표에 Night Aug만으로는 불가능.
+## 현재 상태: P9가 최선 모델 (M=81.47), P15 설계 완료 (Calibrated Spatial Entropy Fusion)
+
+### P14 실험 결과 (2026-02-27 완료)
+
+- **M-score: 74.27** (P9: 81.47 대비 **-7.20, 심각한 하락**)
+- Submission #16062. Checkpoint: `night_epoch47_90.75_top1_checkpoint.pth`
+- **Per-class Test**: Static 62.57 / Dynamic 22.87 / Water 92.92 / **Sky 36.47**
+- **Sky collapse**: 73/200 프레임 <10%, 56/200 프레임 <1%
+- **핵심 문제**: LiDAR UAMM=1.000 고정 (200장 전부) + RGB 억제 (UAMM 0.555)
+- **Aux mask 품질**: P13 대비 개선됐으나 여전히 GT 대비 매우 부정확. 모달리티 간 비교 불가 수준
+- **CRM/ZERO 제거 효과**: hardaug5에서 제거했으나 Sky collapse 여전 → ISSUE-007은 부분 원인
+- **교훈**: image-level scalar fusion의 근본 한계. Spatial-wise 접근 필요 (P15)
 
 ### P13 실험 결과 (2026-02-26 완료)
 
@@ -82,9 +93,27 @@
    - 하지만 val -0.87pp 하락으로 M=81.21 (P9 미달)
    - Expert collapse 해결 실패 (collapse rate 동일)
 
+8. **P14 (Per-Modality Separate Aux Decoders + hardaug5)**
+   - ConfidenceAuxHead×1(공유) → ModalAuxDecoder×3(독립) + CRM/ZERO 제거
+   - **M=74.27 — P9 대비 -7.20 심각한 하락**
+   - Sky IoU 36.47%, LiDAR UAMM=1.0 고정, RGB 억제 (0.555)
+   - Aux mask 품질 여전히 불충분 → Energy Score 신뢰도 낮음
+   - Image-level scalar fusion의 근본 한계 확인 → P15 동기
+
+9. **P15 (Calibrated Spatial Entropy Fusion) — 설계 완료, 구현 대기**
+   - P12~P14 실패 분석에서 도출된 4가지 수정사항 통합:
+     1. `.detach()` gradient 격리 (ISSUE-008)
+     2. Energy Score → Calibrated Entropy (ISSUE-009: "confident but wrong" 해결)
+     3. Spatial-wise `(B, m, H, W)` 가중치 (ISSUE-004)
+     4. Aux Warmup Schedule (초기 N epoch uniform → 이후 활성화)
+   - Baseline(단순평균) < P9(학습된상수) 확인 → UAMM/AMF 개념 유효
+   - P9 val/test 가중치 완전 동일 (std≈0) → "학습된 상수"이므로 적응형 개선 여지 있음
+   - P13이 낮/밤 적응 실제 수행 (img AMF: 0.404→0.289) → 방향 유효, 정확도가 병목
+   - 상세 설계: `.claude_logs/02_model_arch.md` P15 섹션
+
 ### 미해결 과제
 
-1. **🔴 ISSUE-007: CRM/ZERO Overfitting**: Night-val에서 CRM/ZERO 제거 필요. P13 epoch39에서 test -19.5pp crash 유발
+1. **🟡 ISSUE-007: CRM/ZERO Overfitting**: hardaug5에서 제거 완료. 하지만 Sky collapse 여전 → 부분 원인에 불과
 2. **M=85 목표**: 현재 81.47 → +3.53pp 필요. Night Aug 포화로 새로운 접근 필수
 3. **Val vs Test 갭 (93% vs 70%)**: 야간 test에서의 성능 저하가 여전히 핵심 문제
 4. **Dynamic 클래스 IoU**: Test에서 21-27%. Gap -38pp이 가장 심각한 병목
@@ -92,6 +121,7 @@
 6. **P13 best day-val checkpoint test 재평가**: epoch14(93.48)로 M-score 역전 가능성 확인 필요
 7. **Diffusion 기반 Night 합성** (ISSUE-005): M=85 도달을 위한 최유력 접근, 미구현
 8. **Ensemble**: P9(Sky 우세) + P13(Dynamic 우세) 상보성 활용 가능
+9. **🔴 ISSUE-009: Energy Score "confident but wrong"**: P15에서 calibrated entropy로 교체 예정
 
 ### 중요 발견사항
 
@@ -103,3 +133,7 @@
 - **LiDAR routing 야간 고정**: 모든 P 버전에서 공통. LiDAR 데이터의 물리적 한계 (물 반사 없음, 원거리 미감지)
 - **Energy Score fusion 방향은 유효**: Dynamic +5.55pp 개선. aux head 정확도가 관건
 - **Night-val checkpoint 선택**: CRM/ZERO 제거 후에만 신뢰 가능한 test proxy
+- **P14: Aux decoder 독립화만으로는 불충분**: 모달리티별 head 분리해도 frozen backbone feature 기반이라 mask 품질 한계. image-level scalar fusion은 Sky/Water 등 영역별 차이 반영 불가 → P15 spatial-wise가 필수
+- **P9 CrossModalFusionHead = 학습된 상수**: val(낮)/test(밤) 345장에서 UAMM/AMF std≈0.0000. 입력에 따라 변하지 않는 고정 비율 (img:27.5%, lidar:35.5%, thermal:37.0%). SAM2 memory attention이 implicit adaptation 수행
+- **Baseline(단순평균) < P9(UAMM/AMF)**: UAMM/AMF 개념의 가치 확인. 에너지 스코어 정확도 개선이 올바른 방향
+- **Energy Score = confidence, not correctness (ISSUE-009)**: logit magnitude 기반 → "자신있게 틀리는" LiDAR에 높은 점수 → Sky collapse. Calibrated entropy가 대안

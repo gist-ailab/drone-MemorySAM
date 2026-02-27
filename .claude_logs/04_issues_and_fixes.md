@@ -170,9 +170,9 @@ Block9_Q argmax_fraction:
 
 ---
 
-### ISSUE-007: CRM/ZERO Overfitting — Night-Val↑ Test↓ 역전 현상 [심각]
+### ISSUE-007: CRM/ZERO Overfitting — Night-Val↑ Test↓ 역전 현상 [부분 해결]
 
-**상태**: 🔴 확인됨 (2026-02-26). 즉시 대응 필요.
+**상태**: 🟡 hardaug5에서 CRM/ZERO 제거 완료 (2026-02-27). 하지만 Sky collapse 여전 → 부분 원인.
 **영향**: P13 (epoch39에서 발견), 잠재적으로 모든 P 버전
 **우선순위**: 최고 — P13 epoch39에서 test mIoU -19.5pp 폭락 유발
 
@@ -211,26 +211,157 @@ Sky가 가장 심각한 이유: 야간 하늘은 near-zero RGB → CRM/ZERO의 e
 
 ---
 
-### ISSUE-004: Spatial-wise Energy Weighting → P15 구현 예정
+### ISSUE-004: Spatial-wise Confidence Weighting → P15 구현 예정
 
-**상태**: **P15로 구현 예정** (P14 결과 확인 후)
+**상태**: **P15로 구현 예정** (설계 완료, 구현 대기)
 **영향**: P15
+**상세 설계**: `02_model_arch.md` P15 섹션 참조
 
 **아이디어**:
-- P13/P14: Energy Score를 spatial mean → 이미지당 스칼라 1개 `(B, m)`
+- P13/P14: confidence를 spatial mean → 이미지당 스칼라 1개 `(B, m)`
 - P15: mean 없이 `(B, m, H_feat, W_feat)` 유지 → **위치마다 다른 모달리티 가중치**
 - 예: 가로등 근처 RGB 토큰 → 높은 가중치, 어두운 영역 RGB 토큰 → 낮은 가중치
 
-**P15 구현 범위** (상세 설계는 `02_model_arch.md` P15 섹션 참조):
-1. `compute_energy_confidence()` 수정: spatial mean 제거, `(B, m, H, W)` 반환
-2. UAMM: `(B, m)` 스칼라 → `(B, m, H, W)` spatial map으로 변경
-3. AMF: output fusion도 spatial weight map 적용
-4. P14의 모달리티별 독립 AuxDecoder 유지
+**P15에서 ISSUE-004와 함께 수정되는 문제 (ISSUE-009 통합)**:
+
+1. **Spatial-wise**: `(B, m)` → `(B, m, H, W)` (본 이슈)
+2. **Energy → Calibrated Entropy**: "confident but wrong" 문제 해결 (ISSUE-009)
+3. **Gradient 격리**: `.detach()` 적용 (ISSUE-008 gradient 경로 문제)
+4. **Aux Warmup**: 초기 N epoch uniform weight → aux head 충분히 학습 후 활성화
 
 **기대 효과**:
+
 - Sky 영역: LiDAR 억제 (LiDAR는 상공 포인트 없음) → Sky IoU 하락 방지
 - Water 영역: RGB 억제 (야간 수면 암전) → LiDAR/Thermal 활용
 - Dynamic 영역: 위치별 최적 모달리티 선택 → Dynamic IoU 개선
+
+**전제 조건 (P14 결과에서 확인된 위험)**:
+
+- Spatial confidence map의 정확도는 aux mask 품질에 의존
+- P14에서 aux mask가 여전히 GT 대비 부정확 → spatial confidence도 부정확할 가능성
+- 하지만 entropy 기반은 energy 기반보다 "confident but wrong" 케이스에 강건 (ISSUE-009 참조)
+
+---
+
+### ISSUE-008: Aux Head 품질 한계 — Frozen Backbone Feature 정보량 부족 [구조적]
+
+**상태**: 🔴 확인됨 (2026-02-27). P13/P14 공통 근본 문제.
+**영향**: Energy Score fusion 방식 전체 (P13, P14, P15)
+**우선순위**: 높음 — aux mask 품질이 Energy Score의 전제조건
+
+**문제**:
+
+P13(공유 aux head)과 P14(독립 aux head) 모두에서 aux mask 품질이 GT 대비 매우 부정확. 모달리티 간 "어느 것이 낫다" 비교 자체가 불가능한 수준.
+
+**근본 원인**: Frozen SAM2 Hiera backbone feature의 정보량 한계
+
+1. SAM2는 자연 이미지(SA-1B)로 pretrained → 야간 수상 환경, LiDAR 점군, Thermal gradient의 모달리티별 특성이 feature에 잘 인코딩되지 않음
+2. Backbone이 frozen → 새로운 도메인에 적응 불가. LoRA만으로는 feature 자체의 품질을 근본적으로 바꿀 수 없음
+3. Aux decoder(Conv 2-3 layer)가 아무리 커져도 입력 feature의 정보 부족을 보상할 수 없음
+
+**Aux decoder 크기 실험 (P13 vs P14)**:
+
+| | P13 (공유 1개) | P14 (독립 3개) | 차이 |
+|---|---|---|---|
+| Aux Head | ConfidenceAuxHead (1×1 conv) | ModalAuxDecoder (3×3 conv) | 독립화 + 확대 |
+| Aux mask 품질 | GT와 큰 괴리 | **소폭 개선, 여전히 부족** | 유의미한 개선 없음 |
+| LiDAR UAMM | 1.0 고정 (test) | 1.0 고정 (test) | **동일** |
+
+**구조적 한계 분석**:
+
+| 속성 | Main Decoder (SAM2 track_step) | Aux Decoder |
+|---|---|---|
+| 입력 | UAMM 이후 vision_feats + **cross-modal memory** | 단일 모달리티 backbone_fpn[0] |
+| 구조 | Transformer decoder + memory attention + upsampling | Conv 2-3 layer |
+| 정보 | **3개 모달리티 상호 참조** | 해당 모달리티만 |
+| 목적 | 최종 segmentation | 모달리티별 품질 추정 |
+
+Aux decoder는 구조적으로 main decoder와 같아질 수 없음:
+- cross-modal 정보를 쓰면 "개별 모달리티 품질 측정"이라는 목적에 부합하지 않음
+- 단일 모달리티 feature만으로는 정확한 segmentation이 어려움 (특히 야간)
+
+**Energy Score 신뢰성 조건**:
+
+```
+Aux mask 부정확 → Energy Score 무의미 (현재 상태)
+Aux mask 정확하되 overconfident → Energy Score 오도됨
+Aux mask 정확하고 well-calibrated → Energy Score 유효 ✓
+```
+
+Energy Score가 올바르게 작동하려면 aux mask의 **정확도 + calibration** 모두 필요.
+
+**검토된 대안들**:
+
+1. **Aux decoder 확대** (4-5 layer + skip connection): 소폭 개선 가능하나 frozen feature 병목 해결 불가
+2. **Prototype-based aux**: gradient 오염 없음 (`.data` EMA). 하지만 선형 분류기 수준 → aux mask 품질 더 떨어질 수 있음
+3. **Backbone 일부 unfreeze**: 가장 직접적이나 overfitting 위험 + SAM2 pretrained knowledge 손실 가능
+4. **Label smoothing / Focal loss**: calibration 개선에 도움. 하지만 mask 정확도 자체는 안 올림
+
+**현재 결론**: frozen backbone feature 위에서 aux mask 품질을 근본적으로 올리는 것은 구조적으로 어려움. Energy Score fusion 방식 자체의 재검토가 필요할 수 있음.
+
+**gradient 경로 주의사항 (2026-02-27 확인)**:
+
+현재 P14에서 energy score 계산에 `.detach()` 없음 → main loss gradient가 aux heads + LoRA에 역전파. LoRA가 두 가지 목표를 동시에 최적화:
+1. 좋은 segmentation feature (main loss)
+2. "적절한" energy score를 만드는 feature (간접 gradient)
+
+→ 두 목표 충돌 가능. `compute_energy_confidence([z.detach() for z in aux_logits_list])` 로 gradient 차단 권장.
+
+---
+
+### ISSUE-009: Energy Score "Confident but Wrong" — Calibrated Entropy로 교체
+
+**상태**: **P15에서 수정 예정** (설계 완료)
+**영향**: P13, P14 (Energy Score 사용하는 모든 버전)
+**우선순위**: 높음 — ISSUE-008과 함께 Energy Score fusion 실패의 직접 원인
+
+**문제**:
+
+Energy Score `E(x) = -T * logsumexp(z/T)` 는 **logit magnitude** 기반 confidence.
+모달리티가 "자신있게 틀리는" 경우 오히려 높은 점수를 부여:
+
+```
+LiDAR aux head → Sky 영역에서 Water로 확신있게 오예측
+→ logit: [Static=1, Dynamic=0, Water=8, Sky=0]
+→ Energy Score 높음 (logsumexp ≈ 8)
+→ UAMM이 LiDAR에 높은 가중치 → Sky IoU 붕괴
+```
+
+**정량적 증거**:
+
+| 버전 | Test LiDAR UAMM | Test Sky IoU | 비고 |
+| --- | --- | --- | --- |
+| P9 | 0.961 (상수) | 76.54 | 고정 비율로 안정 |
+| P13 | **1.000 (고정)** | 75.12 | Energy가 LiDAR 맹신 |
+| P14 | **1.000 (고정)** | **36.47** | 더 심각한 맹신 |
+
+P13/P14 모두 test에서 LiDAR UAMM=1.000, stdev=0.0000 (200장 전부 동일).
+Energy Score가 LiDAR를 항상 "가장 confident"로 판정.
+
+**P15 해결책: Calibrated Entropy**
+
+```python
+# Energy (문제): logit 크기 → confident but wrong에 취약
+energy = -T * logsumexp(z / T, dim=1)
+conf = -energy  # 높은 logit = 높은 confidence (위험)
+
+# Entropy (해결): 확률 분포 균등도 → 불확실성 직접 측정
+probs = softmax(z / T, dim=1)
+entropy = -(probs * log(probs)).sum(dim=1)
+confidence = 1 - entropy / log(num_classes)  # 0~1 정규화
+```
+
+Entropy의 장점:
+
+- 4클래스에 골고루 분산된 예측 = 높은 entropy = 낮은 confidence
+- 단일 클래스에 집중된 예측 = 낮은 entropy = 높은 confidence
+- **aux head가 부정확하면** (Sky에서 모든 클래스에 비슷한 확률) → entropy 높음 → 자동 억제
+- Temperature `T`로 calibration 가능 (val에서 grid search)
+
+**한계**: aux head가 "하나의 틀린 클래스에 확신"하면 entropy도 낮음 → 여전히 실패 가능.
+하지만 Energy보다는 robust: Energy는 logit magnitude만 보지만, Entropy는 분포 형태를 봄.
+
+**관련**: ISSUE-004 (spatial-wise), ISSUE-008 (aux head 품질), `02_model_arch.md` P15 섹션
 
 ---
 

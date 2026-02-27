@@ -2526,14 +2526,49 @@ def compute_spatial_energy_confidence(aux_logits_list, temperature=1.0):
     """
     conf_maps = []
     for z in aux_logits_list:
-        # Energy score: E(x) = -T * log(sum(exp(z_k / T)))
-        energy = -temperature * torch.logsumexp(z / temperature, dim=1)  # (B, H_feat, W_feat)
-        # 낮은 energy = 높은 confidence → conf_map이 클수록 confident
-        conf_map = -energy  # (B, H_feat, W_feat)
+        energy = -temperature * torch.logsumexp(z / temperature, dim=1)
+        conf_map = -energy
         conf_maps.append(conf_map)
 
-    stacked = torch.stack(conf_maps, dim=1)  # (B, num_modalities, H_feat, W_feat)
-    weights = F.softmax(stacked / temperature, dim=1)  # (B, num_modalities, H_feat, W_feat)
+    stacked = torch.stack(conf_maps, dim=1)
+    weights = F.softmax(stacked / temperature, dim=1)
+    return weights
+
+
+def compute_spatial_entropy_confidence(aux_logits_list, temperature=1.0, num_classes=4):
+    """P15 전용: Calibrated Entropy 기반 spatial confidence map.
+
+    Energy Score 대신 예측 분포의 entropy를 사용.
+    - Energy: logit magnitude 기반 → "자신있게 틀리면" 높은 점수 (dangerous)
+    - Entropy: 확률 분포 균등도 → 4클래스에 골고루 분산 = 낮은 confidence (safe)
+
+    예: LiDAR가 Sky에서 Water로 확신있게 오예측
+       → Energy: 높음 (logit 크니까) → 나쁨
+       → Entropy: 낮음 (한 클래스에 집중) → confidence 높음... BUT aux head가
+         부정확하면 분산된 예측 → 높은 entropy → 낮은 confidence → 안전
+
+    Args:
+        aux_logits_list: List[Tensor], 길이 = num_modalities
+            각 원소: (B, num_classes, H_feat, W_feat) raw logits (반드시 .detach()된 것)
+        temperature: softmax temperature (default 1.0)
+        num_classes: 클래스 수 (entropy 정규화용, default 4)
+    Returns:
+        weights: (B, num_modalities, H_feat, W_feat) — 위치별 softmax 가중치
+    """
+    conf_maps = []
+    max_entropy = math.log(num_classes)
+
+    for z in aux_logits_list:
+        # Temperature-scaled softmax → calibrated probability
+        probs = F.softmax(z / temperature, dim=1)           # (B, C, H, W)
+        log_probs = F.log_softmax(z / temperature, dim=1)   # (B, C, H, W)
+        entropy = -(probs * log_probs).sum(dim=1)           # (B, H, W)
+        # Normalize: 0 (완전 확신) ~ 1 (완전 균등), confidence = 1 - normalized_entropy
+        confidence = 1.0 - entropy / max_entropy            # (B, H, W)
+        conf_maps.append(confidence)
+
+    stacked = torch.stack(conf_maps, dim=1)                 # (B, m, H, W)
+    weights = F.softmax(stacked / temperature, dim=1)       # (B, m, H, W)
     return weights
 
 
@@ -3272,6 +3307,327 @@ class LoRA_Sam_P15(nn.Module):
             # Visualization buffers (spatial mean으로 압축)
             self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()  # (B, m)
             self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()  # (B, m)
+            self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
+            if moe_gate_collector:
+                self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
+            else:
+                self._last_moe_gates = None
+
+        finally:
+            for layer in self.moe_layers_q + self.moe_layers_v:
+                layer._gate_callback = None
+
+        if self.training:
+            return m_output, m_feat, aux_logits_list
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+
+        aux_heads_tensors = {
+            f"aux_heads.{k}": v
+            for k, v in self.aux_heads.state_dict().items()
+        }
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+
+        model_ref = self.sam.module if isinstance(
+            self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)
+        ) else self.sam
+        state_dict = model_ref.state_dict()
+
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors,
+            **mask_decoder_tensors,
+            **aux_heads_tensors,
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict:
+                mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict:
+                mv.load_state_dict(state_dict[v_key])
+
+        aux_heads_dict = {
+            k.replace("aux_heads.", ""): v
+            for k, v in state_dict.items()
+            if k.startswith("aux_heads.")
+        }
+        if aux_heads_dict:
+            self.aux_heads.load_state_dict(aux_heads_dict)
+
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+
+        self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P16(nn.Module):
+    """
+    LoRA_Sam_P16: Calibrated Spatial Entropy Fusion
+
+    P15 기반, P12~P14 실패 분석에서 도출된 4가지 수정사항 통합:
+
+      Fix 1: Gradient 격리 (.detach())
+        - aux logits → fusion weight 계산 시 .detach()로 gradient 차단
+        - aux head는 자기 CE loss만으로 학습 → 정직한 confidence 출력
+        - main loss gradient가 energy→aux→LoRA로 역전파되는 경로 차단
+
+      Fix 2: Energy Score → Calibrated Entropy
+        - Energy: logit magnitude 기반 → "자신있게 틀리면" 높은 점수 (dangerous)
+        - Entropy: 확률 분포 균등도 → confidence = 1 - normalized_entropy
+        - LiDAR Sky에서 Water로 확신있게 오예측 → entropy 낮음 but aux head 부정확
+          → 실제로는 분산된 예측 → 높은 entropy → 낮은 confidence → 안전
+
+      Fix 3: Spatial-wise (B, m, H, W) — P15에서 유지
+        - 위치별 다른 모달리티 가중치 (Sky: LiDAR 억제, Water: RGB 억제)
+
+      Fix 4: Aux Warmup Schedule
+        - 초기 N epoch: uniform weights (1/m) → aux head 학습 시간 확보
+        - N~N+5 epoch: linear ramp → 점진적 entropy 반영
+        - N+5 이후: full entropy weights
+
+    P15에서 유지:
+      - ModalAuxDecoder × num_modalities
+      - SoftMoE LoRA + expert collapse fix (kaiming*0.01)
+      - Spatial UAMM/AMF interpolation
+      - 동일 리턴: (output, m_feat, aux_logits_list) train / (output, m_feat) eval
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_experts=4, num_modalities=3, num_classes=4,
+                 aux_warmup_epochs=10):
+        nn.Module.__init__(self)
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.num_classes = num_classes
+        self.aux_warmup_epochs = aux_warmup_epochs
+        self._current_epoch = 0  # 학습 스크립트에서 매 epoch 설정
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Inject SoftMoE-LoRA (P13~P15와 동일, experts_b init 포함)
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+
+            moe_q = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+            moe_v = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+
+            # Expert collapse fix
+            for expert_b in moe_q.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+            for expert_b in moe_v.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+
+            blk.attn.qkv = _SoftMoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+
+        self.sam = sam_model
+
+        # Determine fusion dim
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        # 모달리티별 독립 ModalAuxDecoder (P14/P15 유지)
+        self.aux_heads = nn.ModuleList([
+            ModalAuxDecoder(in_channels=fusion_dim, num_classes=num_classes)
+            for _ in range(num_experts)
+        ])
+
+        # Entropy temperature (val에서 grid search 가능)
+        self.energy_temperature = 1.0
+
+        # Visualization buffers
+        self._last_uamm_scores = None   # (B, m) — spatial mean
+        self._last_amf_weights = None   # (B, m) — spatial mean
+        self._last_moe_gates = None
+        self._last_aux_logits = None
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats = [], [], []
+        vision_pos_embeds, feat_sizes, output = [], [], []
+
+        # MoE gate visualization collector
+        moe_gate_collector = []
+        def _moe_gate_cb(gw):
+            moe_gate_collector.append(gw)
+        for layer in self.moe_layers_q + self.moe_layers_v:
+            layer._gate_callback = _moe_gate_cb
+
+        try:
+            # ============================================
+            # Phase 1: 모든 모달리티 Image Encoding
+            # ============================================
+            for i in range(m):
+                img_emb = self.sam.forward_image(batched_input[i])
+                image_embedding.append(img_emb)
+                bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+                backbone_out.append(bb_out)
+                vision_feats.append(v_feats)
+                vision_pos_embeds.append(v_pos)
+                feat_sizes.append(f_sizes)
+
+            # ============================================
+            # Phase 2: Aux Prediction + Calibrated Entropy Confidence
+            # ============================================
+            all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+
+            # 각 modality에 독립 decoder 적용
+            aux_logits_list = [self.aux_heads[i](feat) for i, feat in enumerate(all_backbone_feats)]
+
+            # [Fix 4] Aux Warmup: 초기 N epoch uniform → linear ramp → full entropy
+            warmup_ramp = 5  # ramp 구간 (epoch)
+            if self._current_epoch < self.aux_warmup_epochs:
+                ramp = 0.0
+            elif self._current_epoch < self.aux_warmup_epochs + warmup_ramp:
+                ramp = (self._current_epoch - self.aux_warmup_epochs) / warmup_ramp
+            else:
+                ramp = 1.0
+
+            if ramp < 1e-6:
+                # Pure uniform: aux head 아직 학습 중
+                B = all_backbone_feats[0].shape[0]
+                H_feat, W_feat = all_backbone_feats[0].shape[2:]
+                device = all_backbone_feats[0].device
+                cross_weights = torch.ones(B, m, H_feat, W_feat, device=device) / m
+            else:
+                # [Fix 1] .detach(): aux logits gradient 격리
+                # [Fix 2] Calibrated Entropy (Energy Score 대체)
+                entropy_weights = compute_spatial_entropy_confidence(
+                    [z.detach() for z in aux_logits_list],
+                    temperature=self.energy_temperature,
+                    num_classes=self.num_classes,
+                )  # (B, m, H_feat, W_feat)
+
+                if ramp < 1.0:
+                    # Linear ramp: uniform → entropy 전환
+                    B = all_backbone_feats[0].shape[0]
+                    H_feat, W_feat = all_backbone_feats[0].shape[2:]
+                    device = all_backbone_feats[0].device
+                    uniform = torch.ones(B, m, H_feat, W_feat, device=device) / m
+                    cross_weights = (1.0 - ramp) * uniform + ramp * entropy_weights
+                else:
+                    cross_weights = entropy_weights
+
+            # ============================================
+            # Phase 3: Spatial UAMM + Tracking
+            # ============================================
+            max_w = cross_weights.max(dim=1, keepdim=True)[0]  # (B, 1, H_feat, W_feat)
+            uamm_scores = cross_weights / (max_w + 1e-8)        # (B, m, H_feat, W_feat)
+
+            output_dict = {
+                "cond_frame_outputs": {},
+                "non_cond_frame_outputs": {},
+            }
+
+            for frame_idx in range(m):
+                is_init = (frame_idx == 0)
+
+                spatial_score = uamm_scores[:, frame_idx]  # (B, H_feat, W_feat)
+
+                modulated_vision_feats = []
+                for level, feat in enumerate(vision_feats[frame_idx]):
+                    h, w = feat_sizes[frame_idx][level]
+                    score_resized = F.interpolate(
+                        spatial_score.unsqueeze(1),
+                        size=(h, w),
+                        mode='bilinear',
+                        align_corners=False,
+                    )  # (B, 1, h, w)
+                    score_flat = score_resized.flatten(2).permute(2, 0, 1)  # (h*w, B, 1)
+                    modulated_vision_feats.append(feat * score_flat)
+
+                multi_mask_output_step = self.sam.track_step(
+                    frame_idx=frame_idx,
+                    is_init_cond_frame=is_init,
+                    current_vision_feats=modulated_vision_feats,
+                    current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                    feat_sizes=feat_sizes[frame_idx],
+                    point_inputs=None,
+                    mask_inputs=None,
+                    output_dict=output_dict,
+                    num_frames=m,
+                    track_in_reverse=False,
+                    run_mem_encoder=True,
+                    prev_sam_mask_logits=None,
+                )
+                output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+                output.append(multi_mask_output_step["high_res_multimasks"])
+
+            # ============================================
+            # Phase 4: Spatial AMF — Output Fusion
+            # ============================================
+            amf_weights = cross_weights  # (B, m, H_feat, W_feat)
+
+            def _resize_weight(w_map, target_hw):
+                return F.interpolate(
+                    w_map,
+                    size=target_hw,
+                    mode='bilinear',
+                    align_corners=False,
+                )
+
+            w0_out = _resize_weight(amf_weights[:, 0:1], output[0].shape[2:])
+            m_output = output[0] * w0_out
+            m_feat = all_backbone_feats[0] * amf_weights[:, 0:1]
+
+            for i in range(1, m):
+                wi_out = _resize_weight(amf_weights[:, i:i+1], output[i].shape[2:])
+                m_output = m_output + output[i] * wi_out
+                m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
+
+            # Visualization buffers
+            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
+            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
             self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)

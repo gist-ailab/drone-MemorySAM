@@ -281,7 +281,10 @@ def main(cfg, gpu, save_dir):
     if 'num_classes' in sig.parameters:
         # P10+: num_classes는 config의 LORA_NUM_CLASSES 또는 기본값 4
         model_kwargs['num_classes'] = model_cfg.get('LORA_NUM_CLASSES', 4)
-    
+    if 'aux_warmup_epochs' in sig.parameters:
+        # [P16] Aux Warmup: 초기 N epoch uniform weights
+        model_kwargs['aux_warmup_epochs'] = train_cfg.get('AUX_WARMUP_EPOCHS', 10)
+
     model = lora_model_class(**model_kwargs).cpu()
     
     # Load model weights from checkpoint if resuming
@@ -431,6 +434,10 @@ def main(cfg, gpu, save_dir):
     
     for epoch in range(start_epoch, epochs):
         model.train()
+        # [P16] Aux warmup: 현재 epoch 전달
+        _m = model.module if hasattr(model, 'module') else model
+        if hasattr(_m, '_current_epoch'):
+            _m._current_epoch = epoch
         if train_cfg['DDP']: sampler.set_epoch(epoch)
         train_loss = 0.0
         proto_loss = 0.0
@@ -454,7 +461,7 @@ def main(cfg, gpu, save_dir):
             with autocast(enabled=train_cfg['AMP']):
                 # P11: forward가 (output, m_feat, aux_outputs, amf_weights, gate_dists) 리턴
                 # P10: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
-                # P13/P14: forward가 (output, m_feat, aux_logits_list) 리턴
+                # P13/P14/P15/P16: forward가 (output, m_feat, aux_logits_list) 리턴
                 # 그 외: (output, m_feat) 리턴
                 model_out = model(sample, multimask_output=True)
                 if len(model_out) == 5:
@@ -615,7 +622,22 @@ def main(cfg, gpu, save_dir):
                 'train_lrs': train_lrs,
                 'epochs_list': epochs_list,
             }, last_ckp_path)
-            
+
+            # 5 epoch 단위 주기 저장 (test set proxy 없이 최적 epoch 탐색용)
+            if (epoch + 1) % 5 == 0:
+                periodic_path = save_dir / f'periodic_epoch{epoch+1}_checkpoint.pth'
+                torch.save({
+                    'epoch': epoch + 1,
+                    'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'scaler_state_dict': scaler.state_dict() if train_cfg['AMP'] else None,
+                    'loss': train_loss,
+                    'proto_loss': proto_loss,
+                    'best_miou': best_mIoU,
+                    'best_night_miou': best_night_mIoU,
+                }, periodic_path)
+
         torch.cuda.empty_cache()
 
         if ((epoch+1) % train_cfg['EVAL_INTERVAL'] == 0 and (epoch+1)>train_cfg['EVAL_START']) or (epoch+1) == epochs:

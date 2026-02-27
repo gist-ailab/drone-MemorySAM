@@ -195,6 +195,36 @@
 
 ---
 
+### P14 Experiments
+
+#### P14-1: hardaug5 (night_epoch47)
+
+- **Config 학습**: `configs/bengio-multiaqua_rgbtl_P14_hardaug5.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml` (TODO: P14 전용 eval config 확인)
+- **Checkpoint**: `outputs/MMSamP14/bengio_multiaqua_rgbtl_P14_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch47_90.75_top1_checkpoint.pth`
+- **체크포인트 선택**: Night-Val 기준 (90.75 mIoU). Day-val best epoch47 (94.06).
+- **결과**: Val 93.18 / Test **55.36** / M **74.27**
+- **Challenge result**: `outputs/MMSamP14/.../eval_macvi/` (Submission #16062)
+- **Per-class Test IoU**: Static 62.57 / Dynamic 22.87 / Water 92.92 / Sky **36.47**
+- **Obstacle IoU**: Val 78.69 / Test 23.60
+- **hardaug5 변경사항**: CRM/ZERO 완전 제거 + BRIGHTNESS [0.02, 0.20] (실측 정렬) + NIGHT_SIM_P 0.60
+- **P14 아키텍처 변경**: ConfidenceAuxHead×1(공유) → ModalAuxDecoder×3(독립)
+- **핵심 발견**:
+  1. **M-score 74.27 — P9 대비 -7.20 심각한 하락**
+  2. **Sky IoU 36.47%**: 73/200 프레임 Sky<10%, 56/200 프레임 Sky<1%
+  3. **LiDAR UAMM = 1.000 고정** (test 200장 전부, stdev=0.000) — P13과 동일 문제
+  4. **RGB 억제**: test UAMM img=0.555 (val=0.752) → Sky 인식에 핵심인 RGB가 절반으로 감소
+  5. **Aux mask 품질**: P13 대비 개선되었으나 여전히 GT 대비 매우 부정확. 모달리티 간 비교 불가 수준
+  6. **Model uncertainty**: test mean_entropy 0.570 (val 0.178의 3.2배), high_uncertainty_ratio 63.4%
+  7. **MoE routing**: val/test 간 거의 동일 (entropy_ratio stdev < 0.02) — routing 자체는 안정적이나 여전히 고정
+- **CRM/ZERO 제거 효과**: hardaug5에서 CRM/ZERO 제거했으나 Sky collapse 여전히 발생 → ISSUE-007은 Sky 문제의 일부 원인이었으나 유일 원인은 아님
+- **실패 원인 분석**:
+  - Energy Score가 LiDAR를 항상 최고 confident로 판정 → Sky 영역에서 LiDAR (무의미) 기반 예측
+  - Image-level scalar fusion의 근본 한계 — Sky/Water 영역별로 최적 모달리티가 다르지만 반영 불가
+  - Aux decoder가 frozen backbone feature 기반 → 야간/주간 공통 feature 패턴에서 학습하므로 domain-specific quality 판별 불가
+
+---
+
 ## Night Augmentation 포화 분석
 
 ### Augmentation 효과 정량화 (P8 동일 아키텍처)
@@ -226,17 +256,20 @@
 
 ## NIGHT_AUG 버전 비교
 
-| 파라미터 | basic-aug | hardaug2 | hardaug3 | hardaug4 |
-| --- | --- | --- | --- | --- |
-| NIGHT_SIM_P | 0.35 | 0.50 | 0.40 | 0.45 |
-| BRIGHTNESS | [0.03, 0.25] | [0.03, 0.50] | [0.020, 0.203] | [0.03, 0.45] |
-| SAMPLING | uniform | dark_biased | dark_biased | dark_biased |
-| DARK_RATIO | - | 0.70 | 0.35 | 0.60 |
-| DARK_RANGE | - | [0.03, 0.15] | [0.020, 0.035] | [0.03, 0.12] |
-| CRM_P | 0.30 | 0.30 | 0.25 | 0.35 |
-| ZERO_P | 0.12 | 0.08 | 0.06 | 0.09 |
+| 파라미터 | basic-aug | hardaug2 | hardaug3 | hardaug4 | **hardaug5** |
+| --- | --- | --- | --- | --- | --- |
+| NIGHT_SIM_P | 0.35 | 0.50 | 0.40 | 0.45 | **0.60** |
+| BRIGHTNESS | [0.03, 0.25] | [0.03, 0.50] | [0.020, 0.203] | [0.03, 0.45] | **[0.02, 0.20]** |
+| SAMPLING | uniform | dark_biased | dark_biased | dark_biased | dark_biased |
+| DARK_RATIO | - | 0.70 | 0.35 | 0.60 | **0.70** |
+| DARK_RANGE | - | [0.03, 0.15] | [0.020, 0.035] | [0.03, 0.12] | **[0.02, 0.06]** |
+| CRM_P | 0.30 | 0.30 | 0.25 | 0.35 | **제거** |
+| ZERO_P | 0.12 | 0.08 | 0.06 | 0.09 | **제거** |
+| CONTRAST | [0.3, 0.7] | [0.3, 0.7] | [0.3, 0.7] | [0.3, 0.7] | **[0.20, 0.65]** |
+| GAMMA | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | **[0.30, 0.75]** |
+| NOISE_STD | 0.02 | 0.02 | 0.02 | 0.02 | **0.025** |
 
-**결론**: hardaug4가 최선. hardaug2 대비 CRM_P 강화(0.35), DARK_RATIO 적절히 완화(0.6), BRIGHTNESS 상한 약간 축소(0.45).
+**결론**: hardaug4가 P9 기준 최선 (M=81.47). hardaug5는 CRM/ZERO 제거 + 실측 밝기 정렬했으나 P14 아키텍처와 조합에서 M=74.27로 하락. CRM/ZERO 제거의 효과와 아키텍처 변경 효과가 혼재.
 
 ---
 

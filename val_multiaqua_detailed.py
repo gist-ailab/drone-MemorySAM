@@ -51,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16
 )
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
@@ -94,6 +94,7 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P13': LoRA_Sam_P13,
         'LoRA_Sam_P14': LoRA_Sam_P14,
         'LoRA_Sam_P15': LoRA_Sam_P15,
+        'LoRA_Sam_P16': LoRA_Sam_P16,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
