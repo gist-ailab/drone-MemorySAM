@@ -1,5 +1,5 @@
-CFG="configs/eval_config/bengio-multiaqua_rgbtl_P14_hardaug5.yaml"
-CKPT="outputs/MMSamP14/bengio_multiaqua_rgbtl_P14_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch47_90.75_top1_checkpoint.pth"
+CFG="configs/eval_config/levine-multiaqua_rgbtl_P15_hardaug5.yaml"
+CKPT="outputs/MMSamP15/levine_multiaqua_rgbtl_P15_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch46_93.92_top1_checkpoint.pth"
 
 cfg_name=$(basename ${CFG} .yaml)
 

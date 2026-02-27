@@ -26,7 +26,9 @@
 | 8 | P8 | hardaug3 | 93.36 | 61.57 | 79.12 | 27.17 | 77.46 | 15616 |
 | 9 | P11 | hardaug4 | 93.17 | 61.01 | 78.40 | 20.95 | 77.09 | 15851 |
 | 10 | P10 | hardaug3 | 93.18 | 58.93 | 78.57 | 22.36 | 76.05 | 15757 |
-| 11 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
+| 11 | **P15** | hardaug5 | 93.17 | **48.94** | 78.31 | 24.96 | **71.05** | 16087 |
+| 12 | P13 | hardaug4 (ep39) | 92.45 | 50.48 | 75.93 | - | 71.67 | 16044 |
+| 13 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
 
 ---
 
@@ -225,6 +227,50 @@
 
 ---
 
+### P15 Experiments
+
+#### P15-1: hardaug5 (epoch46, day-val best) — 역대 최악
+
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P15_hardaug5.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P15_hardaug5.yaml`
+- **Checkpoint**: `outputs/MMSamP15/levine_multiaqua_rgbtl_P15_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch46_93.92_top1_checkpoint.pth`
+- **Night-val best**: `night_epoch45_90.39_top1_checkpoint.pth` (미평가)
+- **체크포인트 선택**: Day-Val best (epoch46, 93.92 mIoU). ⚠️ Night-val best 미사용
+- **결과**: Val **93.17** / Test **48.94** / M **71.05**
+- **Challenge result**: Submission #16087
+- **Per-class Test IoU**: Static 60.94 / Dynamic 26.58 / Water 92.27 / Sky **16.66**
+- **Obstacle IoU**: Val 78.31 / Test 24.96
+
+- **P15 아키텍처**: P14 + Spatial-wise Energy Weighting `(B, m, H, W)`
+  - `compute_spatial_energy_confidence()`: Energy Score 유지 (NOT entropy)
+  - `.detach()` 미적용, Warmup 미적용
+  - 설계 4가지 Fix 중 Fix 3(spatial-wise)만 단독 적용
+
+- **UAMM 분석 (val vs test)**:
+
+| 모달리티 | Val UAMM (mean±std) | Test UAMM (mean±std) | Δ |
+| --- | --- | --- | --- |
+| img | 0.716±0.026 | 0.566±0.028 | **-0.150 (-21%)** |
+| lidar | 0.834±0.047 | 0.956±0.010 | +0.122 (+15%) |
+| thermal | 0.554±0.032 | 0.630±0.009 | +0.076 (+14%) |
+
+- **P15 vs P9 UAMM 비교**: P15가 실제로 val/test 적응을 수행 (P9는 std≈0 고정). LiDAR도 1.0에 고정되지 않음 (mean 0.956).
+- **하지만 test mIoU는 역대 최악 (48.94)**
+
+- **핵심 발견 — Spatial-wise가 noise를 증폭**:
+  1. **Sky IoU 16.66%**: 111/200 프레임 Sky=0%, 152/200 프레임 Sky<10%
+  2. **P14(scalar, Sky 36.47%) → P15(spatial, Sky 16.66%)**: Spatial-wise 적용 후 오히려 **-19.81pp 악화**
+  3. **"Spatial Amplification Effect"**: 부정확한 energy score가 pixel-level에서 그대로 전파. Scalar는 이미지 평균으로 error가 smooth되지만, spatial은 aux mask의 모든 local error가 증폭됨
+  4. **Energy Score + Spatial + no-detach + no-warmup = 최악의 조합**
+  5. **Checkpoint 선택 리스크**: day-val best(epoch46) 사용. Night-val best(epoch45)로 재평가 시 개선 가능성 있음
+
+- **교훈**:
+  1. Spatial-wise를 단독 적용하면 오히려 해로움 — aux mask 정확도 개선(Fix 1,2,4)이 선행되어야 함
+  2. Energy Score의 "confident but wrong" 문제가 spatial에서 더 치명적
+  3. Fix 3은 Fix 1+2+4와 함께 적용해야 효과 있음 (P16의 접근)
+
+---
+
 ## Night Augmentation 포화 분석
 
 ### Augmentation 효과 정량화 (P8 동일 아키텍처)
@@ -269,7 +315,7 @@
 | GAMMA | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | **[0.30, 0.75]** |
 | NOISE_STD | 0.02 | 0.02 | 0.02 | 0.02 | **0.025** |
 
-**결론**: hardaug4가 P9 기준 최선 (M=81.47). hardaug5는 CRM/ZERO 제거 + 실측 밝기 정렬했으나 P14 아키텍처와 조합에서 M=74.27로 하락. CRM/ZERO 제거의 효과와 아키텍처 변경 효과가 혼재.
+**결론**: hardaug4가 P9 기준 최선 (M=81.47). hardaug5는 CRM/ZERO 제거 + 실측 밝기 정렬. P14(M=74.27), P15(M=71.05) 모두 hardaug5 사용했으나 하락은 아키텍처(energy fusion) 문제가 주원인.
 
 ---
 

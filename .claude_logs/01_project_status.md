@@ -2,7 +2,7 @@
 
 > 최종 업데이트: 2026-02-27
 
-## 현재 상태: P9가 최선 모델 (M=81.47), P15 학습 중 (Levine), P16 구현 완료 (학습 대기)
+## 현재 상태: P9가 최선 모델 (M=81.47), P16 학습 대기, P17 구현 완료 (학습 대기)
 
 ### P14 실험 결과 (2026-02-27 완료)
 
@@ -100,12 +100,15 @@
    - Aux mask 품질 여전히 불충분 → Energy Score 신뢰도 낮음
    - Image-level scalar fusion의 근본 한계 확인 → P15 동기
 
-9. **P15 (Spatial Energy Fusion) — Levine에서 학습 중**
+9. **P15 (Spatial Energy Fusion) — 역대 최악 M=71.05**
    - Spatial-wise `(B, m, H, W)` 가중치 + Energy Score 기반
-   - P15 설계 문서의 4가지 수정 중 Fix 3(spatial-wise)만 적용
-   - `.detach()`, Calibrated Entropy, Warmup은 미적용 → P16에서 통합
-   - Config: `configs/levine-multiaqua_rgbtl_P15_hardaug5.yaml`
-   - 결과 대기 중
+   - 설계 4가지 Fix 중 Fix 3(spatial-wise)만 단독 적용 → ❌ **오히려 악화**
+   - **M=71.05** (P9 대비 -10.42, P14 대비 -3.22) — Submission #16087
+   - **Sky IoU 16.66%**: 111/200 프레임 Sky=0% (P14: 36.47%, P9: 76.54%)
+   - **"Spatial Amplification"**: 부정확한 energy를 pixel-level로 전파 → noise 증폭
+   - UAMM 적응 자체는 작동 (img -21%, lidar +15%), LiDAR 1.0 미고정
+   - **하지만** aux mask 부정확 + energy 부정확 + no-detach → spatial이 피해만 증폭
+   - Checkpoint: epoch46 (day-val best). Night-val best(epoch45) 미평가
 
 10. **P16 (Calibrated Spatial Entropy Fusion) — 구현 완료, 학습 대기**
     - P12~P14 실패 분석에서 도출된 **4가지 수정사항 모두 통합**:
@@ -113,9 +116,19 @@
       2. Energy Score → Calibrated Entropy (ISSUE-009)
       3. Spatial-wise `(B, m, H, W)` 가중치 (ISSUE-004)
       4. Aux Warmup Schedule (10ep uniform + 5ep linear ramp)
-    - Config: `configs/levine-multiaqua_rgbtl_P16_hardaug5.yaml`
+    - Config: `configs/bengio-multiaqua_rgbtl_P16_hardaug5.yaml`
     - 추가 개선: 5-epoch 주기 checkpoint, trackio 로깅, tqdm 개선
     - 상세 아키텍처: `.claude_logs/02_model_arch.md` P16 섹션
+
+11. **P17 (Multi-Scale FPN Aux Decoder) — 구현 완료, 학습 대기**
+    - P16 기반 + ISSUE-008(frozen backbone bottleneck) 직접 해결
+    - **핵심 변경**: `ModalAuxDecoder`(fpn[0] 32ch만) → `MultiScaleModalAuxDecoder`(fpn[0,1,2] 352ch)
+    - 3개 FPN 레벨: fpn[0](32ch,256²) + fpn[1](64ch,128²) + fpn[2](256ch,64²)
+    - proj_dim=32로 project → concat(96ch) → 3×3 conv → 4class logits
+    - ~53K params/modality (기존 ~290 대비 증가하지만, 정보량 11배 증가 대비 합리적)
+    - P16의 4 Fix 모두 유지 (detach, entropy, spatial, warmup)
+    - Config: `configs/bengio-multiaqua_rgbtl_P17_hardaug5.yaml`
+    - 상세 아키텍처: `.claude_logs/02_model_arch.md` P17 섹션
 
 ### 미해결 과제
 

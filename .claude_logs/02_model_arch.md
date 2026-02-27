@@ -669,18 +669,102 @@ Aux head가 충분히 학습된 후에 UAMM/AMF 활성화. `_current_epoch` 속�
 
 ---
 
+## P17: Multi-Scale FPN Aux Decoder + Calibrated Spatial Entropy Fusion
+
+파일: `sam_lora_image_encoder_seg.py` 끝부분, 클래스: `LoRA_Sam_P17`
+
+### P16에서의 변경 동기
+
+P13~P16의 aux decoder는 **`backbone_fpn[0]`(32ch, 256×256) 하나만** 사용.
+SAM2 Hiera B+는 3개 FPN 레벨을 계산하지만 나머지 2개는 aux decoder에서 전혀 미활용:
+- `backbone_fpn[1]`: 64ch, 128×128
+- `backbone_fpn[2]`: 256ch, 64×64
+
+이것이 ISSUE-008(frozen backbone bottleneck)의 실질적 원인:
+32채널 단일 스케일 → 352채널(32+64+256) 멀티스케일 = **11배 정보량 증가, 추가 backbone 연산 0**
+
+### 핵심 변경: MultiScaleModalAuxDecoder
+
+```python
+class MultiScaleModalAuxDecoder(nn.Module):
+    """3개 FPN 레벨을 모두 활용하는 aux segmentation decoder."""
+
+    def __init__(self, fpn_channels=(32, 64, 256), proj_dim=32, num_classes=4):
+        # 각 FPN 레벨을 proj_dim(32)으로 project (1×1 conv + BN + ReLU)
+        self.proj_layers = nn.ModuleList([
+            nn.Sequential(Conv2d(ch, 32, 1), BN, ReLU) for ch in fpn_channels
+        ])
+        # Concat(32×3=96) → 3×3 conv(96→48) → 1×1 conv(48→4)
+        self.decoder = nn.Sequential(
+            Conv2d(96, 48, 3, padding=1), BN, ReLU,
+            Conv2d(48, num_classes, 1),
+        )
+
+    def forward(self, fpn_feats):  # [fpn0, fpn1, fpn2]
+        # 모든 레벨을 fpn[0] 해상도로 upsample → project → concat → decode
+        target_size = fpn_feats[0].shape[2:]
+        projected = [proj(feat) → interpolate if needed for each level]
+        return self.decoder(torch.cat(projected, dim=1))
+```
+
+**파라미터 수** (~53K per modality, ×3 = ~159K total):
+- proj_layers: 32×32 + 64×32 + 256×32 = ~11.3K
+- decoder: 96×48×3×3 + 48×4 = ~41.7K
+
+기존 ModalAuxDecoder: ~290 params per modality → **정보량 11배 증가 대비 합리적 파라미터 증가**
+
+### P16과의 차이
+
+| 구분 | P16 | **P17** |
+| --- | --- | --- |
+| Aux Decoder | ModalAuxDecoder (fpn[0] only, 32ch) | **MultiScaleModalAuxDecoder (fpn[0,1,2], 352ch)** |
+| Aux 입력 | `backbone_fpn[0]` (32ch, 256×256) | `backbone_fpn[0,1,2]` (32+64+256ch, multi-scale) |
+| Aux 파라미터 | ~290/modality | **~53K/modality** |
+| Confidence | Calibrated Entropy (동일) | Calibrated Entropy (동일) |
+| Gradient 격리 | `.detach()` (동일) | `.detach()` (동일) |
+| Warmup | 10ep+5ep ramp (동일) | 10ep+5ep ramp (동일) |
+| Spatial UAMM/AMF | (B, m, H, W) (동일) | (B, m, H, W) (동일) |
+
+### Forward Phase 2 변경
+
+```python
+# P16:
+all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+aux_logits_list = [self.aux_heads[i](feat) for i, feat in enumerate(all_backbone_feats)]
+
+# P17:
+all_fpn_feats = [
+    [image_embedding[i]['backbone_fpn'][j] for j in range(3)]
+    for i in range(m)
+]  # all_fpn_feats[modality][level]
+aux_logits_list = [self.aux_heads[i](all_fpn_feats[i]) for i in range(m)]
+all_backbone_feats = [all_fpn_feats[i][0] for i in range(m)]  # m_feat용
+```
+
+Phase 3 (Spatial UAMM + Tracking), Phase 4 (AMF Fusion)는 P16과 동일.
+
+### 구현 상태
+
+- **구현 완료** (2026-02-27)
+- Config: `configs/bengio-multiaqua_rgbtl_P17_hardaug5.yaml`
+- Eval config: `configs/eval_config/bengio-multiaqua_rgbtl_P17_hardaug5.yaml`
+- 학습 스크립트 변경 불필요 (기존 inspect 기반 분기 + 3-tuple 리턴 호환)
+
+---
+
 ## 버전 비교 총괄
 
-| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | **P16** |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Head | ConfHeadV2 | CrossModalFH | CrossModalFHV2 | CrossModalFHV2 | CrossModalFH | AuxHead+Energy | AuxDec×3+Energy | AuxDec×3+Energy(spatial) | AuxDec×3+**Entropy(spatial)** |
-| UAMM | sigmoid | max-norm | max-norm | softmax+τ | max-norm | max-norm | max-norm | spatial max-norm | **spatial max-norm** |
-| AMF | norm(sig) | softmax | softmax | softmax | softmax | energy softmax | energy softmax | spatial energy | **spatial entropy** |
-| Aux Head | 없음 | 없음 | AuxHead×3 | AuxHead×3 | 없음 | 공유×1 | 독립×3 | 독립×3 | 독립×3 |
-| 추가 Loss | 없음 | 없음 | KL(0.5) | KL+MI(1.0) | 없음 | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) |
-| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | 없음 | **`.detach()`** |
-| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | **10ep+5ep ramp** |
-| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 |
-| 학습 반환 | (o,f) | (o,f) | (o,f,aux,w) | (o,f,aux,w,g) | (o,f) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) |
-| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 학습 중 | 구현 완료 |
-| 교훈 | sig saturation | 상대비교핵심 | oracle과적합 | 진단먼저 | cond미미 | 방향유효 | aux독립불충분 | P16과 비교 예정 | **4-fix 통합** |
+| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | **P17** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Head | ConfHeadV2 | CrossModalFH | CrossModalFHV2 | CrossModalFHV2 | CrossModalFH | AuxHead+Energy | AuxDec×3+Energy | AuxDec×3+Energy(spatial) | AuxDec×3+Entropy(spatial) | **MSAuxDec×3+Entropy(spatial)** |
+| UAMM | sigmoid | max-norm | max-norm | softmax+τ | max-norm | max-norm | max-norm | spatial max-norm | spatial max-norm | **spatial max-norm** |
+| AMF | norm(sig) | softmax | softmax | softmax | softmax | energy softmax | energy softmax | spatial energy | spatial entropy | **spatial entropy** |
+| Aux Head | 없음 | 없음 | AuxHead×3 | AuxHead×3 | 없음 | 공유×1 | 독립×3 | 독립×3 | 독립×3 | **MS독립×3** |
+| 추가 Loss | 없음 | 없음 | KL(0.5) | KL+MI(1.0) | 없음 | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) |
+| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | 없음 | `.detach()` | **`.detach()`** |
+| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 10ep+5ep ramp | **10ep+5ep ramp** |
+| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 |
+| 학습 반환 | (o,f) | (o,f) | (o,f,aux,w) | (o,f,aux,w,g) | (o,f) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) |
+| FPN 레벨 | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | **fpn[0,1,2]** |
+| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 71.05 | 학습 대기 | 구현 완료 |
+| 교훈 | sig saturation | 상대비교핵심 | oracle과적합 | 진단먼저 | cond미미 | 방향유효 | aux독립불충분 | spatial amplification | 4-fix 통합 | **multi-scale aux** |

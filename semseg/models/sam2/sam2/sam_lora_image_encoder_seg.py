@@ -2485,6 +2485,61 @@ class ModalAuxDecoder(nn.Module):
         return self.decoder(feat)
 
 
+class MultiScaleModalAuxDecoder(nn.Module):
+    """P17: Multi-scale FPN feature를 활용한 aux segmentation decoder.
+
+    기존 ModalAuxDecoder는 backbone_fpn[0](32ch)만 사용.
+    이 decoder는 3개 FPN 레벨 모두 활용:
+      - fpn[0]: 256×256, 32ch  (high-res spatial detail)
+      - fpn[1]: 128×128, 64ch  (mid-level features)
+      - fpn[2]:  64×64, 256ch  (semantic context)
+
+    전략: 각 레벨을 proj_dim으로 project → fpn[0] 해상도로 upsample → concat → decode
+    """
+
+    def __init__(self, fpn_channels=(32, 64, 256), proj_dim=32, num_classes=4):
+        super().__init__()
+        self.proj_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(ch, proj_dim, 1, bias=False),
+                nn.BatchNorm2d(proj_dim),
+                nn.ReLU(inplace=True),
+            )
+            for ch in fpn_channels
+        ])
+
+        fused_dim = proj_dim * len(fpn_channels)  # 32 * 3 = 96
+        self.decoder = nn.Sequential(
+            nn.Conv2d(fused_dim, fused_dim // 2, 3, padding=1, bias=False),
+            nn.BatchNorm2d(fused_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(fused_dim // 2, num_classes, 1),
+        )
+
+    def forward(self, fpn_feats):
+        """
+        Args:
+            fpn_feats: list of 3 tensors [fpn0, fpn1, fpn2]
+                fpn0: (B, 32, H0, W0)   — highest resolution
+                fpn1: (B, 64, H1, W1)   — mid resolution
+                fpn2: (B, 256, H2, W2)  — lowest resolution
+        Returns:
+            logits: (B, num_classes, H0, W0) — raw logits at fpn[0] resolution
+        """
+        target_size = fpn_feats[0].shape[2:]
+
+        projected = []
+        for i, feat in enumerate(fpn_feats):
+            p = self.proj_layers[i](feat)
+            if p.shape[2:] != target_size:
+                p = F.interpolate(p, size=target_size, mode='bilinear',
+                                  align_corners=False)
+            projected.append(p)
+
+        fused = torch.cat(projected, dim=1)
+        return self.decoder(fused)
+
+
 def compute_energy_confidence(aux_logits_list, temperature=1.0):
     """Energy score 기반 modality confidence 계산.
 
@@ -3607,6 +3662,333 @@ class LoRA_Sam_P16(nn.Module):
             # Phase 4: Spatial AMF — Output Fusion
             # ============================================
             amf_weights = cross_weights  # (B, m, H_feat, W_feat)
+
+            def _resize_weight(w_map, target_hw):
+                return F.interpolate(
+                    w_map,
+                    size=target_hw,
+                    mode='bilinear',
+                    align_corners=False,
+                )
+
+            w0_out = _resize_weight(amf_weights[:, 0:1], output[0].shape[2:])
+            m_output = output[0] * w0_out
+            m_feat = all_backbone_feats[0] * amf_weights[:, 0:1]
+
+            for i in range(1, m):
+                wi_out = _resize_weight(amf_weights[:, i:i+1], output[i].shape[2:])
+                m_output = m_output + output[i] * wi_out
+                m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
+
+            # Visualization buffers
+            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
+            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
+            self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
+            if moe_gate_collector:
+                self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
+            else:
+                self._last_moe_gates = None
+
+        finally:
+            for layer in self.moe_layers_q + self.moe_layers_v:
+                layer._gate_callback = None
+
+        if self.training:
+            return m_output, m_feat, aux_logits_list
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+
+        aux_heads_tensors = {
+            f"aux_heads.{k}": v
+            for k, v in self.aux_heads.state_dict().items()
+        }
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+
+        model_ref = self.sam.module if isinstance(
+            self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)
+        ) else self.sam
+        state_dict = model_ref.state_dict()
+
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors,
+            **mask_decoder_tensors,
+            **aux_heads_tensors,
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict:
+                mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict:
+                mv.load_state_dict(state_dict[v_key])
+
+        aux_heads_dict = {
+            k.replace("aux_heads.", ""): v
+            for k, v in state_dict.items()
+            if k.startswith("aux_heads.")
+        }
+        if aux_heads_dict:
+            self.aux_heads.load_state_dict(aux_heads_dict)
+
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+
+        self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P17(nn.Module):
+    """
+    LoRA_Sam_P17: Multi-Scale FPN Aux Decoder + Calibrated Spatial Entropy Fusion
+
+    P16 기반, ISSUE-008(frozen backbone bottleneck)에 대한 직접적 해결:
+
+      기존 (P13~P16): backbone_fpn[0](32ch, 256×256)만 aux decoder에 사용
+        → 32채널 단일 스케일: 정보량 부족 → aux mask 부정확 → entropy 부정확 → fusion 실패
+
+      P17 변경: 3개 FPN 레벨 전부 활용 (MultiScaleModalAuxDecoder)
+        - fpn[0]: 32ch, 256×256  (high-res spatial detail)
+        - fpn[1]: 64ch, 128×128  (mid-level features)
+        - fpn[2]: 256ch, 64×64   (semantic context)
+        → 352채널 멀티스케일: 11배 정보량 증가, 추가 backbone 연산 0
+
+      P16의 4가지 Fix 유지:
+        1. .detach() gradient 격리
+        2. Calibrated Entropy (Energy Score 대체)
+        3. Spatial-wise (B, m, H, W) 가중치
+        4. Aux Warmup Schedule (10ep uniform + 5ep ramp)
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_experts=4, num_modalities=3, num_classes=4,
+                 aux_warmup_epochs=10):
+        nn.Module.__init__(self)
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.num_classes = num_classes
+        self.num_modalities = num_modalities
+        self.aux_warmup_epochs = aux_warmup_epochs
+        self._current_epoch = 0
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Inject SoftMoE-LoRA (P16과 동일, experts_b init 포함)
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+
+            moe_q = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+            moe_v = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+
+            # Expert collapse fix
+            for expert_b in moe_q.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+            for expert_b in moe_v.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+
+            blk.attn.qkv = _SoftMoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+
+        self.sam = sam_model
+
+        # [P17] Multi-scale FPN channels
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            self.fpn_channels = (
+                self.sam.sam_mask_decoder.transformer_dim // 8,  # fpn[0]: 32
+                self.sam.sam_mask_decoder.transformer_dim // 4,  # fpn[1]: 64
+                self.sam.sam_mask_decoder.transformer_dim,       # fpn[2]: 256
+            )
+        else:
+            td = self.sam.sam_mask_decoder.transformer_dim
+            self.fpn_channels = (td, td, td)
+
+        # [P17] 모달리티별 독립 MultiScaleModalAuxDecoder
+        self.aux_heads = nn.ModuleList([
+            MultiScaleModalAuxDecoder(
+                fpn_channels=self.fpn_channels,
+                proj_dim=32,
+                num_classes=num_classes,
+            )
+            for _ in range(num_modalities)
+        ])
+
+        # Entropy temperature
+        self.energy_temperature = 1.0
+
+        # Visualization buffers
+        self._last_uamm_scores = None
+        self._last_amf_weights = None
+        self._last_moe_gates = None
+        self._last_aux_logits = None
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats = [], [], []
+        vision_pos_embeds, feat_sizes, output = [], [], []
+
+        # MoE gate visualization collector
+        moe_gate_collector = []
+        def _moe_gate_cb(gw):
+            moe_gate_collector.append(gw)
+        for layer in self.moe_layers_q + self.moe_layers_v:
+            layer._gate_callback = _moe_gate_cb
+
+        try:
+            # ============================================
+            # Phase 1: 모든 모달리티 Image Encoding
+            # ============================================
+            for i in range(m):
+                img_emb = self.sam.forward_image(batched_input[i])
+                image_embedding.append(img_emb)
+                bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+                backbone_out.append(bb_out)
+                vision_feats.append(v_feats)
+                vision_pos_embeds.append(v_pos)
+                feat_sizes.append(f_sizes)
+
+            # ============================================
+            # Phase 2: Multi-Scale Aux Prediction + Calibrated Entropy
+            # ============================================
+            # [P17] 3개 FPN 레벨 전부 추출
+            all_fpn_feats = [
+                [image_embedding[i]['backbone_fpn'][j] for j in range(3)]
+                for i in range(m)
+            ]  # all_fpn_feats[modality_idx][fpn_level]
+
+            # 각 modality에 독립 MultiScaleModalAuxDecoder 적용
+            aux_logits_list = [
+                self.aux_heads[i](all_fpn_feats[i]) for i in range(m)
+            ]  # List[(B, num_classes, H0, W0)]
+
+            # m_feat fusion용 backbone feature (fpn[0] 유지)
+            all_backbone_feats = [all_fpn_feats[i][0] for i in range(m)]
+
+            # [Fix 4] Aux Warmup: 초기 N epoch uniform → linear ramp → full entropy
+            warmup_ramp = 5
+            if self._current_epoch < self.aux_warmup_epochs:
+                ramp = 0.0
+            elif self._current_epoch < self.aux_warmup_epochs + warmup_ramp:
+                ramp = (self._current_epoch - self.aux_warmup_epochs) / warmup_ramp
+            else:
+                ramp = 1.0
+
+            if ramp < 1e-6:
+                B = all_backbone_feats[0].shape[0]
+                H_feat, W_feat = all_backbone_feats[0].shape[2:]
+                device = all_backbone_feats[0].device
+                cross_weights = torch.ones(B, m, H_feat, W_feat, device=device) / m
+            else:
+                # [Fix 1] .detach() + [Fix 2] Calibrated Entropy
+                entropy_weights = compute_spatial_entropy_confidence(
+                    [z.detach() for z in aux_logits_list],
+                    temperature=self.energy_temperature,
+                    num_classes=self.num_classes,
+                )
+
+                if ramp < 1.0:
+                    B = all_backbone_feats[0].shape[0]
+                    H_feat, W_feat = all_backbone_feats[0].shape[2:]
+                    device = all_backbone_feats[0].device
+                    uniform = torch.ones(B, m, H_feat, W_feat, device=device) / m
+                    cross_weights = (1.0 - ramp) * uniform + ramp * entropy_weights
+                else:
+                    cross_weights = entropy_weights
+
+            # ============================================
+            # Phase 3: Spatial UAMM + Tracking
+            # ============================================
+            max_w = cross_weights.max(dim=1, keepdim=True)[0]
+            uamm_scores = cross_weights / (max_w + 1e-8)
+
+            output_dict = {
+                "cond_frame_outputs": {},
+                "non_cond_frame_outputs": {},
+            }
+
+            for frame_idx in range(m):
+                is_init = (frame_idx == 0)
+
+                spatial_score = uamm_scores[:, frame_idx]
+
+                modulated_vision_feats = []
+                for level, feat in enumerate(vision_feats[frame_idx]):
+                    h, w = feat_sizes[frame_idx][level]
+                    score_resized = F.interpolate(
+                        spatial_score.unsqueeze(1),
+                        size=(h, w),
+                        mode='bilinear',
+                        align_corners=False,
+                    )
+                    score_flat = score_resized.flatten(2).permute(2, 0, 1)
+                    modulated_vision_feats.append(feat * score_flat)
+
+                multi_mask_output_step = self.sam.track_step(
+                    frame_idx=frame_idx,
+                    is_init_cond_frame=is_init,
+                    current_vision_feats=modulated_vision_feats,
+                    current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                    feat_sizes=feat_sizes[frame_idx],
+                    point_inputs=None,
+                    mask_inputs=None,
+                    output_dict=output_dict,
+                    num_frames=m,
+                    track_in_reverse=False,
+                    run_mem_encoder=True,
+                    prev_sam_mask_logits=None,
+                )
+                output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+                output.append(multi_mask_output_step["high_res_multimasks"])
+
+            # ============================================
+            # Phase 4: Spatial AMF — Output Fusion
+            # ============================================
+            amf_weights = cross_weights
 
             def _resize_weight(w_map, target_hw):
                 return F.interpolate(
