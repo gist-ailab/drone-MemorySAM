@@ -1,6 +1,6 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-02-26
+> 최종 업데이트: 2026-02-27
 
 ## 공통 기반: MemorySAM
 
@@ -578,18 +578,109 @@ Phase 4: Spatial AMF
 
 ---
 
+## P16: Calibrated Spatial Entropy Fusion (P15 설계의 구현 버전)
+
+파일: `sam_lora_image_encoder_seg.py` 끝부분, 클래스: `LoRA_Sam_P16`
+
+### P15에서의 변경 동기
+
+P15는 기존 Energy Score (spatial)를 사용하여 Levine에서 학습 진행 중.
+P15 설계 문서에서 제시한 4가지 수정사항을 별도 버전으로 구현하여 P15와 비교 실험.
+P15 코드를 직접 수정하지 않고 **새 버전 P16으로 분리** (P15 학습 결과 보존).
+
+### 핵심 변경 4가지 (P12~P14 실패 분석에서 도출)
+
+#### 1. `.detach()` Gradient 격리 (ISSUE-008)
+
+```python
+# P13/P14/P15: gradient 오염
+cross_weights = compute_spatial_energy_confidence(aux_logits_list, ...)
+
+# P16: gradient 차단
+cross_weights = compute_spatial_entropy_confidence(
+    [z.detach() for z in aux_logits_list], ...
+)
+```
+
+Aux head는 자기 CE loss만으로 학습 → 정직한 confidence 출력.
+
+#### 2. Energy Score → Calibrated Entropy (ISSUE-009)
+
+```python
+def compute_spatial_entropy_confidence(aux_logits_list, temperature=1.0, num_classes=4):
+    conf_maps = []
+    max_entropy = math.log(num_classes)
+    for z in aux_logits_list:
+        probs = F.softmax(z / temperature, dim=1)
+        log_probs = F.log_softmax(z / temperature, dim=1)
+        entropy = -(probs * log_probs).sum(dim=1)          # (B, H, W)
+        confidence = 1.0 - entropy / max_entropy            # (B, H, W)
+        conf_maps.append(confidence)
+    stacked = torch.stack(conf_maps, dim=1)                 # (B, m, H, W)
+    weights = F.softmax(stacked / temperature, dim=1)       # (B, m, H, W)
+    return weights
+```
+
+Energy는 logit magnitude 기반 → "자신있게 틀리면" 높은 점수. Entropy는 분포 균등도 → 불확실하면 낮은 confidence.
+
+#### 3. Spatial-wise `(B, m, H, W)` 가중치 (P15에서 유지)
+
+UAMM/AMF 모두 pixel-level 가중치 사용. `F.interpolate`로 vision_feats/output 해상도에 맞춤.
+
+#### 4. Aux Warmup Schedule (신규)
+
+```python
+# 3단계: uniform → linear ramp → full entropy
+warmup_epochs = 10  # config: TRAIN.AUX_WARMUP_EPOCHS
+if epoch < warmup_epochs:
+    cross_weights = uniform(1/m)                  # P9처럼 안정적
+elif epoch < warmup_epochs + 5:
+    ramp = (epoch - warmup_epochs) / 5.0          # 0→1 linear
+    cross_weights = (1-ramp)*uniform + ramp*entropy
+else:
+    cross_weights = entropy                       # full adaptive
+```
+
+Aux head가 충분히 학습된 후에 UAMM/AMF 활성화. `_current_epoch` 속성을 train script에서 매 epoch 설정.
+
+### P15 vs P16 차이
+
+| 구분 | P15 (Levine 학습 중) | P16 |
+| --- | --- | --- |
+| Confidence 함수 | `compute_spatial_energy_confidence` | **`compute_spatial_entropy_confidence`** |
+| Gradient 격리 | 없음 | **`.detach()` 적용** |
+| Warmup | 없음 | **10ep uniform + 5ep ramp** |
+| Weight 형태 | `(B, m, H, W)` spatial | `(B, m, H, W)` spatial (동일) |
+| Aux Decoder | ModalAuxDecoder×3 (독립) | ModalAuxDecoder×3 (동일) |
+
+### 구현 상태
+
+- **구현 완료** (2026-02-27)
+- Config: `configs/levine-multiaqua_rgbtl_P16_hardaug5.yaml`
+- Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P16_hardaug5.yaml`
+- 학습 스크립트: `train_sam2_lora_paper.py` (warmup epoch 전달 + `_current_epoch` 설정)
+- 로깅: TensorBoard + trackio (전면 교체)
+
+### 추가 개선사항 (P16과 함께 구현)
+
+1. **5-epoch 주기 체크포인트 저장**: `periodic_epoch{N}_checkpoint.pth`
+2. **trackio 로깅**: TensorBoard 대체, 전체 메트릭 로깅 (per-class IoU/acc/f1, warmup_ramp 등)
+3. **tqdm 개선**: 0값 loss 숨김, warmup 상태 표시
+
+---
+
 ## 버전 비교 총괄
 
-| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Head | ConfidenceHeadV2 | CrossModalFusionHead | CrossModalFusionHeadV2 | CrossModalFusionHeadV2 | CrossModalFusionHead | ConfidenceAuxHead + Energy Score | ModalAuxDecoder×3 + Energy Score | ModalAuxDecoder×3 + **Calibrated Entropy** |
-| UAMM | sigmoid (0~1) | max-norm | max-norm | softmax+temperature | max-norm | max-norm (energy) | max-norm (energy) | **spatial max-norm** `(B,m,H,W)` |
-| AMF | norm(sigmoid) | raw softmax | raw softmax | raw softmax | raw softmax | energy softmax | energy softmax | **spatial entropy softmax** |
-| Aux Head | 없음 | 없음 | ModalAuxHead×3 | ModalAuxHead×3 | 없음 | ConfidenceAuxHead×1 (공유) | **ModalAuxDecoder×3** | ModalAuxDecoder×3 |
-| 추가 Loss | 없음 | 없음 | oracle KL (λ=0.5) | oracle KL + MI (λ=1.0) | 없음 | aux CE (λ=0.3) | aux CE (λ=0.3) | aux CE (λ=0.3) |
-| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | **`.detach()` 적용** |
-| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | **AUX_WARMUP (10ep)** |
-| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 |
-| 학습 반환 | (out, feat) | (out, feat) | (out, feat, aux, amf_w) | (out, feat, aux, amf_w, gates) | (out, feat) | (out, feat, aux_list) | (out, feat, aux_list) | (out, feat, aux_list) |
-| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 설계 단계 |
-| 교훈 | sigmoid saturation | 상대비교가 핵심 | oracle 과적합 | 진단이 먼저 | cond 효과 미미 | 방향 유효, 정확도 부족 | aux 독립화만 불충분 | **정확도+spatial+격리** |
+| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | **P16** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Head | ConfHeadV2 | CrossModalFH | CrossModalFHV2 | CrossModalFHV2 | CrossModalFH | AuxHead+Energy | AuxDec×3+Energy | AuxDec×3+Energy(spatial) | AuxDec×3+**Entropy(spatial)** |
+| UAMM | sigmoid | max-norm | max-norm | softmax+τ | max-norm | max-norm | max-norm | spatial max-norm | **spatial max-norm** |
+| AMF | norm(sig) | softmax | softmax | softmax | softmax | energy softmax | energy softmax | spatial energy | **spatial entropy** |
+| Aux Head | 없음 | 없음 | AuxHead×3 | AuxHead×3 | 없음 | 공유×1 | 독립×3 | 독립×3 | 독립×3 |
+| 추가 Loss | 없음 | 없음 | KL(0.5) | KL+MI(1.0) | 없음 | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) |
+| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | 없음 | **`.detach()`** |
+| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | **10ep+5ep ramp** |
+| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 |
+| 학습 반환 | (o,f) | (o,f) | (o,f,aux,w) | (o,f,aux,w,g) | (o,f) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) |
+| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 학습 중 | 구현 완료 |
+| 교훈 | sig saturation | 상대비교핵심 | oracle과적합 | 진단먼저 | cond미미 | 방향유효 | aux독립불충분 | P16과 비교 예정 | **4-fix 통합** |

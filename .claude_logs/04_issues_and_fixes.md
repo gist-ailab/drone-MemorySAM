@@ -1,6 +1,6 @@
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-02-26
+> 최종 업데이트: 2026-02-27
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -148,9 +148,9 @@ Block9_Q argmax_fraction:
    - 별도 JSON: `{image_id}_energy.json` (수치 데이터)
 
 3. **실행 위치**:
-   - `val_multiaqua_P9.py`의 P13 평가 경로에 추가
+   - `val_multiaqua.py`에 추가 (`val_multiaqua_P9.py`는 삭제된 상태)
    - `--save-auxmask` 플래그로 활성화
-   - 출력 디렉토리: `val_pred_P13/auxmask/`
+   - 출력 디렉토리: `{save_dir}/auxmask/`
 
 4. **코드 변경 필요 사항**:
    - `LoRA_Sam_P13.forward()`에서 `aux_logits`를 반환하도록 수정 (현재는 loss 계산에만 사용)
@@ -164,7 +164,7 @@ Block9_Q argmax_fraction:
    - [ ] Sky를 잘못 예측하는 모달리티가 어느 것인지 (Sky -1.42pp 하락 원인)
 
 **관련 파일**:
-- `val_multiaqua_P9.py`: 평가 스크립트 (시각화 추가 대상)
+- `val_multiaqua.py`: 평가 스크립트 (시각화 추가 대상)
 - `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: LoRA_Sam_P13, ConfidenceAuxHead
 - `val_pred_P13/`: 기존 P13 평가 결과 디렉토리
 
@@ -208,6 +208,98 @@ Sky가 가장 심각한 이유: 야간 하늘은 near-zero RGB → CRM/ZERO의 e
 
 - `semseg/augmentations_mm.py`: `RandomRGBComplementaryMasking` (line 142), `RandomRGBZeroOut` (line 168), `get_nightval_augmentation` (line 609)
 - Train config의 `NIGHT_AUG.CRM_P`, `NIGHT_AUG.ZERO_P`
+
+---
+
+### ISSUE-010: 로깅 시스템 전면 개선 — 모듈별 동작 모니터링 부재 [부분 해결]
+
+**상태**: 🟡 Training script 부분 해결 (2026-02-27). Eval script 미해결.
+**우선순위**: 중간 — Training 로깅은 trackio로 대폭 개선됨
+**영향**: train_sam2_lora_paper.py, val_multiaqua.py, 전 P 버전
+
+**문제 요약**:
+
+모델이 매 forward에서 `_last_uamm_scores`, `_last_amf_weights`, `_last_moe_gates`, `_last_aux_logits` 등을 내부 버퍼에 저장하지만, **학습 스크립트가 이 버퍼를 한 번도 읽지 않음**. 평가 스크립트도 일부만 사용. 결과적으로 fusion, MoE routing, expert collapse, aux head 품질을 학습 중에 전혀 모니터링할 수 없음.
+
+---
+
+#### A. Training Script (train_sam2_lora_paper.py) 빈틈
+
+**TensorBoard에 기록 안 되는 것들:**
+
+| 누락 항목 | 심각도 | 현재 상태 | 추가할 TB key |
+|-----------|--------|-----------|--------------|
+| Gate loss | HIGH | tqdm에만 표시, 학습 후 소실 | `train/gate_loss` |
+| MI loss | HIGH | tqdm에만 표시, 학습 후 소실 | `train/mi_loss` |
+| UAMM per modality | HIGH | 학습 중 미수집 | `train/uamm_img`, `_lidar`, `_thermal` |
+| AMF per modality | HIGH | 학습 중 미수집 | `train/amf_img`, `_lidar`, `_thermal` |
+| Aux loss per modality | HIGH | 3 모달리티 합산 후 기록 | `train/aux_loss_img`, `_lidar`, `_thermal` |
+| Per-class IoU (매 eval) | MEDIUM | new best일 때만 텍스트 | `val/iou_static`, `_dynamic`, `_water`, `_sky` |
+| Night per-class IoU | MEDIUM | new best일 때만 텍스트 | `val_night/iou_static`, `_dynamic`, `_water`, `_sky` |
+| MoE routing entropy | MEDIUM | 미수집 | `train/moe_entropy_mean` |
+| Expert collapse count | MEDIUM | 미수집 | `train/expert_collapse_count` |
+
+**이전 TensorBoard 기록은 6개 스칼라만**: `train/loss`, `train/proto_loss`, `train/aux_loss`, `train/lr`, `val/mIoU`, `val_night/mIoU`
+
+**2026-02-27 개선 (trackio 전환)**:
+
+- TensorBoard → trackio 전환 (TensorBoard fallback 유지)
+- Training: total_loss, seg_loss, proto_loss, aux_loss, gate_loss, mi_loss, lr, warmup_ramp
+- Day-Val: mIoU, pixel_acc, mean_f1, per-class IoU/acc/f1, best_mIoU
+- Night-Val: 동일한 포괄적 메트릭 세트 (`val_night/` prefix)
+- tqdm: 0값 loss 숨김, P16 warmup 상태 표시
+
+**구현 방법**:
+1. 매 eval 주기에 모델 버퍼에서 `_last_uamm_scores`, `_last_amf_weights` 읽어 TB에 기록
+2. Aux loss 계산 루프에서 per-modality loss를 리스트로 따로 저장 후 개별 기록
+3. Gate loss / MI loss를 epoch 평균으로 TB에 기록 (현재 tqdm 표시 코드 바로 옆에 추가)
+4. `print_iou()`의 per-class 결과를 매 eval마다 TB에 기록 (new best 조건 제거)
+
+---
+
+#### B. Evaluation Script (val_multiaqua.py) 빈틈
+
+| 누락 항목 | 심각도 | 현재 상태 | 추가할 형식 |
+|-----------|--------|-----------|------------|
+| Per-block MoE gate weights | HIGH | 24블록 mean으로 축소 → 블록별 정보 소실 | JSON dict (block별) |
+| Expert utilization / entropy per block | HIGH | 미수집 | JSON |
+| Energy Score raw values per modality | HIGH | softmax 후 weight만 저장, 원시 energy 폐기 | JSON per-image |
+| Aux head predictions (ISSUE-006) | HIGH | `_last_aux_logits` 저장되지만 미사용 | PNG + JSON |
+| Confusion matrix | MEDIUM | `metrics.hist` 계산되지만 미저장 | PNG heatmap |
+| Per-image IoU | MEDIUM | aggregate만 | CSV |
+
+**Per-block MoE gate 수정 방법**:
+현재 코드가 `np.stack(moe_gate_collector, axis=0).mean(axis=0)`로 즉시 축소.
+→ mean 대신 블록별 dict로 저장: `{"block0_Q": [e0, e1, e2], "block0_V": [e0, e1, e2], ...}`
+
+**Energy Score raw values 수정 방법**:
+`compute_energy_confidence()` 내부에서 중간값(per-modality raw energy, softmax 전 값)을 반환하도록 수정.
+→ return `(weights, raw_energies)` 형태로 변경, `_last_energy_raw` 버퍼 추가.
+
+---
+
+#### C. 삭제된 스크립트
+
+`val_multiaqua_P9.py`가 삭제된 상태. CLAUDE.md에서 참조 중이나 실제 파일 없음.
+- per-block MoE routing 분석 기능이 사라짐
+- **권장**: `val_multiaqua.py`에 해당 기능을 통합하거나, 별도 진단 스크립트로 분리
+
+---
+
+#### D. 구현 우선순위
+
+1. **즉시 (ISSUE-006과 함께)**: Aux mask 시각화 + Energy raw values 저장
+2. **단기**: Per-block MoE gate를 JSON에 블록별로 기록 (mean 축소 제거)
+3. **단기**: Aux loss per-modality 분리 기록 (TB)
+4. **단기**: Gate loss / MI loss TB 기록 (tqdm 옆에 1줄 추가)
+5. **중기**: Per-class IoU 매 eval TB 기록, Confusion matrix 저장
+6. **중기**: Expert collapse 자동 감지 + 경고 (training 중)
+
+**관련 파일**:
+- `train_sam2_lora_paper.py`: Training TB logging 추가 대상
+- `val_multiaqua.py`: Eval logging 확장 대상
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: 모델 버퍼 접근 (`_last_*`)
+- `semseg/models/sam2/sam2/sam_lola_utils.py`: `SoftMoE_LoRA_Layer._gate_callback`
 
 ---
 

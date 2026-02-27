@@ -10,6 +10,11 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from pathlib import Path
+try:
+    import trackio
+    HAS_TRACKIO = True
+except ImportError:
+    HAS_TRACKIO = False
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -405,14 +410,42 @@ def main(cfg, gpu, save_dir):
 
     if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
         writer = SummaryWriter(str(save_dir))
-        # logger.info('================== model complexity =====================')
-        # cal_flops(model, dataset_cfg['MODALS'], logger)
-        # logger.info('================== model structure =====================')
-        # logger.info(model)
+        # Trackio init
+        if HAS_TRACKIO:
+            trackio.init(
+                project="MemorySAM",
+                config={
+                    "model": lora_model_name,
+                    "backbone": model_cfg['BACKBONE'],
+                    "lora_r": lora_r,
+                    "num_experts": lora_num_experts,
+                    "epochs": epochs,
+                    "batch_size": train_cfg['BATCH_SIZE'],
+                    "lr": lr,
+                    "weight_decay": optim_cfg['WEIGHT_DECAY'],
+                    "scheduler": sched_cfg['NAME'],
+                    "loss": loss_cfg['NAME'],
+                    "lambda_gate": lambda_gate,
+                    "lambda_mi": lambda_mi,
+                    "lambda_aux": lambda_aux,
+                    "amp": train_cfg['AMP'],
+                    "ddp": train_cfg['DDP'],
+                    "night_aug": dataset_cfg.get('NIGHT_AUG', {}).get('ENABLE', False),
+                    "night_sim_p": dataset_cfg.get('NIGHT_AUG', {}).get('NIGHT_SIM_P', 0),
+                    "aux_warmup_epochs": train_cfg.get('AUX_WARMUP_EPOCHS', 0),
+                    "save_dir": str(save_dir),
+                    "dataset": dataset_cfg['NAME'],
+                    "modals": dataset_cfg['MODALS'],
+                },
+            )
         logger.info('================== training config =====================')
         logger.info(cfg)
         logger.info(f"Using LoRA model: {lora_model_name}")
         logger.info(f"LoRA parameters: r={lora_r}, num_experts={lora_num_experts}, top_k={lora_top_k}, lora_layer={lora_layer}")
+        logger.info(f"Loss weights: λ_gate={lambda_gate}, λ_mi={lambda_mi}, λ_aux={lambda_aux}")
+        _m_info = model.module if hasattr(model, 'module') else model
+        if hasattr(_m_info, 'aux_warmup_epochs'):
+            logger.info(f"[P16] Aux Warmup: {_m_info.aux_warmup_epochs} epochs uniform → 5 epoch ramp → full entropy")
     
     num_classes = trainset.n_classes
     feature_dim = 32
@@ -570,14 +603,28 @@ def main(cfg, gpu, save_dir):
             mi_loss_accum += mi_loss.item()
             aux_loss_accum += p13_aux_loss.item()
 
-            pbar.set_description(
+            desc = (
                 f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "
                 f"LR: {lr:.8f} Loss: {train_loss/(iter+1):.6f} "
-                f"Proto: {proto_loss/(iter+1):.6f} "
-                f"Gate: {gate_loss_accum/(iter+1):.6f} "
-                f"MI: {mi_loss_accum/(iter+1):.6f} "
-                f"Aux: {aux_loss_accum/(iter+1):.6f}"
+                f"Proto: {proto_loss/(iter+1):.6f}"
             )
+            # 활성 loss만 표시 (P13+에서 Gate/MI는 항상 0)
+            if gate_loss_accum > 0:
+                desc += f" Gate: {gate_loss_accum/(iter+1):.6f}"
+            if mi_loss_accum > 0:
+                desc += f" MI: {mi_loss_accum/(iter+1):.6f}"
+            if aux_loss_accum > 0:
+                desc += f" Aux: {aux_loss_accum/(iter+1):.6f}"
+            # [P16] Warmup 상태 표시
+            if hasattr(_m, 'aux_warmup_epochs'):
+                wu = _m.aux_warmup_epochs
+                ramp_end = wu + 5
+                if epoch < wu:
+                    desc += f" [Warmup {epoch+1}/{wu}]"
+                elif epoch < ramp_end:
+                    ramp = (epoch - wu) / 5.0
+                    desc += f" [Ramp {ramp:.1f}]"
+            pbar.set_description(desc)
         
         train_loss /= iter+1
         proto_loss /= iter+1
@@ -597,6 +644,32 @@ def main(cfg, gpu, save_dir):
             writer.add_scalar('train/proto_loss', proto_loss, epoch)
             writer.add_scalar('train/aux_loss', aux_loss_accum / (iter + 1), epoch)
             writer.add_scalar('train/lr', avg_lr, epoch)
+
+            # Trackio: 학습 메트릭 로깅
+            if HAS_TRACKIO:
+                trackio_train = {
+                    "epoch": epoch + 1,
+                    "train/total_loss": train_loss,
+                    "train/seg_loss": (train_loss - proto_loss
+                                       - lambda_gate * gate_loss_accum / (iter + 1)
+                                       - lambda_mi * mi_loss_accum / (iter + 1)
+                                       - lambda_aux * aux_loss_accum / (iter + 1)),
+                    "train/proto_loss": proto_loss,
+                    "train/aux_loss": aux_loss_accum / (iter + 1),
+                    "train/gate_loss": gate_loss_accum / (iter + 1),
+                    "train/mi_loss": mi_loss_accum / (iter + 1),
+                    "train/lr": avg_lr,
+                }
+                # P16 warmup ramp 값
+                if hasattr(_m, 'aux_warmup_epochs'):
+                    wu = _m.aux_warmup_epochs
+                    if epoch < wu:
+                        trackio_train["train/warmup_ramp"] = 0.0
+                    elif epoch < wu + 5:
+                        trackio_train["train/warmup_ramp"] = (epoch - wu) / 5.0
+                    else:
+                        trackio_train["train/warmup_ramp"] = 1.0
+                trackio.log(trackio_train)
             
             # Plot and save graphs
             plot_training_curves(save_dir, epochs_list, train_losses, train_proto_losses, train_lrs)
@@ -642,8 +715,25 @@ def main(cfg, gpu, save_dir):
 
         if ((epoch+1) % train_cfg['EVAL_INTERVAL'] == 0 and (epoch+1)>train_cfg['EVAL_START']) or (epoch+1) == epochs:
             if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
-                acc, macc, _, _, ious, miou = evaluate(model, valloader, device)
+                acc, macc, f1, mf1, ious, miou = evaluate(model, valloader, device)
                 writer.add_scalar('val/mIoU', miou, epoch)
+
+                # Trackio: Day-Val 전체 메트릭 로깅
+                if HAS_TRACKIO:
+                    trackio_val = {
+                        "epoch": epoch + 1,
+                        "val/mIoU": miou,
+                        "val/pixel_acc": macc,
+                        "val/mean_f1": mf1,
+                        "val/best_mIoU": best_mIoU,
+                    }
+                    for c, v in zip(class_names, ious):
+                        trackio_val[f"val_iou/{c}"] = v
+                    for c, v in zip(class_names, acc):
+                        trackio_val[f"val_acc/{c}"] = v
+                    for c, v in zip(class_names, f1):
+                        trackio_val[f"val_f1/{c}"] = v
+                    trackio.log(trackio_val)
 
                 # Top-5 유지: 현재 top_day_ckpts 최하위보다 높거나 5개 미만이면 저장
                 worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
@@ -664,12 +754,36 @@ def main(cfg, gpu, save_dir):
                         best_mIoU = miou
                         best_epoch = new_epoch_day
                         logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
-                logger.info(f"Current epoch:{epoch} mIoU: {miou} Best mIoU: {best_mIoU} Loss: {train_loss :.8f} Proto Loss: {proto_loss :.8f}")
+                # Per-class IoU 요약
+                iou_str = " | ".join([f"{c}: {v:.2f}" for c, v in zip(class_names, ious)])
+                aux_str = f"  Aux: {aux_loss_accum/(iter+1):.4f}" if aux_loss_accum > 0 else ""
+                logger.info(
+                    f"[Day-Val] epoch:{epoch+1}  mIoU: {miou:.4f}  Best: {best_mIoU:.4f} (ep{best_epoch})"
+                    f"  Loss: {train_loss:.6f}  Proto: {proto_loss:.6f}{aux_str}"
+                    f"\n         IoU: {iou_str}"
+                )
 
                 # ── [Night-Val] 야간 시뮬 조건 평가 (ISSUE-001) ──────────────────────
                 if night_valloader is not None:
-                    night_acc, night_macc, _, _, night_ious, night_miou = evaluate(model, night_valloader, device)
+                    night_acc, night_macc, night_f1, night_mf1, night_ious, night_miou = evaluate(model, night_valloader, device)
                     writer.add_scalar('val_night/mIoU', night_miou, epoch)
+
+                    # Trackio: Night-Val 전체 메트릭 로깅
+                    if HAS_TRACKIO:
+                        trackio_night = {
+                            "epoch": epoch + 1,
+                            "val_night/mIoU": night_miou,
+                            "val_night/pixel_acc": night_macc,
+                            "val_night/mean_f1": night_mf1,
+                            "val_night/best_mIoU": best_night_mIoU,
+                        }
+                        for c, v in zip(class_names, night_ious):
+                            trackio_night[f"val_night_iou/{c}"] = v
+                        for c, v in zip(class_names, night_acc):
+                            trackio_night[f"val_night_acc/{c}"] = v
+                        for c, v in zip(class_names, night_f1):
+                            trackio_night[f"val_night_f1/{c}"] = v
+                        trackio.log(trackio_night)
 
                     worst_night = top_night_ckpts[-1][0] if len(top_night_ckpts) >= 5 else -1.0
                     if night_miou > worst_night:
@@ -691,10 +805,16 @@ def main(cfg, gpu, save_dir):
                             logger.info(f"[Night-Val] NEW BEST  epoch{best_night_epoch}  Night mIoU: {best_night_mIoU:.4f}")
                             logger.info(print_iou(epoch, night_ious, night_miou, night_acc, night_macc, class_names))
 
-                    logger.info(f"[Night-Val] epoch:{epoch}  Night mIoU: {night_miou:.4f}  Best Night mIoU: {best_night_mIoU:.4f}")
+                    night_iou_str = " | ".join([f"{c}: {v:.2f}" for c, v in zip(class_names, night_ious)])
+                    logger.info(
+                        f"[Night-Val] epoch:{epoch+1}  mIoU: {night_miou:.4f}  Best: {best_night_mIoU:.4f} (ep{best_night_epoch})"
+                        f"\n            IoU: {night_iou_str}"
+                    )
 
     if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
         writer.close()
+        if HAS_TRACKIO:
+            trackio.finish()
     pbar.close()
     end = time.gmtime(time.time() - start)
 

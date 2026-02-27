@@ -2,7 +2,7 @@
 
 > 최종 업데이트: 2026-02-27
 
-## 현재 상태: P9가 최선 모델 (M=81.47), P15 설계 완료 (Calibrated Spatial Entropy Fusion)
+## 현재 상태: P9가 최선 모델 (M=81.47), P15 학습 중 (Levine), P16 구현 완료 (학습 대기)
 
 ### P14 실험 결과 (2026-02-27 완료)
 
@@ -100,16 +100,22 @@
    - Aux mask 품질 여전히 불충분 → Energy Score 신뢰도 낮음
    - Image-level scalar fusion의 근본 한계 확인 → P15 동기
 
-9. **P15 (Calibrated Spatial Entropy Fusion) — 설계 완료, 구현 대기**
-   - P12~P14 실패 분석에서 도출된 4가지 수정사항 통합:
-     1. `.detach()` gradient 격리 (ISSUE-008)
-     2. Energy Score → Calibrated Entropy (ISSUE-009: "confident but wrong" 해결)
-     3. Spatial-wise `(B, m, H, W)` 가중치 (ISSUE-004)
-     4. Aux Warmup Schedule (초기 N epoch uniform → 이후 활성화)
-   - Baseline(단순평균) < P9(학습된상수) 확인 → UAMM/AMF 개념 유효
-   - P9 val/test 가중치 완전 동일 (std≈0) → "학습된 상수"이므로 적응형 개선 여지 있음
-   - P13이 낮/밤 적응 실제 수행 (img AMF: 0.404→0.289) → 방향 유효, 정확도가 병목
-   - 상세 설계: `.claude_logs/02_model_arch.md` P15 섹션
+9. **P15 (Spatial Energy Fusion) — Levine에서 학습 중**
+   - Spatial-wise `(B, m, H, W)` 가중치 + Energy Score 기반
+   - P15 설계 문서의 4가지 수정 중 Fix 3(spatial-wise)만 적용
+   - `.detach()`, Calibrated Entropy, Warmup은 미적용 → P16에서 통합
+   - Config: `configs/levine-multiaqua_rgbtl_P15_hardaug5.yaml`
+   - 결과 대기 중
+
+10. **P16 (Calibrated Spatial Entropy Fusion) — 구현 완료, 학습 대기**
+    - P12~P14 실패 분석에서 도출된 **4가지 수정사항 모두 통합**:
+      1. `.detach()` gradient 격리 (ISSUE-008)
+      2. Energy Score → Calibrated Entropy (ISSUE-009)
+      3. Spatial-wise `(B, m, H, W)` 가중치 (ISSUE-004)
+      4. Aux Warmup Schedule (10ep uniform + 5ep linear ramp)
+    - Config: `configs/levine-multiaqua_rgbtl_P16_hardaug5.yaml`
+    - 추가 개선: 5-epoch 주기 checkpoint, trackio 로깅, tqdm 개선
+    - 상세 아키텍처: `.claude_logs/02_model_arch.md` P16 섹션
 
 ### 미해결 과제
 
@@ -121,7 +127,7 @@
 6. **P13 best day-val checkpoint test 재평가**: epoch14(93.48)로 M-score 역전 가능성 확인 필요
 7. **Diffusion 기반 Night 합성** (ISSUE-005): M=85 도달을 위한 최유력 접근, 미구현
 8. **Ensemble**: P9(Sky 우세) + P13(Dynamic 우세) 상보성 활용 가능
-9. **🔴 ISSUE-009: Energy Score "confident but wrong"**: P15에서 calibrated entropy로 교체 예정
+9. **🟢 ISSUE-009: Energy Score "confident but wrong"**: P16에서 calibrated entropy로 교체 완료 (구현됨, 학습 대기)
 
 ### 중요 발견사항
 
