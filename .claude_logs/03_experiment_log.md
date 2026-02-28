@@ -26,9 +26,13 @@
 | 8 | P8 | hardaug3 | 93.36 | 61.57 | 79.12 | 27.17 | 77.46 | 15616 |
 | 9 | P11 | hardaug4 | 93.17 | 61.01 | 78.40 | 20.95 | 77.09 | 15851 |
 | 10 | P10 | hardaug3 | 93.18 | 58.93 | 78.57 | 22.36 | 76.05 | 15757 |
-| 11 | **P15** | hardaug5 | 93.17 | **48.94** | 78.31 | 24.96 | **71.05** | 16087 |
-| 12 | P13 | hardaug4 (ep39) | 92.45 | 50.48 | 75.93 | - | 71.67 | 16044 |
-| 13 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
+| 11 | P14 | hardaug5 | 93.18 | 55.36 | 78.69 | 23.60 | 74.27 | 16062 |
+| 12 | **P17** | hardaug5 (night_ep35) | 92.60 | 53.86 | 76.29 | 17.98 | **73.23** | 16107 |
+| 13 | P17 | hardaug5 (ep28) | 92.99 | 52.69 | 77.72 | 28.36 | 72.84 | 16108 |
+| 14 | P13 | hardaug4 (ep39) | 92.86 | 50.48 | 77.08 | 14.53 | 71.67 | 16044 |
+| 15 | P15 | hardaug5 | 93.17 | 48.94 | 78.31 | 24.96 | 71.05 | 16087 |
+| 16 | **P16** | hardaug5 (night_ep31) | 93.14 | **43.70** | 78.68 | 20.56 | **68.42** | 16106 |
+| 17 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
 
 ---
 
@@ -268,6 +272,92 @@
   1. Spatial-wise를 단독 적용하면 오히려 해로움 — aux mask 정확도 개선(Fix 1,2,4)이 선행되어야 함
   2. Energy Score의 "confident but wrong" 문제가 spatial에서 더 치명적
   3. Fix 3은 Fix 1+2+4와 함께 적용해야 효과 있음 (P16의 접근)
+
+---
+
+### P16 Experiments
+
+#### P16-1: hardaug5 (night_epoch31, night-val best)
+
+- **Config 학습**: `configs/bengio-multiaqua_rgbtl_P16_hardaug5.yaml`
+- **Config 평가**: `configs/eval_config/bengio-multiaqua_rgbtl_P16_hardaug5.yaml`
+- **Checkpoint**: `outputs/MMSamP16/bengio_multiaqua_rgbtl_P16_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch31_90.56_top1_checkpoint.pth`
+- **체크포인트 선택**: Night-Val 기준 (90.56 mIoU)
+- **결과**: Val 93.14 / Test **43.70** / M **68.42** — **역대 최악**
+- **Challenge result**: Submission #16106
+- **Per-class Test IoU**: Static 58.19 / Dynamic 20.76 / Water 92.24 / **Sky 3.17**
+- **Obstacle IoU**: Val 78.68 / Test 20.56
+- **P16 아키텍처**: P14의 ModalAuxDecoder + 4 Fixes 통합
+  1. `.detach()` gradient 격리
+  2. Energy Score → Calibrated Entropy
+  3. Spatial-wise `(B, m, H, W)` 가중치
+  4. Aux Warmup Schedule (10ep uniform + 5ep linear ramp)
+- **Sky 완전 붕괴**: 157/200 프레임 Sky=0, 191/200 프레임 Sky<10%
+- **UAMM 분석 (test)**: img=0.758±0.012, lidar=0.819±0.014, **thermal=0.923±0.011** (thermal 지배)
+- **CV < 0.02**: 거의 고정 비율 → adaptive fusion 실패, 하지만 P9의 좋은 고정비율과 달리 thermal 편향
+- **원인**: Calibrated entropy + spatial에서도 aux mask 품질 부족(ISSUE-008) → thermal이 항상 낮은 entropy → Sky 영역에서 thermal 기반 예측 → sky 인식 불가
+
+---
+
+### P17 Experiments
+
+#### P17-1: hardaug5 (night_epoch35, night-val best)
+
+- **Config 학습**: `configs/bengio-multiaqua_rgbtl_P17_hardaug5.yaml`
+  (학습은 levine 서버, 결과 디렉토리명은 `levine_multiaqua_rgbtl_P17_hardaug5`)
+- **Config 평가**: `configs/eval_config/bengio-multiaqua_rgbtl_P17_hardaug5.yaml`
+- **Checkpoint**: `outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch35_90.34_top1_checkpoint.pth`
+- **체크포인트 선택**: Night-Val 기준 (90.34 mIoU)
+- **결과**: Val 92.60 / Test **53.86** / M **73.23**
+- **Challenge result**: Submission #16107
+- **Per-class Test IoU**: Static 61.46 / Dynamic 19.44 / Water 93.54 / **Sky 33.35**
+- **Obstacle IoU**: Val 76.29 / Test 17.98
+- **P17 아키텍처**: P16 + MultiScaleModalAuxDecoder
+  - `ModalAuxDecoder`(fpn[0] 32ch만) → `MultiScaleModalAuxDecoder`(fpn[0,1,2] 352ch)
+  - 3개 FPN 레벨: fpn[0](32ch,256²) + fpn[1](64ch,128²) + fpn[2](256ch,64²)
+  - proj_dim=32 → concat(96ch) → 3×3 conv → 4class logits, ~53K/modality
+- **Sky 부분 회복**: P16(3.17) → P17(33.35) = +30.18pp. Sky=0 프레임 157→62개
+- **UAMM 분석 (test)**: img=0.864±0.030, lidar=0.787±0.032, thermal=0.864±0.029
+  - P16 대비 thermal 지배 완화 (0.923→0.864)
+  - CV 0.03-0.04 (P16: <0.02) — 2x 더 adaptive
+- **Multi-Scale FPN 효과**: fpn[2](256ch) semantic context가 sky/static 구분 기여
+- **그러나**: P9(M=81.47) 대비 여전히 -8.24. Static -20pp, Sky -43pp 갭 지속
+
+#### P17-2: hardaug5 (epoch28, day-val best)
+
+- **Checkpoint**: `outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch28_93.77_top1_checkpoint.pth`
+- **체크포인트 선택**: Day-Val 기준 (93.77 mIoU)
+- **결과**: Val 92.99 / Test 52.69 / M 72.84
+- **Challenge result**: Submission #16108
+- **Per-class Test IoU**: Static **63.99** / Dynamic **27.62** / Water **94.26** / Sky 20.83
+- **Night-val vs Day-val 체크포인트 비교**:
+  - Night-val(ep35): Sky 33.35 (우세) / Static 61.46 / Dynamic 19.44
+  - Day-val(ep28): Sky 20.83 / Static 63.99 (우세) / Dynamic 27.62 (우세)
+  - mIoU 유사 (53.86 vs 52.69) 하지만 Sky vs Static+Dynamic 트레이드오프
+- **교훈**: Night-val checkpoint이 Sky에 유리하고 M-score도 미세 우세 (73.23 vs 72.84)
+
+---
+
+### P14~P17 종합 분석: Dynamic Fusion의 실패
+
+**핵심 패턴**: P9 이후 모든 adaptive fusion 시도가 P9의 고정 상수보다 나쁨
+
+| 모델 | Fusion 방식 | M-score | vs P9 |
+|------|-----------|---------|-------|
+| P9 | 고정 상수 (img:27.5%, lidar:35.5%, thermal:37.0%) | 81.47 | — |
+| P12 | Conditional MoE | 80.80 | -0.67 |
+| P13 | Energy Score | 81.21 | -0.26 |
+| P14 | Energy + aux decoder 독립 | 74.27 | -7.20 |
+| P15 | Spatial energy (Fix3만) | 71.05 | -10.42 |
+| P16 | Calibrated entropy + 4 Fixes | 68.42 | -13.05 |
+| P17 | Multi-scale entropy + 4 Fixes | 73.23 | -8.24 |
+
+**실패 원인 3가지**:
+1. **Aux mask 품질 부족** (ISSUE-008): frozen backbone → GT 대비 부정확한 mask → entropy/energy 계산이 무의미
+2. **Thermal 편향**: 야간에서 thermal이 전반적으로 confident → 과도한 가중치. 하지만 Sky에서 thermal은 무력
+3. **Spatial amplification**: pixel-level fusion이 aux mask의 local error를 증폭 (P14→P15에서 -3.22pp 추가 하락이 증거)
+
+**P9가 잘 작동하는 이유**: SAM2 memory attention이 이미 cross-modal implicit adaptation 수행. UAMM/AMF가 고정이어도 memory 내부에서 모달리티 간 정보가 선택적으로 활용됨.
 
 ---
 

@@ -752,6 +752,66 @@ Phase 3 (Spatial UAMM + Tracking), Phase 4 (AMF Fusion)는 P16과 동일.
 
 ---
 
+## P18: Trainable ResNet-18 Aux Backbone + Configurable Fusion
+
+파일: `sam_lora_image_encoder_seg.py` 끝부분, 클래스: `LoRA_Sam_P18`
+
+### P17에서의 변경 동기
+
+P13~P17 모두 frozen SAM2 Hiera B+ FPN feature로 aux decoder를 학습 (ISSUE-008).
+P17이 3개 FPN 레벨을 사용해도 feature 자체가 MULTIAQUA 도메인에 특화되지 않아 aux mask 품질 한계.
+
+해결: **ImageNet pretrained ResNet-18**을 trainable aux backbone으로 추가.
+aux CE loss로 MULTIAQUA 4-class에 직접 fine-tune → 도메인 특화 feature 학습.
+
+### 핵심 변경: ResNet-18 Aux Pipeline
+
+```
+Input (3ch) → ResNetAuxBackbone → layer2(128ch, H/8) + layer3(256ch, H/16)
+                                    ↓
+              ResNetAuxDecoder → aux_logits (B, 4, 128, 128)
+                                    ↓
+                    aux CE loss (trains ResNet) + optional entropy fusion
+```
+
+**ResNetAuxBackbone** (~11.2M):
+- 3개 per-modality stems (Conv7×7+BN+ReLU, pretrained conv1 복제 초기화)
+- 1개 shared body (maxpool + layer1 + layer2 + layer3)
+- layer4 미사용 (해상도 32×32로 너무 낮음)
+
+**ResNetAuxDecoder** (~53K per modality):
+- layer2(128ch)+layer3(256ch) → proj(32ch×2) → concat(64ch) → 3×3 conv → 4ch logits
+
+### Two Sub-Variants: `use_entropy_fusion` 플래그
+
+| | P18-A (False) | P18-B (True) |
+|---|---|---|
+| Fusion | P9-style CrossModalFusionHead (scalar) | P17-style spatial entropy |
+| UAMM | scalar max-norm `(B, m)` | spatial max-norm `(B, m, H, W)` |
+| AMF | scalar softmax `(B, m)` | spatial entropy softmax `(B, m, H, W)` |
+| ResNet역할 | aux CE loss로만 학습 (fusion 미영향) | aux logits → entropy → fusion 구동 |
+| Warmup | 불필요 (entropy 미사용) | 10ep+5ep ramp |
+
+### P17 vs P18 차이
+
+| 구분 | P17 | **P18-A** | **P18-B** |
+|---|---|---|---|
+| Aux feature source | SAM2 FPN (frozen) | **ResNet-18 (trainable)** | **ResNet-18 (trainable)** |
+| Aux decoder input | fpn[0,1,2] (352ch) | ResNet l2+l3 (384ch) | ResNet l2+l3 (384ch) |
+| Aux decoder | MultiScaleModalAuxDecoder | **ResNetAuxDecoder** | **ResNetAuxDecoder** |
+| Fusion | spatial entropy | **P9 scalar** | spatial entropy |
+| Trainable aux params | ~159K | **~11.4M** | **~11.4M** |
+| Total trainable | ~8.7M | **~20M** | **~20M** |
+
+### 구현 상태
+
+- **구현 완료** (2026-03-01)
+- Config: `configs/levine-multiaqua_rgbtl_P18_hardaug5.yaml`
+- Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P18_hardaug5.yaml`
+- 학습 스크립트: `use_entropy_fusion` inspect dispatch 추가
+
+---
+
 ## 버전 비교 총괄
 
 | 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | **P17** |

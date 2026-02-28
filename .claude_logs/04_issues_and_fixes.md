@@ -593,3 +593,21 @@ Label: 원본 GT 그대로 사용 (ControlNet이 구조 보존)
 - `sam_lola_utils.py`의 `reset_parameters()`를 직접 수정하면 P9 등 기존 모델에 영향
 - P13에서는 `__init__`에서 LoRA 설치 후 experts_b만 재초기화하는 방식으로 구현
 - 기존 모델 호환성 유지
+
+### 7. 평가 출력 디렉토리 네이밍 (2026-02-28 변경)
+
+- **변경 전**: `val_pred/`, `test_pred/`, `eval_macvi/` (체크포인트 구분 불가, 덮어쓰기 위험)
+- **변경 후**: 체크포인트 이름이 prefix로 붙음
+  - `val_multiaqua.py`: `{ckpt_prefix}_val_pred/`, `{ckpt_prefix}_test_pred/`, `{ckpt_prefix}_eval_macvi/`
+  - `val_multiaqua_detailed.py`: `{ckpt_prefix}_val_pred_{P버전}/`, `{ckpt_prefix}_test_pred_{P버전}/`
+  - 결과 txt: `eval_{split}_{ckpt_prefix}_{timestamp}.txt`
+- `ckpt_prefix` = checkpoint 파일명에서 `_checkpoint` 제거 (예: `epoch28_93.77_top1`)
+- `--save_dir` 직접 지정 시 prefix 미적용 (기존 동작 유지)
+
+### 8. P16/P17 평가 시 `_current_epoch` 설정 (2026-02-28 변경)
+
+- P16/P17은 warmup schedule 사용 (`_current_epoch < 10` → uniform weights)
+- 체크포인트 로드 시 `_current_epoch`은 저장되지 않음 → 기본값 0
+- **`_current_epoch=0`이면 entropy fusion이 비활성화** (uniform 1/m으로 동작)
+- `val_multiaqua.py`, `val_multiaqua_detailed.py` 모두 로드 후 `model._current_epoch = 9999` 설정
+- P15 이하 모델은 `_current_epoch` 속성 없음 → `hasattr` 체크로 호환성 유지

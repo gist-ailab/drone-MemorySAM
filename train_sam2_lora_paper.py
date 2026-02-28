@@ -289,6 +289,9 @@ def main(cfg, gpu, save_dir):
     if 'aux_warmup_epochs' in sig.parameters:
         # [P16] Aux Warmup: 초기 N epoch uniform weights
         model_kwargs['aux_warmup_epochs'] = train_cfg.get('AUX_WARMUP_EPOCHS', 10)
+    if 'use_entropy_fusion' in sig.parameters:
+        # [P18] P18-A(False): P9-style 고정상수, P18-B(True): entropy fusion
+        model_kwargs['use_entropy_fusion'] = model_cfg.get('USE_ENTROPY_FUSION', False)
 
     model = lora_model_class(**model_kwargs).cpu()
     

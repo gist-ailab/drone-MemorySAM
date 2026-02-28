@@ -2,7 +2,18 @@
 
 > 최종 업데이트: 2026-02-27
 
-## 현재 상태: P9가 최선 모델 (M=81.47), P16 학습 대기, P17 구현 완료 (학습 대기)
+## 현재 상태: P9가 최선 모델 (M=81.47), P14~P17 전부 하락 — Dynamic Fusion 실패 확정
+
+### P16/P17 실험 결과 (2026-02-27 완료)
+
+- **P16 M=68.42 (역대 최악)**, P17 M=73.23 (부분 회복, 여전히 P9 대비 -8.24)
+- **P16**: Calibrated entropy + 4 Fixes 통합. Sky IoU **3.17%** (157/200 프레임 Sky=0). Thermal UAMM=0.923으로 지배.
+- **P17**: Multi-Scale FPN Aux Decoder (fpn[0,1,2] 352ch). Sky **33.35%** (+30.18 vs P16). 변동성 2x 증가.
+- **핵심 결론**: P9 이후 모든 adaptive fusion이 P9의 고정 상수보다 나쁨
+  - P12(-0.67), P13(-0.26), P14(-7.20), P15(-10.42), **P16(-13.05)**, P17(-8.24)
+  - Aux mask 품질 부족 → entropy/energy 추정 무의미 → thermal 편향 → Sky 붕괴
+  - SAM2 memory attention이 이미 implicit cross-modal adaptation 수행 → 외부 dynamic fusion 불필요?
+- **다음 실험 방향**: P9 기반 점진적 개선 (A1: P9+hardaug5, A2: TTA, A3: Ensemble)
 
 ### P14 실험 결과 (2026-02-27 완료)
 
@@ -110,25 +121,140 @@
    - **하지만** aux mask 부정확 + energy 부정확 + no-detach → spatial이 피해만 증폭
    - Checkpoint: epoch46 (day-val best). Night-val best(epoch45) 미평가
 
-10. **P16 (Calibrated Spatial Entropy Fusion) — 구현 완료, 학습 대기**
-    - P12~P14 실패 분석에서 도출된 **4가지 수정사항 모두 통합**:
-      1. `.detach()` gradient 격리 (ISSUE-008)
-      2. Energy Score → Calibrated Entropy (ISSUE-009)
-      3. Spatial-wise `(B, m, H, W)` 가중치 (ISSUE-004)
-      4. Aux Warmup Schedule (10ep uniform + 5ep linear ramp)
-    - Config: `configs/bengio-multiaqua_rgbtl_P16_hardaug5.yaml`
-    - 추가 개선: 5-epoch 주기 checkpoint, trackio 로깅, tqdm 개선
-    - 상세 아키텍처: `.claude_logs/02_model_arch.md` P16 섹션
+10. **P16 (Calibrated Spatial Entropy Fusion) — 실험 완료, M=68.42 (역대 최악)**
+    - 4가지 Fix 통합: detach, calibrated entropy, spatial, warmup
+    - **Sky IoU 3.17%** (157/200 프레임 Sky=0), thermal UAMM=0.923 지배
+    - Submission #16106
 
-11. **P17 (Multi-Scale FPN Aux Decoder) — 구현 완료, 학습 대기**
-    - P16 기반 + ISSUE-008(frozen backbone bottleneck) 직접 해결
-    - **핵심 변경**: `ModalAuxDecoder`(fpn[0] 32ch만) → `MultiScaleModalAuxDecoder`(fpn[0,1,2] 352ch)
-    - 3개 FPN 레벨: fpn[0](32ch,256²) + fpn[1](64ch,128²) + fpn[2](256ch,64²)
-    - proj_dim=32로 project → concat(96ch) → 3×3 conv → 4class logits
-    - ~53K params/modality (기존 ~290 대비 증가하지만, 정보량 11배 증가 대비 합리적)
-    - P16의 4 Fix 모두 유지 (detach, entropy, spatial, warmup)
-    - Config: `configs/bengio-multiaqua_rgbtl_P17_hardaug5.yaml`
-    - 상세 아키텍처: `.claude_logs/02_model_arch.md` P17 섹션
+11. **P17 (Multi-Scale FPN Aux Decoder) — 실험 완료, M=73.23 (P16 대비 +4.81)**
+    - P16 + MultiScaleModalAuxDecoder (fpn[0,1,2] 352ch)
+    - Sky 33.35% (+30.18 vs P16), UAMM 변동성 2x 증가
+    - 하지만 P9(81.47) 대비 여전히 -8.24. Dynamic fusion 방향의 한계 확인
+    - Submission #16107 (night_ep35), #16108 (ep28)
+
+### 다음 실험 계획
+
+#### 실험 A: P9 + hardaug5 (Aug Ablation)
+
+- **목적**: hardaug4 vs hardaug5 영향 분리. P14~P17 하락이 아키텍처인지 augmentation인지 판별
+- **필요 파일**:
+  1. `configs/levine-multiaqua_rgbtl_P9_hardaug5.yaml`
+  2. `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug5.yaml`
+- **LORA_MODEL**: `LoRA_Sam_P9` (아키텍처 변경 없음)
+- **SAVE_DIR**: `./outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug5`
+- **변경 내용**: P9 hardaug4에서 NIGHT_AUG만 hardaug5로 교체
+  - CRM/ZERO 제거, NIGHT_SIM_P 0.45→0.60, BRIGHTNESS [0.03,0.45]→[0.02,0.20]
+- **상태**: 계획 완료, 구현 대기
+
+#### 실험 B: P9 + hardaug6 (Diversity Augmentation)
+
+- **목적**: test 분포에 맞추는 대신, 훨씬 넓고 다양한 augmentation으로 robustness 극대화
+- **가설**: hardaug3~5가 test 통계에 맞추려다 오히려 좁은 일반화 → 넓은 범위가 더 유리할 수 있음
+  - 근거: hardaug3(실측정렬)이 hardaug2(넓은범위)보다 나빴음 (M 77.46 vs 78.37)
+- **필요 파일**:
+  1. `configs/levine-multiaqua_rgbtl_P9_hardaug6.yaml`
+  2. `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug6.yaml`
+- **LORA_MODEL**: `LoRA_Sam_P9` (아키텍처 변경 없음)
+- **SAVE_DIR**: `./outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug6`
+- **hardaug6 설계** (Broader Range + Diversity):
+
+| 파라미터 | hardaug4 | hardaug5 | **hardaug6** | 변경 이유 |
+| --- | --- | --- | --- | --- |
+| NIGHT_SIM_P | 0.45 | 0.60 | **0.50** | 중간값, 주간 데이터도 충분히 보존 |
+| BRIGHTNESS | [0.03, 0.45] | [0.02, 0.20] | **[0.01, 0.60]** | 매우 넓은 범위: 극저조도~약간 밝은 야간 |
+| SAMPLING | dark_biased | dark_biased | **dark_biased** | 유지 |
+| DARK_RATIO | 0.60 | 0.70 | **0.50** | 50%만 dark, 나머지 uniform → 다양성 확보 |
+| DARK_RANGE | [0.03, 0.12] | [0.02, 0.06] | **[0.01, 0.10]** | 극저조도 포함하되 범위 넓게 |
+| MODERATE_RANGE | [0.12, 0.45] | [0.06, 0.20] | **[0.10, 0.60]** | 밝은 야간도 포함 |
+| CONTRAST | [0.3, 0.7] | [0.20, 0.65] | **[0.15, 0.85]** | 넓은 contrast 변동 |
+| GAMMA | [0.4, 0.8] | [0.30, 0.75] | **[0.20, 1.50]** | gamma>1.0도 포함 (밝기 반전 효과) |
+| NOISE_STD | 0.02 | 0.025 | **0.03** | 노이즈 다양성 증가 |
+| CRM_P | 0.35 | 제거 | **제거** | CRM/ZERO overfitting 방지 (유지) |
+| ZERO_P | 0.09 | 제거 | **제거** | |
+
+- **핵심 철학**: "test 분포에 맞추지 말고, 모든 조건에서 robust하게 만든다"
+- **상태**: 계획 완료, 구현 대기
+
+#### 실험 C: P17 + hardaug6
+
+- **목적**: hardaug6가 P9에서 효과적이면, P17에서도 aux mask 학습에 도움될 수 있는지 확인
+- **가설**: 넓은 augmentation이 aux decoder에 더 다양한 학습 신호 제공 → entropy 추정 품질 향상
+- **P17은 P9보다 augmentation 의존도가 높을 수 있음**: aux decoder가 다양한 brightness 조건을 경험할수록 각 모달리티의 entropy를 더 정확하게 추정
+- **필요 파일**:
+  1. `configs/levine-multiaqua_rgbtl_P17_hardaug6.yaml`
+  2. `configs/eval_config/levine-multiaqua_rgbtl_P17_hardaug6.yaml`
+- **LORA_MODEL**: `LoRA_Sam_P17`
+- **SAVE_DIR**: `./outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug6`
+- **우선순위**: P9+hardaug6 결과 확인 후 진행 (조건부)
+- **상태**: 계획 완료, P9+hardaug6 결과 대기
+
+#### 실험 D: P18 — Trainable Aux Backbone (ResNet-18)
+
+- **목적**: frozen SAM2 FPN feature 위 lightweight decoder의 aux mask 품질 한계 돌파
+- **가설**: 2,952장 train data + ImageNet pretrain → ResNet-18이 MULTIAQUA 4-class 특화 feature 학습 가능
+- **LORA_MODEL**: `LoRA_Sam_P18` (신규 클래스 필요)
+
+**아키텍처 설계**:
+
+```
+Input (3ch RGB / 1ch LiDAR / 1ch Thermal)
+  ├─→ SAM2 Hiera B+ (frozen) → backbone_fpn → memory attention → final prediction
+  │                                     ↓ (fpn[0] for m_feat fusion)
+  └─→ ResNet-18 (trainable, pretrained) → multi-scale features
+                                            ↓
+                             MultiScaleAuxDecoder → aux_logits
+                                            ↓ (.detach())
+                             compute_spatial_entropy_confidence → UAMM/AMF weights
+```
+
+**ResNet-18 적용 방식**:
+- **Input adapter**: LiDAR(1ch)와 Thermal(1ch)는 3ch로 repeat 또는 별도 stem conv(1→64) 추가
+- **Feature extraction**: ResNet-18의 layer2(128ch, 64×64) + layer3(256ch, 32×32) 사용
+  - SAM2 FPN과 다른 스케일/채널 → 상호 보완적 정보
+- **Aux decoder**: `MultiScaleModalAuxDecoder` 변형 — ResNet feature를 proj→concat→decode
+- **학습**: ResNet-18은 aux CE loss로만 학습. Main pipeline은 P9과 동일 (고정 상수 또는 entropy)
+- **핵심**: SAM2 main pipeline(tracking, memory attention, mask decoder)은 **전혀 변경 없음**
+
+**두 가지 서브 옵션**:
+
+| 옵션 | UAMM/AMF 방식 | 기대 효과 |
+| --- | --- | --- |
+| **P18-A**: ResNet aux + 고정상수 fusion | P9처럼 고정 비율 (entropy 미사용) | aux mask CE loss만으로 backbone fine-tune. UAMM은 P9 그대로 → 안전한 baseline |
+| **P18-B**: ResNet aux + entropy fusion | P17처럼 spatial entropy → UAMM/AMF | 정확한 aux mask → 정확한 entropy → dynamic fusion 비로소 작동? |
+
+**우선순위**: P18-A 먼저 (P9 고정상수 + ResNet aux로 backbone만 학습), 그 후 P18-B
+
+**파라미터 수 추가**:
+- ResNet-18: ~11.2M (ImageNet pretrained)
+- 기존 trainable: LoRA ~700K + aux decoder ~159K
+- **총**: ~12M trainable (기존 대비 15x 증가, 하지만 2,952장 × 200 epoch이면 충분)
+
+**리스크**:
+- ResNet-18이 주간 데이터에 과적합 → 야간에서 부정확한 aux mask → 역효과
+- Mitigation: dropout, data augmentation (hardaug6), early stopping by night-val
+- 추론 latency 증가 (ResNet-18 forward pass 추가)
+
+**구현 파일** (2026-03-01 완료):
+
+1. `sam_lora_image_encoder_seg.py` — `ResNetAuxBackbone`, `ResNetAuxDecoder`, `LoRA_Sam_P18` 클래스
+2. `configs/levine-multiaqua_rgbtl_P18_hardaug5.yaml` (training)
+3. `configs/eval_config/levine-multiaqua_rgbtl_P18_hardaug5.yaml` (eval)
+4. `train_sam2_lora_paper.py` — `use_entropy_fusion` dispatch 추가
+5. `val_multiaqua.py` / `val_multiaqua_detailed.py` — P18 지원 추가
+
+- **상태**: **구현 완료, 학습 대기** (P18-A: `USE_ENTROPY_FUSION: false`)
+
+---
+
+### 실험 우선순위 (실행 순서)
+
+| 순서 | 실험 | 서버 | 예상 소요 | 목적 |
+| --- | --- | --- | --- | --- |
+| 1 | **P9+hardaug5** | levine | ~12h | Aug ablation (빠르게 판별) |
+| 2 | **P9+hardaug6** | levine | ~12h | Diversity aug 효과 검증 |
+| 3 | P17+hardaug6 | levine/bengio | ~12h | Diversity가 P17에도 도움되는지 (조건부) |
+| 4 | P18-A | bengio | ~15h | ResNet aux backbone 효과 검증 |
+| 5 | P18-B | bengio | ~15h | ResNet + entropy fusion (조건부) |
 
 ### 미해결 과제
 
@@ -144,15 +270,11 @@
 
 ### 중요 발견사항
 
-- **🔴 CRM/ZERO Overfitting 발견**: 학습 44%에 exact-zero RGB → test에는 없는 shortcut 학습. P13 epoch39에서 test -19.5pp crash, Sky -51.76pp. Night-val도 오염됨 (CRM/ZERO 동일 적용)
+- **🔴 Dynamic Fusion 실패 확정**: P12~P17 6개 실험 모두 P9(고정 상수)보다 나쁨. 복잡한 adaptive fusion이 오히려 해로움
+- **🔴 CRM/ZERO Overfitting 발견**: 학습 44%에 exact-zero RGB → test에는 없는 shortcut 학습. P13 epoch39에서 test -19.5pp crash
+- **🔴 Sky collapse가 핵심 병목**: P14~P17에서 Sky IoU 3~36% (P9: 76%). Adaptive fusion이 RGB를 suppress → sky 인식 파괴
 - **NIGHT_AUG hardaug4가 최적이나 포화 상태**: 추가 튜닝으로는 +1~2pp가 한계
-- **MoE gate는 정상 작동**: spatial mean이 uniform처럼 보이는 것은 CLT artifact
-- **모델 복잡도 ≠ 성능**: P10/P11/P12/P13 모두 P9보다 복잡하지만 M-score는 낮음
-- **P9의 단순한 CrossModalFusionHead가 가장 효과적**: near-constant이지만 좋은 기본 비율
-- **LiDAR routing 야간 고정**: 모든 P 버전에서 공통. LiDAR 데이터의 물리적 한계 (물 반사 없음, 원거리 미감지)
-- **Energy Score fusion 방향은 유효**: Dynamic +5.55pp 개선. aux head 정확도가 관건
-- **Night-val checkpoint 선택**: CRM/ZERO 제거 후에만 신뢰 가능한 test proxy
-- **P14: Aux decoder 독립화만으로는 불충분**: 모달리티별 head 분리해도 frozen backbone feature 기반이라 mask 품질 한계. image-level scalar fusion은 Sky/Water 등 영역별 차이 반영 불가 → P15 spatial-wise가 필수
-- **P9 CrossModalFusionHead = 학습된 상수**: val(낮)/test(밤) 345장에서 UAMM/AMF std≈0.0000. 입력에 따라 변하지 않는 고정 비율 (img:27.5%, lidar:35.5%, thermal:37.0%). SAM2 memory attention이 implicit adaptation 수행
-- **Baseline(단순평균) < P9(UAMM/AMF)**: UAMM/AMF 개념의 가치 확인. 에너지 스코어 정확도 개선이 올바른 방향
-- **Energy Score = confidence, not correctness (ISSUE-009)**: logit magnitude 기반 → "자신있게 틀리는" LiDAR에 높은 점수 → Sky collapse. Calibrated entropy가 대안
+- **P9의 단순한 CrossModalFusionHead가 가장 효과적**: 고정 비율 img:27.5%, lidar:35.5%, thermal:37.0%. SAM2 memory attention이 implicit adaptation 수행
+- **Multi-Scale FPN은 효과 있음**: P16(3.17)→P17(33.35) Sky +30pp. 하지만 근본 해결은 아님
+- **Aux mask 품질이 근본 한계** (ISSUE-008): frozen backbone 위의 lightweight decoder로는 entropy/energy 추정 신뢰도 확보 불가
+- **다음 방향**: P9 기반 점진적 개선 (hardaug5 재학습, TTA, P9+P13 ensemble)

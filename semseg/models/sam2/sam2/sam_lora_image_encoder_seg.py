@@ -6,6 +6,7 @@ from torch import Tensor
 from torch.nn.parameter import Parameter
 from safetensors import safe_open
 from safetensors.torch import save_file
+import torchvision.models as tv_models
 
 from icecream import ic
 from .modeling.sam2_base import SAM2Base
@@ -2540,6 +2541,117 @@ class MultiScaleModalAuxDecoder(nn.Module):
         return self.decoder(fused)
 
 
+class ResNetAuxBackbone(nn.Module):
+    """P18: Trainable ResNet-18 aux backbone with per-modality input stems.
+
+    Frozen SAM2 FPN feature의 정보량 한계(ISSUE-008)를 극복하기 위해
+    ImageNet pretrained ResNet-18을 trainable aux backbone으로 사용.
+
+    구조: 3개 독립 stem(모달리티별 low-level 특화) + 1개 공유 body(layer1~3)
+    Output: layer2(128ch, H/8) + layer3(256ch, H/16)
+    Params: ~11.2M (shared body) + ~28K (3 stems)
+    """
+
+    def __init__(self, num_modalities=3, pretrained=True):
+        super().__init__()
+
+        resnet = tv_models.resnet18(
+            weights=tv_models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
+        )
+
+        # Per-modality input stems (conv1+bn1 replacement)
+        # 모든 모달리티는 dataset에서 3ch로 repeat → 입력 3ch 통일
+        self.stems = nn.ModuleList()
+        for _ in range(num_modalities):
+            stem = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+            )
+            if pretrained:
+                stem[0].weight.data.copy_(resnet.conv1.weight.data)
+                stem[1].weight.data.copy_(resnet.bn1.weight.data)
+                stem[1].bias.data.copy_(resnet.bn1.bias.data)
+                stem[1].running_mean.copy_(resnet.bn1.running_mean)
+                stem[1].running_var.copy_(resnet.bn1.running_var)
+            self.stems.append(stem)
+
+        # Shared body: maxpool + layer1~3
+        self.maxpool = resnet.maxpool
+        self.layer1 = resnet.layer1   # 64ch, H/4
+        self.layer2 = resnet.layer2   # 128ch, H/8
+        self.layer3 = resnet.layer3   # 256ch, H/16
+
+    def forward(self, x, modal_idx):
+        """Extract multi-scale features for a single modality.
+
+        Args:
+            x: (B, 3, H, W) input tensor
+            modal_idx: modality index (0=RGB, 1=LiDAR, 2=Thermal)
+        Returns:
+            (layer2_feat, layer3_feat): tuple
+                layer2_feat: (B, 128, H/8, W/8)
+                layer3_feat: (B, 256, H/16, W/16)
+        """
+        x = self.stems[modal_idx](x)
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        layer2_feat = self.layer2(x)
+        layer3_feat = self.layer3(layer2_feat)
+        return layer2_feat, layer3_feat
+
+
+class ResNetAuxDecoder(nn.Module):
+    """P18: ResNet layer2(128ch) + layer3(256ch) → aux segmentation logits.
+
+    MultiScaleModalAuxDecoder와 유사하나 ResNet 2-level feature 사용.
+    Output resolution: layer2와 동일 (H/8 × W/8 = 128×128 for 1024 input)
+    Params: ~53K per modality
+    """
+
+    def __init__(self, resnet_channels=(128, 256), proj_dim=32, num_classes=4):
+        super().__init__()
+        self.proj_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(ch, proj_dim, 1, bias=False),
+                nn.BatchNorm2d(proj_dim),
+                nn.ReLU(inplace=True),
+            )
+            for ch in resnet_channels
+        ])
+
+        fused_dim = proj_dim * len(resnet_channels)  # 32 * 2 = 64
+        self.decoder = nn.Sequential(
+            nn.Conv2d(fused_dim, fused_dim, 3, padding=1, bias=False),
+            nn.BatchNorm2d(fused_dim),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(fused_dim, num_classes, 1),
+        )
+
+    def forward(self, resnet_feats):
+        """
+        Args:
+            resnet_feats: (layer2_feat, layer3_feat)
+                layer2_feat: (B, 128, H2, W2)
+                layer3_feat: (B, 256, H3, W3) where H3=H2/2
+        Returns:
+            logits: (B, num_classes, H2, W2) at layer2 resolution
+        """
+        layer2_feat, layer3_feat = resnet_feats
+        target_size = layer2_feat.shape[2:]
+
+        projected = []
+        for i, feat in enumerate([layer2_feat, layer3_feat]):
+            p = self.proj_layers[i](feat)
+            if p.shape[2:] != target_size:
+                p = F.interpolate(p, size=target_size, mode='bilinear',
+                                  align_corners=False)
+            projected.append(p)
+
+        fused = torch.cat(projected, dim=1)
+        return self.decoder(fused)
+
+
 def compute_energy_confidence(aux_logits_list, temperature=1.0):
     """Energy score 기반 modality confidence 계산.
 
@@ -4089,4 +4201,387 @@ class LoRA_Sam_P17(nn.Module):
                 module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
                 sam_dict.update(module_new_state_dict)
 
+        self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P18(nn.Module):
+    """
+    LoRA_Sam_P18: Trainable ResNet-18 Aux Backbone + Configurable Fusion
+
+    ISSUE-008(frozen backbone bottleneck) 근본 해결:
+      P13~P17: frozen SAM2 FPN feature → aux decoder → aux mask 품질 한계
+      P18: trainable ResNet-18 → aux decoder → 도메인 특화 feature 학습 가능
+
+    use_entropy_fusion으로 두 가지 서브 옵션:
+      P18-A (False): P9-style CrossModalFusionHead → 고정상수 UAMM/AMF
+        ResNet aux는 CE loss로만 학습, fusion weight에 영향 없음. 안전한 baseline.
+      P18-B (True): P17-style spatial entropy → adaptive UAMM/AMF
+        정확한 ResNet aux mask → 정확한 entropy → dynamic fusion 비로소 작동.
+
+    아키텍처:
+      Input → SAM2 Hiera B+ (frozen) → backbone_fpn → memory attention → prediction
+                                                                    ↑ (UAMM/AMF)
+      Input → ResNet-18 (trainable) → layer2+layer3 → ResNetAuxDecoder → aux_logits
+                                                                           ↓
+                                                            aux CE loss (trains ResNet)
+                                                            entropy confidence (P18-B only)
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_experts=4, num_modalities=3, num_classes=4,
+                 aux_warmup_epochs=10, use_entropy_fusion=False):
+        nn.Module.__init__(self)
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.num_classes = num_classes
+        self.num_modalities = num_modalities
+        self.use_entropy_fusion = use_entropy_fusion
+        self.aux_warmup_epochs = aux_warmup_epochs
+        self._current_epoch = 0
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Inject SoftMoE-LoRA (P17 동일, experts_b init 포함)
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+
+            moe_q = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+            moe_v = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+
+            # Expert collapse fix
+            for expert_b in moe_q.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+            for expert_b in moe_v.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+
+            blk.attn.qkv = _SoftMoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+
+        self.sam = sam_model
+
+        # [P18] Trainable ResNet-18 Aux Backbone
+        self.aux_backbone = ResNetAuxBackbone(
+            num_modalities=num_modalities, pretrained=True
+        )
+
+        # [P18] Per-modality aux decoders on ResNet features
+        self.aux_heads = nn.ModuleList([
+            ResNetAuxDecoder(
+                resnet_channels=(128, 256),
+                proj_dim=32,
+                num_classes=num_classes,
+            )
+            for _ in range(num_modalities)
+        ])
+
+        # [P18-A] P9-style CrossModalFusionHead (scalar fusion)
+        if not use_entropy_fusion:
+            use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+            if use_high_res:
+                fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+            else:
+                fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+            self.cross_modal_head = CrossModalFusionHead(
+                in_channels=fusion_dim,
+                num_modalities=num_modalities,
+            )
+
+        # [P18-B] Entropy temperature
+        self.energy_temperature = 1.0
+
+        # Visualization buffers
+        self._last_uamm_scores = None
+        self._last_amf_weights = None
+        self._last_moe_gates = None
+        self._last_aux_logits = None
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats = [], [], []
+        vision_pos_embeds, feat_sizes, output = [], [], []
+
+        # MoE gate visualization collector
+        moe_gate_collector = []
+        def _moe_gate_cb(gw):
+            moe_gate_collector.append(gw)
+        for layer in self.moe_layers_q + self.moe_layers_v:
+            layer._gate_callback = _moe_gate_cb
+
+        try:
+            # ============================================
+            # Phase 1: 모든 모달리티 SAM2 Image Encoding
+            # ============================================
+            for i in range(m):
+                img_emb = self.sam.forward_image(batched_input[i])
+                image_embedding.append(img_emb)
+                bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+                backbone_out.append(bb_out)
+                vision_feats.append(v_feats)
+                vision_pos_embeds.append(v_pos)
+                feat_sizes.append(f_sizes)
+
+            # m_feat fusion용 SAM2 fpn[0] (P9/P17 동일)
+            all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+
+            # ============================================
+            # Phase 2: ResNet-18 Aux Prediction
+            # ============================================
+            aux_logits_list = []
+            for i in range(m):
+                resnet_feats = self.aux_backbone(batched_input[i], modal_idx=i)
+                aux_logits = self.aux_heads[i](resnet_feats)
+                aux_logits_list.append(aux_logits)
+            # aux_logits_list: List[(B, num_classes, H/8, W/8)] = (B, 4, 128, 128)
+
+            # ============================================
+            # Phase 2b: Fusion Weights
+            # ============================================
+            if self.use_entropy_fusion:
+                # [P18-B] Spatial entropy from ResNet aux (P17 로직)
+                warmup_ramp = 5
+                if self._current_epoch < self.aux_warmup_epochs:
+                    ramp = 0.0
+                elif self._current_epoch < self.aux_warmup_epochs + warmup_ramp:
+                    ramp = (self._current_epoch - self.aux_warmup_epochs) / warmup_ramp
+                else:
+                    ramp = 1.0
+
+                B = all_backbone_feats[0].shape[0]
+                H_feat, W_feat = all_backbone_feats[0].shape[2:]
+                device = all_backbone_feats[0].device
+
+                if ramp < 1e-6:
+                    cross_weights = torch.ones(B, m, H_feat, W_feat, device=device) / m
+                else:
+                    entropy_weights = compute_spatial_entropy_confidence(
+                        [z.detach() for z in aux_logits_list],
+                        temperature=self.energy_temperature,
+                        num_classes=self.num_classes,
+                    )
+                    # ResNet aux output (128x128) -> SAM2 fpn[0] resolution (256x256)
+                    if entropy_weights.shape[2:] != (H_feat, W_feat):
+                        entropy_weights = F.interpolate(
+                            entropy_weights, size=(H_feat, W_feat),
+                            mode='bilinear', align_corners=False
+                        )
+
+                    if ramp < 1.0:
+                        uniform = torch.ones(B, m, H_feat, W_feat, device=device) / m
+                        cross_weights = (1.0 - ramp) * uniform + ramp * entropy_weights
+                    else:
+                        cross_weights = entropy_weights
+
+                # Spatial UAMM
+                max_w = cross_weights.max(dim=1, keepdim=True)[0]
+                uamm_scores = cross_weights / (max_w + 1e-8)  # (B, m, H, W)
+            else:
+                # [P18-A] P9-style CrossModalFusionHead -> scalar (B, m)
+                cross_weights, cross_logits = self.cross_modal_head(all_backbone_feats)
+                max_w = cross_weights.max(dim=1, keepdim=True)[0]
+                uamm_scores = cross_weights / (max_w + 1e-8)  # (B, m)
+
+            # ============================================
+            # Phase 3: UAMM Modulation + Tracking
+            # ============================================
+            output_dict = {
+                "cond_frame_outputs": {},
+                "non_cond_frame_outputs": {},
+            }
+
+            for frame_idx in range(m):
+                is_init = (frame_idx == 0)
+
+                if self.use_entropy_fusion:
+                    # Spatial UAMM (P18-B, P17 패턴)
+                    spatial_score = uamm_scores[:, frame_idx]  # (B, H, W)
+                    modulated_vision_feats = []
+                    for level, feat in enumerate(vision_feats[frame_idx]):
+                        h, w = feat_sizes[frame_idx][level]
+                        score_resized = F.interpolate(
+                            spatial_score.unsqueeze(1),
+                            size=(h, w), mode='bilinear', align_corners=False,
+                        )
+                        score_flat = score_resized.flatten(2).permute(2, 0, 1)
+                        modulated_vision_feats.append(feat * score_flat)
+                else:
+                    # Scalar UAMM (P18-A, P9 패턴)
+                    current_score = uamm_scores[:, frame_idx].unsqueeze(1)  # (B, 1)
+                    score_expanded = current_score.transpose(0, 1).unsqueeze(-1)  # (1, B, 1)
+                    modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
+
+                multi_mask_output_step = self.sam.track_step(
+                    frame_idx=frame_idx,
+                    is_init_cond_frame=is_init,
+                    current_vision_feats=modulated_vision_feats,
+                    current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                    feat_sizes=feat_sizes[frame_idx],
+                    point_inputs=None,
+                    mask_inputs=None,
+                    output_dict=output_dict,
+                    num_frames=m,
+                    track_in_reverse=False,
+                    run_mem_encoder=True,
+                    prev_sam_mask_logits=None,
+                )
+                output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+                output.append(multi_mask_output_step["high_res_multimasks"])
+
+            # ============================================
+            # Phase 4: AMF -- Output Fusion
+            # ============================================
+            amf_weights = cross_weights
+
+            if self.use_entropy_fusion:
+                # Spatial AMF (P18-B, P17 패턴)
+                def _resize_weight(w_map, target_hw):
+                    return F.interpolate(w_map, size=target_hw, mode='bilinear', align_corners=False)
+
+                w0_out = _resize_weight(amf_weights[:, 0:1], output[0].shape[2:])
+                m_output = output[0] * w0_out
+                m_feat = all_backbone_feats[0] * amf_weights[:, 0:1]
+
+                for i in range(1, m):
+                    wi_out = _resize_weight(amf_weights[:, i:i+1], output[i].shape[2:])
+                    m_output = m_output + output[i] * wi_out
+                    m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
+            else:
+                # Scalar AMF (P18-A, P9 패턴)
+                w0 = amf_weights[:, 0].view(-1, 1, 1, 1)
+                m_output = output[0] * w0
+                m_feat = all_backbone_feats[0] * w0
+
+                for i in range(1, m):
+                    wi = amf_weights[:, i].view(-1, 1, 1, 1)
+                    m_output = m_output + output[i] * wi
+                    m_feat = m_feat + all_backbone_feats[i] * wi
+
+            # Visualization buffers
+            if self.use_entropy_fusion:
+                self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
+                self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
+            else:
+                self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
+                self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
+            if moe_gate_collector:
+                self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
+            else:
+                self._last_moe_gates = None
+
+        finally:
+            for layer in self.moe_layers_q + self.moe_layers_v:
+                layer._gate_callback = None
+
+        if self.training:
+            return m_output, m_feat, aux_logits_list
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+
+        aux_backbone_tensors = {
+            f"aux_backbone.{k}": v
+            for k, v in self.aux_backbone.state_dict().items()
+        }
+        aux_heads_tensors = {
+            f"aux_heads.{k}": v
+            for k, v in self.aux_heads.state_dict().items()
+        }
+        cross_modal_tensors = {}
+        if not self.use_entropy_fusion:
+            cross_modal_tensors = {
+                f"cross_modal_head.{k}": v
+                for k, v in self.cross_modal_head.state_dict().items()
+            }
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+        model_ref = self.sam.module if isinstance(
+            self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)
+        ) else self.sam
+        state_dict = model_ref.state_dict()
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors,
+            **mask_decoder_tensors,
+            **aux_backbone_tensors,
+            **aux_heads_tensors,
+            **cross_modal_tensors,
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict:
+                mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict:
+                mv.load_state_dict(state_dict[v_key])
+
+        aux_backbone_dict = {
+            k.replace("aux_backbone.", ""): v
+            for k, v in state_dict.items()
+            if k.startswith("aux_backbone.")
+        }
+        if aux_backbone_dict:
+            self.aux_backbone.load_state_dict(aux_backbone_dict)
+
+        aux_heads_dict = {
+            k.replace("aux_heads.", ""): v
+            for k, v in state_dict.items()
+            if k.startswith("aux_heads.")
+        }
+        if aux_heads_dict:
+            self.aux_heads.load_state_dict(aux_heads_dict)
+
+        if not self.use_entropy_fusion:
+            cross_dict = {
+                k.replace("cross_modal_head.", ""): v
+                for k, v in state_dict.items()
+                if k.startswith("cross_modal_head.")
+            }
+            if cross_dict:
+                self.cross_modal_head.load_state_dict(cross_dict)
+
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
         self.sam.load_state_dict(sam_dict)

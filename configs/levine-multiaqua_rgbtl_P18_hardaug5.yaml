@@ -1,5 +1,5 @@
 DEVICE          : cuda
-SAVE_DIR        : './outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5'
+SAVE_DIR        : './outputs/MMSamP18/levine_multiaqua_rgbtl_P18_hardaug5'
 
 MODEL:
   NAME          : CMNeXt
@@ -7,19 +7,22 @@ MODEL:
   PRETRAINED    : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth'
   RESUME_ENABLE : false
   RESUME_PATH   : ''
-  LORA_MODEL    : LoRA_Sam_P17
+  LORA_MODEL    : LoRA_Sam_P18                                      # [P18] Trainable ResNet-18 Aux Backbone
   LORA_R        : 4
   LORA_NUM_EXPERTS : null
-  LORA_TOP_K    : null
+  LORA_TOP_K    : None
   LORA_LAYER    : null
   LORA_NUM_CLASSES : 4
+  USE_ENTROPY_FUSION : false                                        # [P18-A] P9-style 고정상수 fusion
 
 DATASET:
   NAME          : MULTIAQUA
   ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']
-  NUM_CLASSES   : 4
+  # ──────────────────────────────────────────────────────────────────────────
+  # hardaug5: CRM/ZeroOut 완전 제거 + test셋 실측 밝기 분포 정밀 정렬
+  # ──────────────────────────────────────────────────────────────────────────
   NIGHT_AUG     :
     ENABLE      : true
     NIGHT_SIM_P : 0.60
@@ -41,7 +44,7 @@ TRAIN:
   AMP           : false
   DDP           : True
   LAMBDA_AUX    : 0.3
-  AUX_WARMUP_EPOCHS : 10
+  AUX_WARMUP_EPOCHS : 10                                            # ResNet aux warmup (P18-A에서는 fusion에 미영향, aux CE만 적용)
 
 LOSS:
   NAME          : OhemCrossEntropy
@@ -59,7 +62,7 @@ SCHEDULER:
   WARMUP_RATIO  : 0.1
 
 EVAL:
-  MODEL_PATH    : '/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch28_93.77_top1_checkpoint.pth'
+  MODEL_PATH    : ''
   IMAGE_SIZE    : [1024, 1024]
   BATCH_SIZE    : 1
   MSF:
@@ -68,7 +71,7 @@ EVAL:
     SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
 
 TEST:
-  MODEL_PATH    : '/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch35_90.34_top1_checkpoint.pth'
+  MODEL_PATH    : ''
   FILE          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
   IMAGE_SIZE    : [1024, 1024]
   OVERLAY       : false

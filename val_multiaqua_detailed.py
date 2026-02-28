@@ -51,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18
 )
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
@@ -95,6 +95,8 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P14': LoRA_Sam_P14,
         'LoRA_Sam_P15': LoRA_Sam_P15,
         'LoRA_Sam_P16': LoRA_Sam_P16,
+        'LoRA_Sam_P17': LoRA_Sam_P17,
+        'LoRA_Sam_P18': LoRA_Sam_P18,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
@@ -110,12 +112,17 @@ def load_model(cfg, model_path, device):
         model_kwargs['num_classes'] = model_cfg.get('LORA_NUM_CLASSES', 4)
     if 'num_modalities' in sig.parameters:
         model_kwargs['num_modalities'] = num_modalities
+    if 'use_entropy_fusion' in sig.parameters:
+        model_kwargs['use_entropy_fusion'] = model_cfg.get('USE_ENTROPY_FUSION', False)
 
     model = lora_model_class(**model_kwargs)
     ckpt = torch.load(str(model_path), map_location='cpu')
     state = ckpt.get('model_state_dict', ckpt)
     msg = model.load_state_dict(state, strict=False)
     print(f"Model load: {msg}")
+    # P16/P17: warmup을 건너뛰고 full entropy fusion이 적용되도록 설정
+    if hasattr(model, '_current_epoch'):
+        model._current_epoch = 9999
     model = model.to(device)
     model.eval()
     return model
@@ -1114,9 +1121,11 @@ def main():
     lora_model_name = cfg['MODEL'].get('LORA_MODEL', 'LoRA_Sam_P9')
     short_name = lora_model_name.replace('LoRA_Sam_', '')  # e.g. "P9", "P13"
     tta_suffix = "_tta" if tta_flip else ""
+    # 체크포인트 이름 추출 (e.g., "epoch28_93.77_top1_checkpoint.pth" → "epoch28_93.77_top1")
+    ckpt_prefix = model_path.stem.replace("_checkpoint", "")
 
     if args.mode == 'val':
-        save_dir = args.save_dir or (model_path.parent / f"val_pred_{short_name}{tta_suffix}")
+        save_dir = args.save_dir or (model_path.parent / f"{ckpt_prefix}_val_pred_{short_name}{tta_suffix}")
         acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
             model, dataloader, device, save_dir=save_dir,
             modals=dataset_cfg.get('MODALS'),
@@ -1138,7 +1147,7 @@ def main():
         if save_dir:
             print(f"Saved to {save_dir}")
     else:
-        save_dir = args.save_dir or (model_path.parent / f"test_pred_{short_name}{tta_suffix}")
+        save_dir = args.save_dir or (model_path.parent / f"{ckpt_prefix}_test_pred_{short_name}{tta_suffix}")
         run_test_inference(
             model, dataloader, device, save_dir=save_dir,
             modals=dataset_cfg.get('MODALS'),

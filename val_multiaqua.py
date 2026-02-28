@@ -82,6 +82,8 @@ def load_model(cfg, model_path, device):
         model_kwargs['num_experts'] = lora_num_experts
     if 'top_k' in sig.parameters:
         model_kwargs['top_k'] = lora_top_k
+    if 'use_entropy_fusion' in sig.parameters:
+        model_kwargs['use_entropy_fusion'] = model_cfg.get('USE_ENTROPY_FUSION', False)
 
     model = lora_model_class(**model_kwargs)
 
@@ -89,6 +91,9 @@ def load_model(cfg, model_path, device):
     state = ckpt.get('model_state_dict', ckpt)
     msg = model.load_state_dict(state, strict=False)
     print(f"Model load: {msg}")
+    # P16/P17: warmup을 건너뛰고 full entropy fusion이 적용되도록 설정
+    if hasattr(model, '_current_epoch'):
+        model._current_epoch = 9999
 
     model = model.to(device)
     model.eval()
@@ -563,8 +568,11 @@ def main():
 
     model = load_model(cfg, model_path, device)
 
+    # 체크포인트 이름 추출 (e.g., "epoch28_93.77_top1_checkpoint.pth" → "epoch28_93.77_top1")
+    ckpt_prefix = model_path.stem.replace("_checkpoint", "")
+
     if args.mode == 'val':
-        default_name = "eval_macvi" if args.macvi else "val_pred"
+        default_name = f"{ckpt_prefix}_eval_macvi" if args.macvi else f"{ckpt_prefix}_val_pred"
         save_dir = args.save_dir or (model_path.parent / default_name)
         acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
             model, dataloader, device, save_dir=save_dir, macvi_format=args.macvi,
@@ -588,7 +596,7 @@ def main():
             else:
                 print(f"Saved seg/ and seg_viz/ to {save_dir}")
 
-        out_txt = model_path.parent / f"eval_{split}_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+        out_txt = model_path.parent / f"eval_{split}_{ckpt_prefix}_{time.strftime('%Y%m%d_%H%M%S')}.txt"
         with open(out_txt, 'w') as f:
             f.write(f"Model: {model_path}\n")
             f.write(f"Split: {split}  N={len(dataset)}\n")
@@ -598,7 +606,7 @@ def main():
         print(f"Results saved to {out_txt}")
 
     else:
-        default_name = "eval_macvi" if args.macvi else "test_pred"
+        default_name = f"{ckpt_prefix}_eval_macvi" if args.macvi else f"{ckpt_prefix}_test_pred"
         save_dir = args.save_dir or (model_path.parent / default_name)
         run_test_inference(
             model, dataloader, device, save_dir, macvi_format=args.macvi,
