@@ -21,6 +21,7 @@ from .sam_lola_utils import (
     ConfidenceHead,
     CrossModalFusionHead,
     CrossModalFusionHeadV2,
+    SpatialCrossModalFusionHead,
     ModalAuxHead,
     MoE_LoRA_Layer,
     _MoE_LoRA_qkv,
@@ -4584,4 +4585,283 @@ class LoRA_Sam_P18(nn.Module):
             if len(module_keys) == len(module_values):
                 module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
                 sam_dict.update(module_new_state_dict)
+        self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P19(nn.Module):
+    """
+    LoRA_Sam_P19: Learned Spatial Cross-Modal Fusion
+
+    P9 base + SpatialCrossModalFusionHead:
+      - P9: GAP → scalar (B,m) CrossModalFusionHead (fpn[0] only)
+      - P19: multi-scale FPN → spatial (B,m,H,W) SpatialCrossModalFusionHead
+
+    핵심 차이:
+      1. 3개 FPN 레벨 전부 사용 (P9: fpn[0] only)
+      2. 공간 가중치 (B,m,H,W) → per-location 모달리티 선택 (P9: 전체 이미지 동일)
+      3. Spatial UAMM/AMF (P17 패턴) — vision_feats level별 resize 적용
+      4. Aux decoder 없음 → 깔끔한 구조, main loss만으로 학습
+
+    Components:
+      1. Structure: Soft-MoE LoRA (P9과 동일)
+      2. UAMM (Memory): Spatial max-normalized softmax → per-location Feature Modulation
+      3. AMF (Fusion): Spatial raw softmax → per-location Output Fusion
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_experts=4, num_modalities=3):
+        nn.Module.__init__(self)
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.num_modalities = num_modalities
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Inject SoftMoE-LoRA
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+
+            moe_q = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+            moe_v = SoftMoE_LoRA_Layer(dim, r, num_experts=num_experts)
+
+            # Expert collapse fix (from P17)
+            for expert_b in moe_q.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+            for expert_b in moe_v.experts_b:
+                nn.init.kaiming_uniform_(expert_b.weight, a=math.sqrt(5))
+                expert_b.weight.data *= 0.01
+
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+
+            blk.attn.qkv = _SoftMoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+
+        self.sam = sam_model
+
+        # FPN channels
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            self.fpn_channels = (
+                self.sam.sam_mask_decoder.transformer_dim // 8,  # 32
+                self.sam.sam_mask_decoder.transformer_dim // 4,  # 64
+                self.sam.sam_mask_decoder.transformer_dim,       # 256
+            )
+        else:
+            td = self.sam.sam_mask_decoder.transformer_dim
+            self.fpn_channels = (td, td, td)
+
+        # [P19] SpatialCrossModalFusionHead
+        self.spatial_fusion_head = SpatialCrossModalFusionHead(
+            fpn_channels=self.fpn_channels,
+            num_modalities=num_modalities,
+            proj_dim=32,
+            hidden_dim=64,
+        )
+
+        # Visualization buffers
+        self._last_uamm_scores = None
+        self._last_amf_weights = None
+        self._last_moe_gates = None
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats = [], [], []
+        vision_pos_embeds, feat_sizes, output = [], [], []
+
+        # MoE gate visualization collector
+        moe_gate_collector = []
+        def _moe_gate_cb(gw):
+            moe_gate_collector.append(gw)
+        for layer in self.moe_layers_q + self.moe_layers_v:
+            layer._gate_callback = _moe_gate_cb
+
+        try:
+            # ============================================
+            # Phase 1: 모든 모달리티 Image Encoding
+            # ============================================
+            for i in range(m):
+                img_emb = self.sam.forward_image(batched_input[i])
+                image_embedding.append(img_emb)
+                bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+                backbone_out.append(bb_out)
+                vision_feats.append(v_feats)
+                vision_pos_embeds.append(v_pos)
+                feat_sizes.append(f_sizes)
+
+            # ============================================
+            # Phase 2: Multi-Scale FPN → Spatial Fusion Weights
+            # ============================================
+            # [P19] 3개 FPN 레벨 전부 추출
+            all_fpn_feats = [
+                [image_embedding[i]['backbone_fpn'][j] for j in range(3)]
+                for i in range(m)
+            ]  # all_fpn_feats[modality_idx][fpn_level]
+
+            # m_feat fusion용 backbone feature (fpn[0])
+            all_backbone_feats = [all_fpn_feats[i][0] for i in range(m)]
+
+            # SpatialCrossModalFusionHead → (B, m, H, W)
+            cross_weights, cross_logits = self.spatial_fusion_head(all_fpn_feats)
+
+            # UAMM용: spatial max-normalize → best modality location = 1.0
+            max_w = cross_weights.max(dim=1, keepdim=True)[0]
+            uamm_scores = cross_weights / (max_w + 1e-8)  # (B, m, H, W)
+
+            # ============================================
+            # Phase 3: Spatial UAMM + Tracking (P17 패턴)
+            # ============================================
+            output_dict = {
+                "cond_frame_outputs": {},
+                "non_cond_frame_outputs": {},
+            }
+
+            for frame_idx in range(m):
+                is_init = (frame_idx == 0)
+
+                spatial_score = uamm_scores[:, frame_idx]  # (B, H, W)
+
+                modulated_vision_feats = []
+                for level, feat in enumerate(vision_feats[frame_idx]):
+                    h, w = feat_sizes[frame_idx][level]
+                    score_resized = F.interpolate(
+                        spatial_score.unsqueeze(1),
+                        size=(h, w),
+                        mode='bilinear',
+                        align_corners=False,
+                    )
+                    score_flat = score_resized.flatten(2).permute(2, 0, 1)  # (hw, B, 1)
+                    modulated_vision_feats.append(feat * score_flat)
+
+                multi_mask_output_step = self.sam.track_step(
+                    frame_idx=frame_idx,
+                    is_init_cond_frame=is_init,
+                    current_vision_feats=modulated_vision_feats,
+                    current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                    feat_sizes=feat_sizes[frame_idx],
+                    point_inputs=None,
+                    mask_inputs=None,
+                    output_dict=output_dict,
+                    num_frames=m,
+                    track_in_reverse=False,
+                    run_mem_encoder=True,
+                    prev_sam_mask_logits=None,
+                )
+                output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+                output.append(multi_mask_output_step["high_res_multimasks"])
+
+            # ============================================
+            # Phase 4: Spatial AMF — Output Fusion (P17 패턴)
+            # ============================================
+            amf_weights = cross_weights  # (B, m, H, W)
+
+            def _resize_weight(w_map, target_hw):
+                return F.interpolate(
+                    w_map,
+                    size=target_hw,
+                    mode='bilinear',
+                    align_corners=False,
+                )
+
+            w0_out = _resize_weight(amf_weights[:, 0:1], output[0].shape[2:])
+            m_output = output[0] * w0_out
+            m_feat = all_backbone_feats[0] * amf_weights[:, 0:1]
+
+            for i in range(1, m):
+                wi_out = _resize_weight(amf_weights[:, i:i+1], output[i].shape[2:])
+                m_output = m_output + output[i] * wi_out
+                m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
+
+            # Visualization buffers (spatial mean for backward compat with P9 visualizers)
+            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
+            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
+            if moe_gate_collector:
+                self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
+            else:
+                self._last_moe_gates = None
+
+        finally:
+            for layer in self.moe_layers_q + self.moe_layers_v:
+                layer._gate_callback = None
+
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        # SoftMoE Parameters
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+
+        # SpatialCrossModalFusionHead
+        spatial_head_tensors = {
+            f"spatial_fusion_head.{k}": v
+            for k, v in self.spatial_fusion_head.state_dict().items()
+        }
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+
+        model_ref = self.sam.module if isinstance(self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.sam
+        state_dict = model_ref.state_dict()
+
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **prompt_encoder_tensors,
+            **mask_decoder_tensors,
+            **spatial_head_tensors,
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        # Load SoftMoE Layers
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict: mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict: mv.load_state_dict(state_dict[v_key])
+
+        # Load SpatialCrossModalFusionHead
+        spatial_dict = {
+            k.replace("spatial_fusion_head.", ""): v
+            for k, v in state_dict.items()
+            if k.startswith("spatial_fusion_head.")
+        }
+        if spatial_dict:
+            self.spatial_fusion_head.load_state_dict(spatial_dict)
+
+        # Load SAM components
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+
         self.sam.load_state_dict(sam_dict)

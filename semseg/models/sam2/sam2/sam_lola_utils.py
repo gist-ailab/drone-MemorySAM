@@ -187,6 +187,114 @@ class CrossModalFusionHead(nn.Module):
         return weights, logits
 
 
+class SpatialCrossModalFusionHead(nn.Module):
+    """P19: Learned spatial cross-modal fusion from multi-scale FPN features.
+
+    P9 CrossModalFusionHead의 공간정보 소실 문제(GAP→1×1) 해결.
+    3개 FPN 레벨에서 multi-scale feature 추출 → 위치별 모달리티 가중치 학습.
+
+    Architecture:
+      Phase A: Multi-scale FPN projection (weight-shared across modalities)
+        fpn[0](32ch) → Conv1×1→D, fpn[1](64ch) → Conv1×1→D → ×2↑,
+        fpn[2](256ch) → Conv1×1→D → ×4↑ → concat → (B, 3D, 256, 256)
+
+      Phase B: Per-modality spatial context extraction (weight-shared)
+        DWConv 3×3(3D) → BN → ReLU → Conv1×1(3D→D) → BN → ReLU
+        → local spatial context (LiDAR density, Thermal edge, RGB illumination)
+
+      Phase C: Cross-modal spatial comparison
+        concat m modalities (B, m*D, H, W)
+        → Conv1×1(m*D→hidden) → BN → ReLU
+        → DWConv 3×3(hidden) → BN → ReLU  (spatial coherence)
+        → Conv1×1(hidden→m) [zero-init]
+        → softmax → (B, m, H, W)
+
+    Output: (B, m, H, W) spatial weights at fpn[0] resolution (256×256).
+    ~23K params (D=32, hidden=64, m=3).
+    """
+    def __init__(self, fpn_channels=(32, 64, 256), num_modalities=3,
+                 proj_dim=32, hidden_dim=64, temperature=1.0):
+        super().__init__()
+        self.num_modalities = num_modalities
+        self.temperature = temperature
+
+        # Phase A: multi-scale projection (shared across modalities)
+        self.proj_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(ch, proj_dim, 1, bias=False),
+                nn.BatchNorm2d(proj_dim),
+                nn.ReLU(inplace=True),
+            )
+            for ch in fpn_channels
+        ])
+
+        fused_dim = proj_dim * len(fpn_channels)  # 96
+
+        # Phase B: per-modality spatial context (shared across modalities)
+        # DWConv 3×3: local spatial context (LiDAR point density, Thermal padding boundary)
+        # Conv1×1: channel mixing + dimensionality reduction
+        self.spatial_context = nn.Sequential(
+            nn.Conv2d(fused_dim, fused_dim, 3, padding=1,
+                      groups=fused_dim, bias=False),
+            nn.BatchNorm2d(fused_dim),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(fused_dim, proj_dim, 1, bias=False),
+            nn.BatchNorm2d(proj_dim),
+            nn.ReLU(inplace=True),
+        )
+
+        # Phase C: cross-modal comparison with spatial coherence
+        compare_in = proj_dim * num_modalities  # 96
+        self.compare = nn.Sequential(
+            nn.Conv2d(compare_in, hidden_dim, 1, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1,
+                      groups=hidden_dim, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden_dim, num_modalities, 1),
+        )
+
+        # Zero-init last Conv → softmax starts uniform [1/m, ..., 1/m]
+        nn.init.constant_(self.compare[-1].weight, 0)
+        nn.init.constant_(self.compare[-1].bias, 0)
+
+    def forward(self, all_fpn_feats):
+        """
+        Args:
+            all_fpn_feats: list of m lists, each with 3 FPN features
+                all_fpn_feats[modal_idx][fpn_level] = (B, C, H, W)
+        Returns:
+            weights: (B, m, H, W) softmax-normalized spatial fusion weights
+            logits:  (B, m, H, W) raw logits before softmax
+        """
+        m = self.num_modalities
+        target_size = all_fpn_feats[0][0].shape[2:]  # fpn[0] resolution
+
+        per_modal_feats = []
+        for i in range(m):
+            # Phase A: project + upsample + concat
+            projected = []
+            for j, feat in enumerate(all_fpn_feats[i]):
+                p = self.proj_layers[j](feat)
+                if p.shape[2:] != target_size:
+                    p = F.interpolate(p, size=target_size,
+                                      mode='bilinear', align_corners=False)
+                projected.append(p)
+            fused = torch.cat(projected, dim=1)  # (B, 3*proj_dim, H, W)
+
+            # Phase B: spatial context
+            spatial = self.spatial_context(fused)  # (B, proj_dim, H, W)
+            per_modal_feats.append(spatial)
+
+        # Phase C: cross-modal comparison
+        concat = torch.cat(per_modal_feats, dim=1)  # (B, m*proj_dim, H, W)
+        logits = self.compare(concat)  # (B, m, H, W)
+        weights = F.softmax(logits / self.temperature, dim=1)
+        return weights, logits
+
+
 class CrossModalFusionHeadV2(nn.Module):
     """
     Cross-Modal Fusion Head V2 (P10): Quality-Aware Adaptive Gating

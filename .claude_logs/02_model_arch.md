@@ -812,19 +812,76 @@ Input (3ch) → ResNetAuxBackbone → layer2(128ch, H/8) + layer3(256ch, H/16)
 
 ---
 
+## P19: Learned Spatial Cross-Modal Fusion (SpatialCrossModalFusionHead)
+
+파일: `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` (LoRA_Sam_P19)
+융합 헤드: `semseg/models/sam2/sam2/sam_lola_utils.py` (SpatialCrossModalFusionHead)
+
+### 핵심 아이디어
+
+P9 CrossModalFusionHead는 GAP로 공간정보 소실 → 스칼라 (B,m) 가중치.
+P10은 GAP+GMP+Std 시도했으나 같은 fpn[0]에서 pooling 변형만으로 실패 (M -2.2).
+P17은 aux entropy로 spatial (B,m,H,W)를 만들지만, aux mask 품질 의존 (ISSUE-008).
+
+**P19: 학습 가능한 SpatialCrossModalFusionHead로 backbone feature에서 직접 spatial 가중치 학습.**
+
+### 아키텍처
+
+```
+Phase A: Multi-Scale FPN Projection (shared across modalities)
+  fpn[0] (32ch, 256²) → Conv1×1(32→32) → BN → ReLU ────────────→ (B, 32, 256, 256)
+  fpn[1] (64ch, 128²) → Conv1×1(64→32) → BN → ReLU → ×2 upsample→ (B, 32, 256, 256)
+  fpn[2] (256ch, 64²) → Conv1×1(256→32) → BN → ReLU → ×4 upsample→ (B, 32, 256, 256)
+                                                            concat → (B, 96, 256, 256)
+
+Phase B: Per-Modality Spatial Context (shared across modalities)
+  DWConv 3×3(96, groups=96) → BN → ReLU → Conv1×1(96→32) → BN → ReLU
+  → (B, 32, 256, 256)  -- local context: LiDAR density, Thermal padding, RGB illumination
+
+Phase C: Cross-Modal Spatial Comparison
+  concat m modalities → (B, 96, 256, 256)
+  → Conv1×1(96→64) → BN → ReLU
+  → DWConv 3×3(64, groups=64) → BN → ReLU  -- spatial coherence
+  → Conv1×1(64→3) [zero-init]
+  → softmax(dim=1) → (B, 3, 256, 256)
+```
+
+### P9 vs P19 비교
+
+| | P9 | P19 |
+| --- | --- | --- |
+| Fusion Head | CrossModalFusionHead (GAP) | SpatialCrossModalFusionHead (DWConv) |
+| FPN Input | fpn[0] only (32ch) | fpn[0]+[1]+[2] (32+64+256ch) |
+| Weight Shape | (B, m) scalar | (B, m, H, W) spatial |
+| UAMM | scalar broadcast | per-level F.interpolate (P17 패턴) |
+| AMF | `.view(-1,1,1,1)` | `_resize_weight()` (P17 패턴) |
+| Aux Decoder | 없음 | 없음 |
+| Return | 2-tuple | 2-tuple |
+| Fusion Head Params | ~15K | ~23K |
+| Total Trainable | ~8.5M | ~8.5M |
+
+### 구현 상태
+
+- **구현 완료** (2026-03-01)
+- Config: `configs/levine-multiaqua_rgbtl_P19_hardaug5.yaml`
+- Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P19_hardaug5.yaml`
+- 학습 스크립트 변경 없음 (P9과 동일 시그니처)
+
+---
+
 ## 버전 비교 총괄
 
-| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | **P17** |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Head | ConfHeadV2 | CrossModalFH | CrossModalFHV2 | CrossModalFHV2 | CrossModalFH | AuxHead+Energy | AuxDec×3+Energy | AuxDec×3+Energy(spatial) | AuxDec×3+Entropy(spatial) | **MSAuxDec×3+Entropy(spatial)** |
-| UAMM | sigmoid | max-norm | max-norm | softmax+τ | max-norm | max-norm | max-norm | spatial max-norm | spatial max-norm | **spatial max-norm** |
-| AMF | norm(sig) | softmax | softmax | softmax | softmax | energy softmax | energy softmax | spatial energy | spatial entropy | **spatial entropy** |
-| Aux Head | 없음 | 없음 | AuxHead×3 | AuxHead×3 | 없음 | 공유×1 | 독립×3 | 독립×3 | 독립×3 | **MS독립×3** |
-| 추가 Loss | 없음 | 없음 | KL(0.5) | KL+MI(1.0) | 없음 | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) |
-| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | 없음 | `.detach()` | **`.detach()`** |
-| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 10ep+5ep ramp | **10ep+5ep ramp** |
-| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 |
-| 학습 반환 | (o,f) | (o,f) | (o,f,aux,w) | (o,f,aux,w,g) | (o,f) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) |
-| FPN 레벨 | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | **fpn[0,1,2]** |
-| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 71.05 | 학습 대기 | 구현 완료 |
-| 교훈 | sig saturation | 상대비교핵심 | oracle과적합 | 진단먼저 | cond미미 | 방향유효 | aux독립불충분 | spatial amplification | 4-fix 통합 | **multi-scale aux** |
+| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | P17 | **P19** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Head | ConfHeadV2 | CrossModalFH | CrossModalFHV2 | CrossModalFHV2 | CrossModalFH | AuxHead+Energy | AuxDec×3+Energy | AuxDec×3+Energy(spatial) | AuxDec×3+Entropy(spatial) | MSAuxDec×3+Entropy(spatial) | **SpatialCrossFH** |
+| UAMM | sigmoid | max-norm | max-norm | softmax+τ | max-norm | max-norm | max-norm | spatial max-norm | spatial max-norm | spatial max-norm | **spatial max-norm** |
+| AMF | norm(sig) | softmax | softmax | softmax | softmax | energy softmax | energy softmax | spatial energy | spatial entropy | spatial entropy | **spatial softmax** |
+| Aux Head | 없음 | 없음 | AuxHead×3 | AuxHead×3 | 없음 | 공유×1 | 독립×3 | 독립×3 | 독립×3 | MS독립×3 | **없음** |
+| 추가 Loss | 없음 | 없음 | KL(0.5) | KL+MI(1.0) | 없음 | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | **없음** |
+| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | 없음 | `.detach()` | `.detach()` | **N/A** |
+| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 10ep+5ep ramp | 10ep+5ep ramp | **없음** |
+| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | **kaiming*0.01** |
+| 학습 반환 | (o,f) | (o,f) | (o,f,aux,w) | (o,f,aux,w,g) | (o,f) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | **(o,f)** |
+| FPN 레벨 | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0,1,2] | **fpn[0,1,2]** |
+| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 71.05 | 68.42 | 73.23 | **구현 완료** |
+| 교훈 | sig saturation | 상대비교핵심 | oracle과적합 | 진단먼저 | cond미미 | 방향유효 | aux독립불충분 | spatial amplification | 4-fix 통합 | multi-scale aux | **learned spatial** |

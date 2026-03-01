@@ -1,8 +1,15 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-02-27
+> 최종 업데이트: 2026-03-01
 
-## 현재 상태: P9가 최선 모델 (M=81.47), P14~P17 전부 하락 — Dynamic Fusion 실패 확정
+## 현재 상태: P9가 최선 모델 (M=81.47), P19 구현 완료 (학습 대기)
+
+### 유틸: SAM2 Thermal 전체 마스크 인퍼런스 (2026-03-01)
+
+- **스크립트**: `run_sam2_thermal_masks.py` — SAM2 vanilla(automatic mask generator)로 thermal 이미지 전체에 대해 segmentation 마스크 생성.
+- **입력**: MULTIAQUA thermal_camera 폴더 (또는 임의 thermal 이미지 폴더).
+- **출력**: `out_dir/tmp/`: 원본 마스크 npz; `out_dir/result/`: 입력과 동일 파일명의 시각화 마스크 PNG + `*_concat.png` (thermal|mask 이어붙임).
+- **실행**: `conda activate MMSS_SAM` 후 `python run_sam2_thermal_masks.py --thermal_dir /path/to/thermal_camera [--out_dir ./output_thermal_sam2]`.
 
 ### P16/P17 실험 결과 (2026-02-27 완료)
 
@@ -132,6 +139,16 @@
     - 하지만 P9(81.47) 대비 여전히 -8.24. Dynamic fusion 방향의 한계 확인
     - Submission #16107 (night_ep35), #16108 (ep28)
 
+12. **P18 (Trainable ResNet-18 Aux Backbone) — 구현 완료, 학습 대기**
+    - P17 기반 + ResNet-18 aux backbone. P18-A(scalar), P18-B(entropy) 두 변형
+    - ~20M trainable (ResNet-18 ~11.2M 추가)
+
+13. **P19 (Learned Spatial Cross-Modal Fusion) — 구현 완료, 학습 대기**
+    - P9 base + SpatialCrossModalFusionHead (multi-scale FPN + DWConv)
+    - (B,m) scalar → (B,m,H,W) spatial 가중치. Aux decoder 없음
+    - P13~P18의 aux-dependent fusion 대신 backbone feature에서 직접 학습
+    - ~8.5M trainable (P9과 동일 수준)
+
 ### 다음 실험 계획
 
 #### 실험 A: P9 + hardaug5 (Aug Ablation)
@@ -187,6 +204,16 @@
 - **SAVE_DIR**: `./outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug6`
 - **우선순위**: P9+hardaug6 결과 확인 후 진행 (조건부)
 - **상태**: 계획 완료, P9+hardaug6 결과 대기
+
+#### 실험 E: P19 — Learned Spatial Cross-Modal Fusion
+
+- **목적**: P9의 GAP 기반 스칼라 fusion을 학습 가능한 spatial fusion으로 교체
+- **가설**: LiDAR 포인트 밀도, Thermal 패딩, RGB 밝기 차이 등 위치별 모달리티 퀄리티를 학습하면 per-location fusion 가능
+- **아키텍처**: P9 base + SpatialCrossModalFusionHead (multi-scale FPN + DWConv + spatial softmax)
+- **핵심 차이**: (B,m) scalar → (B,m,H,W) spatial, fpn[0] only → fpn[0,1,2], aux decoder 없음
+- **파라미터 증가**: ~8K (23K fusion head vs 15K CrossModalFusionHead) — negligible
+- **Config**: `configs/levine-multiaqua_rgbtl_P19_hardaug5.yaml`
+- **상태**: **구현 완료, 학습 대기**
 
 #### 실험 D: P18 — Trainable Aux Backbone (ResNet-18)
 
@@ -253,8 +280,9 @@ Input (3ch RGB / 1ch LiDAR / 1ch Thermal)
 | 1 | **P9+hardaug5** | levine | ~12h | Aug ablation (빠르게 판별) |
 | 2 | **P9+hardaug6** | levine | ~12h | Diversity aug 효과 검증 |
 | 3 | P17+hardaug6 | levine/bengio | ~12h | Diversity가 P17에도 도움되는지 (조건부) |
-| 4 | P18-A | bengio | ~15h | ResNet aux backbone 효과 검증 |
-| 5 | P18-B | bengio | ~15h | ResNet + entropy fusion (조건부) |
+| 4 | **P19** | levine | ~12h | Learned spatial fusion (P9 base) |
+| 5 | P18-A | bengio | ~15h | ResNet aux backbone 효과 검증 |
+| 6 | P18-B | bengio | ~15h | ResNet + entropy fusion (조건부) |
 
 ### 미해결 과제
 

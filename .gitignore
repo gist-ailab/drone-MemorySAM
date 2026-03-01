@@ -267,3 +267,5 @@ output*/
 pretrained_weights/
 logs/
 docs/
+
+thermal_*/

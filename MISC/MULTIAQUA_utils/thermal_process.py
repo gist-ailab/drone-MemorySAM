@@ -16,7 +16,7 @@ import numpy as np
 
 RGB_DIR = Path("/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night/MULTIAQUA_night/data/zed")
 THERMAL_DIR = Path("/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night/MULTIAQUA_night/data/thermal_camera")
-OUTPUT_DIR = Path("/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night/MULTIAQUA_night/data/thermal_processed")
+OUTPUT_DIR = Path("/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night/MULTIAQUA_night/data/thermal_min_max")
 PARAMS_FILE = Path(__file__).resolve().parent / "thermal_align_params.json"
 
 # 키보드 스텝

@@ -507,6 +507,181 @@ Label: 원본 GT 그대로 사용 (ControlNet이 구조 보존)
 
 ---
 
+### ISSUE-011: Fusion Head가 backbone_fpn[0]만 사용 — Multi-Scale 정보 미활용 [설계]
+
+**상태**: 🔵 설계 단계 (2026-03-01)
+**영향**: P9 (CrossModalFusionHead), 향후 모든 fusion head
+**우선순위**: 높음 — P9의 fpn[0]-only 한계를 돌파하는 핵심 개선
+
+**현재 상황 — 버전별 Fusion Weight 생성 방식**:
+
+| 버전 | Fusion Weight 모듈 | 학습 가능? | FPN 사용 | 출력 형태 |
+|------|-------------------|-----------|---------|----------|
+| P8 | ConfidenceHeadV2 (독립 sigmoid) | O | fpn[0]만 | (B, 1) × m |
+| **P9** | **CrossModalFusionHead (상대 softmax)** | **O** | **fpn[0]만** | **(B, m)** |
+| P13~P16 | Entropy (규칙 기반, aux decoder 출력) | X (aux만 학습) | fpn[0]만 (aux 입력) | (B, m) 또는 spatial |
+| P17 | Entropy (규칙 기반, multi-scale aux) | X (aux만 학습) | fpn 3개 (aux 입력) | (B, m, H, W) |
+| P18-A | CrossModalFusionHead (P9 동일) | O | fpn[0]만 | (B, m) |
+
+**모듈 정의 (혼동 주의)**:
+- `ConfidenceHeadV2` (`sam_lola_utils.py:91`): **모달리티별 독립** 점수. Conv→GAP→MLP→sigmoid (B,1). P8 전용.
+- `CrossModalFusionHead` (`sam_lola_utils.py:119`): **모달리티 간 상대 비교**. GAP→Linear→concat→MLP→softmax (B,m). P9/P18-A.
+- 둘은 **완전히 다른 모듈**이며, 역할만 유사 (fusion weight 생성).
+
+**문제**:
+
+1. **P9의 CrossModalFusionHead**: backbone_fpn[0] (32ch, 256×256)만 GAP → 256×256 공간 정보가 단일 벡터(32-dim)로 압축. 이 벡터만으로 모달리티 품질을 판단.
+2. **fpn[1] (64ch, 128×128)과 fpn[2] (256ch, 64×64)의 mid-level/semantic 정보 완전 폐기**
+3. fpn[0]은 high-res spatial detail에 특화 → 모달리티별 "전반적 품질"(semantic confusion, noise level) 판단에는 fpn[2]의 deep feature가 더 적합할 수 있음
+4. P17이 aux decoder에 fpn 3개를 넣어서 정보량 11배 증가시킨 것처럼, fusion head에도 동일 전략 적용 가능
+
+**선행 실험 — P10 CrossModalFusionHeadV2 (GAP+GMP+Std) 실패 기록**:
+
+P10에서 동일한 fpn[0]-only 구조에 multi-pool(GAP+GMP+Std)을 시도한 적 있음:
+- M-score: 79.27 (P9: 81.47, **-2.2 하락**)
+- 취소 사유: "Multi-pool의 Std feature가 야간에서 부정확한 quality estimation"
+- 단, Oracle KL loss + ModalAuxHead가 동시 투입되어 multi-pool 단독 영향 분리 불가
+- **교훈**: 같은 fpn[0] 위에서 pooling 방식만 바꿔서는 근본적 해결 불가
+
+**근본 문제 재정의 — Scalar Fusion의 구조적 한계**:
+
+기존 P8/P9의 GAP 기반 scalar weight (B, m)은 **이미지 전체를 하나의 스칼라로 요약**:
+- LiDAR: sparse point projection → 포인트 있는 곳은 확실한 obstacle 증거, 없는 곳은 빈 공간. GAP은 이 sparse/dense 차이를 평균으로 뭉개버림
+- Thermal/IR: 중앙 영역에만 실제 열 데이터, 나머지는 padding(zero). GAP에 padding 영역도 포함 → thermal 품질 과소평가
+- RGB: 야간에 가로등 근처는 밝고 나머지는 암전. 밝은 영역에서만 RGB 신뢰 → GAP은 이 공간적 차이 무시
+
+**핵심 요구사항**: 위치(h, w)마다 다른 모달리티 가중치를 학습
+
+```
+예시 (256×256 feature map 위의 한 프레임):
+┌──────────────────────────────────┐
+│ Sky 영역:    RGB↑  LiDAR↓        │ ← LiDAR는 상공 포인트 없음
+│                                  │
+│ 가로등 근처: RGB↑  Thermal↑      │ ← 두 모달리티 모두 유효
+│                                  │
+│ 암전 수면:   RGB↓  LiDAR↑        │ ← LiDAR 포인트가 수면 장애물 감지
+│                                  │
+│ Thermal 패딩 영역: Thermal↓      │ ← 빈 데이터, 기여 0
+│ Thermal 중앙:      Thermal↑      │ ← 실제 열 데이터만 활용
+└──────────────────────────────────┘
+출력: (B, m, H, W) — 위치별 모달리티 가중치 맵
+```
+
+---
+
+**제안: Spatial Multi-Scale Cross-Modal Fusion Head (가칭 `SpatialCrossModalFusionHead`)**:
+
+P17의 entropy 기반 spatial weight를 **학습 가능한 모듈**로 대체.
+GAP 제거, spatial 차원 유지, 1×1 Conv로 위치별 cross-modal 비교.
+
+```
+Phase A — Multi-Scale Spatial Feature 생성 (모달리티별, 가중치 공유):
+
+  fpn[0] (32ch, 256×256) → Conv1×1(32→D)  → BN → ReLU ──────→ (B, D, 256, 256)
+  fpn[1] (64ch, 128×128) → Conv1×1(64→D)  → BN → ReLU → ×2 upsample → (B, D, 256, 256)
+  fpn[2] (256ch, 64×64)  → Conv1×1(256→D) → BN → ReLU → ×4 upsample → (B, D, 256, 256)
+                                                    ↓
+                                            concat → (B, 3D, 256, 256) per modality
+
+  D = proj_dim (e.g., 16 or 32)
+  Conv1×1 사용: spatial 차원 보존, 채널만 압축
+  upsample: bilinear interpolate to fpn[0] resolution
+
+Phase B — Spatial Cross-Modal Compare (1×1 Conv):
+
+  3개 모달리티의 spatial feature를 채널 축으로 concat:
+    modal_0: (B, 3D, H, W)
+    modal_1: (B, 3D, H, W)   → concat → (B, m×3D, H, W)
+    modal_2: (B, 3D, H, W)
+
+  Spatial Compare Network:
+    Conv1×1(m×3D → hidden_dim) → BN → ReLU
+    Conv1×1(hidden_dim → m)                   # zero-init
+    → softmax(dim=1) → (B, m, H, W)
+
+  핵심: 1×1 Conv는 각 위치(h,w)에서 독립적으로 cross-modal 비교 수행
+    - LiDAR 포인트 있는 위치 → LiDAR feature 강함 → 높은 가중치 학습
+    - Thermal 패딩 위치 → Thermal feature ≈ 0 → 낮은 가중치 학습
+    - RGB 암전 위치 → RGB feature 약함 → 낮은 가중치 학습
+```
+
+**P17 Entropy vs 제안 SpatialCrossModalFusionHead 비교**:
+
+| | P17 Entropy (현재) | SpatialCrossModalFusionHead (제안) |
+|---|---|---|
+| 방식 | aux logits의 entropy 규칙 계산 | **학습된 Conv로 직접 weight 예측** |
+| 학습 | aux decoder만 (간접) | **fusion head 자체가 학습** |
+| 입력 | aux decoder 출력 (간접 feature) | **backbone FPN 3개 레벨 직접** |
+| 문제 | aux mask 부정확 → entropy 부정확 (ISSUE-008) | backbone feature 직접 사용 → aux 품질 의존 없음 |
+| Gradient | .detach() 필요 (gradient 격리) | main loss에서 직접 학습 가능 |
+| 출력 | (B, m, H, W) | (B, m, H, W) |
+
+**P9 대비 구조 변경 요약**:
+
+```
+P9 (현재):
+  fpn[0] × 3 modalities → GAP → Linear → concat → MLP → softmax
+  출력: (B, m) scalar → UAMM max-norm + AMF
+
+SpatialCrossModalFusionHead (제안):
+  fpn[0]+[1]+[2] × 3 modalities → Conv1×1 proj → upsample → concat
+  → 1×1 Conv compare → softmax
+  출력: (B, m, H, W) spatial → UAMM max-norm(spatial) + AMF(spatial)
+```
+
+**파라미터 추정 (D=16, hidden=32, m=3)**:
+
+| 컴포넌트 | 계산 | 파라미터 |
+|----------|------|---------|
+| proj_layers (3개) | Conv1×1: 32×16 + 64×16 + 256×16 + BN×3 | ~5.7K |
+| compare_net | Conv1×1: 3×48→32 + Conv1×1: 32→3 + BN | ~4.8K |
+| **총계** | | **~10.5K** |
+
+P9의 CrossModalFusionHead (~15K)보다 오히려 작음. 1×1 Conv만 사용하여 경량.
+
+**UAMM/AMF 적용 변경**:
+
+P9는 scalar (B, m):
+```python
+uamm_scores = cross_weights / (max_w + 1e-8)  # (B, m)
+score = uamm_scores[:, i].unsqueeze(1)  # (B, 1)
+score_expanded = score.transpose(0, 1).unsqueeze(-1)  # (1, B, 1)
+modulated = [feat * score_expanded for feat in vision_feats]
+```
+
+Spatial (B, m, H, W):
+```python
+uamm_scores = cross_weights / (max_w + 1e-8)  # (B, m, H, W)
+spatial_score = uamm_scores[:, i]  # (B, H, W)
+# P17과 동일한 패턴: interpolate to each vision_feat resolution
+for level, feat in enumerate(vision_feats[frame_idx]):
+    h, w = feat_sizes[level]
+    score_resized = F.interpolate(spatial_score.unsqueeze(1), size=(h, w), ...)
+    score_flat = score_resized.flatten(2).permute(2, 0, 1)  # (HW, B, 1)
+    modulated.append(feat * score_flat)
+```
+→ P17의 spatial UAMM/AMF 코드를 그대로 재사용 가능
+
+**초기화 전략**:
+- proj_layers: kaiming init (일반적)
+- compare_net 마지막 Conv1×1: **zero-init** (weight=0, bias=0)
+  → 초기 출력 = 0 → softmax(0,0,0) = (1/3, 1/3, 1/3) 균등
+  → 기존 P9와 동일한 시작점에서 점진적 학습
+
+**설계 결정 포인트 (향후 확정 필요)**:
+
+1. **proj_dim D**: 16 vs 32 — 16이면 ~10K params, 32이면 ~30K params
+2. **target resolution**: fpn[0] (256×256) vs 축소 (128×128) — 메모리/속도 트레이드오프
+3. **새 P 버전 번호**: P19 또는 P9-V2로 명명
+4. **P17/P18과의 통합**: P18에도 적용 가능 (use_entropy_fusion=False 경로 교체)
+
+**관련 파일**:
+- `semseg/models/sam2/sam2/sam_lola_utils.py`: CrossModalFusionHead (line 119-187), ConfidenceHeadV2 (line 91-116) — 신규 클래스 추가 대상
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: P9 (line 1356), P17 (line 3880) — spatial UAMM/AMF 참조
+- `.claude_logs/02_model_arch.md`: P10 CrossModalFusionHeadV2 실패 기록 (line 158-218)
+
+---
+
 ## 해결된 이슈 (Resolved Issues)
 
 ### RESOLVED-001: MoE Gate "Uniform" 분포 — 측정 Artifact
