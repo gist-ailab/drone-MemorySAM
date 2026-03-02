@@ -269,3 +269,4 @@ logs/
 docs/
 
 thermal_*/
+tmp/

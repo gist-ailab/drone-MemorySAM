@@ -1,13 +1,2 @@
-CFG="configs/levine-multiaqua_rgbtl_P17_hardaug5.yaml"
-CKPT="outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/periodic_epoch15_checkpoint.pth"
-
-cfg_name=$(basename ${CFG} .yaml)
-
-
-
-python3 -u val_multiaqua.py --cfg ${CFG} --model_path ${CKPT} \
---mode test \
---macvi
-
-python3 val_multiaqua_detailed.py --cfg ${CFG} --model_path ${CKPT} \
---mode test
+P19와 P9의 다른 augmentation버전을 학습해서 평가 결과를 가져와봤어. 
+로그들을 확인해서 분석해줘. 성능하락이 왜 됐는지 잘 모르겠어

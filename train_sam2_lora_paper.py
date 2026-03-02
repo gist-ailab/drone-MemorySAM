@@ -107,10 +107,12 @@ class PrototypeSegmentation:
         loss = F.mse_loss(batch_prototypes, self.global_prototypes)
         return loss
 
-def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs):
-    """Plot and save training curves for Loss, Proto Loss, and LR"""
-    fig, axes = plt.subplots(3, 1, figsize=(10, 12))
-    
+def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs,
+                         val_losses=None):
+    """Plot and save training curves for Loss, Proto Loss, Val Loss, and LR"""
+    n_plots = 4 if val_losses else 3
+    fig, axes = plt.subplots(n_plots, 1, figsize=(10, 4 * n_plots))
+
     # Plot Loss
     axes[0].plot(epochs, losses, 'b-', linewidth=2, label='Train Loss')
     axes[0].set_xlabel('Epoch', fontsize=12)
@@ -118,7 +120,7 @@ def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs):
     axes[0].set_title('Training Loss', fontsize=14, fontweight='bold')
     axes[0].grid(True, alpha=0.3)
     axes[0].legend()
-    
+
     # Plot Proto Loss
     axes[1].plot(epochs, proto_losses, 'r-', linewidth=2, label='Proto Loss')
     axes[1].set_xlabel('Epoch', fontsize=12)
@@ -126,26 +128,43 @@ def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs):
     axes[1].set_title('Prototype Loss', fontsize=14, fontweight='bold')
     axes[1].grid(True, alpha=0.3)
     axes[1].legend()
-    
+
+    # Plot Val Loss (if available)
+    ax_lr = 2
+    if val_losses:
+        val_epochs = [e for e, v in val_losses]
+        val_vals = [v for e, v in val_losses]
+        axes[2].plot(val_epochs, val_vals, 'm-', linewidth=2, label='Val Loss')
+        axes[2].set_xlabel('Epoch', fontsize=12)
+        axes[2].set_ylabel('Loss', fontsize=12)
+        axes[2].set_title('Validation Loss', fontsize=14, fontweight='bold')
+        axes[2].grid(True, alpha=0.3)
+        axes[2].legend()
+        ax_lr = 3
+
     # Plot LR
-    axes[2].plot(epochs, lrs, 'g-', linewidth=2, label='Learning Rate')
-    axes[2].set_xlabel('Epoch', fontsize=12)
-    axes[2].set_ylabel('Learning Rate', fontsize=12)
-    axes[2].set_title('Learning Rate Schedule', fontsize=14, fontweight='bold')
-    axes[2].grid(True, alpha=0.3)
-    axes[2].legend()
-    axes[2].set_yscale('log')  # Use log scale for LR
-    
+    axes[ax_lr].plot(epochs, lrs, 'g-', linewidth=2, label='Learning Rate')
+    axes[ax_lr].set_xlabel('Epoch', fontsize=12)
+    axes[ax_lr].set_ylabel('Learning Rate', fontsize=12)
+    axes[ax_lr].set_title('Learning Rate Schedule', fontsize=14, fontweight='bold')
+    axes[ax_lr].grid(True, alpha=0.3)
+    axes[ax_lr].legend()
+    axes[ax_lr].set_yscale('log')  # Use log scale for LR
+
     plt.tight_layout()
     plot_path = save_dir / 'training_curves.png'
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
-    
+
     # Also save individual plots
     # Combined Loss plot
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
     ax.plot(epochs, losses, 'b-', linewidth=2, label='Train Loss')
     ax.plot(epochs, proto_losses, 'r-', linewidth=2, label='Proto Loss')
+    if val_losses:
+        val_epochs = [e for e, v in val_losses]
+        val_vals = [v for e, v in val_losses]
+        ax.plot(val_epochs, val_vals, 'm--', linewidth=2, label='Val Loss')
     ax.set_xlabel('Epoch', fontsize=12)
     ax.set_ylabel('Loss', fontsize=12)
     ax.set_title('Training Losses', fontsize=14, fontweight='bold')
@@ -225,7 +244,8 @@ def main(cfg, gpu, save_dir):
     ds_kwargs = {}
     if dataset_cfg.get('NAME') == 'MULTIAQUA' and 'NUM_CLASSES' in dataset_cfg:
         ds_kwargs['n_classes'] = dataset_cfg['NUM_CLASSES']
-    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
+    night_trans = bool(dataset_cfg.get('NIGHT_TRANSLATION', False))
+    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], night_translation=night_trans, **ds_kwargs)
     valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
     nightvalset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', nightvaltransform, dataset_cfg['MODALS'], **ds_kwargs) if night_aug_enabled else None
     class_names = trainset.CLASSES
@@ -461,12 +481,14 @@ def main(cfg, gpu, save_dir):
         train_proto_losses = resume_checkpoint['train_proto_losses']
         train_lrs = resume_checkpoint['train_lrs']
         epochs_list = resume_checkpoint['epochs_list']
+        val_losses = resume_checkpoint.get('val_losses', [])
         print(f"Restored training metrics: {len(epochs_list)} epochs")
     else:
         train_losses = []
         train_proto_losses = []
         train_lrs = []
         epochs_list = []
+        val_losses = []  # list of (epoch, loss) tuples
     
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -675,7 +697,8 @@ def main(cfg, gpu, save_dir):
                 trackio.log(trackio_train)
             
             # Plot and save graphs
-            plot_training_curves(save_dir, epochs_list, train_losses, train_proto_losses, train_lrs)
+            plot_training_curves(save_dir, epochs_list, train_losses, train_proto_losses, train_lrs,
+                                 val_losses=val_losses if val_losses else None)
             
             # Save last checkpoint after each epoch
             last_ckp_path = save_dir / 'last_checkpoint.pth'
@@ -697,6 +720,7 @@ def main(cfg, gpu, save_dir):
                 'train_proto_losses': train_proto_losses,
                 'train_lrs': train_lrs,
                 'epochs_list': epochs_list,
+                'val_losses': val_losses,
             }, last_ckp_path)
 
             # 5 epoch 단위 주기 저장 (test set proxy 없이 최적 epoch 탐색용)
@@ -720,6 +744,25 @@ def main(cfg, gpu, save_dir):
             if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
                 acc, macc, f1, mf1, ious, miou = evaluate(model, valloader, device)
                 writer.add_scalar('val/mIoU', miou, epoch)
+
+                # Compute validation loss (CE + proto)
+                model.eval()
+                val_loss_sum = 0.0
+                val_n = 0
+                with torch.no_grad():
+                    for val_imgs, val_lbls in valloader:
+                        val_imgs = [x.to(device) for x in val_imgs]
+                        val_lbls = val_lbls.to(device)
+                        val_out = model(val_imgs, True)
+                        val_logits = val_out[0]
+                        val_feat = val_out[1]
+                        vl_ce = loss_fn(val_logits, val_lbls)
+                        vl_proto = prototypeseg.compute_loss(val_feat, val_lbls) * 256 * 256
+                        val_loss_sum += (vl_ce + vl_proto).item()
+                        val_n += 1
+                val_loss_avg = val_loss_sum / max(val_n, 1)
+                val_losses.append((epoch + 1, val_loss_avg))
+                writer.add_scalar('val/loss', val_loss_avg, epoch)
 
                 # Trackio: Day-Val 전체 메트릭 로깅
                 if HAS_TRACKIO:

@@ -78,6 +78,7 @@ class MULTIAQUA(Dataset):
         n_classes: Optional[int] = None,
         require_annotation: bool = True,
         return_meta: bool = False,
+        night_translation: bool = False,
     ) -> None:
         super().__init__()
         assert split in ["train", "val", "test"]
@@ -101,6 +102,20 @@ class MULTIAQUA(Dataset):
         self.CLASSES = self._BASE_CLASSES
         self.PALETTE = self._BASE_PALETTE
 
+        # Night translation: train시 zed_night*, zed_night2* 등 img2img 변환 폴더도 사용
+        # val/test는 항상 원본 zed만 사용
+        self.night_translation = night_translation and (split == "train")
+        if self.night_translation:
+            data_dir = self.data_root / "data"
+            zed_dirs = sorted([
+                d for d in data_dir.iterdir()
+                if d.is_dir() and d.name.startswith("zed")
+            ])
+            if not zed_dirs:
+                zed_dirs = [self.rgb_dir]
+        else:
+            zed_dirs = [self.rgb_dir]
+
         # Load stem list from {split}.txt
         split_file = self.root / f"{split}.txt"
         if not split_file.exists():
@@ -109,26 +124,32 @@ class MULTIAQUA(Dataset):
             stems = [line.strip() for line in f if line.strip()]
         # require_annotation=True: RGB+annotation 둘 다 필요 (val, train)
         # require_annotation=False: RGB만 필요 (test inference, annotation 없음)
-        self.stems = []
+        # samples: list of (stem, rgb_dir) — 하나의 stem이 여러 zed 변환에 대해 복수 등장 가능
+        self.samples = []
         for s in stems:
-            rgb_path = self.rgb_dir / f"{s}.png"
-            if not rgb_path.exists():
-                continue
             if require_annotation:
                 ann_path = self.ann_dir / f"{s}.png"
                 if not ann_path.exists():
                     continue
-            self.stems.append(s)
-        if not self.stems:
+            for zed_dir in zed_dirs:
+                rgb_path = zed_dir / f"{s}.png"
+                if rgb_path.exists():
+                    self.samples.append((s, zed_dir))
+        if not self.samples:
             raise Exception(f"No samples found for {split} in {self.root} (require_annotation={require_annotation})")
-        print(f"Found {len(self.stems)} {split} images.")
+        # Backward compat: self.stems (unique stems only)
+        self.stems = list(dict.fromkeys(s for s, _ in self.samples))
+        n_variants = len(zed_dirs)
+        print(f"Found {len(self.samples)} {split} samples "
+              f"({len(self.stems)} stems x {n_variants} RGB variant{'s' if n_variants > 1 else ''}: "
+              f"{[d.name for d in zed_dirs]})")
 
     def __len__(self) -> int:
-        return len(self.stems)
+        return len(self.samples)
 
     def __getitem__(self, index: int) -> Tuple:
-        stem = self.stems[index]
-        rgb_path = self.rgb_dir / f"{stem}.png"
+        stem, rgb_dir = self.samples[index]
+        rgb_path = rgb_dir / f"{stem}.png"
 
         sample = {}
         sample["img"] = io.read_image(str(rgb_path))[:3, ...]

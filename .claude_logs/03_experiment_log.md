@@ -26,13 +26,16 @@
 | 8 | P8 | hardaug3 | 93.36 | 61.57 | 79.12 | 27.17 | 77.46 | 15616 |
 | 9 | P11 | hardaug4 | 93.17 | 61.01 | 78.40 | 20.95 | 77.09 | 15851 |
 | 10 | P10 | hardaug3 | 93.18 | 58.93 | 78.57 | 22.36 | 76.05 | 15757 |
-| 11 | P14 | hardaug5 | 93.18 | 55.36 | 78.69 | 23.60 | 74.27 | 16062 |
-| 12 | **P17** | hardaug5 (night_ep35) | 92.60 | 53.86 | 76.29 | 17.98 | **73.23** | 16107 |
-| 13 | P17 | hardaug5 (ep28) | 92.99 | 52.69 | 77.72 | 28.36 | 72.84 | 16108 |
-| 14 | P13 | hardaug4 (ep39) | 92.86 | 50.48 | 77.08 | 14.53 | 71.67 | 16044 |
-| 15 | P15 | hardaug5 | 93.17 | 48.94 | 78.31 | 24.96 | 71.05 | 16087 |
-| 16 | **P16** | hardaug5 (night_ep31) | 93.14 | **43.70** | 78.68 | 20.56 | **68.42** | 16106 |
-| 17 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
+| 11 | **P9** | **hardaug6** (ep20) | 92.00 | 59.91 | 74.63 | 17.69 | **75.95** | 16340 |
+| 12 | P9 | hardaug6 (ep85) | 93.40 | 57.63 | 79.34 | 24.75 | 75.51 | 16339 |
+| 13 | P14 | hardaug5 | 93.18 | 55.36 | 78.69 | 23.60 | 74.27 | 16062 |
+| 14 | **P17** | hardaug5 (night_ep35) | 92.60 | 53.86 | 76.29 | 17.98 | **73.23** | 16107 |
+| 15 | P17 | hardaug5 (ep28) | 92.99 | 52.69 | 77.72 | 28.36 | 72.84 | 16108 |
+| 16 | P13 | hardaug4 (ep39) | 92.86 | 50.48 | 77.08 | 14.53 | 71.67 | 16044 |
+| 17 | P15 | hardaug5 | 93.17 | 48.94 | 78.31 | 24.96 | 71.05 | 16087 |
+| 18 | **P19** | hardaug5 (ep36) | 93.44 | **45.82** | 79.24 | 23.50 | **69.63** | 16313 |
+| 19 | **P16** | hardaug5 (night_ep31) | 93.14 | 43.70 | 78.68 | 20.56 | **68.42** | 16106 |
+| 20 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
 
 ---
 
@@ -358,6 +361,92 @@
 3. **Spatial amplification**: pixel-level fusion이 aux mask의 local error를 증폭 (P14→P15에서 -3.22pp 추가 하락이 증거)
 
 **P9가 잘 작동하는 이유**: SAM2 memory attention이 이미 cross-modal implicit adaptation 수행. UAMM/AMF가 고정이어도 memory 내부에서 모달리티 간 정보가 선택적으로 활용됨.
+
+---
+
+### P19 Experiments
+
+#### P19-1: hardaug5 (epoch36, day-val best)
+
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P19_hardaug5.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P19_hardaug5.yaml`
+- **Checkpoint**: `outputs/MMSamP19/levine_multiaqua_rgbtl_P19_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch36_94.23_top1_checkpoint.pth`
+- **체크포인트 선택**: Day-Val 기준 (94.23 mIoU)
+- **결과**: Val 93.44 / Test **45.82** / M **69.63**
+- **Challenge result**: Submission #16313
+- **Per-class Test IoU**: Static 60.75 / Dynamic 23.39 / Water 94.36 / **Sky 3.77**
+- **Obstacle IoU**: Val 79.24 / Test 23.50
+- **P19 아키텍처**: P9 base + SpatialCrossModalFusionHead (multi-scale FPN + DWConv + spatial softmax)
+  - P9의 `(B,m)` scalar → `(B,m,H,W)` spatial 가중치
+  - fpn[0,1,2] 3개 레벨 활용, proj_dim=32, DWConv context, zero-init compare head
+  - Aux decoder 없음 — main loss만으로 학습
+- **Sky 완전 붕괴**: 169/200 프레임 Sky=0, 191/200 프레임 Sky<10%
+- **UAMM (test)**: img=0.741±0.011, lidar=0.992±0.003, thermal=0.750±0.034
+  - LiDAR 독점 (0.992), P9(0.355)과 대조적
+- **AMF (test)**: img=0.298, lidar=**0.403**, thermal=0.299
+  - P9: img=0.275, lidar=0.355, **thermal=0.370** → P19는 lidar 편향으로 이동
+- **Night_epoch49 (미제출)**: val_pred/test_pred 존재, eval_macvi 생성됨. Val 93.04
+  - Night finetuning 후 thermal UAMM +0.100 상승 (0.750→0.850), test 불확실성도 증가
+- **실패 원인**:
+  1. **hardaug5 문제**: P14~P17과 동일한 augmentation → P9+hardaug6(M=75.95)도 하락, aug 자체 문제
+  2. **Spatial fusion 과적합**: train night feature ≠ real night feature → 학습된 spatial pattern이 전이 실패
+  3. **LiDAR 편향 수렴**: zero-init에서 학습하며 LiDAR 중심으로 수렴 → P9의 thermal 우세 균형 파괴
+  4. **CRM/ZERO 부재**: P9에 유익했던 multimodal 강제 학습 신호 부재
+
+---
+
+### P9 hardaug6 Experiments
+
+#### P9-h6-1: hardaug6 (epoch85, day-val best)
+
+- **Config 학습**: `configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml`
+- **Checkpoint**: `outputs/MMSamP9/bengio_multiaqua_rgbtl_P9_hardaug6/MULTIAQUA_CMNeXt-B2_ilt/epoch85_94.33_top1_checkpoint.pth`
+- **체크포인트 선택**: Day-Val 기준 (94.33 mIoU)
+- **결과**: Val 93.40 / Test 57.63 / M 75.51
+- **Challenge result**: Submission #16339
+- **Per-class Test IoU**: Static 67.88 / Dynamic 24.39 / Water 93.80 / **Sky 39.90**
+- **Sky=0 프레임**: 42/200 (21%), Sky<10%: 73/200 (36.5%)
+- **UAMM (test)**: img=0.778, lidar=1.000, thermal=0.993 — **완전한 고정 상수** (std≈0.000)
+  - Val과 Test가 소수점 4자리까지 동일 → 입력 무관한 학습된 상수
+- **AMF (test)**: img=0.281, lidar=0.361, thermal=0.358 — P9 h4(0.275, 0.355, 0.370)와 유사
+
+#### P9-h6-2: hardaug6 (epoch20, periodic)
+
+- **Checkpoint**: `outputs/MMSamP9/bengio_multiaqua_rgbtl_P9_hardaug6/MULTIAQUA_CMNeXt-B2_ilt/periodic_epoch20_checkpoint.pth`
+- **결과**: Val 92.00 / Test **59.91** / M **75.95** (epoch85보다 M-score +0.44)
+- **Challenge result**: Submission #16340
+- **Per-class Test IoU**: Static 65.74 / Dynamic 19.54 / Water 93.40 / **Sky 56.87**
+- **Sky=0 프레임**: **8/200** (4%) — epoch85(42/200)보다 훨씬 양호
+- **AMF (test)**: img=0.241, lidar=0.393, thermal=0.366
+
+#### P9 hardaug6 분석
+
+- **Epoch20 > Epoch85 on test**: Sky가 결정적 차이 (56.87 vs 39.90 = -16.97pp)
+- **학습이 길수록 Sky 하락**: 야간 aug가 sky texture 제거 → 오래 학습 시 sky 예측 포기로 과적합
+- **hardaug6 vs hardaug4 실패 원인** (M 75.95 vs 81.47, -5.52):
+  1. **너무 넓은 brightness [0.01, 0.60]**: 0.30~0.60 범위는 test에 없는 "밝은 야간" → capacity 낭비
+  2. **gamma>1.0**: 이미지를 밝게 만드는 augmentation → 야간 학습에 반대 방향
+  3. **CRM/ZERO 제거**: P9에는 aux decoder 없으므로 CRM/ZERO shortcut 문제 없음. 오히려 RGB 제거가 multimodal 학습 강화에 유익
+  4. **Dark ratio 50%**: hardaug4(60%)보다 극저조도 노출 부족
+
+---
+
+### Augmentation Ablation 종합 (P9 아키텍처)
+
+| Aug | CRM/ZERO | Brightness | Dark Ratio | Sky IoU | Test mIoU | M-score |
+| --- | --- | --- | --- | --- | --- | --- |
+| **hardaug4** | **있음** | [0.03, 0.45] | 60% | **76.54** | **69.62** | **81.47** |
+| hardaug6 ep20 | 없음 | [0.01, 0.60] | 50% | 56.87 | 59.91 | 75.95 |
+| hardaug6 ep85 | 없음 | [0.01, 0.60] | 50% | 39.90 | 57.63 | 75.51 |
+
+**핵심 발견: CRM/ZERO는 P9에서 유익했을 가능성이 높다**
+- P9에는 aux decoder 없음 → CRM/ZERO의 shortcut 학습 문제 해당 없음
+- RGB가 0이 되면 thermal/lidar에서 학습 강제 → multimodal robustness 향상
+- **P9+hardaug5 (CRM/ZERO만 제거, 나머지 비슷) 실험이 이 가설의 결정적 ablation**
+
+**핵심 발견: "다양성 극대화" 전략은 실패**
+- 넓은 범위가 test에 없는 조건에 capacity 분산
+- "적절한 범위에 집중" (hardaug4) > "넓은 범위에 분산" (hardaug6)
 
 ---
 

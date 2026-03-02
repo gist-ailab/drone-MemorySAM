@@ -1,8 +1,7 @@
-CFG="configs/levine-multiaqua_rgbtl_P17_hardaug5.yaml"
-CKPT="outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/periodic_epoch15_checkpoint.pth"
+CFG="configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml"
+CKPT="outputs/MMSamP9/bengio_multiaqua_rgbtl_P9_hardaug6/MULTIAQUA_CMNeXt-B2_ilt/epoch43_94.08_top4_checkpoint.pth"
 
 cfg_name=$(basename ${CFG} .yaml)
-
 
 
 python3 -u val_multiaqua.py --cfg ${CFG} --model_path ${CKPT} \

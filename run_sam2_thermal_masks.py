@@ -100,23 +100,28 @@ def _auto_crop_padding(gray: np.ndarray, threshold: int = 5):
 
 def _enhance_thermal_contrast(gray: np.ndarray) -> np.ndarray:
     """
-    Thermal 이미지의 극히 좁은 pixel range를 SAM2가 인식할 수 있도록 full stretch.
-    1) Percentile-based min-max normalization (1%~99%) → 0~255
-    2) CLAHE 적용으로 local contrast 강화
+    Thermal 이미지 전처리 (이미 CLAHE 적용된 입력 가정):
+    1) Bilateral filter: 노이즈를 스무딩하되 실제 경계(수면/사람/구름)는 보존
+    2) Percentile-based min-max stretch (5%~95%): 극단값 제외한 부드러운 정규화
+       → 노이즈 차이를 과도하게 증폭하지 않음
     """
     content = gray[gray > 0] if np.any(gray > 0) else gray.ravel()
-    p_lo, p_hi = np.percentile(content, [0.5, 99.5])
+    if content.std() < 0.5:
+        return gray
+
+    # bilateral filter: 노이즈 제거 + 경계 보존
+    smoothed = cv2.bilateralFilter(gray, d=9, sigmaColor=40, sigmaSpace=40)
+
+    sc = smoothed[smoothed > 0] if np.any(smoothed > 0) else smoothed.ravel()
+    p_lo, p_hi = np.percentile(sc, [5, 95])
     if p_hi - p_lo < 1.0:
-        p_lo, p_hi = float(content.min()), float(content.max())
+        p_lo, p_hi = float(sc.min()), float(sc.max())
     if p_hi - p_lo < 1.0:
         return gray
 
-    stretched = (gray.astype(np.float32) - p_lo) / (p_hi - p_lo)
+    stretched = (smoothed.astype(np.float32) - p_lo) / (p_hi - p_lo)
     stretched = np.clip(stretched * 255, 0, 255).astype(np.uint8)
-
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(stretched)
-    return enhanced
+    return stretched
 
 
 def load_thermal_as_rgb(path: Path):
@@ -210,6 +215,12 @@ def main():
         help="한 번에 처리할 point 수 (낮을수록 메모리 적음, 기본 16)",
     )
     parser.add_argument(
+        "--min_area",
+        type=int,
+        default=500,
+        help="이 픽셀 수보다 작은 마스크 제거 (기본 500, 노이즈 마스크 필터링)",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         default="cuda" if torch.cuda.is_available() else "cpu",
@@ -254,8 +265,9 @@ def main():
         sam2,
         points_per_side=args.points_per_side,
         points_per_batch=args.points_per_batch,
-        pred_iou_thresh=0.8,
-        stability_score_thresh=0.95,
+        pred_iou_thresh=0.7,
+        stability_score_thresh=0.85,
+        min_mask_region_area=args.min_area,
         output_mode="binary_mask",
     )
     _log("모델 로드 완료. (단일 이미지 inference, max_size=%d, points_per_batch=%d)" % (args.max_size, args.points_per_batch))
@@ -329,10 +341,16 @@ def main():
             )
             Image.fromarray(mask_viz_full).save(result_dir / f"{name}{ext}")
 
-            # 시각화용 concat: enhanced된 크롭 이미지를 원본에 embed + mask
+            # 시각화용 concat: enhanced thermal | mask overlay(thermal 위에 반투명 마스크)
             viz_input = np.zeros((orig_h, orig_w, 3), dtype=np.uint8)
             viz_input[y0:y0+crop_h, x0:x0+crop_w] = image_cropped
-            concat = np.concatenate([viz_input, mask_viz_full], axis=1)
+            overlay = viz_input.copy()
+            mask_pixels = mask_viz_full.sum(axis=2) > 0
+            overlay[mask_pixels] = (
+                viz_input[mask_pixels].astype(np.float32) * 0.4 +
+                mask_viz_full[mask_pixels].astype(np.float32) * 0.6
+            ).astype(np.uint8)
+            concat = np.concatenate([viz_input, overlay], axis=1)
             Image.fromarray(concat).save(result_dir / f"{name}_concat{ext}")
 
         except Exception as e:

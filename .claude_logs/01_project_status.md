@@ -1,8 +1,17 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-01
+> 최종 업데이트: 2026-03-03
 
-## 현재 상태: P9가 최선 모델 (M=81.47), P19 구현 완료 (학습 대기)
+## 현재 상태: Night2 기반 P9/P17/P19 config 생성 완료, levine 학습 대기
+
+### Night2 실험 Config 생성 완료 (2026-03-03)
+
+- P9/P17/P19 × (train + eval) = **6개 config 생성 완료**
+- 공통: `ROOT→MULTIAQUA_night2`, `NIGHT_TRANSLATION: true`, hardaug4, levine 서버
+- 학습 명령어:
+  - `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4_night2.yaml`
+  - `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P17_hardaug4_night2.yaml`
+  - `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P19_hardaug4_night2.yaml`
 
 ### 유틸: SAM2 Thermal 전체 마스크 인퍼런스 (2026-03-01)
 
@@ -10,6 +19,23 @@
 - **입력**: MULTIAQUA thermal_camera 폴더 (또는 임의 thermal 이미지 폴더).
 - **출력**: `out_dir/tmp/`: 원본 마스크 npz; `out_dir/result/`: 입력과 동일 파일명의 시각화 마스크 PNG + `*_concat.png` (thermal|mask 이어붙임).
 - **실행**: `conda activate MMSS_SAM` 후 `python run_sam2_thermal_masks.py --thermal_dir /path/to/thermal_camera [--out_dir ./output_thermal_sam2]`.
+
+### P19 / P9+hardaug6 실험 결과 (2026-03-03 완료)
+
+- **P19 hardaug5 M=69.63** (P9 대비 **-11.84**, P16급 최악)
+  - SpatialCrossModalFusionHead: multi-scale FPN + DWConv spatial softmax `(B,m,H,W)`
+  - Sky IoU **3.77%** (169/200 프레임 Sky=0) — 학습된 spatial fusion이 LiDAR 편향 수렴
+  - AMF: lidar=0.403 (P9: 0.355) → P9의 thermal 우세 균형 파괴
+  - Submission #16313
+- **P9 hardaug6 M=75.95** (best: epoch20, P9 hardaug4 대비 **-5.52**)
+  - Broader augmentation(BRIGHTNESS [0.01,0.60], GAMMA [0.20,1.50]) 전략 실패
+  - Sky IoU: epoch20=56.87, epoch85=39.90 (학습 길수록 Sky 하락)
+  - Submission #16339 (ep85), #16340 (ep20)
+- **핵심 발견**:
+  1. **CRM/ZERO는 P9에 유익**: aux decoder 없으므로 shortcut 문제 없음, multimodal 강제 학습에 도움
+  2. **Broader aug ≠ Better**: test에 없는 조건(밝은 야간, gamma>1)에 capacity 낭비
+  3. **학습 가능 fusion은 계속 실패**: P19의 spatial fusion도 P12~P17과 동일 패턴 (LiDAR 편향 → Sky 붕괴)
+  4. **Early stopping 중요**: epoch20 > epoch85 on test (Sky -16.97pp 차이)
 
 ### P16/P17 실험 결과 (2026-02-27 완료)
 
@@ -143,11 +169,15 @@
     - P17 기반 + ResNet-18 aux backbone. P18-A(scalar), P18-B(entropy) 두 변형
     - ~20M trainable (ResNet-18 ~11.2M 추가)
 
-13. **P19 (Learned Spatial Cross-Modal Fusion) — 구현 완료, 학습 대기**
+13. **P19 (Learned Spatial Cross-Modal Fusion) — 실험 완료, M=69.63 (실패)**
     - P9 base + SpatialCrossModalFusionHead (multi-scale FPN + DWConv)
-    - (B,m) scalar → (B,m,H,W) spatial 가중치. Aux decoder 없음
-    - P13~P18의 aux-dependent fusion 대신 backbone feature에서 직접 학습
-    - ~8.5M trainable (P9과 동일 수준)
+    - Sky IoU 3.77%, LiDAR 편향 수렴 (AMF lidar=0.403)
+    - Submission #16313
+
+14. **P9+hardaug6 (Diversity Augmentation) — 실험 완료, M=75.95 (실패)**
+    - P9 아키텍처 + 넓은 범위 augmentation [0.01, 0.60]
+    - Sky 56.87(ep20)/39.90(ep85). Broader aug가 역효과
+    - Submission #16339, #16340
 
 ### 다음 실험 계획
 
@@ -273,16 +303,168 @@ Input (3ch RGB / 1ch LiDAR / 1ch Thermal)
 
 ---
 
-### 실험 우선순위 (실행 순서)
+#### 실험 F: P9 + hardaug4-noCRM (CRM/ZERO Ablation) ⭐ 최우선
 
-| 순서 | 실험 | 서버 | 예상 소요 | 목적 |
+- **목적**: CRM/ZERO가 P9 성능에 기여하는 정도를 정확히 분리 (Critical Ablation)
+- **배경**:
+  - P9+hardaug4(M=81.47)과 P9+hardaug6(M=75.95) 사이 **-5.52pp** 차이
+  - hardaug6은 CRM/ZERO 제거 + brightness/gamma 범위 변경 **두 가지를 동시에 바꿈** → 원인 불명
+  - P9에는 aux decoder가 없으므로 CRM/ZERO shortcut 문제 없음
+  - 가설: CRM/ZERO가 P9에서 multimodal 강제 학습에 유익하다면, 이걸 제거하면 하락할 것
+  - **이 ablation이 확인해야 할 것**: hardaug6 하락이 CRM/ZERO 제거 때문인지, 범위 변경 때문인지
+- **설계**: hardaug4의 **모든 파라미터를 동일하게 유지**, CRM_P와 ZERO_P만 0.0으로 변경
+
+| 파라미터 | hardaug4 (원본) | **hardaug4-noCRM** | 변경 여부 |
+| --- | --- | --- | --- |
+| NIGHT_SIM_P | 0.45 | 0.45 | 유지 |
+| BRIGHTNESS_RANGE | [0.03, 0.45] | [0.03, 0.45] | 유지 |
+| BRIGHTNESS_SAMPLING | dark_biased | dark_biased | 유지 |
+| DARK_BIASED_RATIO | 0.6 | 0.6 | 유지 |
+| DARK_RANGE | [0.03, 0.12] | [0.03, 0.12] | 유지 |
+| MODERATE_RANGE | [0.12, 0.45] | [0.12, 0.45] | 유지 |
+| CONTRAST_RANGE | [0.3, 0.7] | [0.3, 0.7] | 유지 |
+| GAMMA_RANGE | [0.4, 0.8] | [0.4, 0.8] | 유지 |
+| NOISE_STD | 0.02 | 0.02 | 유지 |
+| **CRM_P** | **0.35** | **0.0** | **제거** |
+| CRM_MASK_RATIO | [0.2, 0.5] | (미사용) | — |
+| **ZERO_P** | **0.09** | **0.0** | **제거** |
+
+- **필요 파일**:
+  1. `configs/bengio-multiaqua_rgbtl_P9_hardaug4noCRM.yaml` (학습)
+  2. `configs/eval_config/bengio-multiaqua_rgbtl_P9_hardaug4noCRM.yaml` (평가)
+- **LORA_MODEL**: `LoRA_Sam_P9` (아키텍처 변경 없음)
+- **SAVE_DIR**: `./outputs/MMSamP9/bengio_multiaqua_rgbtl_P9_hardaug4noCRM`
+- **학습 하이퍼파라미터**: hardaug4와 완전 동일 (LR=0.0006, EPOCHS=200, DDP=True, BATCH_SIZE=1, WARMUP_EPOCHS=10)
+- **서버**: bengio
+
+- **예상 결과 해석**:
+  - hardaug4-noCRM ≈ hardaug4 (M≥80) → CRM/ZERO 영향 미미, hardaug6 하락은 범위 변경 때문
+  - hardaug4-noCRM ≪ hardaug4 (M≤78) → CRM/ZERO가 핵심 기여 요소, P9에서 유지해야 함
+  - hardaug4-noCRM ≈ hardaug6 (M≈76) → CRM/ZERO 제거가 주된 하락 원인, 범위 변경은 무관
+- **상태**: 계획 완료, 구현 대기
+
+### Night2 데이터셋 기반 실험 우선순위 (2026-03-03)
+
+#### 배경: img2img Day-to-Night Translation
+
+- **데이터셋**: `MULTIAQUA_night2` — 기존 MULTIAQUA에 img2img 변환으로 생성한 야간 RGB 추가
+- **경로**: `/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2`
+- **구조**: `data/zed` (주간 원본 3,298장) + `data/zed_night` (야간 변환 3,298장)
+- **Config 변경**: `DATASET.ROOT` → `MULTIAQUA_night2`, `NIGHT_TRANSLATION: true`
+- **효과**: train 시 `zed` + `zed_night` 모두 로드 → **2,952 × 2 = 5,904 학습 샘플**
+- **val/test는 원본 zed만 사용** (코드에서 `split == "train"` 일 때만 night_translation 적용)
+
+#### 핵심 패러다임 전환
+
+기존 실험의 근본 한계: **train=주간만, test=야간만** → 모든 모델이 야간 일반화 실패 (val 93% vs test 70%).
+
+Night2 데이터로 **야간 RGB를 직접 학습**하면:
+1. Backbone(SAM2 Hiera)은 frozen이지만, **LoRA adapter가 야간 feature 패턴 학습** 가능
+2. Aux decoder가 **야간 이미지에서의 entropy/energy를 직접 경험** → 추정 정확도 향상
+3. Fusion head가 **야간 조건에서의 modality 신뢰도를 직접 학습** → 정확한 가중치
+
+이것은 P12~P19가 실패한 **직접적 원인**을 해결할 수 있음:
+- **"Dynamic Fusion 실패"의 원인**: adaptive mechanism이 주간에서만 학습 → 야간에서 잘못된 가중치
+- **Night2로 해결 가능성**: adaptive mechanism이 야간 패턴도 학습 → 정확한 야간 가중치
+
+#### 우선순위 1: P9 + night2 (Baseline) ⭐⭐
+
+- **근거**: 현재 최선 모델(M=81.47). Night2로 가장 안전한 성능 향상 기대
+- **변경**: `ROOT` → night2, `NIGHT_TRANSLATION: true`, 나머지 hardaug4 동일
+- **기대 효과**:
+  - LoRA adapter가 야간 RGB feature를 직접 학습 → test mIoU 향상
+  - CrossModalFusionHead는 여전히 "learned constant"로 수렴하겠지만, 야간 데이터 포함 학습으로 constant 비율 자체가 더 최적화
+  - NIGHT_AUG와 night2가 상호보완: NIGHT_AUG는 brightness/gamma 다양성, night2는 realistic texture/structure
+- **리스크**: 낮음. P9은 가장 안정적인 아키텍처
+- **예상 향상**: test mIoU +3~8pp (M 83~86 가능)
+
+#### 우선순위 2: P13 + night2 (Energy Score Fusion) ⭐
+
+- **근거**: P9 대비 -0.26 (M=81.21)로 **가장 근접**. 실패 원인이 night2로 직접 해결됨
+- **P13이 night2에서 P9을 넘을 수 있는 이유**:
+  1. P13의 Energy Score fusion은 **방향이 맞았음** — 야간에 RGB↓ LiDAR↑ 적응 실제 수행
+  2. 실패 원인: aux head가 주간만 학습 → **야간 LiDAR를 항상 "가장 confident"로 오판** (Sky에서 LiDAR가 Water로 확신있게 틀림)
+  3. Night2로 aux head가 야간 패턴 학습 → **LiDAR의 Sky 오예측을 정확히 감지** → energy 낮음 → RGB 가중치 유지 → Sky 보존
+  4. P9는 고정 상수로 야간 적응 불가. P13은 **야간에 맞는 dynamic 가중치 가능**
+- **기대 효과**:
+  - Aux mask 야간 품질 향상 → Energy Score 정확도 향상 → dynamic fusion 비로소 작동
+  - Dynamic IoU: 기존 27.41 (P9 대비 +5.55)에서 추가 향상 가능
+  - Sky IoU: LiDAR 맹신 해소 → P9 수준(76%) 회복 가능
+- **리스크**: 중간. Energy Score "confident but wrong" 문제가 night2에서도 잔존할 수 있음
+- **예상 향상**: P9+night2보다 +1~3pp 추가 가능 (M 84~88)
+
+#### 우선순위 3: P17 + night2 (Multi-Scale FPN Entropy Fusion)
+
+- **근거**: 가장 정교한 aux decoder (159K params, 3-level FPN). Night2로 aux mask 품질 극대화
+- **P17이 night2에서 도약할 수 있는 이유**:
+  1. P17은 P16 대비 Sky +30pp 개선 → multi-scale FPN의 효과 입증
+  2. 하지만 M=73.23 (P9 대비 -8.24) — aux mask가 야간에서 여전히 부정확해서 entropy 오추정
+  3. Night2로 **aux decoder가 야간 multi-scale feature의 entropy를 직접 학습** → calibrated entropy 정확도 급상승
+  4. `.detach()` + warmup + spatial entropy — 4가지 Fix가 night2와 결합하면 비로소 의도대로 작동
+  5. **P13 대비 장점**: multi-scale feature(352ch)가 야간에서 더 풍부한 정보 제공
+- **리스크**: 중-높음. 복잡한 파이프라인(4-fix + aux + entropy)이 여전히 불안정할 수 있음
+- **예상 향상**: aux mask 야간 품질이 충분하면 P13 이상 가능, 불충분하면 P13 이하
+
+#### 우선순위 4: P19 + night2 (Spatial Cross-Modal Fusion)
+
+- **근거**: Aux decoder 없는 깔끔한 spatial fusion. Night2로 공간 가중치 학습 패턴 변화 기대
+- **P19가 night2에서 회복할 수 있는 이유**:
+  1. P19 실패 원인: SpatialCrossModalFusionHead가 **주간 패턴에서 LiDAR 편향으로 수렴** (AMF lidar=0.403)
+  2. Night2에서: 야간 RGB가 학습에 포함 → fusion head가 "야간엔 RGB 신뢰도 낮음"을 직접 학습
+  3. 주간 vs 야간에서 **다른 spatial 가중치**를 출력할 수 있음 → 상황 적응적 fusion
+  4. Aux decoder 없음 → 파이프라인 단순, entropy 추정 오류 위험 없음
+- **P9보다 나을 수 있는 시나리오**: 야간 특정 영역(ex: 수면 반사가 강한 곳)에서 RGB가 유리한 경우, spatial fusion이 per-pixel로 RGB 가중치를 올릴 수 있음. P9의 고정 상수로는 불가능
+- **리스크**: 중-높음. LiDAR 편향 수렴이 night2에서도 반복될 가능성
+- **예상 향상**: 수렴 패턴에 따라 크게 달라짐 (P9 이상 또는 여전히 이하)
+
+#### 우선순위 5: P18-A + night2 (ResNet-18 Aux Backbone)
+
+- **근거**: Trainable ResNet-18이 야간 도메인 특화 feature 학습 → 가장 높은 aux mask 품질
+- **Night2와의 시너지**:
+  1. ResNet-18(11.2M)은 ImageNet pretrain → night2로 야간 MULTIAQUA fine-tune
+  2. 기존 우려: "주간에만 학습하면 야간 aux mask 부정확" → **night2로 직접 해결**
+  3. 5,904장 × 200 epoch = 충분한 학습량 (기존 2,952장보다 overfitting 위험도 감소)
+- **리스크**: 높음. 파라미터 20M으로 가장 크고, 학습 시간 ~15h+, 여전히 4-class 데이터 규모에 과적합 위험
+- **예상 향상**: 성공 시 가장 큰 폭의 향상 가능 (aux mask 품질 급상승 → entropy fusion 최적 작동), 실패 시 overfitting
+
+#### Night2 실험 매트릭스
+
+| 순서 | 모델 | 아키텍처 특성 | Night2 기대 효과 | 리스크 | 왜 P9을 넘을 수 있나 |
+| --- | --- | --- | --- | --- | --- |
+| **1** | **P9** | 고정 상수 fusion | LoRA 야간 학습 | 낮음 | baseline, 안전한 향상 |
+| **2** | **P13** | Energy Score adaptive | Aux mask 야간 품질↑ → 정확한 dynamic fusion | 중간 | 야간 dynamic adaptation |
+| **3** | P17 | Entropy spatial + multi-scale | Aux decoder 야간 entropy 정확도↑ | 중-높 | 정교한 spatial 적응 |
+| **4** | P19 | Learned spatial fusion | Spatial head 야간 패턴 학습 | 중-높 | Per-pixel 야간 가중치 |
+| **5** | P18-A | ResNet-18 trainable aux | ResNet 야간 도메인 fine-tune | 높음 | 최고 aux mask 품질 |
+
+#### Config 공통 변경 사항
+
+모든 night2 실험에 공통 적용:
+```yaml
+DATASET:
+  ROOT: '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2'
+  NIGHT_TRANSLATION: true    # zed + zed_night 모두 로드
+  # 나머지 동일
+
+# NIGHT_AUG: hardaug4 유지 (night2와 상호보완)
+# — night2: realistic texture/structure
+# — NIGHT_AUG: brightness/gamma diversity
+```
+
+- Config 이름 패턴: `{server}-multiaqua_rgbtl_{model}_hardaug4_night2.yaml`
+- SAVE_DIR 패턴: `./outputs/MMSam{model}/{server}_multiaqua_rgbtl_{model}_hardaug4_night2`
+- 평가 시: `ROOT`는 night2 유지 (val은 원본 zed만 사용하므로 결과 동일)
+- `TEST.FILE`도 night2로 설정 (test도 원본 zed만 사용)
+
+### 이전 실험 우선순위 (night2 이전, 참고용)
+
+| 순서 | 실험 | 서버 | 목적 | 상태 |
 | --- | --- | --- | --- | --- |
-| 1 | **P9+hardaug5** | levine | ~12h | Aug ablation (빠르게 판별) |
-| 2 | **P9+hardaug6** | levine | ~12h | Diversity aug 효과 검증 |
-| 3 | P17+hardaug6 | levine/bengio | ~12h | Diversity가 P17에도 도움되는지 (조건부) |
-| 4 | **P19** | levine | ~12h | Learned spatial fusion (P9 base) |
-| 5 | P18-A | bengio | ~15h | ResNet aux backbone 효과 검증 |
-| 6 | P18-B | bengio | ~15h | ResNet + entropy fusion (조건부) |
+| ~~1~~ | P9+hardaug4-noCRM | bengio | CRM/ZERO ablation | 계획 완료 (night2로 대체 가능) |
+| ~~2~~ | P9+hardaug5 | levine | Aug ablation | 계획 완료 |
+| ~~3~~ | ~~P9+hardaug6~~ | ~~levine~~ | ~~Diversity aug~~ | **완료 (M=75.95, 실패)** |
+| ~~4~~ | P18-A | bengio | ResNet aux backbone | 구현 완료 |
+| ~~5~~ | ~~P19~~ | ~~levine~~ | ~~Learned spatial fusion~~ | **완료 (M=69.63, 실패)** |
 
 ### 미해결 과제
 
@@ -305,4 +487,7 @@ Input (3ch RGB / 1ch LiDAR / 1ch Thermal)
 - **P9의 단순한 CrossModalFusionHead가 가장 효과적**: 고정 비율 img:27.5%, lidar:35.5%, thermal:37.0%. SAM2 memory attention이 implicit adaptation 수행
 - **Multi-Scale FPN은 효과 있음**: P16(3.17)→P17(33.35) Sky +30pp. 하지만 근본 해결은 아님
 - **Aux mask 품질이 근본 한계** (ISSUE-008): frozen backbone 위의 lightweight decoder로는 entropy/energy 추정 신뢰도 확보 불가
-- **다음 방향**: P9 기반 점진적 개선 (hardaug5 재학습, TTA, P9+P13 ensemble)
+- **CRM/ZERO는 P9에 유익**: aux decoder 없으므로 shortcut 없고, multimodal 강제 학습에 도움. P9+hardaug5(CRM/ZERO만 제거) ablation 필요
+- **Broader aug 실패**: hardaug6 [0.01, 0.60] + gamma>1.0은 test에 없는 조건에 capacity 낭비
+- **학습 가능 fusion 실패 확정**: P12~P19 8개 실험 전부 P9(고정 상수)보다 나쁨
+- **다음 방향**: Night2 데이터셋 기반 재학습 (P9 → P13 → P17 → P19 → P18 순)
