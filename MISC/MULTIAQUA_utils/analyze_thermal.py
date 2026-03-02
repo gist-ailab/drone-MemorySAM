@@ -106,6 +106,8 @@ def main():
         per_image[stem] = info
 
         img = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            continue
         h, _ = np.histogram(img.ravel(), bins=256, range=(0, 256))
         global_hist += h
         if info["roi_px"] > 0:
