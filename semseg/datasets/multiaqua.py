@@ -102,9 +102,8 @@ class MULTIAQUA(Dataset):
         self.CLASSES = self._BASE_CLASSES
         self.PALETTE = self._BASE_PALETTE
 
-        # Night translation: train시 zed_night*, zed_night2* 등 img2img 변환 폴더도 사용
-        # val/test는 항상 원본 zed만 사용
-        self.night_translation = night_translation and (split == "train")
+        # Night translation: zed_night*, zed_night2* 등 img2img 변환 폴더도 사용
+        self.night_translation = night_translation
         if self.night_translation:
             data_dir = self.data_root / "data"
             zed_dirs = sorted([

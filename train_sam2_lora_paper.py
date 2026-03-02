@@ -246,8 +246,8 @@ def main(cfg, gpu, save_dir):
         ds_kwargs['n_classes'] = dataset_cfg['NUM_CLASSES']
     night_trans = bool(dataset_cfg.get('NIGHT_TRANSLATION', False))
     trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], night_translation=night_trans, **ds_kwargs)
-    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
-    nightvalset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', nightvaltransform, dataset_cfg['MODALS'], **ds_kwargs) if night_aug_enabled else None
+    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], night_translation=night_trans, **ds_kwargs)
+    nightvalset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', nightvaltransform, dataset_cfg['MODALS'], night_translation=night_trans, **ds_kwargs) if night_aug_enabled else None
     class_names = trainset.CLASSES
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])

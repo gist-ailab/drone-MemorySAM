@@ -549,6 +549,8 @@ def main():
 
     split = 'val' if args.mode == 'val' else 'test'
     require_annotation = args.mode == 'val'  # val=평가용(annotation필요), test=인퍼런스만(RGB만)
+    # --macvi: challenge 제출용이므로 원본 zed만 사용. 아니면 config의 NIGHT_TRANSLATION 따름
+    night_trans = False if args.macvi else bool(dataset_cfg.get('NIGHT_TRANSLATION', False))
     dataset = MULTIAQUA(
         dataset_cfg['ROOT'],
         split=split,
@@ -556,6 +558,7 @@ def main():
         modals=dataset_cfg['MODALS'],
         require_annotation=require_annotation,
         return_meta=True,
+        night_translation=night_trans,
     )
     collate_fn = _collate_multiaqua
     dataloader = DataLoader(
