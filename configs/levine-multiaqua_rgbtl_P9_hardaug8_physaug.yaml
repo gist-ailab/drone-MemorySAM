@@ -15,7 +15,7 @@ MODEL:
 
 DATASET:
   NAME          : MULTIAQUA
-  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
+  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']
 
