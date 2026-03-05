@@ -1,8 +1,39 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-03
+> 최종 업데이트: 2026-03-05
 
-## 현재 상태: Night2 기반 P9/P17/P19 config 생성 완료, levine 학습 대기
+## 현재 상태: FDA augmentation 구현 완료 (학습 대기)
+
+### FDA Augmentation 구현 (2026-03-05)
+
+- **RandomFDA 클래스** 구현 (`semseg/augmentations_mm.py`)
+  - FFT로 주간 RGB의 저주파 amplitude를 야간(lj4) 이미지의 것으로 교체
+  - config-driven: `NIGHT_AUG.FDA.ENABLE/P/BETA/TARGET_DIR/TARGET_PREFIX/BLEND_RATIO`
+  - 야간 reference pool: test set lj4_* 200장 (prefix 필터링)
+  - 파이프라인 순서: ColorJitter → **RandomFDA** → NightSim → CRM → ZeroOut → ...
+- **Training config**: `configs/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml`
+- **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml`
+
+### I2I Translation 실험 실패 (2026-03-05)
+
+- **실험 II: Day-Trans** (test night→day, img2img-turbo) → **M=78.90 (baseline 81.47 대비 -2.57)**
+  - Test mIoU 64.50 (-5.12pp), Sky -9.80pp, Static -5.33pp
+  - 171/200 이미지 하락, hallucinated texture가 segmentation 악화
+  - Submission #16478
+- **실험 III: Night2** (day→night I2I로 학습 데이터 확장) → **M=73.04 (baseline 대비 -8.43)**
+  - Test mIoU 53.18 (-16.44pp), **Sky IoU 26.92 (-49.62pp)** — Sky 붕괴 130/200장
+  - I2I artifact 학습 + cross-modal 불일치 + NightSim 이중 적용
+  - Submission #16482
+- **근본 원인**: Day/Night 정보 비대칭. Real night은 센서 단계에서 정보 비가역 소실 → I2I로 복원/모사 불가. Pixel-level domain bridging의 정보이론적 한계
+
+### Gamma TTA 실험 실패 (2026-03-04)
+
+- **실험 I: P9 hardaug4 + Gamma TTA [1.0, 1.5, 2.0, 2.5]** → **M=76.10 (baseline 81.47 대비 -5.37)**
+- Test mIoU 58.89 (-10.73pp), **Sky IoU 47.70 (-28.84pp)** — Sky 붕괴가 하락의 75%
+- Sky=0 프레임 5→29개 (5.8x), Dynamic=0 프레임 46→72개 (1.6x)
+- **원인**: 높은 gamma(1.5~2.5)가 OOD 입력 생성 + equal-weight soft voting이 좋은 예측을 dilute
+- **결론**: Multi-gamma TTA는 이 모델에서 확정적 실패. Single mild gamma(1.2~1.3) 탐색 여지 있음
+- Submission #16412
 
 ### Night2 실험 Config 생성 완료 (2026-03-03)
 
@@ -456,6 +487,110 @@ DATASET:
 - 평가 시: `ROOT`는 night2 유지 (val은 원본 zed만 사용하므로 결과 동일)
 - `TEST.FILE`도 night2로 설정 (test도 원본 zed만 사용)
 
+#### 실험 H: RandomGammaWide — 독립 Contrast Invariance Augmentation
+
+- **목적**: NightSim과 독립적인 wide gamma augmentation으로 contrast-invariant feature 학습
+- **배경 관찰** (2026-03-03):
+  - 실제 야간 test 이미지에 gamma 조절 시, 육안으로 수면-하늘-장애물 boundary 구분 가능
+  - 이는 semantic 정보가 존재하지만 contrast curve가 다를 뿐이라는 증거
+  - 현재 NightSim gamma range [0.4, 0.8]은 일방향(어둡게만), 범위도 좁음
+- **⚠️ hardaug6과의 차이점** (hardaug6은 M=75.95로 실패):
+  - hardaug6: NightSim **내부**의 gamma를 [0.20, 1.50]으로 변경 + CRM/ZERO 제거 + brightness 변경 → 3가지 동시 변경
+  - **본 실험**: NightSim과 **완전 독립적인 별도 augmentation**으로 적용
+  - hardaug6은 "야간 시뮬레이션 범위 확장" → 비현실적 야간 이미지 생성
+  - 본 실험은 "밝은 주간 이미지도 다양한 gamma로 볼 수 있게" → **Domain Randomization 철학**
+  - NightSim의 파라미터(gamma, brightness 등)는 hardaug4 그대로 유지
+- **설계**:
+  ```python
+  class RandomGammaWide:
+      """NightSim과 독립. 순수 contrast invariance 학습용.
+      NightSim 적용 여부와 무관하게 모든 RGB 이미지에 적용 가능."""
+      def __init__(self, gamma_range=(0.3, 2.5), p=0.5):
+          self.gamma_range = gamma_range
+          self.p = p
+
+      def __call__(self, sample):
+          if random.random() > self.p:
+              return sample
+          gamma = random.uniform(*self.gamma_range)
+          img = sample['img'].float() / 255.0
+          img = torch.clamp(img, 1e-6, 1.0) ** gamma
+          sample['img'] = (img * 255).to(torch.uint8)
+          return sample
+  ```
+- **적용 위치**: `get_train_augmentation()` 내에서 NightSim **이전**에 배치
+  - NightSim 전에 gamma → NightSim이 이미 다양한 contrast의 이미지를 어둡게 만듦
+  - 또는 NightSim **이후**에 배치 → 이미 어두운 이미지에도 gamma 적용 (더 extreme)
+  - **권장: NightSim 이전** (주간 이미지에 gamma 적용 → NightSim → 다양한 야간)
+- **Config 설계** (hardaug7):
+  ```yaml
+  NIGHT_AUG:
+    # hardaug4 파라미터 전부 유지
+    ENABLE: true
+    NIGHT_SIM_P: 0.45
+    BRIGHTNESS_RANGE: [0.03, 0.45]
+    # ... (hardaug4 동일)
+    CRM_P: 0.35
+    ZERO_P: 0.09
+    # 새로운 파라미터
+    RANDOM_GAMMA_WIDE:
+      ENABLE: true
+      GAMMA_RANGE: [0.3, 2.5]
+      P: 0.5
+  ```
+- **가설 검증**:
+  - hardaug4 + RandomGammaWide ≥ hardaug4 (M≥81.47) → contrast invariance가 유익
+  - hardaug4 + RandomGammaWide < hardaug4 → gamma 다양성이 capacity 낭비 (hardaug6과 동일 결론)
+- **리스크**: 중간. hardaug6 실패와 유사할 수 있으나, NightSim 파라미터 유지 + CRM/ZERO 유지가 차이점
+- **LORA_MODEL**: `LoRA_Sam_P9` (아키텍처 변경 없음)
+- **상태**: 설계 완료, 구현 대기
+
+---
+
+#### 실험 I: Test-time Gamma Preprocessing ⭐ (학습 불필요, 즉시 검증 가능)
+
+- **목적**: 기존 P9 hardaug4 체크포인트를 그대로 사용, test 이미지에 gamma 전처리만 적용
+- **배경 관찰** (2026-03-03):
+  - 야간 test RGB 이미지에 gamma=1.5~2.5 적용 시, 어두운 영역의 semantic boundary가 육안으로 구분 가능
+  - 모델이 주간 이미지(밝은)로 학습했으므로, 야간 이미지를 밝게 만들면 학습 분포에 가까워짐
+  - **학습 없이 즉시 검증 가능** → 가장 빠른 실험
+- **구현 방식**:
+  ```python
+  # val_multiaqua.py에 --test_gamma 플래그 추가
+  # test 이미지 로드 후, 모델 입력 전에 gamma 적용
+  def apply_test_gamma(img_tensor, gamma):
+      """img_tensor: (B, 3, H, W) uint8 또는 float [0,1]"""
+      img = img_tensor.float() / 255.0 if img_tensor.dtype == torch.uint8 else img_tensor
+      img = torch.clamp(img, 1e-6, 1.0) ** (1.0 / gamma)  # gamma > 1 → 밝게
+      return img
+  ```
+- **실험 설계**:
+  - `--test_gamma 1.0`: baseline (현재와 동일, M=81.47 확인)
+  - `--test_gamma 1.5`: 약간 밝게
+  - `--test_gamma 2.0`: 중간
+  - `--test_gamma 2.5`: 강하게 밝게
+  - `--test_gamma 3.0`: 극단
+  - **val에는 적용하지 않음** (val은 주간이므로 gamma 불필요)
+- **변형: Multi-gamma TTA**:
+  - 여러 gamma 값으로 예측 → soft voting (확률 평균)
+  - `--test_gamma_tta 1.0,1.5,2.0`: 3개 gamma로 예측 후 평균
+  - Ensemble 효과로 단일 gamma보다 robust할 수 있음
+- **적용 위치**: `val_multiaqua.py`의 test 평가 루프, normalize 이전에 gamma 적용
+- **리스크**: 낮음. 학습 변경 없음, 기존 체크포인트 그대로 사용
+- **기대 효과**:
+  - 야간 RGB를 밝게 → SAM2가 주간에서 학습한 feature와 더 유사한 입력
+  - 특히 Sky, Static 영역에서 RGB feature 품질 향상 기대
+  - val mIoU는 변화 없음 (val에는 미적용)
+  - test mIoU +1~5pp 가능 → M-score 82~84 잠재력
+- **주의사항**:
+  - gamma 적용은 normalize **이전**에 해야 함 (정규화 후 적용하면 분포 파괴)
+  - 현재 `Normalize`가 augmentation pipeline의 마지막 → 별도로 gamma를 삽입해야 함
+  - test_gamma는 RGB에만 적용 (thermal, lidar는 별도 전처리)
+- **우선순위**: ⭐ 최우선 — 학습 없이 즉시 효과 검증 가능
+- **상태**: 설계 완료, 구현 대기
+
+---
+
 ### 이전 실험 우선순위 (night2 이전, 참고용)
 
 | 순서 | 실험 | 서버 | 목적 | 상태 |
@@ -472,22 +607,56 @@ DATASET:
 2. **M=85 목표**: 현재 81.47 → +3.53pp 필요. Night Aug 포화로 새로운 접근 필수
 3. **Val vs Test 갭 (93% vs 70%)**: 야간 test에서의 성능 저하가 여전히 핵심 문제
 4. **Dynamic 클래스 IoU**: Test에서 21-27%. Gap -38pp이 가장 심각한 병목
-5. **TTA (Test Time Augmentation)**: val_multiaqua_P9.py에 `--tta` 플래그 추가됨, **효과 미검증**
+5. **🔴 TTA (Test Time Augmentation)**: Gamma TTA [1.0,1.5,2.0,2.5] 실험 완료 → **M=76.10, 실패 확정** (baseline 81.47 대비 -5.37). OOD gamma가 Sky 붕괴(-28.84pp) 유발. Single mild gamma(1.2~1.3) 단독 적용은 미검증
 6. **P13 best day-val checkpoint test 재평가**: epoch14(93.48)로 M-score 역전 가능성 확인 필요
 7. **Diffusion 기반 Night 합성** (ISSUE-005): M=85 도달을 위한 최유력 접근, 미구현
 8. **Ensemble**: P9(Sky 우세) + P13(Dynamic 우세) 상보성 활용 가능
 9. **🟢 ISSUE-009: Energy Score "confident but wrong"**: P16에서 calibrated entropy로 교체 완료 (구현됨, 학습 대기)
+10. **🔴 Test-time Gamma TTA**: 실험 I 완료, **실패 확정 (M=76.10)**. Multi-gamma soft voting은 해로움. Single gamma(1.2~1.3) 단독은 미검증
+11. **🔴 I2I Translation**: Day-Trans(M=78.90), Night2(M=73.04) 양방향 모두 실패. Pixel-level domain bridging 한계 확정. day2night2day≈day 관찰 → I2I의 synthetic night은 정보 보존된 fake night
+12. **🟢 FDA Augmentation**: Fourier Domain Adaptation — low-freq amplitude만 교체하여 style transfer. I2I 대비 hallucination 없음. **구현 완료 (학습 대기)**. Config: `levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml`
+13. **🟡 Self-training**: Pseudo-label 기반 unsupervised domain adaptation. Real test image 그대로 사용 → 정보 한계 우회
+14. **🟡 MoE Routing 분석 시각화 개선**: `detailed_log.json` 기반 3-chart 시각화 구현 필요 (아래 스펙 참조)
+
+#### MoE Routing 시각화 스펙 (구현 대기)
+
+`val_multiaqua_detailed.py`의 `detailed_log.json` 출력 기반. 기존 argmax map은 routing strength를 반영하지 못하므로, 아래 3개 차트를 추가해야 함.
+
+**데이터 소스**: `detailed_log.json` → 이미지별 `moe_routing` 딕셔너리 내 `Block{N}_{Q/V}` → 모달리티별 stats
+
+**Chart 1: Per-Modal Expert Soft Weight (Grouped Stacked Bar)**
+- x축: Block index (B0, B3, B9 등)
+- y축: soft weight (0~1)
+- 모달리티별 3개 bar 묶음, 각 bar를 E0/E1/E2 stacked
+- 데이터 필드: `spatial_mean` (argmax가 아닌 실제 soft weight)
+- 목적: 모달리티마다 expert 선호가 다른가? (cross-modal specialization)
+
+**Chart 2: Routing Strength Heatmap**
+- x축: Block index
+- y축: 모달리티 (img, lidar, thermal) × Q/V
+- 색상: `top2_gap` 값 (0~0.5+)
+- 목적: 어느 블록/모달리티에서 routing 결정이 확실한가? 연한 셀 = argmax map 신뢰 불가
+
+**Chart 3: Spatial Adaptiveness (Line Plot)**
+- x축: Block index
+- y축: `per_token_max_std`
+- 선 3개: img, lidar, thermal
+- 목적: routing이 공간적으로 adaptive한가? (높으면 영역별로 다른 expert 사용)
+
+**해석 조합**: Chart1에서 모달리티간 패턴 다름 + Chart2에서 top2_gap 큼 + Chart3에서 std 높음 → MoE가 진짜 adaptive. 셋 다 낮으면 → 사실상 단일 LoRA처럼 동작.
 
 ### 중요 발견사항
 
 - **🔴 Dynamic Fusion 실패 확정**: P12~P17 6개 실험 모두 P9(고정 상수)보다 나쁨. 복잡한 adaptive fusion이 오히려 해로움
 - **🔴 CRM/ZERO Overfitting 발견**: 학습 44%에 exact-zero RGB → test에는 없는 shortcut 학습. P13 epoch39에서 test -19.5pp crash
 - **🔴 Sky collapse가 핵심 병목**: P14~P17에서 Sky IoU 3~36% (P9: 76%). Adaptive fusion이 RGB를 suppress → sky 인식 파괴
+- **🔴 Gamma TTA 실패 확정** (2026-03-04): Gamma TTA [1.0,1.5,2.0,2.5] M=76.10 (baseline 대비 -5.37). OOD gamma→Sky 붕괴(-28.84pp). 육안으로 boundary 보이는 것 ≠ 모델 성능 향상. Memory attention 연쇄 오염으로 모든 모달리티 악화
 - **NIGHT_AUG hardaug4가 최적이나 포화 상태**: 추가 튜닝으로는 +1~2pp가 한계
 - **P9의 단순한 CrossModalFusionHead가 가장 효과적**: 고정 비율 img:27.5%, lidar:35.5%, thermal:37.0%. SAM2 memory attention이 implicit adaptation 수행
 - **Multi-Scale FPN은 효과 있음**: P16(3.17)→P17(33.35) Sky +30pp. 하지만 근본 해결은 아님
 - **Aux mask 품질이 근본 한계** (ISSUE-008): frozen backbone 위의 lightweight decoder로는 entropy/energy 추정 신뢰도 확보 불가
 - **CRM/ZERO는 P9에 유익**: aux decoder 없으므로 shortcut 없고, multimodal 강제 학습에 도움. P9+hardaug5(CRM/ZERO만 제거) ablation 필요
-- **Broader aug 실패**: hardaug6 [0.01, 0.60] + gamma>1.0은 test에 없는 조건에 capacity 낭비
+- **Broader aug 실패**: hardaug6 [0.01, 0.60] + gamma>1.0은 test에 없는 조건에 capacity 낭비. 단, NightSim **내부** gamma 변경이었음 — 독립 RandomGammaWide는 다른 접근
 - **학습 가능 fusion 실패 확정**: P12~P19 8개 실험 전부 P9(고정 상수)보다 나쁨
-- **다음 방향**: Night2 데이터셋 기반 재학습 (P9 → P13 → P17 → P19 → P18 순)
+- **🔴 I2I Translation 양방향 실패 확정** (2026-03-05): Day-Trans M=78.90(-2.57), Night2 M=73.04(-8.43). Night2 Sky 붕괴 -49.62pp(130/200장). Real night의 정보 비가역 소실 → pixel-level I2I로 domain gap 해소 불가. day2night2day≈day 관찰이 증거 (I2I의 "night"은 정보 보존된 fake night)
+- **다음 방향**: FDA augmentation (frequency domain style transfer) 또는 Self-training (pseudo-label) 검토

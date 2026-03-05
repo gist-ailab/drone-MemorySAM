@@ -20,9 +20,10 @@
 | fpn[0] | (B, 32, 256, 256) | conv_s0: 256→32 |
 | fpn[1] | (B, 64, 128, 128) | conv_s1: 256→64 |
 | fpn[2] | (B, 256, 64, 64) | d_model 그대로 |
-| vision_feats[0] | (65536, B, 32) | fpn[0] flatten |
-| vision_feats[1] | (16384, B, 64) | fpn[1] flatten |
-| vision_feats[2] | (4096, B, 256) | fpn[2] flatten |
+| vision_feats[0] | (65536, B, 32) | fpn[0] flatten (HW,B,C) |
+| vision_feats[1] | (16384, B, 64) | fpn[1] flatten (HW,B,C) |
+| vision_feats[2] | (4096, B, 256) | fpn[2] flatten (HW,B,C) |
+| Hiera block 내부 x | (B, H, W, C) | 4D tensor (NOT 3D) |
 | maskmem | (B, 64, 64, 64) | memory encoder out |
 
 ---
@@ -119,42 +120,54 @@
 ## 1.2 P9 — SoftMoE-LoRA Layer
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│  SoftMoE-LoRA Layer (×48 = Q 24개 + V 24개)                   │
-│  코드: sam_lola_utils.py:521 (SoftMoE_LoRA_Layer)             │
-│                                                               │
-│  입력: x (HW, B, C)      ← 단일 모달리티, C는 stage별 상이    │
-│        C ∈ {112, 224, 448, 896}                               │
-│                                                               │
-│  ┌────────────────────────────────────────────────────┐      │
-│  │ Gate: Linear(C → 3)                                │      │
-│  │ → softmax(dim=-1)                                  │      │
-│  │ → gate_weights (HW, B, 3)   per-token routing      │      │
-│  └────────────┬───────────────────────────────────────┘      │
-│               │                                               │
-│  ┌────────────▼───────────────────────────────────────┐      │
-│  │ 3 Expert LoRA Paths (rank=4)                       │      │
-│  │                                                    │      │
-│  │  Expert 0: A₀(C→4) → B₀(4→C)                     │      │
-│  │  Expert 1: A₁(C→4) → B₁(4→C)                     │      │
-│  │  Expert 2: A₂(C→4) → B₂(4→C)                     │      │
-│  │                                                    │      │
-│  │  ★ 3 experts = 3 modalities                        │      │
-│  │  ★ B 초기화: P9=zeros, P17/P19=kaiming×0.01       │      │
-│  └────────────┬───────────────────────────────────────┘      │
-│               │                                               │
-│  ┌────────────▼───────────────────────────────────────┐      │
-│  │ output = Σᵢ wᵢ · Bᵢ(Aᵢ(x))                       │      │
-│  └────────────┬───────────────────────────────────────┘      │
-│               ▼                                               │
-│  출력: Δ (HW, B, C)    → Q 또는 V에 additive                 │
-│                                                               │
-│  Hiera Block 내 적용:                                         │
-│    qkv = original_qkv(x)        (HW, B, 3C)                  │
-│    Q' = qkv[:,:,:C]   + MoE_Q(x)                             │
-│    K' = qkv[:,:,C:2C]             ← 변경 없음                │
-│    V' = qkv[:,:,2C:]  + MoE_V(x)                             │
-└───────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  SoftMoE-LoRA Layer (×48 = Q 24개 + V 24개)                        │
+│  코드: sam_lola_utils.py:629 (SoftMoE_LoRA_Layer)                  │
+│                                                                    │
+│  입력: x (B, H, W, C)    ← 단일 모달리티, Hiera backbone 4D       │
+│        C ∈ {112, 224, 448, 896} (stage별 상이)                     │
+│        H×W: 256²→128²→64²→32² (stage별 축소)                      │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────┐     │
+│  │ Gate: Linear(C → 3)                                      │     │
+│  │ → softmax(dim=-1)                                        │     │
+│  │ → gate_weights (B, H, W, 3)     per-token routing        │     │
+│  │                                                          │     │
+│  │ ★ Linear는 마지막 dim에만 적용 → spatial 구조 유지         │     │
+│  └────────────┬─────────────────────────────────────────────┘     │
+│               │                                                    │
+│  ┌────────────▼─────────────────────────────────────────────┐     │
+│  │ 3 Expert LoRA Paths (rank=4)                              │     │
+│  │                                                           │     │
+│  │  Expert 0: A₀(C→4) → B₀(4→C)                            │     │
+│  │  Expert 1: A₁(C→4) → B₁(4→C)                            │     │
+│  │  Expert 2: A₂(C→4) → B₂(4→C)                            │     │
+│  │                                                           │     │
+│  │  ★ 3 experts = num_modalities (config null → auto 3)     │     │
+│  │  ★ A 초기화: kaiming_uniform (전 버전 공통)               │     │
+│  │  ★ B 초기화:                                              │     │
+│  │    P9:     zeros  (reset_parameters 기본값)               │     │
+│  │    P17/19: kaiming_uniform × 0.01 (expert collapse fix)  │     │
+│  └────────────┬─────────────────────────────────────────────┘     │
+│               │                                                    │
+│  ┌────────────▼─────────────────────────────────────────────┐     │
+│  │ Weighted Sum (for loop, sam_lola_utils.py:724-729):       │     │
+│  │                                                           │     │
+│  │  for i in range(3):                                       │     │
+│  │    weight = gate_weights[..., i].unsqueeze(-1)  (B,H,W,1)│     │
+│  │    expert_out = Bᵢ(Aᵢ(x))                      (B,H,W,C)│     │
+│  │    output += weight × expert_out                          │     │
+│  └────────────┬─────────────────────────────────────────────┘     │
+│               ▼                                                    │
+│  출력: Δ (B, H, W, C)    → Q 또는 V에 additive                    │
+│                                                                    │
+│  Hiera Block 내 적용 (_SoftMoE_LoRA_qkv, sam_lola_utils.py:749):  │
+│    qkv = original_qkv(x)              (B, H*W, 3, nHead, C_head) │
+│    ↓ reshape 후 → (B, H, W, 3*C)                                  │
+│    qkv[:,:,:, :C]  += MoE_Q(x)        Q에 LoRA 적용               │
+│    qkv[:,:,:, C:2C]                    K 변경 없음                 │
+│    qkv[:,:,:, -C:]  += MoE_V(x)       V에 LoRA 적용               │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 1.3 P9 — CrossModalFusionHead
@@ -751,8 +764,9 @@
 │  │  (frozen)          │ (동일)    │ (동일)    │ (동일)    │          │
 │  ├────────────────────┼───────────┼───────────┼───────────┤          │
 │  │ SoftMoE-LoRA       │ 3 exp     │ 3 exp     │ 3 exp     │          │
-│  │  experts_b init    │ zeros     │ kaiming   │ kaiming   │          │
-│  │                    │           │ ×0.01     │ ×0.01     │          │
+│  │  experts_b init    │ zeros     │ zeros→    │ zeros→    │          │
+│  │                    │(기본값)   │kaiming    │kaiming    │          │
+│  │                    │           │×0.01 재초기화│×0.01 재초기화│       │
 │  ├────────────────────┼───────────┼───────────┼───────────┤          │
 │  │ Fusion Head        │ CrossModal│ (없음)    │ Spatial   │          │
 │  │                    │ FusionHead│           │ CrossModal│          │

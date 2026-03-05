@@ -58,6 +58,36 @@ from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
 
 
 # ============================================================================
+# Test-time Gamma Correction
+# ============================================================================
+
+def apply_test_gamma(rgb_tensor, gamma, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
+    """Apply gamma correction to already-normalized RGB tensor (images[0]).
+    Un-normalize → gamma → re-normalize.  gamma > 1 → brighten dark images."""
+    if gamma == 1.0:
+        return rgb_tensor
+    device = rgb_tensor.device
+    mean_t = torch.tensor(mean, device=device, dtype=rgb_tensor.dtype).view(1, 3, 1, 1)
+    std_t = torch.tensor(std, device=device, dtype=rgb_tensor.dtype).view(1, 3, 1, 1)
+    x_01 = (rgb_tensor * std_t + mean_t).clamp(1e-6, 1.0)
+    x_gamma = x_01 ** (1.0 / gamma)
+    return (x_gamma - mean_t) / std_t
+
+
+def _gamma_tta_forward(model, images, gamma_list):
+    """Multi-gamma TTA forward. Returns averaged softmax probs."""
+    preds_accum = None
+    rgb_orig = images[0].clone()
+    for g in gamma_list:
+        images[0] = apply_test_gamma(rgb_orig, g)
+        output, _ = model(images, multimask_output=True)
+        p = output.softmax(dim=1)
+        preds_accum = p if preds_accum is None else preds_accum + p
+    images[0] = rgb_orig
+    return preds_accum / len(gamma_list)
+
+
+# ============================================================================
 # Model Loading (from val_multiaqua.py)
 # ============================================================================
 
@@ -726,7 +756,7 @@ def _tta_accumulate(model, images, base_output, tta_flip):
 
 @torch.no_grad()
 def evaluate(model, dataloader, device, save_dir=None, modals=None,
-             tta_flip=False):
+             tta_flip=False, gamma_list=None):
     model.eval()
     n_classes = dataloader.dataset.n_classes
     palette = dataloader.dataset.PALETTE
@@ -734,6 +764,7 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
 
     total_inference_time = 0.0
     num_frames = 0
+    use_gamma = gamma_list is not None and len(gamma_list) > 0
 
     if save_dir:
         save_dir = Path(save_dir)
@@ -747,7 +778,8 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
 
     core = model.module if hasattr(model, 'module') else model
 
-    for images, labels, metas in tqdm(dataloader, desc="Val"):
+    desc = f"Val (gamma TTA x{len(gamma_list)})" if use_gamma else "Val"
+    for images, labels, metas in tqdm(dataloader, desc=desc):
         images = [x.to(device) for x in images]
 
         # Set up routing capture (all blocks Q+V, viz maps on representative blocks only)
@@ -759,16 +791,22 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
             torch.cuda.synchronize()
         t0 = time.perf_counter()
 
-        # Main forward (with routing hooks at scale=1.0, no flip)
+        # Main forward (with routing hooks at scale=1.0, no flip, no gamma)
         output, _ = model(images, multimask_output=True)
 
         capture.remove_hooks()
 
-        # TTA: horizontal flip augmentation
+        # Baseline prediction (no gamma)
         if tta_flip:
-            preds = _tta_accumulate(model, images, output, tta_flip=True)
+            baseline_preds = _tta_accumulate(model, images, output, tta_flip=True)
         else:
-            preds = output.softmax(dim=1)
+            baseline_preds = output.softmax(dim=1)
+
+        # Gamma TTA: run additional gamma passes and average with baseline
+        if use_gamma:
+            preds = _gamma_tta_forward(model, images, gamma_list)
+        else:
+            preds = baseline_preds
         pred_labels = preds[:, :n_classes].argmax(dim=1)
 
         if device.type == 'cuda':
@@ -842,6 +880,27 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                     )
                     if aux_row is not None:
                         rows.append(aux_row)
+
+                # Gamma comparison row: [Baseline | Gamma TTA | Diff]
+                if use_gamma:
+                    baseline_labels_b = baseline_preds[:, :n_classes].argmax(dim=1)[b]
+                    baseline_resized = _unpad_resize_to_orig(baseline_labels_b, orig_h, orig_w, model_size=baseline_labels_b.shape[0])
+                    baseline_np = baseline_resized.cpu().numpy().astype(np.uint8)
+                    baseline_colored = MULTIAQUA.decode_segmap(baseline_np, palette)
+                    baseline_colored[ignore_mask] = [30, 30, 30]
+                    # Diff: red=changed pixels
+                    diff_mask = (baseline_np != pred_np)
+                    diff_img = rgb.copy()
+                    diff_img[diff_mask] = [255, 50, 50]
+                    diff_img[~diff_mask] = (diff_img[~diff_mask].astype(np.float32) * 0.3).astype(np.uint8)
+                    diff_img[ignore_mask] = [30, 30, 30]
+                    gamma_str = ",".join(f"{g:.1f}" for g in gamma_list)
+                    row_gamma = np.concatenate([
+                        _add_title_to_image(baseline_colored, 'Baseline (no gamma)'),
+                        _add_title_to_image(colored, f'Gamma TTA [{gamma_str}]'),
+                        _add_title_to_image(diff_img, f'Diff ({diff_mask.sum()} px)'),
+                    ], axis=1)
+                    rows.append(row_gamma)
 
                 viz = np.concatenate(rows, axis=0)
                 Image.fromarray(viz).save(str(seg_viz_dir / f"{stem}.png"))
@@ -920,7 +979,7 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
 
 @torch.no_grad()
 def run_test_inference(model, dataloader, device, save_dir, modals=None,
-                       tta_flip=False):
+                       tta_flip=False, gamma_list=None):
     """Test inference with routing visualization."""
     model.eval()
     n_classes = dataloader.dataset.n_classes
@@ -937,8 +996,10 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
     core = model.module if hasattr(model, 'module') else model
     idx = 0
     total_inference_time = 0.0
+    use_gamma = gamma_list is not None and len(gamma_list) > 0
 
-    for images, _, metas in tqdm(dataloader, desc="Test inference"):
+    desc = f"Test (gamma TTA x{len(gamma_list)})" if use_gamma else "Test inference"
+    for images, _, metas in tqdm(dataloader, desc=desc):
         images = [x.to(device) for x in images]
 
         capture = MoERoutingCapture(core, viz_block_indices=REPRESENTATIVE_LAYERS)
@@ -949,16 +1010,22 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
             torch.cuda.synchronize()
         t0 = time.perf_counter()
 
-        # Main forward (with routing hooks at scale=1.0, no flip)
+        # Main forward (with routing hooks at scale=1.0, no flip, no gamma)
         output, _ = model(images, multimask_output=True)
 
         capture.remove_hooks()
 
-        # TTA: horizontal flip augmentation
+        # Baseline prediction (no gamma)
         if tta_flip:
-            preds = _tta_accumulate(model, images, output, tta_flip=True)
+            baseline_preds = _tta_accumulate(model, images, output, tta_flip=True)
         else:
-            preds = output.softmax(dim=1)
+            baseline_preds = output.softmax(dim=1)
+
+        # Gamma TTA: run additional gamma passes and average with baseline
+        if use_gamma:
+            preds = _gamma_tta_forward(model, images, gamma_list)
+        else:
+            preds = baseline_preds
         pred_labels = preds[:, :n_classes].argmax(dim=1)
 
         if device.type == 'cuda':
@@ -1013,6 +1080,25 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
                 )
                 if aux_row is not None:
                     rows.append(aux_row)
+
+            # Gamma comparison row: [Baseline | Gamma TTA | Diff]
+            if use_gamma:
+                baseline_labels_b = baseline_preds[:, :n_classes].argmax(dim=1)[b]
+                baseline_resized = _unpad_resize_to_orig(baseline_labels_b, orig_h, orig_w, model_size=baseline_labels_b.shape[0])
+                baseline_np = baseline_resized.cpu().numpy().astype(np.uint8)
+                baseline_colored = MULTIAQUA.decode_segmap(baseline_np, palette)
+                # Diff: red=changed pixels
+                diff_mask = (baseline_np != pred_np)
+                diff_img = rgb.copy()
+                diff_img[diff_mask] = [255, 50, 50]
+                diff_img[~diff_mask] = (diff_img[~diff_mask].astype(np.float32) * 0.3).astype(np.uint8)
+                gamma_str = ",".join(f"{g:.1f}" for g in gamma_list)
+                row_gamma = np.concatenate([
+                    _add_title_to_image(baseline_colored, 'Baseline (no gamma)'),
+                    _add_title_to_image(colored, f'Gamma TTA [{gamma_str}]'),
+                    _add_title_to_image(diff_img, f'Diff ({diff_mask.sum()} px)'),
+                ], axis=1)
+                rows.append(row_gamma)
 
             viz = np.concatenate(rows, axis=0)
             Image.fromarray(viz).save(str(seg_viz_dir / f"{stem}.png"))
@@ -1076,6 +1162,12 @@ def main():
                         help='Representative block indices for routing map (default: 0, 9, 18)')
     parser.add_argument('--tta', action='store_true',
                         help='Enable TTA (horizontal flip). SAM2 fixed input size prevents multi-scale.')
+    parser.add_argument('--test_gamma', type=float, default=None,
+                        help='Single gamma correction for test RGB (e.g., 2.0 = brighten)')
+    parser.add_argument('--test_gamma_tta', type=str, default=None,
+                        help='Multi-gamma TTA: comma-separated (e.g., "1.0,1.5,2.0,2.5")')
+    parser.add_argument('--eval_day', action='store_true',
+                        help='test 시 RGB 서브루트를 zed_day로 사용 (config EVAL_DAY 무시)')
     args = parser.parse_args()
 
     if args.blocks:
@@ -1100,11 +1192,16 @@ def main():
     transform = get_val_augmentation(image_size, dataset_cfg=dataset_cfg)
 
     split = 'val' if args.mode == 'val' else 'test'
+    eval_day = (args.mode == 'test') and (args.eval_day or bool(eval_cfg.get('EVAL_DAY', False)))
     dataset = MULTIAQUA(
         dataset_cfg['ROOT'], split=split, transform=transform,
         modals=dataset_cfg['MODALS'],
         require_annotation=(args.mode == 'val'),
         return_meta=True,
+        rgb_subroot=dataset_cfg.get('RGB_SUBROOT'),
+        thermal_subroot=dataset_cfg.get('THERMAL_SUBROOT'),
+        lidar_subroot=dataset_cfg.get('LIDAR_SUBROOT'),
+        eval_day=eval_day,
     )
     dataloader = DataLoader(
         dataset, batch_size=eval_cfg['BATCH_SIZE'],
@@ -1119,18 +1216,31 @@ def main():
     if tta_flip:
         print("TTA enabled: horizontal flip (2 passes/image)")
 
+    # Gamma TTA settings
+    gamma_list = None
+    if args.test_gamma_tta:
+        gamma_list = [float(g.strip()) for g in args.test_gamma_tta.split(',')]
+        print(f"Gamma TTA enabled: {gamma_list} ({len(gamma_list)} passes/image)")
+    elif args.test_gamma:
+        gamma_list = [args.test_gamma]
+        print(f"Single gamma correction: {args.test_gamma}")
+
     lora_model_name = cfg['MODEL'].get('LORA_MODEL', 'LoRA_Sam_P9')
     short_name = lora_model_name.replace('LoRA_Sam_', '')  # e.g. "P9", "P13"
     tta_suffix = "_tta" if tta_flip else ""
+    gamma_suffix = ""
+    if gamma_list:
+        gamma_suffix = "_gamma" + "_".join(f"{g:.1f}" for g in gamma_list)
     # 체크포인트 이름 추출 (e.g., "epoch28_93.77_top1_checkpoint.pth" → "epoch28_93.77_top1")
     ckpt_prefix = model_path.stem.replace("_checkpoint", "")
 
     if args.mode == 'val':
-        save_dir = args.save_dir or (model_path.parent / f"{ckpt_prefix}_val_pred_{short_name}{tta_suffix}")
+        save_dir = args.save_dir or (model_path.parent / f"{ckpt_prefix}_val_pred_{short_name}{tta_suffix}{gamma_suffix}")
         acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
             model, dataloader, device, save_dir=save_dir,
             modals=dataset_cfg.get('MODALS'),
             tta_flip=tta_flip,
+            gamma_list=gamma_list,
         )
         table = {
             'Class': list(dataset.CLASSES) + ['Mean'],
@@ -1138,8 +1248,9 @@ def main():
             'Acc': [f"{a:.2f}" for a in acc] + [f"{macc:.2f}"],
         }
         tta_tag = " [TTA-flip]" if tta_flip else ""
+        gamma_tag = f" [Gamma TTA {gamma_list}]" if gamma_list else ""
         print("\n" + "=" * 60)
-        print(f"MULTIAQUA {short_name} Validation ({len(dataset)} images){tta_tag}")
+        print(f"MULTIAQUA {short_name} Validation ({len(dataset)} images){tta_tag}{gamma_tag}")
         print("=" * 60)
         print(tabulate(table, headers='keys', tablefmt='grid'))
         print(f"\nmIoU: {miou:.2f}  mAcc: {macc:.2f}")
@@ -1148,11 +1259,12 @@ def main():
         if save_dir:
             print(f"Saved to {save_dir}")
     else:
-        save_dir = args.save_dir or (model_path.parent / f"{ckpt_prefix}_test_pred_{short_name}{tta_suffix}")
+        save_dir = args.save_dir or (model_path.parent / f"{ckpt_prefix}_test_pred_{short_name}{tta_suffix}{gamma_suffix}")
         run_test_inference(
             model, dataloader, device, save_dir=save_dir,
             modals=dataset_cfg.get('MODALS'),
             tta_flip=tta_flip,
+            gamma_list=gamma_list,
         )
 
 

@@ -69,6 +69,19 @@ class MULTIAQUA(Dataset):
     CLASSES = _BASE_CLASSES
     PALETTE = _BASE_PALETTE
 
+    # MULTIAQUA 기본 서브루트 (config에서 none/미지정 시 사용)
+    _DEFAULT_RGB_SUBROOT = "zed"
+    _DEFAULT_THERMAL_SUBROOT = "thermal_processed"
+    _DEFAULT_LIDAR_SUBROOT = "lidar_processed"
+    # night_translation 시 제외할 RGB 서브폴더 (평가 전용; 학습에 넣지 않음)
+    _RGB_NIGHT_EXCLUDE = ("zed_day",)
+
+    @staticmethod
+    def _subroot_or_default(value: Optional[str], default: str) -> str:
+        if value is None or (isinstance(value, str) and value.strip().lower() in ("", "none")):
+            return default
+        return value.strip() if isinstance(value, str) else str(value).strip()
+
     def __init__(
         self,
         root: str = "/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night",
@@ -79,6 +92,10 @@ class MULTIAQUA(Dataset):
         require_annotation: bool = True,
         return_meta: bool = False,
         night_translation: bool = False,
+        rgb_subroot: Optional[str] = None,
+        thermal_subroot: Optional[str] = None,
+        lidar_subroot: Optional[str] = None,
+        eval_day: bool = False,
     ) -> None:
         super().__init__()
         assert split in ["train", "val", "test"]
@@ -90,11 +107,17 @@ class MULTIAQUA(Dataset):
         self.require_annotation = require_annotation
         self.return_meta = return_meta
 
-        # Paths under root
+        # Paths under root — config 서브루트 적용 (none/빈값이면 MULTIAQUA 기본값)
         self.data_root = self.root / "MULTIAQUA_night"
-        self.rgb_dir = self.data_root / "data" / "zed"
-        self.lidar_dir = self.data_root / "data" / "lidar_processed"
-        self.thermal_dir = self.data_root / "data" / "thermal_processed"
+        _rgb = self._subroot_or_default(rgb_subroot, self._DEFAULT_RGB_SUBROOT)
+        _thermal = self._subroot_or_default(thermal_subroot, self._DEFAULT_THERMAL_SUBROOT)
+        _lidar = self._subroot_or_default(lidar_subroot, self._DEFAULT_LIDAR_SUBROOT)
+        # eval_day: test 시 RGB 서브루트를 zed_day로 고정
+        if split == "test" and eval_day:
+            _rgb = "zed_day"
+        self.rgb_dir = self.data_root / "data" / _rgb
+        self.lidar_dir = self.data_root / "data" / _lidar
+        self.thermal_dir = self.data_root / "data" / _thermal
         self.ann_dir = self.data_root / "annotations"
 
         # n_classes=4 (Static, Dynamic, Water, Sky). Recording Boat(0)는 ignore.
@@ -102,13 +125,13 @@ class MULTIAQUA(Dataset):
         self.CLASSES = self._BASE_CLASSES
         self.PALETTE = self._BASE_PALETTE
 
-        # Night translation: zed_night*, zed_night2* 등 img2img 변환 폴더도 사용
+        # Night translation: zed_night, zed_night_to_day 등 학습용 변환 폴더 사용 (zed_day는 평가 전용이라 제외)
         self.night_translation = night_translation
         if self.night_translation:
             data_dir = self.data_root / "data"
             zed_dirs = sorted([
                 d for d in data_dir.iterdir()
-                if d.is_dir() and d.name.startswith("zed")
+                if d.is_dir() and d.name.startswith("zed") and d.name not in self._RGB_NIGHT_EXCLUDE
             ])
             if not zed_dirs:
                 zed_dirs = [self.rgb_dir]

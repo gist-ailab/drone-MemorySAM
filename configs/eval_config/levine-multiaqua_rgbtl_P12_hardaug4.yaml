@@ -18,6 +18,10 @@ DATASET:
   ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'    # dataset root path
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']                      # rgb + thermal + lidar (rgbtl)
+
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
   # hardaug4: P9와 동일한 augmentation (P12는 아키텍처만 변경)
   NIGHT_AUG     :
     ENABLE      : true
@@ -63,6 +67,8 @@ EVAL:
   MODEL_PATH    : '/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP12/levine_multiaqua_rgbtl_P12_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch40_94.02_checkpoint.pth'    # trained model file path (e.g., ./outputs/MMSamP7/levine_multiaqua_rgbtl_P8/.../best_checkpoint.pth)
   IMAGE_SIZE    : [1024, 1024]                            # evaluation image size in (h, w)
   BATCH_SIZE    : 1
+  EVAL_DAY      : false                                   # true면 test 시 RGB 서브루트를 zed_day로 사용
+
   MSF:
     ENABLE      : false                                   # multi-scale and flip evaluation
     FLIP        : true                                    # use flip in evaluation

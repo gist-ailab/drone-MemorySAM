@@ -1,2 +1,25 @@
-P19와 P9의 다른 augmentation버전을 학습해서 평가 결과를 가져와봤어. 
-로그들을 확인해서 분석해줘. 성능하락이 왜 됐는지 잘 모르겠어
+CFG="configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml"
+CKPT="/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch47_94.18_checkpoint.pth"
+
+cfg_name=$(basename ${CFG} .yaml)
+
+python3 -u val_multiaqua.py --cfg ${CFG} --model_path ${CKPT} \
+  --mode test --macvi --eval_day
+
+# python3 val_multiaqua_detailed.py --cfg ${CFG} --model_path ${CKPT} \
+#   --mode test --eval_day
+
+# # Analyze detailed_log.json
+# CKPT_DIR=$(dirname ${CKPT})
+# CKPT_PREFIX=$(basename ${CKPT} .pth | sed 's/_checkpoint//')
+# LORA_MODEL=$(grep 'LORA_MODEL' ${CFG} | head -1 | awk '{print $3}' | sed 's/LoRA_Sam_//')
+# DETAIL_DIR="${CKPT_DIR}/${CKPT_PREFIX}_test_pred_${LORA_MODEL}"
+# JSON_PATH="${DETAIL_DIR}/detailed_log.json"
+
+# if [ -f "${JSON_PATH}" ]; then
+#     echo ""
+#     echo "========== Analyzing detailed log =========="
+#     python3 analyze_detailed_log.py "${JSON_PATH}"
+# else
+#     echo "[WARN] detailed_log.json not found at: ${JSON_PATH}"
+# fi

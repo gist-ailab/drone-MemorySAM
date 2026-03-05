@@ -16,9 +16,13 @@ MODEL:
 
 DATASET:
   NAME          : MULTIAQUA
-  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
+  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']
+
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
   NUM_CLASSES   : 4
   NIGHT_AUG     :
     ENABLE      : true
@@ -62,6 +66,8 @@ EVAL:
   MODEL_PATH    : '/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch28_93.77_top1_checkpoint.pth'
   IMAGE_SIZE    : [1024, 1024]
   BATCH_SIZE    : 1
+  EVAL_DAY      : false                                   # true면 test 시 RGB 서브루트를 zed_day로 사용
+
   MSF:
     ENABLE      : false
     FLIP        : true

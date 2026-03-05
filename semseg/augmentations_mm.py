@@ -1,7 +1,11 @@
-import torchvision.transforms.functional as TF 
+import torchvision.transforms.functional as TF
+import torchvision.io as io
 import random
 import math
+import numpy as np
 import torch
+import torch.nn.functional as F
+from pathlib import Path
 from torch import Tensor
 from typing import Tuple, List, Union, Tuple, Optional
 
@@ -85,7 +89,8 @@ class RandomRGBNightSimulation:
                  contrast_range: Tuple[float, float] = (0.3, 0.7), gamma_range: Tuple[float, float] = (0.4, 0.8),
                  noise_std: float = 0.02, brightness_sampling: str = "dark_biased",
                  dark_biased_ratio: float = 0.7, dark_range: Optional[Tuple[float, float]] = None,
-                 moderate_range: Optional[Tuple[float, float]] = None) -> None:
+                 moderate_range: Optional[Tuple[float, float]] = None,
+                 shot_noise_gain_range: Optional[Tuple[float, float]] = None) -> None:
         self.p = p
         self.brightness_range = brightness_range
         self.contrast_range = contrast_range
@@ -95,6 +100,7 @@ class RandomRGBNightSimulation:
         self.dark_biased_ratio = dark_biased_ratio
         self.dark_range = dark_range or (0.03, 0.15)
         self.moderate_range = moderate_range or (0.15, 0.5)
+        self.shot_noise_gain_range = shot_noise_gain_range  # (min_gain, max_gain), None=disabled
 
     def _sample_brightness(self) -> float:
         if self.brightness_sampling == "uniform":
@@ -122,14 +128,404 @@ class RandomRGBNightSimulation:
         # 2) Contrast reduction
         contrast = random.uniform(*self.contrast_range)
         img = (img - img.mean()) * contrast + img.mean()
-        # 3) Gamma (gamma < 1 → shadows darker)
+        # 3) Shot noise (Poisson) — signal-dependent, 밝은 영역에 더 강한 노이즈
+        #    물리적 순서: 광자 도달 → shot noise → gain → gamma → read noise
+        if self.shot_noise_gain_range is not None:
+            gain = random.uniform(*self.shot_noise_gain_range)
+            if gain > 0:
+                img_photon = torch.clamp(img, min=0) * gain
+                img = torch.poisson(img_photon) / gain
+                img = torch.clamp(img, 0.0, 1.0)
+        # 4) Gamma (gamma < 1 → shadows darker)
         gamma = random.uniform(*self.gamma_range)
         img = torch.clamp(img, 1e-6, 1.0) ** gamma
         img = torch.clamp(img, 0.0, 1.0)
-        # 4) Optional sensor noise (저조도에서 증가)
+        # 5) Read noise (Gaussian) — signal-independent sensor 전자회로 노이즈
         if self.noise_std > 0:
             noise = torch.randn_like(img) * self.noise_std
             img = torch.clamp(img + noise, 0.0, 1.0)
+        sample['img'] = (img * 255).clamp(0, 255).to(sample['img'].dtype)
+        return sample
+
+
+class RandomGammaWide:
+    """NightSim과 독립적인 wide gamma augmentation. Contrast invariance 학습용.
+
+    NightSim 적용 여부와 무관하게 모든 RGB 이미지에 적용 가능.
+    NightSim 이전에 배치: 주간 이미지에 gamma 적용 → NightSim → 다양한 야간.
+    gamma < 1: 어둡게 (contrast 증가), gamma > 1: 밝게 (contrast 감소).
+
+    hardaug6과 차이: hardaug6은 NightSim 내부 gamma를 변경 → 비현실적 야간 생성.
+    본 클래스는 NightSim 파라미터를 건드리지 않고 독립적으로 domain randomization.
+    """
+    def __init__(self, gamma_range: Tuple[float, float] = (0.3, 2.5), p: float = 0.5):
+        self.gamma_range = gamma_range
+        self.p = p
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+        gamma = random.uniform(*self.gamma_range)
+        img = sample['img'].float() / 255.0
+        img = torch.clamp(img, 1e-6, 1.0) ** gamma
+        sample['img'] = (img * 255).clamp(0, 255).to(sample['img'].dtype)
+        return sample
+
+
+class RandomFDA:
+    """FDA (Fourier Domain Adaptation): 야간 이미지의 저주파 amplitude를 주간 RGB에 적용.
+
+    Ref: Yang & Soatto, "FDA: Fourier Domain Adaptation for Semantic Segmentation" (CVPR 2020)
+
+    low-frequency amplitude = 조명, global color tone, 전체 밝기
+    high-frequency = edge, texture, semantic structure (보존됨)
+
+    NightSim이 brightness/contrast/gamma로 야간을 '흉내'내는 반면,
+    FDA는 실제 야간 이미지의 주파수 특성을 직접 전이 → 더 사실적인 야간 스타일.
+    RGB에만 적용 (thermal/lidar 유지).
+
+    Args:
+        p: 적용 확률
+        beta: 저주파 대역 비율 고정값 (beta_range 미지정 시 사용)
+        beta_range: (min, max) 범위에서 매 호출마다 랜덤 샘플링. 지정 시 beta 무시.
+        target_dir: reference 이미지 디렉토리
+        blend_ratio: 원본과 FDA 결과의 블렌딩 비율 (0=원본, 1=full FDA)
+        target_prefix: 파일명 prefix 필터 (예: 'lj4' → 야간만)
+    """
+    def __init__(self, p: float = 0.3, beta: float = 0.03, target_dir: str = None,
+                 blend_ratio: float = 1.0, target_prefix: str = None,
+                 beta_range: tuple = None):
+        self.p = p
+        self.beta = beta
+        self.beta_range = beta_range
+        self.blend_ratio = blend_ratio
+        all_paths = sorted(Path(target_dir).glob('*.png'))
+        if target_prefix:
+            self.target_paths = [p for p in all_paths if p.stem.startswith(target_prefix)]
+        else:
+            self.target_paths = all_paths
+        assert len(self.target_paths) > 0, (
+            f"No target images in {target_dir} (prefix={target_prefix})")
+        beta_str = f"{beta_range[0]:.3f}~{beta_range[1]:.3f}" if beta_range else f"{beta}"
+        print(f"[RandomFDA] Loaded {len(self.target_paths)} target style images "
+              f"(beta={beta_str}, p={p}, blend={blend_ratio}, prefix={target_prefix})")
+
+    def _fda_swap(self, src_img: Tensor, tgt_img: Tensor, beta: float) -> Tensor:
+        """src의 저주파 amplitude를 tgt의 것으로 교체.
+
+        Args:
+            src_img: (3, H, W) float [0, 1]
+            tgt_img: (3, H, W) float [0, 1]
+            beta: 저주파 대역 비율
+        Returns:
+            (3, H, W) float [0, 1]
+        """
+        _, h, w = src_img.shape
+        src_fft = torch.fft.fft2(src_img, dim=(-2, -1))
+        tgt_fft = torch.fft.fft2(tgt_img, dim=(-2, -1))
+
+        src_amp = torch.abs(src_fft)
+        src_phase = torch.angle(src_fft)
+        tgt_amp = torch.abs(tgt_fft)
+
+        h_cut = max(1, int(h * beta))
+        w_cut = max(1, int(w * beta))
+
+        # fft2 출력: corners가 저주파 → 4개 코너의 amplitude 교체
+        new_amp = src_amp.clone()
+        new_amp[:, :h_cut, :w_cut] = tgt_amp[:, :h_cut, :w_cut]
+        new_amp[:, -h_cut:, :w_cut] = tgt_amp[:, -h_cut:, :w_cut]
+        new_amp[:, :h_cut, -w_cut:] = tgt_amp[:, :h_cut, -w_cut:]
+        new_amp[:, -h_cut:, -w_cut:] = tgt_amp[:, -h_cut:, -w_cut:]
+
+        fda_fft = new_amp * torch.exp(1j * src_phase)
+        fda_img = torch.fft.ifft2(fda_fft, dim=(-2, -1)).real
+        return torch.clamp(fda_img, 0.0, 1.0)
+
+    def _sample_beta(self) -> float:
+        """beta_range 설정 시 uniform 랜덤 샘플링, 아니면 고정값 반환."""
+        if self.beta_range:
+            return random.uniform(self.beta_range[0], self.beta_range[1])
+        return self.beta
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+
+        beta = self._sample_beta()
+
+        src = sample['img'].float() / 255.0
+        tgt_path = random.choice(self.target_paths)
+        tgt = io.read_image(str(tgt_path))[:3, ...].float() / 255.0
+
+        if tgt.shape[1:] != src.shape[1:]:
+            tgt = TF.resize(tgt, list(src.shape[1:]), TF.InterpolationMode.BILINEAR)
+
+        fda_img = self._fda_swap(src, tgt, beta)
+
+        if self.blend_ratio < 1.0:
+            fda_img = (1 - self.blend_ratio) * src + self.blend_ratio * fda_img
+            fda_img = torch.clamp(fda_img, 0.0, 1.0)
+
+        sample['img'] = (fda_img * 255).clamp(0, 255).to(sample['img'].dtype)
+        return sample
+
+
+class RandomPhysAug:
+    """PhysAug: 물리 기반 공간적 교란 augmentation.
+
+    Ref: PhysAug (AAAI 2025) — Physical-guided and Frequency-based Data Augmentation
+         for Single-Domain Generalized Object Detection.
+
+    두 모듈로 구성:
+    1. Filter: identity kernel + Gaussian noise로 random convolution → 비균일 조명 변화
+    2. Fourier: planar sinusoidal wave → 대기 입자 산란/회절 패턴
+
+    NightSim(global scalar: brightness/contrast/gamma)과 orthogonal하게,
+    공간적으로 비균일한 물리적 교란을 추가하여 야간 domain 강건성 향상.
+    RGB에만 적용 (thermal/lidar 유지).
+
+    Args:
+        p: 전체 적용 확률
+        filter_enable: Filter 모듈 활성화
+        filter_sigma_range: (min, max) random conv noise 강도. 0=무변환.
+        filter_kernel_size: conv 커널 크기 (홀수)
+        fourier_enable: Fourier 모듈 활성화
+        fourier_groups: (min, max) 주파수 범위. freq = group / img_size.
+        fourier_phases: (start, end) 위상 범위 (pi의 배수)
+        fourier_granularity: 위상 이산화 해상도
+        fourier_mean_str: wave strength의 exponential 분포 평균의 역수. 높을수록 약함.
+        fourier_decay: Gaussian spatial decay 강도. 0=전역 균일, >0=국소적.
+        fourier_f_cut: 동시 사용 주파수 수
+        fourier_p_cut: 주파수당 위상 수
+    """
+    def __init__(
+        self,
+        p: float = 0.4,
+        filter_enable: bool = True,
+        filter_sigma_range: Tuple[float, float] = (0.0, 1.5),
+        filter_kernel_size: int = 3,
+        fourier_enable: bool = True,
+        fourier_groups: Tuple[int, int] = (1, 513),
+        fourier_phases: Tuple[float, float] = (0.0, 1.0),
+        fourier_granularity: int = 256,
+        fourier_mean_str: float = 8.0,
+        fourier_decay: float = 0.3,
+        fourier_f_cut: int = 1,
+        fourier_p_cut: int = 1,
+    ):
+        self.p = p
+        # Filter params
+        self.filter_enable = filter_enable
+        self.filter_sigma_range = filter_sigma_range
+        self.filter_kernel_size = filter_kernel_size
+        self.filter_kernel_candidates = [filter_kernel_size, filter_kernel_size + 2]
+        # Fourier params
+        self.fourier_enable = fourier_enable
+        self.fourier_f_cut = fourier_f_cut
+        self.fourier_p_cut = fourier_p_cut
+        self.fourier_mean_str = fourier_mean_str
+        self.fourier_decay = fourier_decay
+        # 주파수 후보 풀
+        num_groups = fourier_groups[1] - fourier_groups[0]
+        self.fourier_freqs = [g / 1024.0 for g in range(fourier_groups[0], fourier_groups[1])]
+        self.fourier_num_groups = len(self.fourier_freqs)
+        # 위상 후보 풀
+        self.fourier_phases_arr = -np.pi * np.linspace(
+            fourier_phases[0], fourier_phases[1], num=fourier_granularity
+        )
+        self.fourier_num_phases = fourier_granularity
+        self.fourier_eps_scale = 1024.0 / 32.0  # = 32
+        # meshgrid cache
+        self._cached_mesh = None
+        self._cached_mesh_size = None
+
+        modules = []
+        if filter_enable:
+            modules.append(f"filter(sigma={filter_sigma_range}, k={filter_kernel_size})")
+        if fourier_enable:
+            modules.append(f"fourier(groups={fourier_groups}, mean_str={fourier_mean_str}, decay={fourier_decay})")
+        print(f"[RandomPhysAug] p={p}, modules: {', '.join(modules)}")
+
+    def _get_meshgrid(self, H: int, W: int):
+        """좌표 meshgrid 생성/캐시."""
+        if self._cached_mesh_size == (H, W):
+            return self._cached_mesh
+        _x = np.linspace(-H / 2, H / 2, H)
+        _y = np.linspace(-W / 2, W / 2, W)
+        mesh_x, mesh_y = np.meshgrid(_x, _y, indexing='ij')
+        self._cached_mesh = (
+            torch.tensor(mesh_x, dtype=torch.float32),
+            torch.tensor(mesh_y, dtype=torch.float32),
+        )
+        self._cached_mesh_size = (H, W)
+        return self._cached_mesh
+
+    def _apply_filter(self, img: Tensor, sigma: float) -> Tensor:
+        """Random convolution: identity kernel + Gaussian noise.
+
+        Args:
+            img: (C, H, W) float [0, 1]
+            sigma: noise 강도
+        Returns:
+            (C, H, W) float [0, 1], per-channel min-max normalized.
+        """
+        C, H, W = img.shape
+        # 커널 크기 랜덤 선택
+        ks = random.choice(self.filter_kernel_candidates)
+        pad = ks // 2
+
+        # identity + Gaussian noise 커널
+        delta = torch.zeros(ks, ks)
+        delta[ks // 2, ks // 2] = 1.0
+        conv_weight = sigma * torch.randn(ks, ks) + delta
+        # (1, 1, ks, ks) for depthwise-like conv (채널별 동일 커널)
+        conv_weight = conv_weight.unsqueeze(0).unsqueeze(0)
+
+        # 채널별 conv
+        filtered = torch.zeros_like(img)
+        for c in range(C):
+            inp = img[c].unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+            out = F.conv2d(inp, conv_weight, padding=pad)
+            filtered[c] = out.squeeze()
+
+        filtered = filtered.abs()
+
+        # per-channel min-max normalization → [0, 1]
+        for c in range(C):
+            ch = filtered[c]
+            mn, mx = ch.min(), ch.max()
+            if mx - mn > 1e-6:
+                filtered[c] = (ch - mn) / (mx - mn)
+            else:
+                filtered[c] = ch.clamp(0.0, 1.0)
+
+        return filtered
+
+    def _gen_planar_waves(self, freqs: Tensor, phases: Tensor,
+                          H: int, W: int) -> Tensor:
+        """평면파 정현파 생성.
+
+        wave = sin(2π·f·(x·cos(φ) + y·sin(φ)) - π/4)
+
+        Args:
+            freqs: (1, C, f_cut, 1) 주파수
+            phases: (1, C, f_cut, p_cut) 위상
+            H, W: 이미지 크기
+        Returns:
+            (1, C, f_cut, p_cut, H, W) 정규화된 파동
+        """
+        mesh_x, mesh_y = self._get_meshgrid(H, W)
+
+        # reshape for broadcasting: (1, C, f_cut, p_cut, 1, 1)
+        f = freqs.unsqueeze(-1).unsqueeze(-1)
+        p = phases.unsqueeze(-1).unsqueeze(-1)
+
+        waves = torch.sin(
+            2 * math.pi * f * (mesh_x * torch.cos(p) + mesh_y * torch.sin(p))
+            - math.pi / 4
+        )
+        # L2 normalize per wave
+        norm = torch.norm(waves, dim=(-2, -1), keepdim=True).clamp(min=1e-6)
+        waves = waves / norm * self.fourier_eps_scale
+
+        return waves
+
+    def _apply_gaussian_decay(self, aug: Tensor, H: int, W: int) -> Tensor:
+        """Gaussian spatial decay: 랜덤 중심에서 가장자리로 감쇠.
+
+        Args:
+            aug: (H, W, C) perturbation
+        Returns:
+            (H, W, C) decayed perturbation
+        """
+        center_x = random.randint(0, max(0, H - 13))
+        center_y = random.randint(0, max(0, W - 13))
+        sigma_x, sigma_y = H / 6.0, W / 6.0
+
+        x = torch.arange(H, dtype=torch.float32) - center_x
+        y = torch.arange(W, dtype=torch.float32) - center_y
+        X, Y = torch.meshgrid(x, y, indexing='ij')
+
+        gaussian = torch.exp(-((X ** 2 / (2 * sigma_x ** 2)) + (Y ** 2 / (2 * sigma_y ** 2))))
+        gaussian = (gaussian - gaussian.min()) / (gaussian.max() - gaussian.min() + 1e-6)
+        decay_map = (1 - self.fourier_decay) + self.fourier_decay * gaussian
+        # (H, W) → (H, W, 1) for broadcast
+        return aug * decay_map.unsqueeze(-1)
+
+    def _apply_fourier(self, img: Tensor) -> Tensor:
+        """Planar wave perturbation + atmospheric light.
+
+        Args:
+            img: (C, H, W) float [0, 1]
+        Returns:
+            (C, H, W) float [0, 1]
+        """
+        C, H, W = img.shape
+
+        # 주파수/위상 샘플링 (채널별 독립)
+        freqs_np = np.array(self.fourier_freqs, dtype=np.float32)
+        phases_np = np.array(self.fourier_phases_arr, dtype=np.float32)
+
+        f_idx = np.random.randint(0, self.fourier_num_groups,
+                                  (1, C, self.fourier_f_cut, 1))
+        p_idx = np.random.randint(0, self.fourier_num_phases,
+                                  (1, C, self.fourier_f_cut, self.fourier_p_cut))
+
+        freqs = torch.tensor(freqs_np[f_idx], dtype=torch.float32)
+        phases = torch.tensor(phases_np[p_idx], dtype=torch.float32)
+
+        # wave strength: exponential 분포
+        strengths = np.random.exponential(
+            1.0 / self.fourier_mean_str,
+            (1, C, self.fourier_f_cut, self.fourier_p_cut)
+        )
+        strengths_t = torch.tensor(strengths, dtype=torch.float32)
+
+        # planar wave 생성
+        waves = self._gen_planar_waves(freqs, phases, H, W)
+
+        # einsum: strengths(1,C,f,p) * waves(1,C,f,p,H,W) → (1,C,H,W)
+        aug = torch.einsum('bcfp,bcfphw->bchw', strengths_t, waves)
+        aug = aug / (self.fourier_f_cut * self.fourier_p_cut)
+
+        # interpolate to actual size (waves가 이미 H,W이면 불필요하지만 안전장치)
+        if aug.shape[-2:] != (H, W):
+            aug = F.interpolate(aug, size=(H, W), mode='bilinear', align_corners=False)
+
+        # (1, C, H, W) → (H, W, C) for gaussian decay
+        aug_hwc = aug[0].permute(1, 2, 0)
+
+        if self.fourier_decay > 0:
+            aug_hwc = self._apply_gaussian_decay(aug_hwc, H, W)
+
+        # additive perturbation
+        img_hwc = img.permute(1, 2, 0)
+        result = torch.clamp(img_hwc + aug_hwc, 0.0, 1.0)
+
+        # atmospheric light: L = L_inf * (1 - exp(-d))
+        log_sample = random.uniform(-3, -1)
+        L_inf = 10 ** log_sample
+        dx = random.uniform(0, 10)
+        L = L_inf * (1 - math.exp(-dx))
+        result = torch.clamp(result + L, 0.0, 1.0)
+
+        return result.permute(2, 0, 1)
+
+    def __call__(self, sample: dict) -> dict:
+        if 'img' not in sample or random.random() >= self.p:
+            return sample
+
+        img = sample['img'].float() / 255.0  # (C, H, W) [0, 1]
+
+        if self.filter_enable:
+            sigma = random.uniform(*self.filter_sigma_range)
+            if sigma > 0.01:
+                img = self._apply_filter(img, sigma)
+
+        if self.fourier_enable:
+            img = self._apply_fourier(img)
+
         sample['img'] = (img * 255).clamp(0, 255).to(sample['img'].dtype)
         return sample
 
@@ -561,7 +957,51 @@ def get_train_augmentation(
 
     # MULTIAQUA 전용: RGB 야간 시뮬레이션 augmentation (thermal/lidar는 유지)
     night_cfg = _get_night_aug_config(dataset_cfg)
+
+    # RandomGammaWide: NightSim 이전에 적용 → 주간 RGB에 다양한 gamma → NightSim → 다양한 야간
+    rgw_cfg = night_cfg.get('RANDOM_GAMMA_WIDE', {})
+    if rgw_cfg.get('ENABLE', False):
+        transforms.append(RandomGammaWide(
+            gamma_range=tuple(rgw_cfg.get('GAMMA_RANGE', [0.3, 2.5])),
+            p=rgw_cfg.get('P', 0.5),
+        ))
+
+    # FDA: Fourier Domain Adaptation — 야간 style을 주파수 도메인에서 전이
+    fda_cfg = night_cfg.get('FDA', {})
+    if fda_cfg.get('ENABLE', False):
+        target_dir = fda_cfg.get('TARGET_DIR')
+        if target_dir:
+            transforms.append(RandomFDA(
+                p=fda_cfg.get('P', 0.3),
+                beta=fda_cfg.get('BETA', 0.03),
+                target_dir=target_dir,
+                blend_ratio=fda_cfg.get('BLEND_RATIO', 1.0),
+                target_prefix=fda_cfg.get('TARGET_PREFIX', None),
+                beta_range=fda_cfg.get('BETA_RANGE', None),
+            ))
+
+    # PhysAug: 물리 기반 공간적 교란 (random conv + planar wave)
+    physaug_cfg = night_cfg.get('PHYSAUG', {})
+    if physaug_cfg.get('ENABLE', False):
+        filter_cfg = physaug_cfg.get('FILTER', {})
+        fourier_cfg = physaug_cfg.get('FOURIER', {})
+        transforms.append(RandomPhysAug(
+            p=physaug_cfg.get('P', 0.4),
+            filter_enable=filter_cfg.get('ENABLE', True),
+            filter_sigma_range=tuple(filter_cfg.get('SIGMA_RANGE', [0.0, 1.5])),
+            filter_kernel_size=filter_cfg.get('KERNEL_SIZE', 3),
+            fourier_enable=fourier_cfg.get('ENABLE', True),
+            fourier_groups=tuple(fourier_cfg.get('GROUPS', [1, 513])),
+            fourier_phases=tuple(fourier_cfg.get('PHASES', [0.0, 1.0])),
+            fourier_granularity=fourier_cfg.get('GRANULARITY', 256),
+            fourier_mean_str=fourier_cfg.get('MEAN_STR', 8.0),
+            fourier_decay=fourier_cfg.get('DECAY', 0.3),
+            fourier_f_cut=fourier_cfg.get('F_CUT', 1),
+            fourier_p_cut=fourier_cfg.get('P_CUT', 1),
+        ))
+
     if night_cfg.get('ENABLE', False):
+        _sng = night_cfg.get('SHOT_NOISE_GAIN_RANGE')
         transforms.append(RandomRGBNightSimulation(
             p=night_cfg.get('NIGHT_SIM_P', 0.5),
             brightness_range=tuple(night_cfg.get('BRIGHTNESS_RANGE', [0.03, 0.5])),
@@ -572,6 +1012,7 @@ def get_train_augmentation(
             dark_biased_ratio=night_cfg.get('DARK_BIASED_RATIO', 0.7),
             dark_range=tuple(night_cfg.get('DARK_RANGE', [0.03, 0.15])) if night_cfg.get('DARK_RANGE') else None,
             moderate_range=tuple(night_cfg.get('MODERATE_RANGE', [0.15, 0.5])) if night_cfg.get('MODERATE_RANGE') else None,
+            shot_noise_gain_range=tuple(_sng) if _sng else None,
         ))
         if night_cfg.get('CRM_P', 0) > 0:
             transforms.append(RandomRGBComplementaryMasking(

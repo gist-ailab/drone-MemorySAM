@@ -303,6 +303,19 @@ def _get_uamm_amf_moe_viz(model, batch_idx, modals, main_h, main_w):
     return bottom
 
 
+def apply_test_gamma(rgb_tensor, gamma, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
+    """Apply gamma correction to already-normalized RGB tensor (images[0]).
+    Un-normalize → gamma → re-normalize.  gamma > 1 → brighten dark images."""
+    if gamma == 1.0:
+        return rgb_tensor
+    device = rgb_tensor.device
+    mean_t = torch.tensor(mean, device=device, dtype=rgb_tensor.dtype).view(1, 3, 1, 1)
+    std_t = torch.tensor(std, device=device, dtype=rgb_tensor.dtype).view(1, 3, 1, 1)
+    x_01 = (rgb_tensor * std_t + mean_t).clamp(1e-6, 1.0)
+    x_gamma = x_01 ** (1.0 / gamma)
+    return (x_gamma - mean_t) / std_t
+
+
 def _collate_multiaqua(batch):
     """(sample, label, meta) 배치화. val/test 공통."""
     samples = [b[0] for b in batch]
@@ -314,12 +327,11 @@ def _collate_multiaqua(batch):
 
 
 @torch.no_grad()
-def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modals=None):
+def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modals=None,
+             gamma_list=None):
     """
     Validation 평가. mIoU는 원본 이미지 크기에서 계산.
-    macvi_format=False: save_dir/seg/, save_dir/seg_viz/ 생성
-      - LoRA_Sam_P8인 경우 seg_viz에 UAMM/AMF/MoE 시각화 함께 저장
-    macvi_format=True: save_dir/에 세그멘테이션 마스크만 1-indexed 저장 (시각화 없음)
+    gamma_list: [1.0] = baseline, [2.0] = single gamma, [1.0,1.5,2.0] = multi-gamma TTA (soft voting)
     """
     from PIL import Image
 
@@ -330,6 +342,7 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
 
     total_inference_time = 0.0
     num_frames = 0
+    use_gamma_tta = gamma_list is not None and len(gamma_list) > 0
 
     if save_dir:
         save_dir = Path(save_dir)
@@ -344,17 +357,38 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
     modals = modals or getattr(dataloader.dataset, 'modals', ['img', 'lidar', 'thermal'])
     uamm_amf_moe_log = {}  # per-image UAMM/AMF/MoE for JSON
 
-    for images, labels, metas in tqdm(dataloader, desc="Val"):
+    desc = f"Val (gamma TTA x{len(gamma_list)})" if use_gamma_tta else "Val"
+    for images, labels, metas in tqdm(dataloader, desc=desc):
         images = [x.to(device) for x in images]
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        t0 = time.perf_counter()
-        output, _ = model(images, multimask_output=True)
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        total_inference_time += time.perf_counter() - t0
+
+        if use_gamma_tta:
+            # Multi-gamma TTA: average softmax across gamma values
+            preds_accum = None
+            rgb_orig = images[0].clone()
+            for g in gamma_list:
+                images[0] = apply_test_gamma(rgb_orig, g)
+                if device.type == 'cuda':
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
+                output, _ = model(images, multimask_output=True)
+                if device.type == 'cuda':
+                    torch.cuda.synchronize()
+                total_inference_time += time.perf_counter() - t0
+                p = output.softmax(dim=1)
+                preds_accum = p if preds_accum is None else preds_accum + p
+            images[0] = rgb_orig  # restore
+            preds = preds_accum / len(gamma_list)
+        else:
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            output, _ = model(images, multimask_output=True)
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            total_inference_time += time.perf_counter() - t0
+            preds = output.softmax(dim=1)
+
         num_frames += images[0].shape[0]
-        preds = output.softmax(dim=1)
         pred_labels = preds[:, :n_classes].argmax(dim=1)  # (B, H, W)
 
         for b in range(pred_labels.shape[0]):
@@ -427,17 +461,18 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
 
 
 @torch.no_grad()
-def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, modals=None):
+def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, modals=None,
+                       gamma_list=None):
     """
     Test set 인퍼런스 후 원본 크기로 저장.
-    macvi_format=True: eval_macvi/에 세그멘테이션 마스크만 (1-indexed)
-    macvi_format=False: seg/, seg_viz/ 생성 (LoRA_Sam_P8일 때 UAMM/AMF/MoE 시각화 포함)
+    gamma_list: multi-gamma TTA (soft voting). None이면 기본 추론.
     """
     from PIL import Image
 
     model.eval()
     n_classes = dataloader.dataset.n_classes
     palette = dataloader.dataset.PALETTE
+    use_gamma_tta = gamma_list is not None and len(gamma_list) > 0
 
     save_dir = Path(save_dir)
     if macvi_format:
@@ -452,16 +487,36 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
     uamm_amf_moe_log = {}  # per-image UAMM/AMF/MoE for JSON
     idx = 0
     total_inference_time = 0.0
-    for images, _, metas in tqdm(dataloader, desc="Test inference"):
+    desc = f"Test inference (gamma TTA x{len(gamma_list)})" if use_gamma_tta else "Test inference"
+    for images, _, metas in tqdm(dataloader, desc=desc):
         images = [x.to(device) for x in images]
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        t0 = time.perf_counter()
-        output, _ = model(images, multimask_output=True)
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        total_inference_time += time.perf_counter() - t0
-        preds = output.softmax(dim=1)
+
+        if use_gamma_tta:
+            preds_accum = None
+            rgb_orig = images[0].clone()
+            for g in gamma_list:
+                images[0] = apply_test_gamma(rgb_orig, g)
+                if device.type == 'cuda':
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
+                output, _ = model(images, multimask_output=True)
+                if device.type == 'cuda':
+                    torch.cuda.synchronize()
+                total_inference_time += time.perf_counter() - t0
+                p = output.softmax(dim=1)
+                preds_accum = p if preds_accum is None else preds_accum + p
+            images[0] = rgb_orig
+            preds = preds_accum / len(gamma_list)
+        else:
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            output, _ = model(images, multimask_output=True)
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            total_inference_time += time.perf_counter() - t0
+            preds = output.softmax(dim=1)
+
         pred_labels = preds[:, :n_classes].argmax(dim=1)  # (B, H, W)
 
         for b in range(pred_labels.shape[0]):
@@ -528,6 +583,12 @@ def main():
     parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--save_dir', type=str, default=None)
     parser.add_argument('--macvi', action='store_true', help='eval_macvi/에 세그멘테이션 마스크만 1-indexed 저장 (val/test 공통)')
+    parser.add_argument('--test_gamma', type=float, default=None,
+                        help='Single gamma correction for RGB (e.g., 2.0). >1 = brighten.')
+    parser.add_argument('--test_gamma_tta', type=str, default=None,
+                        help='Multi-gamma TTA: comma-separated gamma values (e.g., "1.0,1.5,2.0,2.5"). Soft voting.')
+    parser.add_argument('--eval_day', action='store_true',
+                        help='test 시 RGB 서브루트를 zed_day로 사용 (config EVAL_DAY 무시)')
     args = parser.parse_args()
 
     with open(args.cfg) as f:
@@ -551,6 +612,7 @@ def main():
     require_annotation = args.mode == 'val'  # val=평가용(annotation필요), test=인퍼런스만(RGB만)
     # --macvi: challenge 제출용이므로 원본 zed만 사용. 아니면 config의 NIGHT_TRANSLATION 따름
     night_trans = False if args.macvi else bool(dataset_cfg.get('NIGHT_TRANSLATION', False))
+    eval_day = (args.mode == 'test') and (args.eval_day or bool(eval_cfg.get('EVAL_DAY', False)))
     dataset = MULTIAQUA(
         dataset_cfg['ROOT'],
         split=split,
@@ -559,6 +621,10 @@ def main():
         require_annotation=require_annotation,
         return_meta=True,
         night_translation=night_trans,
+        rgb_subroot=dataset_cfg.get('RGB_SUBROOT'),
+        thermal_subroot=dataset_cfg.get('THERMAL_SUBROOT'),
+        lidar_subroot=dataset_cfg.get('LIDAR_SUBROOT'),
+        eval_day=eval_day,
     )
     collate_fn = _collate_multiaqua
     dataloader = DataLoader(
@@ -571,15 +637,27 @@ def main():
 
     model = load_model(cfg, model_path, device)
 
+    # Gamma TTA 파싱: --test_gamma_tta > --test_gamma 우선
+    gamma_list = None
+    if args.test_gamma_tta:
+        gamma_list = [float(x.strip()) for x in args.test_gamma_tta.split(',')]
+        print(f"Gamma TTA enabled: {gamma_list} (soft voting)")
+    elif args.test_gamma is not None:
+        gamma_list = [args.test_gamma]
+        print(f"Single gamma: {args.test_gamma}")
+
     # 체크포인트 이름 추출 (e.g., "epoch28_93.77_top1_checkpoint.pth" → "epoch28_93.77_top1")
     ckpt_prefix = model_path.stem.replace("_checkpoint", "")
+    gamma_suffix = ""
+    if gamma_list and gamma_list != [1.0]:
+        gamma_suffix = "_gamma" + "_".join(f"{g:.1f}" for g in gamma_list)
 
     if args.mode == 'val':
-        default_name = f"{ckpt_prefix}_eval_macvi" if args.macvi else f"{ckpt_prefix}_val_pred"
+        default_name = f"{ckpt_prefix}_eval_macvi{gamma_suffix}" if args.macvi else f"{ckpt_prefix}_val_pred{gamma_suffix}"
         save_dir = args.save_dir or (model_path.parent / default_name)
         acc, macc, f1, mf1, ious, miou, dynamic_iou, fps = evaluate(
             model, dataloader, device, save_dir=save_dir, macvi_format=args.macvi,
-            modals=dataset_cfg.get('MODALS')
+            modals=dataset_cfg.get('MODALS'), gamma_list=gamma_list,
         )
         table = {
             'Class': list(dataset.CLASSES) + ['Mean'],
@@ -587,7 +665,8 @@ def main():
             'Acc': [f"{a:.2f}" for a in acc] + [f"{macc:.2f}"],
         }
         print("\n" + "=" * 60)
-        print(f"MULTIAQUA Validation ({len(dataset)} images)")
+        gamma_desc = f", gamma={gamma_list}" if gamma_list else ""
+        print(f"MULTIAQUA Validation ({len(dataset)} images{gamma_desc})")
         print("=" * 60)
         print(tabulate(table, headers='keys', tablefmt='grid'))
         print(f"\nmIoU (original size): {miou:.2f}  mAcc: {macc:.2f}")
@@ -599,21 +678,23 @@ def main():
             else:
                 print(f"Saved seg/ and seg_viz/ to {save_dir}")
 
-        out_txt = model_path.parent / f"eval_{split}_{ckpt_prefix}_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+        out_txt = model_path.parent / f"eval_{split}_{ckpt_prefix}{gamma_suffix}_{time.strftime('%Y%m%d_%H%M%S')}.txt"
         with open(out_txt, 'w') as f:
             f.write(f"Model: {model_path}\n")
             f.write(f"Split: {split}  N={len(dataset)}\n")
+            if gamma_list:
+                f.write(f"Gamma: {gamma_list}\n")
             f.write(tabulate(table, headers='keys') + "\n")
             f.write(f"\nDynamic IoU (class 1): {dynamic_iou:.2f}\n")
             f.write(f"Inference FPS: {fps:.2f}\n")
         print(f"Results saved to {out_txt}")
 
     else:
-        default_name = f"{ckpt_prefix}_eval_macvi" if args.macvi else f"{ckpt_prefix}_test_pred"
+        default_name = f"{ckpt_prefix}_eval_macvi{gamma_suffix}" if args.macvi else f"{ckpt_prefix}_test_pred{gamma_suffix}"
         save_dir = args.save_dir or (model_path.parent / default_name)
         run_test_inference(
             model, dataloader, device, save_dir, macvi_format=args.macvi,
-            modals=dataset_cfg.get('MODALS')
+            modals=dataset_cfg.get('MODALS'), gamma_list=gamma_list,
         )
 
 

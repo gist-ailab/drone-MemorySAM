@@ -1,6 +1,6 @@
 # 실험 기록 (Experiment Log)
 
-> 최종 업데이트: 2026-02-26
+> 최종 업데이트: 2026-03-05
 
 ## MACVi Challenge 평가 지표
 
@@ -26,16 +26,21 @@
 | 8 | P8 | hardaug3 | 93.36 | 61.57 | 79.12 | 27.17 | 77.46 | 15616 |
 | 9 | P11 | hardaug4 | 93.17 | 61.01 | 78.40 | 20.95 | 77.09 | 15851 |
 | 10 | P10 | hardaug3 | 93.18 | 58.93 | 78.57 | 22.36 | 76.05 | 15757 |
-| 11 | **P9** | **hardaug6** (ep20) | 92.00 | 59.91 | 74.63 | 17.69 | **75.95** | 16340 |
-| 12 | P9 | hardaug6 (ep85) | 93.40 | 57.63 | 79.34 | 24.75 | 75.51 | 16339 |
-| 13 | P14 | hardaug5 | 93.18 | 55.36 | 78.69 | 23.60 | 74.27 | 16062 |
-| 14 | **P17** | hardaug5 (night_ep35) | 92.60 | 53.86 | 76.29 | 17.98 | **73.23** | 16107 |
-| 15 | P17 | hardaug5 (ep28) | 92.99 | 52.69 | 77.72 | 28.36 | 72.84 | 16108 |
-| 16 | P13 | hardaug4 (ep39) | 92.86 | 50.48 | 77.08 | 14.53 | 71.67 | 16044 |
-| 17 | P15 | hardaug5 | 93.17 | 48.94 | 78.31 | 24.96 | 71.05 | 16087 |
-| 18 | **P19** | hardaug5 (ep36) | 93.44 | **45.82** | 79.24 | 23.50 | **69.63** | 16313 |
-| 19 | **P16** | hardaug5 (night_ep31) | 93.14 | 43.70 | 78.68 | 20.56 | **68.42** | 16106 |
-| 20 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
+| 11 | **P9** | hardaug4 **Day-Trans** (test night→day, img2img-turbo) | 93.30 | 64.50 | 78.87 | 16.60 | **78.90** | 16478 |
+| 12 | **P9** | hardaug4 **Gamma TTA** [1.0,1.5,2.0,2.5] | 93.30 | 58.89 | — | 16.05 | **76.10** | 16412 |
+| 13 | **P9** | **hardaug6** (ep20) | 92.00 | 59.91 | 74.63 | 17.69 | **75.95** | 16340 |
+| 14 | P9 | hardaug6 (ep85) | 93.40 | 57.63 | 79.34 | 24.75 | 75.51 | 16339 |
+| 15 | P14 | hardaug5 | 93.18 | 55.36 | 78.69 | 23.60 | 74.27 | 16062 |
+| 16 | **P17** | hardaug5 (night_ep35) | 92.60 | 53.86 | 76.29 | 17.98 | **73.23** | 16107 |
+| 17 | **P9** | hardaug4 **Night2** (day→night I2I 학습) | 92.91 | 53.18 | 77.59 | 19.10 | **73.04** | 16482 |
+| 18 | P17 | hardaug5 (ep28) | 92.99 | 52.69 | 77.72 | 28.36 | 72.84 | 16108 |
+| 19 | P13 | hardaug4 (ep39) | 92.86 | 50.48 | 77.08 | 14.53 | 71.67 | 16044 |
+| 20 | P15 | hardaug5 | 93.17 | 48.94 | 78.31 | 24.96 | 71.05 | 16087 |
+| 21 | **P19** | hardaug5 (ep36) | 93.44 | **45.82** | 79.24 | 23.50 | **69.63** | 16313 |
+| 22 | **P16** | hardaug5 (night_ep31) | 93.14 | 43.70 | 78.68 | 20.56 | **68.42** | 16106 |
+| 23 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
+| — | **P9** | hardaug4 **CV** (heuristic b+0.11 c×0.9, 56장 mIoU<65) | 93.30 | 64.86 | 78.87 | 17.16 | **79.08** | 16485 |
+| — | **P9** | hardaug4 **CV2** (heuristic b+0.11 c×0.9, 5장 mIoU<55) | 93.30 | — | — | — | **—** | 제출 대기 |
 
 ---
 
@@ -431,11 +436,121 @@
 
 ---
 
+### P9 Gamma TTA Experiment (실험 I — 실패)
+
+#### P9-GammaTTA: hardaug4 + Gamma TTA [1.0, 1.5, 2.0, 2.5]
+
+- **Config**: `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml` (기존 P9 체크포인트 그대로)
+- **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch47_94.18_checkpoint.pth`
+- **실행**: `--test_gamma_tta "1.0,1.5,2.0,2.5"` (softmax probability averaging)
+- **결과**: Val 93.30 / Test **58.89** / M **76.10**
+- **Challenge result**: Submission #16412
+- **Inference FPS**: 0.36~0.51 (baseline 대비 ~4x 느림, 4회 forward)
+
+**Per-class Test IoU 비교 (Baseline vs Gamma TTA)**:
+
+| Class | Baseline (γ=1.0) | Gamma TTA | Delta |
+| --- | --- | --- | --- |
+| Static | 81.30 | 72.92 | **-8.38** |
+| Dynamic | 21.86 | 16.55 | **-5.31** |
+| Water | 94.61 | 94.03 | -0.58 |
+| **Sky** | **76.54** | **47.70** | **-28.84** |
+| mIoU | 68.58 | 57.80 | **-10.78** |
+
+**Sky 붕괴 통계**:
+- Sky=0 프레임: 5 → **29** (5.8x 증가)
+- Sky<10 프레임: 7 → **41** (5.9x 증가)
+- Dynamic=0 프레임: 46 → **72** (1.6x 증가)
+
+**실패 원인 분석**:
+
+1. **높은 gamma가 OOD 입력 생성**: P9는 NightSim gamma [0.4, 0.8]로 학습. gamma=1.5~2.5로 밝아진 이미지는 학습 분포 밖 → confident but wrong 예측
+2. **Equal-weight soft voting의 함정**: 4개 gamma의 softmax 확률을 1/4씩 동일 가중치로 평균. gamma=1.0의 정확한 예측이 gamma=2.0/2.5의 오예측에 의해 dilute
+3. **Sky가 가장 취약**: 야간 하늘 = near-zero 픽셀. gamma=2.5 적용 시 `pixel^(1/2.5)`로 크게 밝아짐 → 수면/static과 시각적 혼동
+4. **Memory Attention 연쇄 오염**: RGB gamma 변경 → memory embedding 변형 → LiDAR/Thermal cross-modal attention도 오염 → 모든 모달리티 예측 악화
+5. **Val 무영향 (93.30 ≈ 93.32)**: Val은 주간 이미지, gamma 적용해도 이미 밝아서 변화 미미
+
+**구현 방식** (`val_multiaqua.py`, `val_multiaqua_detailed.py`):
+- `apply_test_gamma()`: 정규화된 텐서를 un-normalize → `x^(1/γ)` → re-normalize
+- `_gamma_tta_forward()`: 각 gamma로 forward → softmax → 확률 평균
+- Val/Test 모두 동일하게 적용
+
+**교훈**:
+1. **TTA는 학습 분포 내의 augmentation에서만 유효**: flip/scale은 학습 시 경험한 변형이므로 TTA 적합. 미경험 gamma > 1.0은 역효과
+2. **Soft voting은 최약 예측에 취약**: 하나라도 나쁜 예측이 있으면 전체를 끌어내림
+3. **MemorySAM의 sequential memory가 TTA를 더 어렵게 만듦**: RGB 변형이 downstream 모달리티에 연쇄 영향
+4. **Single gamma (non-ensemble) 탐색 여지 있음**: γ=1.2~1.3 mild correction을 단독 적용하면 소폭 개선 가능성 잔존
+
+---
+
+### I2I Translation 실험 (실험 II, III — 실패)
+
+#### 실험 II: Day-Trans — Test Night→Day (img2img-turbo)
+
+- **방법**: img2img-turbo (https://github.com/GaParmar/img2img-turbo) 로 test 야간 RGB를 day-like로 변환 후, 기존 P9 hardaug4 모델로 인퍼런스
+- **Checkpoint**: 기존 P9 hardaug4 epoch47 (변경 없음)
+- **결과**: Val 93.30 / Test **64.50** / M **78.90**
+- **Submission**: #16478
+
+**Per-class Test IoU 비교 (Baseline vs Day-Trans)**:
+
+| Class | Baseline | Day-Trans | Delta |
+| --- | --- | --- | --- |
+| Static | 81.30 | 75.97 | **-5.33** |
+| Dynamic | 21.86 | 16.80 | **-5.06** |
+| Water | 94.61 | 93.81 | -0.80 |
+| Sky | 76.54 | 66.74 | **-9.80** |
+| mIoU | 68.58 | 63.33 | **-5.25** |
+
+**프레임별 통계**: 171/200 하락, 29/200 개선 (최대 +9.9pp), 최악 -32.6pp
+
+**실패 원인**:
+1. **정보 부재 영역의 hallucination**: 야간 near-zero 픽셀에 실제 정보 없음 → I2I 모델이 존재하지 않는 텍스처 날조 → 모델이 fabricated feature로 segmentation
+2. **Cross-modal 불일치**: RGB만 day-like로 변환, thermal/lidar는 야간 그대로 → 학습 시 본 적 없는 모달리티 조합
+3. **Boundary distortion**: Diffusion 기반 재구성이 object boundary 변형 → segmentation edge 정확도 하락
+
+#### 실험 III: Night2 — Day→Night I2I 학습 데이터 확장
+
+- **방법**: img2img-turbo로 train day RGB를 night-like로 변환 → 원본 day + night-translated로 학습 (NIGHT_TRANSLATION: true)
+- **Config**: `configs/levine-multiaqua_rgbtl_P9_hardaug4_night2.yaml`
+- **Checkpoint**: epoch49_93.49 (val 기준 top1)
+- **결과**: Val 92.91 / Test **53.18** / M **73.04**
+- **Submission**: #16482
+
+**Per-class Test IoU 비교 (Baseline vs Night2)**:
+
+| Class | Baseline | Night2 | Delta |
+| --- | --- | --- | --- |
+| Static | 81.30 | 67.17 | **-14.13** |
+| Dynamic | 21.86 | 19.78 | -2.08 |
+| Water | 94.61 | 93.57 | -1.04 |
+| Sky | 76.54 | 26.92 | **-49.62** |
+| mIoU | 68.58 | 51.86 | **-16.72** |
+
+**Sky 붕괴 통계**: Sky IoU 30pp 이상 하락 프레임 **130/200 (65%)**, Sky 개선(>5pp) 프레임 **0/200장**
+
+**프레임별 통계**: 181/200 하락, 19/200 개선
+
+**실패 원인**:
+1. **I2I artifact 학습**: 번역된 "야간" 이미지의 artifact(색 번짐, hallucinated 텍스처, boundary 변형)를 night feature로 과적합
+2. **Cross-modal 불일치**: RGB만 night-like로 변환, thermal/lidar는 daytime measurement 그대로 → 학습 시 "어두운 RGB + 밝은 thermal" 조합 vs test의 "진짜 어두운 RGB + 진짜 야간 thermal"
+3. **NightSim 이중 적용**: 이미 어두운 I2I 번역 이미지에 NIGHT_SIM_P=0.45로 추가 NightSim → 비현실적 극단 어둠
+4. **Label noise**: I2I가 boundary 변형시키지만 annotation 동일 → 경계 영역 학습 혼란
+
+**I2I 양방향 실패의 근본 원인 — 정보 비대칭**:
+
+- **Day image**: 높은 정보량 (high SNR, rich texture). day→night→day roundtrip 시 원본과 거의 동일 (정보가 latent에 보존)
+- **Real night image**: 낮은 정보량 (센서 단계에서 비가역적 소실). night→day 시 없는 정보를 hallucinate → 원본 day와 전혀 다른 결과
+- **결론**: I2I 모델의 "synthetic night" ≠ "real night". Synthetic night은 pixel만 어두울 뿐 정보량은 day와 동일한 fake night. **Pixel-level domain bridging은 정보이론적 한계**
+
+---
+
 ### Augmentation Ablation 종합 (P9 아키텍처)
 
 | Aug | CRM/ZERO | Brightness | Dark Ratio | Sky IoU | Test mIoU | M-score |
 | --- | --- | --- | --- | --- | --- | --- |
 | **hardaug4** | **있음** | [0.03, 0.45] | 60% | **76.54** | **69.62** | **81.47** |
+| hardaug4 Gamma TTA | 있음 | (test-time γ 1.0~2.5) | — | 47.70 | 58.89 | 76.10 |
 | hardaug6 ep20 | 없음 | [0.01, 0.60] | 50% | 56.87 | 59.91 | 75.95 |
 | hardaug6 ep85 | 없음 | [0.01, 0.60] | 50% | 39.90 | 57.63 | 75.51 |
 
@@ -520,7 +635,33 @@
 
 ---
 
-## 진단 스크립트
+## 진단 및 분석 도구
+
+### interactive_gamma_viewer.py (EnhancementViewer)
+
+- **목적**: P9 test worst 이미지들에 대해 gamma/brightness/contrast/denoise를 실시간 조절하며 인퍼런스 결과를 육안 비교
+- **배경**: test 실패 케이스 대부분이 야간 극저조도 → 다양한 보정 조합으로 segmentation 개선 여부 탐색
+- **대상 데이터**: P9 hardaug4 test 결과 (`frames_test.csv`) 중 mIoU 하위 N장
+  - Worst 3: lj4_1_035090 (46.15), lj4_1_019840 (49.37), lj4_1_086900 (49.78)
+  - mIoU<50: 3장, mIoU<60: 17장, mIoU<70: 128/200장
+- **기능**:
+  - 2×2 뷰: Original RGB | Enhanced RGB / Baseline Prediction | Enhanced Prediction
+  - 4개 슬라이더: Gamma (0.5~4.0), Brightness (-0.3~+0.3), Contrast (0.5~3.0), Denoise (0~5)
+  - Enhancement 적용 순서: Gamma → Brightness (additive) → Contrast (around mean) → Denoise (bilateral filter)
+  - 슬라이더 조절 시 매번 재인퍼런스 (baseline은 캐시)
+  - 슬라이더 값은 이미지 전환 시에도 유지 (동일 설정으로 여러 이미지 비교 가능)
+  - Baseline 대비 변경 픽셀 수/비율 터미널 로깅
+  - 클래스별 픽셀 분포 출력 (Static/Dynamic/Water/Sky)
+- **사용법**:
+  ```bash
+  python interactive_gamma_viewer.py \
+    --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml \
+    --model_path outputs/MMSamP9/.../epoch47_94.18_checkpoint.pth \
+    --csv outputs/MMSamP9/.../P9_15635_results/frames_test.csv \
+    --dataset_root /ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night \
+    --top_n 30
+  ```
+- **주요 발견**: brightness=+0.11 / contrast=×0.9 조합이 worst 이미지에서 육안상 개선 확인 → CV heuristic 실험으로 이어짐
 
 ### diagnose_moe_gate.py
 
@@ -537,3 +678,135 @@
 - Row 3: Per-block MoE gate stats (Block0, Block9, Block18)
 - Row 4: Spatial routing color map (모달리티별 expert 할당)
 - `--tta` 플래그로 Test Time Augmentation 지원
+
+### MISC/heuristic_enhancement_reinference.py
+
+- **목적**: 성능 하위 test 이미지에 brightness/contrast/gamma 보정 적용 후 재인퍼런스하여 MACVi 제출 폴더 갱신
+- **배경**: `interactive_gamma_viewer.py`로 worst case 이미지 육안 분석 결과, brightness +0.11 / contrast ×0.9 적용 시 야간 극저조도 이미지의 segmentation 개선 확인 → 해당 설정을 batch로 적용하는 자동화 스크립트
+- **Enhancement 파이프라인** (적용 순서):
+  1. Gamma correction: `img^(1/gamma)` — gamma>1 → 밝아짐 (기본값 1.0 = 미적용)
+  2. Brightness (additive): `img + brightness` — 양수 → 밝아짐 (0-1 float scale)
+  3. Contrast (around mean): `(img - mean) * contrast + mean` — <1 → 대비 감소 (어두운 영역 디테일 살림)
+- **인퍼런스**: `val_multiaqua.py`와 동일 파이프라인 (hydra_overrides_extra, get_val_augmentation, softmax→:n_classes→argmax, _unpad_resize_to_orig)
+- **주의**: RGB에만 보정 적용 (LiDAR/Thermal은 원본 그대로)
+- **사용법**:
+  ```bash
+  # 기본: mIoU < 55인 이미지에 brightness=0.11, contrast=0.9 적용
+  python MISC/heuristic_enhancement_reinference.py \
+    --config configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml \
+    --checkpoint outputs/MMSamP9/.../epoch47_94.18_checkpoint.pth \
+    --frames-csv outputs/MMSamP9/.../P9_15635_results/frames_test.csv \
+    --macvi-dir outputs/MMSamP9/.../epoch47_94.18_eval_macvi_CV2 \
+    --miou-threshold 55 --brightness 0.11 --contrast 0.9
+
+  # dry-run: 대상 이미지만 출력 (인퍼런스 안 함)
+  python MISC/heuristic_enhancement_reinference.py \
+    --frames-csv outputs/MMSamP9/.../P9_15635_results/frames_test.csv \
+    --miou-threshold 55 --dry-run
+  ```
+
+---
+
+### P9 CV Heuristic Enhancement 실험 (실험 IV)
+
+**개요**: P9 best checkpoint (hardaug4 ep47) 기반으로, test worst 이미지에 RGB brightness/contrast 보정 후 재인퍼런스하여 MACVi 제출.
+
+**보정 파라미터**: brightness=+0.11 (밝게), contrast=×0.9 (대비 감소)
+- Brightness +0.11: [0,1] float에서 additive → 전체적으로 밝아짐
+- Contrast ×0.9: mean 기준 차이를 줄임 → 어두운 영역 디테일 개선, 밝은 영역 약간 어두워짐
+
+#### CV-1: mIoU < 65 threshold (56장 수정)
+
+- **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch47_94.18_checkpoint.pth`
+- **제출 폴더**: `epoch47_94.18_eval_macvi_CV` (baseline macvi 345장 복사 후 56장 덮어쓰기)
+- **결과**: Val 93.30 / Test **64.86** / Test Obstacle 17.16 / M **79.08**
+- **Challenge result**: `outputs/MMSamP9/.../epoch47_94.18_eval_macvi_CV_P9_16485_results/`
+- **Submission**: #16485
+- **비고**: **실패** — baseline (test 69.62, M 81.47) 대비 test mIoU -4.76, M -2.39. 56장이 너무 많아 원래 잘 맞던 이미지까지 보정되어 성능 하락.
+
+#### CV-2: mIoU < 55 threshold (5장 수정) — 제출 대기
+
+- **Checkpoint**: 동일
+- **제출 폴더**: `epoch47_94.18_eval_macvi_CV2` (baseline macvi 345장 복사 후 5장만 덮어쓰기)
+- **수정 대상**:
+  - lj4_1_035090 (mIoU 46.15)
+  - lj4_1_019840 (mIoU 49.37)
+  - lj4_1_086900 (mIoU 49.78)
+  - lj4_1_027260 (mIoU 50.53)
+  - lj4_1_009680 (mIoU 54.16)
+- **비고**: CV-1 실패 후 더 적은 이미지만 타겟. 5장이면 전체 200장의 2.5%만 수정.
+- **스크립트**: `MISC/heuristic_enhancement_reinference.py`
+
+---
+
+### P9 FDA Augmentation 실험 (실험 V — 취소)
+
+#### P9-FDA: hardaug4 + FDA (Fourier Domain Adaptation)
+
+- **Config**: `configs/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml`
+- **모델**: P9 (LoRA_Sam_P9)
+- **구현 파일**: `semseg/augmentations_mm.py` — `RandomFDA` 클래스
+- **Ref**: Yang & Soatto, "FDA: Fourier Domain Adaptation for Semantic Segmentation" (CVPR 2020)
+- **상태**: ~~구현 완료, 학습 대기~~ → **취소 (실험 불채택)**
+
+**취소 사유 — FDA가 극단적 day↔night 밝기 차이에 부적합:**
+- FDA는 소스의 low-freq FFT amplitude를 타겟의 것으로 교체하는 방식
+- **주간↔야간은 저주파 amplitude 차이가 수십 배** → 교체 시 phase와 amplitude 간 에너지 충돌 발생
+- day→night: 결과에 visible noise/artifact 발생 (beta=0.01~0.03 모두)
+- night→day: 이미지가 완전히 깨짐 (인식 불가 수준)
+- `clamp(0,1)` 문제: 범위 밖 값을 잘라내면서 추가 distortion 발생. min-max norm으로 대체하면 style transfer 효과 자체가 사라짐 (회색빛)
+- FDA 원논문은 **Cityscapes↔GTA** 등 밝기가 유사한 도메인 간 adaptation 전제 → day↔night 극단적 gap에는 설계 자체가 맞지 않음
+- **결론**: 주파수 도메인 접근은 이론적으로 타당하나, 현재 데이터셋의 극단적 밝기 gap에서는 유의미한 style transfer 없이 noise만 추가됨
+
+**검토한 대안들:**
+- PhysAug (AAAI 2025): Random conv + planar wave 기반 물리 augmentation → 날씨/대기 열화 시뮬레이션 목적이라 야간 조명 gap 해결과 무관. 보류.
+- per-channel min-max norm: style transfer 효과(밝기/톤 변화) 자체를 파괴 → 부적합
+- beta 극소화 (0.001~0.005): noise는 줄지만 style transfer 효과도 무의미해짐
+
+```bash
+# 학습 명령 (미실행)
+# python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml
+```
+
+---
+
+### P9 PhysAug 실험 (실험 VI — 학습 대기)
+
+#### P9-PhysAug: hardaug4 + PhysAug (Physical-guided Augmentation)
+
+- **Config**: `configs/levine-multiaqua_rgbtl_P9_hardaug4_physaug.yaml`
+- **Eval config**: `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4_physaug.yaml`
+- **모델**: P9 (LoRA_Sam_P9), 새로 학습
+- **Save dir**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug4_physaug`
+- **핵심 변경**: 기존 hardaug4 NightSim(global scalar) + PhysAug(spatial-varying perturbation) 추가
+- **동기**:
+  - NightSim은 brightness/contrast/gamma/noise만 수행 → 공간적으로 균일한 변환
+  - 실제 야간: 가로등, 수면 반사 등 비균일 조명 + 대기 산란 노이즈 패턴
+  - FDA(실험 V)는 day↔night 극단적 밝기 차이로 artifact 발생 → 취소
+  - PhysAug는 NightSim과 orthogonal: additive perturbation (원본 구조 유지)
+- **PhysAug 두 모듈**:
+  1. **Filter**: random convolution (identity + Gaussian noise) → 비균일 조명 시뮬레이션
+  2. **Fourier**: planar sinusoidal wave + atmospheric light → 대기 산란/회절 패턴
+- **PhysAug 파라미터** (segmentation용 보수적 설정):
+  - P=0.40 (40% 확률 적용)
+  - FILTER: SIGMA_RANGE=[0.0, 1.5], KERNEL_SIZE=3
+  - FOURIER: GROUPS=[1,513], MEAN_STR=8.0, DECAY=0.3
+- **augmentation 파이프라인 순서**:
+  ResizeWidthPadToSquare → ColorJitter → **RandomPhysAug** → NightSim → CRM → ZeroOut → Flip → Blur → Crop → Normalize
+- **설계 근거**:
+  - PhysAug → NightSim 순서: filter의 min-max norm 후 NightSim이 어둡게 → 공간적 변화 보존
+  - 반대 순서면 min-max norm이 NightSim의 어둡게 효과를 원복시킴
+  - 원본 PhysAug(AAAI 2025, object detection) 대비 보수적 파라미터 (sigma_max 4→1.5, mean_str 5→8)
+  - Segmentation boundary 보존을 위해 P=0.40 (60%는 원본 유지)
+- **Ref**: PhysAug (AAAI 2025) — Physical-guided and Frequency-based Data Augmentation for Single-Domain Generalized Object Detection
+- **구현 파일**: `semseg/augmentations_mm.py` — `RandomPhysAug` 클래스
+- **뷰어**: `MISC/physaug_viewer.py`
+- **상태**: 구현 완료, 학습 대기
+
+```bash
+# 학습 명령
+python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4_physaug.yaml
+
+# 뷰어 (시각적 확인)
+python MISC/physaug_viewer.py
+```

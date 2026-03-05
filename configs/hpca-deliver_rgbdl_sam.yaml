@@ -20,6 +20,10 @@ DATASET:
   MODALS        : ['img', 'depth', 'lidar']
   # MODALS        : ['img', 'depth']
 
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]    # training image size in (h, w)
   BATCH_SIZE    : 2         # batch size used to train
@@ -55,6 +59,8 @@ EVAL:
   MODEL_PATH    : '/hpc2hdd/home/cliao127/MMSS-SAM-Logs/Main/AblationStudy_RGBD_mo08_weight1lr0.00045/DELIVER_CMNeXt-B2_id/epoch154_63.48.pth'
   IMAGE_SIZE    : [1024, 1024]                            # evaluation image size in (h, w)        
   BATCH_SIZE    : 2      
+  EVAL_DAY      : false                                   # true면 test 시 RGB 서브루트를 zed_day로 사용
+
   MSF: 
     ENABLE      : false                                   # multi-scale and flip evaluation  
     FLIP        : true                                    # use flip in evaluation  

@@ -1,0 +1,89 @@
+DEVICE          : cuda
+SAVE_DIR        : './outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug4_fda'
+
+MODEL:
+  NAME          : CMNeXt
+  BACKBONE      : CMNeXt-B2
+  PRETRAINED    : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth'
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  LORA_MODEL    : LoRA_Sam_P9
+  LORA_R        : 4
+  LORA_NUM_EXPERTS : null
+  LORA_TOP_K    : None
+  LORA_LAYER    : null
+
+DATASET:
+  NAME          : MULTIAQUA
+  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'thermal']
+
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  # hardaug4 기존 설정 + FDA 추가
+  NIGHT_AUG     :
+    ENABLE      : true
+    NIGHT_SIM_P : 0.45
+    BRIGHTNESS_RANGE : [0.03, 0.45]
+    BRIGHTNESS_SAMPLING : dark_biased
+    DARK_BIASED_RATIO  : 0.6
+    DARK_RANGE    : [0.03, 0.12]
+    MODERATE_RANGE: [0.12, 0.45]
+    CONTRAST_RANGE   : [0.3, 0.7]
+    GAMMA_RANGE     : [0.4, 0.8]
+    NOISE_STD       : 0.02
+    CRM_P       : 0.35
+    CRM_MASK_RATIO  : [0.2, 0.5]
+    ZERO_P      : 0.09
+    # FDA: Fourier Domain Adaptation — 야간 저주파 style 전이
+    FDA:
+      ENABLE      : true
+      P           : 0.30                # 30% 확률 적용
+      BETA        : 0.03                # 저주파 대역 3% (BETA_RANGE 사용 시 fallback)
+      BETA_RANGE  : [0.005, 0.03]       # 매 샘플마다 U(0.005, 0.03)에서 랜덤 샘플링
+      TARGET_DIR  : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night/MULTIAQUA_night/data/zed'
+      TARGET_PREFIX : 'lj4'             # lj4_* 야간 이미지 200장만 style reference
+      BLEND_RATIO : 1.0                 # full FDA (블렌딩 없음)
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 1
+  AMP           : false
+  DDP           : True
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false

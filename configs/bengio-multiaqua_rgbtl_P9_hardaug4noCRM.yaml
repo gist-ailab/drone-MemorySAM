@@ -18,6 +18,10 @@ DATASET:
   ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'    # dataset root path
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']                      # rgb + thermal + lidar (rgbtl)
+
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
   # ──────────────────────────────────────────────────────────────────────────
   # hardaug4-noCRM: hardaug4와 완전 동일, CRM_P/ZERO_P만 0.0으로 변경
   # [실험 F] CRM/ZERO가 P9 성능에 기여하는 정도를 정확히 분리하는 ablation
@@ -66,6 +70,8 @@ EVAL:
   MODEL_PATH    : ''    # trained model file path
   IMAGE_SIZE    : [1024, 1024]                            # evaluation image size in (h, w)
   BATCH_SIZE    : 1
+  EVAL_DAY      : false                                   # true면 test 시 RGB 서브루트를 zed_day로 사용
+
   MSF:
     ENABLE      : false                                   # multi-scale and flip evaluation
     FLIP        : true                                    # use flip in evaluation

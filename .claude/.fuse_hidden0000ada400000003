@@ -9,7 +9,9 @@
       "Read(//media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/**)",
       "Bash(du -sh:*)",
       "Bash(ls:*)",
-      "Bash(cut -d'\\(' -f1)"
+      "Bash(cut -d'\\(' -f1)",
+      "Bash(grep -l \"THERMAL\" /media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/configs/*.yaml)",
+      "Bash(wc -l /ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night/*.txt)"
     ]
   }
 }

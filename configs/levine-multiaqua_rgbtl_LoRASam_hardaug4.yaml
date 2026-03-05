@@ -18,6 +18,10 @@ DATASET:
   ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']
+
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
   NUM_CLASSES   : 4
   # hardaug4: P9와 동일 aug 설정 (가장 안정적)
   NIGHT_AUG     :
@@ -63,6 +67,8 @@ EVAL:
   MODEL_PATH    : ''
   IMAGE_SIZE    : [1024, 1024]
   BATCH_SIZE    : 1
+  EVAL_DAY      : false                                   # true면 test 시 RGB 서브루트를 zed_day로 사용
+
   MSF:
     ENABLE      : false
     FLIP        : true

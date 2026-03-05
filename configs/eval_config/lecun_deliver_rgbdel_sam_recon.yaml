@@ -14,6 +14,10 @@ DATASET:
   IGNORE_LABEL  : 255 
   MODALS        : ['img', 'depth','event', 'lidar']
 
+
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]    # training image size in (h, w)
   BATCH_SIZE    : 1               # batch size used to train
