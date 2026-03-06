@@ -27,6 +27,8 @@ from .sam_lola_utils import (
     _MoE_LoRA_qkv,
     SoftMoE_LoRA_Layer,
     _SoftMoE_LoRA_qkv,
+    SharedGateMLP,
+    SoftMoE_LoRA_Layer_V2,
 )
 
 
@@ -4852,6 +4854,266 @@ class LoRA_Sam_P19(nn.Module):
         }
         if spatial_dict:
             self.spatial_fusion_head.load_state_dict(spatial_dict)
+
+        # Load SAM components
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+
+        self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P20(nn.Module):
+    """
+    LoRA_Sam_P20: Shared MLP Gate + Higher Rank MoE
+
+    P9 대비 개선:
+      - Gate: Linear(C→3) → SharedGateMLP(C→C//4→3) 2-layer MLP
+      - Gate 공유: 동일 in_features 차원의 블록들이 하나의 MLP gate 공유
+        → 독립 gate 48개(~2.8M) → 공유 gate 4개(~268K) — 과적합 방지
+      - Rank 상향: 4 → 8 (J-A 실험), 16 (J-B 실험)
+      - SoftMoE_LoRA_Layer_V2: 외부 공유 gate 참조, 자체 gate 없음
+
+    Gate 공유 전략:
+      - Stage 0 (dim=112, blocks 0-1): 1개 MLP, hidden=28
+      - Stage 1 (dim=224, blocks 2-4): 1개 MLP, hidden=56
+      - Stage 2 (dim=448, blocks 5-20): 1개 MLP, hidden=112
+      - Stage 3 (dim=896, blocks 21-23): 1개 MLP, hidden=224
+
+    나머지 (UAMM, AMF, CrossModalFusionHead)는 P9과 동일.
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_experts=4, num_modalities=3, gate_hidden_ratio=4):
+        nn.Module.__init__(self)
+
+        assert r > 0
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        # Shared MLP gates — grouped by in_features dimension
+        self.shared_gates = nn.ModuleDict()
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Inject SoftMoE-LoRA V2 with shared gates
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+            dim_key = str(dim)
+
+            # Create shared gate for this dimension if not exists
+            if dim_key not in self.shared_gates:
+                self.shared_gates[dim_key] = SharedGateMLP(
+                    dim, num_experts, hidden_ratio=gate_hidden_ratio
+                )
+
+            shared_gate = self.shared_gates[dim_key]
+
+            moe_q = SoftMoE_LoRA_Layer_V2(dim, r, num_experts=num_experts)
+            moe_v = SoftMoE_LoRA_Layer_V2(dim, r, num_experts=num_experts)
+
+            # Link shared gate
+            moe_q.set_shared_gate(shared_gate)
+            moe_v.set_shared_gate(shared_gate)
+
+            self.moe_layers_q.append(moe_q)
+            self.moe_layers_v.append(moe_v)
+
+            blk.attn.qkv = _SoftMoE_LoRA_qkv(w_qkv_linear, moe_q, moe_v)
+
+        self.sam = sam_model
+
+        # Determine Fusion Dim (P9과 동일)
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        # CrossModalFusionHead (P9과 동일)
+        self.cross_modal_head = CrossModalFusionHead(
+            in_channels=fusion_dim,
+            num_modalities=num_modalities,
+        )
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats = [], [], []
+        vision_pos_embeds, feat_sizes, output = [], [], []
+
+        # Collect MoE gate weights for visualization
+        moe_gate_collector = []
+        def _moe_gate_cb(gw):
+            moe_gate_collector.append(gw)
+        for layer in self.moe_layers_q + self.moe_layers_v:
+            layer._gate_callback = _moe_gate_cb
+        try:
+            # ============================================
+            # Phase 1: 모든 모달리티 Image Encoding
+            # ============================================
+            for i in range(m):
+                img_emb = self.sam.forward_image(batched_input[i])
+                image_embedding.append(img_emb)
+                bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+                backbone_out.append(bb_out)
+                vision_feats.append(v_feats)
+                vision_pos_embeds.append(v_pos)
+                feat_sizes.append(f_sizes)
+
+            # ============================================
+            # Phase 2: Cross-Modal 가중치 산출 (P9과 동일)
+            # ============================================
+            all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+            cross_weights, cross_logits = self.cross_modal_head(all_backbone_feats)
+
+            # UAMM용: max-normalize
+            max_w = cross_weights.max(dim=1, keepdim=True)[0]
+            uamm_scores = cross_weights / (max_w + 1e-8)
+
+            # ============================================
+            # Phase 3: UAMM Modulation + Tracking (P9과 동일)
+            # ============================================
+            output_dict = {
+                "cond_frame_outputs": {},
+                "non_cond_frame_outputs": {},
+            }
+
+            for frame_idx in range(m):
+                is_init = (frame_idx == 0)
+
+                current_score = uamm_scores[:, frame_idx].unsqueeze(1)
+                score_expanded = current_score.transpose(0, 1).unsqueeze(-1)
+                modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
+
+                multi_mask_output_step = self.sam.track_step(
+                    frame_idx=frame_idx,
+                    is_init_cond_frame=is_init,
+                    current_vision_feats=modulated_vision_feats,
+                    current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                    feat_sizes=feat_sizes[frame_idx],
+                    point_inputs=None,
+                    mask_inputs=None,
+                    output_dict=output_dict,
+                    num_frames=m,
+                    track_in_reverse=False,
+                    run_mem_encoder=True,
+                    prev_sam_mask_logits=None,
+                )
+                output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+                output.append(multi_mask_output_step["high_res_multimasks"])
+
+            # ============================================
+            # Phase 4: AMF — raw softmax weights로 Output Fusion (P9과 동일)
+            # ============================================
+            amf_weights = cross_weights
+
+            w0 = amf_weights[:, 0].view(-1, 1, 1, 1)
+            m_output = output[0] * w0
+            m_feat = all_backbone_feats[0] * w0
+
+            for i in range(1, m):
+                wi = amf_weights[:, i].view(-1, 1, 1, 1)
+                m_output = m_output + output[i] * wi
+                m_feat = m_feat + all_backbone_feats[i] * wi
+
+            # Store for visualization
+            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            if moe_gate_collector:
+                self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
+            else:
+                self._last_moe_gates = None
+        finally:
+            for layer in self.moe_layers_q + self.moe_layers_v:
+                layer._gate_callback = None
+
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        # SoftMoE Expert Parameters (gate excluded — shared gates saved separately)
+        moe_params = {}
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            moe_params[f"moe_q_{i:03d}"] = mq.state_dict()
+            moe_params[f"moe_v_{i:03d}"] = mv.state_dict()
+
+        # Shared Gate MLP parameters
+        shared_gate_params = {
+            f"shared_gate.{k}": v
+            for k, v in self.shared_gates.state_dict().items()
+        }
+
+        cross_modal_tensors = {
+            f"cross_modal_head.{k}": v
+            for k, v in self.cross_modal_head.state_dict().items()
+        }
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+
+        model_ref = self.sam.module if isinstance(self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.sam
+        state_dict = model_ref.state_dict()
+
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **moe_params,
+            **shared_gate_params,
+            **prompt_encoder_tensors,
+            **mask_decoder_tensors,
+            **cross_modal_tensors,
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        # Load SoftMoE Expert Layers (no gate in state_dict — V2 has no own gate)
+        for i, (mq, mv) in enumerate(zip(self.moe_layers_q, self.moe_layers_v)):
+            q_key = f"moe_q_{i:03d}"
+            v_key = f"moe_v_{i:03d}"
+            if q_key in state_dict: mq.load_state_dict(state_dict[q_key])
+            if v_key in state_dict: mv.load_state_dict(state_dict[v_key])
+
+        # Load Shared Gate MLPs
+        shared_gate_dict = {
+            k.replace("shared_gate.", ""): v
+            for k, v in state_dict.items()
+            if k.startswith("shared_gate.")
+        }
+        if shared_gate_dict:
+            self.shared_gates.load_state_dict(shared_gate_dict)
+
+        # Load CrossModalFusionHead
+        cross_modal_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("cross_modal_head."):
+                cross_modal_dict[k.replace("cross_modal_head.", "")] = v
+        if cross_modal_dict:
+            self.cross_modal_head.load_state_dict(cross_modal_dict)
 
         # Load SAM components
         sam_dict = self.sam.state_dict()

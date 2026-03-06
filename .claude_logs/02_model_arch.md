@@ -869,6 +869,119 @@ Phase C: Cross-Modal Spatial Comparison
 
 ---
 
+## P20: Shared MLP Gate + Higher Rank MoE (실험 J-A)
+
+파일: `sam_lora_image_encoder_seg.py` 끝부분, 클래스: `LoRA_Sam_P20`
+Gate/MoE: `sam_lola_utils.py` — `SharedGateMLP`, `SoftMoE_LoRA_Layer_V2`
+
+### P9에서의 변경 동기
+
+P9의 MoE gate `Linear(C→3)`는 단일 선형 레이어로 비선형 결정경계 학습 불가.
+Per-token entropy_ratio=0.55로 분화되어 있지만, 모달리티별 의미 있는 routing 차이는 부족.
+Expert rank=4도 매우 낮아 expert 간 specialization 여지 부족.
+
+### 핵심 변경 3가지
+
+#### 1. SharedGateMLP (2-layer MLP Gate)
+
+```python
+class SharedGateMLP(nn.Module):
+    """Linear(C → C//4) → ReLU → Linear(C//4 → num_experts)"""
+    def __init__(self, in_features, num_experts, hidden_ratio=4):
+        hidden = max(in_features // hidden_ratio, 16)
+        self.net = Sequential(
+            Linear(in_features, hidden),
+            ReLU(inplace=True),
+            Linear(hidden, num_experts),
+        )
+    # init: kaiming + zeros(bias) + normal(0.01, last layer weight)
+```
+
+- 비선형 결정경계 학습 가능 → 모달리티/공간/컨텐츠 기반 routing
+- `hidden_ratio=4` → C//4 hidden dim
+
+#### 2. Gate 공유 전략
+
+동일 `in_features` 차원의 블록들이 하나의 MLP gate 공유:
+
+| Stage | Blocks | dim | hidden | Q/V layers | 공유 MLP |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0-1 | 112 | 28 | 4 | 1개 |
+| 1 | 2-4 | 224 | 56 | 6 | 1개 |
+| 2 | 5-20 | 448 | 112 | 32 | 1개 |
+| 3 | 21-23 | 896 | 224 | 6 | 1개 |
+| **합계** | | | | **48** | **4개** |
+
+- 독립 gate 48개(~2.8M) → 공유 gate 4개(~268K) — **과적합 방지**
+- `LoRA_Sam_P20.shared_gates` (nn.ModuleDict, key=str(dim))
+
+#### 3. Rank 상향: 4 → 8
+
+- Expert capacity 2배 증가 → expert 간 실질적 차이 발생 가능
+- Gate 분화에 대한 gradient 신호 강화
+
+### SoftMoE_LoRA_Layer_V2
+
+```python
+class SoftMoE_LoRA_Layer_V2(nn.Module):
+    """외부 공유 gate 참조, 자체 gate 없음"""
+    def __init__(self, in_features, rank, num_experts=4):
+        self.experts_a = ModuleList[Linear(in_features, rank, bias=False)]
+        self.experts_b = ModuleList[Linear(rank, in_features, bias=False)]
+        self._shared_gate = None  # Python attribute, not nn.Module
+
+    def set_shared_gate(self, gate_module):
+        self._shared_gate = gate_module
+
+    def forward(self, x):
+        gate_logits = self._shared_gate(x)
+        gate_weights = softmax(gate_logits, dim=-1)
+        # weighted sum of experts
+```
+
+- `_shared_gate`는 Python attribute → state_dict에 포함 안 됨
+- Gate는 `LoRA_Sam_P20.shared_gates`에서 소유/저장
+
+### P9 vs P20 비교
+
+| | P9 | P20 |
+| --- | --- | --- |
+| Gate | `Linear(C→3)` × 48 | `SharedGateMLP(C→C//4→3)` × 4 |
+| Gate 파라미터 | ~268K (48 independent) | ~268K (4 shared MLP) |
+| MoE Layer | SoftMoE_LoRA_Layer | **SoftMoE_LoRA_Layer_V2** |
+| Rank | 4 | **8** |
+| Expert 파라미터 | ~700K | **~1.4M** |
+| Fusion Head | CrossModalFusionHead | CrossModalFusionHead (동일) |
+| UAMM | max-norm scalar | max-norm scalar (동일) |
+| AMF | softmax scalar | softmax scalar (동일) |
+| Forward | 2-tuple (output, feat) | 2-tuple (동일) |
+
+### Save/Load 전략
+
+```python
+# save_lora_parameters:
+merged_dict = {
+    **moe_params,          # moe_q_{i:03d}, moe_v_{i:03d} (experts only, no gate)
+    **shared_gate_params,  # shared_gate.{dim}.net.{0,2}.{weight,bias}
+    **cross_modal_tensors,
+    **prompt_encoder_tensors,
+    **mask_decoder_tensors,
+}
+```
+
+- MoE expert state_dict에는 gate 없음 (V2는 자체 gate 미소유)
+- Shared gates는 별도 prefix `shared_gate.`로 저장/로드
+
+### 구현 상태
+
+- **구현 완료** (2026-03-05)
+- Config: `configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml`
+- Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml`
+- Train script: `gate_hidden_ratio` inspect dispatch 추가
+- Augmentation: hardaug8_physaug (CRM 0.20 + PhysAug + shot noise)
+
+---
+
 ## 버전 비교 총괄
 
 | 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | P17 | **P19** |

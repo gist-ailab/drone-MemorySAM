@@ -770,6 +770,50 @@
 
 ---
 
+### P20 MLP Gate + Rank 8 실험 (실험 J-A — 학습 대기)
+
+#### P20-JA: hardaug8_physaug (Shared MLP Gate + Rank 8)
+
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml`
+- **모델**: LoRA_Sam_P20 (신규)
+- **Save dir**: `outputs/MMSamP20/levine_multiaqua_rgbtl_P20_hardaug8_physaug`
+- **핵심 변경**:
+  - Gate: `Linear(C→3)` → `SharedGateMLP(C→C//4→ReLU→C//4→3)` 2-layer MLP
+  - Gate 공유: 동일 dim 블록 공유 (48개→4개)
+  - Rank: 4 → 8
+  - Augmentation: hardaug8_physaug (CRM 0.35→0.20 + PhysAug + shot noise)
+- **구현 파일**:
+  1. `sam_lola_utils.py` — `SharedGateMLP`, `SoftMoE_LoRA_Layer_V2`
+  2. `sam_lora_image_encoder_seg.py` — `LoRA_Sam_P20`
+  3. `train_sam2_lora_paper.py` — `gate_hidden_ratio` dispatch
+- **상태**: 구현 완료, 학습 대기
+
+```bash
+# 학습 명령
+python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml
+```
+
+---
+
+### P9 hardaug8 실험 (CRM 완화 — 학습 대기)
+
+#### P9-h8: hardaug8_physaug (CRM 0.35→0.20)
+
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
+- **모델**: LoRA_Sam_P9 (기존 아키텍처)
+- **Save dir**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug`
+- **변경**: hardaug4_physaug 기반 + CRM_P 0.35→0.20
+- **CRM 완화 근거**: LiDAR 빈 이미지 존재, thermal 유효 영역 협소 → 과도한 RGB 마스킹이 노이즈 학습 유발
+- **상태**: config 생성 완료, 학습 대기
+
+```bash
+python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml
+```
+
+---
+
 ### P9 PhysAug 실험 (실험 VI — 학습 대기)
 
 #### P9-PhysAug: hardaug4 + PhysAug (Physical-guided Augmentation)

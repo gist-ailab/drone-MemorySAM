@@ -730,6 +730,98 @@ class SoftMoE_LoRA_Layer(nn.Module):
 
         return final_output
 
+
+class SharedGateMLP(nn.Module):
+    """
+    Shared 2-layer MLP gate for SoftMoE routing (P20).
+
+    같은 차원의 모든 MoE 레이어(Q/V, 여러 블록)가 하나의 gate를 공유하여
+    파라미터를 절약하고, 안정적인 routing 학습을 도모.
+
+    구조: Linear(in_features → hidden) → ReLU → Linear(hidden → num_experts)
+    hidden_ratio=4 → hidden = in_features // 4
+
+    Ref: LD-MoLE (shared gate 방식), DynMoLE (MLP gate)
+    """
+    def __init__(self, in_features, num_experts, hidden_ratio=4):
+        super().__init__()
+        hidden = max(in_features // hidden_ratio, 16)
+        self.net = nn.Sequential(
+            nn.Linear(in_features, hidden),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden, num_experts),
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # First layer: kaiming for ReLU
+        nn.init.kaiming_uniform_(self.net[0].weight, a=math.sqrt(5))
+        nn.init.zeros_(self.net[0].bias)
+        # Last layer: near-zero → initial softmax ≈ uniform (1/E)
+        nn.init.normal_(self.net[2].weight, std=0.01)
+        nn.init.zeros_(self.net[2].bias)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SoftMoE_LoRA_Layer_V2(nn.Module):
+    """
+    SoftMoE LoRA Layer V2 — external shared gate 지원 (P20).
+
+    V1(SoftMoE_LoRA_Layer)과의 차이:
+    - gate를 자체 소유하지 않음 → 외부에서 SharedGateMLP을 set_shared_gate()로 설정
+    - 파라미터: experts_a, experts_b만 보유 (gate는 LoRA_Sam_P20.shared_gates에서 관리)
+    - save/load 시 gate는 별도로 처리
+    """
+    def __init__(self, in_features, rank, num_experts=4):
+        super().__init__()
+        self.num_experts = num_experts
+        self.rank = rank
+        self.in_features = in_features
+
+        # Experts: LoRA adapters
+        self.experts_a = nn.ModuleList([
+            nn.Linear(in_features, rank, bias=False) for _ in range(num_experts)
+        ])
+        self.experts_b = nn.ModuleList([
+            nn.Linear(rank, in_features, bias=False) for _ in range(num_experts)
+        ])
+
+        # External shared gate (set via set_shared_gate)
+        self._shared_gate = None
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        for i in range(self.num_experts):
+            nn.init.kaiming_uniform_(self.experts_a[i].weight, a=math.sqrt(5))
+            nn.init.zeros_(self.experts_b[i].weight)
+
+    def set_shared_gate(self, gate_module):
+        """외부 SharedGateMLP 참조 설정 (nn.Module로 등록하지 않음)."""
+        self._shared_gate = gate_module
+
+    def forward(self, x):
+        assert self._shared_gate is not None, "Shared gate not set. Call set_shared_gate() first."
+
+        gate_logits = self._shared_gate(x)  # (..., num_experts)
+        gate_weights = F.softmax(gate_logits, dim=-1)  # (..., num_experts)
+
+        # For visualization: store spatial-mean gate weights
+        if hasattr(self, '_gate_callback') and self._gate_callback is not None:
+            gw_mean = gate_weights.mean(dim=tuple(range(gate_weights.dim()-1))).detach().cpu().numpy()
+            self._gate_callback(gw_mean)
+
+        final_output = 0
+        for i in range(self.num_experts):
+            expert_out = self.experts_b[i](self.experts_a[i](x))
+            weight = gate_weights[..., i].unsqueeze(-1)
+            final_output = final_output + weight * expert_out
+
+        return final_output
+
+
 class _SoftMoE_LoRA_qkv(nn.Module):
     """
     QKV layer wrapper that replaces standard LoRA with Soft-MoE LoRA.

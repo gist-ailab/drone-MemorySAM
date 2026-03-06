@@ -2,17 +2,29 @@
 
 > 최종 업데이트: 2026-03-05
 
-## 현재 상태: FDA augmentation 구현 완료 (학습 대기)
+## 현재 상태: P20 (Shared MLP Gate + Rank 8) 구현 완료 (학습 대기)
 
-### FDA Augmentation 구현 (2026-03-05)
+### P20 구현 완료 (2026-03-05)
 
-- **RandomFDA 클래스** 구현 (`semseg/augmentations_mm.py`)
-  - FFT로 주간 RGB의 저주파 amplitude를 야간(lj4) 이미지의 것으로 교체
-  - config-driven: `NIGHT_AUG.FDA.ENABLE/P/BETA/TARGET_DIR/TARGET_PREFIX/BLEND_RATIO`
-  - 야간 reference pool: test set lj4_* 200장 (prefix 필터링)
-  - 파이프라인 순서: ColorJitter → **RandomFDA** → NightSim → CRM → ZeroOut → ...
-- **Training config**: `configs/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml`
-- **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml`
+- **실험 J-A 구현**: SharedGateMLP + SoftMoE_LoRA_Layer_V2 + LoRA_Sam_P20
+- **핵심 변경**:
+  - Gate: `Linear(C→3)` → `SharedGateMLP(C→C//4→ReLU→C//4→3)` 2-layer MLP
+  - Gate 공유: 동일 dim 블록들이 1개 MLP 공유 (48개→4개, ~268K)
+  - Rank: 4 → 8
+- **수정 파일**:
+  1. `semseg/models/sam2/sam2/sam_lola_utils.py` — `SharedGateMLP`, `SoftMoE_LoRA_Layer_V2` 추가
+  2. `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P20` 추가
+  3. `train_sam2_lora_paper.py` — `gate_hidden_ratio` dispatch 추가
+  4. `configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml` — 학습 config
+  5. `configs/eval_config/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml` — 평가 config
+- **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml`
+
+### hardaug8 config 생성 (2026-03-05)
+
+- hardaug4 기반 + PhysAug + shot noise + **CRM 0.35→0.20 완화**
+- CRM 완화 근거: LiDAR 빈 이미지 존재, thermal 유효 영역 협소 → 과도한 RGB 마스킹이 노이즈 학습 유발
+- `configs/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
+- `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
 
 ### I2I Translation 실험 실패 (2026-03-05)
 
@@ -209,6 +221,11 @@
     - P9 아키텍처 + 넓은 범위 augmentation [0.01, 0.60]
     - Sky 56.87(ep20)/39.90(ep85). Broader aug가 역효과
     - Submission #16339, #16340
+
+15. **P20 (Shared MLP Gate + Rank 8) — 구현 완료, 학습 대기**
+    - P9 base + SharedGateMLP(2-layer) + SoftMoE_LoRA_Layer_V2 + rank 8
+    - Gate 공유: dim별 4개 MLP만 사용 (48개 독립 gate → 4개 공유 MLP)
+    - hardaug8_physaug config (CRM 0.35→0.20 완화 + PhysAug + shot noise)
 
 ### 다음 실험 계획
 
@@ -486,6 +503,61 @@ DATASET:
 - SAVE_DIR 패턴: `./outputs/MMSam{model}/{server}_multiaqua_rgbtl_{model}_hardaug4_night2`
 - 평가 시: `ROOT`는 night2 유지 (val은 원본 zed만 사용하므로 결과 동일)
 - `TEST.FILE`도 night2로 설정 (test도 원본 zed만 사용)
+
+#### 실험 J: MLP Gate + Rank Scaling (MoE LoRA 강화) — P9 기반
+
+- **목적**: 현재 P9의 약한 gate(`Linear(C→3)`)와 낮은 expert capacity(rank=4)를 동시에 강화
+- **배경 분석**:
+  - P9 MoE gating이 사실상 상수화 (모달리티별 거의 동일한 gate weight, entropy_ratio 0.55~0.86)
+  - P11에서 MI loss로 gate 분화 강제 → 실패 (M=77.09). 하지만 이는 **약한 gate로는 의미 있는 routing을 못하는데 억지로 분화시킨 것**이 원인일 가능성
+  - 최신 연구(LD-MoLE, DynMoLE)는 단순 Linear가 아닌 MLP 기반 gate 사용
+  - Expert rank=4도 매우 낮아 expert 간 specialization 여지 부족
+
+- **변경 사항**:
+
+| 구성요소 | 현재 P9 | 실험 J |
+| --- | --- | --- |
+| Gate | `Linear(C → 3)` | `Linear(C → C//4) → ReLU → Linear(C//4 → 3)` (2-layer MLP) |
+| Rank | 4 | 8 (J-A), 16 (J-B) |
+| Expert 수 | 3 | 3 (모달리티 수 유지) |
+| Gate 공유 | 없음 (48개 독립) | **같은 C 차원의 layer끼리 MLP 공유** (LD-MoLE 방식) |
+
+- **Gate MLP 상세**:
+  - Stage 0 (C=112): `Linear(112→28) → ReLU → Linear(28→3)` — hidden=28
+  - Stage 1 (C=224): `Linear(224→56) → ReLU → Linear(56→3)` — hidden=56
+  - Stage 2-3 (C=768): `Linear(768→192) → ReLU → Linear(192→3)` — hidden=192
+  - **Stage별 공유**: 같은 C 차원의 모든 block이 1개 MLP 공유 → 파라미터 절약
+    - Stage 0: 2개 block(B0-B1) × Q/V = 4개 layer가 1개 MLP 공유
+    - Stage 1: 3개 block(B2-B4) × Q/V = 6개 layer가 1개 MLP 공유
+    - Stage 2-3: 19개 block(B5-B23) × Q/V = 38개 layer가 1개 MLP 공유
+    - → 총 3개 MLP만 필요 (현재 48개 Linear → 3개 MLP)
+
+- **Computational cost**:
+  - Gate MLP 추가: QKV 연산 대비 ~8% 수준 → 전체 forward에서 체감 미미
+  - Rank 8: expert 파라미터 2배 증가 → 전체 모델 대비 여전히 작음 (~1.8M)
+  - Rank 16: expert 파라미터 4배 증가 → ~3.5M (SAM 80M 대비 4.4%)
+
+- **실험 순서**:
+  1. **J-A**: MLP gate + rank 8 (안전한 첫 실험)
+  2. **J-B**: MLP gate + rank 16 (J-A 결과에 따라)
+  3. 선택: gate만 MLP로 바꾸고 rank 4 유지하는 ablation도 고려
+
+- **수정 필요 파일**:
+  1. `semseg/models/sam2/sam2/sam_lola_utils.py` — `SoftMoE_LoRA_Layer`의 gate를 MLP로 교체, shared gate 지원
+  2. `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P9` (또는 P20 신규) gate 공유 로직
+  3. `configs/` — `LORA_R: 8`, `GATE_TYPE: mlp`, `GATE_HIDDEN_RATIO: 4` 등 config 항목 추가
+  4. `train_sam2_lora_paper.py` — gate config 파싱 및 모델 생성 로직
+
+- **기대 효과**:
+  - MLP gate → 비선형 결정 경계 학습 가능 → 모달리티/공간/컨텐츠 기반 의미 있는 routing
+  - Rank 증가 → expert 간 실질적 차이 발생 → gate 분화에 대한 gradient 신호 강화
+  - 두 가지가 시너지: 강한 gate + 강한 expert → MoE가 비로소 의도대로 작동할 가능성
+
+- **리스크**: 중간. 파라미터 증가로 오버피팅 가능 (MULTIAQUA 데이터 적음). Gate 공유로 완화
+- **LORA_MODEL**: `LoRA_Sam_P20` (신규)
+- **상태**: **구현 완료, 학습 대기** (J-A: rank=8, MLP gate, hardaug8_physaug)
+
+---
 
 #### 실험 H: RandomGammaWide — 독립 Contrast Invariance Augmentation
 

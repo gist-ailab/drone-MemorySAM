@@ -312,6 +312,9 @@ def main(cfg, gpu, save_dir):
     if 'use_entropy_fusion' in sig.parameters:
         # [P18] P18-A(False): P9-style 고정상수, P18-B(True): entropy fusion
         model_kwargs['use_entropy_fusion'] = model_cfg.get('USE_ENTROPY_FUSION', False)
+    if 'gate_hidden_ratio' in sig.parameters:
+        # [P20] SharedGateMLP hidden ratio (default 4 → C//4)
+        model_kwargs['gate_hidden_ratio'] = model_cfg.get('GATE_HIDDEN_RATIO', 4)
 
     model = lora_model_class(**model_kwargs).cpu()
     
