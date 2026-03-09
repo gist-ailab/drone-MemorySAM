@@ -982,6 +982,111 @@ merged_dict = {
 
 ---
 
+## P21: DeBA-FP (Deformable Bottleneck Adapter for Feature Pyramid) (실험 K)
+
+파일: `sam_lora_image_encoder_seg.py` 끝부분, 클래스: `LoRA_Sam_P21`
+DeBA-FP: `sam_lola_utils.py` — `DeBAFP`
+
+### 동기
+
+P9의 FPN feature(fpn[0])는 GAP → CrossModalFusionHead에 직접 입력. Spatial refinement 없이
+global average만으로 모달리티 중요도를 산출. Day→Night domain gap에서 경계/형태 같은
+구조적 정보는 domain-invariant인데, 이를 명시적으로 포착하는 메커니즘 부재.
+
+DeBA (CVPR 2026)는 deformable convolution으로 domain-invariant structural information을 포착.
+특히 LaRS(수면 환경) 벤치마크에서 SOTA → MULTIAQUA와 직접 관련.
+
+### P9 대비 변경
+
+P9 구조 완전 유지 + DeBA-FP 모듈만 fpn[0]과 CrossModalFusionHead 사이에 삽입.
+
+```
+P9:  fpn[0] ──────────────────→ CrossModalFusionHead → UAMM/AMF
+P21: fpn[0] → DeBA-FP(shared) → CrossModalFusionHead → UAMM/AMF
+```
+
+### DeBA-FP 구조
+
+```python
+class DeBAFP(nn.Module):
+    """
+    feat' = feat + α_m * W_u(GELU(LN(DCM(W_d(feat)))))
+
+    Shared across modalities: W_d, DCM, LN, W_u
+    Per-modality: α (init=0 → identity at start)
+    """
+    # W_d: Conv2d(256→64, 1×1) — bottleneck down projection
+    # offset_mask_conv: Conv2d(64→27, 3×3) — DCNv2 offset+mask prediction
+    # dcm_weight: Parameter(64, 64, 3, 3) — deformable conv weight
+    # norm: LayerNorm(64) — shared θ_norm
+    # W_u: Conv2d(64→256, 1×1) — up projection
+    # alpha: ParameterList([zeros(1)] × num_modalities)
+```
+
+**핵심 설계 결정**:
+
+1. **Cross-modal weight sharing**: 모든 learnable 레이어(W_d, DCM, LN, W_u)를 3개 모달리티가 공유
+   - 2,952 학습 샘플로 최대한 regularization
+   - α만 per-modality → 각 모달리티가 다른 강도로 adaptation 가능
+2. **α=0 init**: 학습 시작 시 DeBA-FP = identity → P9과 동일한 출발점
+3. **Offset zero-init**: DCM offset이 0부터 시작 → regular conv로 시작, 점진적으로 deformable
+4. **fpn[0] only**: P9가 fpn[0]만 사용하므로 다른 FPN 레벨은 불필요
+
+### 원본 DeBA와의 차이
+
+| 항목 | 원본 DeBA | P21 |
+| --- | --- | --- |
+| Backbone | DINOv2 ViT | SAM2 Hiera B+ |
+| DeBA-BB | ViT 블록 사이 삽입 | **미적용** |
+| DeBA-FP | FPN 4-level | **fpn[0] only** |
+| Cross-layer sharing | 레이어 간 DCM/norm 공유 | **모달리티 간** 공유 |
+| d_b | 64 | 64 (동일) |
+| Norm | LayerNorm | LayerNorm (동일) |
+| DCN version | DCNv4 | **DCNv2** (torchvision) |
+
+### 파라미터 추가량
+
+| 구성 | 파라미터 |
+| --- | --- |
+| W_d: Conv2d(256→64, 1×1) | 16,448 |
+| offset_mask_conv: Conv2d(64→27, 3×3) | 15,579 |
+| dcm_weight: (64, 64, 3, 3) | 36,864 |
+| LayerNorm(64) | 128 |
+| W_u: Conv2d(64→256, 1×1) | 16,640 |
+| α × 3 | 3 |
+| **합계** | **~85K** |
+
+P9 LoRA ~700K 대비 12% 증가. 전체 trainable ~785K.
+
+### Save/Load
+
+```python
+# save_lora_parameters:
+merged_dict = {
+    **moe_params,          # P9 동일
+    **cross_modal_tensors, # P9 동일
+    **deba_fp_tensors,     # prefix "deba_fp." (신규)
+    **prompt_encoder_tensors,
+    **mask_decoder_tensors,
+}
+```
+
+### DeBA-BB 향후 과제
+
+SAM2 Hiera의 블록 구조(MultiScaleBlock with dim changes)가 DINOv2 ViT(일정 dim)와 다르므로
+DeBA-BB를 직접 삽입하려면 Hiera-specific adapter 설계가 필요. 현재는 DeBA-FP만 적용.
+DeBA-FP만으로 충분한 효과가 있으면 BB 추가 불필요, 불충분하면 BB 설계 진행.
+
+### 구현 상태
+
+- **구현 완료** (2026-03-09)
+- Config: `configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml`
+- Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml`
+- Train script: `deba_bottleneck_dim` inspect dispatch 추가
+- Augmentation: hardaug8_physaug (P9 h8과 동일)
+
+---
+
 ## 버전 비교 총괄
 
 | 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | P17 | **P19** |

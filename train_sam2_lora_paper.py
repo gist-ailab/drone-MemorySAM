@@ -315,6 +315,11 @@ def main(cfg, gpu, save_dir):
     if 'gate_hidden_ratio' in sig.parameters:
         # [P20] SharedGateMLP hidden ratio (default 4 → C//4)
         model_kwargs['gate_hidden_ratio'] = model_cfg.get('GATE_HIDDEN_RATIO', 4)
+    if 'deba_bottleneck_dim' in sig.parameters:
+        # [P21] DeBA-FP bottleneck dimension (default 64)
+        deba_cfg = model_cfg.get('DEBA', {})
+        model_kwargs['deba_bottleneck_dim'] = deba_cfg.get('BOTTLENECK_DIM', 64)
+        model_kwargs['deba_kernel_size'] = deba_cfg.get('KERNEL_SIZE', 3)
 
     model = lora_model_class(**model_kwargs).cpu()
     

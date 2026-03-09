@@ -1,8 +1,36 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-05
+> 최종 업데이트: 2026-03-09
 
-## 현재 상태: P20 (Shared MLP Gate + Rank 8) 구현 완료 (학습 대기)
+## 현재 상태: P9+hardaug8_physaug ep131 **새로운 최선 모델 (M=81.98)**, P20/P21 학습 대기
+
+### P21 구현 완료 (2026-03-09)
+
+- **실험 K 구현**: P9 + DeBA-FP (Deformable Bottleneck Adapter for Feature Pyramid)
+- **Ref**: CVPR 2026 — "Rethinking Deformable Convolution as an Adapter with Cross-layer Weight Sharing"
+- **핵심 변경**:
+  - FPN[0] → DeBA-FP → refined FPN[0] → CrossModalFusionHead (UAMM/AMF는 P9 동일)
+  - Cross-modal weight sharing: DCM, norm, W_d, W_u 공유, α만 per-modality
+  - DeBA-BB 미적용 (SAM2 Hiera ≠ DINOv2, 향후 과제)
+  - 추가 파라미터: ~85K (P9 대비 12% 증가)
+- **수정 파일**:
+  1. `semseg/models/sam2/sam2/sam_lola_utils.py` — `DeBAFP` 클래스 추가
+  2. `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P21` 추가
+  3. `train_sam2_lora_paper.py` — `deba_bottleneck_dim` dispatch 추가
+  4. `configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml` — 학습 config
+  5. `configs/eval_config/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml` — 평가 config
+- **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml`
+
+### P9+hardaug8_physaug ep131 — 역대 최고 M-score 달성 (2026-03-09)
+
+- **M=81.98** (이전 최선 P9 hardaug4 M=81.47 대비 **+0.51**)
+- Val 93.54 / Test **70.41** (처음으로 test 70 돌파) / Test Obstacle **32.85**
+- **핵심 성과**: Dynamic IoU 21.86→**33.50** (+11.64pp), Dynamic=0 프레임 38→13 (66% 감소)
+- Sky 76.54→73.75 (-2.79pp), Static 81.30→76.64 (-4.66pp) — Dynamic 개선이 압도
+- 학습 궤적: ep83(M=80.57)→ep94(80.75)→ep131(81.98) — 장기 학습에서 지속 개선
+- AMF: img 0.239, lidar 0.371, thermal 0.390 (여전히 완전 상수, RGB 의존도 추가 감소)
+- Checkpoint: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch131_94.41_top1_checkpoint.pth`
+- Submission #16683
 
 ### P20 구현 완료 (2026-03-05)
 
@@ -19,12 +47,15 @@
   5. `configs/eval_config/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml` — 평가 config
 - **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml`
 
-### hardaug8 config 생성 (2026-03-05)
+### P9+hardaug8 학습 궤적 (2026-03-07~09)
 
-- hardaug4 기반 + PhysAug + shot noise + **CRM 0.35→0.20 완화**
-- CRM 완화 근거: LiDAR 빈 이미지 존재, thermal 유효 영역 협소 → 과도한 RGB 마스킹이 노이즈 학습 유발
-- `configs/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
-- `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
+- ep83(M=80.57, #16624) → ep94(M=80.75, #16640) → **ep131(M=81.98, #16683) ★ 역대 최선**
+- **변경**: hardaug4 + PhysAug(p=0.40) + shot noise(gain[20,80]) + CRM 0.35→**0.20** + Night2 데이터
+- **핵심 발견**:
+  - 장기 학습(131 epochs)에서 지속 개선 — P9 hardaug4는 ep47 포화
+  - Dynamic +11.64pp (21.86→33.50), Dynamic=0 프레임 38→13 (66% 감소)
+  - Sky: ep83(-10.30pp) → ep131(-2.79pp) — 장기 학습으로 회복
+  - **AMF/UAMM 여전히 완전한 상수** (std≈0.0000) — 값은 변화 (RGB↓ Thermal↑)
 
 ### I2I Translation 실험 실패 (2026-03-05)
 
@@ -226,6 +257,12 @@
     - P9 base + SharedGateMLP(2-layer) + SoftMoE_LoRA_Layer_V2 + rank 8
     - Gate 공유: dim별 4개 MLP만 사용 (48개 독립 gate → 4개 공유 MLP)
     - hardaug8_physaug config (CRM 0.35→0.20 완화 + PhysAug + shot noise)
+
+16. **P21 (DeBA-FP: Deformable Bottleneck Adapter) — 구현 완료, 학습 대기**
+    - P9 base + DeBA-FP (deformable conv bottleneck on FPN features)
+    - Cross-modal weight sharing: DCM/norm/W_d/W_u 공유, α만 per-modality
+    - DeBA-BB 미적용 (SAM2 Hiera ↔ DINOv2 구조 차이, 향후 과제)
+    - ~85K 추가 파라미터 (P9 대비 12% 증가)
 
 ### 다음 실험 계획
 

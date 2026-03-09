@@ -851,5 +851,122 @@ class _SoftMoE_LoRA_qkv(nn.Module):
         # Add residual connection
         qkv[:, :, :, : self.dim] += new_q
         qkv[:, :, :, -self.dim:] += new_v
-        
+
         return qkv
+
+
+# ─────────────────────────────────────────────────────────────────────
+# DeBA-FP: Deformable Bottleneck Adapter for Feature Pyramid (P21)
+# Ref: "Rethinking Deformable Convolution as an Adapter with Cross-layer
+#       Weight Sharing for Robust Semantic Segmentation in the Wild" (CVPR 2026)
+# ─────────────────────────────────────────────────────────────────────
+
+
+class DeBAFP(nn.Module):
+    """
+    Deformable Bottleneck Adapter for Feature Pyramid (DeBA-FP).
+
+    Applies a shared deformable convolution bottleneck to FPN features.
+    Cross-modal weight sharing: DCM, norm, W_d, W_u are shared across modalities.
+    Only per-modality learnable scaling factor α is independent.
+
+    Structure per application:
+        feat' = feat + α_m * W_u(GELU(LN(DCM(W_d(feat)))))
+
+    where DCM = offset_prediction → deform_conv2d (DCNv2).
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 256,
+        bottleneck_dim: int = 64,
+        kernel_size: int = 3,
+        num_modalities: int = 3,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.bottleneck_dim = bottleneck_dim
+        self.kernel_size = kernel_size
+        padding = kernel_size // 2
+
+        # ── Shared layers (cross-modal weight sharing) ──
+
+        # Down projection: (B, C, H, W) → (B, d_b, H, W)
+        self.W_d = nn.Conv2d(in_channels, bottleneck_dim, 1, bias=True)
+
+        # DCM: offset + modulation mask prediction
+        # 2*K*K for (dx, dy) offsets + K*K for modulation masks
+        k2 = kernel_size * kernel_size
+        self.offset_mask_conv = nn.Conv2d(
+            bottleneck_dim, 3 * k2, kernel_size, padding=padding, bias=True,
+        )
+
+        # DCM: deformable conv weight (no bias, applied via deform_conv2d)
+        self.dcm_weight = nn.Parameter(
+            torch.empty(bottleneck_dim, bottleneck_dim, kernel_size, kernel_size)
+        )
+
+        # LayerNorm (shared θ_norm)
+        self.norm = nn.LayerNorm(bottleneck_dim)
+
+        # Up projection: (B, d_b, H, W) → (B, C, H, W)
+        self.W_u = nn.Conv2d(bottleneck_dim, in_channels, 1, bias=True)
+
+        # ── Per-modality scaling (init=0 → identity at start) ──
+        self.alpha = nn.ParameterList(
+            [nn.Parameter(torch.zeros(1)) for _ in range(num_modalities)]
+        )
+
+        self._padding = padding
+        self._init_weights()
+
+    def _init_weights(self):
+        # W_d, W_u: kaiming
+        nn.init.kaiming_uniform_(self.W_d.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.W_d.bias)
+        nn.init.kaiming_uniform_(self.W_u.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.W_u.bias)
+        # DCM weight: kaiming
+        nn.init.kaiming_uniform_(self.dcm_weight, a=math.sqrt(5))
+        # Offset/mask: zero-init → starts as regular conv (no deformation)
+        nn.init.zeros_(self.offset_mask_conv.weight)
+        nn.init.zeros_(self.offset_mask_conv.bias)
+
+    def forward(self, x: torch.Tensor, modality_idx: int = 0) -> torch.Tensor:
+        """
+        Args:
+            x: (B, C, H, W) FPN feature for one modality
+            modality_idx: index for per-modality α selection
+        Returns:
+            (B, C, H, W) refined feature
+        """
+        from torchvision.ops import deform_conv2d
+
+        residual = x
+
+        # Down project
+        h = self.W_d(x)  # (B, d_b, H, W)
+
+        # DCM: predict offsets and modulation masks
+        om = self.offset_mask_conv(h)  # (B, 3*K*K, H, W)
+        k2 = self.kernel_size * self.kernel_size
+        offset = om[:, :2 * k2]         # (B, 2*K*K, H, W)
+        mask = om[:, 2 * k2:].sigmoid()  # (B, K*K, H, W)
+
+        # DCM: deformable conv (DCNv2)
+        h = deform_conv2d(
+            h, offset, self.dcm_weight,
+            mask=mask, padding=self._padding,
+        )  # (B, d_b, H, W)
+
+        # LayerNorm + GELU
+        h = h.permute(0, 2, 3, 1)   # (B, H, W, d_b)
+        h = self.norm(h)
+        h = F.gelu(h)
+        h = h.permute(0, 3, 1, 2)   # (B, d_b, H, W)
+
+        # Up project
+        h = self.W_u(h)  # (B, C, H, W)
+
+        # Residual with per-modality scaling
+        return residual + self.alpha[modality_idx] * h

@@ -115,12 +115,12 @@ drone-MemorySAM/
 | 버전 | 핵심 변경 | 최선 M-score | 상태 |
 |------|----------|-------------|------|
 | P8 | ConfidenceHeadV2 + sigmoid UAMM | 78.45 | hardaug 기반실험 완료 |
-| **P9** | CrossModalFusionHead + max-norm UAMM | **81.47** | **현재 최선** |
+| **P9** | CrossModalFusionHead + max-norm UAMM | **81.98** (hardaug8 ep131) | **현재 최선** |
 | P10 | CrossModalFusionHeadV2 + ModalAuxHead + oracle KL | 79.27 | 취소 (test 성능 하락) |
 | P11 | P10 + MI routing loss | 77.09 | 취소 (MoE gate 진단 우선) |
 | P12 | Input-Conditioned Soft MoE LoRA (cond_dim) | - | 설계만 완료 |
 
-**현재 최선 모델: P9 hardaug4** — `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch47_94.18_checkpoint.pth`
+**현재 최선 모델: P9 hardaug8_physaug ep131** — `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch131_94.41_top1_checkpoint.pth`
 
 ---
 

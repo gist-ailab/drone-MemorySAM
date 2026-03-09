@@ -1,6 +1,6 @@
 # 실험 기록 (Experiment Log)
 
-> 최종 업데이트: 2026-03-05
+> 최종 업데이트: 2026-03-09
 
 ## MACVi Challenge 평가 지표
 
@@ -16,15 +16,19 @@
 
 | 순위 | 모델 | Config | Val mIoU | Test mIoU | Val Obstacle | Test Obstacle | M-score | Submission ID |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | **P9** | hardaug4 | 93.32 | 69.62 | 78.85 | 21.25 | **81.47** | 15635 |
-| 2 | **P13** | hardaug4 | 92.45 | 69.98 | 75.93 | 25.38 | **81.21** | 15997 |
-| 3 | **P12** | hardaug4 | 93.23 | 68.37 | 78.47 | 25.27 | **80.80** | 15949 |
+| **1** | **P9** | **hardaug8_physaug** (ep131, day-val best) | **93.54** | **70.41** | **79.78** | **32.85** | **81.98** | **16683** |
+| 2 | **P9** | hardaug4 | 93.32 | 69.62 | 78.85 | 21.25 | **81.47** | 15635 |
+| 3 | **P13** | hardaug4 | 92.45 | 69.98 | 75.93 | 25.38 | **81.21** | 15997 |
+| 4 | **P12** | hardaug4 | 93.23 | 68.37 | 78.47 | 25.27 | **80.80** | 15949 |
+| — | **P9** | **hardaug8** (ep94) | 93.36 | 68.13 | 79.13 | 28.21 | **80.75** | 16640 |
+| — | **P9** | **hardaug8** (ep83) | 93.21 | 67.94 | 78.64 | 30.07 | **80.57** | 16624 |
 | 4 | P10 | hardaug4 | 93.23 | 65.30 | 78.84 | 28.31 | 79.27 | 15731 |
 | 5 | P8 | hardaug (기본) | 92.96 | 63.93 | 77.91 | 23.08 | 78.45 | 15561 |
 | 6 | P8 | hardaug2 | 93.29 | 63.45 | 79.27 | 21.66 | 78.37 | 15589 |
 | 7 | P8 | basic-aug | 93.13 | 62.50 | 78.36 | 26.01 | 77.82 | 15541 |
 | 8 | P8 | hardaug3 | 93.36 | 61.57 | 79.12 | 27.17 | 77.46 | 15616 |
 | 9 | P11 | hardaug4 | 93.17 | 61.01 | 78.40 | 20.95 | 77.09 | 15851 |
+| — | **P9** | **hardaug8** (ep20, periodic) | 92.06 | 61.07 | 74.42 | 22.22 | **76.56** | 16623 |
 | 10 | P10 | hardaug3 | 93.18 | 58.93 | 78.57 | 22.36 | 76.05 | 15757 |
 | 11 | **P9** | hardaug4 **Day-Trans** (test night→day, img2img-turbo) | 93.30 | 64.50 | 78.87 | 16.60 | **78.90** | 16478 |
 | 12 | **P9** | hardaug4 **Gamma TTA** [1.0,1.5,2.0,2.5] | 93.30 | 58.89 | — | 16.05 | **76.10** | 16412 |
@@ -549,19 +553,22 @@
 
 | Aug | CRM/ZERO | Brightness | Dark Ratio | Sky IoU | Test mIoU | M-score |
 | --- | --- | --- | --- | --- | --- | --- |
-| **hardaug4** | **있음** | [0.03, 0.45] | 60% | **76.54** | **69.62** | **81.47** |
+| **hardaug8 ep131** ★ | **완화 (0.20)** | [0.03, 0.45] | 60% | **73.75** | **70.41** | **81.98** |
+| **hardaug4** | **있음 (0.35)** | [0.03, 0.45] | 60% | 76.54 | 69.62 | 81.47 |
+| **hardaug8** ep94 | 완화 (0.20) | [0.03, 0.45] | 60% | 70.47 | 68.13 | 80.75 |
+| **hardaug8** ep83 | 완화 (0.20) | [0.03, 0.45] | 60% | 66.24 | 67.94 | 80.57 |
 | hardaug4 Gamma TTA | 있음 | (test-time γ 1.0~2.5) | — | 47.70 | 58.89 | 76.10 |
+| **hardaug8** ep20 | 완화 (0.20) | [0.03, 0.45] | 60% | — | 61.07 | 76.56 |
 | hardaug6 ep20 | 없음 | [0.01, 0.60] | 50% | 56.87 | 59.91 | 75.95 |
 | hardaug6 ep85 | 없음 | [0.01, 0.60] | 50% | 39.90 | 57.63 | 75.51 |
 
-**핵심 발견: CRM/ZERO는 P9에서 유익했을 가능성이 높다**
-- P9에는 aux decoder 없음 → CRM/ZERO의 shortcut 학습 문제 해당 없음
-- RGB가 0이 되면 thermal/lidar에서 학습 강제 → multimodal robustness 향상
-- **P9+hardaug5 (CRM/ZERO만 제거, 나머지 비슷) 실험이 이 가설의 결정적 ablation**
+**핵심 발견: 장기 학습 + 다양한 augmentation = 새로운 최선**
+- hardaug8 ep131이 hardaug4를 처음으로 추월 (M +0.51)
+- Dynamic +11.64pp가 Static -4.66pp, Sky -2.79pp를 압도
+- ep83→ep131에서 Sky가 66.24→73.75로 회복 — 장기 학습의 핵심 효과
+- PhysAug + shot noise + Night2 데이터의 다양성이 학습 포화를 지연시킴 (ep47 포화→ep131+ 개선 지속)
 
-**핵심 발견: "다양성 극대화" 전략은 실패**
-- 넓은 범위가 test에 없는 조건에 capacity 분산
-- "적절한 범위에 집중" (hardaug4) > "넓은 범위에 분산" (hardaug6)
+**CRM/ZERO 재해석**: CRM 완화(0.35→0.20)가 단기(ep83)에는 Sky 하락을 유발하나, 장기(ep131)에는 모델이 적응하여 Sky를 회복하면서 Dynamic 개선을 유지
 
 ---
 
@@ -584,32 +591,37 @@
 
 ### M=85 달성 가능성
 
-- 목표: test ≥ 77 (val 93 유지 가정)
-- 현재: test = 69.62 → **+7.4pp 필요**
-- Augmentation 튜닝 최대 기대 효과: **+1~2pp** → **부족**
+- 목표: test ≥ 77 (val 93.5 유지 가정)
+- 현재: test = 70.41 → **+6.6pp 필요**
+- hardaug4→hardaug8 ep131 gain: +0.79pp (test mIoU) — augmentation 개선만으로는 부족
+- 200 epochs까지 학습 시 추가 +1~2pp 기대 가능 → test ~72 수준
 - 클래스별 병목:
-  - Dynamic gap -38pp: 밝기 augmentation으로 해결 불가 (소형 객체 + 어두운 수면)
-  - Sky gap -21pp: 하늘/물 경계 혼동은 전역 밝기 변환으로 해결 불가
-- **Night Aug만으로 M=85는 불가능. 근본적으로 다른 접근(데이터 합성, 추론 시 기법) 필요.**
+  - Dynamic gap -27pp (val 60.61, test 33.50): 개선 중이나 여전히 큰 격차
+  - Sky gap -24pp (val 97.30, test 73.75): hardaug4 대비 소폭 하락
+  - Static gap -18pp (val 94.66, test 76.64): hardaug4 대비 하락
+- **장기 학습이 유효하나, M=85 달성에는 추가 아키텍처/데이터 전략 필요**
 
 ---
 
 ## NIGHT_AUG 버전 비교
 
-| 파라미터 | basic-aug | hardaug2 | hardaug3 | hardaug4 | **hardaug5** |
-| --- | --- | --- | --- | --- | --- |
-| NIGHT_SIM_P | 0.35 | 0.50 | 0.40 | 0.45 | **0.60** |
-| BRIGHTNESS | [0.03, 0.25] | [0.03, 0.50] | [0.020, 0.203] | [0.03, 0.45] | **[0.02, 0.20]** |
-| SAMPLING | uniform | dark_biased | dark_biased | dark_biased | dark_biased |
-| DARK_RATIO | - | 0.70 | 0.35 | 0.60 | **0.70** |
-| DARK_RANGE | - | [0.03, 0.15] | [0.020, 0.035] | [0.03, 0.12] | **[0.02, 0.06]** |
-| CRM_P | 0.30 | 0.30 | 0.25 | 0.35 | **제거** |
-| ZERO_P | 0.12 | 0.08 | 0.06 | 0.09 | **제거** |
-| CONTRAST | [0.3, 0.7] | [0.3, 0.7] | [0.3, 0.7] | [0.3, 0.7] | **[0.20, 0.65]** |
-| GAMMA | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | **[0.30, 0.75]** |
-| NOISE_STD | 0.02 | 0.02 | 0.02 | 0.02 | **0.025** |
+| 파라미터 | basic-aug | hardaug2 | hardaug3 | hardaug4 | **hardaug5** | **hardaug8** |
+| --- | --- | --- | --- | --- | --- | --- |
+| NIGHT_SIM_P | 0.35 | 0.50 | 0.40 | 0.45 | **0.60** | 0.45 |
+| BRIGHTNESS | [0.03, 0.25] | [0.03, 0.50] | [0.020, 0.203] | [0.03, 0.45] | **[0.02, 0.20]** | [0.03, 0.45] |
+| SAMPLING | uniform | dark_biased | dark_biased | dark_biased | dark_biased | dark_biased |
+| DARK_RATIO | - | 0.70 | 0.35 | 0.60 | **0.70** | 0.60 |
+| DARK_RANGE | - | [0.03, 0.15] | [0.020, 0.035] | [0.03, 0.12] | **[0.02, 0.06]** | [0.03, 0.12] |
+| CRM_P | 0.30 | 0.30 | 0.25 | 0.35 | **제거** | **0.20** |
+| ZERO_P | 0.12 | 0.08 | 0.06 | 0.09 | **제거** | 0.09 |
+| CONTRAST | [0.3, 0.7] | [0.3, 0.7] | [0.3, 0.7] | [0.3, 0.7] | **[0.20, 0.65]** | [0.3, 0.7] |
+| GAMMA | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | [0.4, 0.8] | **[0.30, 0.75]** | [0.4, 0.8] |
+| NOISE_STD | 0.02 | 0.02 | 0.02 | 0.02 | **0.025** | 0.02 |
+| PhysAug | — | — | — | — | — | **p=0.40** |
+| Shot Noise | — | — | — | — | — | **gain [20,80]** |
+| Night2 데이터 | — | — | — | — | — | **사용** |
 
-**결론**: hardaug4가 P9 기준 최선 (M=81.47). hardaug5는 CRM/ZERO 제거 + 실측 밝기 정렬. P14(M=74.27), P15(M=71.05) 모두 hardaug5 사용했으나 하락은 아키텍처(energy fusion) 문제가 주원인.
+**결론**: hardaug8_physaug ep131이 새로운 최선 (M=81.98). 장기 학습(131 epochs) + PhysAug/shot noise/Night2 데이터 다양성이 hardaug4(47 epochs)를 넘어섬. hardaug5는 CRM/ZERO 제거 + 실측 밝기 정렬. P14(M=74.27), P15(M=71.05) 모두 hardaug5 사용했으나 하락은 아키텍처(energy fusion) 문제가 주원인.
 
 ---
 
@@ -796,21 +808,114 @@ python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P20_hardaug
 
 ---
 
-### P9 hardaug8 실험 (CRM 완화 — 학습 대기)
+### P9 hardaug8 Experiments (CRM 완화 + PhysAug + Shot Noise) — **새로운 최선 모델 (M=81.98)**
 
-#### P9-h8: hardaug8_physaug (CRM 0.35→0.20)
+#### P9-h8-1: hardaug8_physaug (epoch131, day-val best) ★ 현재 최선
 
 - **Config 학습**: `configs/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
 - **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`
-- **모델**: LoRA_Sam_P9 (기존 아키텍처)
-- **Save dir**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug`
-- **변경**: hardaug4_physaug 기반 + CRM_P 0.35→0.20
-- **CRM 완화 근거**: LiDAR 빈 이미지 존재, thermal 유효 영역 협소 → 과도한 RGB 마스킹이 노이즈 학습 유발
-- **상태**: config 생성 완료, 학습 대기
+- **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch131_94.41_top1_checkpoint.pth`
+- **체크포인트 선택**: Day-Val 기준 (94.41 mIoU)
+- **결과**: Val **93.54** / Test **70.41** / M **81.98** ★
+- **Challenge result**: Submission #16683
+- **Val Obstacle**: 79.78 / **Test Obstacle**: **32.85**
+- **Per-class Test IoU (frame-avg)**: Static 76.64 / Dynamic **33.50** / Water 94.48 / Sky 73.75
+- **비고**: 역대 최고 M-score. 이전 최선 P9 hardaug4(M=81.47) 대비 **+0.51**
 
-```bash
-python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml
-```
+#### P9-h8-2: hardaug8_physaug (epoch94)
+
+- **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch94_94.15_top1_checkpoint.pth`
+- **결과**: Val 93.36 / Test 68.13 / M **80.75**
+- **Challenge result**: Submission #16640
+- **Val Obstacle**: 79.13 / **Test Obstacle**: 28.21
+- **Per-class Test IoU (frame-avg)**: Static 75.38 / Dynamic 27.13 / Water 94.16 / Sky 70.47
+
+#### P9-h8-3: hardaug8_physaug (epoch83)
+
+- **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch83_94.13_top1_checkpoint.pth`
+- **결과**: Val 93.21 / Test 67.94 / M **80.57**
+- **Challenge result**: Submission #16624
+- **Val Obstacle**: 78.64 / **Test Obstacle**: 30.07
+- **Per-class Test IoU (frame-avg)**: Static 75.65 / Dynamic 29.39 / Water 93.88 / Sky 66.24
+
+#### P9-h8-4: hardaug8_physaug (epoch20, periodic)
+
+- **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/periodic_epoch20_checkpoint.pth`
+- **결과**: Val 92.06 / Test 61.07 / M **76.56**
+- **Challenge result**: Submission #16623
+- **Val Obstacle**: 74.42 / **Test Obstacle**: 22.22
+
+#### P9 hardaug8 학습 궤적 분석
+
+**장기 학습에서 지속 개선** — P9 hardaug4 (ep47 포화) 대비 큰 차이:
+
+| Epoch | Day-Val Best | Val mIoU | Test mIoU | M-score | Test Obstacle |
+| --- | --- | --- | --- | --- | --- |
+| 20 | 92.06 | 92.06 | 61.07 | 76.56 | 22.22 |
+| 83 | 94.13 | 93.21 | 67.94 | 80.57 | 30.07 |
+| 94 | 94.15 | 93.36 | 68.13 | 80.75 | 28.21 |
+| **131** | **94.41** | **93.54** | **70.41** | **81.98** | **32.85** |
+
+ep83→ep131에서 Test mIoU **+2.47pp**, M-score **+1.41pp** 추가 개선. 200 epochs까지 학습 시 추가 개선 가능성 있음.
+
+#### P9 hardaug8 상세 분석
+
+**hardaug8 변경 사항 (vs hardaug4)**:
+- CRM_P: 0.35 → **0.20** (완화)
+- PhysAug 추가: p=0.40, Random conv filter + planar Fourier wave
+- Shot noise 추가: Poisson noise, gain [20, 80]
+- 데이터셋: MULTIAQUA → **MULTIAQUA_night2** (야간 I2I 이미지 포함)
+- 나머지 NightSim 파라미터: hardaug4 동일
+
+**Per-class Test IoU 비교 (frame-average)**:
+
+| Class | P9 hardaug4 | h8 ep83 | h8 ep131 | Δ (ep131 vs h4) |
+| --- | --- | --- | --- | --- |
+| Static | 81.30 | 75.65 | 76.64 | **-4.66** |
+| **Dynamic** | 21.86 | 29.39 | **33.50** | **+11.64** |
+| Water | 94.61 | 93.88 | 94.48 | -0.13 |
+| Sky | 76.54 | 66.24 | 73.75 | **-2.79** |
+
+**Tail-end 프레임 분석 (ep131 vs hardaug4)**:
+- mIoU<55 프레임: 5 → 5 (동일)
+- Sky<1% 프레임: 5 → 4 (소폭 개선)
+- Dynamic=0 프레임: **38 → 13** (66% 감소 — 핵심 개선)
+
+**AMF (Adaptive Modality Fusion) — ep131**:
+
+| 모달리티 | hardaug4 AMF | h8 ep131 AMF | Delta |
+| --- | --- | --- | --- |
+| img (RGB) | 0.2750±0.0000 | **0.2393±0.0000** | **-0.036** |
+| lidar | 0.3550±0.0000 | 0.3709±0.0000 | +0.016 |
+| thermal | 0.3700±0.0000 | **0.3898±0.0000** | **+0.020** |
+
+- std ≈ 0.0000: **여전히 완전한 상수** (adaptive하지 않음)
+- RGB 비중 0.275→0.239 (-13%), Thermal 0.370→0.390 (+5%): 더 aggressive한 night aug가 thermal 의존도를 높임
+- UAMM: img 0.614, lidar 0.952, thermal 1.000 (모두 std≈0.0000)
+
+**MoE Routing (ep131 test)**:
+
+| Block | Modality | entropy_ratio | max_weight |
+| --- | --- | --- | --- |
+| Block0_Q | img | 0.464±0.017 | 0.838±0.008 |
+| Block0_Q | lidar | 0.643±0.000 | 0.757±0.000 |
+| Block0_Q | thermal | 0.658±0.010 | 0.564±0.012 |
+| Block18_Q | img | 0.385±0.015 | 0.793±0.008 |
+| Block18_Q | thermal | 0.265±0.011 | 0.851±0.006 |
+
+깊은 블록(Block18)에서 thermal의 expert 집중도가 매우 높음 (max_weight=0.85). img의 entropy_ratio에 소폭 이미지별 변동(std≈0.015) 존재.
+
+**Prediction Confidence (test)**:
+- mean_entropy: 0.3945±0.1521
+- high_uncertainty_ratio: 0.3528±0.3517
+
+**핵심 발견**:
+1. **Dynamic +11.64pp**: 가장 큰 성과. PhysAug + shot noise + Night2 데이터 + 장기 학습의 복합 효과
+2. **Sky 회복**: ep83(-10.30pp) → ep131(-2.79pp). 장기 학습으로 Sky 성능이 크게 회복됨
+3. **장기 학습 효과**: 다양한 augmentation이 더 긴 학습을 의미있게 만듦. hardaug4는 ep47 포화, h8은 ep131까지 개선 지속
+4. **AMF 상수 값 이동**: RGB↓ Thermal↑ — 야간에 thermal이 더 중요하다는 학습 반영
+5. **MoE routing**: 기본적으로 near-constant이나, img의 entropy에 소폭 이미지별 변동(std=0.015) 관찰
+6. **ep83→ep131 핵심 변화**: Sky 회복(66.24→73.75, +7.51pp)이 전체 mIoU 개선의 주역. Static/Water는 소폭 변동
 
 ---
 
@@ -853,4 +958,77 @@ python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4
 
 # 뷰어 (시각적 확인)
 python MISC/physaug_viewer.py
+```
+
+---
+
+### P21 DeBA-FP 실험 (실험 K — 학습 대기)
+
+#### P21-K: P9 + DeBA-FP (Deformable Bottleneck Adapter for Feature Pyramid)
+
+- **Ref**: "Rethinking Deformable Convolution as an Adapter with Cross-layer Weight Sharing for Robust Semantic Segmentation in the Wild" (CVPR 2026)
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml`
+- **모델**: LoRA_Sam_P21 (신규)
+- **Save dir**: `outputs/MMSamP21/levine_multiaqua_rgbtl_P21_hardaug8_physaug`
+
+**동기**:
+- P9의 FPN feature(fpn[0])는 CrossModalFusionHead에 직접 입력 → spatial refinement 없음
+- DeBA 논문: deformable conv가 domain-invariant한 구조적 정보(경계, 형태) 포착에 효과적
+- 특히 LaRS(수면 환경) 벤치마크에서 SOTA → MULTIAQUA(수상 드론)와 직접 관련
+- LoRA(channel mixing)와 orthogonal: DeBA는 spatial sampling 위치 적응
+
+**핵심 변경**:
+- P9 기반 + DeBA-FP 모듈 추가 (MoE LoRA, UAMM, AMF는 P9 동일)
+- `fpn[0] → DeBA-FP → refined fpn[0] → CrossModalFusionHead → UAMM/AMF`
+- Cross-modal weight sharing: DCM(θ_dcm), LayerNorm(θ_norm), W_d, W_u 모두 3개 모달리티가 공유
+- Per-modality α (learnable scaling, init=0 → 학습 시작 시 identity)
+- DeBA-BB는 **미적용** (SAM2 Hiera ≠ DINOv2 ViT 구조 차이로 직접 삽입 어려움, 향후 과제)
+
+**DeBA-FP 구조**:
+```
+feat' = feat + α_m * W_u(GELU(LN(DCM(W_d(feat)))))
+```
+- W_d: Conv2d(256→64, 1×1) — bottleneck down projection
+- DCM: offset_conv(64→27, 3×3) + deform_conv2d(64→64, 3×3, DCNv2)
+- LN: LayerNorm(64) — shared θ_norm
+- W_u: Conv2d(64→256, 1×1) — up projection
+- α: per-modality scalar (init=0)
+
+**파라미터 추가량**: ~85K (P9 LoRA ~700K 대비 12% 증가)
+- Shared (DCM+norm+W_d+W_u): ~82K
+- Per-modality (α×3): 3
+
+**원본 DeBA 대비 적응**:
+
+| 항목 | 원본 DeBA | P21 적용 |
+| --- | --- | --- |
+| Backbone | DINOv2 (ViT) | SAM2 Hiera B+ |
+| DeBA-BB | VFM 블록 사이 삽입 | **미적용** (구조 차이) |
+| DeBA-FP | FPN 다중 스케일 | **fpn[0]만** (P9이 fpn[0]만 사용) |
+| Cross-layer sharing | 레이어 간 공유 | **모달리티 간 공유** |
+| 입력 모달리티 | 단일 RGB | 3모달리티 (RGB, LiDAR, Thermal) |
+| Norm | LayerNorm | LayerNorm (동일) |
+| d_b | 64 | 64 (동일) |
+
+**구현 파일**:
+1. `sam_lola_utils.py` — `DeBAFP` 클래스 추가
+2. `sam_lora_image_encoder_seg.py` — `LoRA_Sam_P21` 클래스 추가
+3. `train_sam2_lora_paper.py` — `deba_bottleneck_dim` dispatch 추가
+
+**기대 효과**:
+- 구조적 정보(물-하늘 경계, 장애물 형태)가 day/night 불변 → deformable sampling이 포착
+- Cross-modal weight sharing → 모달리티 간 구조적 일관성 강제
+- α=0 init → 안전한 시작 (초기에는 P9과 동일, 학습 진행하며 점진적 적응)
+
+**리스크**:
+- DeBA-BB 없이 DeBA-FP만으로 효과 제한적일 수 있음 (논문: BB+FP 조합이 최선)
+- FPN[0](256×256) 해상도에서 deformable conv 연산 비용 (bottleneck d_b=64로 완화)
+- 3,000장 학습 데이터로 DCM offset 학습 충분한지 불확실
+
+**상태**: 구현 완료, 학습 대기
+
+```bash
+# 학습 명령
+python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml
 ```
