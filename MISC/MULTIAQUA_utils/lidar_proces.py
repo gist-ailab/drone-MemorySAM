@@ -20,6 +20,8 @@ import os
 from pathlib import Path
 from typing import Tuple, Optional, Union
 
+from tqdm import tqdm
+
 # .npy columns: [X, Y, Z, d, r, x, y]
 IDX_X, IDX_Y, IDX_Z = 0, 1, 2
 IDX_D, IDX_R = 3, 4
@@ -231,7 +233,7 @@ def project_lidar_to_image(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     path_grayscale = output_dir / f"{output_stem}_lidar.png"
-    path_color = output_dir / f"{output_stem}_lidar_color.png"
+    path_color = output_dir / f"{output_stem})_lidar_color.png"
 
     if overwrite or not path_grayscale.exists():
         cv2.imwrite(str(path_grayscale), gray_img)
@@ -268,7 +270,7 @@ def process_lidar_dir(
     npy_files = sorted(lidar_dir.glob("*.npy"))
     results = []
 
-    for npy_path in npy_files:
+    for npy_path in tqdm(npy_files):
         stem = npy_path.stem
         ref_path = None
         if ref_image_dir.exists():
