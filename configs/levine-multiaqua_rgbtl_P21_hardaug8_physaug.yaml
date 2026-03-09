@@ -26,7 +26,7 @@ DATASET:
 
   RGB_SUBROOT   : null
   THERMAL_SUBROOT : null
-  LIDAR_SUBROOT : null
+  LIDAR_SUBROOT : 'lidar_processed2'
   NIGHT_AUG     :
     ENABLE      : true
     NIGHT_SIM_P : 0.45

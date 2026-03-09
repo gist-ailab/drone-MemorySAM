@@ -2,7 +2,24 @@
 
 > 최종 업데이트: 2026-03-09
 
-## 현재 상태: P9+hardaug8_physaug ep131 **새로운 최선 모델 (M=81.98)**, P20/P21 학습 대기
+## 현재 상태: P9+hardaug8_physaug ep131 **새로운 최선 모델 (M=81.98)**, P20/P21/P22 학습 대기
+
+### P22 구현 완료 (2026-03-09)
+
+- **실험 L 구현**: P9 + Multi-Scale DeBA-FP (all FPN levels, Phase 1)
+- **P21 대비 핵심 차이**:
+  - P21: fpn[0] only, Phase 2 → CrossModalFusionHead와 m_feat에만 영향
+  - **P22: fpn[0,1,2] all, Phase 1 → 전체 파이프라인(vision_feats, tracking, decoder, fusion) 전파**
+- **핵심 변경**:
+  - `DeBAFP_MultiScale`: cross-layer sharing (DCM+norm 공유, W_d/W_u per-level, α per-modality)
+  - FPN 채널: [32, 64, 256] (after conv_s0/conv_s1 in forward_image)
+  - 추가 파라미터: ~98K (P21 ~56K 대비 +42K, per-level W_d/W_u 추가)
+- **수정 파일**:
+  1. `semseg/models/sam2/sam2/sam_lola_utils.py` — `DeBAFP_MultiScale` 클래스 추가
+  2. `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P22` 추가
+  3. `configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml` — 학습 config
+  4. `configs/eval_config/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml` — 평가 config
+- **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml`
 
 ### P21 구현 완료 (2026-03-09)
 
@@ -47,15 +64,17 @@
   5. `configs/eval_config/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml` — 평가 config
 - **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml`
 
-### P9+hardaug8 학습 궤적 (2026-03-07~09)
+### P9+hardaug8 학습 궤적 — Non-monotonic, ep131=peak (2026-03-07~09)
 
-- ep83(M=80.57, #16624) → ep94(M=80.75, #16640) → **ep131(M=81.98, #16683) ★ 역대 최선**
-- **변경**: hardaug4 + PhysAug(p=0.40) + shot noise(gain[20,80]) + CRM 0.35→**0.20** + Night2 데이터
+- ep83(M=80.57) → ep94(80.75) → **ep131(M=81.98) ★ peak** → ep188(M=80.84, **regression**)
+- **ep188 분석** (#16702): Day-val 94.43(>ep131의 94.41) but test 68.20(<ep131의 70.41)
+  - **Day-val은 야간 test 성능의 신뢰할 수 있는 proxy가 아님** — 주간 과적합
+  - Dynamic 33.50→25.88 (-7.62pp), 162/200 프레임 ep131 대비 악화
+  - Per-class 상관: Static(r=0.59), Dynamic(r=0.60)이 test mIoU 결정에 가장 중요
 - **핵심 발견**:
-  - 장기 학습(131 epochs)에서 지속 개선 — P9 hardaug4는 ep47 포화
-  - Dynamic +11.64pp (21.86→33.50), Dynamic=0 프레임 38→13 (66% 감소)
-  - Sky: ep83(-10.30pp) → ep131(-2.79pp) — 장기 학습으로 회복
-  - **AMF/UAMM 여전히 완전한 상수** (std≈0.0000) — 값은 변화 (RGB↓ Thermal↑)
+  - ep131이 sweet spot — 추가 학습은 역효과
+  - Dynamic IoU가 M-score 변동의 핵심 driver
+  - **AMF/UAMM 여전히 완전한 상수** (std≈0.0000)
 
 ### I2I Translation 실험 실패 (2026-03-05)
 
@@ -263,6 +282,13 @@
     - Cross-modal weight sharing: DCM/norm/W_d/W_u 공유, α만 per-modality
     - DeBA-BB 미적용 (SAM2 Hiera ↔ DINOv2 구조 차이, 향후 과제)
     - ~85K 추가 파라미터 (P9 대비 12% 증가)
+
+17. **P22 (Multi-Scale DeBA-FP: all FPN levels, Phase 1) — 구현 완료, 학습 대기**
+    - P9 base + DeBAFP_MultiScale (fpn[0,1,2] 전부, Phase 1 적용)
+    - P21 대비: fpn[0] only → fpn[0,1,2] all, Phase 2 → Phase 1
+    - Refined features가 vision_feats/tracking/decoder/fusion 전체 파이프라인 전파
+    - Cross-layer sharing: DCM/norm 공유(levels+modalities), W_d/W_u per-level, α per-modality
+    - ~98K 추가 파라미터 (P21 대비 +42K)
 
 ### 다음 실험 계획
 

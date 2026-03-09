@@ -1,5 +1,5 @@
 DEVICE          : cuda
-SAVE_DIR        : './outputs/MMSamP21/levine_multiaqua_rgbtl_P21_hardaug8_physaug'
+SAVE_DIR        : './outputs/MMSamP22/levine_multiaqua_rgbtl_P22_hardaug8_physaug'
 
 MODEL:
   NAME          : CMNeXt
@@ -7,11 +7,14 @@ MODEL:
   PRETRAINED    : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth'
   RESUME_ENABLE : false
   RESUME_PATH   : ''
-  LORA_MODEL    : LoRA_Sam_P21
+  LORA_MODEL    : LoRA_Sam_P22
   LORA_R        : 4
   LORA_NUM_EXPERTS : null
   LORA_TOP_K    : None
   LORA_LAYER    : null
+  # [P22] DeBA-FP MultiScale: all FPN levels in Phase 1
+  # Ref: CVPR 2026, cross-layer weight sharing, α=0 init (identity start)
+  # P21 대비: fpn[0] only → fpn[0,1,2] all, Phase 2 → Phase 1
   DEBA:
     BOTTLENECK_DIM : 64
     KERNEL_SIZE    : 3
@@ -21,6 +24,7 @@ DATASET:
   ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']
+
   RGB_SUBROOT   : null
   THERMAL_SUBROOT : null
   LIDAR_SUBROOT : 'lidar_processed2'
@@ -35,9 +39,24 @@ DATASET:
     CONTRAST_RANGE   : [0.3, 0.7]
     GAMMA_RANGE     : [0.4, 0.8]
     NOISE_STD       : 0.02
+    SHOT_NOISE_GAIN_RANGE : [20, 80]
     CRM_P       : 0.20
     CRM_MASK_RATIO  : [0.2, 0.5]
     ZERO_P      : 0.09
+    PHYSAUG:
+      ENABLE    : true
+      P         : 0.40
+      FILTER:
+        ENABLE      : true
+        SIGMA_RANGE : [0.0, 1.5]
+        KERNEL_SIZE : 3
+      FOURIER:
+        ENABLE      : true
+        GROUPS      : [1, 513]
+        PHASES      : [0.0, 1.0]
+        GRANULARITY : 256
+        MEAN_STR    : 8.0
+        DECAY       : 0.3
 
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]
@@ -68,6 +87,7 @@ EVAL:
   IMAGE_SIZE    : [1024, 1024]
   BATCH_SIZE    : 1
   EVAL_DAY      : false
+
   MSF:
     ENABLE      : false
     FLIP        : true

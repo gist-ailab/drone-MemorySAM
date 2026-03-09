@@ -270,3 +270,4 @@ docs/
 
 thermal_*/
 tmp/
+run_sam.sh

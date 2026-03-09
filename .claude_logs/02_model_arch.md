@@ -1082,6 +1082,106 @@ DeBA-FP만으로 충분한 효과가 있으면 BB 추가 불필요, 불충분하
 - **구현 완료** (2026-03-09)
 - Config: `configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml`
 - Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml`
+
+---
+
+## P22: Multi-Scale DeBA-FP (all FPN levels, Phase 1) (실험 L)
+
+파일: `sam_lora_image_encoder_seg.py` 끝부분, 클래스: `LoRA_Sam_P22`
+DeBA-FP MultiScale: `sam_lola_utils.py` — `DeBAFP_MultiScale`
+
+### 동기
+
+P21은 fpn[0]만 Phase 2에서 DeBA-FP 적용. vision_feats(tracking/memory attention에 사용)는
+raw FPN에서 생성되어 DeBA-FP 효과가 도달하지 않음. P22는 Phase 1에서 fpn[0,1,2] 전부 적용하여
+refined features가 전체 파이프라인으로 전파.
+
+### P21 대비 변경
+
+```
+P21: encode → fpn[0] → DeBA-FP → CrossModalFusionHead (vision_feats는 raw)
+P22: encode → fpn[0,1,2] → DeBA-FP_MS → _prepare_backbone_features → vision_feats (refined)
+                                       → CrossModalFusionHead (refined)
+```
+
+| 항목 | P21 | P22 |
+| --- | --- | --- |
+| 적용 범위 | fpn[0] only | fpn[0,1,2] all |
+| 적용 위치 | Phase 2 | Phase 1 |
+| 영향 범위 | fusion weights only | 전체 pipeline |
+| FPN 채널 | [32] | [32, 64, 256] |
+| Cross-layer sharing | 모달리티 간 | 모달리티 간 + FPN 레벨 간 |
+| 추가 파라미터 | ~56K | ~98K |
+
+### DeBAFP_MultiScale 구조
+
+```python
+class DeBAFP_MultiScale(nn.Module):
+    """
+    feat'_l = feat_l + α_m * W_u_l(GELU(LN(DCM(W_d_l(feat_l)))))
+
+    Shared across levels + modalities: DCM (offset+deform conv), LayerNorm
+    Per-level: W_d_l, W_u_l (different in_channels)
+    Per-modality: α_m (shared across levels, init=0)
+    """
+    # W_d_list: [Conv2d(32→64), Conv2d(64→64), Conv2d(256→64)]
+    # W_u_list: [Conv2d(64→32), Conv2d(64→64), Conv2d(64→256)]
+    # offset_mask_conv: Conv2d(64→27, 3×3) — shared
+    # dcm_weight: (64, 64, 3, 3) — shared
+    # norm: LayerNorm(64) — shared
+    # alpha: ParameterList([zeros(1)] × 3) — per-modality
+```
+
+### 파라미터 추가량
+
+| 구성 | 파라미터 |
+| --- | --- |
+| W_d_list: 3 × Conv2d(C_l→64, 1×1) | 22,720 |
+| W_u_list: 3 × Conv2d(64→C_l, 1×1) | 22,688 |
+| offset_mask_conv: Conv2d(64→27, 3×3) | 15,579 |
+| dcm_weight: (64, 64, 3, 3) | 36,864 |
+| LayerNorm(64) | 128 |
+| α × 3 | 3 |
+| **합계** | **~98K** |
+
+P9 대비 14% 증가. P21 대비 +42K (per-level W_d/W_u 추가분).
+
+### Forward Flow
+
+```python
+# Phase 1: encode + DeBA-FP MultiScale
+for i in range(m):  # 각 모달리티
+    img_emb = self.sam.forward_image(batched_input[i])
+    # backbone_fpn channels: [32, 64, 256] (after conv_s0, conv_s1)
+    for level in range(len(img_emb['backbone_fpn'])):
+        img_emb['backbone_fpn'][level] = self.deba_fp_ms(
+            img_emb['backbone_fpn'][level], modality_idx=i, level_idx=level)
+    # _prepare_backbone_features → vision_feats (now refined!)
+    bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+
+# Phase 2: CrossModalFusionHead (fpn[0] already refined from Phase 1)
+all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+cross_weights, cross_logits = self.cross_modal_head(all_backbone_feats)
+# → UAMM/AMF는 P9 동일
+```
+
+### Save/Load
+
+```python
+merged_dict = {
+    **moe_params,             # P9 동일
+    **cross_modal_tensors,    # P9 동일
+    **deba_fp_ms_tensors,     # prefix "deba_fp_ms." (P22 신규)
+    **prompt_encoder_tensors,
+    **mask_decoder_tensors,
+}
+```
+
+### 구현 상태
+
+- **구현 완료** (2026-03-09)
+- Config: `configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml`
+- Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml`
 - Train script: `deba_bottleneck_dim` inspect dispatch 추가
 - Augmentation: hardaug8_physaug (P9 h8과 동일)
 

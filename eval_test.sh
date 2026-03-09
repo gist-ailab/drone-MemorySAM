@@ -1,10 +1,10 @@
-CFG="configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml"
-CKPT="outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/night_epoch166_92.03_top1_checkpoint.pth"
+CFG="configs/eval_config/bengio-multiaqua_rgbtl_P20_hardaug8_physaug.yaml"
+CKPT="outputs/MMSamP20_missedlidar/bengio_multiaqua_rgbtl_P20_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch47_94.06_top1_checkpoint.pth"
 
 cfg_name=$(basename ${CFG} .yaml)
 
-python3 -u val_multiaqua.py --cfg ${CFG} --model_path ${CKPT} \
-  --mode test --macvi 
+# python3 -u val_multiaqua.py --cfg ${CFG} --model_path ${CKPT} \
+#   --mode test --macvi 
 
 python3 val_multiaqua_detailed.py --cfg ${CFG} --model_path ${CKPT} \
   --mode test

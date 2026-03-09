@@ -16,8 +16,9 @@
 
 | 순위 | 모델 | Config | Val mIoU | Test mIoU | Val Obstacle | Test Obstacle | M-score | Submission ID |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **1** | **P9** | **hardaug8_physaug** (ep131, day-val best) | **93.54** | **70.41** | **79.78** | **32.85** | **81.98** | **16683** |
+| **1** | **P9** | **hardaug8_physaug** (ep131) ★ | **93.54** | **70.41** | **79.78** | **32.85** | **81.98** | **16683** |
 | 2 | **P9** | hardaug4 | 93.32 | 69.62 | 78.85 | 21.25 | **81.47** | 15635 |
+| — | **P9** | **hardaug8_physaug** (ep188, 과적합) | 93.49 | 68.20 | 79.66 | 27.23 | **80.84** | 16702 |
 | 3 | **P13** | hardaug4 | 92.45 | 69.98 | 75.93 | 25.38 | **81.21** | 15997 |
 | 4 | **P12** | hardaug4 | 93.23 | 68.37 | 78.47 | 25.27 | **80.80** | 15949 |
 | — | **P9** | **hardaug8** (ep94) | 93.36 | 68.13 | 79.13 | 28.21 | **80.75** | 16640 |
@@ -822,6 +823,17 @@ python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P20_hardaug
 - **Per-class Test IoU (frame-avg)**: Static 76.64 / Dynamic **33.50** / Water 94.48 / Sky 73.75
 - **비고**: 역대 최고 M-score. 이전 최선 P9 hardaug4(M=81.47) 대비 **+0.51**
 
+#### P9-h8-5: hardaug8_physaug (epoch188, 과적합 — ep131 대비 regression)
+
+- **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch188_94.43_top1_checkpoint.pth`
+- **결과**: Val 93.49 / Test **68.20** / M **80.84** (ep131 대비 **-1.14**)
+- **Challenge result**: Submission #16702
+- **Val Obstacle**: 79.66 / **Test Obstacle**: 27.23
+- **Per-class Test IoU (frame-avg)**: Static 75.50 / Dynamic **25.88** / Water 94.02 / Sky 71.68
+- **비고**: Day-val 94.43 > ep131(94.41)이지만 test mIoU **-2.21pp** 하락. 주간 과적합으로 야간 일반화 저하 확인. **ep131이 학습 sweet spot.**
+- **ep131 대비 Per-class 변화**: Static -1.14, **Dynamic -7.62** (핵심 하락), Water -0.46, Sky -2.07
+- **Tail-end 악화**: mIoU<55 프레임 5→11, Dynamic=0 프레임 13→18, 200프레임 중 162프레임 ep131 대비 악화
+
 #### P9-h8-2: hardaug8_physaug (epoch94)
 
 - **Checkpoint**: `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch94_94.15_top1_checkpoint.pth`
@@ -847,16 +859,22 @@ python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P20_hardaug
 
 #### P9 hardaug8 학습 궤적 분석
 
-**장기 학습에서 지속 개선** — P9 hardaug4 (ep47 포화) 대비 큰 차이:
+**학습 궤적: Non-monotonic — ep131이 peak, ep188에서 regression**
 
-| Epoch | Day-Val Best | Val mIoU | Test mIoU | M-score | Test Obstacle |
-| --- | --- | --- | --- | --- | --- |
-| 20 | 92.06 | 92.06 | 61.07 | 76.56 | 22.22 |
-| 83 | 94.13 | 93.21 | 67.94 | 80.57 | 30.07 |
-| 94 | 94.15 | 93.36 | 68.13 | 80.75 | 28.21 |
-| **131** | **94.41** | **93.54** | **70.41** | **81.98** | **32.85** |
+| Epoch | Day-Val Best | Val mIoU | Test mIoU | M-score | Test Obstacle | Dynamic IoU |
+| --- | --- | --- | --- | --- | --- | --- |
+| 20 | 92.06 | 92.06 | 61.07 | 76.56 | 22.22 | — |
+| 83 | 94.13 | 93.21 | 67.94 | 80.57 | 30.07 | 29.39 |
+| 94 | 94.15 | 93.36 | 68.13 | 80.75 | 28.21 | 27.13 |
+| **131** | **94.41** | **93.54** | **70.41** | **81.98** | **32.85** | **33.50** |
+| 188 | **94.43** ↑ | 93.49 ↓ | **68.20** ↓ | **80.84** ↓ | 27.23 ↓ | **25.88** ↓ |
 
-ep83→ep131에서 Test mIoU **+2.47pp**, M-score **+1.41pp** 추가 개선. 200 epochs까지 학습 시 추가 개선 가능성 있음.
+**핵심 발견**: ep131→ep188에서 day-val은 미세 상승(94.41→94.43)하지만 test mIoU는 **-2.21pp** 하락. **Day-val은 야간 test 성능의 신뢰할 수 있는 proxy가 아니다.** 주간 분포 과적합으로 야간 일반화 손실 발생.
+
+**Per-class 상관분석** (test mIoU와의 Pearson r):
+- Static r=0.59, **Dynamic r=0.58~0.61** (가장 높음), Water r=0.27, Sky r=0.42~0.46
+- Dynamic과 Static이 test mIoU를 가장 강하게 결정. Water/Sky는 대부분 프레임에서 높아 변별력 낮음
+- ep188의 M-score 하락은 주로 **Dynamic -7.62pp** 때문
 
 #### P9 hardaug8 상세 분석
 
@@ -910,12 +928,14 @@ ep83→ep131에서 Test mIoU **+2.47pp**, M-score **+1.41pp** 추가 개선. 200
 - high_uncertainty_ratio: 0.3528±0.3517
 
 **핵심 발견**:
-1. **Dynamic +11.64pp**: 가장 큰 성과. PhysAug + shot noise + Night2 데이터 + 장기 학습의 복합 효과
+1. **Dynamic +11.64pp** (ep131 vs hardaug4): 가장 큰 성과. PhysAug + shot noise + Night2 데이터 + 장기 학습의 복합 효과
 2. **Sky 회복**: ep83(-10.30pp) → ep131(-2.79pp). 장기 학습으로 Sky 성능이 크게 회복됨
-3. **장기 학습 효과**: 다양한 augmentation이 더 긴 학습을 의미있게 만듦. hardaug4는 ep47 포화, h8은 ep131까지 개선 지속
-4. **AMF 상수 값 이동**: RGB↓ Thermal↑ — 야간에 thermal이 더 중요하다는 학습 반영
-5. **MoE routing**: 기본적으로 near-constant이나, img의 entropy에 소폭 이미지별 변동(std=0.015) 관찰
-6. **ep83→ep131 핵심 변화**: Sky 회복(66.24→73.75, +7.51pp)이 전체 mIoU 개선의 주역. Static/Water는 소폭 변동
+3. **ep131이 sweet spot, ep188은 regression**: day-val 94.43(↑) but test mIoU 68.20(↓2.21pp). **Day-val은 야간 test proxy로 불충분**
+4. **Non-monotonic 학습 궤적**: ep20→ep83→ep94→ep131(peak)→ep188(regression). 주간 과적합이 야간 일반화를 파괴
+5. **Dynamic이 regression의 핵심**: ep131→ep188에서 Dynamic -7.62pp (33.50→25.88). Dynamic=0 프레임 13→18
+6. **Per-class-IoU와 test mIoU 상관**: Static(r≈0.59)과 Dynamic(r≈0.60)이 가장 높은 상관. Water/Sky는 상관 약함 (이미 대부분 높아서 변별력 부족)
+7. **AMF 상수 값 이동**: RGB↓ Thermal↑ — 야간에 thermal이 더 중요하다는 학습 반영
+8. **MoE routing**: 기본적으로 near-constant이나, img의 entropy에 소폭 이미지별 변동(std=0.015) 관찰
 
 ---
 
@@ -1031,4 +1051,84 @@ feat' = feat + α_m * W_u(GELU(LN(DCM(W_d(feat)))))
 ```bash
 # 학습 명령
 python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml
+```
+
+### P22 Multi-Scale DeBA-FP 실험 (실험 L — 학습 대기)
+
+#### P22-L: P9 + Multi-Scale DeBA-FP (all FPN levels, Phase 1)
+
+- **Ref**: CVPR 2026 DeBA (P21과 동일 논문)
+- **Config 학습**: `configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml`
+- **Config 평가**: `configs/eval_config/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml`
+- **모델**: LoRA_Sam_P22 (신규)
+- **Save dir**: `outputs/MMSamP22/levine_multiaqua_rgbtl_P22_hardaug8_physaug`
+
+**동기 (P21 대비)**:
+- P21은 fpn[0]만 Phase 2에서 DeBA-FP 적용 → CrossModalFusionHead와 m_feat에만 영향
+- vision_feats(tracking/memory attention에 사용)는 raw FPN에서 생성 → DeBA-FP 효과 도달 불가
+- **P22는 Phase 1에서 fpn[0,1,2] 전부 적용** → refined features가 전체 파이프라인 전파:
+  - vision_feats → memory attention, track_step, mask decoder
+  - fpn[0] → CrossModalFusionHead → UAMM/AMF
+  - 동일 파라미터로 더 넓은 영향 범위
+
+**핵심 변경 (P21 대비)**:
+
+| 항목 | P21 | P22 |
+| --- | --- | --- |
+| 적용 범위 | fpn[0] only | fpn[0,1,2] all |
+| 적용 위치 | Phase 2 (encoding 후) | Phase 1 (encoding 중, `_prepare_backbone_features` 전) |
+| 영향 범위 | CrossModalFusionHead, m_feat | **전체**: vision_feats, tracking, decoder, fusion |
+| 모듈 | `DeBAFP` | `DeBAFP_MultiScale` |
+| FPN 채널 | [32] | [32, 64, 256] |
+| Cross-layer sharing | 모달리티 간 공유 | **모달리티 간 + FPN 레벨 간 공유** |
+| 추가 파라미터 | ~56K | ~98K (+42K, W_d/W_u per-level) |
+
+**DeBAFP_MultiScale 구조**:
+```
+feat'_l = feat_l + α_m * W_u_l(GELU(LN(DCM(W_d_l(feat_l)))))
+```
+- W_d_l: per-level down projection (32→64, 64→64, 256→64)
+- DCM: **shared** offset_conv + deform_conv (cross-layer + cross-modal)
+- LN: **shared** LayerNorm(64)
+- W_u_l: per-level up projection (64→32, 64→64, 64→256)
+- α_m: per-modality scalar (shared across levels, init=0)
+
+**Forward Phase 1 변경**:
+```python
+for i in range(m):  # 각 모달리티
+    img_emb = self.sam.forward_image(batched_input[i])
+    # [P22] DeBA-FP: refine ALL FPN levels
+    for level in range(len(img_emb['backbone_fpn'])):
+        img_emb['backbone_fpn'][level] = self.deba_fp_ms(
+            img_emb['backbone_fpn'][level], modality_idx=i, level_idx=level)
+    # → _prepare_backbone_features가 refined features를 vision_feats로 변환
+    bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+```
+
+**파라미터 추가량**: ~98K (P9 대비 14% 증가, P21 대비 +42K)
+- Shared (DCM+norm): ~52K
+- Per-level (W_d×3 + W_u×3): ~45K
+- Per-modality (α×3): 3
+
+**구현 파일**:
+1. `sam_lola_utils.py` — `DeBAFP_MultiScale` 클래스 추가
+2. `sam_lora_image_encoder_seg.py` — `LoRA_Sam_P22` 클래스 추가
+3. Config 2개 (train + eval)
+4. Train script dispatch: P21과 동일 (`deba_bottleneck_dim` 파라미터 재사용)
+
+**기대 효과 (P21 대비)**:
+- vision_feats도 refined → tracking/memory attention이 더 정확한 features 사용
+- 3개 FPN level 동시 refinement → multi-scale structural information 일관성
+- Cross-layer sharing으로 FPN level 간 구조적 지식 전이
+
+**리스크**:
+- Phase 1 적용으로 gradient flow가 복잡해짐 (DeBA → _prepare_backbone_features → track_step → loss)
+- 더 많은 FPN level 적용으로 over-regularization 가능성
+- P21과 효과 차이가 미미할 수 있음 (P9의 tracking이 이미 robust)
+
+**상태**: 구현 완료, 학습 대기
+
+```bash
+# 학습 명령
+python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml
 ```

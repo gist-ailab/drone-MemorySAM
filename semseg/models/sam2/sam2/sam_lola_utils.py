@@ -767,18 +767,29 @@ class SharedGateMLP(nn.Module):
 
 class SoftMoE_LoRA_Layer_V2(nn.Module):
     """
-    SoftMoE LoRA Layer V2 — external shared gate 지원 (P20).
+    SoftMoE LoRA Layer V2 — per-layer independent 2-layer MLP gate (P20).
 
     V1(SoftMoE_LoRA_Layer)과의 차이:
-    - gate를 자체 소유하지 않음 → 외부에서 SharedGateMLP을 set_shared_gate()로 설정
-    - 파라미터: experts_a, experts_b만 보유 (gate는 LoRA_Sam_P20.shared_gates에서 관리)
-    - save/load 시 gate는 별도로 처리
+    - gate가 2-layer MLP: Linear(C→C//gate_hidden_ratio) → ReLU → Linear(→num_experts)
+    - 각 레이어가 독립적인 MLP gate를 보유 (공유 없음)
+    - gate 파라미터가 state_dict에 자동 포함
+
+    V2 초기 버전은 SharedGateMLP을 외부에서 공유했으나, 38개 레이어가 1개 gate를
+    공유하면 uniform compromise에 빠지는 문제가 확인되어 per-layer 독립으로 변경.
     """
-    def __init__(self, in_features, rank, num_experts=4):
+    def __init__(self, in_features, rank, num_experts=4, gate_hidden_ratio=4):
         super().__init__()
         self.num_experts = num_experts
         self.rank = rank
         self.in_features = in_features
+
+        # Per-layer independent 2-layer MLP gate
+        hidden = max(in_features // gate_hidden_ratio, 16)
+        self.gate = nn.Sequential(
+            nn.Linear(in_features, hidden),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden, num_experts),
+        )
 
         # Experts: LoRA adapters
         self.experts_a = nn.ModuleList([
@@ -788,24 +799,21 @@ class SoftMoE_LoRA_Layer_V2(nn.Module):
             nn.Linear(rank, in_features, bias=False) for _ in range(num_experts)
         ])
 
-        # External shared gate (set via set_shared_gate)
-        self._shared_gate = None
-
         self.reset_parameters()
 
     def reset_parameters(self):
+        # Gate: kaiming for ReLU first layer, near-zero last layer (initial softmax ≈ uniform)
+        nn.init.kaiming_uniform_(self.gate[0].weight, a=math.sqrt(5))
+        nn.init.zeros_(self.gate[0].bias)
+        nn.init.normal_(self.gate[2].weight, std=0.01)
+        nn.init.zeros_(self.gate[2].bias)
+        # Experts
         for i in range(self.num_experts):
             nn.init.kaiming_uniform_(self.experts_a[i].weight, a=math.sqrt(5))
             nn.init.zeros_(self.experts_b[i].weight)
 
-    def set_shared_gate(self, gate_module):
-        """외부 SharedGateMLP 참조 설정 (nn.Module로 등록하지 않음)."""
-        self._shared_gate = gate_module
-
     def forward(self, x):
-        assert self._shared_gate is not None, "Shared gate not set. Call set_shared_gate() first."
-
-        gate_logits = self._shared_gate(x)  # (..., num_experts)
+        gate_logits = self.gate(x)  # (..., num_experts)
         gate_weights = F.softmax(gate_logits, dim=-1)  # (..., num_experts)
 
         # For visualization: store spatial-mean gate weights
@@ -969,4 +977,116 @@ class DeBAFP(nn.Module):
         h = self.W_u(h)  # (B, C, H, W)
 
         # Residual with per-modality scaling
+        return residual + self.alpha[modality_idx] * h
+
+
+class DeBAFP_MultiScale(nn.Module):
+    """
+    Multi-Scale Deformable Bottleneck Adapter for Feature Pyramid (DeBA-FP).
+
+    Applies DeBA-FP to ALL FPN levels with cross-layer weight sharing
+    (following CVPR 2026 DeBA paper).
+
+    Cross-layer sharing structure:
+      - Shared across levels + modalities: DCM (offset + deform conv), LayerNorm
+      - Per-level: W_d, W_u (different in_channels per FPN level)
+      - Per-modality: α scaling (shared across levels)
+
+    feat' = feat + α_m * W_u_l(GELU(LN(DCM(W_d_l(feat)))))
+    """
+
+    def __init__(
+        self,
+        fpn_channels: list = None,
+        bottleneck_dim: int = 64,
+        kernel_size: int = 3,
+        num_modalities: int = 3,
+    ):
+        super().__init__()
+        if fpn_channels is None:
+            fpn_channels = [32, 64, 256]
+        self.fpn_channels = fpn_channels
+        self.bottleneck_dim = bottleneck_dim
+        self.kernel_size = kernel_size
+        self.num_levels = len(fpn_channels)
+        padding = kernel_size // 2
+
+        # ── Per-level W_d, W_u (cross-layer: different in_channels) ──
+        self.W_d_list = nn.ModuleList([
+            nn.Conv2d(ch, bottleneck_dim, 1, bias=True)
+            for ch in fpn_channels
+        ])
+        self.W_u_list = nn.ModuleList([
+            nn.Conv2d(bottleneck_dim, ch, 1, bias=True)
+            for ch in fpn_channels
+        ])
+
+        # ── Shared DCM (cross-layer + cross-modal weight sharing) ──
+        k2 = kernel_size * kernel_size
+        self.offset_mask_conv = nn.Conv2d(
+            bottleneck_dim, 3 * k2, kernel_size, padding=padding, bias=True,
+        )
+        self.dcm_weight = nn.Parameter(
+            torch.empty(bottleneck_dim, bottleneck_dim, kernel_size, kernel_size)
+        )
+        self.norm = nn.LayerNorm(bottleneck_dim)
+
+        # ── Per-modality α (init=0 → identity at start) ──
+        self.alpha = nn.ParameterList(
+            [nn.Parameter(torch.zeros(1)) for _ in range(num_modalities)]
+        )
+
+        self._padding = padding
+        self._init_weights()
+
+    def _init_weights(self):
+        for W_d in self.W_d_list:
+            nn.init.kaiming_uniform_(W_d.weight, a=math.sqrt(5))
+            nn.init.zeros_(W_d.bias)
+        for W_u in self.W_u_list:
+            nn.init.kaiming_uniform_(W_u.weight, a=math.sqrt(5))
+            nn.init.zeros_(W_u.bias)
+        nn.init.kaiming_uniform_(self.dcm_weight, a=math.sqrt(5))
+        nn.init.zeros_(self.offset_mask_conv.weight)
+        nn.init.zeros_(self.offset_mask_conv.bias)
+
+    def forward(self, x: torch.Tensor, modality_idx: int = 0,
+                level_idx: int = 0) -> torch.Tensor:
+        """
+        Args:
+            x: (B, C_l, H, W) FPN feature for one modality at one level
+            modality_idx: index for per-modality α selection
+            level_idx: FPN level index for per-level W_d/W_u selection
+        Returns:
+            (B, C_l, H, W) refined feature
+        """
+        from torchvision.ops import deform_conv2d
+
+        residual = x
+
+        # Per-level down projection
+        h = self.W_d_list[level_idx](x)  # (B, d_b, H, W)
+
+        # Shared DCM: predict offsets and modulation masks
+        om = self.offset_mask_conv(h)  # (B, 3*K*K, H, W)
+        k2 = self.kernel_size * self.kernel_size
+        offset = om[:, :2 * k2]         # (B, 2*K*K, H, W)
+        mask = om[:, 2 * k2:].sigmoid()  # (B, K*K, H, W)
+
+        # Shared DCM: deformable conv (DCNv2)
+        h = deform_conv2d(
+            h, offset, self.dcm_weight,
+            mask=mask, padding=self._padding,
+        )  # (B, d_b, H, W)
+
+        # Shared LayerNorm + GELU
+        h = h.permute(0, 2, 3, 1)   # (B, H, W, d_b)
+        h = self.norm(h)
+        h = F.gelu(h)
+        h = h.permute(0, 3, 1, 2)   # (B, d_b, H, W)
+
+        # Per-level up projection
+        h = self.W_u_list[level_idx](h)  # (B, C_l, H, W)
+
+        # Per-modality scaling
         return residual + self.alpha[modality_idx] * h

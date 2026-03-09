@@ -22,7 +22,7 @@ DATASET:
 
   RGB_SUBROOT   : null
   THERMAL_SUBROOT : null
-  LIDAR_SUBROOT : null
+  LIDAR_SUBROOT : 'lidar_processed2'
   # hardaug8 + PhysAug: hardaug4 기반 + PhysAug + shot noise + CRM 완화 (0.35→0.20)
   # CRM 완화 근거: LiDAR 빈 이미지 존재, thermal 유효 영역 협소 → 과도한 RGB 마스킹이 노이즈 학습 유발
   NIGHT_AUG     :

@@ -51,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22
 )
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
@@ -128,6 +128,9 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P17': LoRA_Sam_P17,
         'LoRA_Sam_P18': LoRA_Sam_P18,
         'LoRA_Sam_P19': LoRA_Sam_P19,
+        'LoRA_Sam_P20': LoRA_Sam_P20,
+        'LoRA_Sam_P21': LoRA_Sam_P21,
+        'LoRA_Sam_P22': LoRA_Sam_P22,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
@@ -320,7 +323,9 @@ class MoERoutingCapture:
             modal_idx = self._get_modality_idx()
 
             with torch.no_grad():
-                gate_logits = module.gate(x)  # (..., E)
+                # V1: module.gate, V2: module._shared_gate (P20)
+                gate_fn = getattr(module, 'gate', None) or getattr(module, '_shared_gate', None)
+                gate_logits = gate_fn(x)  # (..., E)
                 gate_weights = F.softmax(gate_logits, dim=-1)  # (..., E)
                 ne = module.num_experts
 
