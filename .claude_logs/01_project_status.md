@@ -1,8 +1,33 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-09
+> 최종 업데이트: 2026-03-10
 
-## 현재 상태: P9+hardaug8_physaug ep131 **새로운 최선 모델 (M=81.98)**, P20/P21/P22 학습 대기
+## 현재 상태: P9+hardaug8_physaug ep131 **새로운 최선 모델 (M=81.98)**, P20/P21/P22 학습 대기, P23 구현 완료 (학습 대기)
+
+### P23 구현 완료 (2026-03-10)
+
+- **실험 M 구현**: MoE DeBA-BB — SoftMoE-LoRA를 MoE 기반 deformable bottleneck adapter로 교체
+- **핵심 구조**: `x → GAP gate → Σ w_i × [W_d(shared) → DCM_i(3×3) → LN(shared) → GELU → W_u(shared)] → α_m × out`
+- **설계 결정 사항**:
+  1. **Gating**: GAP gating (per-image/per-window) — training noise std=0.1
+  2. **Expert 차별화**: Multi-scale (×1, ×2) — per-expert DCM, shared W_d/W_u
+  3. **Cross-layer sharing**: DCM per-expert (shared across layers), LN shared, W_d/W_u per-stage, gate per-stage, α per-modality
+  4. **Single adapter per block**: delta added to both Q and V (DeBA-BB 개념에 맞게 feature refinement)
+- **파라미터**: ~325K (deba_bb) + ~15K (cross_modal_head) = ~340K trainable adapter params (P9 MoE LoRA ~538K 대비 37% 감소)
+- **수정 파일**:
+  1. `semseg/models/sam2/sam2/sam_lola_utils.py` — `MoE_DeBA_BB`, `_MoE_DeBA_BB_qkv` 추가
+  2. `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P23` 추가
+  3. `train_sam2_lora_paper.py` — `deba_scales`, `deba_gate_noise_std` dispatch 추가
+  4. `configs/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml` — 학습 config
+  5. `configs/eval_config/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml` — 평가 config
+- **학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml`
+- **상세**: `.claude_logs/02_model_arch.md` — "P23: MoE DeBA-BB" 섹션
+
+### val_multiaqua_detailed.py 호환 fix (2026-03-10)
+
+- P20 test 실행 시 `SoftMoE_LoRA_Layer_V2`에 `gate` 속성 없어 에러 발생
+- V1(`module.gate`) / V2(`module._shared_gate`) 호환 처리 완료
+- 상세: `.claude_logs/04_issues_and_fixes.md` — RESOLVED-005
 
 ### P22 구현 완료 (2026-03-09)
 
@@ -289,6 +314,14 @@
     - Refined features가 vision_feats/tracking/decoder/fusion 전체 파이프라인 전파
     - Cross-layer sharing: DCM/norm 공유(levels+modalities), W_d/W_u per-level, α per-modality
     - ~98K 추가 파라미터 (P21 대비 +42K)
+
+18. **P23 (MoE DeBA-BB: backbone adapter) — 구현 완료, 학습 대기**
+    - SoftMoE-LoRA를 MoE DeBA-BB로 교체 (deformable conv bottleneck as MoE expert)
+    - GAP gating (per-image/per-window), multi-scale (×1, ×2), cross-layer weight sharing
+    - ~340K trainable adapter params (P9 ~538K 대비 37% 감소)
+    - Single adapter per block → Q + V에 동시 적용 (DeBA-BB feature refinement 개념)
+    - Ref: ConvLoRA (ICLR 2024) + DeBA (CVPR 2026)
+    - P21/P22(DeBA-FP)와 보완적 — BB=backbone 내부, FP=FPN 출력
 
 ### 다음 실험 계획
 

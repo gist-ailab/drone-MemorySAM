@@ -1,6 +1,6 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-02-27
+> 최종 업데이트: 2026-03-10
 
 ## 공통 기반: MemorySAM
 
@@ -1184,6 +1184,129 @@ merged_dict = {
 - Eval config: `configs/eval_config/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml`
 - Train script: `deba_bottleneck_dim` inspect dispatch 추가
 - Augmentation: hardaug8_physaug (P9 h8과 동일)
+
+---
+
+## P23: MoE DeBA-BB (설계 논의 중, 미구현) (실험 M)
+
+### 동기 및 핵심 아이디어
+
+현재 P9의 MoE LoRA는 linear adapter (`Linear_down → Linear_up`). ConvLoRA(ICLR 2024)와 DeBA(CVPR 2026)를 결합하여 **deformable conv bottleneck adapter를 MoE expert로** 사용하는 구조.
+
+- **ConvLoRA** (Zhong et al., ICLR 2024): LoRA bottleneck에 conv 삽입 → ViT에 local inductive bias 주입
+- **DeBA-BB** (Anonymous, CVPR 2026): backbone layer 사이에 deformable conv bottleneck adapter 삽입
+- **P23 제안**: DeBA-BB 구조를 MoE expert로, GAP gating으로 per-image routing
+
+### 참고 논문
+
+- ConvLoRA: "Convolution Meets LoRA: Parameter Efficient Finetuning for SAM" (ICLR 2024) — https://arxiv.org/abs/2401.17868
+- DeBA: "Rethinking Deformable Convolution as an Adapter with Cross-layer Weight Sharing" (CVPR 2026)
+
+### 설계 결정 기록 (2026-03-10 논의)
+
+#### 1. LoRA → DeBA-BB 교체 근거
+
+DeBA-BB는 정확히 LoRA와 같은 위치(backbone layer 사이)에 적용되는 adapter. Drop-in replacement 가능:
+```
+P9 MoE LoRA:  x → gate → Σ w_i × [Linear_a_i(C→r) → Linear_b_i(r→C)]
+P23 MoE DeBA: x → gate → Σ w_i × [W_d(C→d_b) → reshape(H,W) → DCM_i(3×3) → LN → GELU → reshape(HW) → W_u(d_b→C)]
+```
+
+Hiera의 token은 2D spatial grid를 유지하고 있어 DCM 적용이 자연스러움 (DINOv2에서 DeBA-BB가 이미 성공).
+
+#### 2. Gating: GAP gating 선택 (per-image routing)
+
+**비교 검토**:
+| 방식 | 구조 | Routing 단위 | 적합성 |
+|---|---|---|---|
+| P9 Linear | `Linear(C→E)` | per-token | overfitting 위험 (145장 × HW decisions) |
+| P20 MLP | `Linear→ReLU→Linear` | per-token | 더 복잡, 같은 위험 |
+| **GAP (선택)** | `GAP → W_g·x + noise → softmax` | **per-image** | 안정적, 소규모 데이터 적합 |
+
+**GAP 선택 근거**:
+1. P9의 AMF/UAMM가 상수 수렴 (std≈0.0000) → 모델이 per-modality global decision을 선호
+2. 145장으로 per-token spatial routing 학습은 overfitting 위험 극대
+3. 주요 variation 축이 modality 간 차이 (RGB vs thermal vs LiDAR), spatial 내 차이는 attention이 처리
+4. ConvLoRA의 noise term (학습 중 exploration 강제, inference시 제거)이 gate collapse 방지에 효과적
+
+#### 3. Expert 차별화: Multi-scale upsampling
+
+**Dilation은 DCM에 무의미**: DCM의 learned offset (Δp ∈ ℝ²)이 임의 위치로 sampling point 이동 가능 → dilation의 base grid 간격을 offset이 흡수/보상. 학습 후 수렴하면 dilation 차이 소멸.
+
+**Kernel size 차이는 유의미**: 3×3(9점) vs 5×5(25점)은 sampling point **개수** 자체가 다름 → DCM이 흡수 불가. 단, 파라미터 증가.
+
+**Multi-scale upsampling (선택)**:
+```
+Expert 1: W_d(shared) → ×1 → DCM_1(3×3) → W_u(shared)       (원본 해상도)
+Expert 2: W_d(shared) → upsample ×2 → DCM_2(3×3) → downsample → W_u(shared)  (2배 해상도)
+```
+- 3×3 DCM 유지하면서 해상도 변경으로 effective scale 차별화
+- 각 expert는 자기만의 DCM 보유 (DCM 공유 시 MoE 무의미)
+- W_d/W_u는 shared → 파라미터 효율
+- Scale factor는 ×1, ×2 정도로 보수적 (compute overhead 제한)
+
+#### 4. Cross-layer weight sharing
+
+DeBA 원본 전략 유지:
+- **Shared (layers 간 + modalities 간)**: LN (normalization)
+- **Per-expert**: DCM weights, offset_mask_conv
+- **Shared (experts 간)**: W_d, W_u
+- **Per-stage**: W_d, W_u 차원 (Hiera stage별 dim 상이: 112, 224, 448, 896)
+- **GAP gate**: stage별 공유 (P20의 SharedGateMLP과 유사한 dim-grouping)
+
+#### 5. P21/P22와의 관계
+
+- P21/P22: **DeBA-FP** (FPN 레벨의 adapter) — backbone 출력 후
+- P23: **DeBA-BB** (backbone layer 사이의 adapter) — backbone 내부
+- 두 접근은 **보완적** (BB=backbone refinement, FP=FPN refinement)
+- 향후 P23 + P22 결합 가능 (DeBA-BB + DeBA-FP)
+
+#### 6. 열린 질문
+
+- Expert 수: 3 (modality) vs 4 (여분 shared expert)?
+- Upsample scale factor: ×2만? ×2 + ×4?
+- W_d/W_u sharing: expert 간 완전 공유 vs per-expert?
+- DeBA-FP(P21/P22)와 동시 적용 시 학습 안정성?
+
+### 구현 상태
+
+- **구현 완료** (2026-03-10)
+
+### 구현 결정 (열린 질문 해결)
+
+1. **Expert 수**: 2 (×1, ×2 scale) — 최소한의 multi-scale 차별화
+2. **Upsample scale**: ×2만 — compute 효율과 boundary 보존
+3. **W_d/W_u sharing**: expert 간 완전 공유 (파라미터 효율)
+4. **Single adapter per block**: Q/V에 같은 delta 적용 — DeBA-BB의 "feature refinement" 개념에 충실
+
+### 구현 상세
+
+**파일**: `sam_lola_utils.py` — `MoE_DeBA_BB`, `_MoE_DeBA_BB_qkv`
+**파일**: `sam_lora_image_encoder_seg.py` — `LoRA_Sam_P23`
+
+**MoE_DeBA_BB (단일 공유 모듈, ~325K params)**:
+- 2 × DCM (per-expert, shared across 24 blocks): offset_mask_conv + dcm_weight
+- 1 × LayerNorm (shared across all)
+- 4 × W_d, W_u (per-stage: dim→64, 64→dim)
+- 4 × Gate (per-stage: Linear(dim→E))
+- 3 × α (per-modality, init=0)
+
+**_MoE_DeBA_BB_qkv (QKV wrapper)**:
+- 단일 adapter delta → Q[:dim] += delta, V[-dim:] += delta
+- shared_deba_bb reference (cross-layer sharing 달성)
+
+**Block-to-Stage mapping (Hiera-B+)**:
+- Blocks 0-2 → Stage 0 (dim=112, 3 blocks)
+- Blocks 3-5 → Stage 1 (dim=224, 3 blocks)
+- Blocks 6-21 → Stage 2 (dim=448, 16 blocks)
+- Blocks 22-23 → Stage 3 (dim=896, 2 blocks)
+
+**Parameter count**:
+- deba_bb: 325,361 (~325K)
+- cross_modal_head: 14,659 (~15K)
+- Total trainable adapter: ~340K (P9 MoE LoRA ~538K 대비 37% 감소)
+
+**학습 명령**: `python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml`
 
 ---
 

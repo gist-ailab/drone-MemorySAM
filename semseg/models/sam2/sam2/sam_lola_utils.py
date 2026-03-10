@@ -2,6 +2,7 @@
 LoRA/LoLA 공통 유틸: 실험 모델(LoRA_Sam_P1~P9)이 아닌 보조 클래스·함수.
 - MLP_my, _LoRA_qkv, ConfidenceHead, ConfidenceHeadV2, CrossModalFusionHead
 - MoE_LoRA_Layer, _MoE_LoRA_qkv
+- MoE_DeBA_BB, _MoE_DeBA_BB_qkv (P23)
 - random_element_swap
 """
 import math
@@ -1090,3 +1091,246 @@ class DeBAFP_MultiScale(nn.Module):
 
         # Per-modality scaling
         return residual + self.alpha[modality_idx] * h
+
+
+class MoE_DeBA_BB(nn.Module):
+    """
+    Mixture-of-Experts Deformable Bottleneck Adapter for Backbone (MoE DeBA-BB).
+
+    Replaces SoftMoE_LoRA_Layer with deformable conv bottleneck adapters as MoE experts,
+    using GAP (Global Average Pooling) gating for per-image routing.
+
+    Design Refs:
+      - DeBA (CVPR 2026): Deformable bottleneck adapter with cross-layer weight sharing
+      - ConvLoRA (ICLR 2024): Multi-scale MoE with GAP gating
+
+    Cross-layer weight sharing:
+      - Shared across layers + experts: LayerNorm
+      - Shared across layers, per-expert: DCM (offset_mask_conv + dcm_weight)
+      - Per-stage, shared across experts: W_d, W_u, GAP gate
+      - Per-modality, shared across layers + experts: α scaling
+
+    Multi-scale expert differentiation:
+      - Expert 0: ×1 scale (original resolution)
+      - Expert 1: ×2 scale (upsample → DCM → downsample)
+
+    Forward (per backbone block):
+      x → GAP gate → weights (B, E)
+      x → W_d_s(shared) → Σ w_i × DCM_i(scale_i) → LN(shared) → GELU → W_u_s(shared) → α_m × out
+    """
+
+    def __init__(
+        self,
+        stage_dims: list,
+        bottleneck_dim: int = 64,
+        kernel_size: int = 3,
+        num_experts: int = 2,
+        num_modalities: int = 3,
+        scales: list = None,
+        gate_noise_std: float = 0.1,
+    ):
+        """
+        Args:
+            stage_dims: input dims per Hiera stage, e.g. [112, 224, 448, 896]
+            bottleneck_dim: DCM bottleneck dimension (d_b)
+            kernel_size: DCM kernel size
+            num_experts: number of MoE experts (default 2: ×1, ×2)
+            num_modalities: for per-modality α
+            scales: multi-scale factors per expert (default [1, 2])
+            gate_noise_std: additive Gaussian noise for gate exploration during training
+        """
+        super().__init__()
+        self.stage_dims = stage_dims
+        self.bottleneck_dim = bottleneck_dim
+        self.kernel_size = kernel_size
+        self.num_experts = num_experts
+        self.num_modalities = num_modalities
+        self.scales = scales or [1, 2]
+        self.gate_noise_std = gate_noise_std
+        assert len(self.scales) == num_experts
+        padding = kernel_size // 2
+        self._padding = padding
+        k2 = kernel_size * kernel_size
+
+        # ── Per-expert DCMs (shared across all backbone layers) ──
+        self.offset_mask_convs = nn.ModuleList()
+        self.dcm_weights = nn.ParameterList()
+        for _ in range(num_experts):
+            self.offset_mask_convs.append(
+                nn.Conv2d(bottleneck_dim, 3 * k2, kernel_size, padding=padding, bias=True)
+            )
+            self.dcm_weights.append(
+                nn.Parameter(torch.empty(bottleneck_dim, bottleneck_dim, kernel_size, kernel_size))
+            )
+
+        # ── Shared LayerNorm (cross-layer + cross-expert) ──
+        self.norm = nn.LayerNorm(bottleneck_dim)
+
+        # ── Per-stage W_d, W_u (shared across experts) ──
+        self.W_d_list = nn.ModuleList([
+            nn.Linear(dim, bottleneck_dim, bias=True) for dim in stage_dims
+        ])
+        self.W_u_list = nn.ModuleList([
+            nn.Linear(bottleneck_dim, dim, bias=True) for dim in stage_dims
+        ])
+
+        # ── Per-stage GAP gate ──
+        self.gates = nn.ModuleList([
+            nn.Linear(dim, num_experts) for dim in stage_dims
+        ])
+
+        # ── Per-modality α (init=0 → identity at start) ──
+        self.alpha = nn.ParameterList(
+            [nn.Parameter(torch.zeros(1)) for _ in range(num_modalities)]
+        )
+
+        # Current modality index (set externally before forward_image)
+        self._modality_idx = 0
+
+        # Gate callback for visualization (same interface as SoftMoE_LoRA_Layer)
+        self._gate_callback = None
+
+        self._init_weights()
+
+    def _init_weights(self):
+        # W_d, W_u: kaiming
+        for W_d in self.W_d_list:
+            nn.init.kaiming_uniform_(W_d.weight, a=math.sqrt(5))
+            nn.init.zeros_(W_d.bias)
+        for W_u in self.W_u_list:
+            # Zero-init W_u so adapter starts as identity (output = 0)
+            nn.init.zeros_(W_u.weight)
+            nn.init.zeros_(W_u.bias)
+        # DCM weights: kaiming
+        for dcm_w in self.dcm_weights:
+            nn.init.kaiming_uniform_(dcm_w, a=math.sqrt(5))
+        # Offset/mask conv: zero-init → starts as regular conv (no deformation)
+        for omc in self.offset_mask_convs:
+            nn.init.zeros_(omc.weight)
+            nn.init.zeros_(omc.bias)
+        # Gate: near-uniform initial routing
+        for gate in self.gates:
+            nn.init.normal_(gate.weight, std=0.01)
+            nn.init.zeros_(gate.bias)
+
+    def set_modality(self, idx: int):
+        """Set current modality index for per-modality α scaling."""
+        self._modality_idx = idx
+
+    def _apply_dcm(self, h: torch.Tensor, expert_idx: int) -> torch.Tensor:
+        """
+        Apply DCM (Deformable Conv Modulation) for one expert.
+        Args:
+            h: (B, d_b, H, W) bottleneck features
+            expert_idx: which expert's DCM to use
+        Returns:
+            (B, d_b, H, W) deformed features
+        """
+        from torchvision.ops import deform_conv2d
+
+        om = self.offset_mask_convs[expert_idx](h)  # (B, 3*K², H, W)
+        k2 = self.kernel_size * self.kernel_size
+        offset = om[:, :2 * k2]          # (B, 2*K², H, W)
+        mask = om[:, 2 * k2:].sigmoid()  # (B, K², H, W)
+
+        return deform_conv2d(
+            h, offset, self.dcm_weights[expert_idx],
+            mask=mask, padding=self._padding,
+        )
+
+    def forward(self, x: torch.Tensor, stage_idx: int) -> torch.Tensor:
+        """
+        Args:
+            x: (B, H, W, C) — Hiera format (may be windowed: B includes num_windows)
+            stage_idx: which stage's W_d/W_u/gate to use
+        Returns:
+            (B, H, W, C) adapter output delta (to be added to Q and V)
+        """
+        B, H, W, C = x.shape
+
+        # ── GAP gate: per-image (or per-window) routing ──
+        gap = x.mean(dim=[1, 2])  # (B, C)
+        gate_logits = self.gates[stage_idx](gap)  # (B, E)
+        if self.training and self.gate_noise_std > 0:
+            gate_logits = gate_logits + torch.randn_like(gate_logits) * self.gate_noise_std
+        gate_weights = F.softmax(gate_logits, dim=-1)  # (B, E)
+
+        # Visualization callback
+        if self._gate_callback is not None:
+            gw_mean = gate_weights.mean(dim=0).detach().cpu().numpy()
+            self._gate_callback(gw_mean)
+
+        # ── Shared down-projection ──
+        h = self.W_d_list[stage_idx](x)  # (B, H, W, d_b)
+        h_4d = h.permute(0, 3, 1, 2)     # (B, d_b, H, W)
+
+        # ── Per-expert DCM with multi-scale ──
+        combined = torch.zeros_like(h_4d)
+        for i in range(self.num_experts):
+            scale = self.scales[i]
+            w_i = gate_weights[:, i].view(B, 1, 1, 1)  # (B, 1, 1, 1)
+            if scale == 1:
+                ei = self._apply_dcm(h_4d, i)
+            else:
+                ei = F.interpolate(
+                    h_4d, scale_factor=float(scale),
+                    mode='bilinear', align_corners=False,
+                )
+                ei = self._apply_dcm(ei, i)
+                ei = F.interpolate(
+                    ei, size=(H, W),
+                    mode='bilinear', align_corners=False,
+                )
+            combined = combined + w_i * ei
+
+        # ── Shared: norm → GELU → up-project ──
+        combined = combined.permute(0, 2, 3, 1)  # (B, H, W, d_b)
+        combined = self.norm(combined)
+        combined = F.gelu(combined)
+        out = self.W_u_list[stage_idx](combined)  # (B, H, W, C)
+
+        # ── Per-modality α scaling ──
+        return self.alpha[self._modality_idx] * out
+
+
+class _MoE_DeBA_BB_qkv(nn.Module):
+    """
+    QKV layer wrapper that replaces SoftMoE-LoRA with MoE-DeBA-BB.
+
+    A single DeBA-BB adapter output delta is added to both Q and V,
+    following the DeBA paper's concept of refining features before
+    they are used in attention.
+
+    The shared MoE_DeBA_BB module is referenced (not owned) — cross-layer
+    weight sharing is achieved by passing the same module to all blocks.
+    """
+
+    def __init__(
+        self,
+        qkv: nn.Module,
+        shared_deba_bb: MoE_DeBA_BB,
+        stage_idx: int,
+    ):
+        super().__init__()
+        self.qkv = qkv
+        self.shared_deba_bb = shared_deba_bb
+        self.stage_idx = stage_idx
+        self.dim = qkv.in_features
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (B, H, W, C) — Hiera block input (may be windowed)
+        Returns:
+            (B, H*W, 3, nHead, C_head) or (B, H, W, 3*dim_out) — QKV output
+        """
+        qkv = self.qkv(x)
+
+        # Single adapter delta, shared for Q and V
+        delta = self.shared_deba_bb(x, self.stage_idx)  # (B, H, W, C)
+
+        # Add delta to Q (first dim channels) and V (last dim channels)
+        qkv[:, :, :, :self.dim] += delta
+        qkv[:, :, :, -self.dim:] += delta
+
+        return qkv

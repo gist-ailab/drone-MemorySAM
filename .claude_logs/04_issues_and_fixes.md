@@ -1,6 +1,6 @@
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-02-27
+> 최종 업데이트: 2026-03-10
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -732,6 +732,30 @@ for level, feat in enumerate(vision_feats[frame_idx]):
 **문제**: `_add_title_to_image()`에서 `plt.subplots()` + `tight_layout(pad=0)` 사용 → 흰색 padding 잔류
 
 **해결**: `fig.add_axes([0, 0, 1, 1])` + `fig.patch.set_facecolor('#1a1a2e')` 로 전체 figure를 채움
+
+---
+
+### RESOLVED-005: val_multiaqua_detailed.py — SoftMoE_LoRA_Layer_V2 gate 호환 에러
+
+**해결일**: 2026-03-10
+**영향**: P20 (SoftMoE_LoRA_Layer_V2 사용 모델)의 detailed evaluation
+
+**문제**:
+- `val_multiaqua_detailed.py:326` hook에서 `module.gate(x)` 호출
+- V1 (`SoftMoE_LoRA_Layer`): `self.gate = nn.Linear(...)` → 접근 가능
+- V2 (`SoftMoE_LoRA_Layer_V2`, P20): gate 자체 미보유, 외부 `_shared_gate` 참조 → `AttributeError: 'SoftMoE_LoRA_Layer_V2' object has no attribute 'gate'`
+
+**해결**:
+```python
+# Before (V1 only):
+gate_logits = module.gate(x)
+
+# After (V1/V2 compatible):
+gate_fn = getattr(module, 'gate', None) or getattr(module, '_shared_gate', None)
+gate_logits = gate_fn(x)
+```
+
+**주의**: hook은 forward 결과를 관찰만 하므로 (return 없음), 추론 결과에 영향 없음.
 
 ---
 

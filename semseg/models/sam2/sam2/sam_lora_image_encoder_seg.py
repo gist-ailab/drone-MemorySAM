@@ -31,6 +31,8 @@ from .sam_lola_utils import (
     SoftMoE_LoRA_Layer_V2,
     DeBAFP,
     DeBAFP_MultiScale,
+    MoE_DeBA_BB,
+    _MoE_DeBA_BB_qkv,
 )
 
 
@@ -5616,6 +5618,273 @@ class LoRA_Sam_P22(nn.Module):
                 deba_fp_ms_dict[k.replace("deba_fp_ms.", "")] = v
         if deba_fp_ms_dict:
             self.deba_fp_ms.load_state_dict(deba_fp_ms_dict)
+
+        # Load SAM components
+        sam_dict = self.sam.state_dict()
+        sam_keys = sam_dict.keys()
+
+        for module_name in ['prompt_encoder', 'mask_decoder']:
+            module_keys = [k for k in sam_keys if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
+                sam_dict.update(module_new_state_dict)
+
+        self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P23(nn.Module):
+    """
+    LoRA_Sam_P23: MoE DeBA-BB (Deformable Bottleneck Adapter for Backbone)
+
+    P9의 SoftMoE-LoRA를 MoE-DeBA-BB로 교체:
+      - SoftMoE LoRA: Linear_a(C→r) → Linear_b(r→C) per expert
+      - DeBA-BB: W_d(C→d_b) → DCM_i(3×3, multi-scale) → LN → GELU → W_u(d_b→C) per expert
+
+    핵심 특징:
+      1. GAP gating (per-image routing) — ConvLoRA 스타일
+      2. Multi-scale expert differentiation (×1, ×2 해상도)
+      3. Cross-layer weight sharing (DeBA paper):
+         - Shared across layers + experts: LayerNorm
+         - Shared across layers, per-expert: DCM
+         - Per-stage: W_d, W_u, gate (Hiera stage별 dim 차이)
+         - Per-modality: α scaling
+      4. 나머지 (UAMM, AMF, CrossModalFusionHead)는 P9 동일
+
+    Refs:
+      - DeBA (CVPR 2026): cross-layer shared deformable bottleneck adapter
+      - ConvLoRA (ICLR 2024): multi-scale MoE conv adapter with GAP gating
+
+    Components:
+      1. Structure: MoE DeBA-BB (replaces SoftMoE-LoRA)
+      2. UAMM (Memory): CrossModal max-normalized softmax (P9 동일)
+      3. AMF (Fusion): CrossModal raw softmax (P9 동일)
+    """
+
+    # Block → stage mapping for Hiera-B+
+    # stages=(2,3,16,3), stage_ends=[1,4,20,23]
+    # Block  0-2:  qkv.in_features=112 (stage 0)
+    # Block  3-5:  qkv.in_features=224 (stage 1)
+    # Block  6-21: qkv.in_features=448 (stage 2)
+    # Block  22-23: qkv.in_features=896 (stage 3)
+    _BLOCK_TO_STAGE = {}
+    for _b in range(0, 3):   _BLOCK_TO_STAGE[_b] = 0   # dim 112
+    for _b in range(3, 6):   _BLOCK_TO_STAGE[_b] = 1   # dim 224
+    for _b in range(6, 22):  _BLOCK_TO_STAGE[_b] = 2   # dim 448
+    for _b in range(22, 24): _BLOCK_TO_STAGE[_b] = 3   # dim 896
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_experts=2, num_modalities=3,
+                 deba_bottleneck_dim=64, deba_kernel_size=3,
+                 deba_scales=None, deba_gate_noise_std=0.1):
+        """
+        Args:
+            sam_model: pretrained SAM2 model
+            r: unused (kept for dispatch compatibility, use deba_bottleneck_dim instead)
+            lora_layer: which backbone blocks to apply adapter (default: all)
+            num_experts: MoE expert count (default 2: ×1 and ×2 scale)
+            num_modalities: number of input modalities
+            deba_bottleneck_dim: DCM bottleneck dimension
+            deba_kernel_size: DCM kernel size
+            deba_scales: multi-scale factors per expert (default [1, 2])
+            deba_gate_noise_std: gate noise during training
+        """
+        nn.Module.__init__(self)
+
+        if lora_layer:
+            self.lora_layer = lora_layer
+        else:
+            self.lora_layer = list(range(len(sam_model.image_encoder.trunk.blocks)))
+
+        # Freeze original parameters
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        # Hiera-B+ stage dims
+        stage_dims = [112, 224, 448, 896]
+
+        # Create shared MoE DeBA-BB module (cross-layer weight sharing)
+        self.deba_bb = MoE_DeBA_BB(
+            stage_dims=stage_dims,
+            bottleneck_dim=deba_bottleneck_dim,
+            kernel_size=deba_kernel_size,
+            num_experts=num_experts,
+            num_modalities=num_modalities,
+            scales=deba_scales,
+            gate_noise_std=deba_gate_noise_std,
+        )
+
+        # Inject MoE-DeBA-BB into backbone blocks
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+
+            stage_idx = self._BLOCK_TO_STAGE[t_layer_i]
+            blk.attn.qkv = _MoE_DeBA_BB_qkv(
+                blk.attn.qkv, self.deba_bb, stage_idx,
+            )
+
+        self.sam = sam_model
+
+        # Determine Fusion Dim
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        # CrossModalFusionHead (P9 동일)
+        self.cross_modal_head = CrossModalFusionHead(
+            in_channels=fusion_dim,
+            num_modalities=num_modalities,
+        )
+
+    def forward(self, batched_input, multimask_output):
+        m = len(batched_input)
+        image_embedding, backbone_out, vision_feats = [], [], []
+        vision_pos_embeds, feat_sizes, output = [], [], []
+
+        # Collect DeBA-BB gate weights for visualization
+        deba_gate_collector = []
+        def _deba_gate_cb(gw):
+            deba_gate_collector.append(gw)
+        self.deba_bb._gate_callback = _deba_gate_cb
+        try:
+            # ============================================
+            # Phase 1: 모든 모달리티 Image Encoding
+            # ============================================
+            for i in range(m):
+                # Set modality for per-modality α scaling
+                self.deba_bb.set_modality(i)
+
+                img_emb = self.sam.forward_image(batched_input[i])
+                image_embedding.append(img_emb)
+                bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb)
+                backbone_out.append(bb_out)
+                vision_feats.append(v_feats)
+                vision_pos_embeds.append(v_pos)
+                feat_sizes.append(f_sizes)
+
+            # ============================================
+            # Phase 2: Cross-Modal 가중치 산출
+            # ============================================
+            all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+            cross_weights, cross_logits = self.cross_modal_head(all_backbone_feats)  # (B, m)
+
+            # UAMM용: max-normalize → best modality = 1.0
+            max_w = cross_weights.max(dim=1, keepdim=True)[0]
+            uamm_scores = cross_weights / (max_w + 1e-8)  # (B, m)
+
+            # ============================================
+            # Phase 3: UAMM Modulation + Tracking
+            # ============================================
+            output_dict = {
+                "cond_frame_outputs": {},
+                "non_cond_frame_outputs": {},
+            }
+
+            for frame_idx in range(m):
+                is_init = (frame_idx == 0)
+
+                current_score = uamm_scores[:, frame_idx].unsqueeze(1)  # (B, 1)
+                score_expanded = current_score.transpose(0, 1).unsqueeze(-1)  # (1, B, 1)
+                modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
+
+                multi_mask_output_step = self.sam.track_step(
+                    frame_idx=frame_idx,
+                    is_init_cond_frame=is_init,
+                    current_vision_feats=modulated_vision_feats,
+                    current_vision_pos_embeds=vision_pos_embeds[frame_idx],
+                    feat_sizes=feat_sizes[frame_idx],
+                    point_inputs=None,
+                    mask_inputs=None,
+                    output_dict=output_dict,
+                    num_frames=m,
+                    track_in_reverse=False,
+                    run_mem_encoder=True,
+                    prev_sam_mask_logits=None,
+                )
+                output_dict["cond_frame_outputs"][frame_idx] = multi_mask_output_step
+                output.append(multi_mask_output_step["high_res_multimasks"])
+
+            # ============================================
+            # Phase 4: AMF — raw softmax weights로 Output Fusion
+            # ============================================
+            amf_weights = cross_weights  # (B, m)
+
+            w0 = amf_weights[:, 0].view(-1, 1, 1, 1)
+            m_output = output[0] * w0
+            m_feat = all_backbone_feats[0] * w0
+
+            for i in range(1, m):
+                wi = amf_weights[:, i].view(-1, 1, 1, 1)
+                m_output = m_output + output[i] * wi
+                m_feat = m_feat + all_backbone_feats[i] * wi
+
+            # Store for visualization
+            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            if deba_gate_collector:
+                self._last_moe_gates = np.stack(deba_gate_collector, axis=0).mean(axis=0)
+            else:
+                self._last_moe_gates = None
+        finally:
+            self.deba_bb._gate_callback = None
+
+        return m_output, m_feat
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        # MoE DeBA-BB parameters (single shared module)
+        deba_bb_tensors = {
+            f"deba_bb.{k}": v
+            for k, v in self.deba_bb.state_dict().items()
+        }
+
+        cross_modal_tensors = {
+            f"cross_modal_head.{k}": v
+            for k, v in self.cross_modal_head.state_dict().items()
+        }
+
+        prompt_encoder_tensors = {}
+        mask_decoder_tensors = {}
+        model_ref = self.sam.module if isinstance(self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.sam
+        state_dict = model_ref.state_dict()
+
+        for key, value in state_dict.items():
+            if 'prompt_encoder' in key:
+                prompt_encoder_tensors[key] = value
+            if 'mask_decoder' in key:
+                mask_decoder_tensors[key] = value
+
+        merged_dict = {
+            **deba_bb_tensors,
+            **prompt_encoder_tensors,
+            **mask_decoder_tensors,
+            **cross_modal_tensors,
+        }
+        torch.save(merged_dict, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        # Load MoE DeBA-BB
+        deba_bb_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("deba_bb."):
+                deba_bb_dict[k.replace("deba_bb.", "")] = v
+        if deba_bb_dict:
+            self.deba_bb.load_state_dict(deba_bb_dict)
+
+        # Load CrossModalFusionHead
+        cross_modal_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("cross_modal_head."):
+                cross_modal_dict[k.replace("cross_modal_head.", "")] = v
+        if cross_modal_dict:
+            self.cross_modal_head.load_state_dict(cross_modal_dict)
 
         # Load SAM components
         sam_dict = self.sam.state_dict()
