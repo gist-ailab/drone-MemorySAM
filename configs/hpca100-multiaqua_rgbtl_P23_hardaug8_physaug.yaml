@@ -14,11 +14,11 @@ MODEL:
   LORA_LAYER    : null
   # [P23] MoE DeBA-BB: deformable bottleneck adapter as MoE expert in backbone
   # Ref: DeBA (CVPR 2026) + ConvLoRA (ICLR 2024)
-  # GAP gating (per-image), multi-scale experts (×1, ×2), cross-layer weight sharing
+  # GAP gating (per-image), multi-scale experts (×0.5, ×1, ×2, ×4), cross-layer weight sharing
   DEBA:
     BOTTLENECK_DIM : 64
     KERNEL_SIZE    : 3
-    SCALES         : [0.5, 1, 2, 4]
+    SCALES         : [1, 2]
     GATE_NOISE_STD : 0.1
 
 DATASET:
@@ -62,12 +62,13 @@ DATASET:
 
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]
-  BATCH_SIZE    : 2
+  BATCH_SIZE    : 1
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 1
   AMP           : false
   DDP           : True
+  GRADIENT_CHECKPOINT : true
 
 LOSS:
   NAME          : OhemCrossEntropy

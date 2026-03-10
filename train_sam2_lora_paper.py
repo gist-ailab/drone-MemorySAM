@@ -338,6 +338,11 @@ def main(cfg, gpu, save_dir):
     print(f"Using LoRA model: {lora_model_name}")
     print(f"LoRA parameters: r={lora_r}, num_experts={lora_num_experts}, top_k={lora_top_k}, lora_layer={lora_layer}")
 
+    # Encoder gradient checkpointing (saves VRAM by recomputing activations during backward)
+    if train_cfg.get('GRADIENT_CHECKPOINT', False):
+        model.sam.image_encoder.trunk.gradient_checkpointing = True
+        print("Encoder gradient checkpointing enabled (saves VRAM, ~30% slower training)")
+
     if train_cfg['DDP']:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         print("Using SyncBatchNorm to handle small batch size.")

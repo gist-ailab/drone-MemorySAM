@@ -11,6 +11,7 @@ from typing import List, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
 from iopath.common.file_io import g_pathmgr
 
 from sam2.modeling.backbones.utils import (
@@ -265,6 +266,8 @@ class Hiera(nn.Module):
             else [self.blocks[-1].dim_out]
         )
 
+        self.gradient_checkpointing = False
+
         if weights_path is not None:
             with g_pathmgr.open(weights_path, "rb") as f:
                 chkpt = torch.load(f, map_location="cpu")
@@ -289,7 +292,10 @@ class Hiera(nn.Module):
 
         outputs = []
         for i, blk in enumerate(self.blocks):
-            x = blk(x)
+            if self.gradient_checkpointing and self.training:
+                x = torch_checkpoint(blk, x, use_reentrant=False)
+            else:
+                x = blk(x)
             if (i == self.stage_ends[-1]) or (
                 i in self.stage_ends and self.return_interm_layers
             ):

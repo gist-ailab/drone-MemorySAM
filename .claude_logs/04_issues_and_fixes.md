@@ -303,6 +303,68 @@ Sky가 가장 심각한 이유: 야간 하늘은 near-zero RGB → CRM/ZERO의 e
 
 ---
 
+### ISSUE-012: P23 (MoE DeBA-BB) A100 80GB OOM — Deformable Conv Activation 메모리 [하드웨어]
+
+**상태**: 🔴 미해결 (2026-03-10)
+**영향**: P23 (MoE_DeBA_BB), 잠재적으로 conv 기반 adapter 전체
+**우선순위**: 높음 — P23 학습 자체가 불가능
+
+**문제**:
+
+P23 (MoE DeBA-BB)이 A100 80GB에서 batch=1로도 OOM 발생.
+- 초기: 4 expert, scale [0.5, 1, 2, 4] → OOM
+- 축소: 2 expert, scale [1, 2] → **여전히 OOM**
+- P9 (SoftMoE-LoRA, Linear 기반)는 동일 환경에서 정상 학습
+
+**원인 분석**:
+
+1. **Conv activation이 Linear보다 훨씬 큰 메모리 차지**:
+   - LoRA: `Linear(C→r)` → activation shape `(B, H, W, r)`, r=4로 매우 작음
+   - DeBA-BB: `DCM 3×3 conv` → activation shape `(B, bottleneck_dim, H, W)` + deformable offset 저장
+   - 24개 block × expert 수 × 모달리티 3개 → conv activation 총량 막대
+
+2. **Frozen encoder라도 backward를 위해 전체 activation 보관**:
+   - Encoder가 frozen이어도 inject된 trainable adapter의 gradient 계산을 위해 모든 중간 activation이 메모리에 유지됨
+   - 24개 Hiera block의 self-attention + FFN + injected DeBA-BB adapter의 conv activation 전부
+
+3. **Gradient checkpointing 미적용**:
+   - 현재 encoder에 gradient checkpointing 없음
+   - SAM head 부분에만 일부 적용 (`semseg/models/sam2/training/model/sam2.py:495`)
+   - encoder activation이 VRAM의 가장 큰 비중
+
+4. **3× forward (3 modalities)**:
+   - 각 모달리티마다 encoder forward → activation 3세트 동시 보관
+   - P9에서도 동일하지만, Linear vs Conv 차이로 P23에서 터짐
+
+**해결 방안 (우선순위 순)**:
+
+1. **Encoder gradient checkpointing** (가장 효과적, ~40-50% VRAM 절약):
+   - Hiera trunk의 각 block에 `torch.utils.checkpoint.checkpoint()` 적용
+   - Activation 저장 대신 backward 시 재계산 → 학습 시간 ~30% 증가
+   - 적용 위치: `sam2/modeling/backbones/hieradet.py` 또는 `image_encoder.py`
+
+2. **Frozen encoder를 torch.no_grad()로 분리** (주의 필요):
+   - Frozen 부분만 no_grad로 forward → autograd graph 축소
+   - 단, DeBA-BB가 encoder 내부에 inject되어 있어 단순 적용 불가
+   - Frozen block output → detach → trainable adapter 입력 방식으로 재구성 필요
+
+3. **Expert 수 / bottleneck dim 추가 축소**:
+   - 1 expert로 축소 (MoE 의미 소실)
+   - bottleneck_dim 축소 (표현력 감소)
+   - → 근본 해결이 아닌 우회
+
+**Inference vs Training VRAM 차이 (참고)**:
+- Inference (RTX Titan 24GB): forward만 → 이전 layer activation 즉시 해제
+- Training (A100 80GB): forward 전체 activation 보관 + gradient + Adam state(×2) → ~3-4배
+
+**관련 파일**:
+- `train_sam2_lora_paper.py:532` — `autocast` (AMP 이미 적용됨)
+- `semseg/models/sam2/training/model/sam2.py:495` — SAM head gradient checkpointing (encoder 아님)
+- `semseg/models/sam2/sam2/sam_lola_utils.py` — `MoE_DeBA_BB`, `_MoE_DeBA_BB_qkv`
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P23`
+
+---
+
 ### ISSUE-004: Spatial-wise Confidence Weighting → P15 구현 예정
 
 **상태**: **P15로 구현 예정** (설계 완료, 구현 대기)
