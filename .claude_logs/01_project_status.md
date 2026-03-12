@@ -1,8 +1,174 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-10
+> 최종 업데이트: 2026-03-12
 
-## 현재 상태: P9+hardaug8_physaug ep131 **새로운 최선 모델 (M=81.98)**, P20/P21/P22 학습 대기, P23 구현 완료 (학습 대기)
+## 현재 상태: P9+hardaug8_physaug ep131 **최선 모델 (M=81.98)**, P21 학습 완료 (ep94 M=81.77), Scoring 개선 방향 연구 중
+
+### P21 학습 완료 — ep94가 best (2026-03-12)
+
+- **Best**: ep94 (M=81.77) — P9 ep131 (M=81.98) 대비 -0.21pp, P9을 넘지 못함
+- ep94 이후 test mIoU 지속 하락 (70.36→67.95 at ep133) — 오버피팅 확정
+- Dynamic +15pp (P9 대비) 개선 확인, Static -5.6pp / Sky -7.5pp 하락
+- **근본 원인**: CrossModalFusionHead의 GAP→상수 수렴 병목이 DeBA-FP 효과를 상쇄
+- 상세: `.claude_logs/03_experiment_log.md` — "P21 실험 결과" 섹션
+
+### Scoring 함수 개선 방향 연구 (2026-03-12)
+
+#### 문제 정의
+- CrossModalFusionHead: GAP→MLP→softmax가 학습된 상수로 수렴 (std≈0, 모든 입력에 동일 weight)
+- P12~P19의 8개 adaptive fusion 시도 모두 P9(고정 상수)보다 나쁨
+- 핵심 원인 3가지:
+  1. GAP이 spatial quality 정보 소실
+  2. SAM2 frozen encoder가 modality 간 feature 분포 정규화
+  3. Zero-init이 안정적 uniform 고정점 생성
+
+#### 관련 연구 조사 결과
+- **CAFuser (RA-L 2025)**: CLIP Condition Token + Cross-Attention² — 우리는 CLIP/text 없으므로 직접 차용 불가
+- **DGFusion, arXiv 2509.09828**: 입력 condition 정보 추출 → fusion 비율 결정
+- **Learnable Query Attention Pooling (CLIP, Perceiver, Q-Former)**: GAP 대체 — learnable query가 feature map에 cross-attend하여 입력 의존적 summary 생성 → 상수 수렴 원리적 불가
+- **AECF (arXiv 2025)**: gate collapse 방지 — per-instance entropy regularization + adversarial curriculum masking
+- **EMOE (CVPR 2025)**: unimodal distillation으로 각 modality 독립 예측력 유지 강제
+- **TokenFusion (CVPR 2022)**: per-token MLP scoring → 분포 기반 modality quality 판단
+- **GSoP (CVPR 2019)**: Second-order covariance pooling — 채널 co-activation 패턴으로 GAP보다 풍부한 입력 의존 표현
+- **CGGM (NeurIPS 2024)**: 학습 시 gradient modulation — dominant modality 억제
+
+#### 실험 계획: Quality-aware Memory Gating via Per-Modality Decoder Distillation (P24 후보)
+
+##### 해결하려는 문제
+
+1. **CrossModalFusionHead 상수 수렴**: GAP→MLP→softmax가 모든 입력에 동일 weight 출력 → adaptive fusion 불가
+2. **열화된 RGB의 memory 전파 오염**: 야간 장면에서 RGB가 frame_idx=0 (is_init_cond_frame=True)으로 먼저 처리 → 열화된 RGB memory가 memory bank에 저장 → LiDAR/Thermal이 이 memory를 attend하면서 오염 전파
+3. **Per-modality 보완성 보존**: LiDAR는 전체 mask quality는 낮지만(sky/water 못 잡음), 해상 객체 영역에서는 RGB를 보완 → scalar gating으로는 이 영역별 기여가 무시됨
+
+##### 핵심 아이디어: Spatial Quality Map으로 Memory 기여도 조절
+
+**학습 시 (Teacher)**:
+- 각 모달리티 feature를 SAM2 decoder에 single-frame으로 입력 (`is_init_cond_frame=True`, memory attention skip)
+- Per-pixel CE loss를 GT mask 대비 계산 → spatial quality map 생성
+- 이 quality map이 gating network의 supervision target
+
+**학습 시 (Student)**:
+- Gating network가 encoded feature만 보고 spatial quality map을 예측
+- 예측된 quality map으로 memory bank 저장 시 memory features를 spatial modulation
+- 열화된 영역의 memory 기여 ↓, 잘 예측하는 영역의 memory 기여 ↑
+
+**추론 시**:
+- Per-modality decoding 없이 gating network만 실행 → spatial quality map 예측
+- Memory modulation은 학습 시와 동일하게 적용
+- 추가 비용: gating network forward만 (매우 경량)
+
+##### 구체적 파이프라인
+
+```
+학습 시:
+  for m in [img, lidar, thermal]:
+    # Teacher: per-modality single-frame decoding
+    feat_m → SAM2 decoder(is_init=True, no memory) → logits_m  (B, 4, 1024, 1024)
+    loss_map_m = CE(logits_m, gt_mask, reduction='none')         (B, 1024, 1024)
+    quality_target_m = downsample(1/(1+loss_map_m), 64×64)       (B, 1, 64, 64)
+
+    # Student: gating network
+    predicted_quality_m = gating_net(feat_m)                      (B, 1, 64, 64)
+    gate_loss += MSE(predicted_quality_m, quality_target_m.detach())
+
+  # Main pipeline (기존과 동일 + memory modulation)
+  for frame_idx, m in enumerate(modalities):
+    output_m = track_step(feat_m, ...)   # memory attention 포함
+    maskmem_m = memory_encoder(output_m)
+    maskmem_m = maskmem_m * predicted_quality_m   ← memory modulation
+    → memory bank에 저장 → 다음 모달리티가 참조
+
+  final = AMF(outputs)  # 기존 AMF 유지 또는 quality 기반으로 대체
+  main_loss = CE(final, gt_mask)
+  total_loss = main_loss + λ_gate * gate_loss
+
+추론 시:
+  for m in modalities:
+    predicted_quality_m = gating_net(feat_m)          # gating network만 실행
+    output_m = track_step(feat_m, ...)
+    maskmem_m = memory_encoder(output_m) * predicted_quality_m
+    → memory bank
+  final = AMF(outputs)
+```
+
+##### P14~P17 aux decoder 접근과의 핵심 차이
+
+| 항목 | P14~P17 | 이 제안 |
+|------|---------|---------|
+| Mask 생성기 | 경량 Conv 2~3개 (~290 params) | **SAM2 full decoder** |
+| Mask 품질 | 낮음 (ISSUE-008 근본 한계) | **높음** (SAM2 decoder 능력 활용) |
+| Quality 측정 | Entropy (confident하게 틀려도 low) | **Per-pixel CE loss** (GT 대비 실제 품질) |
+| Scoring 시점 | 추론 시 aux prediction 필요 | **학습 시만** → KD로 gating net 학습 |
+| 추론 비용 | Aux decoder M번 추가 | **Gating net만** (경량) |
+| 적용 위치 | 최종 output 합산 weight | **Memory bank 저장 시 modulation** |
+| 해결 대상 | UAMM/AMF scoring | **Memory 전파 오염 차단** |
+
+##### Memory Modulation이 해결하는 것
+
+```
+예시: 야간 장면
+
+RGB (frame_idx=0):
+  gating_net → quality_map: sky=0.7, water=0.3, object=0.2 (전반적 열화)
+  maskmem_rgb = maskmem_rgb * quality_map → 약한 memory
+
+LiDAR (frame_idx=1):
+  memory attention: Q=LiDAR, K/V=약한 RGB memory
+  → 열화된 RGB memory를 별로 안 가져감 → LiDAR 오염 방지
+  gating_net → quality_map: sky=0.0, water=0.1, object=0.9
+  maskmem_lidar = maskmem_lidar * quality_map → object 영역만 강한 memory
+
+Thermal (frame_idx=2):
+  memory attention: Q=Thermal, K/V=약한 RGB + object-focused LiDAR memory
+  → LiDAR의 object 정보는 활용, RGB/LiDAR의 약한 영역은 무시
+```
+
+##### Gating Network 구조 (후보)
+
+Learnable Query Attention Pooling 기반:
+```python
+class SpatialQualityGating(nn.Module):
+    def __init__(self, feat_dim=256, n_queries=4):
+        self.queries = nn.Parameter(randn(n_queries, feat_dim))
+        self.cross_attn = MultiheadAttention(feat_dim, num_heads=4)
+        self.conv_head = nn.Sequential(
+            Conv2d(feat_dim, 64, 1), ReLU(),
+            Conv2d(64, 1, 1), Sigmoid()
+        )
+
+    def forward(self, feat_map):  # (B, C, H, W) = (B, 256, 64, 64)
+        # Cross-attention으로 quality-aware feature 생성
+        tokens = feat_map.flatten(2).permute(2, 0, 1)  # (HW, B, C)
+        q = self.queries.unsqueeze(1).expand(-1, B, -1)
+        attended, attn_weights = self.cross_attn(q, tokens, tokens)
+        # attended: (n_queries, B, C) → spatial map으로 변환
+        quality_feat = attn_weights @ tokens  # 또는 다른 spatial 복원 방식
+        quality_map = self.conv_head(quality_feat)  # (B, 1, 64, 64)
+        return quality_map
+```
+
+##### 리스크 및 열린 질문
+
+1. **Domain gap**: 학습(주간+aug)에서 배운 "feature→quality" 매핑이 야간 test에서 전이되는가?
+   - 완화: hardaug8_physaug의 극저조도 시뮬레이션이 커버
+   - 검증: val(주간)에서 quality map이 합리적인지 시각화로 확인
+
+2. **학습 비용**: SAM2 decoder × 3 추가 실행 (학습 시만)
+   - Encoder(Hiera)는 1번만 → decoder는 상대적으로 가벼움
+   - `torch.no_grad()`로 teacher decoder gradient 차단 가능 (memory 절약)
+   - 하지만 gating net의 gradient가 encoder까지 전파되어야 할 수 있음 → 설계 결정 필요
+
+3. **Gating net spatial output 구조**: Learnable Query → spatial map 복원 방법
+   - 단순: feat_map에 Conv2d 몇 개로 직접 quality map 생성 (P19과 유사하지만 supervision이 다름)
+   - 복잡: Cross-attention 기반 (더 input-adaptive하지만 spatial 복원이 자명하지 않음)
+
+4. **Memory modulation 강도**: quality_map ∈ [0,1]에서 0에 가까우면 memory가 거의 사라짐
+   - Min-clamp (e.g., max(quality, 0.1))로 최소 기여 보장?
+   - 또는 residual: maskmem = maskmem * (0.5 + 0.5 * quality) → [0.5, 1.0] 범위
+
+5. **UAMM/AMF와의 관계**: memory modulation이 충분하면 UAMM/AMF를 상수로 유지해도 되는가?
+   - 가설: memory 단계에서 quality-aware fusion이 일어나면, 최종 output fusion은 단순 평균이어도 충분
+   - 또는: quality map의 global average를 AMF weight로도 활용 (dual-use)
 
 ### P23 구현 완료 (2026-03-10)
 

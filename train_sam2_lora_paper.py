@@ -325,6 +325,11 @@ def main(cfg, gpu, save_dir):
         deba_cfg = model_cfg.get('DEBA', {})
         model_kwargs['deba_scales'] = deba_cfg.get('SCALES', [1, 2])
         model_kwargs['deba_gate_noise_std'] = deba_cfg.get('GATE_NOISE_STD', 0.1)
+    if 'quality_hidden_dim' in sig.parameters:
+        # [P24] SpatialQualityGating parameters
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['quality_hidden_dim'] = quality_cfg.get('HIDDEN_DIM', 64)
+        model_kwargs['quality_min'] = quality_cfg.get('MIN_QUALITY', 0.1)
 
     model = lora_model_class(**model_kwargs).cpu()
     
@@ -538,8 +543,14 @@ def main(cfg, gpu, save_dir):
                 # P11: forward가 (output, m_feat, aux_outputs, amf_weights, gate_dists) 리턴
                 # P10: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
                 # P13/P14/P15/P16: forward가 (output, m_feat, aux_logits_list) 리턴
+                # P24: forward가 (output, m_feat, gate_loss_data:dict) 리턴
                 # 그 외: (output, m_feat) 리턴
-                model_out = model(sample, multimask_output=True)
+                is_p24 = (lora_model_name == 'LoRA_Sam_P24')
+                if is_p24:
+                    model_out = model(sample, multimask_output=True, gt_mask=lbl)
+                else:
+                    model_out = model(sample, multimask_output=True)
+                p24_gate_loss_data = None
                 if len(model_out) == 5:
                     output, m_feat, aux_outputs, amf_weights, gate_dists = model_out
                     p13_aux_logits = None
@@ -548,8 +559,14 @@ def main(cfg, gpu, save_dir):
                     gate_dists = None
                     p13_aux_logits = None
                 elif len(model_out) == 3:
-                    # [P13] (output, m_feat, aux_logits_list)
-                    output, m_feat, p13_aux_logits = model_out
+                    output, m_feat, third = model_out
+                    if isinstance(third, dict):
+                        # [P24] gate_loss_data dict
+                        p24_gate_loss_data = third
+                        p13_aux_logits = None
+                    else:
+                        # [P13] aux_logits_list
+                        p13_aux_logits = third
                     aux_outputs, amf_weights = None, None
                     gate_dists = None
                 else:
@@ -616,11 +633,21 @@ def main(cfg, gpu, save_dir):
                             al_up, lbl, ignore_index=255)
                     p13_aux_loss = p13_aux_loss / len(p13_aux_logits)
 
+                # [P24] Spatial Quality Gate Loss: MSE(predicted, teacher_target)
+                p24_quality_loss = torch.tensor(0.0, device=device)
+                if p24_gate_loss_data is not None:
+                    predicted_list = p24_gate_loss_data['predicted']
+                    target_list = p24_gate_loss_data['target']
+                    for pred_q, tgt_q in zip(predicted_list, target_list):
+                        p24_quality_loss = p24_quality_loss + F.mse_loss(pred_q, tgt_q.detach())
+                    p24_quality_loss = p24_quality_loss / len(predicted_list)
+
                 # 전체 Loss
                 total_loss_unscaled = (loss_orig + protoloss
                                        + lambda_gate * gating_loss
                                        + lambda_mi * mi_loss
-                                       + lambda_aux * p13_aux_loss)
+                                       + lambda_aux * p13_aux_loss
+                                       + lambda_gate * p24_quality_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             scaler.scale(loss).backward()
@@ -644,7 +671,7 @@ def main(cfg, gpu, save_dir):
             proto_loss += protoloss.item()
             gate_loss_accum += gating_loss.item()
             mi_loss_accum += mi_loss.item()
-            aux_loss_accum += p13_aux_loss.item()
+            aux_loss_accum += p13_aux_loss.item() + p24_quality_loss.item()
 
             desc = (
                 f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "

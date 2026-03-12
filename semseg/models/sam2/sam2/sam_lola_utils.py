@@ -1334,3 +1334,63 @@ class _MoE_DeBA_BB_qkv(nn.Module):
         qkv[:, :, :, -self.dim:] += delta
 
         return qkv
+
+
+class SpatialQualityGating(nn.Module):
+    """
+    P24: Spatial Quality Gating Network.
+
+    Predicts a per-pixel quality map from encoded modality features.
+    During training, supervised by teacher quality maps derived from
+    per-modality SAM2 decoder CE loss against GT.
+    During inference, runs standalone (no teacher needed).
+
+    Input:  backbone FPN[0] features (B, C, H, W) — lowest-resolution level
+    Output: quality_map (B, 1, H_mem, W_mem) ∈ [min_quality, 1.0]
+
+    Design: Lightweight conv head (no cross-attention — keeps it simple and spatial).
+    """
+
+    def __init__(self, in_channels: int = 256, hidden_dim: int = 64,
+                 min_quality: float = 0.1):
+        """
+        Args:
+            in_channels: input feature channels (FPN[0] dim, typically 256)
+            hidden_dim: intermediate conv channels
+            min_quality: minimum quality value to prevent total memory zeroing
+        """
+        super().__init__()
+        self.min_quality = min_quality
+
+        self.head = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_dim, 3, padding=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden_dim, 1, 1, bias=True),
+        )
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.head:
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+        # Last conv bias init to +1.0 so sigmoid starts near 0.73
+        # → quality starts high (optimistic), learns to lower for bad regions
+        self.head[-1].bias.data.fill_(1.0)
+
+    def forward(self, feat: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            feat: (B, C, H, W) backbone feature map
+        Returns:
+            quality_map: (B, 1, H, W) in [min_quality, 1.0]
+        """
+        raw = self.head(feat)                          # (B, 1, H, W)
+        quality = torch.sigmoid(raw)                   # (B, 1, H, W) ∈ [0, 1]
+        # Clamp to [min_quality, 1.0] to prevent total memory erasure
+        quality = quality * (1.0 - self.min_quality) + self.min_quality
+        return quality
