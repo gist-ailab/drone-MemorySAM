@@ -175,7 +175,8 @@ def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs,
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-def save_p24_quality_vis(save_dir, epoch, gate_loss_data, sample_img, modal_names, max_size=128):
+def save_p24_quality_vis(save_dir, epoch, gate_loss_data, sample_img, modal_names,
+                         mode='train', max_size=128):
     """
     P24 quality map visualization — saves predicted/target quality maps per modality.
     Lightweight: resizes to max_size, single PNG per epoch.
@@ -183,19 +184,22 @@ def save_p24_quality_vis(save_dir, epoch, gate_loss_data, sample_img, modal_name
     Args:
         save_dir: output directory
         epoch: current epoch number
-        gate_loss_data: dict with 'predicted' and 'target' lists
+        gate_loss_data: dict with 'predicted' and optionally 'target' lists
         sample_img: list of input tensors (for reference thumbnail)
         modal_names: list of modality names e.g. ['img', 'lidar', 'thermal']
+        mode: 'train' (pred+target) or 'val' (pred only)
         max_size: resize long edge to this for space efficiency
     """
     vis_dir = Path(save_dir) / 'quality_vis'
     vis_dir.mkdir(parents=True, exist_ok=True)
 
     predicted = gate_loss_data['predicted']
-    target = gate_loss_data['target']
+    target = gate_loss_data.get('target')
+    has_target = target is not None and len(target) > 0
     m = len(predicted)
+    n_rows = 3 if has_target else 2
 
-    fig, axes = plt.subplots(3, m, figsize=(3 * m, 9))
+    fig, axes = plt.subplots(n_rows, m, figsize=(3 * m, 3 * n_rows))
     if m == 1:
         axes = axes[:, None]
 
@@ -219,20 +223,23 @@ def save_p24_quality_vis(save_dir, epoch, gate_loss_data, sample_img, modal_name
         axes[1, i].axis('off')
         plt.colorbar(im1, ax=axes[1, i], fraction=0.046, pad=0.04)
 
-        # Row 2: Target quality map
-        tgt_q = target[i][0, 0].detach().cpu().numpy()
-        im2 = axes[2, i].imshow(tgt_q, cmap='hot', vmin=0, vmax=1)
-        axes[2, i].set_title(f'Target Q [{tgt_q.min():.2f},{tgt_q.max():.2f}]', fontsize=9)
-        axes[2, i].axis('off')
-        plt.colorbar(im2, ax=axes[2, i], fraction=0.046, pad=0.04)
+        # Row 2: Target quality map (train only)
+        if has_target:
+            tgt_q = target[i][0, 0].detach().cpu().numpy()
+            im2 = axes[2, i].imshow(tgt_q, cmap='hot', vmin=0, vmax=1)
+            axes[2, i].set_title(f'Target Q [{tgt_q.min():.2f},{tgt_q.max():.2f}]', fontsize=9)
+            axes[2, i].axis('off')
+            plt.colorbar(im2, ax=axes[2, i], fraction=0.046, pad=0.04)
 
     axes[0, 0].set_ylabel('Input', fontsize=10, rotation=0, labelpad=40)
     axes[1, 0].set_ylabel('Predicted', fontsize=10, rotation=0, labelpad=40)
-    axes[2, 0].set_ylabel('Target', fontsize=10, rotation=0, labelpad=40)
+    if has_target:
+        axes[2, 0].set_ylabel('Target', fontsize=10, rotation=0, labelpad=40)
 
-    fig.suptitle(f'P24 Quality Maps — Epoch {epoch + 1}', fontsize=13, fontweight='bold')
+    suffix = 'train' if mode == 'train' else 'val'
+    fig.suptitle(f'P24 Quality Maps ({suffix}) — Epoch {epoch + 1}', fontsize=13, fontweight='bold')
     plt.tight_layout()
-    plt.savefig(vis_dir / f'epoch{epoch+1:03d}.png', dpi=100, bbox_inches='tight')
+    plt.savefig(vis_dir / f'epoch{epoch+1:03d}_{suffix}.png', dpi=100, bbox_inches='tight')
     plt.close()
 
 
@@ -719,6 +726,7 @@ def main(cfg, gpu, save_dir):
                     save_p24_quality_vis(
                         save_dir, epoch, p24_gate_loss_data, sample,
                         dataset_cfg.get('MODALS', [f'mod{i}' for i in range(len(sample))]),
+                        mode='train',
                     )
                 except Exception as e:
                     print(f"[P24 vis] Warning: {e}")
@@ -867,6 +875,7 @@ def main(cfg, gpu, save_dir):
                 model.eval()
                 val_loss_sum = 0.0
                 val_n = 0
+                p24_val_vis_done = False
                 with torch.no_grad():
                     for val_imgs, val_lbls in valloader:
                         val_imgs = [x.to(device) for x in val_imgs]
@@ -877,6 +886,23 @@ def main(cfg, gpu, save_dir):
                         vl_ce = loss_fn(val_logits, val_lbls)
                         vl_proto = prototypeseg.compute_loss(val_feat, val_lbls) * 256 * 256
                         val_loss_sum += (vl_ce + vl_proto).item()
+                        # [P24] Val quality vis: 1st batch only
+                        if is_p24 and not p24_val_vis_done:
+                            p24_val_vis_done = True
+                            _m_vis = model.module if hasattr(model, 'module') else model
+                            if hasattr(_m_vis, '_last_quality_maps') and _m_vis._last_quality_maps is not None:
+                                try:
+                                    import numpy as np
+                                    val_qmaps = [torch.from_numpy(q) for q in _m_vis._last_quality_maps]
+                                    save_p24_quality_vis(
+                                        save_dir, epoch,
+                                        {'predicted': val_qmaps},
+                                        val_imgs,
+                                        dataset_cfg.get('MODALS', [f'mod{i}' for i in range(len(val_imgs))]),
+                                        mode='val',
+                                    )
+                                except Exception as e:
+                                    print(f"[P24 val vis] Warning: {e}")
                         val_n += 1
                 val_loss_avg = val_loss_sum / max(val_n, 1)
                 val_losses.append((epoch + 1, val_loss_avg))
