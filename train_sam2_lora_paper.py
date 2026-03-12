@@ -175,6 +175,67 @@ def plot_training_curves(save_dir, epochs, losses, proto_losses, lrs,
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
 
+def save_p24_quality_vis(save_dir, epoch, gate_loss_data, sample_img, modal_names, max_size=128):
+    """
+    P24 quality map visualization — saves predicted/target quality maps per modality.
+    Lightweight: resizes to max_size, single PNG per epoch.
+
+    Args:
+        save_dir: output directory
+        epoch: current epoch number
+        gate_loss_data: dict with 'predicted' and 'target' lists
+        sample_img: list of input tensors (for reference thumbnail)
+        modal_names: list of modality names e.g. ['img', 'lidar', 'thermal']
+        max_size: resize long edge to this for space efficiency
+    """
+    vis_dir = Path(save_dir) / 'quality_vis'
+    vis_dir.mkdir(parents=True, exist_ok=True)
+
+    predicted = gate_loss_data['predicted']
+    target = gate_loss_data['target']
+    m = len(predicted)
+
+    fig, axes = plt.subplots(3, m, figsize=(3 * m, 9))
+    if m == 1:
+        axes = axes[:, None]
+
+    for i in range(m):
+        # Row 0: Input thumbnail
+        img_np = sample_img[i][0].detach().cpu().float()
+        if img_np.shape[0] == 3:
+            img_np = img_np.permute(1, 2, 0).numpy()
+            img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min() + 1e-8)
+        else:
+            img_np = img_np[0].numpy()
+            img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min() + 1e-8)
+        axes[0, i].imshow(img_np, cmap='gray' if img_np.ndim == 2 else None)
+        axes[0, i].set_title(f'{modal_names[i] if i < len(modal_names) else f"mod{i}"}', fontsize=10)
+        axes[0, i].axis('off')
+
+        # Row 1: Predicted quality map
+        pred_q = predicted[i][0, 0].detach().cpu().numpy()
+        im1 = axes[1, i].imshow(pred_q, cmap='hot', vmin=0, vmax=1)
+        axes[1, i].set_title(f'Pred Q [{pred_q.min():.2f},{pred_q.max():.2f}]', fontsize=9)
+        axes[1, i].axis('off')
+        plt.colorbar(im1, ax=axes[1, i], fraction=0.046, pad=0.04)
+
+        # Row 2: Target quality map
+        tgt_q = target[i][0, 0].detach().cpu().numpy()
+        im2 = axes[2, i].imshow(tgt_q, cmap='hot', vmin=0, vmax=1)
+        axes[2, i].set_title(f'Target Q [{tgt_q.min():.2f},{tgt_q.max():.2f}]', fontsize=9)
+        axes[2, i].axis('off')
+        plt.colorbar(im2, ax=axes[2, i], fraction=0.046, pad=0.04)
+
+    axes[0, 0].set_ylabel('Input', fontsize=10, rotation=0, labelpad=40)
+    axes[1, 0].set_ylabel('Predicted', fontsize=10, rotation=0, labelpad=40)
+    axes[2, 0].set_ylabel('Target', fontsize=10, rotation=0, labelpad=40)
+
+    fig.suptitle(f'P24 Quality Maps — Epoch {epoch + 1}', fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(vis_dir / f'epoch{epoch+1:03d}.png', dpi=100, bbox_inches='tight')
+    plt.close()
+
+
 def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
                              ckpt_dict, k=5):
     """Top-K 체크포인트 관리. rank를 postfix로 파일명에 기재.
@@ -649,6 +710,18 @@ def main(cfg, gpu, save_dir):
                                        + lambda_aux * p13_aux_loss
                                        + lambda_gate * p24_quality_loss)
                 loss = total_loss_unscaled / accumulation_steps
+
+            # [P24] Save quality map visualization (1st iter per epoch, rank 0 only)
+            if (is_p24 and p24_gate_loss_data is not None and iter == 0
+                    and ((train_cfg['DDP'] and torch.distributed.get_rank() == 0)
+                         or (not train_cfg['DDP']))):
+                try:
+                    save_p24_quality_vis(
+                        save_dir, epoch, p24_gate_loss_data, sample,
+                        dataset_cfg.get('MODALS', [f'mod{i}' for i in range(len(sample))]),
+                    )
+                except Exception as e:
+                    print(f"[P24 vis] Warning: {e}")
 
             scaler.scale(loss).backward()
             if (iter + 1) % accumulation_steps == 0:
