@@ -703,13 +703,22 @@ def main(cfg, gpu, save_dir):
                     p13_aux_loss = p13_aux_loss / len(p13_aux_logits)
 
                 # [P24] Spatial Quality Gate Loss: BCE(predicted_logits, teacher_target)
+                # Teacher target = exp(-CE_multiclass), ignore pixels masked out
                 p24_quality_loss = torch.tensor(0.0, device=device)
                 if p24_gate_loss_data is not None:
                     predicted_list = p24_gate_loss_data['predicted']   # raw logits
                     target_list = p24_gate_loss_data['target']         # exp(-CE) ∈ (0,1]
+                    ignore_mask = p24_gate_loss_data.get('ignore_mask')  # (B,1,H,W) bool
                     for pred_q, tgt_q in zip(predicted_list, target_list):
-                        p24_quality_loss = p24_quality_loss + F.binary_cross_entropy_with_logits(
-                            pred_q, tgt_q.detach())
+                        bce = F.binary_cross_entropy_with_logits(
+                            pred_q, tgt_q.detach(), reduction='none')  # (B,1,H,W)
+                        if ignore_mask is not None:
+                            valid = ~ignore_mask
+                            bce = bce * valid.float()
+                            n_valid = valid.float().sum().clamp(min=1.0)
+                            p24_quality_loss = p24_quality_loss + bce.sum() / n_valid
+                        else:
+                            p24_quality_loss = p24_quality_loss + bce.mean()
                     p24_quality_loss = p24_quality_loss / len(predicted_list)
 
                 # 전체 Loss

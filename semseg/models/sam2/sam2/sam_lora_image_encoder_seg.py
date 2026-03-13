@@ -6067,14 +6067,23 @@ class LoRA_Sam_P24(nn.Module):
             gate_loss_data = None
             if self.training and gt_mask is not None:
                 quality_targets = []
+                # Build ignore mask once → resize to FPN size for loss masking
+                fpn_h, fpn_w = all_backbone_feats[0].shape[-2:]
+                gt_safe = gt_mask.long().clone()
+                ignore_mask_full = (gt_safe == 255)       # (B, H_img, W_img)
+                gt_safe[ignore_mask_full] = 0
+                # Resize ignore mask to FPN size (nearest to keep binary)
+                ignore_mask_fpn = F.interpolate(
+                    ignore_mask_full.unsqueeze(1).float(), size=(fpn_h, fpn_w),
+                    mode='nearest',
+                ).bool()                                   # (B, 1, fpn_h, fpn_w)
+
                 for i in range(m):
                     with torch.no_grad():
                         teacher_logits = self._teacher_decode_single(
                             vision_feats[i], vision_pos_embeds[i], feat_sizes[i],
                         )
                         # teacher_logits: (B, num_classes, H_img, W_img)
-                        # gt_mask: (B, H_img, W_img) with class ids {0,1,2,3,255}
-                        # Resize teacher logits to GT spatial size if needed
                         if teacher_logits.shape[-2:] != gt_mask.shape[-2:]:
                             teacher_logits_resized = F.interpolate(
                                 teacher_logits, size=gt_mask.shape[-2:],
@@ -6082,23 +6091,14 @@ class LoRA_Sam_P24(nn.Module):
                             )
                         else:
                             teacher_logits_resized = teacher_logits
-                        # Per-pixel multi-class CE (no reduction)
-                        # → (B, H, W), higher = worse quality for this modality
-                        # Replace ignore=255 with 0 to avoid CUDA assert (255 >= n_classes)
-                        # then mask those pixels after CE computation
-                        gt_safe = gt_mask.long().clone()
-                        ignore_mask = (gt_safe == 255)
-                        gt_safe[ignore_mask] = 0
+                        # Per-pixel multi-class CE (ignore-safe)
                         ce_map = F.cross_entropy(
                             teacher_logits_resized, gt_safe,
                             reduction='none',
                         )  # (B, H, W)
-                        # Ignored pixels → quality = 1.0 (neutral, don't penalize)
-                        ce_map[ignore_mask] = 0.0
-                        # Convert to quality: exp(-CE) ∈ (0, 1]
+                        ce_map[ignore_mask_full] = 0.0
+                        # exp(-CE): low CE → high quality, ignore → 1.0
                         quality_target = torch.exp(-ce_map).unsqueeze(1)  # (B, 1, H, W)
-                        # Resize to FPN spatial size
-                        fpn_h, fpn_w = all_backbone_feats[0].shape[-2:]
                         quality_target = F.interpolate(
                             quality_target, size=(fpn_h, fpn_w),
                             mode='bilinear', align_corners=False,
@@ -6106,8 +6106,9 @@ class LoRA_Sam_P24(nn.Module):
                     quality_targets.append(quality_target)
 
                 gate_loss_data = {
-                    'predicted': quality_logits,   # raw logits for BCE loss
-                    'target': quality_targets,      # exp(-CE) ∈ (0, 1]
+                    'predicted': quality_logits,    # raw logits
+                    'target': quality_targets,       # exp(-CE) ∈ (0, 1]
+                    'ignore_mask': ignore_mask_fpn,  # (B, 1, fpn_h, fpn_w) bool
                 }
 
             # ============================================
