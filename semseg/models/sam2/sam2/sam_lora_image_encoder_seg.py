@@ -6019,7 +6019,7 @@ class LoRA_Sam_P24(nn.Module):
             multimask_output=True,
         )
         _, _, _, _, high_res_masks, _, _ = sam_outputs
-        return high_res_masks  # (B, 1, H_img, W_img)
+        return high_res_masks  # (B, num_classes, H_img, W_img)
 
     def forward(self, batched_input, multimask_output, gt_mask=None):
         m = len(batched_input)
@@ -6072,26 +6072,24 @@ class LoRA_Sam_P24(nn.Module):
                         teacher_logits = self._teacher_decode_single(
                             vision_feats[i], vision_pos_embeds[i], feat_sizes[i],
                         )
-                        # Per-pixel CE between teacher binary logit and GT
-                        # teacher_logits: (B, 1, H_img, W_img), gt_mask: (B, H_img, W_img)
-                        # Treat foreground (class > 0, ignore 255) as binary target
-                        gt_binary = (gt_mask > 0).float()  # (B, H, W)
-                        gt_binary[gt_mask == 255] = 0.0
-                        gt_binary = gt_binary.unsqueeze(1)  # (B, 1, H, W)
-                        # Resize teacher logits to GT size if needed
-                        if teacher_logits.shape[-2:] != gt_binary.shape[-2:]:
+                        # teacher_logits: (B, num_classes, H_img, W_img)
+                        # gt_mask: (B, H_img, W_img) with class ids {0,1,2,3,255}
+                        # Resize teacher logits to GT spatial size if needed
+                        if teacher_logits.shape[-2:] != gt_mask.shape[-2:]:
                             teacher_logits_resized = F.interpolate(
-                                teacher_logits, size=gt_binary.shape[-2:],
+                                teacher_logits, size=gt_mask.shape[-2:],
                                 mode='bilinear', align_corners=False,
                             )
                         else:
                             teacher_logits_resized = teacher_logits
-                        # Per-pixel BCE (no reduction) → CE map
-                        ce_map = F.binary_cross_entropy_with_logits(
-                            teacher_logits_resized, gt_binary, reduction='none',
-                        )  # (B, 1, H, W), higher = worse quality
-                        # Convert to quality: exp(-CE) ∈ (0, 1], low CE → high quality
-                        quality_target = torch.exp(-ce_map)
+                        # Per-pixel multi-class CE (no reduction)
+                        # → (B, H, W), higher = worse quality for this modality
+                        ce_map = F.cross_entropy(
+                            teacher_logits_resized, gt_mask.long(),
+                            reduction='none', ignore_index=255,
+                        )
+                        # Convert to quality: exp(-CE) ∈ (0, 1]
+                        quality_target = torch.exp(-ce_map).unsqueeze(1)  # (B, 1, H, W)
                         # Resize to FPN spatial size
                         fpn_h, fpn_w = all_backbone_feats[0].shape[-2:]
                         quality_target = F.interpolate(

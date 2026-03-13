@@ -407,19 +407,52 @@ quality_target = F.interpolate(quality_target.unsqueeze(1), size=(fpn_h, fpn_w),
 - Signal이 epoch에 걸쳐 소멸하지 않음 (GT 대비 절대적 오차)
 - "Confidently wrong" 문제 없음 (CE는 GT 대비 실제 오류 측정)
 
+**추가 문제: BCE vs 4-class CE — Teacher Decoder 출력이 Binary (2026-03-13 추가)**:
+
+현재 코딩봇 수정에서 BCE 기반으로 변경:
+```python
+# 현재 수정 (코딩봇)
+Teacher: BCE(decoder_logit, gt_binary) → per-pixel BCE map → target = exp(-BCE)
+Student: quality_gating(feat) → raw logits
+Loss: BCE_with_logits(logits, target)
+```
+
+**구조적 한계**: `_teacher_decode_single()`이 SAM2 원본 binary decoder(`_forward_sam_heads`)를 사용 → 출력이 `high_res_masks: (B, 1, H, W)` — **1채널 binary logit** (object vs background).
+
+- Binary decoder → BCE는 "여기에 뭔가 있는지 맞췄나"만 측정
+- 4-class CE → "여기가 Static/Dynamic/Water/Sky 중 **뭔지** 맞췄나" — semantic 정보 포함
+
+| | BCE (binary, 현재) | CE (4-class, 원래 계획) |
+|---|---|---|
+| LiDAR 수면 | "object 없음" → 맞음 → quality 높음 ❌ | Water를 Sky로 혼동 → quality 낮음 ✅ |
+| RGB 야간 하늘 | "object 없음" → 맞음 → quality 높음 ❌ | Sky를 Water로 오분류 → quality 낮음 ✅ |
+| 정보량 | foreground/background 2가지 | 4클래스 구분 → 풍부한 quality signal |
+
+**권장 수정 방향**: `_teacher_decode_single()`이 4-class logits를 출력하도록 변경하거나, main decoder의 중간 출력(4-class segmentation head)을 teacher signal로 활용. 그래야 원래 계획대로 `F.cross_entropy(teacher_logits_4class, gt_mask, reduction='none')`가 가능.
+
+**KD Loss 선택 (BCE_with_logits vs MSE)**:
+
+Student가 teacher의 soft target을 추종하는 KD에서는 BCE_with_logits와 MSE 모두 유효:
+- **BCE_with_logits**: gradient 안정적 (sigmoid 포화 시에도), probability space에서 학습
+- **MSE**: 원래 계획, continuous regression으로 단순 명쾌
+- 핵심은 KD loss 선택이 아니라 **teacher signal의 quality (binary vs 4-class)**
+
 **수정 위치**:
 - `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py:6067-6081`
-- `_teacher_decode_single()` 의 출력을 `gt_mask`와 비교하여 CE map 생성
+- `_teacher_decode_single()`: binary decoder 대신 4-class segmentation logits를 출력하도록 수정
+- Quality target 생성: `ce_map = F.cross_entropy(logits_4class, gt_mask, reduction='none', ignore_index=255)` → `quality_target = exp(-ce_map)`
 
 **수정 시 주의사항**:
-1. `teacher_logits` shape 확인 — multi-mask output이면 best mask 선택 필요
-2. `gt_mask` downsample 방식 — CE 계산 시 teacher_logits 해상도에 맞춰야 함 (nearest interpolation, ignore_index=255 처리)
-3. `quality_target` 범위 — `exp(-CE)` ∈ (0, 1], CE=0이면 quality=1.0 (완벽 예측)
-4. 시각화 함수 `save_p24_quality_vis`는 수정 불필요 (target은 여전히 (B, 1, H, W) ∈ [0, 1])
+1. `_teacher_decode_single()` 출력이 현재 `(B, 1, H, W)` binary → `(B, 4, H, W)` 4-class로 변경 필요
+2. 4-class logits를 얻으려면 main decoder의 segmentation head를 공유하거나, teacher용 4-class head를 별도 추가
+3. `gt_mask` downsample 방식 — CE 계산 시 teacher_logits 해상도에 맞춰야 함 (nearest interpolation, ignore_index=255 처리)
+4. `quality_target` 범위 — `exp(-CE)` ∈ (0, 1], CE=0이면 quality=1.0 (완벽 예측)
+5. 시각화 함수 `save_p24_quality_vis`는 수정 불필요 (target은 여전히 (B, 1, H, W) ∈ [0, 1])
 
 **관련 파일**:
 - `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: `LoRA_Sam_P24`, `_teacher_decode_single()`
-- `train_sam2_lora_paper.py:706-711`: P24 quality loss 계산 (MSE, 수정 불필요)
+- `semseg/models/sam2/sam2/modeling/sam2_base.py:257-300`: `_forward_sam_heads()` — binary mask 출력 구조
+- `train_sam2_lora_paper.py:706-711`: P24 quality loss 계산
 - `train_sam2_lora_paper.py:178-243`: `save_p24_quality_vis()` (수정 불필요)
 - `outputs/MMSamP24/.../quality_vis/`: 현재 학습의 시각화 결과
 
