@@ -6018,8 +6018,8 @@ class LoRA_Sam_P24(nn.Module):
             high_res_features=high_res_features,
             multimask_output=True,
         )
-        _, _, _, _, high_res_masks, _, _ = sam_outputs
-        return high_res_masks  # (B, num_classes, H_img, W_img)
+        _, high_res_multimasks, _, _, _, _, _ = sam_outputs
+        return high_res_multimasks  # (B, num_classes, H_img, W_img)
 
     def forward(self, batched_input, multimask_output, gt_mask=None):
         m = len(batched_input)
