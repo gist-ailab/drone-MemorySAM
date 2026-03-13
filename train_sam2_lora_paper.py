@@ -216,8 +216,9 @@ def save_p24_quality_vis(save_dir, epoch, gate_loss_data, sample_img, modal_name
         axes[0, i].set_title(f'{modal_names[i] if i < len(modal_names) else f"mod{i}"}', fontsize=10)
         axes[0, i].axis('off')
 
-        # Row 1: Predicted quality map
-        pred_q = predicted[i][0, 0].detach().cpu().numpy()
+        # Row 1: Predicted quality map (apply sigmoid if raw logits)
+        pred_raw = predicted[i][0, 0].detach().cpu().float()
+        pred_q = torch.sigmoid(pred_raw).numpy() if pred_raw.min() < 0 or pred_raw.max() > 1 else pred_raw.numpy()
         im1 = axes[1, i].imshow(pred_q, cmap='hot', vmin=0, vmax=1)
         axes[1, i].set_title(f'Pred Q [{pred_q.min():.2f},{pred_q.max():.2f}]', fontsize=9)
         axes[1, i].axis('off')
@@ -701,13 +702,14 @@ def main(cfg, gpu, save_dir):
                             al_up, lbl, ignore_index=255)
                     p13_aux_loss = p13_aux_loss / len(p13_aux_logits)
 
-                # [P24] Spatial Quality Gate Loss: MSE(predicted, teacher_target)
+                # [P24] Spatial Quality Gate Loss: BCE(predicted_logits, teacher_target)
                 p24_quality_loss = torch.tensor(0.0, device=device)
                 if p24_gate_loss_data is not None:
-                    predicted_list = p24_gate_loss_data['predicted']
-                    target_list = p24_gate_loss_data['target']
+                    predicted_list = p24_gate_loss_data['predicted']   # raw logits
+                    target_list = p24_gate_loss_data['target']         # exp(-CE) ∈ (0,1]
                     for pred_q, tgt_q in zip(predicted_list, target_list):
-                        p24_quality_loss = p24_quality_loss + F.mse_loss(pred_q, tgt_q.detach())
+                        p24_quality_loss = p24_quality_loss + F.binary_cross_entropy_with_logits(
+                            pred_q, tgt_q.detach())
                     p24_quality_loss = p24_quality_loss / len(predicted_list)
 
                 # 전체 Loss

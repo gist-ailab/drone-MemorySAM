@@ -1342,12 +1342,13 @@ class SpatialQualityGating(nn.Module):
 
     Predicts a per-pixel quality map from encoded modality features.
     During training, supervised by teacher quality maps derived from
-    per-modality SAM2 decoder CE loss against GT.
+    per-modality SAM2 decoder CE loss against GT: target = exp(-BCE).
     During inference, runs standalone (no teacher needed).
 
     Input:  backbone FPN[0] features (B, C, H, W) — lowest-resolution level
-    Output: quality_map (B, 1, H_mem, W_mem) ∈ [min_quality, 1.0]
+    Output (forward): raw logits (B, 1, H, W) — use logits_to_quality() for [min_quality, 1.0]
 
+    Loss: F.binary_cross_entropy_with_logits(logits, target)
     Design: Lightweight conv head (no cross-attention — keeps it simple and spatial).
     """
 
@@ -1387,10 +1388,12 @@ class SpatialQualityGating(nn.Module):
         Args:
             feat: (B, C, H, W) backbone feature map
         Returns:
-            quality_map: (B, 1, H, W) in [min_quality, 1.0]
+            raw logits: (B, 1, H, W) — NOT sigmoid-ed.
+            Use logits_to_quality() to convert to [min_quality, 1.0] for inference/memory modulation.
         """
-        raw = self.head(feat)                          # (B, 1, H, W)
-        quality = torch.sigmoid(raw)                   # (B, 1, H, W) ∈ [0, 1]
-        # Clamp to [min_quality, 1.0] to prevent total memory erasure
-        quality = quality * (1.0 - self.min_quality) + self.min_quality
-        return quality
+        return self.head(feat)                         # (B, 1, H, W) raw logits
+
+    def logits_to_quality(self, logits: torch.Tensor) -> torch.Tensor:
+        """Convert raw logits to quality map in [min_quality, 1.0]."""
+        quality = torch.sigmoid(logits)
+        return quality * (1.0 - self.min_quality) + self.min_quality

@@ -1,5 +1,5 @@
-CFG="configs/eval_config/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml"
-CKPT="outputs/MMSamP21/levine_multiaqua_rgbtl_P21_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/periodic_epoch95_checkpoint.pth"
+CFG="/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/configs/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml"
+CKPT="outputs/MMSamP24/bengio_multiaqua_rgbtl_P24_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch36_93.89_top1_checkpoint.pth"
 
 cfg_name=$(basename ${CFG} .yaml)
 

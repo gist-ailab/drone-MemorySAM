@@ -6053,14 +6053,16 @@ class LoRA_Sam_P24(nn.Module):
             max_w = cross_weights.max(dim=1, keepdim=True)[0]
             uamm_scores = cross_weights / (max_w + 1e-8)
 
-            # Per-modality spatial quality prediction
-            quality_maps = []
+            # Per-modality spatial quality prediction (raw logits)
+            quality_logits = []
+            quality_maps = []  # sigmoid-ed for memory modulation
             for i in range(m):
-                q_map = self.quality_gating(all_backbone_feats[i])
-                quality_maps.append(q_map)
+                q_logit = self.quality_gating(all_backbone_feats[i])  # raw logits
+                quality_logits.append(q_logit)
+                quality_maps.append(self.quality_gating.logits_to_quality(q_logit))
 
             # ============================================
-            # Phase 2.5 (Training): Teacher → quality targets
+            # Phase 2.5 (Training): Teacher → CE-based quality targets
             # ============================================
             gate_loss_data = None
             if self.training and gt_mask is not None:
@@ -6070,19 +6072,37 @@ class LoRA_Sam_P24(nn.Module):
                         teacher_logits = self._teacher_decode_single(
                             vision_feats[i], vision_pos_embeds[i], feat_sizes[i],
                         )
-                        mask_prob = torch.sigmoid(teacher_logits)
-                        confidence = torch.abs(mask_prob - 0.5) * 2
-
+                        # Per-pixel CE between teacher binary logit and GT
+                        # teacher_logits: (B, 1, H_img, W_img), gt_mask: (B, H_img, W_img)
+                        # Treat foreground (class > 0, ignore 255) as binary target
+                        gt_binary = (gt_mask > 0).float()  # (B, H, W)
+                        gt_binary[gt_mask == 255] = 0.0
+                        gt_binary = gt_binary.unsqueeze(1)  # (B, 1, H, W)
+                        # Resize teacher logits to GT size if needed
+                        if teacher_logits.shape[-2:] != gt_binary.shape[-2:]:
+                            teacher_logits_resized = F.interpolate(
+                                teacher_logits, size=gt_binary.shape[-2:],
+                                mode='bilinear', align_corners=False,
+                            )
+                        else:
+                            teacher_logits_resized = teacher_logits
+                        # Per-pixel BCE (no reduction) → CE map
+                        ce_map = F.binary_cross_entropy_with_logits(
+                            teacher_logits_resized, gt_binary, reduction='none',
+                        )  # (B, 1, H, W), higher = worse quality
+                        # Convert to quality: exp(-CE) ∈ (0, 1], low CE → high quality
+                        quality_target = torch.exp(-ce_map)
+                        # Resize to FPN spatial size
                         fpn_h, fpn_w = all_backbone_feats[0].shape[-2:]
                         quality_target = F.interpolate(
-                            confidence, size=(fpn_h, fpn_w),
+                            quality_target, size=(fpn_h, fpn_w),
                             mode='bilinear', align_corners=False,
                         )
                     quality_targets.append(quality_target)
 
                 gate_loss_data = {
-                    'predicted': quality_maps,
-                    'target': quality_targets,
+                    'predicted': quality_logits,   # raw logits for BCE loss
+                    'target': quality_targets,      # exp(-CE) ∈ (0, 1]
                 }
 
             # ============================================

@@ -2,7 +2,17 @@
 
 > 최종 업데이트: 2026-03-12
 
-## 현재 상태: P9+hardaug8_physaug ep131 **최선 모델 (M=81.98)**, P21 학습 완료 (ep94 M=81.77), Scoring 개선 방향 연구 중
+## 현재 상태: P9+hardaug8_physaug ep131 **최선 모델 (M=81.98)**, P24 학습 중 (teacher signal 버그 발견 → 수정 필요)
+
+### P24 학습 중 — Teacher Signal 버그 발견 (2026-03-13)
+
+- **현재 상태**: 학습 진행 중 (epoch 40+), 하지만 **teacher target이 잘못 구현됨**
+- **버그**: teacher quality target이 sigmoid confidence로 구현 → epoch 진행 시 전부 1.0으로 포화 → gating network에 의미 있는 supervision 없음
+- **원인**: `torch.abs(torch.sigmoid(logits) - 0.5) * 2` (현재) vs `torch.exp(-CE(logits, gt))` (계획)
+  - 현재: GT 미사용, decoder 자신감만 측정 → 학습되면 항상 자신감 높음 → signal 소멸
+  - 계획: GT 대비 실제 오류 측정 → 모달리티별 구조적 약점 패턴이 유지됨
+- **수정 방향**: `sam_lora_image_encoder_seg.py:6067-6081`에서 CE 기반으로 교체
+- **상세**: `.claude_logs/04_issues_and_fixes.md` — ISSUE-013
 
 ### P21 학습 완료 — ep94가 best (2026-03-12)
 

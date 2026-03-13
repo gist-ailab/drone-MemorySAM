@@ -365,6 +365,66 @@ P23 (MoE DeBA-BB)이 A100 80GB에서 batch=1로도 OOM 발생.
 
 ---
 
+### ISSUE-013: P24 Teacher Signal이 Sigmoid Confidence로 구현 — CE 기반으로 수정 필요 [긴급]
+
+**상태**: 🔴 수정 필요 (2026-03-13)
+**영향**: P24 (LoRA_Sam_P24) — 학습 중 gating network supervision 무효화
+**우선순위**: 최고 — 현재 학습이 의미 없는 target으로 진행 중
+
+**문제**:
+
+P24의 teacher quality target이 원래 계획(per-pixel CE loss)과 다르게 **sigmoid confidence**로 구현됨:
+
+```python
+# 현재 구현 (sam_lora_image_encoder_seg.py:6073-6074)
+mask_prob = torch.sigmoid(teacher_logits)         # [0, 1]
+confidence = torch.abs(mask_prob - 0.5) * 2       # [0, 1]
+```
+
+**관찰된 증상** (quality_vis/ 시각화):
+- Epoch 1~20: Target Q에 spatial 패턴 보임 (불확실 영역 어둡게, 확실 영역 밝게)
+- **Epoch 40**: Target Q가 **전부 흰색 (≈1.0)** — decoder가 학습되면서 모든 위치에서 자신감 상승 → signal 소멸
+
+**실패 원인 분석**:
+1. **GT를 사용하지 않음**: `gt_mask`가 forward에 전달되지만 teacher target 계산에 미사용
+2. **Decoder 학습과 함께 포화**: decoder가 잘 학습될수록 sigmoid→0 또는 1 → `|p-0.5|*2` → 전부 1.0
+3. **"Confidently wrong" 무시**: decoder가 틀린 예측을 확신해도 confidence=1.0 → 실제 quality 미반영
+4. **P16 Calibrated Entropy와 동일한 실패 패턴**: 자체 confidence ≠ 실제 quality
+
+**원래 계획 (CE 기반)**:
+```python
+# 수정해야 할 코드
+ce_map = F.cross_entropy(teacher_logits, gt_mask, reduction='none')  # (B, H, W)
+quality_target = torch.exp(-ce_map)  # GT 대비 잘 맞추면 1.0, 못 맞추면 ~0
+quality_target = F.interpolate(quality_target.unsqueeze(1), size=(fpn_h, fpn_w), ...)
+```
+
+**CE 기반이 해결하는 것**:
+- Decoder가 수렴해도 **모달리티별 구조적 약점은 남음**:
+  - LiDAR → 수면/하늘 예측 실패 → CE 높음 → quality 낮음 유지
+  - 야간 RGB → 어두운 객체 영역 CE 높음 → quality 낮음 유지
+  - Thermal → 하늘/수면 경계 CE 높음 → quality 낮음 유지
+- Signal이 epoch에 걸쳐 소멸하지 않음 (GT 대비 절대적 오차)
+- "Confidently wrong" 문제 없음 (CE는 GT 대비 실제 오류 측정)
+
+**수정 위치**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py:6067-6081`
+- `_teacher_decode_single()` 의 출력을 `gt_mask`와 비교하여 CE map 생성
+
+**수정 시 주의사항**:
+1. `teacher_logits` shape 확인 — multi-mask output이면 best mask 선택 필요
+2. `gt_mask` downsample 방식 — CE 계산 시 teacher_logits 해상도에 맞춰야 함 (nearest interpolation, ignore_index=255 처리)
+3. `quality_target` 범위 — `exp(-CE)` ∈ (0, 1], CE=0이면 quality=1.0 (완벽 예측)
+4. 시각화 함수 `save_p24_quality_vis`는 수정 불필요 (target은 여전히 (B, 1, H, W) ∈ [0, 1])
+
+**관련 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: `LoRA_Sam_P24`, `_teacher_decode_single()`
+- `train_sam2_lora_paper.py:706-711`: P24 quality loss 계산 (MSE, 수정 불필요)
+- `train_sam2_lora_paper.py:178-243`: `save_p24_quality_vis()` (수정 불필요)
+- `outputs/MMSamP24/.../quality_vis/`: 현재 학습의 시각화 결과
+
+---
+
 ### ISSUE-004: Spatial-wise Confidence Weighting → P15 구현 예정
 
 **상태**: **P15로 구현 예정** (설계 완료, 구현 대기)
