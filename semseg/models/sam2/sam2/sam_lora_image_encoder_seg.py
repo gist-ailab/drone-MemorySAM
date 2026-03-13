@@ -6084,10 +6084,17 @@ class LoRA_Sam_P24(nn.Module):
                             teacher_logits_resized = teacher_logits
                         # Per-pixel multi-class CE (no reduction)
                         # → (B, H, W), higher = worse quality for this modality
+                        # Replace ignore=255 with 0 to avoid CUDA assert (255 >= n_classes)
+                        # then mask those pixels after CE computation
+                        gt_safe = gt_mask.long().clone()
+                        ignore_mask = (gt_safe == 255)
+                        gt_safe[ignore_mask] = 0
                         ce_map = F.cross_entropy(
-                            teacher_logits_resized, gt_mask.long(),
-                            reduction='none', ignore_index=255,
-                        )
+                            teacher_logits_resized, gt_safe,
+                            reduction='none',
+                        )  # (B, H, W)
+                        # Ignored pixels → quality = 1.0 (neutral, don't penalize)
+                        ce_map[ignore_mask] = 0.0
                         # Convert to quality: exp(-CE) ∈ (0, 1]
                         quality_target = torch.exp(-ce_map).unsqueeze(1)  # (B, 1, H, W)
                         # Resize to FPN spatial size
