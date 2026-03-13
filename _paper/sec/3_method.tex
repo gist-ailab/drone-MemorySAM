@@ -5,13 +5,13 @@
 % \begin{figure*}[t]
 %   \centering
 %   \includegraphics[width=\linewidth]{fig/overview.pdf}
-%   \caption{Overview of our approach. (a) Each modality is processed by SAM2's frozen image encoder augmented with Soft-MoE LoRA layers. (b) A cross-modal fusion head jointly compares all modality features and produces softmax-normalized relative weights. (c) These weights are max-normalized for memory modulation (UAMM) and used as raw softmax for output fusion (AMF).}
+%   \caption{Overview of our approach. Each modality is encoded by SAM2's frozen backbone with Soft-MoE LoRA layers, then its memory features are spatially gated by a quality map before entering the memory bank. The quality map is learned via teacher--student distillation: during training, SAM2's decoder independently segments each modality to produce per-pixel CE targets; at inference, only the lightweight gating network runs.}
 %   \label{fig:overview}
 % \end{figure*}
 
-Our method adapts MemorySAM~\cite{chen2025memorysam} for the MULTIAQUA maritime segmentation task.
-We retain the core idea of treating each modality as a sequential frame processed through SAM2's~\cite{ravi2024sam2} memory-based tracking pipeline, and modify the LoRA adaptation strategy, modality scoring, and output fusion.
-Our pipeline operates in four phases: given $M$ input modalities (RGB, thermal, LiDAR), (1) all modalities are first encoded by SAM2's frozen image encoder with Soft-MoE LoRA layers; (2) a cross-modal fusion head jointly compares the backbone features and produces softmax-normalized relative weights; (3) these weights are max-normalized to modulate vision features before SAM2's memory-augmented tracking step (UAMM); and (4) the per-modality mask outputs are fused using the raw softmax weights (AMF).
+Our method builds on MemorySAM~\cite{chen2025memorysam}, which adapts SAM2~\cite{ravi2024sam2} for multi-modal semantic segmentation by treating each modality as a sequential frame processed through the memory-based tracking pipeline.
+We retain this sequential processing paradigm and introduce quality-aware memory gating to address the memory pollution problem.
+Our pipeline operates in five phases: given $M$ input modalities (RGB, thermal, LiDAR), (1) each modality is encoded by SAM2's frozen backbone with Soft-MoE LoRA layers; (2) a cross-modal fusion head produces relative modality weights; (3) the modality features are modulated by uncertainty-aware weights before entering the tracking step; (4) a spatial quality gating network modulates the resulting memory features before they are stored in the memory bank; and (5) the per-modality outputs are fused using the relative weights.
 
 
 \subsection{Soft-MoE LoRA}
@@ -36,11 +36,8 @@ We use $N{=}3$ experts and $r{=}4$ throughout our experiments.
 \label{sec:cross_modal}
 
 \noindent\textbf{Cross-modal scoring.}
-A central challenge in multi-modal fusion is estimating the relative quality of each modality.
-Prior approaches~\cite{chen2025memorysam} use independent per-modality heads (\eg, a CNN followed by sigmoid activation) to produce scalar confidence scores.
-However, when the backbone features are rich and all modalities produce large logits, the sigmoid function saturates---all scores converge to ${\sim}1.0$ regardless of actual quality differences, effectively disabling modality-adaptive weighting.
-
-We replace independent scoring with a cross-modal fusion head that jointly compares all modalities.
+In addition to the memory-level quality gating described in \cref{sec:quality_gating}, we employ a cross-modal fusion head for output-level modality weighting.
+Rather than scoring each modality independently, which can lead to degenerate solutions when all scores collapse to similar values, we jointly compare all modality features to produce relative weights.
 Given backbone feature maps $\{\mathbf{F}_i\}_{i=1}^{M}$, each is compressed by a shared network into a compact vector:
 \begin{equation}
   \mathbf{z}_i = \operatorname{ReLU}(\mathbf{W}_c \cdot \operatorname{GAP}(\mathbf{F}_i) + \mathbf{b}_c),
@@ -54,8 +51,7 @@ The compressed vectors are concatenated and passed through a comparison MLP to p
   \label{eq:cross_modal}
 \end{equation}
 where $\psi$ is a two-layer MLP and $\tau$ is a temperature parameter.
-The softmax normalization inherently produces relative weights: even when all modalities are high quality, the network can express fine-grained preferences; when one modality degrades, its weight decreases and others increase.
-We initialize the output layer of $\psi$ to zero, so that $\mathbf{l} = \mathbf{0}$ at the start of training and all modalities receive uniform weight $1/M$, ensuring stable initialization.
+We initialize the output layer of $\psi$ to zero, ensuring uniform weights $1/M$ at the start of training for stable initialization.
 
 \noindent\textbf{Uncertainty-Aware Memory Modulation (UAMM).}
 Before each modality's features enter SAM2's memory-augmented tracking step, we modulate them using max-normalized weights:
@@ -66,9 +62,8 @@ Before each modality's features enter SAM2's memory-augmented tracking step, we 
 \end{equation}
 where $\mathbf{f}_i^{(k)}$ are the multi-scale vision features for modality $i$ and $\epsilon = 10^{-8}$.
 The max-normalization ensures that the highest-scoring modality always receives $\hat{w} = 1.0$ (no attenuation), while other modalities are scaled down proportionally.
-For instance, if thermal is the most reliable modality at night ($w_\text{thermal} = 0.6$, $w_\text{lidar} = 0.3$, $w_\text{rgb} = 0.1$), the UAMM scores become $\hat{w}_\text{thermal} = 1.0$, $\hat{w}_\text{lidar} = 0.5$, $\hat{w}_\text{rgb} = 0.17$---thermal features pass through unmodified while RGB is strongly suppressed.
 
-The modulated features are processed by SAM2's \texttt{track\_step}, where the first modality initializes the memory and subsequent modalities attend to it via cross-attention, enabling cross-modal feature exchange through SAM2's built-in temporal attention mechanism.
+The modulated features are then processed by SAM2's tracking step, where the first modality initializes the memory and subsequent modalities attend to it via cross-attention, enabling cross-modal feature exchange through SAM2's built-in memory attention mechanism.
 
 \noindent\textbf{Adaptive Mask Fusion (AMF).}
 After obtaining per-modality mask predictions $\mathbf{o}_i$ from the tracking loop, we fuse them using the raw softmax weights:
@@ -76,35 +71,98 @@ After obtaining per-modality mask predictions $\mathbf{o}_i$ from the tracking l
   \mathbf{o}_\text{fused} = \sum_{i=1}^{M} w_i \cdot \mathbf{o}_i,
   \label{eq:amf}
 \end{equation}
-where $w_i$ are the softmax weights from \cref{eq:cross_modal}, which already sum to one.
-This dual-path design---max-normalized weights for UAMM, raw softmax weights for AMF---serves complementary purposes.
-UAMM requires \textit{absolute} preservation: the best modality should contribute its full feature magnitude to the memory bank.
-AMF requires \textit{relative} weighting: each modality's mask output should be weighted proportionally to its estimated quality.
+where $w_i$ are the softmax weights from \cref{eq:cross_modal}.
+This dual-path design---max-normalized for UAMM, raw softmax for AMF---serves complementary purposes: UAMM requires absolute preservation of the best modality's feature magnitude, while AMF requires relative weighting proportional to estimated quality.
+
+
+\subsection{Quality-Aware Memory Gating}
+\label{sec:quality_gating}
+
+The cross-modal fusion head and UAMM modulate the vision features \emph{before} the tracking step, but the memory features generated \emph{after} the tracking step are stored in the memory bank without any quality-based filtering.
+When a degraded modality (\eg, RGB at night) produces low-quality memory features, subsequent modalities attend to these corrupted features through SAM2's cross-attention mechanism, propagating errors across the entire fusion pipeline.
+We address this by introducing a spatial quality gating module that modulates memory features before they enter the bank.
+
+\subsubsection{Teacher: Per-Modality Decoder Quality Assessment}
+\label{sec:teacher}
+
+During training, we generate spatial quality targets by independently decoding each modality's features through SAM2's decoder \emph{without} cross-modal memory.
+For each modality $m$, the encoded vision features $\mathbf{f}_m$ are passed through SAM2's mask decoder in single-frame mode, bypassing the memory bank entirely:
+\begin{equation}
+  \hat{\mathbf{y}}_m = \operatorname{Decoder}(\mathbf{f}_m; \emptyset),
+  \label{eq:teacher_decode}
+\end{equation}
+where $\emptyset$ denotes an empty memory bank and $\hat{\mathbf{y}}_m \in \mathbb{R}^{B \times C \times H \times W}$ are the per-modality logits with $C$ semantic classes.
+The per-pixel cross-entropy against the ground truth $\mathbf{y}^*$ provides a spatial error map:
+\begin{equation}
+  \mathcal{E}_m(p) = -\sum_{c=1}^{C} \mathbf{y}^*_c(p) \log \hat{\mathbf{y}}_{m,c}(p),
+  \label{eq:ce_map}
+\end{equation}
+where $p$ indexes spatial positions.
+This error map is converted into a quality target:
+\begin{equation}
+  \mathbf{q}^*_m = \operatorname{downsample}\bigl(\exp(-\mathcal{E}_m)\bigr) \in [0, 1]^{H' \times W'},
+  \label{eq:quality_target}
+\end{equation}
+where $H' \times W'$ matches the feature map resolution.
+Positions where the modality produces accurate predictions yield quality values near 1.0, while positions with high error yield values near 0.
+
+This teacher signal has two important properties compared to confidence-based alternatives:
+\textbf{(i)} It measures \emph{correctness} against the ground truth, not merely confidence---a modality that is ``confidently wrong'' (\eg, LiDAR predicting water where there is sky) receives low quality.
+\textbf{(ii)} It captures \emph{structural} modality limitations that persist even as the model converges: LiDAR inherently cannot distinguish sky from water, so its quality target for sky regions remains low throughout training, providing a non-diminishing supervision signal.
+
+The teacher decoder is frozen during this process and adds no gradient computation cost.
+
+\subsubsection{Student: Spatial Quality Gating Network}
+\label{sec:student}
+
+A lightweight convolutional network predicts the spatial quality map from the encoded features:
+\begin{equation}
+  \hat{\mathbf{q}}_m = \sigma(\mathcal{G}(\mathbf{f}_m^{(0)})) \cdot (1 - q_\text{min}) + q_\text{min},
+  \label{eq:quality_pred}
+\end{equation}
+where $\mathbf{f}_m^{(0)}$ is the highest-resolution FPN feature, $\sigma$ is the sigmoid function, $q_\text{min} = 0.1$ prevents complete zeroing of memory features, and $\mathcal{G}$ is a three-layer CNN:
+\begin{equation}
+  \mathcal{G}: \operatorname{Conv}_{3 \times 3}(C_\text{in}, 64) \to \operatorname{ReLU} \to \operatorname{Conv}_{3 \times 3}(64, 64) \to \operatorname{ReLU} \to \operatorname{Conv}_{1 \times 1}(64, 1).
+  \label{eq:gating_net}
+\end{equation}
+The final layer's bias is initialized to $+1.0$, yielding $\sigma(1.0) \approx 0.73$, so that all memory features pass through with moderate gating at the start of training (optimistic initialization).
+The network contains ${\sim}$12.5K parameters.
+
+\subsubsection{Memory Modulation}
+\label{sec:mem_mod}
+
+After each modality's tracking step, SAM2's memory encoder produces memory features $\mathbf{m}_i$ to be stored in the bank. We apply the predicted quality map before storage:
+\begin{equation}
+  \tilde{\mathbf{m}}_i = \mathbf{m}_i \odot \operatorname{resize}(\hat{\mathbf{q}}_i),
+  \label{eq:mem_mod}
+\end{equation}
+where $\odot$ denotes element-wise multiplication with spatial broadcasting, and $\operatorname{resize}$ adjusts the quality map to match the memory feature resolution via bilinear interpolation.
+The gated memory $\tilde{\mathbf{m}}_i$ is then stored in the memory bank for subsequent modalities to attend to.
+
+This design has a direct effect on the cross-modal attention of later modalities.
+Consider a nighttime scene where RGB is processed first (frame index 0):
+the quality gating network suppresses degraded RGB regions (\eg, sky and water where RGB captures near-zero values), so when LiDAR (frame index 1) and thermal (frame index 2) attend to the memory bank, they receive attenuated contributions from RGB's weak regions while retaining information from regions where RGB remains informative.
+Conversely, LiDAR's quality map suppresses sky regions (where LiDAR has no information) but preserves object regions (where LiDAR excels), allowing thermal to selectively leverage LiDAR's strengths.
 
 
 \subsection{Training Objectives}
 \label{sec:training}
 
 Following MemorySAM~\cite{chen2025memorysam}, we use a Semantic Prototype Memory Module: for each class $c$, a global prototype $\mathbf{p}_c$ is maintained via exponential moving average (momentum $= 0.8$), and the prototype loss is $\mathcal{L}_\text{proto} = \text{MSE}(\hat{\mathbf{p}}, \mathbf{p})$.
+The quality gating loss is the binary cross-entropy between the predicted quality logits and the teacher target:
+\begin{equation}
+  \mathcal{L}_\text{gate} = \frac{1}{M} \sum_{m=1}^{M} \operatorname{BCE}(\mathcal{G}(\mathbf{f}_m^{(0)}),\; \mathbf{q}^*_m),
+  \label{eq:gate_loss}
+\end{equation}
+where ignore-class pixels (label 255) are excluded from the loss computation.
 The total training loss is:
 \begin{equation}
-  \mathcal{L} = \mathcal{L}_\text{OHEM} + \mathcal{L}_\text{proto},
+  \mathcal{L} = \mathcal{L}_\text{OHEM} + \mathcal{L}_\text{proto} + \lambda_\text{gate} \mathcal{L}_\text{gate},
   \label{eq:total_loss}
 \end{equation}
-where $\mathcal{L}_\text{OHEM}$ is the Online Hard Example Mining cross-entropy loss.
-The cross-modal fusion head is trained end-to-end through the segmentation objective; no additional gating supervision is required, as the softmax-based relative comparison provides sufficient gradient signal through the dual-path application.
+where $\mathcal{L}_\text{OHEM}$ is the Online Hard Example Mining cross-entropy loss and $\lambda_\text{gate}$ is a weighting coefficient.
+The cross-modal fusion head is trained end-to-end through the segmentation objective without additional supervision.
+The teacher decoder is frozen, so the quality gating loss gradient flows only through the student gating network.
 
 
-\subsection{Night-Robust RGB Augmentation}
-\label{sec:night_aug}
-
-The MULTIAQUA dataset requires generalization from daytime training to nighttime evaluation, where RGB quality degrades severely while thermal and LiDAR remain relatively stable.
-Inspired by~\cite{muhovic2025multiaqua} and CRM~\cite{shin2024crm}, we apply three complementary RGB corruptions during training (leaving thermal and LiDAR unchanged):
-
-\noindent\textbf{Night Simulation} (probability 0.35): extreme brightness reduction (factor sampled from $[0.03, 0.25]$), followed by contrast reduction ($[0.3, 0.7]$), gamma correction ($\gamma \in [0.4, 0.8]$), and additive Gaussian noise ($\sigma = 0.02$).
-
-\noindent\textbf{Complementary Random Masking} (probability 0.30): rectangular patches are randomly placed on the RGB image, zeroing out 20--50\% of spatial regions, forcing the model to rely on thermal and LiDAR for the masked areas.
-
-\noindent\textbf{Full-Channel Zeroing} (probability 0.12): the entire RGB input is replaced with zeros, simulating complete RGB failure.
-
-These augmentations are stacked sequentially: an image may undergo night simulation and then additionally be partially masked, creating diverse degradation patterns.
+% Night augmentation details moved to Sec. 4 (Implementation details)

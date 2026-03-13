@@ -3,46 +3,47 @@ Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: main.aux
 The style file: ieeenat_fullname.bst
 Database file #1: main.bib
+Warning--empty journal in bovcon2024macvi
 Warning--empty journal in puigcerver2024softmoe
-You've used 16 entries,
+You've used 26 entries,
             2708 wiz_defined-function locations,
-            698 strings with 7952 characters,
-and the built_in function-call counts, 9634 in all, are:
-= -- 771
-> -- 855
-< -- 5
-+ -- 287
-- -- 270
-* -- 850
-:= -- 1530
-add.period$ -- 48
-call.type$ -- 16
-change.case$ -- 135
-chr.to.int$ -- 15
-cite$ -- 33
-duplicate$ -- 376
-empty$ -- 604
-format.name$ -- 289
-if$ -- 1964
+            739 strings with 9758 characters,
+and the built_in function-call counts, 15265 in all, are:
+= -- 1215
+> -- 1352
+< -- 7
++ -- 453
+- -- 426
+* -- 1343
+:= -- 2425
+add.period$ -- 78
+call.type$ -- 26
+change.case$ -- 216
+chr.to.int$ -- 25
+cite$ -- 54
+duplicate$ -- 607
+empty$ -- 975
+format.name$ -- 457
+if$ -- 3115
 int.to.chr$ -- 2
 int.to.str$ -- 1
-missing$ -- 16
-newline$ -- 88
-num.names$ -- 64
-pop$ -- 292
+missing$ -- 26
+newline$ -- 138
+num.names$ -- 104
+pop$ -- 469
 preamble$ -- 1
-purify$ -- 119
+purify$ -- 190
 quote$ -- 0
-skip$ -- 315
+skip$ -- 499
 stack$ -- 0
-substring$ -- 189
-swap$ -- 58
-text.length$ -- 3
+substring$ -- 266
+swap$ -- 86
+text.length$ -- 4
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 176
-warning$ -- 1
-while$ -- 59
+type$ -- 286
+warning$ -- 2
+while$ -- 93
 width$ -- 0
-write$ -- 202
-(There was 1 warning)
+write$ -- 324
+(There were 2 warnings)

@@ -1,6 +1,6 @@
 # 실험 기록 (Experiment Log)
 
-> 최종 업데이트: 2026-03-12
+> 최종 업데이트: 2026-03-13
 
 ## MACVi Challenge 평가 지표
 
@@ -53,6 +53,7 @@
 | 23 | P8 | no-aug (beforeAug) | 93.10 | 35.93 | 78.23 | 12.81 | 64.51 | 15509 |
 | — | **P9** | hardaug4 **CV** (heuristic b+0.11 c×0.9, 56장 mIoU<65) | 93.30 | 64.86 | 78.87 | 17.16 | **79.08** | 16485 |
 | — | **P9** | hardaug4 **CV2** (heuristic b+0.11 c×0.9, 5장 mIoU<55) | 93.30 | — | — | — | **—** | 제출 대기 |
+| — | **P24** | hardaug8_physaug (ep36, sigmoid 버그) ⚠ | 93.89 | — | — | — | **—** | 미제출 (teacher signal 버그) |
 
 ---
 
@@ -1165,4 +1166,71 @@ for i in range(m):  # 각 모달리티
 ```bash
 # 학습 명령
 python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml
+```
+
+---
+
+### P24 Quality-aware Memory Gating 실험 (실험 M — 학습 중, 수정 필요)
+
+#### P24-M: P9 + Quality-aware Memory Gating via Per-Modality Decoder Distillation
+
+- **Ref**: 자체 설계 (P12-P21 scoring 실패 분석 기반)
+- **Config 학습**: `configs/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml`
+- **Config 평가**: `configs/eval_config/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml`
+- **모델**: LoRA_Sam_P24 (신규)
+- **Save dir**: `outputs/MMSamP24/bengio_multiaqua_rgbtl_P24_hardaug8_physaug`
+
+**핵심 아이디어**:
+- Teacher: per-modality SAM2 decoder로 single-frame 추론 → per-pixel loss map → spatial quality map
+- Student: gating network가 encoded feature만으로 quality map 예측 (KD)
+- Memory modulation: quality map으로 memory features를 spatial 가중 → 열화 모달리티의 memory 오염 방지
+
+#### P24-M1: sigmoid 기반 (ISSUE-013 버그) — ep36 평가 (2026-03-13)
+
+- **체크포인트**: `epoch36_93.89_top1_checkpoint.pth`
+- **결과**: Val mIoU **93.89** / Test **미제출** (버그로 의미 없음)
+
+**Val per-class IoU**:
+
+| Class | IoU | P9 대비 |
+|-------|-----|---------|
+| Static | 94.41 | +0.87 |
+| Dynamic | 47.17 | -32.61 ❌ |
+| Water | 98.15 | +3.54 |
+| Sky | 97.27 | +5.97 |
+| **mIoU** | **84.25** | - |
+
+**UAMM/AMF 분석**:
+
+| Modal | Val UAMM (mean±std) | Test UAMM (mean±std) |
+|-------|---------------------|----------------------|
+| img | 0.6591 ± 0.0004 | 0.6585 ± 0.0001 |
+| lidar | 0.9995 ± 0.0000 | 0.9995 ± 0.0000 |
+| thermal | 1.0000 ± 0.0000 | 1.0000 ± 0.0000 |
+
+| Modal | Val AMF (mean±std) | Test AMF (mean±std) |
+|-------|---------------------|----------------------|
+| img | 0.2479 ± 0.0001 | 0.2477 ± 0.0000 |
+| lidar | 0.3760 ± 0.0001 | 0.3760 ± 0.0000 |
+| thermal | 0.3761 ± 0.0001 | 0.3762 ± 0.0000 |
+
+**⚠ 완전 상수 수렴**: 모든 UAMM/AMF std < 0.001 → **gating이 작동하지 않음**
+
+**Prediction Confidence**:
+- Val: mean_entropy=0.14, high_uncertainty=7.0%
+- Test: mean_entropy=0.38, high_uncertainty=33.5% → 야간 불확실성 현저히 높음
+
+**실패 원인 (ISSUE-013)**:
+1. Teacher target이 sigmoid confidence (`|sigmoid(logit) - 0.5| * 2`)로 구현
+2. Epoch 40 시점 decoder가 충분히 학습 → 모든 위치에서 confidence ≈ 1.0 → target이 uniform white
+3. Gating network에 의미 있는 supervision이 없어 상수 출력 학습
+
+**수정 필요사항**:
+1. Teacher target을 4-class CE 기반 `exp(-CE(logits_4class, gt))` 로 변경
+2. `_teacher_decode_single()`이 4-class logits 출력하도록 수정 (현재 binary)
+3. Quality map 값을 detailed_log.json에 기록하도록 추가
+
+**분석 도구**: `MISC/analyze_detailed_log.py` (이번 세션에서 신규 생성)
+```bash
+python MISC/analyze_detailed_log.py --exp_dir outputs/MMSamP24/.../epoch36_93.89_top1 --no_moe
 ```

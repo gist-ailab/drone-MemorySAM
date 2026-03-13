@@ -1,8 +1,11 @@
 \begin{abstract}
-Adapting vision foundation models to multi-modal semantic segmentation is challenging because these models are designed for single-modal input, and naively fusing heterogeneous modalities often fails when sensor quality varies across conditions.
-We propose a method that adapts SAM2 via MemorySAM's memory-based cross-modal aggregation and addresses a key failure mode of multi-modal fusion with foundation models: when per-modality confidence is estimated independently via sigmoid activation, all scores saturate to ${\sim}1.0$ for rich backbone features, effectively disabling modality-adaptive weighting.
-We replace independent scoring with a cross-modal fusion head that jointly compares all modality features through a shared compression and comparison network, producing softmax-normalized relative weights that inherently differentiate between modalities.
-These weights are applied through two complementary paths: max-normalized for uncertainty-aware memory modulation---preserving the best modality's features at full strength while suppressing degraded ones---and as raw softmax for adaptive output fusion.
-Combined with Soft Mixture-of-Experts gating in SAM2's LoRA layers for full expert utilization, and aggressive RGB corruption augmentations for day-to-night generalization, we validate each design choice on the MULTIAQUA benchmark~\cite{muhovic2025multiaqua}, achieving 94.00\% mIoU on the daytime validation set.
-% Our method achieves XX.X\% mIoU on the nighttime test set.
+Multi-modal semantic segmentation from unmanned surface vehicles must cope with severe sensor degradation---particularly RGB cameras at night---while exploiting complementary thermal and LiDAR information.
+MemorySAM recently showed that SAM2's temporal memory mechanism can be repurposed for cross-modal fusion by treating each modality as a sequential frame.
+However, this sequential design has a structural vulnerability: the first modality (typically RGB) initializes the memory bank, and all subsequent modalities attend to it via cross-attention.
+When RGB is degraded at night, its low-quality features pollute the shared memory, corrupting the cross-modal attention for thermal and LiDAR.
+We propose \emph{Quality-Aware Memory Gating} to address this memory pollution.
+During training, a frozen copy of SAM2's decoder independently segments each modality to produce per-pixel cross-entropy maps against the ground truth, yielding spatial quality targets.
+A lightweight convolutional gating network (${\sim}$12.5K parameters) learns to predict these quality maps from the encoded features alone, and at inference the predicted maps spatially modulate memory features before they enter the bank---preserving high-quality regions while suppressing degraded ones---without additional decoding cost.
+Combined with Soft Mixture-of-Experts LoRA for modality-adaptive encoding and aggressive night-simulation augmentations, we validate our approach on the MULTIAQUA benchmark for daytime-to-nighttime maritime segmentation.
+% achieving XX.X\% mIoU on the daytime validation set and XX.X\% on the nighttime test set.
 \end{abstract}

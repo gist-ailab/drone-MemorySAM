@@ -614,7 +614,7 @@ def main(cfg, gpu, save_dir):
                 # P13/P14/P15/P16: forward가 (output, m_feat, aux_logits_list) 리턴
                 # P24: forward가 (output, m_feat, gate_loss_data:dict) 리턴
                 # 그 외: (output, m_feat) 리턴
-                is_p24 = (lora_model_name == 'LoRA_Sam_P24')
+                is_p24 = (lora_model_name in ('LoRA_Sam_P24', 'LoRA_Sam_P25'))
                 if is_p24:
                     model_out = model(sample, multimask_output=True, gt_mask=lbl)
                 else:

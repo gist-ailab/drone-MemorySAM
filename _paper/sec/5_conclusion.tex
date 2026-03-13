@@ -1,6 +1,8 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a method for adapting foundation models to multi-modal maritime semantic segmentation under varying sensor conditions.
-By building on MemorySAM's memory-based cross-modal framework, we introduced three complementary design choices: (1) soft mixture-of-experts gating for LoRA adaptation, which ensures full expert utilization when the number of experts is small; (2) a cross-modal fusion head that replaces independent sigmoid-based scoring with joint softmax-normalized comparison, applied through dual paths---max-normalized for memory modulation and raw softmax for output fusion; and (3) aggressive RGB corruption augmentations for day-to-night generalization.
-Our experiments on the MULTIAQUA benchmark validate each design choice and demonstrate the effectiveness of relative cross-modal scoring for adaptive modality weighting in degraded sensing conditions.
+We identified a structural vulnerability in memory-based multi-modal fusion with foundation models: when modalities are processed sequentially through SAM2's memory mechanism, degraded sensors (\eg, RGB at night) pollute the shared memory bank and corrupt cross-modal attention for subsequent, otherwise reliable modalities.
+To address this, we proposed Quality-Aware Memory Gating, a teacher--student framework that spatially modulates memory features before they are stored.
+The teacher leverages SAM2's own decoder to assess per-modality spatial quality during training, while the lightweight student network (${\sim}$12.5K parameters) learns to predict quality maps at inference with negligible overhead.
+Combined with Soft-MoE LoRA for modality-adaptive encoding and night-simulation augmentations for domain generalization, our approach addresses the key challenge of multi-modal maritime segmentation under varying sensor conditions.
+Experiments on the MULTIAQUA benchmark validate our design choices.

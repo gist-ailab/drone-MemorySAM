@@ -3,42 +3,33 @@
 
 \subsection{Multi-Modal Semantic Segmentation}
 
-Multi-modal semantic segmentation aims to leverage complementary information from heterogeneous sensors to improve scene understanding beyond what any single modality can achieve.
-Early approaches~\cite{hazirbas2017fusenet, sun2019rtfnet} adopted dual-encoder architectures with element-wise or concatenation-based fusion, but these methods are typically designed for fixed modal pairs (\eg, RGB-Depth or RGB-Thermal) and cannot easily generalize to arbitrary combinations.
+Multi-modal semantic segmentation leverages complementary information from heterogeneous sensors to improve scene understanding.
+Early dual-encoder approaches~\cite{hazirbas2017fusenet, sun2019rtfnet} fuse fixed modal pairs via element-wise operations, but do not generalize to arbitrary modality combinations.
+Transformer-based methods have advanced this field considerably.
+CMX~\cite{zhang2022cmx} introduced cross-modal feature rectification for long-range context exchange, and CMNeXt~\cite{zhang2023delivering} scaled this to arbitrary numbers of modalities with negligible per-modality overhead.
+StitchFusion~\cite{li2024stitchfusion} repurposes pretrained encoders as feature fusers, while MMSFormer~\cite{reza2024mmsformer} progressively integrates modalities within a unified Transformer block.
+Channel exchanging~\cite{wang2020deep} dynamically swaps feature channels across modality branches.
+For modality robustness, Complementary Random Masking (CRM)~\cite{shin2024crm} randomly masks input modalities during training to prevent over-reliance on any single sensor.
+Our night augmentation pipeline extends this idea with extreme brightness corruption and full-channel zeroing for maritime nighttime scenarios.
 
-Transformer-based architectures have significantly advanced this field.
-SegFormer~\cite{xie2021segformer} introduced a hierarchical Transformer encoder with a lightweight MLP decoder, eliminating positional encoding to enable flexible multi-scale feature extraction.
-Building on this backbone, CMX~\cite{zhang2022cmx} proposed a unified cross-modal fusion framework with a Cross-Modal Feature Rectification Module (CM-FRM) and a Feature Fusion Module (FFM) that performs long-range context exchange across modalities, achieving state-of-the-art results across RGB-Depth, RGB-Thermal, RGB-Polarization, and RGB-LiDAR benchmarks.
-CMNeXt~\cite{zhang2023delivering} further scaled this paradigm with the Self-Query Hub (SQ-Hub) and Parallel Pooling Mixer (PPX), enabling fusion across an arbitrary number of modalities with negligible per-modality parameter overhead and demonstrating +9.10\% mIoU improvement with quad-modal input on the DELIVER benchmark.
 
-StitchFusion~\cite{li2024stitchfusion} took a different approach by integrating large-scale pretrained models as both encoders and feature fusers, using a MultiAdapter module for cross-modal information transfer during encoding.
-This enables multi-modal fusion with minimal additional parameters by leveraging pretrained representations directly.
-MMSFormer~\cite{reza2024mmsformer} introduced a novel fusion block within a Transformer architecture that progressively improves performance as additional modalities are incorporated, demonstrating the effectiveness of modality-agnostic fusion on material and semantic segmentation benchmarks.
+\subsection{Maritime Scene Understanding}
 
-For modality robustness, Shin~\etal~\cite{shin2024crm} proposed Complementary Random Masking (CRM) for RGB-Thermal segmentation, which strategically masks input modalities during training to prevent over-reliance on any single sensor.
-Combined with a self-distillation loss, CRM forces the network to learn complementary representations, improving robustness when individual modalities are degraded.
-Our night augmentation pipeline draws inspiration from this approach, extending it with extreme brightness corruption and full-channel zeroing tailored for maritime nighttime scenarios.
-
-For maritime environments specifically, the MULTIAQUA dataset~\cite{muhovic2025multiaqua} provides synchronized RGB, thermal, and LiDAR data across daytime and nighttime conditions.
-It introduces robust training strategies that enable networks trained solely on daytime images to generalize to nighttime scenarios, highlighting the importance of augmentation-based domain adaptation for multi-modal maritime perception.
+Maritime perception differs from urban driving in its highly reflective water surfaces, sparse obstacles, and dramatic illumination changes.
+Benchmarks such as LaRS~\cite{zust2023larsd} and MaSTr1325~\cite{bovcon2019mastr} have driven progress in RGB-based maritime obstacle detection, while the MACVi workshop~\cite{bovcon2024macvi, kiefer2024macvi} provides standardized evaluation protocols.
+The MULTIAQUA dataset~\cite{muhovic2025multiaqua} extends maritime perception to the multi-modal setting with synchronized RGB, thermal, and LiDAR data, and introduces a challenging domain shift where models trained on daytime images must generalize to nighttime conditions with severely degraded RGB.
 
 
 \subsection{Foundation Model Adaptation for Segmentation}
 
-The Segment Anything Model (SAM)~\cite{kirillov2023sam} established a new paradigm for promptable image segmentation through large-scale pretraining on over 1 billion masks.
-Its successor, SAM2~\cite{ravi2024sam2}, extended this capability to video with a streaming memory architecture that maintains temporal context through memory banks and cross-attention mechanisms.
-However, both models are designed for single-modal (RGB) input and focus on instance-level segmentation, requiring adaptation for multi-modal semantic tasks.
+The Segment Anything Model (SAM)~\cite{kirillov2023sam} established a new paradigm for promptable segmentation through large-scale pretraining, and SAM2~\cite{ravi2024sam2} extended it to video with a streaming memory architecture built on the Hiera backbone~\cite{ryali2023hiera}.
+The strong generalization of SAM has motivated its adaptation to diverse domains: medical imaging~\cite{ma2024medsam}, remote sensing~\cite{chen2024rsprompter}, 3D point clouds~\cite{zhou2025pointsam}, and robotic grasping~\cite{noh2025graspsam}, demonstrating that SAM's pretrained representations transfer effectively with appropriate domain-specific strategies.
 
-Low-Rank Adaptation (LoRA)~\cite{hu2022lora} provides a parameter-efficient strategy for adapting large pretrained models by injecting trainable low-rank matrices into frozen attention layers.
-Applied to SAM, LoRA enables task-specific adaptation while preserving the foundation model's generalization capability with minimal additional parameters.
+For parameter-efficient adaptation, LoRA~\cite{hu2022lora} injects trainable low-rank matrices into frozen attention layers.
+MoE-LoRA~\cite{zhu2024moe} extends this with Mixture-of-Experts~\cite{shazeer2017moe} routing for modality-adaptive feature extraction, though hard top-$k$ selection can underutilize experts when the expert count is small.
+Soft MoE~\cite{puigcerver2024softmoe} addresses this by replacing discrete routing with continuous softmax weighting.
 
-MoE-LoRA~\cite{zhu2024moe} advanced this approach by incorporating Mixture-of-Experts (MoE)~\cite{shazeer2017moe} routing into the LoRA framework for multi-modal SAM adaptation.
-By maintaining multiple expert pairs and using a gating network for top-$k$ selection, it achieves modality-adaptive feature extraction with a 32.15\% improvement under missing modality conditions.
-However, the hard top-$k$ routing can lead to underutilized experts when the number of experts is small, which is common when the expert count matches the number of input modalities.
-Recent work on Soft Mixtures of Experts~\cite{puigcerver2024softmoe} has shown that replacing discrete top-$k$ selection with continuous softmax weighting over all experts improves gradient flow and eliminates dead expert problems, motivating our adoption of soft gating in the LoRA context.
-
-MemorySAM~\cite{chen2025memorysam} proposed an alternative approach by repurposing SAM2's video memory mechanism for multi-modal fusion.
-By treating different modalities as sequential frames, the memory bank naturally captures cross-modal features without requiring explicit fusion modules.
-Combined with a Semantic Prototype Memory Module (SPMM) that maintains category-level prototypes through exponential moving average updates, it bridges the gap from instance-level to semantic-level understanding, achieving state-of-the-art results of 65.38\% mIoU on DELIVER and 52.88\% on MCubeS.
-
-Our work builds upon MemorySAM's memory-based multi-modal framework while introducing Soft-MoE LoRA for improved expert utilization and a hybrid modulation strategy that separates absolute quality assessment from relative importance ranking.
+MemorySAM~\cite{chen2025memorysam} repurposes SAM2's temporal memory mechanism for multi-modal fusion by treating each modality as a sequential frame, enabling cross-modal feature exchange through the memory bank without explicit fusion modules.
+A Semantic Prototype Memory Module further bridges the gap from instance-level to semantic-level understanding.
+Our work builds on this framework and addresses a limitation of its sequential design: when sensor quality is asymmetric (\eg, degraded RGB at night), low-quality features can pollute the shared memory and corrupt cross-modal attention for subsequent modalities.
+We propose quality-aware memory gating, using a teacher--student distillation~\cite{hinton2015distilling} scheme to spatially modulate memory features before they enter the bank.

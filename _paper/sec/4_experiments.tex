@@ -6,111 +6,107 @@
 \noindent\textbf{Dataset.}
 We evaluate on the MULTIAQUA dataset~\cite{muhovic2025multiaqua}, which provides synchronized RGB, thermal, and LiDAR data captured from unmanned surface vehicles.
 The dataset contains four semantic classes: static obstacle, dynamic obstacle, water, and sky.
-Models are trained on daytime data and evaluated on both a daytime validation set and a nighttime test set, where RGB quality degrades significantly.
+The training and validation sets consist of daytime images (145 validation images), while the test set contains only nighttime images evaluated through the MACVi challenge server~\cite{bovcon2024macvi}.
+This setup requires models trained on daytime data to generalize to nighttime conditions where RGB quality degrades severely.
 
 \noindent\textbf{Implementation details.}
-We use SAM2 (Hiera-based backbone) as the foundation model with LoRA rank $r{=}4$ and $N{=}3$ Soft-MoE experts.
+We use SAM2~\cite{ravi2024sam2} with a Hiera-B+~\cite{ryali2023hiera} backbone as the foundation model, with LoRA~\cite{hu2022lora} rank $r{=}4$ and $N{=}3$ Soft-MoE experts.
 All images are resized to $1024 \times 1024$.
-We train for 200 epochs with AdamW optimizer (learning rate $6 \times 10^{-4}$, weight decay $0.01$) using a warmup-polynomial learning rate schedule (10 warmup epochs, power $0.9$).
-The batch size is 1 per GPU with gradient accumulation, and we use Online Hard Example Mining (OHEM) cross-entropy loss with the prototype segmentation loss (\cref{sec:training}).
-SAM2's image encoder is frozen; only the Soft-MoE LoRA layers, cross-modal fusion head, prompt encoder, and mask decoder are trained.
+We train with AdamW optimizer (learning rate $6 \times 10^{-4}$, weight decay $0.01$) using a warmup-polynomial schedule (10 warmup epochs, power $0.9$).
+The batch size is 1 per GPU and we use Online Hard Example Mining (OHEM) cross-entropy loss with the prototype segmentation loss~\cite{chen2025memorysam} (\cref{sec:training}).
+SAM2's image encoder is frozen; only the Soft-MoE LoRA layers, cross-modal fusion head, quality gating network, prompt encoder, and mask decoder are trained.
+The quality gating loss weight is $\lambda_\text{gate} = 0.5$.
+To bridge the day-to-night domain gap, we apply physics-inspired RGB augmentations during training~\cite{muhovic2025multiaqua}: brightness and gamma reduction simulating low-light conditions, complementary random masking~\cite{shin2024crm}, and stochastic full-channel zeroing, while leaving thermal and LiDAR unchanged.
 Training is conducted with PyTorch DDP on NVIDIA GPUs.
 
 \noindent\textbf{Evaluation metric.}
-We report mean Intersection-over-Union (mIoU) averaged over the four semantic classes.
+We report mean Intersection-over-Union (mIoU) averaged over the four semantic classes, on both the daytime validation set and the nighttime test set.
 
 
-\subsection{Main Results}
+\subsection{Comparison with State of the Art}
 
-% TODO: Update with final challenge test results
+\cref{tab:main_results} compares our method against prior approaches on the MULTIAQUA benchmark.
+The baselines include CMNeXt~\cite{zhang2023delivering}, MMSFormer~\cite{reza2024mmsformer}, and StitchFusion~\cite{li2024stitchfusion} with various training strategies from~\cite{muhovic2025multiaqua}: suffix ``-D'' denotes double-pass training (processing each modality pair twice with swapped order), and ``-H'' denotes a multi-head decoder.
+All baseline results are taken from~\cite{muhovic2025multiaqua}.
+
 \begin{table}[t]
-  \caption{Main results on the MULTIAQUA benchmark. Daytime val mIoU and nighttime test mIoU are reported.}
+  \caption{Comparison on the MULTIAQUA benchmark. Val mIoU (daytime) and test mIoU (nighttime) are reported. ``D'' = double-pass training, ``H'' = multi-head decoder. Baseline results from~\cite{muhovic2025multiaqua}. Best results in \textbf{bold}, second best \underline{underlined}.}
   \label{tab:main_results}
   \centering
-  \setlength{\tabcolsep}{4pt}
+  \setlength{\tabcolsep}{3.5pt}
   \begin{tabular}{@{}lccc@{}}
     \toprule
-    Method & Modalities & Val mIoU & Test mIoU \\
+    Method & Val mIoU & Test mIoU & Obs.\ (test) \\
     \midrule
-    % TODO: Add baseline comparisons from MULTIAQUA paper or challenge
-    CMNeXt~\cite{zhang2023delivering} & RGB+T+L & \TODO{XX.X} & \TODO{XX.X} \\
+    CMNeXt$_\text{RGB}$~\cite{zhang2023delivering}  & \textbf{94.31} & 38.23 & 11.87 \\
+    CMNeXt~\cite{zhang2023delivering}                & 88.78 & 50.52 & 10.86 \\
+    CMNeXt-H                                         & 89.97 & 50.05 & 11.10 \\
+    CMNeXt-D                                         & 92.95 & 72.24 & 32.68 \\
+    CMNeXt-DH                                        & 93.58 & \underline{74.25} & \underline{37.25} \\
     \midrule
-    Ours & RGB+T+L & 94.00 & \TODO{XX.X} \\
+    MMSFormer~\cite{reza2024mmsformer}               & 85.68 & 40.11 & 10.37 \\
+    MMSFormer-H                                      & 88.36 & 45.70 & 9.37 \\
+    MMSFormer-D                                      & 89.98 & 64.12 & 13.36 \\
+    MMSFormer-DH                                     & 88.21 & 63.09 & 15.89 \\
+    \midrule
+    StitchFusion~\cite{li2024stitchfusion}           & 93.57 & 41.86 & 14.98 \\
+    StitchFusion-H                                   & 91.14 & 42.95 & 19.73 \\
+    StitchFusion-D                                   & 89.81 & 74.23 & 36.89 \\
+    StitchFusion-DH                                  & 91.59 & 73.59 & 34.38 \\
+    \midrule
+    MemorySAM~\cite{chen2025memorysam}               & \TODO{XX.X} & \TODO{XX.X} & \TODO{XX.X} \\
+    Ours                                             & \TODO{XX.X} & \TODO{XX.X} & \TODO{XX.X} \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\cref{tab:main_results} presents our results on the MULTIAQUA benchmark.
-On the daytime validation set, our method achieves 94.00\% mIoU.
-% TODO: Add analysis of test set results when available.
+% TODO: Fill in MemorySAM and Ours results when P24 training completes.
+% P9 hardaug8_physaug ep131: Val 93.54 / Test 70.41 / Obstacle 32.85
+% P24: pending CE-based retraining
 
-\cref{tab:classwise} shows the per-class breakdown on the validation set.
-The model achieves strong performance on water (99.08\%) and sky (98.84\%), which occupy large contiguous regions, and on static obstacles (97.25\%).
-The dynamic obstacle class is the most challenging at 80.82\%, which is expected given the smaller object sizes and higher appearance variability of moving vessels.
-
-\begin{table}[t]
-  \caption{Per-class IoU (\%) on the MULTIAQUA validation set.}
-  \label{tab:classwise}
-  \centering
-  \begin{tabular}{@{}lcccc|c@{}}
-    \toprule
-     & Static & Dynamic & Water & Sky & mIoU \\
-    \midrule
-    Ours & 97.25 & 80.82 & 99.08 & 98.84 & 94.00 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\cref{tab:main_results} shows that among the baselines, the double-pass training strategy (``-D'') provides the largest improvement for nighttime generalization, with CMNeXt-DH achieving 74.25\% test mIoU.
+% TODO: Add analysis of our results vs baselines when available.
 
 
 \subsection{Ablation Studies}
 
 \noindent\textbf{Effect of night augmentation.}
-To validate the importance of our night-robust augmentation pipeline (\cref{sec:night_aug}), we train an identical model without any RGB corruption augmentations and compare performance.
+\cref{tab:ablation_nightaug} validates the importance of night-robust augmentation.
+Without any RGB corruption, the model achieves high daytime validation mIoU but suffers catastrophic failure on the nighttime test set.
+Night augmentation substantially bridges this gap by exposing the model to simulated degradation patterns during training.
 
-% TODO: Fill in after running the ablation experiment
 \begin{table}[t]
-  \caption{Ablation on night-robust RGB augmentation. ``Night Aug'' includes night simulation, CRM, and full-channel zeroing.}
+  \caption{Ablation on night-robust RGB augmentation.}
   \label{tab:ablation_nightaug}
   \centering
   \begin{tabular}{@{}lcc@{}}
     \toprule
     Night Aug & Val mIoU & Test mIoU \\
     \midrule
-    \xmark & \TODO{XX.X} & \TODO{XX.X} \\
-    \cmark & 94.00 & \TODO{XX.X} \\
+    \xmark & 93.10 & 35.93 \\
+    \cmark & \TODO{XX.X} & \TODO{XX.X} \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-% TODO: Add analysis after experiment results are available.
-% Expected: val mIoU may be similar or slightly higher without augmentation (since val is daytime),
-% but test mIoU (nighttime) should show a significant drop without augmentation.
-% This would demonstrate that the augmentation trades minor daytime accuracy for substantial nighttime robustness.
+\noindent\textbf{Effect of quality-aware memory gating.}
+To isolate the contribution of quality-aware memory gating, we compare our full model against the baseline without the gating module (equivalent to the MemorySAM backbone with our other components).
 
-
-\noindent\textbf{Effect of modality combination.}
-We investigate the contribution of each modality by training models with different subsets.
-
-% TODO: Fill in after running the ablation experiment
+% TODO: Fill in after P24 training completes
 \begin{table}[t]
-  \caption{Ablation on input modalities.}
-  \label{tab:ablation_modality}
+  \caption{Ablation on quality-aware memory gating. ``QMG'' = quality-aware memory gating.}
+  \label{tab:ablation_qmg}
   \centering
   \begin{tabular}{@{}lcc@{}}
     \toprule
-    Modalities & Val mIoU & Test mIoU \\
+    QMG & Val mIoU & Test mIoU \\
     \midrule
-    RGB only          & \TODO{XX.X} & \TODO{XX.X} \\
-    RGB + Thermal     & \TODO{XX.X} & \TODO{XX.X} \\
-    RGB + Thermal + LiDAR & 94.00 & \TODO{XX.X} \\
+    \xmark (P9 baseline) & 93.54 & 70.41 \\
+    \cmark (Ours)        & \TODO{XX.X} & \TODO{XX.X} \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-% TODO: Add analysis after experiment results are available.
-% Expected: RGB-only should suffer most on nighttime test set. Adding thermal should provide
-% significant improvement for night scenes. LiDAR should provide additional gains for obstacle classes.
-
 % \subsection{Qualitative Results}
 % TODO: Add visualization of segmentation results on daytime and nighttime samples.
-% Show how the model handles RGB degradation by relying on thermal/LiDAR.
+% Show quality maps for each modality and how they differ across conditions.

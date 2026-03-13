@@ -1,6 +1,6 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-03-10
+> 최종 업데이트: 2026-03-13
 
 ## 공통 기반: MemorySAM
 
@@ -1310,19 +1310,336 @@ DeBA 원본 전략 유지:
 
 ---
 
+## P24: P9 + Quality-aware Memory Gating via Per-Modality Decoder Distillation (실험 N)
+
+파일: `sam_lora_image_encoder_seg.py` 끝부분, 클래스: `LoRA_Sam_P24`
+Quality Head: `sam_lola_utils.py` — `SpatialQualityGating`
+
+### 동기
+
+P9의 memory attention은 모든 모달리티의 memory를 동일하게 취급. UAMM이 vision_feats를 scalar로 modulate하지만, **memory bank에 저장되는 maskmem_features는 무조건 원본 그대로**. 야간에 RGB encoder가 생성한 저품질 feature가 memory에 그대로 저장되면, 이후 모달리티의 memory attention이 오염된 memory를 참조.
+
+### 핵심 아이디어: Teacher-Student Quality Distillation
+
+각 모달리티 feature의 **공간적 품질(spatial quality)**을 예측하는 lightweight head를 학습하고, 예측된 quality map으로 memory bank 저장 시 maskmem_features를 modulate.
+
+### Teacher Signal: Per-pixel CE from SAM2 Decoder
+
+```
+Teacher (학습 시만, torch.no_grad):
+  per-modality vision_feats → SAM2 decoder (no memory) → teacher_logits (B, C, H, W)
+  → F.cross_entropy(teacher_logits, gt_mask, reduction='none') → ce_map (B, H, W)
+  → quality_target = exp(-CE) ∈ (0, 1]
+  → downsample to FPN size
+
+Student:
+  fpn[0] feature → SpatialQualityGating → quality_logits (B, 1, H, W)
+  → Loss: BCE_with_logits(logits, quality_target), ignore_mask 적용
+```
+
+**CE 기반 target의 장점** (ISSUE-013 참조):
+- Decoder가 수렴해도 모달리티별 **구조적 약점은 남음** (LiDAR→하늘, RGB→암전 등)
+- Signal이 epoch에 걸쳐 소멸하지 않음 (GT 대비 절대적 오차)
+
+### SpatialQualityGating 구조
+
+```python
+class SpatialQualityGating(nn.Module):
+    head = Sequential(
+        Conv2d(in_channels, 64, 3, padding=1),  # spatial context
+        ReLU(),
+        Conv2d(64, 64, 3, padding=1),
+        ReLU(),
+        Conv2d(64, 1, 1),                        # quality logit
+    )
+    # Init: kaiming + last bias=+1.0 → sigmoid ≈ 0.73 (optimistic start)
+
+    def logits_to_quality(logits):
+        return sigmoid(logits) * (1 - min_quality) + min_quality
+        # → [min_quality, 1.0] 범위, min_quality=0.1 (완전 zeroing 방지)
+```
+
+**파라미터**: ~12.5K (Conv2d 32→64→64→1)
+
+### Memory Modulation (Phase 3)
+
+```python
+# Phase 3에서 track_step 후:
+maskmem = multi_mask_output_step["maskmem_features"]  # (B, C, H_mem, W_mem)
+q_map = quality_maps[frame_idx]  # (B, 1, H_fpn, W_fpn)
+q_map_resized = F.interpolate(q_map, size=maskmem.shape[-2:], ...)
+multi_mask_output_step["maskmem_features"] = maskmem * q_map_resized
+```
+
+- Quality 높은 영역: memory 유지 (×1.0에 가까움)
+- Quality 낮은 영역: memory 억제 (×min_quality=0.1까지)
+- 이후 모달리티가 이 memory를 참조할 때 열화 영역의 영향 감소
+
+### P9 vs P24 비교
+
+| | P9 | P24 |
+| --- | --- | --- |
+| MoE LoRA | SoftMoE_LoRA (동일) | SoftMoE_LoRA (동일) |
+| Fusion Head | CrossModalFusionHead (동일) | CrossModalFusionHead (동일) |
+| UAMM | scalar max-norm (동일) | scalar max-norm (동일) |
+| AMF | scalar softmax (동일) | scalar softmax (동일) |
+| **Memory Modulation** | 없음 | **SpatialQualityGating** |
+| **Teacher Signal** | 없음 | **per-modality decoder CE → exp(-CE)** |
+| **추가 Loss** | 없음 | **BCE(quality_logits, target) × λ_gate** |
+| 학습 반환 | (o, f) | **(o, f, gate_loss_data)** |
+| 추가 파라미터 | 0 | **~12.5K** (SpatialQualityGating) |
+| Gradient Checkpoint | 미적용 | **적용 가능** (`GRADIENT_CHECKPOINT: true`) |
+
+### Config 주요 설정
+
+```yaml
+MODEL:
+  LORA_MODEL    : LoRA_Sam_P24
+  LORA_R        : 4
+  QUALITY_GATE:
+    HIDDEN_DIM  : 64        # SpatialQualityGating 중간 채널
+    MIN_QUALITY : 0.1       # quality map 최솟값 (완전 zeroing 방지)
+
+TRAIN:
+  LAMBDA_GATE   : 0.5       # quality loss 가중치
+  GRADIENT_CHECKPOINT : true # encoder activation checkpointing
+  AMP           : false      # P24는 AMP 비활성
+```
+
+### Gradient Checkpointing (ISSUE-012 대응)
+
+P24 config에서 `GRADIENT_CHECKPOINT: true` 적용:
+```python
+# train_sam2_lora_paper.py:416-417
+if train_cfg.get('GRADIENT_CHECKPOINT', False):
+    model.sam.image_encoder.trunk.gradient_checkpointing = True
+```
+- Hiera trunk의 각 block activation을 backward 시 재계산 → VRAM 절약
+- P23 OOM 문제의 해결책으로도 적용 가능
+
+### Save/Load
+
+```python
+merged_dict = {
+    **moe_params,              # P9 동일 (gate + experts)
+    **cross_modal_tensors,     # P9 동일
+    **quality_gating_tensors,  # prefix "quality_gating." (P24 신규)
+    **prompt_encoder_tensors,
+    **mask_decoder_tensors,
+}
+```
+
+### 알려진 이슈
+
+- **ISSUE-013**: Teacher signal이 원래 sigmoid confidence로 구현되어 epoch 40에서 포화 → CE 기반으로 수정됨
+- Teacher decoder가 **binary mask** 출력 (SAM2 원본 `_forward_sam_heads`) → 4-class CE가 아닌 제한된 signal
+- 4-class teacher logits를 위해서는 main decoder의 segmentation head 공유 또는 별도 head 필요
+
+### 시각화
+
+- `train_sam2_lora_paper.py:178-243` — `save_p24_quality_vis()`: 매 epoch 1st batch의 predicted/target quality map 저장
+- 출력 위치: `{save_dir}/quality_vis/`
+
+### 구현 상태
+
+- **구현 완료** (2026-03-11)
+- Config: `configs/hpca100-multiaqua_rgbtl_P24_hardaug8_physaug.yaml`, `configs/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml`
+- Eval config: 미확인
+- 학습 스크립트: `gate_loss_data` 3-tuple return 처리, `LAMBDA_GATE` loss 가중치, quality vis 저장
+- Augmentation: hardaug8_physaug
+
+---
+
+## P25: Unified Spatial Quality Fusion — Quality Map으로 UAMM + AMF + Memory 통합 (설계 중)
+
+파일: 미구현
+기반: P24 (SpatialQualityGating + Teacher-Student CE distillation)
+
+### 동기
+
+P24는 SpatialQualityGating으로 memory modulation만 수행하면서, UAMM/AMF는 여전히 P9의 CrossModalFusionHead(GAP→MLP→softmax)를 사용. 그런데:
+
+1. **CrossModalFusionHead는 8번 실패**: P9~P21까지 모든 variant에서 학습된 상수로 수렴 (std≈0.0000). GAP이 spatial 정보를 소실하고, frozen SAM2 encoder가 modality 간 분포를 정규화하여 입력 의존성이 사라짐.
+2. **P24에 이미 spatial quality map 존재**: teacher-supervised quality map이 "각 modality가 각 pixel에서 얼마나 정확한가"를 spatial하게 표현. 이걸 memory modulation에만 쓰는 것은 과소활용.
+3. **아키텍처 중복**: 상수 수렴하는 CrossModalFusionHead를 유지할 이유가 없음. Quality map으로 통합하면 파라미터 감소 + 학습 경로 단순화.
+
+### 핵심 변경: CrossModalFusionHead 제거 → Quality Map Triple-Duty
+
+```
+P24 (현재):
+  CrossModalFusionHead → scalar (B, m) → UAMM, AMF  (상수 수렴, adaptive 불가)
+  SpatialQualityGating → spatial (B, 1, H, W) → Memory modulation만
+
+P25 (제안):
+  CrossModalFusionHead 제거
+  SpatialQualityGating → spatial (B, 1, H, W) × m개 → UAMM + AMF + Memory 모두
+```
+
+### Phase별 Quality Map 활용
+
+```
+Phase 1: 모달리티별 인코딩 (P9 동일)
+  for modal in [img, lidar, thermal]:
+    backbone_feat = SAM2_encoder(modal)
+    memory_attention(backbone_feat, memory)
+    memory.append(backbone_feat)
+
+Phase 2: Quality Map 예측 (P24 Student 활용, CrossModalFusionHead 삭제)
+  for i, modal in enumerate(modalities):
+    quality_maps[i] = SpatialQualityGating(fpn_feats[i])  # (B, 1, H_fpn, W_fpn)
+
+Phase 3: Spatial UAMM (기존 scalar → spatial)
+  for i, modal in enumerate(modalities):
+    q_uamm = F.interpolate(quality_maps[i], size=vision_feats.shape[-2:])  # (B, 1, H_v, W_v)
+    # max-norm: 가장 높은 quality를 가진 modality를 1.0으로 정규화
+    # 3개 모달리티의 quality map을 stack → pixel별 max로 나누기
+    vision_feats[i] = vision_feats[i] * q_uamm_normalized[i]
+
+Phase 3.5: Memory Modulation (P24 동일)
+  maskmem[i] = maskmem[i] * quality_maps[i]  # memory bank 저장 시 modulation
+
+Phase 4: track_step (P9 동일)
+  각 모달리티별 SAM2 decoder 실행
+
+Phase 5: Spatial AMF (기존 scalar → spatial)
+  for i, modal in enumerate(modalities):
+    q_amf = F.interpolate(quality_maps[i], size=(H_out, W_out))  # (B, 1, H_out, W_out)
+  # pixel별 softmax normalization
+  q_stack = torch.stack([q_amf_0, q_amf_1, q_amf_2], dim=0)  # (m, B, 1, H, W)
+  q_norm = q_stack / q_stack.sum(dim=0, keepdim=True)          # pixel별 비율
+  fused = sum(q_norm[i] * output[i] for i in range(m))
+```
+
+### Teacher Signal (P24에서 계승, 변경 없음)
+
+```
+Teacher (학습 시만, torch.no_grad):
+  per-modality vision_feats → SAM2 decoder (no memory) → teacher_logits (B, 4, H, W)
+  → F.cross_entropy(teacher_logits, gt_mask, reduction='none') → ce_map (B, H, W)
+  → quality_target = exp(-CE) ∈ (0, 1]
+  → downsample to FPN size
+  → BCE_with_logits(student_logits, quality_target), ignore_mask 적용
+
+Student:
+  SpatialQualityGating (P24 동일, ~12.5K params)
+```
+
+**주의**: P24의 ISSUE-013이 해결된 상태여야 함 (4-class CE 기반 teacher signal)
+
+### P9 vs P24 vs P25 비교
+
+| | P9 | P24 | **P25** |
+| --- | --- | --- | --- |
+| CrossModalFusionHead | ✅ (상수 수렴) | ✅ (상수 수렴) | **❌ 제거** |
+| SpatialQualityGating | 없음 | ✅ (Memory만) | **✅ (Triple-Duty)** |
+| UAMM | scalar max-norm `(B, m)` | scalar max-norm `(B, m)` | **spatial max-norm `(B, 1, H, W)`** |
+| AMF | scalar softmax `(B, m)` | scalar softmax `(B, m)` | **spatial softmax `(B, 1, H, W)`** |
+| Memory Modulation | 없음 | spatial quality | **spatial quality (동일)** |
+| Teacher Signal | 없음 | CE-based | **CE-based (동일)** |
+| 추가 파라미터 | CrossModalFusionHead ~3K | CrossModalFusionHead ~3K + SQG ~12.5K | **SQG ~12.5K만** |
+| Scoring 근거 | 입력 무관 상수 | Memory만 adaptive | **UAMM + AMF + Memory 모두 adaptive** |
+
+### Spatial UAMM 상세
+
+P9의 scalar UAMM:
+```python
+# scores: (B, m) — 모든 pixel에 동일
+scores_norm = scores / scores.max(dim=1, keepdim=True).values  # max-norm
+vision_feats[i] = vision_feats[i] * scores_norm[:, i:i+1, None, None]  # broadcast
+```
+
+P25의 spatial UAMM:
+```python
+# quality_maps: list of (B, 1, H_fpn, W_fpn) — pixel별 다른 quality
+q_stack = torch.stack(quality_maps, dim=1)  # (B, m, 1, H, W)
+q_max = q_stack.max(dim=1, keepdim=True).values  # (B, 1, 1, H, W)
+q_norm = q_stack / q_max.clamp(min=1e-6)  # pixel별 max-norm, (B, m, 1, H, W)
+for i in range(m):
+    q_i = F.interpolate(q_norm[:, i], size=vision_feats[i].shape[-2:])
+    vision_feats[i] = vision_feats[i] * q_i
+```
+
+### Spatial AMF 상세
+
+P9의 scalar AMF:
+```python
+# cross_weights: (B, m) — softmax normalized
+fused = sum(cross_weights[:, i:i+1, None, None] * seg_output[i] for i in range(m))
+```
+
+P25의 spatial AMF:
+```python
+# quality_maps를 output resolution으로 interpolate
+q_amf = [F.interpolate(q, size=(H_out, W_out), mode='bilinear') for q in quality_maps]
+q_stack = torch.stack(q_amf, dim=0)  # (m, B, 1, H, W)
+q_softmax = F.softmax(q_stack, dim=0)  # pixel별 softmax across modalities
+fused = sum(q_softmax[i] * seg_output[i] for i in range(m))
+```
+
+### 논리적 타당성 평가: 80~85%
+
+**강점**:
+1. CrossModalFusionHead 8연패 → 구조적 교체 필요성이 명확히 입증됨
+2. Teacher supervision이 P12~P19 실패 원인(GT 없는 scoring)을 근본적으로 해결
+3. Spatial 정보 보존 — GAP의 정보 소실 문제 해소
+4. 아키텍처 단순화 (모듈 1개 제거, quality map 하나로 통합)
+5. P24에서 이미 quality map 인프라 구축 → 증분 변경만 필요
+
+**리스크**:
+1. **Student 오류 cascade**: quality map 하나가 3곳을 동시 결정 → 예측 오류 시 동시 영향
+   - 완화: min_quality=0.1로 완전 zeroing 방지, 초기 bias=+1.0으로 optimistic start
+2. **Quality ≠ 최적 fusion weight**: "정확도"와 "fusion 기여도"는 미묘하게 다를 수 있음
+   - 그러나 실용적으로 quality가 높을수록 더 기여해야 하는 건 맞으므로 좋은 proxy
+3. **Domain gap**: 학습(주간+aug)의 quality 패턴이 야간 test에서 전이되는지 불확실
+   - 완화: hardaug8_physaug의 극저조도 시뮬레이션, P24 결과로 사전 검증 가능
+
+### 구현 시 주의사항
+
+1. **P24 결과 먼저 확인**: P24의 quality map이 합리적 spatial pattern을 보이는지 확인 후 P25 진행
+2. **ISSUE-013 선결**: 4-class CE teacher signal이 구현되어야 quality map의 semantic 품질이 보장됨
+3. **Gradient flow**: SpatialQualityGating → quality_map → UAMM/AMF/Memory 세 경로로 gradient 전파 → loss landscape 변화 가능
+4. **기존 CrossModalFusionHead 코드 제거**: UAMM/AMF에서 `cross_weights` 참조하는 모든 곳을 `quality_maps`로 교체
+
+### 구현 상태
+
+- **설계 완료** (2026-03-14)
+- 구현 대기: P24 학습 결과 + ISSUE-013 해결 후 착수
+- 기반 코드: P24의 `LoRA_Sam_P24` + `SpatialQualityGating`
+
+---
+
 ## 버전 비교 총괄
 
-| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | P17 | **P19** |
+### 표 A: P8~P19 (Fusion Head 중심 계열)
+
+| 구분 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | P17 | P19 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Head | ConfHeadV2 | CrossModalFH | CrossModalFHV2 | CrossModalFHV2 | CrossModalFH | AuxHead+Energy | AuxDec×3+Energy | AuxDec×3+Energy(spatial) | AuxDec×3+Entropy(spatial) | MSAuxDec×3+Entropy(spatial) | **SpatialCrossFH** |
-| UAMM | sigmoid | max-norm | max-norm | softmax+τ | max-norm | max-norm | max-norm | spatial max-norm | spatial max-norm | spatial max-norm | **spatial max-norm** |
-| AMF | norm(sig) | softmax | softmax | softmax | softmax | energy softmax | energy softmax | spatial energy | spatial entropy | spatial entropy | **spatial softmax** |
-| Aux Head | 없음 | 없음 | AuxHead×3 | AuxHead×3 | 없음 | 공유×1 | 독립×3 | 독립×3 | 독립×3 | MS독립×3 | **없음** |
-| 추가 Loss | 없음 | 없음 | KL(0.5) | KL+MI(1.0) | 없음 | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | **없음** |
-| Gradient 격리 | N/A | N/A | N/A | N/A | N/A | 없음 | 없음 | 없음 | `.detach()` | `.detach()` | **N/A** |
-| Warmup | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 없음 | 10ep+5ep ramp | 10ep+5ep ramp | **없음** |
-| MoE init | zero | zero | zero | zero | zero | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | kaiming*0.01 | **kaiming*0.01** |
-| 학습 반환 | (o,f) | (o,f) | (o,f,aux,w) | (o,f,aux,w,g) | (o,f) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | **(o,f)** |
-| FPN 레벨 | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0,1,2] | **fpn[0,1,2]** |
-| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 71.05 | 68.42 | 73.23 | **구현 완료** |
-| 교훈 | sig saturation | 상대비교핵심 | oracle과적합 | 진단먼저 | cond미미 | 방향유효 | aux독립불충분 | spatial amplification | 4-fix 통합 | multi-scale aux | **learned spatial** |
+| Head | ConfHeadV2 | CrossModalFH | CrossModalFHV2 | CrossModalFHV2 | CrossModalFH | AuxHead+Energy | AuxDec×3+Energy | AuxDec×3+Energy(spatial) | AuxDec×3+Entropy(spatial) | MSAuxDec×3+Entropy(spatial) | SpatialCrossFH |
+| UAMM | sigmoid | max-norm | max-norm | softmax+τ | max-norm | max-norm | max-norm | spatial max-norm | spatial max-norm | spatial max-norm | spatial max-norm |
+| AMF | norm(sig) | softmax | softmax | softmax | softmax | energy softmax | energy softmax | spatial energy | spatial entropy | spatial entropy | spatial softmax |
+| Aux Head | 없음 | 없음 | AuxHead×3 | AuxHead×3 | 없음 | 공유×1 | 독립×3 | 독립×3 | 독립×3 | MS독립×3 | 없음 |
+| 추가 Loss | 없음 | 없음 | KL(0.5) | KL+MI(1.0) | 없음 | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | auxCE(0.3) | 없음 |
+| MoE | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA | SoftMoE LoRA |
+| 학습 반환 | (o,f) | (o,f) | (o,f,aux,w) | (o,f,aux,w,g) | (o,f) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f,aux) | (o,f) |
+| FPN 레벨 | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0] | fpn[0,1,2] | fpn[0,1,2] |
+| 최선 M-score | 78.45 | **81.47** | 79.27 | 77.09 | 80.80 | 81.21 | 74.27 | 71.05 | 68.42 | 73.23 | 구현 완료 |
+
+### 표 B: P20~P24 (MoE/Adapter/Memory 강화 계열, P9 기반)
+
+| 구분 | P9 (기준) | P20 | P21 | P22 | P23 | P24 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 기반 | — | P9 | P9 | P9 | P9 | P9 |
+| 핵심 변경 | — | MLP Gate + Rank↑ | DeBA-FP (fpn[0]) | DeBA-FP MultiScale | MoE DeBA-BB | Quality Memory Gating |
+| MoE Layer | SoftMoE_LoRA | **SoftMoE_LoRA_V2** | SoftMoE_LoRA | SoftMoE_LoRA | **MoE_DeBA_BB** | SoftMoE_LoRA |
+| Gate | Linear(C→3)×48 | **SharedGateMLP×4** | Linear(C→3)×48 | Linear(C→3)×48 | **GAP+Linear×4** | Linear(C→3)×48 |
+| Rank | 4 | 4 | 4 | 4 | N/A (conv) | 4 |
+| DeBA-FP | 없음 | 없음 | **fpn[0] only** | **fpn[0,1,2]** | 없음 | 없음 |
+| DeBA-BB | 없음 | 없음 | 없음 | 없음 | **24 blocks** | 없음 |
+| Memory Mod | 없음 | 없음 | 없음 | 없음 | 없음 | **SpatialQualityGating** |
+| Fusion Head | CrossModalFH | CrossModalFH | CrossModalFH | CrossModalFH | CrossModalFH | CrossModalFH |
+| UAMM/AMF | scalar | scalar | scalar | scalar | scalar | scalar |
+| 추가 Loss | 없음 | 없음 | 없음 | 없음 | 없음 | **BCE(quality) ×λ** |
+| 학습 반환 | (o,f) | (o,f) | (o,f) | (o,f) | (o,f) | **(o,f,gate_data)** |
+| 추가 파라미터 | 0 | +700K (rank↑) | +85K | +98K | +325K | +12.5K |
+| Grad Ckpt | 없음 | 없음 | 없음 | 없음 | 필요(OOM) | **적용** |
+| 최선 M-score | **81.98** | 학습 대기 | 학습 대기 | 학습 대기 | OOM (ISSUE-012) | 학습 중 |

@@ -51,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22, LoRA_Sam_P23, LoRA_Sam_P24, LoRA_Sam_P25
 )
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
@@ -131,6 +131,9 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P20': LoRA_Sam_P20,
         'LoRA_Sam_P21': LoRA_Sam_P21,
         'LoRA_Sam_P22': LoRA_Sam_P22,
+        'LoRA_Sam_P23': LoRA_Sam_P23,
+        'LoRA_Sam_P24': LoRA_Sam_P24,
+        'LoRA_Sam_P25': LoRA_Sam_P25,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
@@ -920,6 +923,20 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                     img_log['uamm'] = {k: round(float(v), 4) for k, v in zip(modals, uamm[b])}
                 if amf is not None and b < amf.shape[0]:
                     img_log['amf'] = {k: round(float(v), 4) for k, v in zip(modals, amf[b])}
+
+                # P24 Quality Gating map statistics
+                quality_maps = getattr(core, '_last_quality_maps', None)
+                if quality_maps is not None:
+                    img_log['quality_gating'] = {}
+                    for m_idx, m_name in enumerate(modals):
+                        if m_idx < len(quality_maps):
+                            qm = quality_maps[m_idx]
+                            img_log['quality_gating'][m_name] = {
+                                'mean': round(float(qm.mean()), 4),
+                                'std': round(float(qm.std()), 4),
+                                'min': round(float(qm.min()), 4),
+                                'max': round(float(qm.max()), 4),
+                            }
 
                 # Per-image prediction quality
                 pred_np_i = pred_resized.cpu().numpy()

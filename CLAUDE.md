@@ -119,6 +119,8 @@ drone-MemorySAM/
 | P10 | CrossModalFusionHeadV2 + ModalAuxHead + oracle KL | 79.27 | 취소 (test 성능 하락) |
 | P11 | P10 + MI routing loss | 77.09 | 취소 (MoE gate 진단 우선) |
 | P12 | Input-Conditioned Soft MoE LoRA (cond_dim) | - | 설계만 완료 |
+| P24 | P9 + SpatialQualityGating (scalar UAMM/AMF + CE teacher) | - | 학습 중 |
+| P25 | Unified Spatial Quality Fusion (spatial UAMM/AMF, no CrossModalFusionHead) | - | 구현 완료 (학습 대기) |
 
 **현재 최선 모델: P9 hardaug8_physaug ep131** — `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch131_94.41_top1_checkpoint.pth`
 

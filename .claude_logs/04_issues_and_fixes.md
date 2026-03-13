@@ -449,11 +449,37 @@ Student가 teacher의 soft target을 추종하는 KD에서는 BCE_with_logits와
 4. `quality_target` 범위 — `exp(-CE)` ∈ (0, 1], CE=0이면 quality=1.0 (완벽 예측)
 5. 시각화 함수 `save_p24_quality_vis`는 수정 불필요 (target은 여전히 (B, 1, H, W) ∈ [0, 1])
 
+**추가 요청 — Quality Map 로깅 (val_multiaqua_detailed.py)** ⬜ 미구현:
+
+- 모델이 `self._last_quality_maps`에 per-modality quality map을 이미 저장 중 (`sam_lora_image_encoder_seg.py:6176`)
+  - 리스트: `[q_rgb, q_lidar, q_thermal]`, 각각 numpy array
+- `val_multiaqua_detailed.py:925` 근처 (UAMM/AMF 로깅 직후)에 아래 코드 추가:
+
+```python
+# P24 Quality Gating map statistics
+quality_maps = getattr(core, '_last_quality_maps', None)
+if quality_maps is not None:
+    img_log['quality_gating'] = {}
+    for m_idx, m_name in enumerate(modals):
+        qm = quality_maps[m_idx]
+        img_log['quality_gating'][m_name] = {
+            'mean': round(float(qm.mean()), 4),
+            'std': round(float(qm.std()), 4),
+            'min': round(float(qm.min()), 4),
+            'max': round(float(qm.max()), 4),
+        }
+```
+
+- `MISC/analyze_detailed_log.py`의 `analyze_quality_gating()` 함수가 `quality` 키워드 포함 데이터를 자동 분석
+
 **관련 파일**:
+
 - `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: `LoRA_Sam_P24`, `_teacher_decode_single()`
 - `semseg/models/sam2/sam2/modeling/sam2_base.py:257-300`: `_forward_sam_heads()` — binary mask 출력 구조
 - `train_sam2_lora_paper.py:706-711`: P24 quality loss 계산
 - `train_sam2_lora_paper.py:178-243`: `save_p24_quality_vis()` (수정 불필요)
+- `val_multiaqua_detailed.py`: quality map 로깅 추가 대상
+- `MISC/analyze_detailed_log.py`: quality map 분석 함수 이미 구현됨
 - `outputs/MMSamP24/.../quality_vis/`: 현재 학습의 시각화 결과
 
 ---

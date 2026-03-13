@@ -1,17 +1,44 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-12
+> 최종 업데이트: 2026-03-14
 
-## 현재 상태: P9+hardaug8_physaug ep131 **최선 모델 (M=81.98)**, P24 학습 중 (teacher signal 버그 발견 → 수정 필요)
+## 현재 상태: P9+hardaug8_physaug ep131 **최선 모델 (M=81.98)**, P24 CE 기반 재학습 중, **P25 구현 완료 (학습 대기)**
 
-### P24 학습 중 — Teacher Signal 버그 발견 (2026-03-13)
+### P25 구현 완료: Unified Spatial Quality Fusion (2026-03-14)
 
-- **현재 상태**: 학습 진행 중 (epoch 40+), 하지만 **teacher target이 잘못 구현됨**
-- **버그**: teacher quality target이 sigmoid confidence로 구현 → epoch 진행 시 전부 1.0으로 포화 → gating network에 의미 있는 supervision 없음
-- **원인**: `torch.abs(torch.sigmoid(logits) - 0.5) * 2` (현재) vs `torch.exp(-CE(logits, gt))` (계획)
-  - 현재: GT 미사용, decoder 자신감만 측정 → 학습되면 항상 자신감 높음 → signal 소멸
-  - 계획: GT 대비 실제 오류 측정 → 모달리티별 구조적 약점 패턴이 유지됨
-- **수정 방향**: `sam_lora_image_encoder_seg.py:6067-6081`에서 CE 기반으로 교체
+- **핵심**: CrossModalFusionHead 제거 → SpatialQualityGating의 quality map으로 UAMM + AMF + Memory 3곳 통합
+- **변경 사항**:
+  - UAMM: scalar `(B, m)` → spatial max-norm `(B, 1, H, W)` — pixel-wise max-norm 후 각 vision_feat level에 interpolate
+  - AMF: scalar softmax `(B, m)` → spatial softmax `(B, 1, H, W)` (pixel별 weighted fusion)
+  - Memory: P24 동일 (spatial modulation)
+  - CrossModalFusionHead ~3K params 제거, SpatialQualityGating ~12.5K만 유지
+- **구현 완료 파일**:
+  - `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P25` 클래스 추가
+  - `train_sam2_lora_paper.py` — `is_p24` 분기에 P25 포함
+  - `val_multiaqua_detailed.py` — P25 import/model_map 추가
+  - `configs/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml` — HPC 학습 config
+  - `configs/eval_config/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml` — HPC eval config
+- **학습 명령어**: `python train_sam2_lora_paper.py --cfg configs/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml`
+- **리스크**: student 오류 cascade (quality map 하나가 3곳 동시 결정), quality ≠ 최적 fusion weight
+- **상세**: `.claude_logs/02_model_arch.md` — "P25" 섹션
+
+### P24 sigmoid 기반 ep36 평가 완료 (2026-03-13)
+
+- **Val mIoU**: 93.89 (ep36), **Val per-class**: Static 94.41, Dynamic 47.17, Water 98.15, Sky 97.27
+- **UAMM/AMF**: 완전 상수 수렴 (std < 0.001, 모든 이미지 동일) — gating이 작동하지 않음
+  - UAMM: img=0.659, lidar=1.000, thermal=1.000
+  - AMF: img=0.248, lidar=0.376, thermal=0.376
+- **Quality Gating 데이터**: detailed_log에 미기록 → 코딩봇에게 quality map 로깅 추가 요청 필요
+- **Test**: MACVi 미제출 (sigmoid 버그로 의미 없음)
+- **Pred confidence**: Val mean_entropy=0.14, Test mean_entropy=0.38 (야간 불확실성 높음)
+
+**Teacher Signal 버그 (ISSUE-013)**:
+- sigmoid confidence 기반 target이 epoch 40에서 전부 1.0 포화 → gating net supervision 소멸
+- 원인: `torch.abs(sigmoid(logits) - 0.5) * 2` — GT 미사용, decoder 자체 자신감만 측정
+- **수정 필요**: 4-class CE 기반 `exp(-CE(logits_4class, gt))` → 모달리티 구조적 약점이 signal로 유지
+- **추가 문제**: 현재 코딩봇 수정이 BCE(binary)로 되어있으나, teacher decoder가 4-class logits를 출력하도록 변경 필요
+  - Binary BCE: "물체 있는지" → LiDAR 수면/Sky에서 의미 있는 quality 차이 못 잡음
+  - 4-class CE: Static/Dynamic/Water/Sky 구분 → semantic 오류 기반 풍부한 quality signal
 - **상세**: `.claude_logs/04_issues_and_fixes.md` — ISSUE-013
 
 ### P21 학습 완료 — ep94가 best (2026-03-12)

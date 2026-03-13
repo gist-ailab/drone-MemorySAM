@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.2.16)  24 FEB 2026 16:24
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.2.16)  13 MAR 2026 15:45
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -452,66 +452,55 @@ LaTeX Font Info:    Trying to load font information for U+msb on input line 50.
  (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) (./sec/0_abstract.tex) (./sec/1_intro.tex
-LaTeX Font Info:    Trying to load font information for OT1+phv on input line 20.
+LaTeX Font Info:    Trying to load font information for OT1+phv on input line 22.
  (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1phv.fd
 File: ot1phv.fd 2020/03/25 scalable font definitions for OT1/phv.
 ) [1{/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc}
 
 
-]) (./sec/2_related.tex [2]) (./sec/3_method.tex [3]
-LaTeX Font Info:    Trying to load font information for OT1+pcr on input line 116.
- (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1pcr.fd
-File: ot1pcr.fd 2001/06/04 font definitions for OT1/pcr.
-) [4]
-Overfull \hbox (30.38414pt too wide) detected at line 138
-[]
+]
+LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 25.
+ (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ts1ptm.fd
+File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
+)) (./sec/2_related.tex) (./sec/3_method.tex [2] [3]
+Overfull \hbox (101.5265pt too wide) detected at line 127
+[][][]\OMS/cmsy/m/n/10 G \OT1/cmr/m/n/10 : [][](\OML/cmm/m/it/10 C[]; \OT1/cmr/m/n/10 64) \OMS/cmsy/m/n/10 ! [] ! [][]\OT1/cmr/m/n/10 (64\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 64) \OMS/cmsy/m/n/10 ! [] ! [][]\OT1/cmr/m/n/10 (64\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 1)\OML/cmm/m/it/10 :
  []
 
-) (./sec/4_experiments.tex
-
-LaTeX Warning: Reference `sec:proto_loss' on page 1 undefined on input line 15.
-
-
-Overfull \hbox (19.14224pt too wide) in paragraph at lines 31--41
+[4]) (./sec/4_experiments.tex
+Overfull \hbox (53.41211pt too wide) in paragraph at lines 37--61
  [][] 
  []
 
-
-Overfull \hbox (24.02219pt too wide) in paragraph at lines 99--108
- [][] 
- []
-
-) (./sec/5_conclusion.tex) (./main.bbl (./main.brf)
+) (./sec/5_conclusion.tex [5]) (./main.bbl (./main.brf)
 \tf@brf=\write4
 \openout4 = `main.brf'.
 
- [5]) [6] (./main.aux)
+ [6]) [7
+
+] (./main.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
  ***********
-
-
-LaTeX Warning: There were undefined references.
-
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 4AD3B4AFE9A99EC6D01ADF4BBC97B71F;2213.
+(rerunfilecheck)             Checksum: E3B3A8D0E0B9130D04B1657B0390A9C0;3232.
 Package rerunfilecheck Info: File `main.brf' has not changed.
-(rerunfilecheck)             Checksum: F798A6EBE0B9E1164B62BC2D737BBFBC;2330.
+(rerunfilecheck)             Checksum: B97D180988F8D4FD26CD420054BDAD0F;3452.
  ) 
 Here is how much of TeX's memory you used:
- 15258 strings out of 475662
- 251280 string characters out of 5784442
- 1960975 words of memory out of 5000000
- 37111 multiletter control sequences out of 15000+600000
- 593074 words of font info for 112 fonts, out of 8000000 for 9000
+ 15326 strings out of 475662
+ 252822 string characters out of 5784442
+ 1965975 words of memory out of 5000000
+ 37168 multiletter control sequences out of 15000+600000
+ 593372 words of font info for 109 fonts, out of 8000000 for 9000
  264 hyphenation exceptions out of 8191
- 90i,18n,93p,726b,536s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/zapfding/uzdr.pfb>
-Output written on main.pdf (6 pages, 230503 bytes).
+ 90i,12n,93p,642b,678s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/zapfding/uzdr.pfb>
+Output written on main.pdf (7 pages, 222809 bytes).
 PDF statistics:
- 313 PDF objects out of 1000 (max. 8388607)
- 266 compressed objects within 3 object streams
- 54 named destinations out of 1000 (max. 500000)
- 113 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 378 PDF objects out of 1000 (max. 8388607)
+ 332 compressed objects within 4 object streams
+ 69 named destinations out of 1000 (max. 500000)
+ 145 words of extra memory for PDF output out of 10000 (max. 10000000)
 
