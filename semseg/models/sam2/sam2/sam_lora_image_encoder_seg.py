@@ -6543,7 +6543,7 @@ class LoRA_Sam_P25(nn.Module):
 
             # AMF: per-modality mean weight (spatial mean → scalar)
             amf_log = torch.stack(
-                [q_amf_norm[i].mean(dim=[2, 3, 4]) for i in range(m)], dim=1  # q_amf_norm: (m, B, 1, H, W)
+                [q_amf_norm[i].mean(dim=[1, 2, 3]) for i in range(m)], dim=1  # q_amf_norm[i]: (B, 1, H, W)
             )  # (B, m)
             # Renormalize to sum=1
             amf_log = amf_log / amf_log.sum(dim=1, keepdim=True).clamp(min=1e-6)
