@@ -1,4 +1,4 @@
-# Architecture Figures — P9, P17, P19
+# Architecture Figures — P9, P17, P19, P20, P21, P22, P23, P24
 
 > 최종 업데이트: 2026-02-28
 >
@@ -832,4 +832,606 @@ P19 정보 흐름:
                              └─→ vision_feats ─────────┘
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+## 7. P20: Per-Layer Independent MLP Gate + Higher Rank MoE
+
+### 7.1 P20 Overview Figure
+
+P9와 동일한 4-Phase 구조. 유일한 차이: SoftMoE-LoRA **V2** (per-layer MLP gate, rank=8).
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ LoRA_Sam_P20 — Per-Layer Independent MLP Gate + Higher Rank MoE    │
+│                                                                     │
+│  ┌─── Phase 1: Independent Encoding (NO memory) ──────────────┐    │
+│  │                                                             │    │
+│  │  RGB ─┐                                                     │    │
+│  │  THR ─┤─→ forward_image() ─→ _prepare_backbone_features()  │    │
+│  │  LID ─┘   [Hiera + SoftMoE-LoRA V2]   [FPN conv_s0/s1]    │    │
+│  │            (rank=8, MLP gate)                               │    │
+│  │                                                             │    │
+│  │  출력 per modality:                                         │    │
+│  │    image_embedding['backbone_fpn'][0]: (B, 32, 256, 256)    │    │
+│  │    vision_feats[3]: [(1,B,32), (HW,B,64), (HW,B,256)]      │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                              │                                      │
+│  ┌─── Phase 2: Cross-Modal Weight (P9 동일) ──────────────────┐    │
+│  │  fpn[0]×3 → CrossModalFusionHead → softmax → (B, 3)        │    │
+│  │            scalar 가중치                                     │    │
+│  │  UAMM: max-norm → best=1.0                                  │    │
+│  │  AMF:  raw softmax                                           │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                              │                                      │
+│  ┌─── Phase 3: UAMM + Sequential Tracking (P9 동일) ─────────┐    │
+│  │  vision_feats × uamm_score → track_step()                   │    │
+│  │  [frame 0: no memory]  [frame 1,2: memory attention]        │    │
+│  │  → high_res_multimasks per modality                          │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                              │                                      │
+│  ┌─── Phase 4: AMF Output Fusion (P9 동일) ───────────────────┐    │
+│  │  m_output = Σ output[i] × amf_w[i]                          │    │
+│  │  m_feat   = Σ fpn[0][i] × amf_w[i]                          │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                              │                                      │
+│  Output: (m_output, m_feat)                                         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 SoftMoE-LoRA V2 Module (P20 신규)
+
+P9 V1과의 차이: gate가 `Linear(C→E)` → `MLP(C→C//4→E)`, per-layer 독립.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ SoftMoE_LoRA_Layer_V2 (per-layer 독립 인스턴스)              │
+│                                                              │
+│  Input: x (B, H, W, C)   [Hiera 4D format]                  │
+│         C ∈ {112, 224, 448, 896} (stage별)                   │
+│                                                              │
+│  ┌─── MLP Gate (per-layer 독립) ─────────┐                   │
+│  │  x → Linear(C → C//4) → ReLU          │                   │
+│  │    → Linear(C//4 → 3) → softmax       │                   │
+│  │    → gate_weights (B,H,W,3)            │                   │
+│  └────────────────────────────────────────┘                   │
+│         │                                                     │
+│  ┌─── Expert 0 ──────────┐  ┌─── Expert 1 ──────────┐       │
+│  │  a: Linear(C→8)       │  │  a: Linear(C→8)       │       │
+│  │  b: Linear(8→C)       │  │  b: Linear(8→C)       │       │
+│  │  out = b(a(x))        │  │  out = b(a(x))        │       │
+│  └──────────┬────────────┘  └──────────┬────────────┘       │
+│             │                           │                     │
+│  ┌─── Expert 2 ──────────┐              │                    │
+│  │  a: Linear(C→8)       │              │                    │
+│  │  b: Linear(8→C)       │              │                    │
+│  └──────────┬────────────┘              │                    │
+│             │                           │                     │
+│  Σ gate_weights[...,i] × expert_out[i]                       │
+│  = final_output (B, H, W, C)                                 │
+│                                                              │
+│  Injection: qkv[:,:,:,:C]  += V2_q(x)  (Q에 적용)           │
+│             qkv[:,:,:,-C:] += V2_v(x)  (V에 적용)           │
+└──────────────────────────────────────────────────────────────┘
+
+V1 vs V2 비교:
+┌──────────────────────┬──────────────────────┐
+│ SoftMoE-LoRA V1 (P9) │ SoftMoE-LoRA V2 (P20)│
+├──────────────────────┼──────────────────────┤
+│ gate = Linear(C→E)   │ gate = MLP(C→C//4→E) │
+│ rank = 4             │ rank = 8             │
+│ gate 공유 가능        │ per-layer 독립 gate  │
+│ 3 experts            │ 3 experts            │
+│ experts_b init: 0    │ experts_b init: 0    │
+└──────────────────────┴──────────────────────┘
+```
+
+---
+
+## 8. P21: P9 + DeBA-FP (fpn[0] only, Phase 2)
+
+### 8.1 P21 Overview Figure
+
+P9 base + **DeBA-FP** 모듈 추가. fpn[0]만 Phase 2에서 deformable conv로 refine.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ LoRA_Sam_P21 — P9 + DeBA-FP (Deformable Bottleneck Adapter)       │
+│                                                                     │
+│  ┌─── Phase 1: Independent Encoding (P9 동일) ───────────────┐     │
+│  │  RGB/THR/LID → forward_image() [Hiera + SoftMoE-LoRA V1]  │     │
+│  │             → _prepare_backbone_features() [FPN]           │     │
+│  │  출력: fpn[0] (B,32,256,256), vision_feats, etc.           │     │
+│  └────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 2: DeBA-FP → Cross-Modal Weight ─────────────────┐     │
+│  │                                                             │     │
+│  │  fpn[0]_RGB ─→ DeBAFP(mod_idx=0) ─→ refined_fpn[0]_RGB    │     │
+│  │  fpn[0]_THR ─→ DeBAFP(mod_idx=1) ─→ refined_fpn[0]_THR ──┤     │
+│  │  fpn[0]_LID ─→ DeBAFP(mod_idx=2) ─→ refined_fpn[0]_LID   │     │
+│  │                   [공유 DCM/W_d/W_u/LN, α만 per-modal]    │     │
+│  │                                                             │     │
+│  │  refined_fpn[0]×3 → CrossModalFusionHead → softmax (B,3)   │     │
+│  │  UAMM: max-norm, AMF: raw softmax                          │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 3: UAMM + Tracking (P9 동일) ────────────────────┐     │
+│  │  vision_feats × uamm_score → track_step()                   │     │
+│  │  ※ vision_feats는 원본 (DeBA-FP 미적용)                    │     │
+│  │  ※ DeBA-FP는 fpn[0]만, CrossModalFusionHead 입력만 영향    │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 4: AMF Output Fusion ────────────────────────────┐      │
+│  │  m_output = Σ output[i] × amf_w[i]                         │     │
+│  │  m_feat   = Σ refined_fpn[0][i] × amf_w[i]                 │     │
+│  │  ※ m_feat는 DeBA-FP refined된 fpn[0] 사용                  │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                                                                      │
+│  Output: (m_output, m_feat)                                          │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.2 DeBA-FP Module (P21)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ DeBAFP — Deformable Bottleneck Adapter for Feature Pyramid   │
+│                                                              │
+│  Input: feat (B, C, H, W)    C=32 (fpn[0])                  │
+│         modality_idx: 0/1/2                                  │
+│                                                              │
+│  ┌─── Shared (cross-modal weight sharing) ───────────┐       │
+│  │                                                    │       │
+│  │  feat ─→ W_d: Conv2d(32→64, 1×1) ─→ h (B,64,H,W) │       │
+│  │                                                    │       │
+│  │  h ─→ offset_mask_conv(64→27, 3×3) ─→ om          │       │
+│  │       offset = om[:,:18]  (B,2K²,H,W)             │       │
+│  │       mask   = om[:,18:].sigmoid()  (B,K²,H,W)    │       │
+│  │       K=3, K²=9, 3K²=27                           │       │
+│  │                                                    │       │
+│  │  h ─→ deform_conv2d(h, offset, dcm_weight, mask)  │       │
+│  │       dcm_weight: (64,64,3,3)  ─→ h (B,64,H,W)   │       │
+│  │                                                    │       │
+│  │  h ─→ permute(0,2,3,1) → LN(64) → GELU           │       │
+│  │    → permute(0,3,1,2) ─→ h (B,64,H,W)            │       │
+│  │                                                    │       │
+│  │  h ─→ W_u: Conv2d(64→32, 1×1) ─→ h (B,32,H,W)   │       │
+│  │                                                    │       │
+│  └────────────────────────────────────────────────────┘       │
+│                                                              │
+│  Output = feat + α[modality_idx] × h                         │
+│           α init=0 → identity at start                       │
+│                                                              │
+│  공유 구조:                                                   │
+│  ┌────────────┬──────────────┬───────────────┐               │
+│  │ Shared     │ Per-modality │ 비고          │               │
+│  ├────────────┼──────────────┼───────────────┤               │
+│  │ W_d, W_u   │ α (scalar)   │ α init=0     │               │
+│  │ DCM weight │              │ offset init=0│               │
+│  │ offset_conv│              │               │               │
+│  │ LayerNorm  │              │               │               │
+│  └────────────┴──────────────┴───────────────┘               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. P22: P9 + DeBA-FP MultiScale (all FPN, Phase 1)
+
+### 9.1 P22 Overview Figure
+
+P21과 동일 원리이나 **적용 범위** 다름: 모든 FPN 레벨, Phase 1에서 적용.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ LoRA_Sam_P22 — P9 + DeBA-FP MultiScale (all FPN levels, Phase 1)  │
+│                                                                     │
+│  ┌─── Phase 1: Encoding + DeBA-FP (ALL FPN levels) ──────────┐     │
+│  │                                                             │     │
+│  │  for each modality i:                                       │     │
+│  │    img_emb = forward_image(input[i])                        │     │
+│  │    [Hiera + SoftMoE-LoRA V1]                                │     │
+│  │                                                             │     │
+│  │    ┌── DeBA-FP refine ALL levels ──────────────────────┐    │     │
+│  │    │ fpn[0](B,32,256,256) → DeBAFP_MS(mod=i,lv=0)  ──┤    │     │
+│  │    │ fpn[1](B,64,128,128) → DeBAFP_MS(mod=i,lv=1)  ──┤    │     │
+│  │    │ fpn[2](B,256,64,64)  → DeBAFP_MS(mod=i,lv=2)  ──┤    │     │
+│  │    └───────────────────────────────────────────────────┘    │     │
+│  │    img_emb['backbone_fpn'] updated in-place                 │     │
+│  │                                                             │     │
+│  │    _prepare_backbone_features(img_emb)                      │     │
+│  │    → vision_feats = REFINED features ★                      │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 2: Cross-Modal Weight (P9 동일) ──────────────────┐     │
+│  │  refined_fpn[0]×3 → CrossModalFusionHead → softmax (B,3)   │     │
+│  │  ※ fpn[0]는 이미 Phase 1에서 DeBA-FP로 refined             │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 3: UAMM + Tracking ──────────────────────────────┐     │
+│  │  REFINED_vision_feats × uamm_score → track_step()          │     │
+│  │  ★ 핵심 차이: tracking에도 refined features 전파            │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 4: AMF Output Fusion ────────────────────────────┐      │
+│  │  m_output = Σ output[i] × amf_w[i]                         │     │
+│  │  m_feat   = Σ refined_fpn[0][i] × amf_w[i]                 │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                                                                      │
+│  Output: (m_output, m_feat)                                          │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 DeBAFP_MultiScale Module (P22)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ DeBAFP_MultiScale — All FPN levels with cross-layer sharing  │
+│                                                              │
+│  Input: feat (B, C_l, H, W)                                 │
+│         modality_idx: 0/1/2                                  │
+│         level_idx: 0/1/2                                     │
+│                                                              │
+│  C_l = {32, 64, 256}  (fpn[0], fpn[1], fpn[2])              │
+│                                                              │
+│  ┌─── Per-level W_d ─────────────────────────────────┐       │
+│  │  W_d_list[level_idx]: Conv2d(C_l→64, 1×1)        │       │
+│  │  → h (B, 64, H, W)                                │       │
+│  └───────────────────────────────────────────────────┘       │
+│                              │                               │
+│  ┌─── Shared DCM (cross-level + cross-modal) ────────┐       │
+│  │  offset_mask_conv(64→27, 3×3) → offset, mask      │       │
+│  │  deform_conv2d(h, offset, dcm_weight, mask)        │       │
+│  │  → h (B, 64, H, W)                                │       │
+│  └───────────────────────────────────────────────────┘       │
+│                              │                               │
+│  ┌─── Shared LN + GELU ─────────────────────────────┐       │
+│  │  LN(64) → GELU → h (B, 64, H, W)                 │       │
+│  └───────────────────────────────────────────────────┘       │
+│                              │                               │
+│  ┌─── Per-level W_u ─────────────────────────────────┐       │
+│  │  W_u_list[level_idx]: Conv2d(64→C_l, 1×1)        │       │
+│  │  → h (B, C_l, H, W)                               │       │
+│  └───────────────────────────────────────────────────┘       │
+│                                                              │
+│  Output = feat + α[modality_idx] × h                         │
+│                                                              │
+│  공유 구조:                                                   │
+│  ┌──────────────────────┬──────────────┬────────────────┐    │
+│  │ Shared (all lv+mod)  │ Per-level    │ Per-modality   │    │
+│  ├──────────────────────┼──────────────┼────────────────┤    │
+│  │ DCM (offset+weight)  │ W_d (C_l→64)│ α (scalar)     │    │
+│  │ LayerNorm(64)        │ W_u (64→C_l)│                │    │
+│  └──────────────────────┴──────────────┴────────────────┘    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 9.3 P21 vs P22 비교
+
+```
+┌──────────────────────────────┬──────────────────────────────┐
+│ P21: DeBA-FP                 │ P22: DeBA-FP MultiScale      │
+├──────────────────────────────┼──────────────────────────────┤
+│ fpn[0] only                  │ fpn[0], fpn[1], fpn[2] 전부  │
+│ Phase 2에서 적용              │ Phase 1에서 적용              │
+│ CrossModalFusionHead +       │ 전체 파이프라인에 refined     │
+│ m_feat에만 영향               │ features 전파 ★              │
+│ W_d/W_u: Conv2d(32↔64)      │ Per-level W_d/W_u            │
+│ 1개 DCM                      │ 1개 shared DCM               │
+│ per-modal α                  │ per-modal α                  │
+└──────────────────────────────┴──────────────────────────────┘
+
+정보 흐름 차이:
+
+P21:
+  forward_image → fpn[0/1/2] → _prepare_backbone  → vision_feats(원본)
+                   fpn[0] → DeBAFP → refined_fpn[0] → CrossModalFH
+                                                     → m_feat(refined)
+
+P22:
+  forward_image → fpn[0/1/2] → DeBAFP_MS(all) → refined_fpn[0/1/2]
+                  → _prepare_backbone → vision_feats(REFINED) ★
+                  → CrossModalFH(refined fpn[0])
+                  → tracking(REFINED vision_feats) ★
+                  → m_feat(refined fpn[0])
+```
+
+---
+
+## 10. P23: MoE DeBA-BB (LoRA 완전 교체)
+
+### 10.1 P23 Overview Figure
+
+SoftMoE-LoRA를 **MoE_DeBA_BB**로 완전 교체. Backbone 내부 adapter 변경.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ LoRA_Sam_P23 — MoE DeBA-BB (Deformable Bottleneck, replaces LoRA) │
+│                                                                     │
+│  ┌─── Phase 1: Encoding (MoE-DeBA-BB inside Hiera) ──────────┐     │
+│  │                                                             │     │
+│  │  for each modality i:                                       │     │
+│  │    deba_bb.set_modality(i)  ← α[i] 선택                    │     │
+│  │    img_emb = forward_image(input[i])                        │     │
+│  │    [Hiera + MoE_DeBA_BB]  ← LoRA 없음, DeBA로 교체         │     │
+│  │    → _prepare_backbone_features()                           │     │
+│  │                                                             │     │
+│  │  MoE_DeBA_BB 구조 (모든 Hiera block에 inject):              │     │
+│  │    original_qkv(x) → qkv                                   │     │
+│  │    delta = deba_bb(x, stage_idx) → (B,H,W,C)               │     │
+│  │    qkv[:,:,:,:C]  += delta  (Q에 적용)                      │     │
+│  │    qkv[:,:,:,-C:] += delta  (V에 적용)                      │     │
+│  │    ※ delta는 Q, V에 동일하게 적용 (DeBA paper 원칙)        │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 2: Cross-Modal Weight (P9 동일) ──────────────────┐     │
+│  │  fpn[0]×3 → CrossModalFusionHead → softmax (B,3)           │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 3: UAMM + Tracking (P9 동일) ────────────────────┐     │
+│  │  vision_feats × uamm_score → track_step()                   │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 4: AMF (P9 동일) ────────────────────────────────┐      │
+│  │  m_output = Σ output[i] × amf_w[i]                         │     │
+│  │  m_feat   = Σ fpn[0][i] × amf_w[i]                         │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                                                                      │
+│  Output: (m_output, m_feat)                                          │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 10.2 MoE_DeBA_BB Module (P23 핵심)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ MoE_DeBA_BB — Mixture-of-Experts Deformable Bottleneck Adapter  │
+│ (1개 공유 인스턴스, 모든 Hiera block에서 참조)                   │
+│                                                                  │
+│  Input: x (B, H, W, C)   C ∈ {112, 224, 448, 896} (stage별)    │
+│         stage_idx: 0/1/2/3                                       │
+│                                                                  │
+│  ┌─── GAP Gate (per-stage) ──────────────────────────────┐       │
+│  │  x → mean(H,W) → gap (B, C)                           │       │
+│  │    → gates[stage_idx]: Linear(C→2) → (+noise if train) │       │
+│  │    → softmax → gate_weights (B, 2)                     │       │
+│  └────────────────────────────────────────────────────────┘       │
+│         │                                                         │
+│  ┌─── Shared Down-projection (per-stage) ────────────────┐       │
+│  │  W_d_list[stage_idx]: Linear(C→64) → h (B,H,W,64)     │       │
+│  │  → permute(0,3,1,2) → h_4d (B,64,H,W)                │       │
+│  └────────────────────────────────────────────────────────┘       │
+│         │                                                         │
+│  ┌─── Expert 0 (×1 scale) ──┐  ┌─── Expert 1 (×2 scale) ──┐    │
+│  │  h_4d → DCM_0             │  │  h_4d → upsample(×2)      │    │
+│  │  offset_mask_conv_0(64→27)│  │    → DCM_1                 │    │
+│  │  deform_conv2d             │  │    offset_mask_conv_1(→27) │    │
+│  │  → e0 (B,64,H,W)         │  │    deform_conv2d            │    │
+│  │                           │  │    → downsample(→H,W)      │    │
+│  │                           │  │    → e1 (B,64,H,W)         │    │
+│  └──────────┬────────────────┘  └──────────┬─────────────────┘    │
+│             │                               │                     │
+│  combined = Σ gate_w[:,i] × expert_out[i]   (B,64,H,W)           │
+│                                                                   │
+│  ┌─── Shared Norm + GELU + Up-projection ────────────────┐       │
+│  │  → permute(0,2,3,1) → (B,H,W,64)                     │       │
+│  │  → LN(64) → GELU                                      │       │
+│  │  → W_u_list[stage_idx]: Linear(64→C)                  │       │
+│  │  → out (B,H,W,C)                                      │       │
+│  └────────────────────────────────────────────────────────┘       │
+│                                                                   │
+│  Output = α[_modality_idx] × out   (B,H,W,C)                     │
+│           α init=0 → identity at start                            │
+│                                                                   │
+│  Cross-layer weight sharing 구조:                                 │
+│  ┌───────────────────┬─────────────────┬──────────────────┐       │
+│  │ Shared (all layer)│ Per-stage       │ Per-modality     │       │
+│  ├───────────────────┼─────────────────┼──────────────────┤       │
+│  │ LayerNorm(64)     │ W_d(C→64)      │ α (scalar)       │       │
+│  │ DCM_0 (offset+wt) │ W_u(64→C)      │                  │       │
+│  │ DCM_1 (offset+wt) │ gate(C→2)      │                  │       │
+│  └───────────────────┴─────────────────┴──────────────────┘       │
+│                                                                   │
+│  Hiera-B+ block→stage mapping:                                    │
+│  Block 0-2: stage 0 (C=112) │ Block 3-5: stage 1 (C=224)        │
+│  Block 6-21: stage 2 (C=448)│ Block 22-23: stage 3 (C=896)      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 11. P24: P9 + Spatial Quality Gating (Teacher-Student)
+
+### 11.1 P24 Overview Figure
+
+P9 base + **SpatialQualityGating** → memory modulation. 학습/추론 차이 있음.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ LoRA_Sam_P24 — Quality-aware Memory Gating via Decoder Distill.   │
+│                                                                     │
+│  ┌─── Phase 1: Encoding (P9 동일) ───────────────────────────┐     │
+│  │  RGB/THR/LID → forward_image() [Hiera + SoftMoE-LoRA V1]  │     │
+│  │             → _prepare_backbone_features() [FPN]           │     │
+│  └────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 2: Cross-Modal Weight + Quality Map ─────────────┐     │
+│  │                                                             │     │
+│  │  fpn[0]×3 → CrossModalFusionHead → softmax (B,3)           │     │
+│  │  UAMM: max-norm, AMF: raw softmax                          │     │
+│  │                                                             │     │
+│  │  ┌─ SpatialQualityGating (per modality) ─────────────┐     │     │
+│  │  │  fpn[0]_RGB → SQG → q_logit₀ → sigmoid+scale     │     │     │
+│  │  │  fpn[0]_THR → SQG → q_logit₁ → quality_map₁      │     │     │
+│  │  │  fpn[0]_LID → SQG → q_logit₂ → quality_map₂      │     │     │
+│  │  │  quality ∈ [min_quality=0.1, 1.0]                  │     │     │
+│  │  └────────────────────────────────────────────────────┘     │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 2.5 (Training ONLY): Teacher → Quality Target ───┐     │
+│  │  for each modality i:                                       │     │
+│  │    with torch.no_grad():                                    │     │
+│  │      teacher_logits = _teacher_decode_single(               │     │
+│  │          vision_feats[i], ...)    ← SAM2 decoder, no memory │     │
+│  │      CE = cross_entropy(teacher_logits, gt_safe)            │     │
+│  │      quality_target = exp(-CE) ∈ (0, 1]                     │     │
+│  │      ※ ignore(255) regions → CE=0 → target=1.0             │     │
+│  │                                                             │     │
+│  │  gate_loss_data = {predicted: q_logits,                     │     │
+│  │                    target: quality_targets,                  │     │
+│  │                    ignore_mask: (B,1,H,W)}                  │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 3: UAMM + Tracking + Memory Modulation ─────────┐      │
+│  │  for each modality frame_idx:                               │     │
+│  │    vision_feats × uamm_score → track_step()                 │     │
+│  │                                                             │     │
+│  │    ┌── Memory Modulation (P24 핵심) ──────────────────┐     │     │
+│  │    │  maskmem = track_step_output["maskmem_features"]  │     │     │
+│  │    │  q_map = quality_maps[frame_idx]                  │     │     │
+│  │    │  q_map_resized = interpolate(q_map, maskmem.size) │     │     │
+│  │    │  maskmem_features *= q_map_resized  ★             │     │     │
+│  │    │  → 열화 영역 memory 기여 ↓                        │     │     │
+│  │    │  → 잘 예측하는 영역 memory 기여 ↑                 │     │     │
+│  │    └───────────────────────────────────────────────────┘     │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                              │                                      │
+│  ┌─── Phase 4: AMF Output Fusion (P9 동일) ───────────────────┐     │
+│  │  m_output = Σ output[i] × amf_w[i]                          │     │
+│  │  m_feat   = Σ fpn[0][i] × amf_w[i]                          │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                                                                      │
+│  Output:                                                             │
+│    Training:  (m_output, m_feat, gate_loss_data)                     │
+│    Inference: (m_output, m_feat)                                     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.2 SpatialQualityGating Module (P24)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ SpatialQualityGating — Per-pixel Quality Prediction          │
+│                                                              │
+│  Input: feat (B, C, H, W)  C=32 (fpn[0]), H=W=256           │
+│                                                              │
+│  ┌─── Conv Head ─────────────────────────────────────┐       │
+│  │  Conv2d(32→64, 3×3, pad=1) → ReLU                │       │
+│  │  Conv2d(64→64, 3×3, pad=1) → ReLU                │       │
+│  │  Conv2d(64→1,  1×1)        → raw logits           │       │
+│  │  (bias init=+1.0 → sigmoid≈0.73, optimistic start)│       │
+│  └───────────────────────────────────────────────────┘       │
+│                              │                               │
+│  forward() → raw logits (B, 1, H, W)                         │
+│                                                              │
+│  logits_to_quality():                                        │
+│    quality = sigmoid(logits) × (1-0.1) + 0.1                 │
+│    → quality ∈ [0.1, 1.0]   (B, 1, H, W)                    │
+│                                                              │
+│  Memory Modulation 적용:                                     │
+│    maskmem_features *= interpolate(quality, maskmem.size)     │
+│    → 고품질 영역: ≈1.0 (memory 유지)                         │
+│    → 저품질 영역: ≈0.1 (memory 억제, 완전 제거 방지)         │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 11.3 Teacher-Student Distillation Flow (P24 Training)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ P24 Teacher-Student Quality Distillation (Training Only)     │
+│                                                              │
+│  ┌─── Teacher (frozen, no grad) ─────────────────────┐       │
+│  │                                                    │       │
+│  │  vision_feats[i] → _forward_sam_heads()            │       │
+│  │    (single-frame, no memory, no prompt)             │       │
+│  │    → teacher_logits (B, C_cls, H_img, W_img)       │       │
+│  │                                                    │       │
+│  │  CE = cross_entropy(teacher_logits, gt_mask)        │       │
+│  │    (per-pixel, ignore=255 → CE=0)                   │       │
+│  │                                                    │       │
+│  │  quality_target = exp(-CE)  ∈ (0, 1]                │       │
+│  │    (low CE → high quality, ignore → 1.0)            │       │
+│  │                                                    │       │
+│  │  downsample to (B, 1, fpn_h, fpn_w)                │       │
+│  └────────────────────────────────────────────────────┘       │
+│                              │                               │
+│                     quality_target.detach()                   │
+│                              │                               │
+│  ┌─── Student ───────────────────────────────────────┐       │
+│  │                                                    │       │
+│  │  fpn[0] → SpatialQualityGating → q_logit           │       │
+│  │                                                    │       │
+│  │  Loss = BCE_with_logits(q_logit, quality_target)   │       │
+│  │         masked by ignore_mask_fpn                   │       │
+│  └────────────────────────────────────────────────────┘       │
+│                                                              │
+│  Inference: Teacher 불필요, SQG만 실행 → quality_map          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 12. P20-P24 비교
+
+### 12.1 정보 흐름 비교
+
+```
+P20 (= P9 + V2 MoE-LoRA):
+  3×img → Hiera+MoE_V2(MLP gate, rank=8) → FPN
+       → CrossModalFH(scalar) → UAMM → track_step → AMF
+  (P9와 완전 동일 흐름, adapter 내부만 변경)
+
+P21 (P9 + DeBA-FP on fpn[0]):
+  3×img → Hiera+MoE_V1 → FPN → fpn[0] → DeBAFP → refined_fpn[0]
+       → CrossModalFH(refined) → UAMM → track_step(원본) → AMF
+
+P22 (P9 + DeBA-FP MultiScale):
+  3×img → Hiera+MoE_V1 → FPN → DeBAFP_MS(all) → refined FPN
+       → _prepare_backbone → refined vision_feats
+       → CrossModalFH(refined) → UAMM → track_step(REFINED★) → AMF
+
+P23 (MoE-DeBA-BB replaces LoRA):
+  3×img → Hiera+MoE_DeBA_BB(GAP gate, 2 experts) → FPN
+       → CrossModalFH(scalar) → UAMM → track_step → AMF
+  (P9와 동일 흐름, backbone adapter 완전 교체)
+
+P24 (P9 + SpatialQualityGating):
+  3×img → Hiera+MoE_V1 → FPN
+       → CrossModalFH(scalar) + SQG(quality_map)
+       → UAMM → track_step + memory_modulation(quality★) → AMF
+  (학습: + teacher distillation loss)
+```
+
+### 12.2 Component 비교표
+
+```
+┌────────┬────────────────┬──────────────┬────────────────┬──────────────┐
+│ 모델   │ Backbone       │ FPN Adapter  │ Fusion Head    │ Memory       │
+│        │ Adapter        │              │                │ Modulation   │
+├────────┼────────────────┼──────────────┼────────────────┼──────────────┤
+│ P9     │ SoftMoE-LoRA   │ ─            │ CrossModalFH   │ UAMM(scalar) │
+│        │ V1, rank=4     │              │ (scalar)       │              │
+├────────┼────────────────┼──────────────┼────────────────┼──────────────┤
+│ P20    │ SoftMoE-LoRA   │ ─            │ CrossModalFH   │ UAMM(scalar) │
+│        │ V2, rank=8     │              │ (scalar)       │              │
+│        │ MLP gate       │              │                │              │
+├────────┼────────────────┼──────────────┼────────────────┼──────────────┤
+│ P21    │ SoftMoE-LoRA   │ DeBAFP       │ CrossModalFH   │ UAMM(scalar) │
+│        │ V1, rank=4     │ fpn[0] only  │ (scalar)       │              │
+│        │                │ Phase 2      │                │              │
+├────────┼────────────────┼──────────────┼────────────────┼──────────────┤
+│ P22    │ SoftMoE-LoRA   │ DeBAFP_MS    │ CrossModalFH   │ UAMM(scalar) │
+│        │ V1, rank=4     │ all FPN      │ (scalar)       │              │
+│        │                │ Phase 1 ★    │                │              │
+├────────┼────────────────┼──────────────┼────────────────┼──────────────┤
+│ P23    │ MoE_DeBA_BB    │ ─            │ CrossModalFH   │ UAMM(scalar) │
+│        │ 2 experts      │              │ (scalar)       │              │
+│        │ GAP gate       │              │                │              │
+├────────┼────────────────┼──────────────┼────────────────┼──────────────┤
+│ P24    │ SoftMoE-LoRA   │ ─            │ CrossModalFH   │ UAMM(scalar) │
+│        │ V1, rank=4     │              │ (scalar)       │ + quality    │
+│        │                │              │ + SQG          │ gating ★     │
+└────────┴────────────────┴──────────────┴────────────────┴──────────────┘
 ```
