@@ -1643,3 +1643,81 @@ fused = sum(q_softmax[i] * seg_output[i] for i in range(m))
 | 추가 파라미터 | 0 | +700K (rank↑) | +85K | +98K | +325K | +12.5K |
 | Grad Ckpt | 없음 | 없음 | 없음 | 없음 | 필요(OOM) | **적용** |
 | 최선 M-score | **81.98** | 학습 대기 | 학습 대기 | 학습 대기 | OOM (ISSUE-012) | 학습 중 |
+
+---
+
+## Object Detection 확장 아키텍처 (설계 2026-03-19)
+
+### 설계 원칙
+
+- SAM2 Encoder + MoE LoRA + Memory Attention + FPN + UAMM/AMF **전체 재사용**
+- Segmentation Head만 Detection Head로 교체
+- P22 기반 권장 (fpn[0,1,2] 3레벨 → multi-scale detection에 필수)
+
+### Forward 흐름 (Detection)
+
+```
+Phase 1: 모달리티별 인코딩 (P22 동일)
+  for modal in [img, lidar, thermal]:
+    backbone_feat = SAM2_encoder(modal)           # Hiera-B+ + SoftMoE_LoRA
+    DeBA-FP(backbone_feat, fpn[0,1,2])            # multi-scale refinement
+    memory_attention(backbone_feat, memory)        # cross-modal attention
+    memory.append(backbone_feat)
+
+Phase 2: Cross-Modal 가중치 (P22 동일)
+  cross_weights = CrossModalFusionHead(fpn[0])    # (B, m)
+
+Phase 3: UAMM + Memory Tracking (P22 동일)
+  modulated_vision_feats = vision_feats * uamm_scores
+  track_step(modulated_vision_feats, memory)
+
+Phase 4: AMF — multi-scale fused features
+  for level in [fpn0, fpn1, fpn2]:
+    fused_level[i] = sum(amf_weights[:, j] * level_feat[j] for j in range(m))
+
+Phase 5: Detection Head (신규)
+  Option A — FCOS:
+    for level in fused_levels:
+      cls_score = cls_branch(level)     # (B, num_classes, H_l, W_l)
+      bbox_pred = reg_branch(level)     # (B, 4, H_l, W_l)
+      centerness = ctr_branch(level)    # (B, 1, H_l, W_l)
+    → NMS → final detections
+
+  Option B — DETR:
+    object_queries (learnable, N개)
+    for layer in decoder_layers:
+      queries = cross_attn(queries, fused_features)
+    box_pred = box_head(queries)        # (B, N, 4)
+    cls_pred = cls_head(queries)        # (B, N, num_classes)
+    → Hungarian matching → loss
+```
+
+### Phase 4 변경점 (Seg → Det)
+
+| | Segmentation (현재) | Detection (확장) |
+| --- | --- | --- |
+| AMF 대상 | fpn[0]만 fusion | fpn[0,1,2] 전부 fusion |
+| 출력 | single fused feature → 1x1 Conv | multi-scale fused features → Det Head |
+| Phase 5 | argmax → per-pixel class | NMS 또는 Hungarian matching → bbox + class |
+
+### Loss 구성
+
+| Loss | 용도 | 참고 |
+| --- | --- | --- |
+| Focal Loss | classification (class imbalance 대응) | torchvision 제공 |
+| L1 Loss | bbox regression | 표준 |
+| GIoU Loss | bbox regression (scale-invariant) | torchvision.ops |
+| (Optional) UAMM/AMF loss | P25 quality gating 사용 시 | 기존 BCE quality loss |
+
+### MLE-SAM (CVPR 2026) 대비 차별점
+
+| | MLE-SAM | MemorySAM-Det (제안) |
+| --- | --- | --- |
+| Task | Semantic Segmentation | Object Detection |
+| Cross-Modal Fusion | GAP + top-k hard routing | Memory Attention + UAMM/AMF soft routing |
+| Routing 레벨 | per-image (GAP) | per-pixel (P25) 또는 per-image (P9/P22) |
+| FPN 활용 | 3레벨 독립 routing | 3레벨 DeBA-FP refined + unified routing |
+| Missing modality | top-k 자동 처리 | 미지원 (향후 확장 가능) |
+| Detection Head | 없음 (seg only) | FCOS 또는 DETR |
+
+### 상태: 설계 완료 (구현 대기)

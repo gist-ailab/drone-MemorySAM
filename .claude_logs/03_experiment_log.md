@@ -16,7 +16,9 @@
 
 | 순위 | 모델 | Config | Val mIoU | Test mIoU | Val Obstacle | Test Obstacle | M-score | Submission ID |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **1** | **P9** | **hardaug8_physaug** (ep131) ★ | **93.54** | **70.41** | **79.78** | **32.85** | **81.98** | **16683** |
+| **1** | **P9** | **hardaug8_physaug** (ep131, 재제출) ★ | **93.29** | **70.91** | **78.83** | **35.44** | **82.10** | **16710** |
+| **1** | **P22** | **hardaug8_physaug** (ep120) ★ | **93.42** | **70.77** | **79.36** | **30.17** | **82.10** | **16932** |
+| — | **P9** | **hardaug8_physaug** (ep131, 원본) | 93.54 | 70.41 | 79.78 | 32.85 | **81.98** | 16683 |
 | — | **P21** | hardaug8_physaug (ep94) ★P21 best | 93.17 | 70.36 | 78.32 | 36.64 | **81.77** | 16792 |
 | — | **P21** | hardaug8_physaug (ep101) | 93.14 | 70.25 | 78.32 | 33.87 | **81.69** | 16798 |
 | — | **P21** | hardaug8_physaug (night_ep112) | 93.09 | 69.88 | 78.34 | 34.94 | **81.49** | 16812 |
@@ -1161,12 +1163,81 @@ for i in range(m):  # 각 모달리티
 - 더 많은 FPN level 적용으로 over-regularization 가능성
 - P21과 효과 차이가 미미할 수 있음 (P9의 tracking이 이미 robust)
 
-**상태**: 구현 완료, 학습 대기
+**상태**: ✅ 학습 완료, 평가 완료
 
 ```bash
 # 학습 명령
 python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml
 ```
+
+#### P22 실험 결과 (2026-03-18, 정정)
+
+**Day-best: ep120 (Val 94.41 → 93.42 on eval, M=82.10)**
+
+**전체 모델 비교 (summary.json 기준)**:
+
+| 모델 | Val mIoU | Test mIoU | M-score | Val Obs | Test Obs | Submission |
+|------|----------|-----------|---------|---------|----------|------------|
+| P9 ep131 (origin) | 93.54 | 70.41 | 81.98 | 79.78 | 32.85 | #16683 |
+| **P9 ep131 (재제출)** | **93.29** | **70.91** | **82.10** | **78.83** | **35.44** | **#16710** |
+| **P22 ep120** | **93.42** | **70.77** | **82.10** | **79.36** | **30.17** | **#16932** |
+| P21 ep94 | 93.17 | 70.36 | 81.77 | 78.32 | 36.64 | #16792 |
+
+**Per-class Test IoU (frames_test.csv 기준)**:
+
+| Class | P9 #16683 | P9 #16710 | P22 #16932 | P21 #16792 |
+|-------|-----------|-----------|------------|------------|
+| Static | 76.64 | 76.65 | **79.15** | 75.67 |
+| Dynamic | 33.50 | **36.10** | 30.71 | **37.05** |
+| Water | 94.48 | **95.25** | 94.86 | 95.10 |
+| Sky | 73.75 | 71.70 | **74.33** | 69.03 |
+| mIoU | 69.59 | 69.92 | 69.76 | 69.21 |
+
+**P22 vs P9 #16710 (공정 비교, 동일 M-score)**:
+
+| Class | Δ | 해석 |
+|-------|---|------|
+| Static | **+2.50** | DeBA-FP가 큰 구조물 feature refinement에 효과적 |
+| Dynamic | **-5.39** | 작은 객체 검출 하락 |
+| Water | -0.39 | 거의 동일 |
+| Sky | **+2.64** | 하늘 영역 개선 |
+
+**P22 vs P21 best (#16792)**:
+
+| Class | Δ | 해석 |
+|-------|---|------|
+| Static | **+3.48** | Multi-Scale FPN이 Single FPN보다 Static에 유리 |
+| Dynamic | **-6.34** | P21이 Dynamic에서 더 강함 |
+| Water | -0.23 | 거의 동일 |
+| Sky | **+5.30** | P22가 Sky에서 대폭 개선 |
+
+**주의: P9 두 제출 간 차이 (#16710 - #16683)**:
+- Dynamic +2.61, Sky -2.05, mIoU +0.33
+- 동일 모델인데 제출 방식(eval_macvi 생성 방법?)에 따라 per-class 분포가 다름
+- 이전 로그에 P9 per-class로 기록된 `Static 81.30, Dynamic 21.86, Sky 76.54`는 **val_multiaqua.py의 eval_val 출력값**이며, frames_test.csv의 MACVi 계산과 다를 수 있음
+
+**UAMM/AMF**: 상수 수렴 (std < 0.001) — P9와 다른 상수값
+
+| | P9 UAMM | P22 UAMM | P9 AMF | P22 AMF |
+|---|---------|----------|--------|---------|
+| img | 0.614 | **0.841** (+0.23) | 0.239 | **0.300** (+0.06) |
+| lidar | 0.952 | 0.961 | 0.371 | 0.343 (-0.03) |
+| thermal | 1.000 | 1.000 | 0.390 | 0.357 (-0.03) |
+
+DeBA-FP가 FPN feature를 변형 → CrossModalFusionHead가 다른 고정점으로 수렴 (RGB 비중 ↑)
+
+**MoE Routing 변화 (주요)**:
+- LiDAR Block20_Q: ent_ratio 0.434→**0.147** (극도로 집중, max_wt 0.803→0.945)
+- Thermal Block9_V: ent_ratio 0.320→0.669 (분화 감소 — DeBA-FP가 이미 modal 특화를 수행)
+- Test prediction confidence: uncertainty 35.3%→**13.5%** (feature 품질 대폭 향상)
+
+**결론**:
+- P9 재제출(#16710)과 동일한 **M=82.10** 달성 (공동 1위)
+- P22의 DeBA-FP Multi-Scale은 **Static/Sky 같은 큰 영역의 feature refinement에 효과적** (+2~3pp)
+- **Dynamic은 오히려 하락** (-5.4pp vs P9 #16710) — 작은 객체 검출에 불리
+- P21(DeBA-FP single)이 Dynamic에서 가장 강함 (37.05) — fpn[0] only가 작은 객체에 유리?
+- Test uncertainty 대폭 감소 (35%→13.5%) — feature 품질 자체는 개선
+- UAMM/AMF scoring 병목(상수 수렴)은 여전히 미해결
 
 ---
 
@@ -1234,3 +1305,65 @@ python train_sam2_lora_paper.py --cfg configs/levine-multiaqua_rgbtl_P22_hardaug
 ```bash
 python MISC/analyze_detailed_log.py --exp_dir outputs/MMSamP24/.../epoch36_93.89_top1 --no_moe
 ```
+
+---
+
+## P25 구현 완료 + 학습 시작 (2026-03-16)
+
+### P25: Unified Spatial Quality Fusion
+
+**핵심 변경**: CrossModalFusionHead 제거 → SpatialQualityGating의 quality map이 UAMM + AMF + Memory 3곳 통합
+- UAMM: scalar → spatial max-norm `(B, 1, H, W)` — pixel별 max-norm 후 각 vision_feat level에 interpolate
+- AMF: scalar softmax → spatial softmax `(B, 1, H, W)` — pixel별 normalized weighted sum
+- Memory modulation: P24 동일
+- Teacher signal: P24 동일 (4-class CE 기반 `exp(-CE)`)
+- CrossModalFusionHead ~3K params 제거, SpatialQualityGating ~12.5K만 유지
+
+**Config**: `configs/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml`
+- hardaug8 + PhysAug + NIGHT_TRANSLATION + LAMBDA_GATE=0.5
+- HPC A100 서버에서 학습 시작 (2026-03-16)
+
+**구현 중 버그 수정**:
+- `IndexError: Dimension out of range` at line 6546 — AMF 로깅 시 `q_amf_norm[i]`가 4D `(B,1,H,W)`인데 `dim=[2,3,4]`(5D) 사용 → `dim=[1,2,3]`으로 수정
+
+**학습 명령어**:
+```bash
+python train_sam2_lora_paper.py --cfg configs/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml
+```
+
+---
+
+## Tiled Inference 실험 (2026-03-17)
+
+### 목적
+기존 1024×1024 단일 리사이즈 추론 대비, 원본 해상도(1242×2208)를 보존한 sliding window 추론이 성능을 개선하는지 검증.
+
+### 방법
+`val_multiaqua_tiled.py` 신규 작성 (기존 코드 미수정). 두 가지 모드 지원:
+
+1. **Tiled inference** (`--tile_size 1024 --tile_stride 512`):
+   - 원본 해상도 유지 → 1024×1024 패치로 sliding window → overlap logit soft-voting → argmax
+   - 패치 수: ~6개 (2×3 grid with 50% overlap)
+   - SAM2 학습 해상도(1024) 유지 → PE 호환
+
+2. **512 resolution** (`--image_size 512`):
+   - 전체 이미지를 512×512로 축소 단일 추론
+   - SAM2 PE가 1024 기준이라 성능 저하 가능
+
+### 실험 실행
+```bash
+# P9 hardaug8_physaug ep188 — tiled test inference (MACVi 제출)
+python val_multiaqua_tiled.py \
+    --cfg configs/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml \
+    --model_path outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch188_94.43_top1_checkpoint.pth \
+    --mode test --tile_size 1024 --tile_stride 512 --macvi
+```
+
+### 결과
+- **대기 중** — 실행 후 MACVi 제출하여 test mIoU 비교 필요
+- 비교 대상: P9 ep131 단일 추론 (M=81.98, test mIoU=70.41)
+- 기대: 원본 해상도 보존으로 경계/소형 객체 개선 가능
+
+### 파일
+- `val_multiaqua_tiled.py` — 별도 추론 스크립트 (기존 val_multiaqua.py 미수정)
+- 저장 경로: `{checkpoint_dir}/eval_macvi_tiled_test/`

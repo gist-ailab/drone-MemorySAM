@@ -46,7 +46,7 @@ import torchvision.transforms.functional as TF
 
 # ─── FDA Core (semseg/augmentations_mm.py의 RandomFDA._fda_swap 동일) ────────
 
-def fda_swap(src_img, tgt_img, beta=0.015):
+def fda_swap(src_img, tgt_img, beta=0.001):
     """src의 저주파 amplitude를 tgt의 것으로 교체.
 
     Args:
@@ -389,7 +389,7 @@ def main():
                         help='Target (night) reference 이미지 디렉토리')
     parser.add_argument('--tgt-prefix', type=str, default='lj4',
                         help='Target 파일명 prefix 필터 (default: lj4)')
-    parser.add_argument('--beta', type=float, default=0.03,
+    parser.add_argument('--beta', type=float, default=0.09,
                         help='FDA 저주파 대역 비율 (default: 0.03)')
     parser.add_argument('--blend', type=float, default=1.0,
                         help='원본↔FDA 블렌딩 비율 (default: 1.0 = full FDA)')

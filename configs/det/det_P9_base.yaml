@@ -1,0 +1,44 @@
+# MemorySAM Detection Config — P9 backbone
+# Usage: python train_det.py --cfg configs/det/det_P9_base.yaml
+
+OUTPUT_DIR: outputs/det
+
+DATASET:
+  ANNOTATION_TRAIN: /path/to/train_annotations.json   # COCO format
+  ANNOTATION_VAL: /path/to/val_annotations.json        # COCO format
+  MODALITIES:
+    img:
+      ROOT: /path/to/data/zed
+    lidar:
+      ROOT: /path/to/data/lidar_processed
+    thermal:
+      ROOT: /path/to/data/thermal_processed
+  MODALS: ['img', 'lidar', 'thermal']
+  IMG_SIZE: [1024, 1024]
+  MIN_AREA: 16.0   # Ignore tiny annotations (4x4)
+
+MODEL:
+  SEG_MODEL: LoRA_Sam_P9
+  SEG_CHECKPOINT: outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch131_94.41_top1_checkpoint.pth
+  SAM2_CHECKPOINT: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt
+  SAM2_CONFIG: sam2_hiera_b+.yaml
+  N_CLASSES: 2        # Update based on your detection dataset
+  FREEZE_BACKBONE: true
+  FREEZE_MEMORY: true
+  HIDDEN_DIM: 256
+  N_CONVS: 4
+
+TRAIN:
+  EPOCHS: 50
+  BATCH_SIZE: 4
+  VAL_BATCH_SIZE: 4
+  LR: 0.001
+  WEIGHT_DECAY: 0.0001
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 5
+  NUM_WORKERS: 4
+  AMP: true
+
+EVAL:
+  NMS_THRESH: 0.5
+  SCORE_THRESH: 0.05

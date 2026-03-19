@@ -23,13 +23,14 @@ import yaml
 import os
 import time
 import json
+import inspect
 from pathlib import Path
+from PIL import Image
 from tqdm import tqdm
 from tabulate import tabulate
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import numpy as np
-import inspect
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -164,13 +165,11 @@ def _draw_legend(classes, palette, target_h, target_w):
     w, h = fig.canvas.get_width_height()
     img = np.asarray(buf).reshape((h, w, 4))[:, :, :3].copy()
     plt.close(fig)
-    from PIL import Image
     return np.array(Image.fromarray(img).resize((target_w, target_h), Image.Resampling.LANCZOS))
 
 
 def _load_modality_image(dataset, modal_key, stem, target_h, target_w):
     """Load single modality image from disk and resize. Returns (H,W,3) uint8."""
-    from PIL import Image
     if modal_key == 'img':
         path = dataset.rgb_dir / f"{stem}.png" if hasattr(dataset, 'rgb_dir') else None
     elif modal_key == 'lidar':
@@ -212,7 +211,6 @@ def _draw_bar_chart(values, labels, title, target_h, target_w=None):
     img = np.asarray(buf).reshape((h, w, 4))
     img = img[:, :, :3].copy()  # RGB only
     plt.close(fig)
-    from PIL import Image
     pil_img = Image.fromarray(img)
     out_w = target_w if target_w else int(img.shape[1] * (target_h / img.shape[0]))
     pil_img = pil_img.resize((out_w, target_h), Image.Resampling.LANCZOS)
@@ -298,7 +296,6 @@ def _get_uamm_amf_moe_viz(model, batch_idx, modals, main_h, main_w):
     bottom = np.concatenate(strips, axis=1)
     # 너비가 main_w와 다를 수 있으므로 리사이즈
     if bottom.shape[1] != main_w:
-        from PIL import Image
         bottom = np.array(Image.fromarray(bottom).resize((main_w, viz_h), Image.Resampling.LANCZOS))
     return bottom
 
@@ -333,8 +330,6 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
     Validation 평가. mIoU는 원본 이미지 크기에서 계산.
     gamma_list: [1.0] = baseline, [2.0] = single gamma, [1.0,1.5,2.0] = multi-gamma TTA (soft voting)
     """
-    from PIL import Image
-
     model.eval()
     n_classes = dataloader.dataset.n_classes
     palette = dataloader.dataset.PALETTE
@@ -467,8 +462,6 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
     Test set 인퍼런스 후 원본 크기로 저장.
     gamma_list: multi-gamma TTA (soft voting). None이면 기본 추론.
     """
-    from PIL import Image
-
     model.eval()
     n_classes = dataloader.dataset.n_classes
     palette = dataloader.dataset.PALETTE

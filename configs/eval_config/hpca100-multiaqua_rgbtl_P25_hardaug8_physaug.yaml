@@ -18,7 +18,7 @@ MODEL:
 
 DATASET:
   NAME          : MULTIAQUA
-  ROOT          : '/home/jovyan/SSDc/jemo_maeng/dset/MULTIAQUA_night2'
+  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2'    # dataset root path
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']
 
@@ -92,6 +92,6 @@ EVAL:
 
 TEST:
   MODEL_PATH    : ''
-  FILE          : '/home/jovyan/SSDc/jemo_maeng/dset/MULTIAQUA_night2'
+  FILE          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2'
   IMAGE_SIZE    : [1024, 1024]
   OVERLAY       : false

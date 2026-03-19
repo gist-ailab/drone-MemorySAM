@@ -1,48 +1,42 @@
 import os
-import torch 
+import torch
 import argparse
 import yaml
 import time
+import math
+import random
 import multiprocessing as mp
-from tabulate import tabulate
-from tqdm import tqdm
-from torch.utils.data import DataLoader
+import numpy
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from pathlib import Path
+from tabulate import tabulate
+from tqdm import tqdm
+from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
+from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import GradScaler, autocast
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch import distributed as dist
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.pyplot as plt
 try:
     import trackio
     HAS_TRACKIO = True
 except ImportError:
     HAS_TRACKIO = False
-from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp import GradScaler, autocast
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DistributedSampler, RandomSampler
-from torch import distributed as dist
+
 from semseg.models import *
-from semseg.datasets import * 
+from semseg.datasets import *
 from semseg.augmentations_mm import get_train_augmentation, get_val_augmentation, get_nightval_augmentation
 from semseg.losses import get_loss
 from semseg.schedulers import get_scheduler
 from semseg.optimizers import get_optimizer
 from semseg.utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp, get_logger, cal_flops, print_iou
 from val_mm_sam import evaluate
-import numpy
-import random
-import torch
-from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
+from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-# from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P3, LoRA_Sam_P2, LoRA_Sam_P1, LoRA_Sam_P5, LoRA_Sam_P4, LoRA_Sam_P6, LoRA_Sam_P7
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
-
-import torch
-import torch.nn.functional as F
-from torch.nn import CrossEntropyLoss
-import matplotlib
-import math
-matplotlib.use('Agg')  # Non-interactive backend
-import matplotlib.pyplot as plt
 torch.autograd.set_detect_anomaly(True)
 
 

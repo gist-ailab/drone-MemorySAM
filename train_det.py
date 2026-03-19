@@ -1,0 +1,377 @@
+"""
+Object Detection Training Script for MemorySAM.
+
+MemorySAM backbone (P9/P22) + FCOS detection head 학습.
+
+Usage:
+    python train_det.py --cfg configs/det/det_P9_base.yaml
+
+Config 구조:
+    DATASET:
+        ANNOTATION_TRAIN: /path/to/train.json
+        ANNOTATION_VAL: /path/to/val.json
+        MODALITIES:
+            img: { ROOT: /path/to/rgb }
+            lidar: { ROOT: /path/to/lidar }
+            thermal: { ROOT: /path/to/thermal }
+        MODALS: ['img', 'lidar', 'thermal']
+        IMG_SIZE: [1024, 1024]
+    MODEL:
+        SEG_MODEL: LoRA_Sam_P9
+        SEG_CHECKPOINT: /path/to/seg_checkpoint.pth
+        N_CLASSES: 2
+        FREEZE_BACKBONE: true
+        HIDDEN_DIM: 256
+        N_CONVS: 4
+    TRAIN:
+        EPOCHS: 50
+        BATCH_SIZE: 4
+        LR: 0.001
+        WEIGHT_DECAY: 0.0001
+        LR_SCHEDULER: cosine
+        WARMUP_EPOCHS: 5
+        SAVE_INTERVAL: 5
+    EVAL:
+        NMS_THRESH: 0.5
+        SCORE_THRESH: 0.05
+"""
+
+import os
+import torch
+import argparse
+import yaml
+import time
+from pathlib import Path
+from tqdm import tqdm
+from torch.utils.data import DataLoader
+from torch.cuda.amp import GradScaler, autocast
+from torch.utils.tensorboard import SummaryWriter
+
+from semseg.models.sam2.sam2.build_sam import build_sam2
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
+from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+
+from objdet.datasets.multimodal_det import MultiModalDetDataset
+from objdet.models.det_model import MemorySAMDetector
+from objdet.metrics import evaluate_coco, format_predictions_coco
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='MemorySAM Detection Training')
+    parser.add_argument('--cfg', type=str, required=True, help='Path to config YAML')
+    parser.add_argument('--resume', type=str, default=None, help='Resume from checkpoint')
+    parser.add_argument('--eval_only', action='store_true', help='Evaluation only')
+    return parser.parse_args()
+
+
+def build_seg_model(cfg: dict, device: torch.device) -> torch.nn.Module:
+    """Build and load pretrained segmentation model."""
+    model_name = cfg['MODEL']['SEG_MODEL']
+    checkpoint_path = cfg['MODEL']['SEG_CHECKPOINT']
+    modals = cfg['DATASET']['MODALS']
+
+    sam2_checkpoint = cfg['MODEL'].get('SAM2_CHECKPOINT',
+        'semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt')
+    model_cfg_path = cfg['MODEL'].get('SAM2_CONFIG', 'sam2_hiera_b+.yaml')
+
+    sam2_model = build_sam2(model_cfg_path, sam2_checkpoint, device=device)
+
+    # Dynamically get model class
+    model_cls = globals().get(model_name)
+    if model_cls is None:
+        raise ValueError(f"Unknown model: {model_name}")
+
+    seg_model = model_cls(sam2_model, len(modals))
+
+    # Load checkpoint
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        ckpt = torch.load(checkpoint_path, map_location=device)
+        state_dict = ckpt.get('model_state_dict', ckpt)
+        seg_model.load_state_dict(state_dict, strict=False)
+        print(f"Loaded seg checkpoint: {checkpoint_path}")
+
+    return seg_model
+
+
+def build_dataset(cfg: dict, split: str = 'train'):
+    """Build detection dataset."""
+    ds_cfg = cfg['DATASET']
+    ann_key = f'ANNOTATION_{split.upper()}'
+    annotation_path = ds_cfg[ann_key]
+
+    modality_roots = {}
+    for modal_name, modal_cfg in ds_cfg['MODALITIES'].items():
+        modality_roots[modal_name] = modal_cfg['ROOT']
+
+    img_size = tuple(ds_cfg.get('IMG_SIZE', [1024, 1024]))
+    modals = ds_cfg.get('MODALS', list(modality_roots.keys()))
+
+    dataset = MultiModalDetDataset(
+        annotation_path=annotation_path,
+        modality_roots=modality_roots,
+        img_size=img_size,
+        modals=modals,
+        min_area=ds_cfg.get('MIN_AREA', 0.0),
+    )
+    return dataset
+
+
+def train_one_epoch(
+    model: MemorySAMDetector,
+    dataloader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    scaler: GradScaler,
+    device: torch.device,
+    epoch: int,
+    writer: SummaryWriter,
+    use_amp: bool = True,
+):
+    model.train()
+    total_loss = 0.0
+    total_cls = 0.0
+    total_reg = 0.0
+    total_ctr = 0.0
+    n_iters = 0
+
+    pbar = tqdm(dataloader, desc=f'Epoch [{epoch}]')
+    for batch_idx, batch in enumerate(pbar):
+        # Prepare sample
+        modals = [k for k in batch.keys()
+                  if isinstance(batch[k], torch.Tensor) and batch[k].dim() == 4]
+        sample = {m: batch[m].to(device) for m in modals}
+        gt_bboxes = [b.to(device) for b in batch['bboxes']]
+        gt_labels = [l.to(device) for l in batch['labels']]
+
+        optimizer.zero_grad()
+
+        with autocast(enabled=use_amp):
+            losses = model(sample, gt_bboxes=gt_bboxes, gt_labels=gt_labels)
+
+        loss = losses['loss_total']
+
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
+
+        total_loss += loss.item()
+        total_cls += losses['loss_cls'].item()
+        total_reg += losses['loss_reg'].item()
+        total_ctr += losses['loss_ctr'].item()
+        n_iters += 1
+
+        pbar.set_postfix({
+            'loss': f'{loss.item():.4f}',
+            'cls': f'{losses["loss_cls"].item():.4f}',
+            'reg': f'{losses["loss_reg"].item():.4f}',
+            'n_pos': losses['n_pos'],
+        })
+
+    avg_loss = total_loss / max(n_iters, 1)
+    global_step = epoch * len(dataloader)
+    writer.add_scalar('train/loss_total', avg_loss, global_step)
+    writer.add_scalar('train/loss_cls', total_cls / max(n_iters, 1), global_step)
+    writer.add_scalar('train/loss_reg', total_reg / max(n_iters, 1), global_step)
+    writer.add_scalar('train/loss_ctr', total_ctr / max(n_iters, 1), global_step)
+
+    return avg_loss
+
+
+@torch.no_grad()
+def evaluate(
+    model: MemorySAMDetector,
+    dataloader: DataLoader,
+    device: torch.device,
+    annotation_path: str,
+    idx_to_cat_id: dict,
+) -> dict:
+    """Run evaluation and return COCO metrics."""
+    model.eval()
+    all_predictions = []
+
+    for batch in tqdm(dataloader, desc='Evaluating'):
+        modals = [k for k in batch.keys()
+                  if isinstance(batch[k], torch.Tensor) and batch[k].dim() == 4]
+        sample = {m: batch[m].to(device) for m in modals}
+
+        results = model(sample)
+
+        orig_sizes = batch['orig_size']  # (B, 2)
+        img_size = sample[modals[0]].shape[-2:]  # (H, W)
+
+        for i, det in enumerate(results['detections']):
+            if det['boxes'].shape[0] == 0:
+                continue
+
+            # Scale boxes back to original image size
+            orig_h, orig_w = orig_sizes[i].tolist()
+            scale_x = orig_w / img_size[1]
+            scale_y = orig_h / img_size[0]
+
+            boxes = det['boxes'].clone()
+            boxes[:, [0, 2]] *= scale_x
+            boxes[:, [1, 3]] *= scale_y
+
+            preds = format_predictions_coco(
+                boxes.cpu(), det['scores'].cpu(), det['class_ids'].cpu(),
+                batch['image_id'][i], idx_to_cat_id,
+            )
+            all_predictions.extend(preds)
+
+    if not all_predictions:
+        print("No predictions — returning zero AP.")
+        return {'AP': 0.0, 'AP50': 0.0, 'AP75': 0.0}
+
+    metrics = evaluate_coco(annotation_path, all_predictions)
+    return metrics
+
+
+def main():
+    args = parse_args()
+
+    with open(args.cfg, 'r') as f:
+        cfg = yaml.safe_load(f)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Output directory
+    save_dir = Path(cfg.get('OUTPUT_DIR', 'outputs/det')) / Path(args.cfg).stem
+    save_dir.mkdir(parents=True, exist_ok=True)
+    writer = SummaryWriter(str(save_dir / 'tb_logs'))
+
+    # Save config
+    with open(save_dir / 'config.yaml', 'w') as f:
+        yaml.dump(cfg, f)
+
+    # Build model
+    print("Building segmentation backbone...")
+    seg_model = build_seg_model(cfg, device)
+
+    model = MemorySAMDetector(
+        seg_model=seg_model,
+        n_classes=cfg['MODEL']['N_CLASSES'],
+        freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', True),
+        freeze_memory=cfg['MODEL'].get('FREEZE_MEMORY', True),
+        n_convs=cfg['MODEL'].get('N_CONVS', 4),
+        hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+    ).to(device)
+
+    # Count parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total params: {total_params:,} | Trainable: {trainable_params:,}")
+
+    # Datasets
+    train_dataset = build_dataset(cfg, 'train')
+    val_dataset = build_dataset(cfg, 'val')
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=cfg['TRAIN']['BATCH_SIZE'],
+        shuffle=True,
+        num_workers=cfg['TRAIN'].get('NUM_WORKERS', 4),
+        collate_fn=MultiModalDetDataset.collate_fn,
+        pin_memory=True,
+        drop_last=True,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=cfg['TRAIN'].get('VAL_BATCH_SIZE', cfg['TRAIN']['BATCH_SIZE']),
+        shuffle=False,
+        num_workers=cfg['TRAIN'].get('NUM_WORKERS', 4),
+        collate_fn=MultiModalDetDataset.collate_fn,
+        pin_memory=True,
+    )
+
+    # Optimizer
+    trainable = model.get_trainable_params()
+    optimizer = torch.optim.AdamW(
+        trainable,
+        lr=cfg['TRAIN']['LR'],
+        weight_decay=cfg['TRAIN'].get('WEIGHT_DECAY', 1e-4),
+    )
+
+    # Scheduler
+    epochs = cfg['TRAIN']['EPOCHS']
+    warmup_epochs = cfg['TRAIN'].get('WARMUP_EPOCHS', 5)
+
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs
+        progress = (epoch - warmup_epochs) / max(epochs - warmup_epochs, 1)
+        return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)).item())
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    scaler = GradScaler()
+
+    # Resume
+    start_epoch = 0
+    best_ap = 0.0
+    if args.resume:
+        ckpt = torch.load(args.resume, map_location=device)
+        model.det_head.load_state_dict(ckpt['det_head_state_dict'])
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        start_epoch = ckpt['epoch'] + 1
+        best_ap = ckpt.get('best_ap', 0.0)
+        print(f"Resumed from epoch {start_epoch}, best AP: {best_ap:.4f}")
+
+    # idx_to_cat_id for COCO eval
+    idx_to_cat_id = {v: k for k, v in train_dataset.cat_id_to_idx.items()}
+
+    if args.eval_only:
+        metrics = evaluate(
+            model, val_loader, device,
+            cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+        )
+        print(f"Eval results: AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}")
+        return
+
+    # Training loop
+    for epoch in range(start_epoch, epochs):
+        avg_loss = train_one_epoch(
+            model, train_loader, optimizer, scaler, device,
+            epoch, writer, use_amp=cfg['TRAIN'].get('AMP', True),
+        )
+        scheduler.step()
+
+        print(f"Epoch {epoch}: loss={avg_loss:.4f}, lr={scheduler.get_last_lr()[0]:.6f}")
+
+        # Evaluate
+        save_interval = cfg['TRAIN'].get('SAVE_INTERVAL', 5)
+        if (epoch + 1) % save_interval == 0 or epoch == epochs - 1:
+            metrics = evaluate(
+                model, val_loader, device,
+                cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+            )
+            print(f"  Val AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}, AP75={metrics['AP75']:.4f}")
+
+            writer.add_scalar('val/AP', metrics['AP'], epoch)
+            writer.add_scalar('val/AP50', metrics['AP50'], epoch)
+
+            # Save checkpoint
+            ckpt = {
+                'epoch': epoch,
+                'det_head_state_dict': model.det_head.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'best_ap': best_ap,
+                'metrics': metrics,
+                'config': cfg,
+            }
+
+            if metrics['AP'] > best_ap:
+                best_ap = metrics['AP']
+                ckpt['best_ap'] = best_ap
+                torch.save(ckpt, save_dir / 'best_checkpoint.pth')
+                print(f"  New best AP: {best_ap:.4f}")
+
+            torch.save(ckpt, save_dir / f'epoch{epoch}_checkpoint.pth')
+
+    writer.close()
+    print(f"Training complete. Best AP: {best_ap:.4f}")
+
+
+if __name__ == '__main__':
+    main()

@@ -1,8 +1,18 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-14
+> 최종 업데이트: 2026-03-18
 
-## 현재 상태: P9+hardaug8_physaug ep131 **최선 모델 (M=81.98)**, P24 CE 기반 재학습 중, **P25 구현 완료 (학습 대기)**
+## 현재 상태: P9 ep131 재제출 & P22 ep120 **공동 최선 (M=82.10)**, P24 CE 기반 재학습 중, **P25 구현 완료 (학습 대기)**, Object Detection 확장 계획 수립
+
+### P22 ep120 평가 완료 — M=82.10 공동 1위 (2026-03-18)
+
+- **P9 ep131 재제출 (#16710)**: Val 93.29 / Test 70.91 / **M=82.10**
+- **P22 ep120 (#16932)**: Val 93.42 / Test 70.77 / **M=82.10**
+- 두 모델 동률이나 특성이 다름:
+  - P22: Dynamic **+8.85pp** (30.71 vs P9 21.86), Static/Sky 각 -2pp
+  - P9 재제출: Test mIoU가 원본 대비 +0.5 (70.41→70.91)
+- UAMM/AMF 여전히 상수 수렴 — scoring 병목 미해결
+- 상세: `03_experiment_log.md` — P22 실험 결과 섹션
 
 ### P25 구현 완료: Unified Spatial Quality Fusion (2026-03-14)
 
@@ -1031,3 +1041,174 @@ DATASET:
 - **학습 가능 fusion 실패 확정**: P12~P19 8개 실험 전부 P9(고정 상수)보다 나쁨
 - **🔴 I2I Translation 양방향 실패 확정** (2026-03-05): Day-Trans M=78.90(-2.57), Night2 M=73.04(-8.43). Night2 Sky 붕괴 -49.62pp(130/200장). Real night의 정보 비가역 소실 → pixel-level I2I로 domain gap 해소 불가. day2night2day≈day 관찰이 증거 (I2I의 "night"은 정보 보존된 fake night)
 - **다음 방향**: FDA augmentation (frequency domain style transfer) 또는 Self-training (pseudo-label) 검토
+
+---
+
+## Object Detection 확장 계획 (2026-03-19)
+
+### 배경
+
+- MemorySAM의 memory attention cross-modal fusion을 유지하면서 object detection으로 확장
+- P22가 fpn[0,1,2] 3레벨 전부 사용 (DeBA-FP MultiScale) → multi-scale detection에 적합
+- mmdetection 이사 대신 **현재 코드베이스에서 detection head만 추가**하는 방식 채택
+  - 이유: SAM2 memory attention, MoE LoRA, UAMM/AMF가 SAM2 내부 API에 깊이 의존 → mmdet 이식 비용이 처음부터 만드는 것과 동일
+
+### 변경 범위
+
+**변경 없음 (그대로 재사용)**:
+- SAM2 Encoder (Hiera-B+)
+- MoE LoRA (SoftMoE_LoRA_Layer × 48)
+- Memory Attention (cross-modal fusion)
+- FPN (fpn[0]=32ch, fpn[1]=64ch, fpn[2]=256ch)
+- UAMM / AMF
+- DeBA-FP (P22)
+
+**신규 구현 필요**:
+- Detection Head (FCOS anchor-free 또는 DETR transformer decoder)
+- Loss (Focal Loss + L1/GIoU)
+- Post-processing (NMS)
+- Dataset loader (bbox annotation 로딩)
+- Detection 전용 augmentation (bbox-aware)
+- Evaluation metrics (mAP, AP50, AP75)
+
+### 파일 구조 계획
+
+```
+drone-MemorySAM/
+├── semseg/                              # 기존 segmentation (변경 없음)
+│   └── models/sam2/sam2/
+│       └── sam_lora_image_encoder_seg.py # P9/P22 공유 backbone
+│
+├── objdet/                              # 신규 detection 모듈
+│   ├── __init__.py
+│   ├── models/
+│   │   └── heads/
+│   │       ├── __init__.py
+│   │       ├── fcos_head.py             # Anchor-free detection head
+│   │       └── detr_head.py             # Transformer decoder detection head
+│   ├── datasets/
+│   │   └── multiaqua_det.py             # bbox annotation 로딩
+│   ├── losses.py                        # Focal + GIoU + L1
+│   ├── metrics.py                       # mAP 계산
+│   ├── augmentations_det.py             # bbox-aware augmentation
+│   └── utils/
+│       └── nms.py                       # NMS post-processing
+│
+├── train_det.py                         # detection 학습 스크립트
+├── val_multiaqua_det.py                 # detection 평가 스크립트
+└── configs/det/                         # detection 전용 config
+```
+
+### Detection Head 후보
+
+1. **FCOS (anchor-free)**: 변경량 최소, 현재 segmentation head와 구조 유사 (per-pixel prediction), ~200줄
+2. **DETR (transformer decoder)**: SAM2 memory attention과 구조적으로 가장 자연스러운 확장, object query가 cross-modal fused feature를 참조, ~300줄
+
+### Dataset: COCO Format + 모달리티별 Path Prefix
+
+COCO JSON format을 기반으로 하되, `images`의 `file_name`에 모달리티별 prefix를 부여하여 멀티모달 로딩을 지원한다.
+
+**Annotation JSON 예시**:
+
+```json
+{
+  "images": [
+    {
+      "id": 1,
+      "file_name": "000001.png",
+      "width": 2048,
+      "height": 1024
+    }
+  ],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "category_id": 1,
+      "bbox": [100, 200, 50, 80],
+      "area": 4000,
+      "iscrowd": 0
+    }
+  ],
+  "categories": [
+    {"id": 1, "name": "person"},
+    {"id": 2, "name": "boat"}
+  ]
+}
+```
+
+**Config에서 모달리티별 경로 지정**:
+
+```yaml
+DATASET:
+  FORMAT: coco
+  ANNOTATION: /path/to/annotations.json
+  MODALITIES:
+    img:
+      ROOT: /path/to/data/zed          # file_name 앞에 이 경로를 붙임
+    lidar:
+      ROOT: /path/to/data/lidar_processed
+    thermal:
+      ROOT: /path/to/data/thermal_processed_fieldscale
+```
+
+**로딩 로직**: `images[i]["file_name"]`은 공통이고, 각 모달리티의 `ROOT`를 prefix로 붙여서 로드:
+
+```python
+for modality, cfg in modalities.items():
+    path = os.path.join(cfg['ROOT'], image_info['file_name'])
+    img = load_image(path)  # RGB / depth / thermal 각각
+```
+
+이렇게 하면 기존 COCO 도구(pycocotools)와 호환되면서도 멀티모달 로딩이 가능.
+
+### 구현 우선순위
+
+1. `objdet/` 폴더 구조 생성
+2. Dataset loader (COCO format + 모달리티별 path prefix)
+3. Detection Head (FCOS 우선 → DETR 후속)
+4. Loss 함수 (Focal + GIoU)
+5. train_det.py 작성
+6. NMS + mAP evaluation (pycocotools 활용)
+7. val_multiaqua_det.py 작성
+
+### 상태: ✅ 구현 완료 (2026-03-19) — 데이터셋 준비 후 학습 가능
+
+**구현 완료 파일**:
+- `objdet/` 모듈 전체 (패키지 구조)
+  - `datasets/multimodal_det.py`: COCO JSON + 멀티모달 path prefix dataset loader
+  - `models/heads/fcos_head.py`: FCOS anchor-free detection head (3-level FPN: 32/64/256ch)
+  - `models/det_model.py`: MemorySAMDetector (seg backbone + FCOS head wrapper)
+  - `losses.py`: FCOSLoss (Focal + GIoU + Centerness BCE)
+  - `utils/nms.py`: class-aware batched NMS
+  - `metrics.py`: pycocotools 기반 COCO mAP 평가
+  - `augmentations_det.py`: bbox-aware augmentation (hflip, brightness, crop)
+- `train_det.py`: 학습 스크립트 (AMP, warmup, cosine LR)
+- `val_det.py`: 평가 스크립트 (bbox visualization 포함)
+- `configs/det/det_P9_base.yaml`: P9 backbone 기본 config 템플릿
+
+**사용법**:
+```bash
+# 학습
+python train_det.py --cfg configs/det/det_P9_base.yaml
+
+# 평가
+python val_det.py --cfg configs/det/det_P9_base.yaml \
+    --det_checkpoint outputs/det/det_P9_base/best_checkpoint.pth \
+    --mode val --save_vis
+```
+
+**TODO (구현 시 반드시 확인)**:
+
+1. COCO format detection annotation JSON 준비 (외부 데이터셋)
+2. seg_model이 `_last_backbone_fpn` 속성을 노출하도록 P9/P22 forward에 hook 추가
+3. 실제 학습 돌려서 검증
+4. `configs/det/det_P9_base.yaml`의 경로 수정:
+   - `ANNOTATION_TRAIN` / `ANNOTATION_VAL`: COCO JSON 경로
+   - `MODALITIES.img.ROOT` / `lidar.ROOT` / `thermal.ROOT`: 모달리티별 이미지 디렉토리
+5. `det_P9_base.yaml`의 `N_CLASSES`: 실제 detection 데이터셋 클래스 수로 변경
+6. Dataset loader(`objdet/datasets/multimodal_det.py`)의 COCO JSON 구조:
+   - `images[i].file_name`은 모든 모달리티가 공유하는 공통 파일명
+   - 각 모달리티는 config의 `MODALITIES.{modal}.ROOT` + `file_name`으로 이미지 로드
+   - `annotations[].bbox`: COCO format `[x, y, w, h]`
+   - `categories[].id`: 원본 카테고리 ID → 내부적으로 0-based contiguous index로 매핑
