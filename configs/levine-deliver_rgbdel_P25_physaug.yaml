@@ -45,7 +45,7 @@ DATASET:
 
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]
-  BATCH_SIZE    : 4
+  BATCH_SIZE    : 2
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 1
