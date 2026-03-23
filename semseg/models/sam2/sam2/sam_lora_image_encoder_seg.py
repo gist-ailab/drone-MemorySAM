@@ -6716,11 +6716,12 @@ class LoRA_Sam_P26(nn.Module):
             fusion_dim = self.sam.sam_mask_decoder.transformer_dim       # 256
 
         if multi_scale_sqg and use_high_res:
-            # fpn[0]=32ch, fpn[1]=64ch, fpn[2]=256ch → all project to 32ch → concat=96ch
-            fpn1_ch = self.sam.sam_mask_decoder.transformer_dim // 4   # 64
-            fpn2_ch = self.sam.sam_mask_decoder.transformer_dim        # 256
-            self.fpn_proj1 = nn.Conv2d(fpn1_ch, fusion_dim, 1)
-            self.fpn_proj2 = nn.Conv2d(fpn2_ch, fusion_dim, 1)
+            # Raw FPN from backbone neck: ALL levels are d_model=256ch (before conv_s0/s1)
+            # Project each to fusion_dim(32ch), then concat → 96ch
+            d_model = self.sam.sam_mask_decoder.transformer_dim  # 256
+            self.fpn_proj0 = nn.Conv2d(d_model, fusion_dim, 1)
+            self.fpn_proj1 = nn.Conv2d(d_model, fusion_dim, 1)
+            self.fpn_proj2 = nn.Conv2d(d_model, fusion_dim, 1)
             sqg_in_channels = fusion_dim * 3  # 96
         else:
             sqg_in_channels = fusion_dim
@@ -6741,14 +6742,15 @@ class LoRA_Sam_P26(nn.Module):
         self._last_quality_maps = None
 
     def _fuse_fpn_multiscale(self, backbone_fpn):
-        """Fuse fpn[0,1,2] to fpn[0] resolution for SQG input."""
-        f0 = backbone_fpn[0]  # (B, 32, H0, W0)
+        """Fuse fpn[0,1,2] to fpn[0] resolution for SQG input.
+        Raw FPN levels are all 256ch (d_model). Project each to 32ch then concat."""
+        f0 = self.fpn_proj0(backbone_fpn[0])  # (B, 256→32, H0, W0)
         f1 = F.interpolate(
-            self.fpn_proj1(backbone_fpn[1]),
+            self.fpn_proj1(backbone_fpn[1]),  # (B, 256→32, H1, W1)
             size=f0.shape[-2:], mode='bilinear', align_corners=False,
         )
         f2 = F.interpolate(
-            self.fpn_proj2(backbone_fpn[2]),
+            self.fpn_proj2(backbone_fpn[2]),  # (B, 256→32, H2, W2)
             size=f0.shape[-2:], mode='bilinear', align_corners=False,
         )
         return torch.cat([f0, f1, f2], dim=1)  # (B, 96, H0, W0)
@@ -7050,7 +7052,9 @@ class LoRA_Sam_P26(nn.Module):
 
         # Multi-scale FPN projections
         extra_tensors = {}
-        if self.multi_scale_sqg and hasattr(self, 'fpn_proj1'):
+        if self.multi_scale_sqg and hasattr(self, 'fpn_proj0'):
+            for k, v in self.fpn_proj0.state_dict().items():
+                extra_tensors[f"fpn_proj0.{k}"] = v
             for k, v in self.fpn_proj1.state_dict().items():
                 extra_tensors[f"fpn_proj1.{k}"] = v
             for k, v in self.fpn_proj2.state_dict().items():
@@ -7105,7 +7109,9 @@ class LoRA_Sam_P26(nn.Module):
                 qg.load_state_dict(qg_dict)
 
         # Multi-scale FPN projections
-        if hasattr(self, 'fpn_proj1'):
+        if hasattr(self, 'fpn_proj0'):
+            p0_dict = {k.replace("fpn_proj0.", ""): v for k, v in state_dict.items() if k.startswith("fpn_proj0.")}
+            if p0_dict: self.fpn_proj0.load_state_dict(p0_dict)
             p1_dict = {k.replace("fpn_proj1.", ""): v for k, v in state_dict.items() if k.startswith("fpn_proj1.")}
             if p1_dict: self.fpn_proj1.load_state_dict(p1_dict)
             p2_dict = {k.replace("fpn_proj2.", ""): v for k, v in state_dict.items() if k.startswith("fpn_proj2.")}
