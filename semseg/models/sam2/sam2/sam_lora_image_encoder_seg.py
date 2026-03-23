@@ -6760,6 +6760,38 @@ class LoRA_Sam_P26(nn.Module):
         if self.per_modality_decoder:
             self.sam.sam_mask_decoder = self.per_modal_decoders[modal_idx]
 
+    def _encode_single_modality(self, img, modal_idx_tensor):
+        """Checkpoint-safe: encode one modality with correct condition & decoder.
+        Returns flat tuple of tensors for torch.utils.checkpoint compatibility.
+        Layout: (*backbone_fpn, *vision_pos_enc[, *raw_fpn if multi_scale_sqg])
+        """
+        idx = modal_idx_tensor.item()
+        B = img.shape[0]
+
+        # Set MoE condition for this modality
+        modal_cond = self.modal_embed(modal_idx_tensor).unsqueeze(0).expand(B, -1)
+        for layer in self.moe_layers_q + self.moe_layers_v:
+            layer.set_condition(modal_cond)
+
+        # Swap to this modality's decoder (for conv_s0/s1)
+        self._swap_decoder(idx)
+
+        # Run backbone
+        emb = self.sam.image_encoder(img)
+        use_hr = getattr(self.sam, "use_high_res_features_in_sam", False)
+
+        # Clone raw FPN before conv_s0/s1 (for multi-scale SQG)
+        raw_fpn = []
+        if self.multi_scale_sqg and use_hr:
+            raw_fpn = [f.clone() for f in emb['backbone_fpn']]
+
+        # Apply conv_s0/s1 from current per-modality decoder
+        if use_hr:
+            emb["backbone_fpn"][0] = self.sam.sam_mask_decoder.conv_s0(emb["backbone_fpn"][0])
+            emb["backbone_fpn"][1] = self.sam.sam_mask_decoder.conv_s1(emb["backbone_fpn"][1])
+
+        return tuple(emb['backbone_fpn']) + tuple(emb['vision_pos_enc']) + tuple(raw_fpn)
+
     def _teacher_decode_single(self, vision_feats, vision_pos_embeds, feat_sizes):
         """Teacher: single-frame decoding (no memory attention)."""
         if len(vision_feats) > 1:
@@ -6799,9 +6831,8 @@ class LoRA_Sam_P26(nn.Module):
             layer._gate_callback = _moe_gate_cb
 
         # ⑧ Modal-Conditioned MoE uses mutable _condition state on LoRA layers.
-        # Per-block gradient checkpointing recomputes blocks during backward,
-        # but _condition has changed by then → tensor count mismatch.
-        # Disable per-block checkpointing during P26 forward (modality conditioning is incompatible).
+        # Per-block gradient checkpointing is incompatible (recomputation sees stale _condition).
+        # Solution: disable per-block checkpointing, use per-modality checkpointing instead.
         trunk = self.sam.image_encoder.trunk
         _orig_gc = getattr(trunk, 'gradient_checkpointing', False)
         if _orig_gc:
@@ -6810,32 +6841,34 @@ class LoRA_Sam_P26(nn.Module):
         try:
             # ============================================
             # Phase 1: Image Encoding + 변경 ⑧ Modal-Cond MoE + ⑦ Per-Modal Decoder
+            # Per-modality checkpointing: each modality encoding is a checkpoint unit.
+            # Condition & decoder are set inside _encode_single_modality,
+            # so recomputation during backward produces identical results.
             # ============================================
             device = batched_input[0].device
+            use_hr = getattr(self.sam, "use_high_res_features_in_sam", False)
+            n_fpn = len(self.sam.image_encoder.neck.convs)  # typically 3
+
             for i in range(m):
-                # ⑧: Set modality condition for MoE gates
-                modal_cond = self.modal_embed(
-                    torch.tensor(i, device=device)
-                ).unsqueeze(0).expand(batched_input[i].shape[0], -1)  # (B, cond_dim)
-                for layer in self.moe_layers_q + self.moe_layers_v:
-                    layer.set_condition(modal_cond)
+                idx_tensor = torch.tensor(i, device=device)
 
-                # ⑦: Swap decoder before forward_image (conv_s0/s1 are in decoder)
-                self._swap_decoder(i)
-
-                # Save raw FPN before conv_s0/s1 for multi-scale SQG
-                img_emb_raw = self.sam.image_encoder(batched_input[i])
-                if self.multi_scale_sqg and getattr(self.sam, "use_high_res_features_in_sam", False):
-                    raw_backbone_fpns.append([f.clone() for f in img_emb_raw['backbone_fpn']])
-
-                # Apply conv_s0/s1 (from current decoder)
-                if getattr(self.sam, "use_high_res_features_in_sam", False):
-                    img_emb_raw["backbone_fpn"][0] = self.sam.sam_mask_decoder.conv_s0(
-                        img_emb_raw["backbone_fpn"][0]
+                if _orig_gc and self.training:
+                    outs = torch.utils.checkpoint.checkpoint(
+                        self._encode_single_modality,
+                        batched_input[i], idx_tensor,
+                        use_reentrant=False,
                     )
-                    img_emb_raw["backbone_fpn"][1] = self.sam.sam_mask_decoder.conv_s1(
-                        img_emb_raw["backbone_fpn"][1]
-                    )
+                else:
+                    outs = self._encode_single_modality(batched_input[i], idx_tensor)
+
+                # Unpack flat tuple → dict
+                fpn_list = list(outs[:n_fpn])
+                pos_list = list(outs[n_fpn:n_fpn * 2])
+                img_emb_raw = {'backbone_fpn': fpn_list, 'vision_pos_enc': pos_list}
+
+                if self.multi_scale_sqg and use_hr:
+                    raw_fpn = list(outs[n_fpn * 2:])
+                    raw_backbone_fpns.append(raw_fpn)
 
                 image_embedding.append(img_emb_raw)
                 bb_out, v_feats, v_pos, f_sizes = self.sam._prepare_backbone_features(img_emb_raw)
