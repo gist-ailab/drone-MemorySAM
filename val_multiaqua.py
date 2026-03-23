@@ -99,6 +99,8 @@ def load_model(cfg, model_path, device):
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:
         model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
+    if 'num_modalities' in sig.parameters:
+        model_kwargs['num_modalities'] = num_modalities
 
     model = lora_model_class(**model_kwargs)
 

@@ -420,6 +420,9 @@ def main(cfg, gpu, save_dir):
     if 'cond_dim' in sig.parameters:
         # [P26] Modality-conditioned MoE LoRA gate
         model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
+    if 'num_modalities' in sig.parameters:
+        # All LoRA models: pass actual number of modalities from config
+        model_kwargs['num_modalities'] = num_modalities
 
     model = lora_model_class(**model_kwargs).cpu()
     
