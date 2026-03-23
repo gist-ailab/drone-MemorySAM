@@ -308,9 +308,12 @@ def main(cfg, gpu, save_dir):
     if dataset_cfg.get('NAME') == 'MULTIAQUA' and 'NUM_CLASSES' in dataset_cfg:
         ds_kwargs['n_classes'] = dataset_cfg['NUM_CLASSES']
     night_trans = bool(dataset_cfg.get('NIGHT_TRANSLATION', False))
-    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], night_translation=night_trans, **ds_kwargs)
-    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], night_translation=night_trans, **ds_kwargs)
-    nightvalset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', nightvaltransform, dataset_cfg['MODALS'], night_translation=night_trans, **ds_kwargs) if night_aug_enabled else None
+    # night_translation은 MULTIAQUA 전용 — DELIVER 등 다른 데이터셋에는 전달하지 않음
+    if dataset_cfg.get('NAME') == 'MULTIAQUA':
+        ds_kwargs['night_translation'] = night_trans
+    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
+    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
+    nightvalset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', nightvaltransform, dataset_cfg['MODALS'], **ds_kwargs) if night_aug_enabled else None
     class_names = trainset.CLASSES
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
