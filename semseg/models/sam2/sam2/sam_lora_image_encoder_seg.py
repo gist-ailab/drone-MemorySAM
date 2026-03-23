@@ -6797,6 +6797,16 @@ class LoRA_Sam_P26(nn.Module):
             moe_gate_collector.append(gw)
         for layer in self.moe_layers_q + self.moe_layers_v:
             layer._gate_callback = _moe_gate_cb
+
+        # ⑧ Modal-Conditioned MoE uses mutable _condition state on LoRA layers.
+        # Per-block gradient checkpointing recomputes blocks during backward,
+        # but _condition has changed by then → tensor count mismatch.
+        # Disable per-block checkpointing during P26 forward (modality conditioning is incompatible).
+        trunk = self.sam.image_encoder.trunk
+        _orig_gc = getattr(trunk, 'gradient_checkpointing', False)
+        if _orig_gc:
+            trunk.gradient_checkpointing = False
+
         try:
             # ============================================
             # Phase 1: Image Encoding + 변경 ⑧ Modal-Cond MoE + ⑦ Per-Modal Decoder
@@ -7032,6 +7042,9 @@ class LoRA_Sam_P26(nn.Module):
             for layer in self.moe_layers_q + self.moe_layers_v:
                 layer._gate_callback = None
                 layer.set_condition(None)
+            # Restore per-block gradient checkpointing
+            if _orig_gc:
+                trunk.gradient_checkpointing = _orig_gc
 
         if self.training and gate_loss_data is not None:
             return m_output, m_feat, gate_loss_data
