@@ -6847,7 +6847,8 @@ class LoRA_Sam_P26(nn.Module):
             # ============================================
             device = batched_input[0].device
             use_hr = getattr(self.sam, "use_high_res_features_in_sam", False)
-            n_fpn = len(self.sam.image_encoder.neck.convs)  # typically 3
+            scalp = getattr(self.sam.image_encoder, "scalp", 0)
+            n_fpn = len(self.sam.image_encoder.neck.convs) - scalp  # 4 convs - 1 scalp = 3
 
             for i in range(m):
                 idx_tensor = torch.tensor(i, device=device)
