@@ -6764,9 +6764,19 @@ class LoRA_Sam_P26(nn.Module):
         """Checkpoint-safe: encode one modality with correct condition & decoder.
         Returns flat tuple of tensors for torch.utils.checkpoint compatibility.
         Layout: (*backbone_fpn, *vision_pos_enc[, *raw_fpn if multi_scale_sqg])
+
+        IMPORTANT: trunk.gradient_checkpointing is set to False HERE (not in forward)
+        so that recomputation during backward produces the same number of saved tensors.
+        If set in forward() and restored in finally, the finally block runs before backward
+        → recomputation sees gradient_checkpointing=True → different tensor count → crash.
         """
         idx = modal_idx_tensor.item()
         B = img.shape[0]
+
+        # Disable per-block checkpointing inside this function so that
+        # forward and checkpoint-recomputation produce identical tensor counts.
+        trunk = self.sam.image_encoder.trunk
+        trunk.gradient_checkpointing = False
 
         # Set MoE condition for this modality
         modal_cond = self.modal_embed(modal_idx_tensor).unsqueeze(0).expand(B, -1)
@@ -6833,10 +6843,10 @@ class LoRA_Sam_P26(nn.Module):
         # ⑧ Modal-Conditioned MoE uses mutable _condition state on LoRA layers.
         # Per-block gradient checkpointing is incompatible (recomputation sees stale _condition).
         # Solution: disable per-block checkpointing, use per-modality checkpointing instead.
+        # NOTE: trunk.gradient_checkpointing is set to False inside _encode_single_modality
+        # (not here) so that checkpoint recomputation in backward sees the same setting.
         trunk = self.sam.image_encoder.trunk
         _orig_gc = getattr(trunk, 'gradient_checkpointing', False)
-        if _orig_gc:
-            trunk.gradient_checkpointing = False
 
         try:
             # ============================================
