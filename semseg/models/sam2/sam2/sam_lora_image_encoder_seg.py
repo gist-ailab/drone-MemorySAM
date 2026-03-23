@@ -6765,18 +6765,14 @@ class LoRA_Sam_P26(nn.Module):
         Returns flat tuple of tensors for torch.utils.checkpoint compatibility.
         Layout: (*backbone_fpn, *vision_pos_enc[, *raw_fpn if multi_scale_sqg])
 
-        IMPORTANT: trunk.gradient_checkpointing is set to False HERE (not in forward)
-        so that recomputation during backward produces the same number of saved tensors.
-        If set in forward() and restored in finally, the finally block runs before backward
-        → recomputation sees gradient_checkpointing=True → different tensor count → crash.
+        Nested checkpointing is used when gradient_checkpointing is enabled:
+        - Outer: per-modality checkpoint wraps this entire function
+        - Inner: per-block checkpoint inside HieraDet trunk
+        set_condition() is called here, so both outer and inner recomputation
+        see the correct _condition state. No need to disable per-block checkpointing.
         """
         idx = modal_idx_tensor.item()
         B = img.shape[0]
-
-        # Disable per-block checkpointing inside this function so that
-        # forward and checkpoint-recomputation produce identical tensor counts.
-        trunk = self.sam.image_encoder.trunk
-        trunk.gradient_checkpointing = False
 
         # Set MoE condition for this modality
         modal_cond = self.modal_embed(modal_idx_tensor).unsqueeze(0).expand(B, -1)
@@ -6840,11 +6836,10 @@ class LoRA_Sam_P26(nn.Module):
         for layer in self.moe_layers_q + self.moe_layers_v:
             layer._gate_callback = _moe_gate_cb
 
-        # ⑧ Modal-Conditioned MoE uses mutable _condition state on LoRA layers.
-        # Per-block gradient checkpointing is incompatible (recomputation sees stale _condition).
-        # Solution: disable per-block checkpointing, use per-modality checkpointing instead.
-        # NOTE: trunk.gradient_checkpointing is set to False inside _encode_single_modality
-        # (not here) so that checkpoint recomputation in backward sees the same setting.
+        # ⑧ Modal-Conditioned MoE + gradient checkpointing:
+        # Uses nested checkpointing — outer per-modality + inner per-block.
+        # set_condition() is called inside _encode_single_modality, so both
+        # outer and inner recomputation see the correct _condition state.
         trunk = self.sam.image_encoder.trunk
         _orig_gc = getattr(trunk, 'gradient_checkpointing', False)
 
@@ -7086,9 +7081,6 @@ class LoRA_Sam_P26(nn.Module):
             for layer in self.moe_layers_q + self.moe_layers_v:
                 layer._gate_callback = None
                 layer.set_condition(None)
-            # Restore per-block gradient checkpointing
-            if _orig_gc:
-                trunk.gradient_checkpointing = _orig_gc
 
         if self.training and gate_loss_data is not None:
             return m_output, m_feat, gate_loss_data
