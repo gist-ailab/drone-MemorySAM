@@ -284,8 +284,11 @@ def main(cfg, gpu, save_dir):
     best_epoch = 0
     best_night_mIoU = 0.0   # [Night-Val] 야간 시뮬 기준 best
     best_night_epoch = 0
+    best_test_mIoU = 0.0    # [Test] test set 기준 best
+    best_test_epoch = 0
     top_day_ckpts = []       # List[(miou, epoch)] 내림차순, 상위 5개 유지
     top_night_ckpts = []     # [Night-Val] 상위 5개
+    top_test_ckpts = []      # [Test] 상위 5개
     num_workers = 8
     device = torch.device(cfg['DEVICE'])
     train_cfg, eval_cfg = cfg['TRAIN'], cfg['EVAL']
@@ -314,6 +317,15 @@ def main(cfg, gpu, save_dir):
     trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
     valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
     nightvalset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', nightvaltransform, dataset_cfg['MODALS'], **ds_kwargs) if night_aug_enabled else None
+    # DELIVER 등 test split이 있는 데이터셋: test set 평가 활성화
+    eval_test_enabled = dataset_cfg.get('NAME') != 'MULTIAQUA'
+    testset = None
+    if eval_test_enabled:
+        try:
+            testset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'test', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
+        except Exception as e:
+            print(f"[INFO] Test set not available: {e}")
+            eval_test_enabled = False
     class_names = trainset.CLASSES
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
@@ -514,6 +526,8 @@ def main(cfg, gpu, save_dir):
     valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val)
     # [Night-Val] 야간 시뮬 val loader (NIGHT_AUG.ENABLE 시에만 생성)
     night_valloader = DataLoader(nightvalset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val) if nightvalset is not None else None
+    # [Test] test set loader (DELIVER 등 test split이 있는 데이터셋)
+    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val) if testset is not None else None
 
 
     scaler = GradScaler(enabled=train_cfg['AMP'])
@@ -1009,6 +1023,49 @@ def main(cfg, gpu, save_dir):
                         f"\n            IoU: {night_iou_str}"
                     )
 
+                # ── [Test] test set 평가 (DELIVER 등) ──────────────────────
+                if testloader is not None:
+                    test_acc, test_macc, test_f1, test_mf1, test_ious, test_miou = evaluate(model, testloader, device)
+                    writer.add_scalar('test/mIoU', test_miou, epoch)
+
+                    if HAS_TRACKIO:
+                        trackio_test = {
+                            "epoch": epoch + 1,
+                            "test/mIoU": test_miou,
+                            "test/pixel_acc": test_macc,
+                            "test/mean_f1": test_mf1,
+                            "test/best_mIoU": best_test_mIoU,
+                        }
+                        for c, v in zip(class_names, test_ious):
+                            trackio_test[f"test_iou/{c}"] = v
+                        trackio.log(trackio_test)
+
+                    worst_test = top_test_ckpts[-1][0] if len(top_test_ckpts) >= 5 else -1.0
+                    if test_miou > worst_test:
+                        new_epoch_test = epoch + 1
+                        top_test_ckpts = _update_topk_checkpoints(
+                            top_test_ckpts, test_miou, new_epoch_test, save_dir, prefix='test_',
+                            ckpt_dict={
+                                'epoch': new_epoch_test,
+                                'model_state_dict': model.module.state_dict() if train_cfg['DDP'] else model.state_dict(),
+                                'optimizer_state_dict': optimizer.state_dict(),
+                                'loss': train_loss,
+                                'scheduler_state_dict': scheduler.state_dict(),
+                                'best_miou': best_mIoU,
+                                'best_test_miou': test_miou,
+                            }, k=5)
+                        if test_miou > best_test_mIoU:
+                            best_test_mIoU = test_miou
+                            best_test_epoch = new_epoch_test
+                            logger.info(f"[Test] NEW BEST  epoch{best_test_epoch}  Test mIoU: {best_test_mIoU:.4f}")
+                            logger.info(print_iou(epoch, test_ious, test_miou, test_acc, test_macc, class_names))
+
+                    test_iou_str = " | ".join([f"{c}: {v:.2f}" for c, v in zip(class_names, test_ious)])
+                    logger.info(
+                        f"[Test] epoch:{epoch+1}  mIoU: {test_miou:.4f}  Best: {best_test_mIoU:.4f} (ep{best_test_epoch})"
+                        f"\n       IoU: {test_iou_str}"
+                    )
+
     if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
         writer.close()
         if HAS_TRACKIO:
@@ -1019,6 +1076,7 @@ def main(cfg, gpu, save_dir):
     table = [
         ['Best Day-Val mIoU',   f"{best_mIoU:.2f}  (epoch {best_epoch})"],
         ['Best Night-Val mIoU', f"{best_night_mIoU:.2f}  (epoch {best_night_epoch})" if best_night_mIoU > 0 else "N/A (NIGHT_AUG disabled)"],
+        ['Best Test mIoU',      f"{best_test_mIoU:.2f}  (epoch {best_test_epoch})" if best_test_mIoU > 0 else "N/A (no test set)"],
         ['Total Training Time', time.strftime("%H:%M:%S", end)]
     ]
     logger.info(tabulate(table, numalign='right'))
