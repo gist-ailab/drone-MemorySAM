@@ -484,6 +484,93 @@ if quality_maps is not None:
 
 ---
 
+### ISSUE-015: P25 구조적 문제 7가지 — P26 설계 v5로 해결 [설계]
+
+**상태**: 🟡 P26 설계 v5 완료, 구현 일부 완료 (2026-03-23)
+**영향**: P25 → P26
+**우선순위**: 높음
+
+**문제 (P25 비판적 분석 7가지)**:
+
+1. **SQG 가중치 공유**: 하나의 SQG(12.5K)로 RGB/THR/LID 3개 모달리티 동시 처리 → multi-task 충돌
+2. **Triple-duty**: quality map이 UAMM/AMF/Memory 3곳에 공유 → optimization conflict (UAMM 최적 ≠ AMF 최적 ≠ Memory 최적)
+3. **Teacher target 분포 편향**: `exp(-CE)` 대부분 ~1.0 → 유의미한 variation이 경계 일부에만 존재
+4. **Pixel-wise max-norm 불연속**: 인접 픽셀에서 max modality 전환 시 정규화 기준 불연속 → checkerboard artifact 가능
+5. **Memory modulation 이중 페널티**: UAMM에서 이미 조절된 feature의 maskmem을 다시 깎음
+6. **Shared Decoder 충돌**: SAM2 decoder 1개가 3개 모달리티의 다른 feature 분포를 처리 → SQG와 동일한 multi-task 충돌
+7. **MoE LoRA gate 상수 수렴**: gate가 입력/모달리티와 무관하게 고정 비율 → expert 특화 불가, 사실상 단일 LoRA
+
+**해결 — P26 설계 v5 (7가지 변경)**:
+
+| # | 변경 | 해결하는 문제 | 상태 |
+|---|------|-------------|------|
+| ① | **Per-Modality SQG** (3개 독립, +Multi-Scale fpn[0,1,2] 입력) | 문제 1 | ①-SQG분리: 구현완료, ①-MultiScale: 미구현 |
+| ② | **UAMM softmax** (max-norm → softmax) | 문제 4 | 구현 완료 |
+| ③ | **Relative Quality Teacher** (`softmax(-CE/tau)` + KL loss) | 문제 3 | 구현 완료 |
+| ④ | **AMF output entropy 기반** (SQG와 분리) | 문제 2 | 구현 완료 |
+| ⑤ | **Memory Modulation 제거** | 문제 5 | 구현 완료 |
+| ⑥ | **Per-Modality Decoder** (decoder ×3, +~8M / +0.13GB) | 문제 6 | 미구현 |
+| ⑦ | **Modality-Conditioned MoE LoRA Gate** (modality embedding → gate bias) | 문제 7 | 미구현 |
+| + | min_quality 0.1→0.3 | 연쇄 약화 방지 | 구현 완료 |
+| + | DeBA-FP (config on/off) | ablation용 | 미구현 |
+
+**⑦ 관련 연구**:
+- **MoE-Adapters4CL** (NeurIPS'24): LoRA-level MoE + task/domain identity embedding — 우리 설계와 가장 유사
+- **VLMo/BEiT-3** (NeurIPS'22, CVPR'23): Mixture-of-Modality-Experts (hard routing)
+- **Mod-Squad** (CVPR'23): Modality-aware sparse MoE + aux loss
+
+**관련 파일**:
+- `semseg/models/sam2/sam2/sam_lola_utils.py:630-730`: `SoftMoE_LoRA_Layer` (cond_dim 인프라 포함)
+- `semseg/models/sam2/sam2/sam_lola_utils.py:1339-1400`: `SpatialQualityGating` 모듈
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: `LoRA_Sam_P25`/`P26` 클래스
+- `train_sam2_lora_paper.py:444-457`: Decoder/Memory Attention requires_grad 설정
+- `.claude_logs/02_model_arch.md`: P26 설계 v5 상세 (변경 ①~⑦, Forward 흐름, Config, 관련 연구, 리스크)
+
+---
+
+### ISSUE-014: RandomResizedCrop 패딩 위치 좌상단 고정 — 랜덤 배치 필요 [개선]
+
+**상태**: 🟡 미수정 (2026-03-23 확인)
+**영향**: 모든 P 버전 (P8~P25)의 학습 augmentation
+**우선순위**: 중간 — 치명적이지는 않지만 학습 다양성 개선 가능
+
+**문제**:
+`RandomResizedCrop` (`semseg/augmentations_mm.py:869-915`)에서 scale < 1.0이면 이미지가 crop 크기(1024×1024)보다 작아짐.
+이때 padding이 **항상 우측/하단에만** 적용됨 (line 908):
+```python
+padding = [0, 0, tW - W, tH - H]  # left=0, top=0, right=부족분, bottom=부족분
+```
+
+결과:
+- scale < 1.0 (전체 케이스의 약 50%)에서 **이미지가 항상 좌상단 고정, 우하단 패딩**
+- `margin_h = margin_w = 0`이라 random crop 위치도 (0, 0) 고정 (line 897-900)
+- Val/Test는 `ResizeWidthPadToSquare`에서 **상하 균등 (중앙 정렬)** 패딩 → 학습-추론 패딩 위치 불일치
+- 모델이 "좌상단 = 이미지, 우하단 = 패딩" bias를 학습할 수 있음
+
+**수정 방안**:
+line 908의 padding 로직을 랜덤 배치로 변경:
+```python
+# 현재:
+padding = [0, 0, tW - W, tH - H]
+
+# 수정:
+pad_h = tH - H
+pad_w = tW - W
+pad_top = random.randint(0, pad_h)
+pad_left = random.randint(0, pad_w)
+padding = [pad_left, pad_top, pad_w - pad_left, pad_h - pad_top]
+```
+
+**기대 효과**:
+- 패딩 위치 랜덤화 → augmentation 다양성 증가
+- Val/Test 중앙 정렬 패딩이 학습 분포에 자연스럽게 포함됨
+- 위치 bias 제거
+
+**관련 파일**:
+- `semseg/augmentations_mm.py:906-913`: `RandomResizedCrop` 패딩 로직
+
+---
+
 ### ISSUE-004: Spatial-wise Confidence Weighting → P15 구현 예정
 
 **상태**: **P15로 구현 예정** (설계 완료, 구현 대기)

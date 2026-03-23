@@ -1,6 +1,6 @@
 # 실험 기록 (Experiment Log)
 
-> 최종 업데이트: 2026-03-13
+> 최종 업데이트: 2026-03-23
 
 ## MACVi Challenge 평가 지표
 
@@ -1305,6 +1305,43 @@ DeBA-FP가 FPN feature를 변형 → CrossModalFusionHead가 다른 고정점으
 **분석 도구**: `MISC/analyze_detailed_log.py` (이번 세션에서 신규 생성)
 ```bash
 python MISC/analyze_detailed_log.py --exp_dir outputs/MMSamP24/.../epoch36_93.89_top1 --no_moe
+```
+
+---
+
+## P26 v5 구현 완료 (2026-03-23) — P25 결과 대기 후 학습 예정
+
+### P26: Per-Modality SQG + Triple-Duty 해소 + UAMM Softmax + Multi-Scale FPN + Per-Modal Decoder + Modal-Cond MoE
+
+**P25 대비 8가지 변경**:
+1. SQG 분리: 1개 공유 → 모달리티별 독립 (`nn.ModuleList`, multi-task 충돌 해소)
+2. UAMM softmax: max-norm → `F.softmax(q_logit_stack / tau_uamm, dim=0)` (불연속 제거)
+3. Teacher: exp(-CE) → `softmax(-CE_stack/tau_teacher, dim=0)` relative quality + KL loss
+4. AMF: SQG quality → output entropy 기반 confidence (`1 - entropy/log(num_classes)`, triple-duty 해소)
+5. Memory modulation 제거 (UAMM에서 이미 quality-aware → 이중 페널티 방지)
+6. **Multi-Scale FPN**: `fpn[0]=32ch, fpn[1]=64ch, fpn[2]=256ch` → proj to 32ch → concat 96ch for SQG input (`_fuse_fpn_multiscale()`)
+7. **Per-Modality Decoder**: `copy.deepcopy(sam_mask_decoder)` × m개, `_swap_decoder(modal_idx)`로 forward_image 전에 교체 (conv_s0/s1 의존성)
+8. **Modality-Conditioned MoE LoRA Gate**: `nn.Embedding(num_modalities, cond_dim=8)` → `layer.set_condition()` per modality encoding (P12 인프라 재사용)
+
+**Config**:
+- `configs/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` — MULTIAQUA (RGB+LiDAR+Thermal)
+- `configs/levine-deliver_rgbdel_P26_physaug.yaml` — DELIVER (RGB+Depth+Event+LiDAR, 4 modalities)
+- QUALITY_GATE: PER_MODALITY=true, TAU_UAMM=1.0, TAU_TEACHER=0.5, MEMORY_MOD=false, AMF_MODE=output_entropy, PER_MODALITY_DECODER=true, MULTI_SCALE_SQG=true
+- LORA_COND_DIM=8, MODAL_COND_MOE=true
+
+**변경 파일**:
+- `sam_lora_image_encoder_seg.py` — `LoRA_Sam_P26` 클래스 v5 전체 구현 (~380줄), `import copy` 추가
+- `train_sam2_lora_paper.py` — P26 kwargs (multi_scale_sqg, per_modality_decoder, cond_dim), KL loss 분기, is_p24 체크에 P26 추가
+- `val_multiaqua.py` — quality params 전달 (P24-P26 공통, inspect.signature 기반)
+- `vis_feature_analysis.py` — quality params + load_state_dict 버그 수정
+- `configs/levine-deliver_rgbdel_P26_physaug.yaml` — 신규 (DELIVER 4-modal config)
+
+**학습 명령어**:
+```bash
+# MULTIAQUA (HPC A100)
+python train_sam2_lora_paper.py --cfg configs/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml
+# DELIVER (levine)
+python train_sam2_lora_paper.py --cfg configs/levine-deliver_rgbdel_P26_physaug.yaml
 ```
 
 ---

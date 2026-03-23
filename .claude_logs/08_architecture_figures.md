@@ -1433,5 +1433,298 @@ P24 (P9 + SpatialQualityGating):
 │ P24    │ SoftMoE-LoRA   │ ─            │ CrossModalFH   │ UAMM(scalar) │
 │        │ V1, rank=4     │              │ (scalar)       │ + quality    │
 │        │                │              │ + SQG          │ gating ★     │
+├────────┼────────────────┼──────────────┼────────────────┼──────────────┤
+│ P25    │ SoftMoE-LoRA   │ ─            │ ❌ FH 제거     │ UAMM(spatial)│
+│        │ V1, rank=4     │              │ SQG only ★     │ + AMF(spatial)│
+│        │                │              │ (triple-duty)  │ + quality ★  │
 └────────┴────────────────┴──────────────┴────────────────┴──────────────┘
+```
+
+---
+
+## 13. P25: Unified Spatial Quality Fusion (CrossModalFusionHead 제거)
+
+### 13.1 P25 Overview Figure
+
+P24에서 CrossModalFusionHead를 **완전 제거**. SpatialQualityGating 하나로 UAMM + AMF + Memory를 통합 제어.
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│ LoRA_Sam_P25 — Unified Spatial Quality Fusion                        │
+│                                                                       │
+│  ┌─── Phase 1: Encoding (P9 동일) ──────────────────────────────┐    │
+│  │  RGB/THR/LID → forward_image() [Hiera + SoftMoE-LoRA V1]     │    │
+│  │             → _prepare_backbone_features() [FPN]              │    │
+│  │  출력 per modality:                                           │    │
+│  │    fpn[0]: (B, 32, 256, 256)                                  │    │
+│  │    vision_feats: [(1,B,32), (HW,B,64), (HW,B,256)]           │    │
+│  └───────────────────────────────────────────────────────────────┘    │
+│                              │                                        │
+│  ┌─── Phase 2: Spatial Quality Map ──────────────────────────────┐   │
+│  │  ★ CrossModalFusionHead 없음 (P24까지의 상수 수렴 문제 해소)   │   │
+│  │                                                                │   │
+│  │  fpn[0]_RGB → SQG → q_logit₀ → logits_to_quality             │   │
+│  │  fpn[0]_THR → SQG → q_logit₁ → quality_map₁                  │   │
+│  │  fpn[0]_LID → SQG → q_logit₂ → quality_map₂                  │   │
+│  │  quality_maps[i]: (B, 1, 256, 256)  ∈ [0.1, 1.0]             │   │
+│  │  (SQG는 P24와 동일 모듈, 가중치 공유)                         │   │
+│  └───────────────────────────────────────────────────────────────┘   │
+│                              │                                        │
+│  ┌─── Phase 2.5 (Training ONLY): Teacher Quality Target ─────────┐  │
+│  │  P24와 동일:                                                    │  │
+│  │  vision_feats[i] → SAM2 decoder (no memory, no_grad)            │  │
+│  │  → CE(teacher_logits, gt) → quality_target = exp(-CE)           │  │
+│  │  gate_loss_data = {predicted: q_logits, target: q_targets}      │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                              │                                        │
+│  ┌─── Phase 3: Spatial UAMM + Tracking + Memory Modulation ──────┐  │
+│  │                                                                 │  │
+│  │  ┌── Spatial Max-Norm (P25 핵심 ①) ─────────────────────┐      │  │
+│  │  │  q_stack = stack(quality_maps, dim=1)                  │      │  │
+│  │  │           → (B, m, 1, H_fpn, W_fpn)                   │      │  │
+│  │  │  q_max = q_stack.max(dim=1)  → (B, 1, 1, H, W)       │      │  │
+│  │  │  q_uamm_norm = q_stack / q_max  (pixel별 max-norm)    │      │  │
+│  │  │  → 각 pixel에서 best modality의 weight = 1.0           │      │  │
+│  │  └────────────────────────────────────────────────────────┘      │  │
+│  │                                                                 │  │
+│  │  for each modality frame_idx:                                   │  │
+│  │    q_uamm_i = q_uamm_norm[:, frame_idx]  (B,1,H_fpn,W_fpn)    │  │
+│  │                                                                 │  │
+│  │    ┌── Per-level Spatial Modulation ─────────────────────┐      │  │
+│  │    │  for each level_feat in vision_feats[frame_idx]:     │      │  │
+│  │    │    level_feat: (HW, B, C)  [SAM2 format]             │      │  │
+│  │    │    q_resized = interpolate(q_uamm_i, (h_l, w_l))    │      │  │
+│  │    │    q_flat = q_resized.flatten(2).permute(2,0,1)      │      │  │
+│  │    │            → (HW, B, 1)                              │      │  │
+│  │    │    modulated = level_feat × q_flat                    │      │  │
+│  │    └──────────────────────────────────────────────────────┘      │  │
+│  │                                                                 │  │
+│  │    → track_step(modulated_vision_feats, ...)                    │  │
+│  │                                                                 │  │
+│  │    ┌── Memory Modulation (P24 동일) ─────────────────────┐      │  │
+│  │    │  maskmem_features *= interpolate(quality_map, size)   │      │  │
+│  │    └──────────────────────────────────────────────────────┘      │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                              │                                        │
+│  ┌─── Phase 4: Spatial AMF Output Fusion (P25 핵심 ②) ────────────┐ │
+│  │                                                                  │ │
+│  │  ┌── Output Fusion ──────────────────────────────────────┐      │ │
+│  │  │  q_amf[i] = interpolate(quality_maps[i], (H_out,W_out))│      │ │
+│  │  │  q_stack = stack(q_amf, dim=0)  → (m, B, 1, H, W)    │      │ │
+│  │  │  q_norm = q_stack / q_stack.sum(dim=0)                 │      │ │
+│  │  │  ★ sum-normalize (NOT softmax) across modalities       │      │ │
+│  │  │  m_output = Σ q_norm[i] × output[i]                   │      │ │
+│  │  └────────────────────────────────────────────────────────┘      │ │
+│  │                                                                  │ │
+│  │  ┌── Feature Fusion (proto loss용) ───────────────────────┐     │ │
+│  │  │  q_feat[i] = interpolate(quality_maps[i], (H_fpn,W_fpn))│     │ │
+│  │  │  q_feat_norm = q_feat_stack / sum                       │     │ │
+│  │  │  m_feat = Σ q_feat_norm[i] × fpn[0][i]                 │     │ │
+│  │  └─────────────────────────────────────────────────────────┘     │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│                                                                       │
+│  Output:                                                              │
+│    Training:  (m_output, m_feat, gate_loss_data)                      │
+│    Inference: (m_output, m_feat)                                      │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+### 13.2 Quality Map의 Triple-Duty 활용 (P25 핵심 개념)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ SpatialQualityGating — 하나의 Quality Map, 세 가지 역할          │
+│                                                                  │
+│  fpn[0]_i (B,32,256,256)                                         │
+│      │                                                           │
+│      ▼                                                           │
+│  ┌─── SQG ───────────────────────────────────────────────┐       │
+│  │  Conv2d(32→64, 3×3) → ReLU                           │       │
+│  │  Conv2d(64→64, 3×3) → ReLU                           │       │
+│  │  Conv2d(64→1,  1×1)  (bias init=+1.0)                │       │
+│  │  → q_logit (B, 1, 256, 256)                           │       │
+│  │  → sigmoid × 0.9 + 0.1 = quality_map ∈ [0.1, 1.0]    │       │
+│  └────────────────────────────────────────────────────────┘       │
+│      │                                                           │
+│      ├─── ① Spatial UAMM ──────────────────────────────────┐    │
+│      │    stack 3 modalities → pixel별 max-norm              │    │
+│      │    → vision_feats × q_uamm_norm (per level, per HW)  │    │
+│      │    "이 pixel에서 가장 신뢰할 수 있는 modality = 1.0"  │    │
+│      │    ★ P9의 scalar UAMM 대비: pixel마다 다른 가중치     │    │
+│      │                                                       │    │
+│      ├─── ② Spatial AMF ───────────────────────────────────┐│    │
+│      │    output resolution으로 interpolate                  ││    │
+│      │    → sum-normalize across modalities                  ││    │
+│      │    → output × q_norm (pixel별 fusion weight)          ││    │
+│      │    ★ P9의 scalar AMF 대비: pixel마다 다른 fusion 비율  ││    │
+│      │                                                       ││    │
+│      └─── ③ Memory Modulation (P24 동일) ──────────────────┘│    │
+│           maskmem_features × quality_map                      │    │
+│           → 열화 영역 memory 기여 ↓                           │    │
+│           → 고품질 영역 memory 기여 ↑                         │    │
+│           ★ 추가 모듈 없이 quality_map 재활용                 │    │
+│                                                               │    │
+│  학습: Teacher CE → exp(-CE) → quality_target → BCE loss      │    │
+│  추론: SQG만 실행 (teacher 불필요)                             │    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 13.3 Spatial UAMM 상세 — Vision Feats Modulation
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Spatial UAMM — Per-level, Per-pixel Quality Modulation           │
+│                                                                  │
+│  Input:                                                          │
+│    quality_maps: [q₀, q₁, q₂]  각 (B, 1, 256, 256)             │
+│    vision_feats[i]: 3 levels                                     │
+│      level 0: (1, B, 32)        feat_size = (1, 1)               │
+│      level 1: (HW, B, 64)      feat_size = (h₁, w₁)            │
+│      level 2: (HW, B, 256)     feat_size = (h₂, w₂)            │
+│                                                                  │
+│  Step 1: Pixel-wise Max-Norm                                     │
+│  ┌────────────────────────────────────────────────────────┐      │
+│  │  q_stack = stack([q₀, q₁, q₂], dim=1)                 │      │
+│  │           → (B, 3, 1, 256, 256)                        │      │
+│  │                                                        │      │
+│  │  q_max = q_stack.max(dim=1)                            │      │
+│  │         → (B, 1, 1, 256, 256)                          │      │
+│  │                                                        │      │
+│  │  q_uamm_norm = q_stack / q_max                         │      │
+│  │               → (B, 3, 1, 256, 256)                    │      │
+│  │               각 pixel에서 best modality = 1.0          │      │
+│  │               나머지 = quality 비율만큼 감쇠             │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  Step 2: Per-level Interpolation + Modulation                    │
+│  ┌────────────────────────────────────────────────────────┐      │
+│  │  for frame_idx (0=RGB, 1=THR, 2=LID):                  │      │
+│  │    q_i = q_uamm_norm[:, frame_idx]  → (B, 1, 256, 256) │      │
+│  │                                                        │      │
+│  │    for each level_feat:                                 │      │
+│  │      (HW, B, C) — SAM2 내부 포맷                        │      │
+│  │      h_l, w_l = feat_sizes에서 HW 매칭으로 유추          │      │
+│  │                                                        │      │
+│  │      q_resized = interpolate(q_i, (h_l, w_l))          │      │
+│  │                → (B, 1, h_l, w_l)                       │      │
+│  │                                                        │      │
+│  │      q_flat = flatten(2).permute(2,0,1)                │      │
+│  │             → (HW, B, 1)                                │      │
+│  │                                                        │      │
+│  │      modulated = level_feat × q_flat                    │      │
+│  │                → (HW, B, C)  spatial quality 곱          │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  P9 Scalar UAMM 대비:                                           │
+│  ┌────────────────────────────┬────────────────────────────┐     │
+│  │ P9: scalar (B, m)          │ P25: spatial (B,m,1,H,W)   │     │
+│  │ score = 단일 스칼라         │ score = pixel별 quality     │     │
+│  │ 모든 pixel 동일 scale       │ pixel마다 다른 scale ★      │     │
+│  │ broadcast (1→HW)           │ interpolate → match level  │     │
+│  └────────────────────────────┴────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 13.4 Spatial AMF 상세 — Output Fusion
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Spatial AMF — Per-pixel Output Fusion                            │
+│                                                                  │
+│  Input:                                                          │
+│    quality_maps: [q₀, q₁, q₂]  각 (B, 1, 256, 256)             │
+│    output: [out₀, out₁, out₂]  각 (B, C_cls, H_out, W_out)     │
+│    all_backbone_feats: [f₀, f₁, f₂]  각 (B, 32, 256, 256)      │
+│                                                                  │
+│  Step 1: Output Resolution Matching                              │
+│  ┌────────────────────────────────────────────────────────┐      │
+│  │  for i in range(3):                                     │      │
+│  │    q_amf[i] = interpolate(quality_maps[i],              │      │
+│  │                           (H_out, W_out))               │      │
+│  │             → (B, 1, H_out, W_out)                      │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  Step 2: Sum-Normalize (NOT softmax)                             │
+│  ┌────────────────────────────────────────────────────────┐      │
+│  │  q_stack = stack(q_amf, dim=0)  → (3, B, 1, H, W)      │      │
+│  │  q_norm = q_stack / q_stack.sum(dim=0)                  │      │
+│  │          → pixel별 비율 (합=1)                           │      │
+│  │                                                        │      │
+│  │  ★ softmax가 아닌 sum-normalize                         │      │
+│  │    quality가 이미 [0.1, 1.0] 범위이므로                  │      │
+│  │    비율로 직접 나눠도 의미 있음                           │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  Step 3: Weighted Fusion                                         │
+│  ┌────────────────────────────────────────────────────────┐      │
+│  │  m_output = q_norm[0]×out₀ + q_norm[1]×out₁            │      │
+│  │           + q_norm[2]×out₂                              │      │
+│  │  → (B, C_cls, H_out, W_out)                            │      │
+│  │                                                        │      │
+│  │  ── Feature Fusion (proto loss용) ──                    │      │
+│  │  q_feat[i] = interpolate(quality_maps[i], (256,256))    │      │
+│  │  q_feat_norm = q_feat_stack / sum                       │      │
+│  │  m_feat = Σ q_feat_norm[i] × fpn[0][i]                 │      │
+│  │  → (B, 32, 256, 256)                                   │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  P9 Scalar AMF 대비:                                             │
+│  ┌────────────────────────────┬────────────────────────────┐     │
+│  │ P9: scalar (B, m)          │ P25: spatial (B,1,H,W)     │     │
+│  │ w = softmax(CrossModalFH)  │ w = sum-norm(quality_map)  │     │
+│  │ 모든 pixel 동일 weight      │ pixel마다 다른 weight ★    │     │
+│  │ broadcast → 곱             │ interpolate → 곱           │     │
+│  │ CrossModalFH 필요          │ CrossModalFH 불필요 ★      │     │
+│  └────────────────────────────┴────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 13.5 P24 vs P25 비교
+
+```
+┌───────────────────────────────────┬───────────────────────────────────┐
+│ P24                               │ P25                               │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ CrossModalFusionHead ✅            │ CrossModalFusionHead ❌ 제거       │
+│ → scalar (B, m) 상수 수렴         │                                   │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ SQG → Memory만                    │ SQG → UAMM + AMF + Memory ★      │
+│       (1가지 역할)                │       (3가지 역할 = triple-duty)  │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ UAMM: scalar max-norm (B, m)     │ UAMM: spatial max-norm            │
+│ score_expanded → broadcast        │ q_uamm → interpolate per level    │
+│ vision_feats × scalar             │ vision_feats × spatial (HW,B,1) ★ │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ AMF: scalar softmax (B, m)        │ AMF: spatial sum-norm              │
+│ w.view(-1,1,1,1) → broadcast     │ q_amf → interpolate → per-pixel ★ │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ Memory Mod: quality_map × maskmem │ Memory Mod: quality_map × maskmem │
+│ (동일)                            │ (동일)                            │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ 추가 파라미터: CrossModalFH ~3K   │ 추가 파라미터: 0 (FH 제거)        │
+│              + SQG ~12.5K         │              + SQG ~12.5K         │
+│              = ~15.5K             │              = ~12.5K (↓3K)       │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ Teacher: CE → exp(-CE)            │ Teacher: CE → exp(-CE) (동일)     │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ 반환값: (o, f, gate_data)         │ 반환값: (o, f, gate_data) (동일)  │
+├───────────────────────────────────┼───────────────────────────────────┤
+│ Scoring 근거: FH=상수, Memory만   │ Scoring 근거: 모든 경로가         │
+│ adaptive                          │ spatial quality로 adaptive ★      │
+└───────────────────────────────────┴───────────────────────────────────┘
+
+정보 흐름 비교:
+
+P24:
+  3×img → Hiera+MoE → FPN
+       → CrossModalFH(scalar) ─→ UAMM(scalar) → track_step → AMF(scalar)
+       → SQG(spatial) ──────────────────→ memory modulation만
+  (2개 경로: FH=상수, SQG=spatial — 역할 분리, FH가 상수 수렴)
+
+P25:
+  3×img → Hiera+MoE → FPN
+       → SQG(spatial) ─┬→ UAMM(spatial) → track_step → AMF(spatial)
+                        ├→ memory modulation
+                        └→ (teacher loss, training only)
+  (1개 경로: SQG 하나가 모든 fusion을 spatial하게 통합 제어 ★)
 ```

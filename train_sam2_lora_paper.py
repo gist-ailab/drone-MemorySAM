@@ -404,10 +404,22 @@ def main(cfg, gpu, save_dir):
         model_kwargs['deba_scales'] = deba_cfg.get('SCALES', [1, 2])
         model_kwargs['deba_gate_noise_std'] = deba_cfg.get('GATE_NOISE_STD', 0.1)
     if 'quality_hidden_dim' in sig.parameters:
-        # [P24] SpatialQualityGating parameters
+        # [P24/P25/P26] SpatialQualityGating parameters
         quality_cfg = model_cfg.get('QUALITY_GATE', {})
         model_kwargs['quality_hidden_dim'] = quality_cfg.get('HIDDEN_DIM', 64)
         model_kwargs['quality_min'] = quality_cfg.get('MIN_QUALITY', 0.1)
+    if 'tau_uamm' in sig.parameters:
+        # [P26] Quality gate + architecture parameters
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['tau_uamm'] = quality_cfg.get('TAU_UAMM', 1.0)
+        model_kwargs['tau_teacher'] = quality_cfg.get('TAU_TEACHER', 0.5)
+        model_kwargs['memory_mod'] = quality_cfg.get('MEMORY_MOD', False)
+        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'output_entropy')
+        model_kwargs['multi_scale_sqg'] = quality_cfg.get('MULTI_SCALE_SQG', True)
+        model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
+    if 'cond_dim' in sig.parameters:
+        # [P26] Modality-conditioned MoE LoRA gate
+        model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
 
     model = lora_model_class(**model_kwargs).cpu()
     
@@ -625,7 +637,7 @@ def main(cfg, gpu, save_dir):
                 # P13/P14/P15/P16: forward가 (output, m_feat, aux_logits_list) 리턴
                 # P24: forward가 (output, m_feat, gate_loss_data:dict) 리턴
                 # 그 외: (output, m_feat) 리턴
-                is_p24 = (lora_model_name in ('LoRA_Sam_P24', 'LoRA_Sam_P25'))
+                is_p24 = (lora_model_name in ('LoRA_Sam_P24', 'LoRA_Sam_P25', 'LoRA_Sam_P26'))
                 if is_p24:
                     model_out = model(sample, multimask_output=True, gt_mask=lbl)
                 else:
@@ -713,24 +725,43 @@ def main(cfg, gpu, save_dir):
                             al_up, lbl, ignore_index=255)
                     p13_aux_loss = p13_aux_loss / len(p13_aux_logits)
 
-                # [P24] Spatial Quality Gate Loss: BCE(predicted_logits, teacher_target)
-                # Teacher target = exp(-CE_multiclass), ignore pixels masked out
+                # [P24/P25/P26] Spatial Quality Gate Loss
                 p24_quality_loss = torch.tensor(0.0, device=device)
                 if p24_gate_loss_data is not None:
-                    predicted_list = p24_gate_loss_data['predicted']   # raw logits
-                    target_list = p24_gate_loss_data['target']         # exp(-CE) ∈ (0,1]
-                    ignore_mask = p24_gate_loss_data.get('ignore_mask')  # (B,1,H,W) bool
-                    for pred_q, tgt_q in zip(predicted_list, target_list):
-                        bce = F.binary_cross_entropy_with_logits(
-                            pred_q, tgt_q.detach(), reduction='none')  # (B,1,H,W)
+                    if p24_gate_loss_data.get('loss_type') == 'kl':
+                        # [P26] KL divergence: pred distribution vs teacher distribution
+                        pred_logits = p24_gate_loss_data['predicted_logits']  # list of (B,1,H,W)
+                        target_dist = p24_gate_loss_data['quality_target_dist']  # (m,B,1,H,W)
+                        ignore_mask = p24_gate_loss_data.get('ignore_mask')
+                        quality_cfg = cfg['MODEL'].get('QUALITY_GATE', {})
+                        tau_uamm = quality_cfg.get('TAU_UAMM', 1.0)
+                        pred_stack = torch.stack(pred_logits, dim=0)  # (m,B,1,H,W)
+                        pred_log_dist = F.log_softmax(pred_stack / tau_uamm, dim=0)
+                        # KL with ignore mask
+                        kl_raw = F.kl_div(pred_log_dist, target_dist.detach(), reduction='none')  # (m,B,1,H,W)
                         if ignore_mask is not None:
-                            valid = ~ignore_mask
-                            bce = bce * valid.float()
-                            n_valid = valid.float().sum().clamp(min=1.0)
-                            p24_quality_loss = p24_quality_loss + bce.sum() / n_valid
+                            valid = ~ignore_mask  # (B,1,H,W)
+                            kl_raw = kl_raw * valid.unsqueeze(0).float()
+                            n_valid = valid.float().sum().clamp(min=1.0) * len(pred_logits)
+                            p24_quality_loss = kl_raw.sum() / n_valid
                         else:
-                            p24_quality_loss = p24_quality_loss + bce.mean()
-                    p24_quality_loss = p24_quality_loss / len(predicted_list)
+                            p24_quality_loss = kl_raw.mean()
+                    else:
+                        # [P24/P25] BCE per-modality
+                        predicted_list = p24_gate_loss_data['predicted']   # raw logits
+                        target_list = p24_gate_loss_data['target']         # exp(-CE) ∈ (0,1]
+                        ignore_mask = p24_gate_loss_data.get('ignore_mask')  # (B,1,H,W) bool
+                        for pred_q, tgt_q in zip(predicted_list, target_list):
+                            bce = F.binary_cross_entropy_with_logits(
+                                pred_q, tgt_q.detach(), reduction='none')  # (B,1,H,W)
+                            if ignore_mask is not None:
+                                valid = ~ignore_mask
+                                bce = bce * valid.float()
+                                n_valid = valid.float().sum().clamp(min=1.0)
+                                p24_quality_loss = p24_quality_loss + bce.sum() / n_valid
+                            else:
+                                p24_quality_loss = p24_quality_loss + bce.mean()
+                        p24_quality_loss = p24_quality_loss / len(predicted_list)
 
                 # 전체 Loss
                 total_loss_unscaled = (loss_orig + protoloss
@@ -740,13 +771,21 @@ def main(cfg, gpu, save_dir):
                                        + lambda_gate * p24_quality_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
-            # [P24] Save quality map visualization (1st iter per epoch, rank 0 only)
+            # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)
             if (is_p24 and p24_gate_loss_data is not None and iter == 0
                     and ((train_cfg['DDP'] and torch.distributed.get_rank() == 0)
                          or (not train_cfg['DDP']))):
                 try:
+                    # P26 has different dict keys — adapt to vis function format
+                    vis_data = p24_gate_loss_data
+                    if p24_gate_loss_data.get('loss_type') == 'kl':
+                        vis_data = {
+                            'predicted': p24_gate_loss_data['predicted_logits'],
+                            'target': [p24_gate_loss_data['quality_target_dist'][i]
+                                       for i in range(len(p24_gate_loss_data['predicted_logits']))],
+                        }
                     save_p24_quality_vis(
-                        save_dir, epoch, p24_gate_loss_data, sample,
+                        save_dir, epoch, vis_data, sample,
                         dataset_cfg.get('MODALS', [f'mod{i}' for i in range(len(sample))]),
                         mode='train',
                     )

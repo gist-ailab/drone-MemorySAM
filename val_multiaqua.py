@@ -85,6 +85,20 @@ def load_model(cfg, model_path, device):
         model_kwargs['top_k'] = lora_top_k
     if 'use_entropy_fusion' in sig.parameters:
         model_kwargs['use_entropy_fusion'] = model_cfg.get('USE_ENTROPY_FUSION', False)
+    if 'quality_hidden_dim' in sig.parameters:
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['quality_hidden_dim'] = quality_cfg.get('HIDDEN_DIM', 64)
+        model_kwargs['quality_min'] = quality_cfg.get('MIN_QUALITY', 0.1)
+    if 'tau_uamm' in sig.parameters:
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['tau_uamm'] = quality_cfg.get('TAU_UAMM', 1.0)
+        model_kwargs['tau_teacher'] = quality_cfg.get('TAU_TEACHER', 0.5)
+        model_kwargs['memory_mod'] = quality_cfg.get('MEMORY_MOD', False)
+        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'output_entropy')
+        model_kwargs['multi_scale_sqg'] = quality_cfg.get('MULTI_SCALE_SQG', True)
+        model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
+    if 'cond_dim' in sig.parameters:
+        model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
 
     model = lora_model_class(**model_kwargs)
 

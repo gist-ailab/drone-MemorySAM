@@ -1644,6 +1644,326 @@ fused = sum(q_softmax[i] * seg_output[i] for i in range(m))
 | Grad Ckpt | 없음 | 없음 | 없음 | 없음 | 필요(OOM) | **적용** |
 | 최선 M-score | **81.98** | 학습 대기 | 학습 대기 | 학습 대기 | OOM (ISSUE-012) | 학습 중 |
 
+### 표 C: P25~P26 (Spatial Quality Fusion 계열, CrossModalFusionHead 제거)
+
+| 구분 | P25 | **P26 (설계 v4)** |
+| --- | --- | --- |
+| 기반 | P9 + P24 SQG | P25 |
+| 핵심 변경 | CrossModalFH 제거, spatial quality triple-duty | **SQG 분리 + Multi-Scale FPN + Per-Modal Decoder + Modal-Cond MoE + triple-duty 해소 + UAMM softmax + Memory mod 제거** |
+| SQG 입력 | fpn[0] only (32ch) | **fpn[0,1,2] concat (96ch)** |
+| SQG | 1개 (공유, 12.5K) | **3개 (독립, ~42K) + fpn proj ~19K** |
+| SAM2 Decoder | 1개 (공유, 3회 호출) | **3개 (모달리티별 독립, ~4M×3)** |
+| UAMM | spatial max-norm `(B,1,H,W)` | **spatial softmax `(B,m,1,H,W)` — smooth, 불연속 제거** |
+| AMF | spatial softmax (SQG 기반) | **output entropy 기반 confidence — SQG와 분리** |
+| Memory Mod | spatial quality (maskmem×q) | **제거 — UAMM에서 이미 조절, 이중 페널티 방지** |
+| Fusion Head | **없음** | **없음** |
+| Teacher target | `exp(-CE)` 절대 quality | **`softmax(-CE_stack/tau)` relative quality (모달리티 간 경쟁)** |
+| 추가 Loss | BCE(quality) ×λ | **KL(pred_dist, target_dist) ×λ** |
+| min_quality | 0.1 | **0.3** |
+| DeBA-FP | 없음 | **옵션 (config on/off, ablation용)** |
+| MoE LoRA Gate | input-only, 상수 수렴 | **modality embedding conditioned** |
+| 추가 파라미터 | +12.5K | **~8M (decoder ×2) + 61K (SQG+proj) + ~수십 (modal embed)** |
+| VRAM 추가 | — | **~0.13GB (weight+optimizer만, activation 동일)** |
+| 최선 M-score | 학습 중 | 설계 완료 (P25 결과 대기) |
+
+---
+
+## P26: Per-Modality SQG + Multi-Scale + Per-Modality Decoder + Modal-Cond MoE + UAMM Softmax (설계 v5, 2026-03-23)
+
+### 동기
+
+P25의 비판적 분석 (6가지) + 추가 분석 결과, 아래 구조적 문제를 확인:
+1. **SQG 가중치 공유**: 3개 모달리티에 하나의 SQG → multi-task 충돌 (ISSUE-015)
+2. **Triple-duty**: quality map이 UAMM/AMF/Memory 3곳에 공유 → optimization conflict
+3. **Teacher target 분포**: `exp(-CE)` 대부분 ~1.0 → 유의미한 variation이 경계 일부에만 존재
+4. **Pixel-wise max-norm 불연속**: max modality 전환 시 정규화 기준 불연속
+5. **Memory modulation 이중 페널티**: UAMM에서 이미 조절된 feature의 memory를 다시 깎음
+6. **min_quality=0.1 연쇄 약화**: 3곳에 동시 적용 시 복합 효과로 정보 소실
+7. **Shared Decoder 충돌**: SAM2 decoder 1개가 3개 모달리티의 서로 다른 feature 분포를 처리 → SQG와 동일한 multi-task 충돌. VRAM 추가 ~0.13GB로 무시 가능
+
+### P26 설계 — 6가지 변경
+
+#### 변경 ①: 모달리티별 독립 SQG + Multi-Scale FPN 입력 (ISSUE-015 해결)
+
+```python
+# P25: fpn[0]만 사용, SQG 1개 공유
+self.quality_gating = SpatialQualityGating(in_channels=256, ...)  # 1개, 12.5K
+
+# P26: fpn[0,1,2] multi-scale + SQG 모달리티별 독립
+# fpn[0]: (B, 32, 256, 256)  — high-res, fine detail
+# fpn[1]: (B, 64, 128, 128)  — mid-res
+# fpn[2]: (B, 256, 64, 64)   — low-res, semantic
+
+# Multi-scale fusion: fpn[1,2]를 fpn[0] 해상도로 resize 후 project & concat
+self.fpn_proj1 = nn.Conv2d(64, 32, 1)    # fpn[1] channel → fpn[0] channel
+self.fpn_proj2 = nn.Conv2d(256, 32, 1)   # fpn[2] channel → fpn[0] channel
+# concat 후 SQG 입력: in_channels = 32 * 3 = 96
+
+self.quality_gating_rgb = SpatialQualityGating(in_channels=96, hidden_dim=64, min_quality=0.3)
+self.quality_gating_thr = SpatialQualityGating(in_channels=96, hidden_dim=64, min_quality=0.3)
+self.quality_gating_lid = SpatialQualityGating(in_channels=96, hidden_dim=64, min_quality=0.3)
+# 총 ~42K params (SQG) + ~19K (proj) ≈ 61K
+```
+
+**Multi-scale 적용 방식**:
+```python
+def _fuse_fpn_multiscale(self, backbone_fpn):
+    """fpn[0,1,2]를 fpn[0] 해상도로 합쳐서 SQG 입력 생성"""
+    f0 = backbone_fpn[0]  # (B, 32, 256, 256)
+    f1 = F.interpolate(self.fpn_proj1(backbone_fpn[1]), size=f0.shape[-2:], mode='bilinear')
+    f2 = F.interpolate(self.fpn_proj2(backbone_fpn[2]), size=f0.shape[-2:], mode='bilinear')
+    return torch.cat([f0, f1, f2], dim=1)  # (B, 96, 256, 256)
+```
+
+**DeBA-FP (선택적)**: Config `DEBA_FP: true/false`로 on/off
+- on: P22의 DeBA-FP로 cross-scale deformable attention refinement 후 위 fusion 적용 (+~98K params)
+- off: 단순 project + resize + concat (기본값)
+- Ablation에서 비교하여 DeBA 효과 검증
+
+각 SQG가 해당 모달리티의 multi-scale feature에 특화 학습. KD도 모달리티별로 독립 수행.
+
+#### 변경 ②: UAMM softmax 정규화 (max-norm → softmax)
+
+```python
+# P25: pixel-wise max-norm (불연속)
+q_max = q_stack.max(dim=1, keepdim=True).values
+q_uamm_norm = q_stack / q_max.clamp(min=1e-6)
+
+# P26: pixel-wise softmax (연속, smooth)
+q_uamm_norm = F.softmax(q_logit_stack / tau_uamm, dim=1)  # (B, m, 1, H, W)
+# tau_uamm: temperature (config 설정, default=1.0)
+```
+
+- max-norm의 불연속 문제 해소 — softmax는 연속이고 미분 가능
+- 합이 1로 보장되어 "경쟁" 구조 자연스러움
+- max modality가 바뀌는 경계에서도 가중치 smooth 전환
+
+#### 변경 ③: Relative Quality Teacher Target
+
+```python
+# P25: 절대 quality per modality
+quality_target[i] = exp(-CE[i])  # 독립, 대부분 ~1.0
+
+# P26: 모달리티 간 상대적 비교
+ce_stack = torch.stack([CE_rgb, CE_thr, CE_lid], dim=0)  # (3, B, H, W)
+quality_target_dist = F.softmax(-ce_stack / tau_teacher, dim=0)  # (3, B, 1, H, W)
+# tau_teacher: teacher temperature (config 설정, default=0.5~1.0)
+```
+
+- 쉬운 픽셀(sky 내부): 3개 다 CE≈0 → softmax ≈ uniform → 균등 fusion (올바름)
+- 어려운 픽셀(경계): CE 차이 큼 → sharp routing → 차등 fusion (필요한 곳에서만)
+- Loss: `BCE` → `KL divergence`로 변경 (분포 간 비교)
+
+```python
+# P25: BCE per-modality
+loss = sum(BCE_with_logits(pred[i], target[i]) for i in range(m)) / m
+
+# P26: KL divergence (모달리티 간 관계 학습)
+pred_dist = F.log_softmax(torch.stack(pred_logits, dim=0) / tau_uamm, dim=0)
+loss = F.kl_div(pred_dist, quality_target_dist.detach(), reduction='batchmean')
+```
+
+#### 변경 ④: AMF를 output entropy 기반으로 분리 (triple-duty 해소)
+
+```python
+# P25: AMF도 SQG quality map 사용 (triple-duty)
+q_amf_norm = quality_maps / sum(quality_maps)  # SQG에 의존
+
+# P26: AMF는 decode 결과의 자체 확신도 사용 (SQG와 독립)
+amf_weights = []
+for i in range(m):
+    prob = F.softmax(output[i], dim=1)  # (B, 4, H, W) — 4 class probabilities
+    entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)  # (B, 1, H, W)
+    confidence = 1.0 - entropy / math.log(num_classes)  # normalized to [0, 1]
+    amf_weights.append(confidence)
+
+amf_stack = torch.stack(amf_weights, dim=0)  # (m, B, 1, H, W)
+amf_norm = amf_stack / amf_stack.sum(dim=0, keepdim=True).clamp(min=1e-6)
+m_output = sum(amf_norm[i] * output[i] for i in range(m))
+```
+
+핵심: SQG quality map은 **UAMM에만** 사용. AMF는 모델의 decode output 자체 확신도로 판단.
+- UAMM: "encoding quality — memory attention 전 input 조정" (SQG, teacher 학습)
+- AMF: "decoding confidence — memory attention 후 output 융합" (output entropy, 학습 불필요)
+- 역할 분리 → optimization conflict 제거
+
+#### 변경 ⑤: Memory Modulation 제거
+
+```python
+# P25:
+maskmem_features = maskmem * quality_map_resized  # 이중 페널티
+
+# P26: 제거 (UAMM에서 이미 quality-aware modulation 완료)
+# maskmem 그대로 memory bank에 저장
+```
+
+UAMM에서 quality가 낮은 모달리티의 vision_feats를 이미 줄였으므로, track_step에서 생성된 maskmem은 이미 quality-aware. 거기에 다시 곱하면 이중 페널티.
+Memory attention 자체가 attention mechanism이므로, query-key 매칭을 통해 유용한 정보를 알아서 선택.
+
+#### 변경 ⑥: Per-Modality Decoder (Shared → Independent)
+
+```python
+# P25: 1개 decoder, 3번 호출
+for frame_idx in range(m):
+    output = self.sam.track_step(vision_feats[frame_idx], ...)  # 같은 decoder
+
+# P26: 모달리티별 독립 decoder
+self.decoder_rgb = deepcopy(sam_model.sam_mask_decoder)   # ~4M params
+self.decoder_thr = deepcopy(sam_model.sam_mask_decoder)   # ~4M params
+self.decoder_lid = deepcopy(sam_model.sam_mask_decoder)   # ~4M params
+
+decoders = [self.decoder_rgb, self.decoder_thr, self.decoder_lid]
+for frame_idx in range(m):
+    output = track_step_with_decoder(decoders[frame_idx], vision_feats[frame_idx], ...)
+```
+
+**동기**: SQG와 동일한 문제 — RGB/Thermal/LiDAR의 feature 분포가 근본적으로 다른데 하나의 decoder weight로 처리하면 multi-task 충돌. 모달리티별 decoder는 각 모달리티의 feature → mask 매핑에 특화.
+
+**비용**: Weight+Optimizer ~0.13GB 추가 (14GB 대비 무시 가능). Activation memory는 이미 3번 forward하므로 동일.
+
+**구현 주의사항**:
+- `track_step`은 SAM2의 내부 메서드로 decoder를 직접 호출. decoder를 교체하려면 `track_step` 호출 전에 `self.sam.sam_mask_decoder`를 임시 교체하거나, track_step을 wrapping하는 방식 필요
+- Memory attention은 여전히 **공유** (cross-modal interaction을 위해 하나여야 함)
+- 초기화: pretrained SAM2 decoder weight를 deepcopy → 3개 모두 동일한 시작점, 학습하면서 분화
+- Teacher decode (Phase 2.5)도 per-modality decoder 사용 → teacher target 품질 향상
+
+**분리 대상 vs 공유 유지**:
+| 모듈 | P26 | 이유 |
+|------|-----|------|
+| SAM2 Mask Decoder | **분리 ×3** | 모달리티별 feature→mask 매핑 특화 |
+| Memory Attention | **공유 ×1** | cross-modal interaction이 목적, 분리하면 의미 없음 |
+| Memory Encoder | **공유 ×1** | memory bank format 통일 필요 |
+
+#### 변경 ⑦: Modality-Conditioned MoE LoRA Gate
+
+**문제**: MoE LoRA gate(`Linear(C, 3) + softmax`)가 입력과 무관하게 고정 비율로 수렴.
+- 모든 expert가 항상 참여(soft routing) → 특화 압력 약함
+- Gate 전용 loss 없음, segmentation loss에서 gate까지 gradient 경로가 너무 김
+- 결과: expert weight는 다르게 학습되더라도 mixing 비율이 상수 → 사실상 단일 LoRA
+
+**해결**: 모달리티 identity embedding을 gate condition으로 추가
+
+```python
+# P25: gate_logits = self.gate(x)  # token feature만, 모달리티 구분 없음
+# P26: modality embedding 추가
+self.modal_embed = nn.Embedding(3, cond_dim)  # RGB=0, THR=1, LID=2
+# cond_dim은 기존 P12의 cond_dim 인프라 활용
+
+# Encoder forward 시:
+for i, modal in enumerate([RGB, THR, LID]):
+    modal_cond = self.modal_embed(torch.tensor(i, device=device))  # (cond_dim,)
+    for layer in self.moe_layers_q + self.moe_layers_v:
+        layer.set_condition(modal_cond.unsqueeze(0).expand(B, -1))  # (B, cond_dim)
+    image_embedding[i] = self.sam.forward_image(modal)
+
+# SoftMoE_LoRA_Layer.forward 내부 (기존 P12 인프라):
+gate_logits = self.gate(x) + self.cond_proj(self._condition)
+# → token feature 기반 routing + modality identity bias
+```
+
+**핵심**: Quality가 아닌 **modality identity**로 conditioning
+- Quality conditioning의 문제: thermal quality가 항상 RGB보다 낮으면 condition이 상수화 → 또 고정 비율
+- Modality embedding: "이 모달리티의 feature 특성에 맞는 expert 조합"을 학습 → quality 순서와 무관
+
+**비용**: `nn.Embedding(3, cond_dim)` ≈ 수십 파라미터 + 기존 `cond_proj` 재사용 → 거의 0
+
+**관련 연구**:
+- **VLMo/BEiT-3** (NeurIPS'22, CVPR'23): Mixture-of-Modality-Experts (MoME) — 모달리티별 전용 FFN expert (hard routing). 우리는 soft 버전
+- **Mod-Squad** (CVPR'23): Modality-aware sparse MoE + aux loss로 expert 특화 유도
+- **MoE-Adapters4CL** (NeurIPS'24): **LoRA-level MoE + task/domain identity embedding** — 우리 설계와 가장 유사. "task identity → LoRA expert routing"을 "modality identity → LoRA expert routing"으로 대응
+- **AdaMoLE** (arXiv'24): Soft MoE LoRA, input-conditioned gate — 우리 P12 기반 구조와 거의 동일
+- **Uni-MoE** (ACL'24): Top-k + modality balancing loss로 routing collapse 방지
+
+### Forward 흐름 (P25 대비 변경점 ★ 표시)
+
+```
+Phase 1: Image Encoding ★ Modality-Conditioned MoE LoRA
+  for i, modal in enumerate([RGB, THR, LID]):
+    ★ set MoE gate condition = modal_embed[i]
+    SAM2_encoder(modal) → backbone FPN features + vision_feats
+
+Phase 2: Spatial Quality Map ★ Multi-Scale FPN + 모달리티별 독립 SQG
+  fpn_RGB[0,1,2] → proj+resize+concat → (B,96,256,256) → SQG_rgb → q_logit₀
+  fpn_THR[0,1,2] → proj+resize+concat → (B,96,256,256) → SQG_thr → q_logit₁
+  fpn_LID[0,1,2] → proj+resize+concat → (B,96,256,256) → SQG_lid → q_logit₂
+
+Phase 2.5 (Training): Teacher Target ★ Relative quality + Per-Modality Decoder
+  for each modality:
+    ★ teacher_logits = decoder_i(vision_feats[i])  # per-modality decoder
+    CE_i = cross_entropy(teacher_logits, gt)
+  CE_stack = [CE_rgb, CE_thr, CE_lid]
+  quality_target_dist = softmax(-CE_stack / tau_teacher, dim=0)
+  loss = KL(log_softmax(q_logit_stack / tau_uamm), quality_target_dist)
+
+Phase 3: Spatial UAMM ★ softmax 정규화 (max-norm 대체)
+  q_uamm = softmax(q_logit_stack / tau_uamm, dim=modality)
+  for each modality:
+    vision_feats[i] *= interpolated(q_uamm[i])
+    ★ track_step with decoder_i(modulated_vision_feats)  # per-modality decoder
+    ★ Memory Modulation 없음 (maskmem 그대로 저장)
+
+Phase 4: AMF ★ output entropy 기반 (SQG와 독립)
+  for each modality:
+    confidence[i] = 1 - normalized_entropy(softmax(output[i]))
+  amf_norm = confidence / sum(confidence)
+  m_output = Σ amf_norm[i] × output[i]
+```
+
+### Config 변경
+
+```yaml
+MODEL:
+  LORA_MODEL    : LoRA_Sam_P26
+  QUALITY_GATE:
+    HIDDEN_DIM   : 64
+    MIN_QUALITY  : 0.3          # P25: 0.1 → P26: 0.3 (UAMM 전용, 연쇄 약화 방지)
+    PER_MODALITY : true         # P26 신규
+    TAU_UAMM     : 1.0          # P26 신규: UAMM softmax temperature
+    TAU_TEACHER  : 0.5          # P26 신규: teacher target temperature
+    MEMORY_MOD   : false        # P26 신규: memory modulation 비활성화
+    AMF_MODE     : output_entropy  # P26 신규: AMF 방식 (기존: quality_map)
+    PER_MODALITY_DECODER : true   # P26 신규: 모달리티별 독립 decoder
+    MULTI_SCALE_SQG : true        # P26 신규: fpn[0,1,2] multi-scale SQG 입력
+    DEBA_FP         : false       # P26 옵션: DeBA-FP cross-scale refinement (ablation용)
+  LORA_COND_DIM   : 8            # P26 신규: modality embedding dimension for MoE gate conditioning
+  MODAL_COND_MOE  : true         # P26 신규: modality-conditioned MoE LoRA gate
+```
+
+### 관련 연구 참조 — DGFusion (arxiv 2509.09828)
+
+DGFusion은 **depth를 proxy로** spatial fusion을 가이드하는 방법으로, depth token을 cross-attention의 조건으로 사용.
+- 유사점: 입력 조건에 따라 spatially varying fusion weight를 학습
+- 차이점: DGFusion은 일반 cross-attention fusion, MemorySAM은 **SAM2 memory attention pipeline**을 모달리티 축으로 전용하고 그 전에 quality-aware modulation(UAMM) 적용
+- **우리의 novelty**: memory attention 입력 전 quality-guided spatial modulation은 DGFusion과 근본적으로 다른 파이프라인
+
+### 리스크
+
+1. **AMF output entropy의 calibration**: 모델 출력의 entropy가 실제 품질을 반영하는지? 과도하게 confident한 잘못된 예측은 entropy가 낮아도 quality가 나쁨 → "confident but wrong" 문제
+   - 완화: 학습이 진행되면 calibration이 자연스럽게 개선됨. 초반에는 AMF가 ~uniform에 가까움 (모든 output이 비슷하게 uncertain)
+2. **tau 하이퍼파라미터 민감도**: tau_uamm과 tau_teacher가 routing sharpness를 결정 → grid search 필요
+   - 완화: tau=1.0을 baseline으로 시작, 결과 보고 조정
+3. **Night aug 충분성**: teacher가 augmented night image에서 CE를 계산하므로 night 분포는 커버됨. 단, 완전 새로운 열화 패턴(안개, 비)에서의 일반화는 한계
+
+### 구현 상태
+
+- **v5 전체 구현 완료** (2026-03-23)
+  - ① Per-Modality SQG (ModuleList)
+  - ② UAMM softmax
+  - ③ Relative quality teacher + KL loss
+  - ④ AMF output entropy
+  - ⑤ Memory mod 제거
+  - ⑥ Multi-Scale FPN (fpn_proj1/2 + concat → 96ch SQG input)
+  - ⑦ Per-Modality Decoder (copy.deepcopy × m, decoder swap via `_swap_decoder()`)
+  - ⑧ Modality-Conditioned MoE LoRA Gate (nn.Embedding + cond_dim=8)
+- `LoRA_Sam_P26` 클래스: `sam_lora_image_encoder_seg.py` 끝에 추가
+- Train/Val/Vis 스크립트 모두 P26 v5 대응 완료
+- Configs:
+  - `configs/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` (MULTIAQUA, HPC)
+  - `configs/eval_config/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` (MULTIAQUA eval)
+  - `configs/levine-deliver_rgbdel_P26_physaug.yaml` (DELIVER, levine, 4모달)
+- **미구현**: DeBA-FP (옵션, ablation용 — config `DEBA_FP: true`로 활성화 시 구현 필요)
+- **선결 조건**: P25 학습 결과 확인 후 학습 시작
+
 ---
 
 ## Object Detection 확장 아키텍처 (설계 2026-03-19)

@@ -1,8 +1,25 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-18
+> 최종 업데이트: 2026-03-23
 
-## 현재 상태: P9 ep131 재제출 & P22 ep120 **공동 최선 (M=82.10)**, P24 CE 기반 재학습 중, **P25 구현 완료 (학습 대기)**, Object Detection 확장 계획 수립
+## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 구현 완료 (P25 결과 대기)**
+
+### P26 v5 전체 구현 완료 (2026-03-23)
+
+- **핵심**: P25 기반 8가지 구조적 개선
+  - ①~⑤: Per-Modality SQG, UAMM softmax, KL teacher, AMF entropy, MemMod 제거
+  - ⑥ Multi-Scale FPN (fpn[0,1,2] concat → 96ch SQG input)
+  - ⑦ Per-Modality Decoder (decoder ×m deepcopy, _swap_decoder)
+  - ⑧ Modality-Conditioned MoE LoRA Gate (nn.Embedding + cond_dim=8)
+- **구현 완료 파일**:
+  - `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P26` 클래스
+  - `train_sam2_lora_paper.py` — P26 kwargs, KL loss, is_p24 체크
+  - `val_multiaqua.py` / `vis_feature_analysis.py` — P26 params 전달
+  - `configs/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` — HPC config
+  - `configs/eval_config/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` — eval config
+  - `configs/levine-deliver_rgbdel_P26_physaug.yaml` — DELIVER levine config (4모달)
+- **선결 조건**: P25 학습 결과 확인 후 착수 여부 결정
+- **상세**: `.claude_logs/02_model_arch.md` — "P26" 섹션
 
 ### P22 ep120 평가 완료 — M=82.10 공동 1위 (2026-03-18)
 
