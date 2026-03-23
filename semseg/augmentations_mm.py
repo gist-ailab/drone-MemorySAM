@@ -981,7 +981,8 @@ def get_train_augmentation(
             ))
 
     # PhysAug: 물리 기반 공간적 교란 (random conv + planar wave)
-    physaug_cfg = night_cfg.get('PHYSAUG', {})
+    # dataset_cfg.PHYSAUG (top-level) 우선, 없으면 NIGHT_AUG.PHYSAUG fallback (하위 호환)
+    physaug_cfg = (dataset_cfg or {}).get('PHYSAUG') or night_cfg.get('PHYSAUG', {})
     if physaug_cfg.get('ENABLE', False):
         filter_cfg = physaug_cfg.get('FILTER', {})
         fourier_cfg = physaug_cfg.get('FOURIER', {})

@@ -1,0 +1,74 @@
+% Test file to check if the technical report fits in a single CVPR column
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\usepackage{cvpr}
+\usepackage{graphicx}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=blue]{hyperref}
+
+\def\paperID{*****}
+\def\confName{CVPR}
+\def\confYear{2026}
+
+\title{Column Test}
+
+\begin{document}
+
+% ---- Left column: our report ----
+\subsection*{GatedMemorySAM}
+
+\textit{Jemo Maeng, Sangmin Park, Seongju Lee, Kyoobin Lee}\\
+{\small \texttt{\{maengjemo, leowiu24, lsj2121\}@gm.gist.ac.kr}}\\
+{\small \texttt{kyoobin@gist.ac.kr}}\\
+\textit{Gwangju Institute of Science and Technology}
+
+\vspace{0.5em}
+
+\noindent\textbf{Method.}
+We introduce GatedMemorySAM, which builds upon MemorySAM~\cite{liao2025memorysam} that repurposes SAM2's~\cite{ravi2024sam2} temporal memory attention for cross-modal fusion by treating each input modality (RGB, LiDAR, Thermal) as a separate ``frame'' in SAM2's video pipeline.
+We extend this framework with two key modifications: (1) Soft MoE LoRA adaptation, and (2) quality-aware modality scoring.
+
+For backbone adaptation, we replace standard LoRA~\cite{hu2022lora} with Soft MoE routing~\cite{puigcerver2024softmoe} over multiple LoRA experts, inserted into every attention block (Q and V projections, 48 layers total) with rank$=$4 and 3 experts.
+Each spatial token is softly routed to all experts via a learned gating network, enabling per-token specialization across modalities.
+
+For modality weighting, we introduce a CrossModalFusionHead that compares all modality features via global average pooling and a shared comparison MLP to produce per-modality softmax weights.
+These weights drive two score-based fusion mechanisms: (i) memory modulation, which max-normalizes the scores and scales each modality's backbone features before they enter SAM2's memory bank, so that the best modality retains full strength while weaker ones are suppressed; and (ii) weighted mask fusion, which averages the per-modality decoder outputs using the same softmax weights.
+The overall pipeline is illustrated in Figure~\ref{fig:method}.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{fig/challenge_fig.png}
+\caption{Overview of GatedMemorySAM. Each modality is encoded by SAM2 with Soft-MoE LoRA, scored by the CrossModalFusionHead, and fused via memory modulation and weighted mask fusion.}
+\label{fig:method}
+\end{figure}
+
+\noindent\textbf{Training Details.}
+We train with the AdamW optimizer (lr=6e-4, weight decay=0.01) using a warmup polynomial LR schedule (10-epoch warmup, power=0.9) for 200 epochs.
+The loss function is Online Hard Example Mining Cross-Entropy (OHEM-CE).
+Input images are resized to 1024$\times$1024.
+We use DDP training with an effective batch size of 16 across 8 GPUs with gradient accumulation.
+
+\noindent\textbf{Night Augmentation.}
+Since the test set consists entirely of nighttime images while training data is daytime, we apply an extensive nighttime simulation pipeline:
+brightness darkening (range [0.03, 0.45] with 60\% dark-biased sampling), contrast reduction, gamma correction ([0.4, 0.8]), Gaussian and Poisson shot noise, cross-modal replacement (CRM, p=0.20), and PhysAug~\cite{xu2025physaug}-inspired spatial perturbations (random convolution filters and planar Fourier wave patterns, p=0.40).
+
+\noindent\textbf{Datasets and Pretrained Weights.}
+We train exclusively on the MULTIAQUA dataset provided by the challenge organizers.
+The SAM2 Hiera-B+ backbone is initialized from publicly available pretrained weights.
+No additional external datasets or annotations are used.
+
+\noindent\textbf{Hardware and FPS.}
+Training was conducted on 8$\times$ NVIDIA RTX 3090 GPUs (24GB each).
+Inference runs on a single NVIDIA Titan RTX GPU at approximately 2.1 FPS (1024$\times$1024 input, 3 modalities processed sequentially).
+
+\noindent\textbf{Maritime Domain Adaptations.}
+The primary challenge is the extreme day-night domain gap (daytime training vs.\ nighttime-only test).
+Our nighttime simulation augmentation was the single most impactful component, nearly doubling the test mIoU.
+
+\noindent\textbf{Submission.}
+Our best submission (Submission \#16710, leaderboard name: \textit{kblkblkbl}) achieved a validation mIoU of 93.29\% and a test mIoU of 70.91\%, yielding an M-score of 82.10, where M $= 0.75 \times$ mIoU$_{\mathrm{val}}$ $+ 0.25 \times$ mIoU$_{\mathrm{test}}$.
+
+{\small
+\bibliographystyle{ieeetr}
+\bibliography{references}
+}
+
+\end{document}

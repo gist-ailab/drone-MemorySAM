@@ -1,5 +1,5 @@
-CFG="configs/eval_config/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml"
-CKPT="outputs/MMSamP25/hpca100_multiaqua_rgbtl_P25_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch27_92.38_top1_checkpoint.pth"
+CFG="configs/eval_config/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml"
+CKPT="outputs/MMSamP22/levine_multiaqua_rgbtl_P22_hardaug8_physaug_night/MULTIAQUA_CMNeXt-B2_ilt/epoch120_94.41_top1_checkpoint.pth"
 
 cfg_name=$(basename ${CFG} .yaml)
 
