@@ -1,4 +1,4 @@
-# Architecture Figures — P9, P17, P19, P20, P21, P22, P23, P24
+# Architecture Figures — P9, P17, P19, P20, P21, P22, P23, P24, P25, P26
 
 > 최종 업데이트: 2026-02-28
 >
@@ -1727,4 +1727,378 @@ P25:
                         ├→ memory modulation
                         └→ (teacher loss, training only)
   (1개 경로: SQG 하나가 모든 fusion을 spatial하게 통합 제어 ★)
+```
+
+---
+
+## 14. P26: Per-Modality SQG + Multi-Scale + Per-Modal Decoder + Modal-Cond MoE
+
+P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을 모달리티별로 특화.
+
+### 14.1 P26 Overview Figure
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ LoRA_Sam_P26 — Full v5: 8 Changes from P25                              │
+│                                                                           │
+│  ┌─── Phase 1: Encoding ★⑧ Modal-Cond MoE + ⑦ Per-Modal Decoder ────┐  │
+│  │                                                                     │  │
+│  │  for each modality i (RGB=0, THR=1, LID=2):                        │  │
+│  │    ⑧ modal_cond = modal_embed(i)  → (cond_dim=8,)                  │  │
+│  │       → set_condition(modal_cond) to all MoE layers                 │  │
+│  │    ⑦ _swap_decoder(i) → sam.sam_mask_decoder = per_modal_decoders[i]│  │
+│  │                                                                     │  │
+│  │    _encode_single_modality(img, i):                                 │  │
+│  │      image_encoder(img) → raw_fpn[0,1,2] (all 256ch)               │  │
+│  │      ⑦ conv_s0/s1 from per-modal decoder → fpn[0](32ch), fpn[1](64ch)│ │
+│  │      → backbone_fpn, vision_pos_enc, raw_fpn(⑥용)                  │  │
+│  │                                                                     │  │
+│  │    _prepare_backbone_features() → vision_feats, feat_sizes          │  │
+│  │                                                                     │  │
+│  │  (gradient checkpointing: per-modality 단위)                        │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                              │                                            │
+│  ┌─── Phase 2: ①⑥ Per-Modal Multi-Scale SQG ────────────────────────┐   │
+│  │                                                                     │  │
+│  │  for each modality i:                                               │  │
+│  │    ⑥ _fuse_fpn_multiscale(raw_fpn[i]):                             │  │
+│  │      raw_fpn[0](256ch) → fpn_proj0 → 32ch ──┐                      │  │
+│  │      raw_fpn[1](256ch) → fpn_proj1 → 32ch → resize ─┤ cat          │  │
+│  │      raw_fpn[2](256ch) → fpn_proj2 → 32ch → resize ─┘              │  │
+│  │      → sqg_input (B, 96, 256, 256)                                  │  │
+│  │                                                                     │  │
+│  │    ① quality_gatings[i](sqg_input) → q_logit_i  (B, 1, 256, 256)   │  │
+│  │       logits_to_quality(q_logit_i) → quality_map_i ∈ [0.3, 1.0]    │  │
+│  │       ★ min_quality=0.3 (P25: 0.1) — 연쇄 약화 방지                │  │
+│  │       ★ 모달리티별 독립 SQG (P25: 공유 1개)                         │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                              │                                            │
+│  ┌─── Phase 2.5 (Training): ③ Relative Quality Teacher + KL Loss ────┐  │
+│  │                                                                     │  │
+│  │  for each modality i:                                               │  │
+│  │    ⑦ _swap_decoder(i) → per-modal decoder로 teacher decoding       │  │
+│  │    teacher_logits = _teacher_decode_single(vision_feats[i])         │  │
+│  │    CE_i = cross_entropy(teacher_logits, gt_safe)  (B, H, W)         │  │
+│  │                                                                     │  │
+│  │  ③ ce_stack = stack([CE₀, CE₁, CE₂])  → (3, B, 1, H_fpn, W_fpn)   │  │
+│  │     quality_target_dist = softmax(-ce_stack / τ_teacher, dim=0)     │  │
+│  │     ★ 절대 quality가 아닌 모달리티 간 상대적 비교                   │  │
+│  │     ★ τ_teacher=0.5 (sharpness 조절)                                │  │
+│  │                                                                     │  │
+│  │  Loss = KL(log_softmax(q_logit_stack / τ_uamm), target_dist)       │  │
+│  │  ★ P25의 BCE → KL divergence (분포 간 학습)                         │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                              │                                            │
+│  ┌─── Phase 3: ② UAMM Softmax + ⑦ Per-Modal Decoder + ⑤ No MemMod ─┐  │
+│  │                                                                     │  │
+│  │  ② q_uamm = softmax(q_logit_stack / τ_uamm, dim=modality)          │  │
+│  │     → (m, B, 1, H_fpn, W_fpn)   pixel별 softmax (합=1)             │  │
+│  │     ★ P25의 max-norm → softmax 교체 (불연속 제거)                   │  │
+│  │                                                                     │  │
+│  │  for each modality frame_idx:                                       │  │
+│  │    ⑦ _swap_decoder(frame_idx)                                       │  │
+│  │    per-level interpolation + modulation (P25와 동일 방식):           │  │
+│  │      vision_feats × q_uamm_i  → modulated_vision_feats              │  │
+│  │                                                                     │  │
+│  │    → track_step(modulated_vision_feats, per_modal_decoder[i])       │  │
+│  │      [frame 0: no memory]  [frame 1,2: memory attention]            │  │
+│  │                                                                     │  │
+│  │    ⑤ maskmem 그대로 저장 (Memory Modulation 제거)                   │  │
+│  │       ★ UAMM에서 이미 quality-aware → 이중 페널티 방지              │  │
+│  │       (config memory_mod=true로 복원 가능)                           │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                              │                                            │
+│  ┌─── Phase 4: ④ AMF Output Entropy (SQG와 독립) ───────────────────┐   │
+│  │                                                                     │  │
+│  │  ④ for each modality i:                                             │  │
+│  │    prob = softmax(output[i], dim=class)  → (B, 4, H_out, W_out)     │  │
+│  │    entropy = -Σ(prob × log(prob))  → (B, 1, H_out, W_out)           │  │
+│  │    confidence = 1 - entropy / log(4)  ∈ [0, 1]                      │  │
+│  │                                                                     │  │
+│  │  amf_norm = confidence_stack / sum  → per-pixel fusion weight        │  │
+│  │  m_output = Σ amf_norm[i] × output[i]                               │  │
+│  │                                                                     │  │
+│  │  ★ AMF가 SQG와 독립 — triple-duty 해소                              │  │
+│  │  ★ 학습 불필요: output 자체 확신도로 판단                            │  │
+│  │  (config amf_mode='quality_map'으로 P25 방식 복원 가능)              │  │
+│  │                                                                     │  │
+│  │  Feature fusion: q_feat = softmax(q_logit/τ, dim=0)                 │  │
+│  │  m_feat = Σ q_feat[i] × fpn[0][i]                                   │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                           │
+│  Output:                                                                  │
+│    Training:  (m_output, m_feat, gate_loss_data)                          │
+│    Inference: (m_output, m_feat)                                          │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 14.2 P26 8가지 변경 모듈 상세
+
+#### ① Per-Modality SQG + ⑥ Multi-Scale FPN Input
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Multi-Scale FPN → Per-Modality SQG (변경 ① + ⑥)                │
+│                                                                  │
+│  Input: raw_fpn (conv_s0/s1 적용 전, 모두 256ch)                │
+│                                                                  │
+│  ┌─── _fuse_fpn_multiscale(raw_fpn) ─────────────────────┐      │
+│  │                                                        │      │
+│  │  raw_fpn[0] (B,256,H0,W0) → fpn_proj0: Conv2d(256→32) │      │
+│  │                             → f0 (B, 32, H0, W0)      │      │
+│  │                                                        │      │
+│  │  raw_fpn[1] (B,256,H1,W1) → fpn_proj1: Conv2d(256→32) │      │
+│  │                             → interpolate(H0,W0)       │      │
+│  │                             → f1 (B, 32, H0, W0)      │      │
+│  │                                                        │      │
+│  │  raw_fpn[2] (B,256,H2,W2) → fpn_proj2: Conv2d(256→32) │      │
+│  │                             → interpolate(H0,W0)       │      │
+│  │                             → f2 (B, 32, H0, W0)      │      │
+│  │                                                        │      │
+│  │  cat([f0, f1, f2], dim=1) → (B, 96, H0, W0)           │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                              │                                   │
+│  ┌─── Per-Modality SQG (3개 독립) ───────────────────────┐      │
+│  │  quality_gatings[0](sqg_input) → q_logit_RGB           │      │
+│  │  quality_gatings[1](sqg_input) → q_logit_THR           │      │
+│  │  quality_gatings[2](sqg_input) → q_logit_LID           │      │
+│  │                                                        │      │
+│  │  각 SQG: Conv2d(96→64,3×3) → ReLU                     │      │
+│  │          Conv2d(64→64,3×3) → ReLU                     │      │
+│  │          Conv2d(64→1,1×1)  → logit (B,1,H,W)          │      │
+│  │          sigmoid × 0.7 + 0.3 = quality ∈ [0.3, 1.0]   │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  P25 vs P26 비교:                                                │
+│  ┌────────────────────────┬────────────────────────────┐        │
+│  │ P25                    │ P26                        │        │
+│  ├────────────────────────┼────────────────────────────┤        │
+│  │ SQG 1개 공유           │ SQG 3개 독립 (per-modal)   │        │
+│  │ fpn[0] only (32ch)     │ fpn[0,1,2] concat (96ch)   │        │
+│  │ min_quality=0.1        │ min_quality=0.3             │        │
+│  │ triple-duty (3곳 공유) │ UAMM 전용 (AMF 분리)       │        │
+│  │ ~12.5K params          │ ~42K + ~19K proj ≈ 61K     │        │
+│  └────────────────────────┴────────────────────────────┘        │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### ⑧ Modality-Conditioned MoE LoRA Gate
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Modal-Conditioned SoftMoE-LoRA Gate (변경 ⑧)                    │
+│                                                                  │
+│  기존 SoftMoE_LoRA_Layer (P9/P25):                               │
+│    gate_logits = gate(x)  ← token feature만, 모달리티 무관       │
+│    → 상수 수렴 (모든 모달리티에서 동일 routing)                  │
+│                                                                  │
+│  P26: modality identity embedding 추가                           │
+│                                                                  │
+│  ┌─── Initialization ────────────────────────────────────┐       │
+│  │  modal_embed = nn.Embedding(3, cond_dim=8)             │       │
+│  │    RGB=0, THR=1, LID=2                                 │       │
+│  │                                                        │       │
+│  │  SoftMoE_LoRA_Layer(dim, rank=4, num_experts=3,        │       │
+│  │                     cond_dim=8)  ← P12 인프라 재사용   │       │
+│  │    gate: Linear(C→3)                                   │       │
+│  │    cond_proj: Linear(8→3)  (zero-init)                 │       │
+│  └────────────────────────────────────────────────────────┘       │
+│                                                                  │
+│  ┌─── Forward (per modality) ────────────────────────────┐       │
+│  │                                                        │       │
+│  │  modal_cond = modal_embed(i)  → (8,)                   │       │
+│  │  → expand(B, 8) → set_condition() to all MoE layers    │       │
+│  │                                                        │       │
+│  │  Inside SoftMoE_LoRA_Layer.forward():                  │       │
+│  │    gate_logits = gate(x)           → (B,H,W,3)        │       │
+│  │    cond_bias = cond_proj(_condition) → (B, 3)          │       │
+│  │    gate_logits += cond_bias[...,None,None]  (broadcast) │       │
+│  │    gate_weights = softmax(gate_logits)                  │       │
+│  │                                                        │       │
+│  │  → RGB 처리 시: cond_bias가 RGB 전용 expert 선호 유도  │       │
+│  │  → THR 처리 시: cond_bias가 THR 전용 expert 선호 유도  │       │
+│  │  → zero-init이므로 초기에는 P25와 동일 동작             │       │
+│  └────────────────────────────────────────────────────────┘       │
+│                                                                  │
+│  핵심: quality가 아닌 modality IDENTITY로 conditioning            │
+│  비용: Embedding(3,8) + cond_proj(8,3)×48 ≈ 수백 파라미터       │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### ② UAMM Softmax + ③ Relative Quality Teacher + KL Loss
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ UAMM Softmax 정규화 + Relative Quality Teacher (변경 ②③)       │
+│                                                                  │
+│  ┌─── ② UAMM: softmax 정규화 ────────────────────────────┐     │
+│  │  q_logit_stack: (m, B, 1, H, W) — 3개 SQG raw logits   │     │
+│  │                                                         │     │
+│  │  q_uamm = softmax(q_logit_stack / τ_uamm, dim=0)       │     │
+│  │         → (m, B, 1, H, W)   합=1 보장                   │     │
+│  │                                                         │     │
+│  │  P25 max-norm:  max=1.0, 나머지=비율 (불연속 전환점)    │     │
+│  │  P26 softmax:   합=1.0, smooth 전환 (연속 미분 가능) ★  │     │
+│  │                                                         │     │
+│  │  τ_uamm=1.0: 기본 (sharp/soft 조절 가능)               │     │
+│  └─────────────────────────────────────────────────────────┘     │
+│                                                                  │
+│  ┌─── ③ Relative Quality Teacher (Training) ──────────────┐     │
+│  │                                                         │     │
+│  │  Teacher per modality:                                  │     │
+│  │    CE_i = cross_entropy(teacher_logits_i, gt)           │     │
+│  │    → (B, H, W) per-pixel CE loss                        │     │
+│  │                                                         │     │
+│  │  ce_stack = stack([CE₀, CE₁, CE₂])  → (3, B, 1, H, W)  │     │
+│  │  target_dist = softmax(-ce_stack / τ_teacher, dim=0)    │     │
+│  │              → (3, B, 1, H, W)  모달리티 간 경쟁 분포    │     │
+│  │                                                         │     │
+│  │  ★ P25: exp(-CE_i) → 각각 독립, 대부분 ~1.0 (차별 없음) │     │
+│  │  ★ P26: softmax(-CE/τ) → 상대적 비교 (차이 증폭)        │     │
+│  │                                                         │     │
+│  │  예시 (τ=0.5):                                          │     │
+│  │    쉬운 pixel: CE=[0.01, 0.02, 0.01] → ~uniform [.34,.32,.34]│  │
+│  │    어려운 pixel: CE=[2.0, 0.3, 1.5] → sharp [.01,.97,.02]    │  │
+│  └─────────────────────────────────────────────────────────┘     │
+│                                                                  │
+│  ┌─── Loss: KL Divergence ────────────────────────────────┐     │
+│  │  pred_dist = log_softmax(q_logit_stack / τ_uamm, dim=0)│     │
+│  │  loss = KL(pred_dist, target_dist.detach())             │     │
+│  │                                                         │     │
+│  │  ★ P25 BCE: 각 모달리티 독립 학습 → 관계 무시           │     │
+│  │  ★ P26 KL:  분포 간 비교 학습 → 상대적 순서 학습        │     │
+│  └─────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### ④ AMF Output Entropy (SQG와 독립)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ AMF Output Entropy — Decoding Confidence 기반 Fusion (변경 ④)   │
+│                                                                  │
+│  Input: output[i] (B, 4, H_out, W_out) — per-modality 4-class   │
+│                                           segmentation logits   │
+│                                                                  │
+│  ┌─── Per-modality Confidence ────────────────────────────┐      │
+│  │  for each modality i:                                   │      │
+│  │    prob = softmax(output[i], dim=1)  (B, 4, H, W)       │      │
+│  │    entropy = -Σ_c (prob_c × log(prob_c))  (B, 1, H, W)  │      │
+│  │    confidence = 1 - entropy / log(4)                     │      │
+│  │              ∈ [0, 1]  (high=certain, low=uncertain)     │      │
+│  └─────────────────────────────────────────────────────────┘      │
+│                              │                                    │
+│  ┌─── Sum-Normalize + Fusion ─────────────────────────────┐      │
+│  │  amf_stack = stack(confidence, dim=0) → (3, B, 1, H, W) │      │
+│  │  amf_norm = amf_stack / sum(dim=0)                       │      │
+│  │  m_output = Σ amf_norm[i] × output[i]                    │      │
+│  └──────────────────────────────────────────────────────────┘     │
+│                                                                  │
+│  Triple-duty 해소 핵심:                                          │
+│  ┌────────────────────────────────────────────────────────┐      │
+│  │ UAMM: SQG quality map → encoding quality (학습)        │      │
+│  │ AMF:  output entropy → decoding confidence (학습 불필요)│      │
+│  │ Memory: 제거됨 (⑤)                                     │      │
+│  │ → 각각 독립적 신호 사용, optimization conflict 없음 ★   │      │
+│  └────────────────────────────────────────────────────────┘      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### ⑦ Per-Modality Decoder
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Per-Modality Decoder — 모달리티별 독립 SAM2 Mask Decoder (변경 ⑦)│
+│                                                                  │
+│  ┌─── Initialization ────────────────────────────────────┐       │
+│  │  per_modal_decoders = ModuleList([                     │       │
+│  │    deepcopy(sam_mask_decoder),  # decoder_RGB  ~4M     │       │
+│  │    deepcopy(sam_mask_decoder),  # decoder_THR  ~4M     │       │
+│  │    deepcopy(sam_mask_decoder),  # decoder_LID  ~4M     │       │
+│  │  ])                                                    │       │
+│  │  ★ 동일한 pretrained weight에서 시작, 학습하며 분화     │       │
+│  └────────────────────────────────────────────────────────┘       │
+│                                                                  │
+│  ┌─── _swap_decoder(modal_idx) ──────────────────────────┐       │
+│  │  sam.sam_mask_decoder = per_modal_decoders[modal_idx]   │       │
+│  │  ★ track_step 호출 전 swap → 내부적으로 올바른 decoder  │       │
+│  └────────────────────────────────────────────────────────┘       │
+│                                                                  │
+│  적용 위치:                                                       │
+│  Phase 1: _encode_single_modality → conv_s0/s1 from decoder[i]   │
+│  Phase 2.5: _teacher_decode_single → decoder[i]로 teacher 생성   │
+│  Phase 3: track_step → decoder[i]로 decode                       │
+│                                                                  │
+│  분리/공유 원칙:                                                  │
+│  ┌────────────────────┬──────────┬───────────────────────┐       │
+│  │ 모듈               │ P26      │ 이유                  │       │
+│  ├────────────────────┼──────────┼───────────────────────┤       │
+│  │ Mask Decoder       │ 분리 ×3  │ feat→mask 특화        │       │
+│  │ Memory Attention   │ 공유 ×1  │ cross-modal 상호참조  │       │
+│  │ Memory Encoder     │ 공유 ×1  │ memory bank 포맷 통일 │       │
+│  │ Image Encoder      │ 공유 ×1  │ MoE로 이미 특화       │       │
+│  └────────────────────┴──────────┴───────────────────────┘       │
+│                                                                  │
+│  추가 비용: ~8M params (decoder ×2), ~0.13GB VRAM               │
+│  Activation: 이미 3회 forward하므로 동일                         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 14.3 P25 vs P26 비교
+
+```
+┌────────────────────────────────┬────────────────────────────────────┐
+│ P25                            │ P26                                │
+├────────────────────────────────┼────────────────────────────────────┤
+│ SQG 1개 공유, fpn[0] 32ch     │ SQG 3개 독립, fpn[0,1,2] 96ch ①⑥ │
+│ quality triple-duty (3곳 공유) │ UAMM 전용, AMF 분리 ④            │
+│ UAMM max-norm (불연속)        │ UAMM softmax (연속, smooth) ②     │
+│ Teacher: exp(-CE) 절대 quality │ Teacher: softmax(-CE/τ) 상대적 ③  │
+│ Loss: BCE (독립)               │ Loss: KL divergence (분포 비교) ③ │
+│ AMF: SQG quality sum-norm     │ AMF: output entropy confidence ④   │
+│ Memory Mod: maskmem × quality  │ Memory Mod: 제거 (이중 페널티) ⑤  │
+│ Decoder: 1개 공유              │ Decoder: 3개 독립 (per-modal) ⑦   │
+│ MoE gate: input-only           │ MoE gate: + modal embedding ⑧    │
+│ min_quality: 0.1               │ min_quality: 0.3                   │
+│ 추가 params: ~12.5K            │ 추가 params: ~8M + 61K + ~수백   │
+│ VRAM: baseline                 │ VRAM: +~0.13GB                    │
+├────────────────────────────────┼────────────────────────────────────┤
+│ 1개 경로 (SQG → 3곳)          │ 2개 독립 경로 ★                   │
+│                                │ UAMM: SQG → quality (학습)        │
+│                                │ AMF: output → entropy (학습 불필요)│
+└────────────────────────────────┴────────────────────────────────────┘
+```
+
+### 14.4 P26 정보 흐름
+
+```
+P26 정보 흐름:
+
+  for each modal i:
+    ⑧ modal_embed(i) → set MoE condition
+    ⑦ swap decoder[i]
+
+  3×img → Hiera+MoE(⑧modal-cond) → raw_fpn(256ch×3)
+       │                             │
+       │                             ├→ ⑥ proj+resize+cat → (96ch)
+       │                             │      → ① SQG_i (독립×3)
+       │                             │        → q_logit_i
+       │                             │
+       ├→ ⑦ conv_s0/s1 (per-modal)   │
+       │   → fpn(32,64,256)          │
+       │   → vision_feats            │
+       │                             │
+       ├─────────────────────────────┘
+       │
+       ├→ ② UAMM softmax(q_logits/τ)
+       │   → vision_feats × q_uamm
+       │   → ⑦ track_step(per_modal_decoder[i])
+       │      [no memory mod ⑤]
+       │   → output[i]
+       │
+       └→ ④ AMF: entropy(output[i]) → confidence
+          → sum-norm → m_output
+
+  Training: ③ Teacher(per_modal_decoder[i]) → CE → softmax(-CE/τ)
+            → KL(pred_dist, target_dist)
 ```

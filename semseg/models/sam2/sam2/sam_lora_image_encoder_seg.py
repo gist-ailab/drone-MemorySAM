@@ -1476,13 +1476,23 @@ class LoRA_Sam_P9(nn.Module):
                 "non_cond_frame_outputs": {},
             }
 
+            feats_before_uamm = []
+            feats_after_uamm = []
+
             for frame_idx in range(m):
                 is_init = (frame_idx == 0)
 
                 # UAMM: max-normalized score로 feature modulation
                 current_score = uamm_scores[:, frame_idx].unsqueeze(1)  # (B, 1)
                 score_expanded = current_score.transpose(0, 1).unsqueeze(-1)  # (1, B, 1)
+
+                if not self.training:
+                    feats_before_uamm.append(vision_feats[frame_idx][0].detach().cpu())
+
                 modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
+
+                if not self.training:
+                    feats_after_uamm.append(modulated_vision_feats[0].detach().cpu())
 
                 multi_mask_output_step = self.sam.track_step(
                     frame_idx=frame_idx,
@@ -1525,6 +1535,9 @@ class LoRA_Sam_P9(nn.Module):
             # Feature analysis: per-modal outputs, backbone feats
             self._last_per_modal_outputs = [o.detach().cpu() for o in output]
             self._last_per_modal_feats = [f.detach().cpu() for f in all_backbone_feats]
+            # UAMM 전/후 feature 비교 (ISSUE-018)
+            self._last_feats_before_uamm = feats_before_uamm if not self.training else None
+            self._last_feats_after_uamm = feats_after_uamm if not self.training else None
         finally:
             for layer in self.moe_layers_q + self.moe_layers_v:
                 layer._gate_callback = None
@@ -6740,6 +6753,12 @@ class LoRA_Sam_P26(nn.Module):
         self._last_amf_weights = None
         self._last_moe_gates = None
         self._last_quality_maps = None
+        self._last_per_modal_outputs = None
+        self._last_per_modal_feats = None
+        # P26 detailed viz: spatial maps
+        self._last_uamm_spatial = None    # list of m numpy (B,1,H_fpn,W_fpn)
+        self._last_amf_spatial = None     # list of m numpy (B,1,H,W)
+        self._last_entropy_maps = None    # list of m numpy (B,1,H,W)
 
     def _fuse_fpn_multiscale(self, backbone_fpn):
         """Fuse fpn[0,1,2] to fpn[0] resolution for SQG input.
@@ -7035,7 +7054,7 @@ class LoRA_Sam_P26(nn.Module):
                 amf_weights = []
                 for i in range(m):
                     prob = F.softmax(output[i], dim=1)
-                    entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)
+                    entropy = -(prob * (prob + 1e-8).log()).sum(dim=1, keepdim=True)
                     confidence = 1.0 - entropy / math.log(num_classes)
                     amf_weights.append(confidence)
 
@@ -7077,6 +7096,18 @@ class LoRA_Sam_P26(nn.Module):
                 self._last_moe_gates = None
             self._last_per_modal_outputs = [o.detach().cpu() for o in output]
             self._last_per_modal_feats = [f.detach().cpu() for f in all_backbone_feats]
+            # P26 detailed viz: spatial maps
+            self._last_uamm_spatial = [q_uamm_norm[i].detach().cpu().numpy() for i in range(m)]
+            self._last_amf_spatial = [amf_norm[i].detach().cpu().numpy() for i in range(m)]
+            if self.amf_mode == 'output_entropy':
+                ent_maps = []
+                for i in range(m):
+                    prob_i = F.softmax(output[i], dim=1)
+                    ent_i = -(prob_i * (prob_i + 1e-8).log()).sum(dim=1, keepdim=True)
+                    ent_maps.append(ent_i.detach().cpu().numpy())
+                self._last_entropy_maps = ent_maps
+            else:
+                self._last_entropy_maps = None
         finally:
             for layer in self.moe_layers_q + self.moe_layers_v:
                 layer._gate_callback = None

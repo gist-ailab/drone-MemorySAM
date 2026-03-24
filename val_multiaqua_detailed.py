@@ -51,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22, LoRA_Sam_P23, LoRA_Sam_P24, LoRA_Sam_P25
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22, LoRA_Sam_P23, LoRA_Sam_P24, LoRA_Sam_P25, LoRA_Sam_P26
 )
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
@@ -134,6 +134,7 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P23': LoRA_Sam_P23,
         'LoRA_Sam_P24': LoRA_Sam_P24,
         'LoRA_Sam_P25': LoRA_Sam_P25,
+        'LoRA_Sam_P26': LoRA_Sam_P26,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
@@ -151,6 +152,20 @@ def load_model(cfg, model_path, device):
         model_kwargs['num_modalities'] = num_modalities
     if 'use_entropy_fusion' in sig.parameters:
         model_kwargs['use_entropy_fusion'] = model_cfg.get('USE_ENTROPY_FUSION', False)
+    if 'quality_hidden_dim' in sig.parameters:
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['quality_hidden_dim'] = quality_cfg.get('HIDDEN_DIM', 64)
+        model_kwargs['quality_min'] = quality_cfg.get('MIN_QUALITY', 0.1)
+    if 'tau_uamm' in sig.parameters:
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['tau_uamm'] = quality_cfg.get('TAU_UAMM', 1.0)
+        model_kwargs['tau_teacher'] = quality_cfg.get('TAU_TEACHER', 0.5)
+        model_kwargs['memory_mod'] = quality_cfg.get('MEMORY_MOD', False)
+        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'output_entropy')
+        model_kwargs['multi_scale_sqg'] = quality_cfg.get('MULTI_SCALE_SQG', True)
+        model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
+    if 'cond_dim' in sig.parameters:
+        model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
 
     model = lora_model_class(**model_kwargs)
     ckpt = torch.load(str(model_path), map_location='cpu')
@@ -272,14 +287,19 @@ def _draw_bar_chart(values, labels, title, target_h, target_w=None):
 REPRESENTATIVE_LAYERS = [0, 9, 18]  # Block indices
 
 # Modal display names
-MODAL_TITLES = {'img': 'RGB', 'lidar': 'LiDAR', 'thermal': 'Thermal'}
+MODAL_TITLES = {'img': 'RGB', 'lidar': 'LiDAR', 'thermal': 'Thermal',
+                'depth': 'Depth (HHA)', 'event': 'Event'}
 
 # Expert colors for routing map
 EXPERT_COLORS = np.array([
     [220, 50, 50],    # E0: Red
     [50, 180, 50],    # E1: Green
     [50, 80, 220],    # E2: Blue
-    [220, 180, 50],   # E3: Yellow (if 4 experts)
+    [220, 180, 50],   # E3: Yellow
+    [180, 50, 220],   # E4: Purple
+    [50, 220, 180],   # E5: Teal
+    [220, 130, 50],   # E6: Orange
+    [130, 50, 220],   # E7: Indigo
 ], dtype=np.uint8)
 
 
@@ -468,9 +488,10 @@ class MoERoutingCapture:
         ax.set_yticklabels(modals, fontsize=16)
         ax.set_xlim(0, 1.0)
         ax.set_title(f'Expert Selection (B{block_idx}_Q)', fontsize=16)
-        for e in range(ne):
-            ax.barh([], [], color=EXPERT_COLORS[e].astype(float) / 255.0, label=f'E{e}')
-        ax.legend(fontsize=11, loc='lower right')
+        from matplotlib.patches import Patch
+        legend_handles = [Patch(facecolor=EXPERT_COLORS[e].astype(float) / 255.0, label=f'E{e}')
+                          for e in range(ne)]
+        ax.legend(handles=legend_handles, fontsize=11, loc='lower right')
 
         fig.tight_layout(pad=0.5)
         fig.canvas.draw()
@@ -668,6 +689,379 @@ def build_aux_mask_row(aux_logits_list, modals, batch_idx, palette,
         row = np.array(Image.fromarray(row).resize(
             (target_w, row.shape[0]), Image.Resampling.LANCZOS))
     return row
+
+
+# ============================================================================
+# P26 Fusion Visualization (SQG/UAMM/AMF spatial maps + per-modal predictions)
+# ============================================================================
+
+def _spatial_map_to_heatmap_with_colorbar(spatial_map, title, target_h, target_w,
+                                           cmap='inferno', vmin=None, vmax=None):
+    """Render spatial map as a matplotlib figure with colorbar and title."""
+    if spatial_map.ndim > 2:
+        spatial_map = spatial_map.squeeze()
+    dpi = 80
+    fig, ax = plt.subplots(figsize=(target_w / dpi, target_h / dpi), dpi=dpi)
+    if vmin is None:
+        vmin = float(spatial_map.min())
+    if vmax is None:
+        vmax = float(spatial_map.max())
+    im = ax.imshow(spatial_map, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
+    ax.set_title(title, fontsize=min(16, max(10, int(target_h / 20))), fontweight='bold')
+    ax.axis('off')
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.ax.tick_params(labelsize=max(8, int(target_h / 30)))
+    fig.tight_layout(pad=0.3)
+    fig.canvas.draw()
+    buf = fig.canvas.buffer_rgba()
+    fw, fh = fig.canvas.get_width_height()
+    img = np.asarray(buf).reshape((fh, fw, 4))[:, :, :3].copy()
+    plt.close(fig)
+    return np.array(Image.fromarray(img).resize((target_w, target_h), Image.Resampling.LANCZOS))
+
+
+def _is_p26_model(model):
+    """Check if model is P26 (has P26-specific spatial buffers)."""
+    core = model.module if hasattr(model, 'module') else model
+    return (hasattr(core, '_last_uamm_spatial') and
+            hasattr(core, '_last_per_modal_outputs') and
+            hasattr(core, '_last_quality_maps'))
+
+
+def _build_p26_per_modal_pred_row(model, batch_idx, modals, palette,
+                                   orig_h, orig_w, target_h, main_w):
+    """Row: per-modality prediction masks (decoded to color)."""
+    core = model.module if hasattr(model, 'module') else model
+    per_modal_outputs = getattr(core, '_last_per_modal_outputs', None)
+    if per_modal_outputs is None:
+        return None
+    m = len(per_modal_outputs)
+    col_w = main_w // m
+    cols = []
+    for i in range(m):
+        logits = per_modal_outputs[i]
+        if batch_idx >= logits.shape[0]:
+            cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+            continue
+        pred_i = logits[batch_idx].argmax(dim=0)
+        pred_resized = _unpad_resize_to_orig(pred_i, orig_h, orig_w, model_size=pred_i.shape[0])
+        pred_np = pred_resized.cpu().numpy().astype(np.uint8)
+        colored = MULTIAQUA.decode_segmap(pred_np, palette)
+        colored_resized = np.array(Image.fromarray(colored).resize((col_w, target_h), Image.Resampling.LANCZOS))
+        mname = modals[i] if i < len(modals) else f'M{i}'
+        cols.append(_add_title_to_image(colored_resized, f'Pred: {MODAL_TITLES.get(mname, mname)}'))
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != main_w:
+        row = np.array(Image.fromarray(row).resize((main_w, row.shape[0]), Image.Resampling.LANCZOS))
+    return row
+
+
+def _build_p26_sqg_row(model, batch_idx, modals, target_h, main_w):
+    """Row: SQG quality maps per modality as heatmaps."""
+    core = model.module if hasattr(model, 'module') else model
+    quality_maps = getattr(core, '_last_quality_maps', None)
+    if quality_maps is None:
+        return None
+    m = len(quality_maps)
+    col_w = main_w // m
+    cols = []
+    for i in range(m):
+        qm = quality_maps[i]
+        if batch_idx >= qm.shape[0]:
+            cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+            continue
+        qm_2d = qm[batch_idx, 0]
+        mname = modals[i] if i < len(modals) else f'M{i}'
+        hm = _spatial_map_to_heatmap_with_colorbar(
+            qm_2d, f'SQG: {MODAL_TITLES.get(mname, mname)}',
+            target_h, col_w, cmap='viridis', vmin=0.0, vmax=1.0,
+        )
+        cols.append(hm)
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != main_w:
+        row = np.array(Image.fromarray(row).resize((main_w, target_h), Image.Resampling.LANCZOS))
+    return row
+
+
+def _build_p26_entropy_row(model, batch_idx, modals, target_h, main_w):
+    """Row: per-modality entropy maps as heatmaps."""
+    core = model.module if hasattr(model, 'module') else model
+    entropy_maps = getattr(core, '_last_entropy_maps', None)
+    if entropy_maps is None:
+        return None
+    m = len(entropy_maps)
+    col_w = main_w // m
+    vmax = max(em[batch_idx].max() for em in entropy_maps if batch_idx < em.shape[0])
+    cols = []
+    for i in range(m):
+        em = entropy_maps[i]
+        if batch_idx >= em.shape[0]:
+            cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+            continue
+        em_2d = em[batch_idx, 0]
+        mname = modals[i] if i < len(modals) else f'M{i}'
+        hm = _spatial_map_to_heatmap_with_colorbar(
+            em_2d, f'Entropy: {MODAL_TITLES.get(mname, mname)}',
+            target_h, col_w, cmap='hot', vmin=0.0, vmax=float(vmax),
+        )
+        cols.append(hm)
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != main_w:
+        row = np.array(Image.fromarray(row).resize((main_w, target_h), Image.Resampling.LANCZOS))
+    return row
+
+
+def _build_p26_uamm_row(model, batch_idx, modals, target_h, main_w):
+    """Row: UAMM spatial weight maps per modality as heatmaps."""
+    core = model.module if hasattr(model, 'module') else model
+    uamm_spatial = getattr(core, '_last_uamm_spatial', None)
+    if uamm_spatial is None:
+        return None
+    m = len(uamm_spatial)
+    col_w = main_w // m
+    cols = []
+    for i in range(m):
+        us = uamm_spatial[i]
+        if batch_idx >= us.shape[0]:
+            cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+            continue
+        us_2d = us[batch_idx, 0]
+        mname = modals[i] if i < len(modals) else f'M{i}'
+        hm = _spatial_map_to_heatmap_with_colorbar(
+            us_2d, f'UAMM Wt: {MODAL_TITLES.get(mname, mname)}',
+            target_h, col_w, cmap='plasma', vmin=0.0, vmax=1.0,
+        )
+        cols.append(hm)
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != main_w:
+        row = np.array(Image.fromarray(row).resize((main_w, target_h), Image.Resampling.LANCZOS))
+    return row
+
+
+def _build_p26_amf_row(model, batch_idx, modals, target_h, main_w):
+    """Row: AMF spatial fusion weight maps per modality as heatmaps."""
+    core = model.module if hasattr(model, 'module') else model
+    amf_spatial = getattr(core, '_last_amf_spatial', None)
+    if amf_spatial is None:
+        return None
+    m = len(amf_spatial)
+    col_w = main_w // m
+    cols = []
+    for i in range(m):
+        af = amf_spatial[i]
+        if batch_idx >= af.shape[0]:
+            cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+            continue
+        af_2d = af[batch_idx, 0]
+        mname = modals[i] if i < len(modals) else f'M{i}'
+        hm = _spatial_map_to_heatmap_with_colorbar(
+            af_2d, f'AMF Wt: {MODAL_TITLES.get(mname, mname)}',
+            target_h, col_w, cmap='coolwarm', vmin=0.0, vmax=1.0,
+        )
+        cols.append(hm)
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != main_w:
+        row = np.array(Image.fromarray(row).resize((main_w, target_h), Image.Resampling.LANCZOS))
+    return row
+
+
+def _build_p26_feature_comparison_row(model, batch_idx, modals, target_h, main_w):
+    """Row: per-modality backbone features (channel-mean) + fused feature comparison."""
+    core = model.module if hasattr(model, 'module') else model
+    per_modal_feats = getattr(core, '_last_per_modal_feats', None)
+    uamm_spatial = getattr(core, '_last_uamm_spatial', None)
+    if per_modal_feats is None or uamm_spatial is None:
+        return None
+    m = len(per_modal_feats)
+    n_cols = m + 1
+    col_w = main_w // n_cols
+    cols = []
+    fused_feat = None
+    for i in range(m):
+        feat = per_modal_feats[i]
+        if batch_idx >= feat.shape[0]:
+            cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+            continue
+        feat_2d = feat[batch_idx].mean(dim=0).numpy()
+        weighted = feat[batch_idx].numpy() * uamm_spatial[i][batch_idx]
+        if fused_feat is None:
+            fused_feat = weighted.copy()
+        else:
+            fused_feat += weighted
+        mname = modals[i] if i < len(modals) else f'M{i}'
+        hm = _spatial_map_to_heatmap_with_colorbar(
+            feat_2d, f'Feat: {MODAL_TITLES.get(mname, mname)}',
+            target_h, col_w, cmap='magma',
+        )
+        cols.append(hm)
+    if fused_feat is not None:
+        fused_2d = fused_feat.mean(axis=0)
+        cols.append(_spatial_map_to_heatmap_with_colorbar(
+            fused_2d, 'Fused (post-UAMM)', target_h, col_w, cmap='magma'))
+    else:
+        cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != main_w:
+        row = np.array(Image.fromarray(row).resize((main_w, row.shape[0]), Image.Resampling.LANCZOS))
+    return row
+
+
+def _spatial_map_to_heatmap_fixed_range(data_2d, title, target_h, target_w,
+                                         cmap='magma', vmin=None, vmax=None):
+    """Heatmap with fixed vmin/vmax range (shared across panels)."""
+    dpi = 100
+    fig_w = max(target_w / dpi, 1.5)
+    fig_h = max(target_h / dpi, 1.5)
+    fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h), dpi=dpi)
+    fig.patch.set_facecolor('#1a1a2e')
+    ax.set_facecolor('#1a1a2e')
+    ax.set_title(title, fontsize=max(8, int(target_h / 30)), color='white', pad=4)
+    im = ax.imshow(data_2d, cmap=cmap, aspect='auto', vmin=vmin, vmax=vmax)
+    ax.axis('off')
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.ax.tick_params(labelsize=max(8, int(target_h / 30)))
+    fig.tight_layout(pad=0.3)
+    fig.canvas.draw()
+    buf = fig.canvas.buffer_rgba()
+    fw, fh = fig.canvas.get_width_height()
+    img = np.asarray(buf).reshape((fh, fw, 4))[:, :, :3].copy()
+    plt.close(fig)
+    return np.array(Image.fromarray(img).resize((target_w, target_h), Image.Resampling.LANCZOS))
+
+
+def _build_p9_uamm_feature_row(model, batch_idx, modals, target_h, main_w):
+    """Row: UAMM 전/후 feature 비교 (P9/P22 전용).
+
+    P9 UAMM은 scalar multiplication이므로 패턴은 동일하고 스케일만 다름.
+    → 동일 vmin/vmax로 비교 + 증폭된 diff(×10) + UAMM score 표시.
+
+    Layout: [Before M0 | After M0 | Diff×10 M0 | Before M1 | After M1 | Diff×10 M1 | ...]
+    """
+    core = model.module if hasattr(model, 'module') else model
+    feats_before = getattr(core, '_last_feats_before_uamm', None)
+    feats_after = getattr(core, '_last_feats_after_uamm', None)
+    if feats_before is None or feats_after is None:
+        return None
+
+    uamm_scores = getattr(core, '_last_uamm_scores', None)
+    m = len(feats_before)
+    # Layout: 3 cols per modality (before, after, diff×10)
+    n_cols = m * 3
+    col_w = main_w // n_cols
+    cols = []
+
+    # First pass: extract all 2D features to compute shared range
+    feat_pairs = []
+    for i in range(m):
+        before_t = feats_before[i]
+        after_t = feats_after[i]
+        if before_t.dim() == 3:
+            b_feat = before_t[:, batch_idx, :].mean(dim=-1).numpy()
+            a_feat = after_t[:, batch_idx, :].mean(dim=-1).numpy()
+            side = int(np.sqrt(b_feat.shape[0]))
+            if side * side == b_feat.shape[0]:
+                b_feat = b_feat.reshape(side, side)
+                a_feat = a_feat.reshape(side, side)
+            else:
+                b_feat = b_feat.reshape(1, -1)
+                a_feat = a_feat.reshape(1, -1)
+        elif before_t.dim() == 4:
+            b_feat = before_t[batch_idx].mean(dim=0).numpy()
+            a_feat = after_t[batch_idx].mean(dim=0).numpy()
+        else:
+            feat_pairs.append(None)
+            continue
+        feat_pairs.append((b_feat, a_feat))
+
+    # Shared range across all before/after
+    all_vals = [v for pair in feat_pairs if pair is not None
+                for v in [pair[0].ravel(), pair[1].ravel()]]
+    if not all_vals:
+        return None
+    all_vals = np.concatenate(all_vals)
+    shared_vmin, shared_vmax = float(np.percentile(all_vals, 1)), float(np.percentile(all_vals, 99))
+
+    # Second pass: render
+    DIFF_AMP = 10  # amplification factor for diff
+    for i in range(m):
+        if feat_pairs[i] is None:
+            for _ in range(3):
+                cols.append(np.zeros((target_h, col_w, 3), dtype=np.uint8))
+            continue
+        b_feat, a_feat = feat_pairs[i]
+        diff = a_feat - b_feat  # signed diff (not abs)
+        mname = modals[i] if i < len(modals) else f'M{i}'
+        mtitle = MODAL_TITLES.get(mname, mname)
+
+        # UAMM score annotation
+        score_str = ''
+        if uamm_scores is not None and batch_idx < uamm_scores.shape[0]:
+            score_str = f' (s={uamm_scores[batch_idx, i]:.3f})'
+
+        cols.append(_spatial_map_to_heatmap_fixed_range(
+            b_feat, f'Before: {mtitle}', target_h, col_w,
+            cmap='magma', vmin=shared_vmin, vmax=shared_vmax))
+        cols.append(_spatial_map_to_heatmap_fixed_range(
+            a_feat, f'After: {mtitle}{score_str}', target_h, col_w,
+            cmap='magma', vmin=shared_vmin, vmax=shared_vmax))
+        # Amplified diff with diverging colormap (blue=suppressed, red=enhanced)
+        diff_amp = diff * DIFF_AMP
+        d_abs_max = max(abs(float(diff_amp.min())), abs(float(diff_amp.max())), 1e-8)
+        cols.append(_spatial_map_to_heatmap_fixed_range(
+            diff_amp, f'Diff×{DIFF_AMP}: {mtitle}', target_h, col_w,
+            cmap='RdBu_r', vmin=-d_abs_max, vmax=d_abs_max))
+
+    row = np.concatenate(cols, axis=1)
+    if row.shape[1] != main_w:
+        row = np.array(Image.fromarray(row).resize((main_w, target_h), Image.Resampling.LANCZOS))
+    return row
+
+
+def _build_fusion_viz_rows(model, batch_idx, modals, palette,
+                            orig_h, orig_w, main_w):
+    """Build fusion visualization rows for any model (P9/P22/P26/etc).
+
+    Rows are added only when corresponding model buffers exist:
+      - Per-modal predictions: _last_per_modal_outputs (P9, P26)
+      - SQG quality maps: _last_quality_maps (P26 only)
+      - Per-modal entropy: _last_entropy_maps (P26 only)
+      - UAMM spatial weights: _last_uamm_spatial (P26 only)
+      - AMF spatial weights: _last_amf_spatial (P26 only)
+      - P26 feature comparison: _last_per_modal_feats + _last_uamm_spatial (P26 only)
+      - UAMM before/after features: _last_feats_before_uamm (P9/P22)
+    """
+    rows = []
+    hmap_h = int(orig_h * 0.6)
+
+    # Per-modality predictions (P9, P26 — any model with _last_per_modal_outputs)
+    row = _build_p26_per_modal_pred_row(model, batch_idx, modals, palette,
+                                         orig_h, orig_w, orig_h, main_w)
+    if row is not None:
+        rows.append(row)
+
+    # P26-specific rows (skipped silently when buffers absent)
+    row = _build_p26_sqg_row(model, batch_idx, modals, hmap_h, main_w)
+    if row is not None:
+        rows.append(row)
+    row = _build_p26_entropy_row(model, batch_idx, modals, hmap_h, main_w)
+    if row is not None:
+        rows.append(row)
+    row = _build_p26_uamm_row(model, batch_idx, modals, hmap_h, main_w)
+    if row is not None:
+        rows.append(row)
+    row = _build_p26_amf_row(model, batch_idx, modals, hmap_h, main_w)
+    if row is not None:
+        rows.append(row)
+    row = _build_p26_feature_comparison_row(model, batch_idx, modals, hmap_h, main_w)
+    if row is not None:
+        rows.append(row)
+
+    # P9/P22 UAMM before/after feature comparison
+    row = _build_p9_uamm_feature_row(model, batch_idx, modals, hmap_h, main_w)
+    if row is not None:
+        rows.append(row)
+
+    return rows
 
 
 def _add_title_to_image(img, title):
@@ -868,18 +1262,25 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                     _add_title_to_image(overlay, 'Overlay'),
                 ], axis=1)
 
-                # Row 3: MoE per-token stats
+                rows = [row1, row2]
+
+                # Fusion visualization rows (P9/P22/P26 — auto-detected)
+                fusion_rows = _build_fusion_viz_rows(
+                    model, b, modals, palette, orig_h, orig_w, main_w)
+                rows.extend(fusion_rows)
+
+                # MoE per-token stats
                 row3_h = int(orig_h * 0.55)
                 stats_row = build_stats_row(capture, modals, row3_h, main_w)
 
-                # Row 4: Spatial routing maps (titles added inside)
+                # Spatial routing maps (titles added inside)
                 map_h = int(orig_h * 0.6)
                 mid_block = REPRESENTATIVE_LAYERS[len(REPRESENTATIVE_LAYERS) // 2]
                 row4 = build_routing_map_row(capture, modals, map_h, main_w, block_idx=mid_block)
 
-                rows = [row1, row2, stats_row, row4]
+                rows.extend([stats_row, row4])
 
-                # Row 5 (P13 only): ConfidenceAuxHead per-modality aux mask
+                # P13 only: ConfidenceAuxHead per-modality aux mask
                 aux_logits = getattr(core, '_last_aux_logits', None)
                 if aux_logits is not None:
                     aux_row = build_aux_mask_row(
@@ -936,6 +1337,62 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                                 'std': round(float(qm.std()), 4),
                                 'min': round(float(qm.min()), 4),
                                 'max': round(float(qm.max()), 4),
+                            }
+
+                # P26 spatial stats
+                uamm_sp = getattr(core, '_last_uamm_spatial', None)
+                if uamm_sp is not None:
+                    img_log['uamm_spatial'] = {}
+                    for m_idx, m_name in enumerate(modals):
+                        if m_idx < len(uamm_sp) and b < uamm_sp[m_idx].shape[0]:
+                            us = uamm_sp[m_idx][b, 0]
+                            img_log['uamm_spatial'][m_name] = {
+                                'mean': round(float(us.mean()), 4), 'std': round(float(us.std()), 4),
+                                'min': round(float(us.min()), 4), 'max': round(float(us.max()), 4),
+                            }
+                amf_sp = getattr(core, '_last_amf_spatial', None)
+                if amf_sp is not None:
+                    img_log['amf_spatial'] = {}
+                    for m_idx, m_name in enumerate(modals):
+                        if m_idx < len(amf_sp) and b < amf_sp[m_idx].shape[0]:
+                            af = amf_sp[m_idx][b, 0]
+                            img_log['amf_spatial'][m_name] = {
+                                'mean': round(float(af.mean()), 4), 'std': round(float(af.std()), 4),
+                                'min': round(float(af.min()), 4), 'max': round(float(af.max()), 4),
+                            }
+                ent_maps = getattr(core, '_last_entropy_maps', None)
+                if ent_maps is not None:
+                    img_log['per_modal_entropy'] = {}
+                    for m_idx, m_name in enumerate(modals):
+                        if m_idx < len(ent_maps) and b < ent_maps[m_idx].shape[0]:
+                            em = ent_maps[m_idx][b, 0]
+                            img_log['per_modal_entropy'][m_name] = {
+                                'mean': round(float(em.mean()), 4), 'std': round(float(em.std()), 4),
+                                'max': round(float(em.max()), 4),
+                            }
+
+                # UAMM before/after feature stats (P9/P22)
+                feats_before = getattr(core, '_last_feats_before_uamm', None)
+                feats_after = getattr(core, '_last_feats_after_uamm', None)
+                if feats_before is not None and feats_after is not None:
+                    img_log['uamm_feature_modulation'] = {}
+                    for m_idx, m_name in enumerate(modals):
+                        if m_idx < len(feats_before):
+                            bf = feats_before[m_idx]
+                            af = feats_after[m_idx]
+                            if bf.dim() == 3:
+                                bf_norm = bf[:, b, :].norm().item()
+                                af_norm = af[:, b, :].norm().item()
+                            elif bf.dim() == 4:
+                                bf_norm = bf[b].norm().item()
+                                af_norm = af[b].norm().item()
+                            else:
+                                continue
+                            ratio = af_norm / (bf_norm + 1e-8)
+                            img_log['uamm_feature_modulation'][m_name] = {
+                                'before_norm': round(bf_norm, 4),
+                                'after_norm': round(af_norm, 4),
+                                'ratio': round(ratio, 4),
                             }
 
                 # Per-image prediction quality
@@ -1087,13 +1544,20 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
                 _add_title_to_image(overlay, 'Overlay'),
             ], axis=1)
 
+            rows = [row1, row2]
+
+            # Fusion visualization rows (P9/P22/P26 — auto-detected)
+            fusion_rows = _build_fusion_viz_rows(
+                model, b, modals, palette, orig_h, orig_w, main_w)
+            rows.extend(fusion_rows)
+
             stats_row = build_stats_row(capture, modals, int(orig_h * 0.55), main_w)
             mid_block = REPRESENTATIVE_LAYERS[len(REPRESENTATIVE_LAYERS) // 2]
             row4 = build_routing_map_row(capture, modals, int(orig_h * 0.6), main_w, block_idx=mid_block)
 
-            rows = [row1, row2, stats_row, row4]
+            rows.extend([stats_row, row4])
 
-            # Row 5 (P13 only): ConfidenceAuxHead per-modality aux mask
+            # P13 only: ConfidenceAuxHead per-modality aux mask
             aux_logits = getattr(core, '_last_aux_logits', None)
             if aux_logits is not None:
                 aux_row = build_aux_mask_row(
@@ -1133,6 +1597,62 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
                 img_log['uamm'] = {k: round(float(v), 4) for k, v in zip(modals, uamm[b])}
             if amf is not None and b < amf.shape[0]:
                 img_log['amf'] = {k: round(float(v), 4) for k, v in zip(modals, amf[b])}
+
+            # P26 spatial stats
+            uamm_sp = getattr(core, '_last_uamm_spatial', None)
+            if uamm_sp is not None:
+                img_log['uamm_spatial'] = {}
+                for m_idx, m_name in enumerate(modals):
+                    if m_idx < len(uamm_sp) and b < uamm_sp[m_idx].shape[0]:
+                        us = uamm_sp[m_idx][b, 0]
+                        img_log['uamm_spatial'][m_name] = {
+                            'mean': round(float(us.mean()), 4), 'std': round(float(us.std()), 4),
+                            'min': round(float(us.min()), 4), 'max': round(float(us.max()), 4),
+                        }
+            amf_sp = getattr(core, '_last_amf_spatial', None)
+            if amf_sp is not None:
+                img_log['amf_spatial'] = {}
+                for m_idx, m_name in enumerate(modals):
+                    if m_idx < len(amf_sp) and b < amf_sp[m_idx].shape[0]:
+                        af = amf_sp[m_idx][b, 0]
+                        img_log['amf_spatial'][m_name] = {
+                            'mean': round(float(af.mean()), 4), 'std': round(float(af.std()), 4),
+                            'min': round(float(af.min()), 4), 'max': round(float(af.max()), 4),
+                        }
+            ent_maps = getattr(core, '_last_entropy_maps', None)
+            if ent_maps is not None:
+                img_log['per_modal_entropy'] = {}
+                for m_idx, m_name in enumerate(modals):
+                    if m_idx < len(ent_maps) and b < ent_maps[m_idx].shape[0]:
+                        em = ent_maps[m_idx][b, 0]
+                        img_log['per_modal_entropy'][m_name] = {
+                            'mean': round(float(em.mean()), 4), 'std': round(float(em.std()), 4),
+                            'max': round(float(em.max()), 4),
+                        }
+
+            # UAMM before/after feature stats (P9/P22)
+            feats_before = getattr(core, '_last_feats_before_uamm', None)
+            feats_after = getattr(core, '_last_feats_after_uamm', None)
+            if feats_before is not None and feats_after is not None:
+                img_log['uamm_feature_modulation'] = {}
+                for m_idx, m_name in enumerate(modals):
+                    if m_idx < len(feats_before):
+                        bf = feats_before[m_idx]
+                        af = feats_after[m_idx]
+                        if bf.dim() == 3:
+                            bf_norm = bf[:, b, :].norm().item()
+                            af_norm = af[:, b, :].norm().item()
+                        elif bf.dim() == 4:
+                            bf_norm = bf[b].norm().item()
+                            af_norm = af[b].norm().item()
+                        else:
+                            continue
+                        ratio = af_norm / (bf_norm + 1e-8)
+                        img_log['uamm_feature_modulation'][m_name] = {
+                            'before_norm': round(bf_norm, 4),
+                            'after_norm': round(af_norm, 4),
+                            'ratio': round(ratio, 4),
+                        }
 
             # Prediction confidence
             softmax_b = preds[b]

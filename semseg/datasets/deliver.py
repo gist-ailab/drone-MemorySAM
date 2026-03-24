@@ -112,13 +112,15 @@ class DELIVER(Dataset):
         
         return colored_label
     
-    def __init__(self, root: str = 'data/DELIVER', split: str = 'train', transform = None, modals = ['img'], case = None) -> None:
+    def __init__(self, root: str = 'data/DELIVER', split: str = 'train', transform = None,
+                 modals = ['img'], case = None, return_meta: bool = False) -> None:
         super().__init__()
         assert split in ['train', 'val', 'test']
         self.transform = transform
         self.n_classes = len(self.CLASSES)
         self.ignore_label = 255
         self.modals = modals
+        self.return_meta = return_meta
         self.files = sorted(glob.glob(os.path.join(*[root, 'img', '*', split, '*', '*.png'])))
         # --- debug
         # self.files = sorted(glob.glob(os.path.join(*[root, 'img', '*', split, '*', '*.png'])))[:100]
@@ -128,7 +130,7 @@ class DELIVER(Dataset):
             _temp_files = [f for f in self.files if case in f]
             self.files = _temp_files
         if not self.files:
-            raise Exception(f"No images found in {img_path}")
+            raise Exception(f"No images found in {root}/img/*/{split}/*/*.png")
         print(f"Found {len(self.files)} {split} {case} images.")
 
     def __len__(self) -> int:
@@ -153,15 +155,29 @@ class DELIVER(Dataset):
             sample['event'] = TF.resize(eimg, (H, W), TF.InterpolationMode.NEAREST)
         label = io.read_image(lbl_path)[0,...].unsqueeze(0)
         label[label==255] = 0
-        label -= 1
+        label -= 1  # 1-25 → 0-24, 0 → 255 (uint8 underflow = ignore)
         sample['mask'] = label
-        
+
+        # Save original-size label before transform (for metric computation at orig size)
+        if self.return_meta:
+            orig_label = label.clone().squeeze().long()  # (H, W), values 0-24 + 255
+
         if self.transform:
             sample = self.transform(sample)
         label = sample['mask']
         del sample['mask']
         label = self.encode(label.squeeze().numpy()).long()
         sample = [sample[k] for k in self.modals]
+
+        if self.return_meta:
+            meta = {
+                'stem': Path(rgb).stem,
+                'orig_h': int(H),
+                'orig_w': int(W),
+                'orig_label': orig_label,
+                'paths': {'img': rgb, 'depth': x1, 'lidar': x2, 'event': x3},
+            }
+            return sample, label, meta
         return sample, label
 
     def _open_img(self, file):

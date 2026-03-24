@@ -1,6 +1,6 @@
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-03-10
+> 최종 업데이트: 2026-03-24
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -481,6 +481,185 @@ if quality_maps is not None:
 - `val_multiaqua_detailed.py`: quality map 로깅 추가 대상
 - `MISC/analyze_detailed_log.py`: quality map 분석 함수 이미 구현됨
 - `outputs/MMSamP24/.../quality_vis/`: 현재 학습의 시각화 결과
+
+---
+
+### ISSUE-019: P26 entropy 계산 NaN — LogBackward0 gradient explosion [해결]
+
+**상태**: ✅ 해결됨 (2026-03-24)
+**영향**: P26 학습 (Epoch 10, Iter 83에서 crash)
+**우선순위**: 긴급 — 학습 불가
+
+**에러**:
+```
+RuntimeError: Function 'LogBackward0' returned nan values in its 0th output.
+```
+
+**발생 위치**: `sam_lora_image_encoder_seg.py:7038`
+```python
+entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)
+```
+
+**원인**:
+- `prob`(softmax 출력)에 0 또는 극소값이 포함됨
+- `.clamp(min=-100)`은 **forward 값**만 보호 — `log(0) → -inf → clamp → -100` (OK)
+- 그러나 **backward**에서 `LogBackward0`의 gradient = `1/prob` → `1/0` = **NaN**
+- Epoch 10까지는 prob이 0에 도달하지 않다가, 학습 진행으로 softmax가 한 클래스에 극단적으로 몰리면서 발생
+
+**수정**:
+```python
+# 기존 (line 7038):
+entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)
+
+# 수정:
+entropy = -(prob * (prob + 1e-8).log()).sum(dim=1, keepdim=True)
+```
+- `prob + 1e-8`로 log 입력 자체를 0이 아니게 만듦 → forward/backward 모두 안전
+- 값 변화: `log(1e-8) ≈ -18.4` → entropy 값에 미미한 영향
+
+**관련 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py:7038`: P26 forward 내 entropy 계산
+- 동일 패턴이 다른 라인에도 있는지 확인 필요 (`prob.log()` 검색)
+
+---
+
+### ISSUE-017: val_multiaqua_detailed.py 시각화 버그 2건 [미수정]
+
+**상태**: 🟡 미수정 (2026-03-24 확인)
+**영향**: `val_multiaqua_detailed.py` 시각화 출력
+**우선순위**: 중간
+
+**버그 1 — Row 3 `build_stats_row` 블록 선택 오류**:
+- **현상**: Row 3에 Block 0, 1, 2만 표시됨 (초기 low-level 블록들)
+- **원인**: `build_stats_row()` (line 699~713)에서 `REPRESENTATIVE_LAYERS`를 사용하지 않고 `sorted(Q.keys())[:3]`으로 앞 3개만 선택
+- **비교**: Row 4는 `REPRESENTATIVE_LAYERS`의 중간값(Block 9)을 정상적으로 사용
+- **수정**: `blocks[i]` → `REPRESENTATIVE_LAYERS` 중 데이터 있는 블록 사용
+```python
+# 기존 (line 703-707):
+n_charts = min(len(blocks), 3)
+for i in range(n_charts):
+    block_idx = blocks[i]
+
+# 수정:
+target_blocks = [b for b in REPRESENTATIVE_LAYERS if b in capture.routing_data['Q']]
+if not target_blocks:
+    target_blocks = blocks[:3]
+n_charts = len(target_blocks)
+for block_idx in target_blocks:
+```
+
+**버그 2 — Expert Selection 범례 색상 구분 불량**:
+- **현상**: 우하단 범례에서 E0, E1, E2가 모두 같은 색(파란색)으로 보임
+- **원인**: `ax.barh([], [])` 빈 범례 아이콘이 저해상도에서 너무 작아 색 구분 불가. 또한 routing이 33/33/33 균등이라 stacked bar 자체도 구분 어려움
+- **EXPERT_COLORS 정의** (line 278-283): Red/Green/Blue로 코드상 올바름
+- **수정**: 범례 아이콘 크기 확대 + 폰트 키우기
+```python
+# 기존 (line 473):
+ax.legend(fontsize=11, loc='lower right')
+
+# 수정:
+ax.legend(fontsize=14, loc='lower right',
+          handlelength=2.0, handleheight=1.5,
+          framealpha=0.9, edgecolor='black')
+```
+
+**관련 파일**:
+- `val_multiaqua_detailed.py:278-283`: EXPERT_COLORS 정의
+- `val_multiaqua_detailed.py:426-481`: `get_stats_bar_chart()` — Row 3 차트 생성
+- `val_multiaqua_detailed.py:697-714`: `build_stats_row()` — Row 3 빌더
+
+---
+
+### ISSUE-018: P9/P22 UAMM 전/후 피쳐 시각화 미지원 [해결]
+
+**상태**: ✅ 해결됨 (2026-03-24 구현 완료)
+**영향**: P9, P22 (및 기타 UAMM 사용 모델)
+**우선순위**: 중간 — 디버깅/분석 목적
+
+**문제**:
+- `val_multiaqua_detailed.py`는 UAMM/AMF **scalar 가중치**만 시각화 (`_last_uamm_scores`)
+- UAMM 전/후의 **vision_feats 텐서** 자체는 저장/시각화 안 됨
+- `val_mm_samP_detailed.py`에 AnalysisWrapper 기반 피쳐 시각화가 있지만 **P1~P7 전용** (P9/P22 미지원)
+
+**설계 — Option 1 (모델 내부 버퍼 방식)**:
+
+Option 2 (외부 AnalysisWrapper 확장) 대비 장점:
+- P9/P22의 UAMM은 인라인 연산이라 hook으로 전/후를 잡을 수 없음
+- 기존 `_last_uamm_scores` 패턴과 일관
+- 모든 eval 스크립트에서 범용 접근 가능
+
+**P9** (`LoRA_Sam_P9`, line 1365~):
+
+| 위치 | 내용 |
+|------|------|
+| line ~1483 | `vision_feats[frame_idx]` — UAMM 이전 |
+| line 1485 | `modulated_vision_feats = [feat * score_expanded ...]` — UAMM 적용 |
+| line 1519-1527 | 기존 `_last_*` 버퍼 저장 블록 |
+
+**P22** (`LoRA_Sam_P22`, line 5367~):
+
+| 위치 | 내용 |
+|------|------|
+| line ~5513 | `vision_feats[frame_idx]` — UAMM 이전 (DeBA-FP 이후) |
+| line 5515 | `modulated_vision_feats = [feat * score_expanded ...]` — UAMM 적용 |
+| line 5549-5557 | 기존 `_last_*` 버퍼 저장 블록 |
+
+**구현 내용 (P9/P22 각각 동일 패턴)**:
+```python
+# 1) forward 내 UAMM 루프 안에서 수집
+feats_before_uamm = []
+feats_after_uamm = []
+
+for frame_idx in range(m):
+    feats_before_uamm.append(vision_feats[frame_idx][0].detach().cpu())    # 추가
+    modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
+    feats_after_uamm.append(modulated_vision_feats[0].detach().cpu())      # 추가
+
+# 2) 기존 버퍼 저장 블록에 추가
+self._last_feats_before_uamm = feats_before_uamm  # list of m tensors
+self._last_feats_after_uamm = feats_after_uamm    # list of m tensors
+```
+
+**시각화 코드 수정** (`val_multiaqua_detailed.py`):
+- `build_uamm_amf_row()` 또는 신규 Row에서 `_last_feats_before_uamm` / `_last_feats_after_uamm` 읽기
+- 채널 평균 → 2D heatmap (viridis) + diff map
+
+**주의사항**:
+- `detach().cpu()` 필수 (학습 그래프 영향 방지)
+- `vision_feats[frame_idx]`는 multi-scale 리스트 → `[0]`만 저장 (FPN 최저해상도, 메모리 절약)
+- 학습 시 불필요하면 `if not self.training:` 가드 추가
+
+**수정 대상 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: P9 forward (~4줄), P22 forward (~4줄)
+- `val_multiaqua_detailed.py`: 피쳐 시각화 행 추가 + JSON 피쳐 통계 기록
+
+---
+
+### ISSUE-016: P26 DELIVER 학습 시 런타임 에러 6건 — 전수 해결 [해결]
+
+**상태**: ✅ 해결됨 (2026-03-24)
+**영향**: P26 (LoRA_Sam_P26) + DELIVER 4모달 학습
+**우선순위**: Blocker
+
+**에러 1~4**: (이전 세션에서 해결)
+- Conv2d weight mismatch, _swap_decoder KeyError, multi_scale_sqg FPN indexing, scalp parameter 미반영
+
+**에러 5: CheckpointError — 1932 vs 61 tensors saved**:
+- **원인**: `forward()`의 `finally` 블록에서 `trunk.gradient_checkpointing = True` 복원 → backward recomputation 시 per-block checkpointing이 활성화되어 tensor count 불일치 (forward: 1932, recomputation: 61)
+- **수정**: `_encode_single_modality()` 안에서 `trunk.gradient_checkpointing = False` 설정 → recomputation도 동일 설정
+
+**에러 6: CUDA OOM (23.5GB / 24GB)**:
+- **원인**: 에러 5 수정이 per-block checkpointing을 완전 비활성화 → 4모달 full activation이 메모리에 유지
+- **최종 수정**: nested checkpointing 도입
+  - **Outer**: `torch.utils.checkpoint`로 `_encode_single_modality()` 전체를 감싸 (per-modality)
+  - **Inner**: `HieraDet.forward()`의 기존 per-block checkpointing 유지
+  - `set_condition()`이 `_encode_single_modality()` 안에서 호출되므로, outer/inner recomputation 모두 올바른 `_condition` 상태 보장
+  - `finally` 블록에서 gradient_checkpointing 복원 코드 제거 (불필요)
+- **하위 호환성**: `trunk.gradient_checkpointing = False`일 때 (다른 P 버전) nested 아닌 단일 outer checkpoint만 동작 → 기존 코드 영향 없음
+
+**관련 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: `LoRA_Sam_P26._encode_single_modality()`, `forward()` finally 블록
+- `semseg/models/sam2/sam2/modeling/backbones/hieradet.py:269,295-296`: per-block checkpointing
 
 ---
 

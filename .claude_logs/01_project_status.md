@@ -1,8 +1,31 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-23
+> 최종 업데이트: 2026-03-24
 
-## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 구현 완료 (P25 결과 대기)**
+## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 런타임 버그 해결 완료 (학습 테스트 대기)**
+
+### P26 DELIVER 런타임 버그 6건 해결 + 통합 val.py 생성 (2026-03-24)
+
+- **P26 버그 수정** (ISSUE-016): CheckpointError (tensor count mismatch) + CUDA OOM 해결
+  - **Nested checkpointing** 도입: outer per-modality + inner per-block
+  - `_encode_single_modality()` 안에서 `set_condition()` 호출 → recomputation 시 올바른 MoE condition 보장
+  - 하위 호환성 유지 (다른 P 버전 영향 없음)
+- **통합 val.py 생성**: MULTIAQUA + DELIVER 공용 평가 스크립트
+  - `--detailed` 플래그로 per-token MoE routing 분석 (기존 `val_multiaqua_detailed.py` 기능 통합)
+  - `--macvi` 플래그로 MACVi challenge 제출 (MULTIAQUA only)
+  - Dataset factory 패턴으로 향후 데이터셋 추가 용이
+- **P26 Detailed Visualization 추가** (2026-03-24):
+  - per-modality mask 추론 결과 (colored segmap)
+  - SQG quality map (viridis heatmap, 0~1)
+  - per-modality entropy map (hot heatmap)
+  - UAMM spatial weight map (plasma heatmap, softmax normalized)
+  - AMF spatial weight map (coolwarm heatmap)
+  - Feature comparison: pre-UAMM per-modal features + post-UAMM fused feature (magma)
+  - JSON log에 uamm_spatial, amf_spatial, per_modal_entropy 통계 추가
+  - Model 변경: `_last_uamm_spatial`, `_last_amf_spatial`, `_last_entropy_maps` 버퍼 추가
+- **DELIVER return_meta 지원**: `semseg/datasets/deliver.py`에 `return_meta` 파라미터 추가
+- **DELIVER eval config 생성**: `configs/eval_config/levine-deliver_rgbdel_P26_physaug.yaml`
+- **다음 단계**: P26 DELIVER 학습 실행 → nested checkpointing 동작 검증
 
 ### P26 v5 전체 구현 완료 (2026-03-23)
 
@@ -15,8 +38,10 @@
   - `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py` — `LoRA_Sam_P26` 클래스
   - `train_sam2_lora_paper.py` — P26 kwargs, KL loss, is_p24 체크
   - `val_multiaqua.py` / `vis_feature_analysis.py` — P26 params 전달
+  - `val.py` — 통합 평가 스크립트 (MULTIAQUA + DELIVER, --detailed 지원)
   - `configs/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` — HPC config
   - `configs/eval_config/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` — eval config
+  - `configs/eval_config/levine-deliver_rgbdel_P26_physaug.yaml` — DELIVER eval config
   - `configs/levine-deliver_rgbdel_P26_physaug.yaml` — DELIVER levine config (4모달)
 - **선결 조건**: P25 학습 결과 확인 후 착수 여부 결정
 - **상세**: `.claude_logs/02_model_arch.md` — "P26" 섹션
