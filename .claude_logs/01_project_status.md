@@ -2,7 +2,22 @@
 
 > 최종 업데이트: 2026-03-24
 
-## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 런타임 버그 해결 완료 (학습 테스트 대기)**
+## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 v6 설계 수정 (구현 대기)**
+
+### P26 v6 설계 수정 — Per-Modal Decoder 역할 분리 + AMF SQG 기반 변경 (2026-03-24)
+
+- **v5 문제**: per-modal decoder가 teacher(no_grad) + track_step(inference) 양쪽에 사용됨
+- **v6 설계 변경 (구현 대기)**:
+  - Per-modal decoder (m개): **학습 전용 auxiliary head** — 직접 CE supervision + SQG quality target 생성
+  - Shared inference decoder (1개): track_step 추론 경로 — 학습 + 추론 모두 사용
+  - 총 decoder: m+1개 (학습), 1개 (추론)
+  - SQG = knowledge distillation: per-modal decoder → SQG로 quality 예측 능력 증류
+  - **AMF: output entropy → SQG quality map 기반으로 변경** — "confident but wrong" 문제 해결
+    - entropy는 "모델이 확신하는가"(calibration 의존), SQG는 "모델이 실제로 잘 하는가"(CE 기반) 측정
+    - tau_amf 불필요: UAMM과 동일한 sqg_weight 재사용 (SQG logit이 KL loss로 이미 calibrate)
+    - overconfident 방지: SQG target이 softmax(-CE/tau)로 항상 soft distribution + min_quality=0.3
+- **구현 대기**: `sam_lora_image_encoder_seg.py` Phase 2.5/3/4 수정, `train_sam2_lora_paper.py` aux CE loss 추가
+- **상세**: `.claude_logs/02_model_arch.md` — "P26 v6 설계 수정" 섹션
 
 ### P26 DELIVER 런타임 버그 6건 해결 + 통합 val.py 생성 (2026-03-24)
 

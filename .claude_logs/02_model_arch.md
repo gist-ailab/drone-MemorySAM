@@ -1782,10 +1782,12 @@ amf_norm = amf_stack / amf_stack.sum(dim=0, keepdim=True).clamp(min=1e-6)
 m_output = sum(amf_norm[i] * output[i] for i in range(m))
 ```
 
-핵심: SQG quality map은 **UAMM에만** 사용. AMF는 모델의 decode output 자체 확신도로 판단.
-- UAMM: "encoding quality — memory attention 전 input 조정" (SQG, teacher 학습)
-- AMF: "decoding confidence — memory attention 후 output 융합" (output entropy, 학습 불필요)
-- 역할 분리 → optimization conflict 제거
+~~핵심 (v5): SQG quality map은 **UAMM에만** 사용. AMF는 모델의 decode output 자체 확신도로 판단.~~
+~~- UAMM: "encoding quality — memory attention 전 input 조정" (SQG, teacher 학습)~~
+~~- AMF: "decoding confidence — memory attention 후 output 융합" (output entropy, 학습 불필요)~~
+~~- 역할 분리 → optimization conflict 제거~~
+
+**v6 수정**: AMF도 SQG quality map 기반으로 변경 (output entropy 제거). 상세는 "v6 설계 수정" 섹션 참조.
 
 #### 변경 ⑤: Memory Modulation 제거
 
@@ -1800,37 +1802,66 @@ maskmem_features = maskmem * quality_map_resized  # 이중 페널티
 UAMM에서 quality가 낮은 모달리티의 vision_feats를 이미 줄였으므로, track_step에서 생성된 maskmem은 이미 quality-aware. 거기에 다시 곱하면 이중 페널티.
 Memory attention 자체가 attention mechanism이므로, query-key 매칭을 통해 유용한 정보를 알아서 선택.
 
-#### 변경 ⑥: Per-Modality Decoder (Shared → Independent)
+#### 변경 ⑥: Per-Modality Decoder + Shared Inference Decoder (역할 분리)
+
+**Decoder 구성: 총 m+1개 (모달리티별 m개 + 추론용 1개)**
 
 ```python
-# P25: 1개 decoder, 3번 호출
+# P25: 1개 decoder, 3번 호출 (학습+추론 공유)
 for frame_idx in range(m):
     output = self.sam.track_step(vision_feats[frame_idx], ...)  # 같은 decoder
 
-# P26: 모달리티별 독립 decoder
-self.decoder_rgb = deepcopy(sam_model.sam_mask_decoder)   # ~4M params
-self.decoder_thr = deepcopy(sam_model.sam_mask_decoder)   # ~4M params
-self.decoder_lid = deepcopy(sam_model.sam_mask_decoder)   # ~4M params
+# P26: 모달리티별 auxiliary decoder (m개) + shared inference decoder (1개)
+# (1) Per-modal decoder: 학습 시 직접 CE supervision + SQG quality target 생성
+self.per_modal_decoders = nn.ModuleList([
+    deepcopy(sam_model.sam_mask_decoder) for _ in range(m)
+])  # m × ~4M params
 
-decoders = [self.decoder_rgb, self.decoder_thr, self.decoder_lid]
-for frame_idx in range(m):
-    output = track_step_with_decoder(decoders[frame_idx], vision_feats[frame_idx], ...)
+# (2) Shared inference decoder: track_step (memory attention 포함) 추론 경로
+# = sam_model.sam_mask_decoder (원본 유지)
 ```
 
-**동기**: SQG와 동일한 문제 — RGB/Thermal/LiDAR의 feature 분포가 근본적으로 다른데 하나의 decoder weight로 처리하면 multi-task 충돌. 모달리티별 decoder는 각 모달리티의 feature → mask 매핑에 특화.
+**역할 분리 — 핵심 설계**:
 
-**비용**: Weight+Optimizer ~0.13GB 추가 (14GB 대비 무시 가능). Activation memory는 이미 3번 forward하므로 동일.
+| Decoder | 학습 | 추론 | 역할 |
+|---------|------|------|------|
+| `per_modal_decoders[i]` | ✅ 직접 CE loss (auxiliary) | ❌ 미사용 | Quality oracle: 모달리티별 spatial quality 측정 → SQG target |
+| `sam_mask_decoder` (shared) | ✅ main CE loss (AMF fused) | ✅ track_step | 실제 추론: memory attention 결과를 decoding |
 
-**구현 주의사항**:
-- `track_step`은 SAM2의 내부 메서드로 decoder를 직접 호출. decoder를 교체하려면 `track_step` 호출 전에 `self.sam.sam_mask_decoder`를 임시 교체하거나, track_step을 wrapping하는 방식 필요
-- Memory attention은 여전히 **공유** (cross-modal interaction을 위해 하나여야 함)
-- 초기화: pretrained SAM2 decoder weight를 deepcopy → 3개 모두 동일한 시작점, 학습하면서 분화
-- Teacher decode (Phase 2.5)도 per-modality decoder 사용 → teacher target 품질 향상
+**학습 시 gradient 흐름**:
+```
+Per-modal decoder[i] path (auxiliary):
+  encoder → vision_feats[i] → per_modal_decoder[i] → CE(pred, GT)
+  → gradient: encoder ✓, per_modal_decoder[i] ✓
+  → CE map → quality target for SQG (KL loss)
+
+Shared decoder path (main):
+  encoder → vision_feats[i] → UAMM 가중 → memory attention → shared_decoder → AMF → CE(fused, GT)
+  → gradient: encoder ✓, memory attention ✓, shared_decoder ✓, SQG (via UAMM) ✓
+```
+
+**Per-modal decoder가 추론에 불필요한 이유**:
+- Per-modal decoder의 목적은 모달리티별 CE map 생성 → SQG 학습 target
+- SQG가 충분히 학습되면, encoder 피쳐만으로 quality map 예측 가능 (knowledge distillation)
+- 추론 시 SQG가 per-modal decoder를 **대체** → decoder m개 불필요, SQG (경량 conv head)만 사용
+
+**Per-modal CE loss가 memory attention을 개선하는 경로 (간접적)**:
+- Per-modal CE loss는 memory attention 파라미터를 **직접 학습시키지 않음** (gradient 경로에 없음)
+- 개선은 **두 가지 간접 경로**를 통해 이루어짐:
+  1. **Encoder 피쳐 품질 향상**: per-modal CE → encoder에 추가 gradient → "이 모달리티 피쳐만으로도 segmentation 가능해야 한다"는 압력 → encoder가 모달리티별 더 informative한 피쳐 생성 → memory attention의 **입력**이 좋아짐
+  2. **SQG quality target 정확도 향상**: 잘 학습된 per-modal decoder → 정확한 CE map → SQG가 정확한 quality map 학습 → UAMM이 memory attention 입력을 **공간적으로 정확하게 가중**
+- 비유: per-modal CE는 **재료(입력)**를 좋게 만들고, main CE는 **조리법(memory attention 파라미터)**을 학습시킴
+- Memory attention 파라미터 자체는 main path의 CE loss에서만 학습됨
+
+**동기**: SQG와 동일한 문제 — RGB/Thermal/LiDAR의 feature 분포가 근본적으로 다른데 하나의 decoder weight로 quality를 측정하면 multi-task 충돌. 모달리티별 decoder는 각 모달리티의 spatial quality를 정확히 측정하기 위한 auxiliary head.
+
+**비용**: Weight+Optimizer ~0.13GB 추가 (14GB 대비 무시 가능). 추론 시에는 shared decoder 1개만 사용하므로 추론 비용 증가 없음.
 
 **분리 대상 vs 공유 유지**:
 | 모듈 | P26 | 이유 |
 |------|-----|------|
-| SAM2 Mask Decoder | **분리 ×3** | 모달리티별 feature→mask 매핑 특화 |
+| Per-modal Decoder | **분리 ×m** (학습 전용) | 모달리티별 quality oracle, 직접 CE supervision |
+| Shared Inference Decoder | **×1** (학습+추론) | track_step의 실제 decoding, memory attention 결과 처리 |
 | Memory Attention | **공유 ×1** | cross-modal interaction이 목적, 분리하면 의미 없음 |
 | Memory Encoder | **공유 ×1** | memory bank format 통일 필요 |
 
@@ -1887,26 +1918,26 @@ Phase 2: Spatial Quality Map ★ Multi-Scale FPN + 모달리티별 독립 SQG
   fpn_THR[0,1,2] → proj+resize+concat → (B,96,256,256) → SQG_thr → q_logit₁
   fpn_LID[0,1,2] → proj+resize+concat → (B,96,256,256) → SQG_lid → q_logit₂
 
-Phase 2.5 (Training): Teacher Target ★ Relative quality + Per-Modality Decoder
+Phase 2.5 (Training): Per-Modal Auxiliary CE + SQG Target ★ 직접 supervision
   for each modality:
-    ★ teacher_logits = decoder_i(vision_feats[i])  # per-modality decoder
-    CE_i = cross_entropy(teacher_logits, gt)
+    ★ per_modal_pred[i] = per_modal_decoder[i](vision_feats[i])  # no memory attention
+    ★ aux_CE_loss[i] = cross_entropy(per_modal_pred[i], gt)      # 직접 supervision → decoder 학습
+    CE_map[i] = per-pixel cross_entropy(per_modal_pred[i], gt)   # spatial quality 측정
   CE_stack = [CE_rgb, CE_thr, CE_lid]
-  quality_target_dist = softmax(-CE_stack / tau_teacher, dim=0)
-  loss = KL(log_softmax(q_logit_stack / tau_uamm), quality_target_dist)
+  quality_target_dist = softmax(-CE_stack / tau_teacher, dim=0)  # SQG KL target
+  sqg_loss = KL(log_softmax(q_logit_stack / tau_uamm), quality_target_dist)
+  ★ total_aux_loss = sum(aux_CE_loss) / m + sqg_loss
 
-Phase 3: Spatial UAMM ★ softmax 정규화 (max-norm 대체)
+Phase 3: Spatial UAMM + Shared Decoder ★ softmax 정규화 + 추론용 decoder
   q_uamm = softmax(q_logit_stack / tau_uamm, dim=modality)
   for each modality:
     vision_feats[i] *= interpolated(q_uamm[i])
-    ★ track_step with decoder_i(modulated_vision_feats)  # per-modality decoder
+    ★ track_step with shared_decoder(modulated_vision_feats)  # 추론용 decoder 1개
     ★ Memory Modulation 없음 (maskmem 그대로 저장)
 
-Phase 4: AMF ★ output entropy 기반 (SQG와 독립)
-  for each modality:
-    confidence[i] = 1 - normalized_entropy(softmax(output[i]))
-  amf_norm = confidence / sum(confidence)
-  m_output = Σ amf_norm[i] × output[i]
+Phase 4: AMF ★ SQG quality map 기반 (v6: entropy 제거, tau 제거)
+  ★ sqg_weight = softmax(q_logit_stack, dim=modality)  # UAMM과 동일 weight 재사용
+  m_output = Σ sqg_weight[i] × output[i]
 ```
 
 ### Config 변경
@@ -1921,8 +1952,9 @@ MODEL:
     TAU_UAMM     : 1.0          # P26 신규: UAMM softmax temperature
     TAU_TEACHER  : 0.5          # P26 신규: teacher target temperature
     MEMORY_MOD   : false        # P26 신규: memory modulation 비활성화
-    AMF_MODE     : output_entropy  # P26 신규: AMF 방식 (기존: quality_map)
-    PER_MODALITY_DECODER : true   # P26 신규: 모달리티별 독립 decoder
+    AMF_MODE     : sqg_quality     # v6 변경: output_entropy → sqg_quality (SQG quality map 재사용, tau 없음)
+    PER_MODALITY_DECODER : true   # P26 신규: 모달리티별 auxiliary decoder (학습 전용, 추론 시 미사용)
+    AUX_CE_WEIGHT        : 0.5    # P26 신규: per-modal auxiliary CE loss 가중치
     MULTI_SCALE_SQG : true        # P26 신규: fpn[0,1,2] multi-scale SQG 입력
     DEBA_FP         : false       # P26 옵션: DeBA-FP cross-scale refinement (ablation용)
   LORA_COND_DIM   : 8            # P26 신규: modality embedding dimension for MoE gate conditioning
@@ -1946,23 +1978,208 @@ DGFusion은 **depth를 proxy로** spatial fusion을 가이드하는 방법으로
 
 ### 구현 상태
 
-- **v5 전체 구현 완료** (2026-03-23)
+- **v5 구현 완료** (2026-03-23), **v6 구현 완료** (2026-03-24)
   - ① Per-Modality SQG (ModuleList)
   - ② UAMM softmax
   - ③ Relative quality teacher + KL loss
   - ④ AMF output entropy
   - ⑤ Memory mod 제거
   - ⑥ Multi-Scale FPN (fpn_proj1/2 + concat → 96ch SQG input)
-  - ⑦ Per-Modality Decoder (copy.deepcopy × m, decoder swap via `_swap_decoder()`)
+  - ⑦ Per-Modality Decoder: **v6 역할 분리 완료**
+    - `per_modal_decoders` (×m): 학습 전용 auxiliary CE head (`_auxiliary_decode_single`)
+    - `self.sam.sam_mask_decoder`: shared inference decoder (학습+추론)
+    - Phase 2.5: `no_grad` 제거, per_modal_decoder에 grad flow → SQG target 정확도 향상
+    - Phase 3: `_swap_decoder` 제거 → shared decoder만 사용
+    - `_encode_single_modality`: shared decoder의 conv_s0/s1만 사용
   - ⑧ Modality-Conditioned MoE LoRA Gate (nn.Embedding + cond_dim=8)
 - `LoRA_Sam_P26` 클래스: `sam_lora_image_encoder_seg.py` 끝에 추가
-- Train/Val/Vis 스크립트 모두 P26 v5 대응 완료
+- Train/Val/Vis 스크립트 모두 P26 v6 대응 완료
+- `train_sam2_lora_paper.py`: `lambda_aux_ce` (AUX_CE_WEIGHT, default 0.5) 추가
 - Configs:
   - `configs/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` (MULTIAQUA, HPC)
   - `configs/eval_config/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml` (MULTIAQUA eval)
   - `configs/levine-deliver_rgbdel_P26_physaug.yaml` (DELIVER, levine, 4모달)
 - **미구현**: DeBA-FP (옵션, ablation용 — config `DEBA_FP: true`로 활성화 시 구현 필요)
 - **선결 조건**: P25 학습 결과 확인 후 학습 시작
+
+#### ✅ v6 구현 완료 — Per-Modal Decoder 역할 분리 (2026-03-24)
+
+**v5의 문제**: per_modal_decoder가 teacher (no_grad) + track_step (inference) 모두에서 사용됨
+- Teacher: `no_grad` → per-modal decoder가 학습되지 않음 → quality target이 초기 상태에 고정
+- track_step: per-modal decoder가 추론에도 사용 → 추론 시 decoder 3개 필요 (비효율)
+
+**v6 변경 (구현 대기)**:
+1. **Per-modal decoder (m개)**: 학습 전용 auxiliary head
+   - 직접 CE loss로 학습 (no_grad 제거) → 모달리티별 decoding 능력 향상
+   - CE map → SQG quality target (KL distillation)
+   - 추론 시 **사용 안 함**
+2. **Shared decoder (1개)**: track_step 추론 경로
+   - memory attention 결과를 decoding
+   - main CE loss (AMF fused) 로 학습
+   - 학습 + 추론 모두 사용
+3. **총 decoder 수**: m + 1 = 4개 (학습 시), 1개 (추론 시)
+4. **SQG = knowledge distillation**: per-modal decoder의 지식을 경량 conv head로 증류
+   - 추론 시 per-modal decoder 대신 SQG가 quality 예측
+5. **AMF: output entropy → SQG quality map 기반으로 변경** (변경 ④ 수정)
+   - v5의 output entropy AMF 제거 → SQG quality map을 UAMM과 AMF에 모두 사용
+   - entropy 기반의 "confident but wrong" 문제 해결: SQG는 per-modal decoder CE로 학습되므로 실제 정확도를 반영
+   - P25의 triple-duty 문제 재발 우려 없음: Memory modulation 제거(⑤)로 dual-duty, per-modal SQG(①)로 충돌 없음
+   - **tau_amf 불필요 → 제거, UAMM과 AMF가 동일한 weight 사용**:
+     - SQG logit 스케일이 KL loss로 이미 calibrate됨 → 추가 temperature 중복
+     - learnable tau도 불필요: SQG 자체가 logit 크기를 학습하므로 tau와 역할 중복
+     - UAMM/AMF 모두 "이 위치에서 이 모달리티를 얼마나 신뢰하는가"에 대한 동일한 답 → 일관된 적용이 자연스러움
+     ```python
+     # UAMM + AMF 공통 weight (한 번만 계산)
+     sqg_weight = F.softmax(q_logit_stack, dim=0)  # (m, B, 1, H, W), tau 없음
+
+     # UAMM: vision_feats[i] *= sqg_weight[i]  (feature modulation)
+     # AMF:  m_output = Σ sqg_weight[i] * output[i]  (output fusion)
+     ```
+   - **Overconfident 방지 안전장치**:
+     - SQG target = `softmax(-CE/tau_teacher)` → CE가 정확히 0이 아닌 한 one-hot 불가능
+     - SQG 출력 범위 = `sigmoid * 0.7 + 0.3` → min_quality=0.3, 어떤 모달리티든 완전 무시 불가
+     - GT 대비 실제 정확도 기반이므로 entropy처럼 "confident but wrong"에 취약하지 않음
+
+**구현 계획 (코딩봇용)**:
+
+##### 1. `sam_lora_image_encoder_seg.py` — `LoRA_Sam_P26.__init__` 수정
+
+```python
+# 현재 v5: per_modal_decoders만 있음 (teacher + track_step 양쪽에 사용)
+self.per_modal_decoders = nn.ModuleList([
+    copy.deepcopy(sam_model.sam_mask_decoder) for _ in range(num_modalities)
+])
+
+# v6: per_modal_decoders (학습 전용) + shared decoder (추론용) 분리
+# (1) Per-modal decoder: 학습 시 auxiliary CE + SQG target 생성용
+self.per_modal_decoders = nn.ModuleList([
+    copy.deepcopy(sam_model.sam_mask_decoder) for _ in range(num_modalities)
+])
+# (2) Shared inference decoder: track_step 추론 경로용
+# sam_model.sam_mask_decoder를 그대로 유지 (self.sam.sam_mask_decoder)
+# → 별도 선언 불필요, 기존 self.sam.sam_mask_decoder가 shared decoder 역할
+```
+
+핵심: `self.sam.sam_mask_decoder`는 per_modal_decoders에 deepcopy되지 않고 **원본 그대로 유지**. 이것이 shared inference decoder.
+
+v5 대비 `__init__` 변경: `amf_mode` 관련 파라미터 정리. `tau_amf` 불필요 (UAMM과 동일 weight 사용).
+
+##### 2. `sam_lora_image_encoder_seg.py` — `forward()` Phase 2.5 수정
+
+```python
+# 현재 v5 Phase 2.5: per-modal decoder로 teacher decode (no_grad)
+with torch.no_grad():
+    self._swap_decoder(i)  # per_modal_decoder[i]로 swap
+    teacher_logits = self._teacher_decode_single(vision_feats[i], ...)
+
+# v6 Phase 2.5: per-modal decoder로 직접 CE loss (grad 있음, no_grad 제거)
+# _swap_decoder 대신 per_modal_decoder[i]를 직접 호출
+per_modal_pred = self._auxiliary_decode_single(
+    self.per_modal_decoders[i], vision_feats[i], vision_pos_embeds[i], feat_sizes[i]
+)
+# (1) Auxiliary CE loss 수집
+aux_ce_loss = F.cross_entropy(per_modal_pred_resized, gt_safe, ignore_index=255)
+aux_losses.append(aux_ce_loss)
+# (2) CE map for SQG target (detach — SQG target은 gradient 차단)
+with torch.no_grad():
+    ce_map = F.cross_entropy(per_modal_pred_resized, gt_safe, reduction='none')
+    ce_maps.append(ce_map)
+```
+
+`_auxiliary_decode_single` 새 메서드: `_teacher_decode_single`과 동일하되 `torch.no_grad()` 없이 실행. per_modal_decoder를 인자로 받아 해당 decoder의 forward 호출.
+
+##### 3. `sam_lora_image_encoder_seg.py` — `forward()` Phase 3 수정
+
+```python
+# 현재 v5 Phase 3: per-modal decoder로 track_step
+self._swap_decoder(frame_idx)  # per_modal_decoder[i]로 swap
+output_step = self.sam.track_step(...)
+
+# v6 Phase 3: shared decoder (self.sam.sam_mask_decoder 원본)로 track_step
+# _swap_decoder 호출하지 않음 — sam.sam_mask_decoder가 이미 shared decoder
+output_step = self.sam.track_step(...)
+```
+
+주의: Phase 1의 `_encode_single_modality`에서 conv_s0/s1이 decoder에 속하므로,
+encoding 시에는 **shared decoder의 conv_s0/s1**을 사용 (모든 모달리티 공통).
+v5처럼 모달리티별 conv_s0/s1을 쓰지 않음.
+
+##### 4. `sam_lora_image_encoder_seg.py` — `forward()` Phase 4 (AMF) 수정
+
+```python
+# 현재 v5 Phase 4: output entropy 기반 AMF
+prob = F.softmax(output[i], dim=1)
+entropy = -(prob * (prob + 1e-8).log()).sum(dim=1, keepdim=True)
+confidence = 1.0 - entropy / math.log(num_classes)
+amf_norm = confidence / sum(confidence)
+
+# v6 Phase 4: SQG quality map 기반 AMF (entropy 코드 전부 제거)
+# q_uamm_norm은 Phase 3에서 이미 계산됨 — 그대로 재사용
+# UAMM weight == AMF weight (동일한 SQG quality, tau 없음)
+sqg_weight = q_uamm_norm  # (m, B, 1, H, W), Phase 3에서 계산된 것 재사용
+# output 해상도에 맞춰 interpolate
+for i in range(m):
+    w_i = F.interpolate(sqg_weight[i], size=output[i].shape[-2:], mode='bilinear', align_corners=False)
+    ...
+m_output = sum(w_i * output[i] for i in range(m))
+```
+
+핵심: entropy 관련 코드 전부 삭제. `_last_entropy_maps` 버퍼도 제거 가능.
+
+##### 5. `sam_lora_image_encoder_seg.py` — `forward()` return 수정
+
+```python
+# v6: gate_loss_data에 aux_ce_loss 추가
+gate_loss_data = {
+    'predicted_logits': quality_logits,
+    'quality_target_dist': quality_target_dist,
+    'ignore_mask': ignore_mask_fpn,
+    'loss_type': 'kl',
+    'aux_ce_losses': aux_losses,  # 신규: list of m scalar losses
+}
+```
+
+##### 6. `train_sam2_lora_paper.py` — auxiliary CE loss 반영
+
+```python
+# 현재 v5: KL loss만 사용
+if gate_loss_data is not None:
+    kl_loss = compute_kl_loss(gate_loss_data)
+    total_loss = ce_loss + kl_weight * kl_loss
+
+# v6: KL loss + auxiliary CE loss
+if gate_loss_data is not None:
+    kl_loss = compute_kl_loss(gate_loss_data)
+    aux_ce = sum(gate_loss_data['aux_ce_losses']) / len(gate_loss_data['aux_ce_losses'])
+    total_loss = ce_loss + kl_weight * kl_loss + aux_ce_weight * aux_ce
+```
+
+##### 7. Config 추가
+
+```yaml
+MODEL:
+  QUALITY_GATE:
+    AUX_CE_WEIGHT: 0.5    # per-modal auxiliary CE loss 가중치
+    AMF_MODE: sqg_quality  # v6: SQG quality map 기반 AMF (tau 없음, UAMM과 동일 weight)
+```
+
+##### 8. 추론 시 per_modal_decoder 미사용 확인
+
+- `forward()`에서 `self.training`이 False일 때 Phase 2.5 전체 스킵 (현재 v5도 동일)
+- Phase 3에서 `_swap_decoder` 호출 안 함 → shared decoder만 사용
+- `save_lora_parameters` / `load_lora_parameters`: per_modal_decoder weights 저장/로드 유지 (학습 재개용)
+
+##### 9. `_last_*` 버퍼 변경
+
+- 기존 `_last_per_modal_outputs`: Phase 3의 track_step 결과 (shared decoder) 저장 — 변경 없음
+- `_last_entropy_maps`: v6에서 AMF가 entropy 미사용이므로 **제거 가능** (또는 디버깅용 유지)
+- `_last_amf_spatial`: SQG quality map 기반으로 변경 — `amf_weight` 저장
+- per_modal_decoder의 auxiliary output: 별도 버퍼 `_last_aux_per_modal_outputs` 추가 가능 (선택)
+
+**수정 필요 파일 요약**:
+- `sam_lora_image_encoder_seg.py`: `LoRA_Sam_P26.__init__`, `_auxiliary_decode_single` 신규, `forward()` Phase 2.5/3 수정
+- `train_sam2_lora_paper.py`: auxiliary CE loss 추가
+- Config yaml: `AUX_CE_WEIGHT` 파라미터 추가
 
 ---
 

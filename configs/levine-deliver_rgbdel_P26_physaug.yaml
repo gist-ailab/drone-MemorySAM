@@ -22,8 +22,9 @@ MODEL:
     TAU_UAMM     : 1.0
     TAU_TEACHER  : 0.5
     MEMORY_MOD   : false
-    AMF_MODE     : output_entropy
+    AMF_MODE     : sqg_quality    # v6: SQG quality map 기반 AMF (UAMM과 동일 weight 재사용)
     PER_MODALITY_DECODER : true
+    AUX_CE_WEIGHT : 0.5          # v6: per-modal auxiliary CE loss weight
     MULTI_SCALE_SQG : true
     DEBA_FP      : false
 

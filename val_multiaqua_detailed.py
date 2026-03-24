@@ -161,7 +161,7 @@ def load_model(cfg, model_path, device):
         model_kwargs['tau_uamm'] = quality_cfg.get('TAU_UAMM', 1.0)
         model_kwargs['tau_teacher'] = quality_cfg.get('TAU_TEACHER', 0.5)
         model_kwargs['memory_mod'] = quality_cfg.get('MEMORY_MOD', False)
-        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'output_entropy')
+        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'sqg_quality')
         model_kwargs['multi_scale_sqg'] = quality_cfg.get('MULTI_SCALE_SQG', True)
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:
@@ -232,6 +232,114 @@ def _draw_legend(classes, palette, target_h, target_w):
     img = np.asarray(buf).reshape((h, w, 4))[:, :, :3].copy()
     plt.close(fig)
     return np.array(Image.fromarray(img).resize((target_w, target_h), Image.Resampling.LANCZOS))
+
+
+def _fieldscale_thermal(img, grid_size=8, max_diff=50, min_diff=50,
+                         iteration=7, gamma=0.8, use_clahe=True):
+    """Fieldscale: locality-aware adaptive rescaling for thermal images.
+
+    Ref: Gil et al., "Fieldscale" (RA-L 2024, arXiv:2405.15395)
+
+    Steps:
+      1. Grid-based min/max extrema detection
+      2. Local extrema suppression (outlier removal)
+      3. Message passing (iterative diffusion smoothing)
+      4. Field upsampling (bilinear interpolation)
+      5. Per-pixel adaptive rescaling + optional gamma + CLAHE
+
+    Padding (black) regions are detected and excluded.
+    """
+    import cv2
+
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img.copy()
+
+    # Detect padding: bounding box of non-zero content
+    row_nonzero = np.any(gray > 5, axis=1)
+    col_nonzero = np.any(gray > 5, axis=0)
+    if not row_nonzero.any() or not col_nonzero.any():
+        return img
+
+    r_min, r_max = np.where(row_nonzero)[0][[0, -1]]
+    c_min, c_max = np.where(col_nonzero)[0][[0, -1]]
+    roi = gray[r_min:r_max + 1, c_min:c_max + 1].astype(np.float32)
+    h, w = roi.shape
+
+    # Step 1: Grid-based min/max
+    gh, gw = grid_size, grid_size
+    cell_h, cell_w = max(1, h // gh), max(1, w // gw)
+    min_grid = np.zeros((gh, gw), dtype=np.float32)
+    max_grid = np.zeros((gh, gw), dtype=np.float32)
+    for gi in range(gh):
+        for gj in range(gw):
+            r0, r1 = gi * cell_h, min((gi + 1) * cell_h, h)
+            c0, c1 = gj * cell_w, min((gj + 1) * cell_w, w)
+            cell = roi[r0:r1, c0:c1]
+            if cell.size == 0:
+                min_grid[gi, gj] = roi.min()
+                max_grid[gi, gj] = roi.max()
+            else:
+                min_grid[gi, gj] = cell.min()
+                max_grid[gi, gj] = cell.max()
+
+    # Step 2: Local extrema suppression
+    for gi in range(gh):
+        for gj in range(gw):
+            neighbors = []
+            for di in [-1, 0, 1]:
+                for dj in [-1, 0, 1]:
+                    ni, nj = gi + di, gj + dj
+                    if 0 <= ni < gh and 0 <= nj < gw and (di != 0 or dj != 0):
+                        neighbors.append((ni, nj))
+            if neighbors:
+                n_max = np.mean([max_grid[ni, nj] for ni, nj in neighbors])
+                n_min = np.mean([min_grid[ni, nj] for ni, nj in neighbors])
+                if max_grid[gi, gj] - n_max > max_diff:
+                    max_grid[gi, gj] = n_max
+                if n_min - min_grid[gi, gj] > min_diff:
+                    min_grid[gi, gj] = n_min
+
+    # Step 3: Message passing (iterative diffusion)
+    for _ in range(iteration):
+        min_new = min_grid.copy()
+        max_new = max_grid.copy()
+        for gi in range(gh):
+            for gj in range(gw):
+                neighbors = []
+                for di in [-1, 0, 1]:
+                    for dj in [-1, 0, 1]:
+                        ni, nj = gi + di, gj + dj
+                        if 0 <= ni < gh and 0 <= nj < gw:
+                            neighbors.append((ni, nj))
+                min_new[gi, gj] = np.mean([min_grid[ni, nj] for ni, nj in neighbors])
+                max_new[gi, gj] = np.mean([max_grid[ni, nj] for ni, nj in neighbors])
+        min_grid = min_new
+        max_grid = max_new
+
+    # Step 4: Upsample fields to full resolution (bilinear)
+    min_field = cv2.resize(min_grid, (w, h), interpolation=cv2.INTER_LINEAR)
+    max_field = cv2.resize(max_grid, (w, h), interpolation=cv2.INTER_LINEAR)
+
+    # Step 5: Adaptive rescaling
+    denom = max_field - min_field
+    denom[denom < 1.0] = 1.0
+    rescaled = np.clip((roi - min_field) / denom, 0, 1)
+
+    # Gamma correction
+    if gamma != 1.0:
+        rescaled = np.power(rescaled, 1.0 / gamma)
+
+    enhanced = (rescaled * 255).astype(np.uint8)
+
+    # Optional CLAHE
+    if use_clahe:
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(enhanced)
+
+    enhanced_rgb = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2RGB)
+
+    result = img.copy()
+    result[r_min:r_max + 1, c_min:c_max + 1] = enhanced_rgb
+    return result
 
 
 def _load_modality_image(dataset, modal_key, stem, target_h, target_w):
@@ -1090,15 +1198,19 @@ def _add_title_to_image(img, title):
 
 def build_stats_row(capture, modals, target_h, target_w):
     """Row 3 alternative: per-block routing stats bars."""
-    blocks = sorted(capture.routing_data['Q'].keys())
-    if not blocks:
+    all_blocks = sorted(capture.routing_data['Q'].keys())
+    if not all_blocks:
         return np.ones((target_h, target_w, 3), dtype=np.uint8) * 240
 
-    n_charts = min(len(blocks), 3)
+    # Use REPRESENTATIVE_LAYERS (0, 9, 18) instead of first N blocks
+    blocks = [b for b in REPRESENTATIVE_LAYERS if b in capture.routing_data['Q']]
+    if not blocks:
+        blocks = all_blocks[:3]  # fallback
+
+    n_charts = len(blocks)
     chart_w = target_w // n_charts
     strips = []
-    for i in range(n_charts):
-        block_idx = blocks[i]
+    for block_idx in blocks:
         chart = capture.get_stats_bar_chart(block_idx, modals, target_h, chart_w)
         strips.append(chart)
 
@@ -1158,7 +1270,8 @@ def _tta_accumulate(model, images, base_output, tta_flip):
 
 @torch.no_grad()
 def evaluate(model, dataloader, device, save_dir=None, modals=None,
-             tta_flip=False, gamma_list=None):
+             tta_flip=False, gamma_list=None, viz_thermal=False,
+             fs_gamma=0.8, fs_grid=8, fs_no_clahe=False):
     model.eval()
     n_classes = dataloader.dataset.n_classes
     palette = dataloader.dataset.PALETTE
@@ -1242,13 +1355,19 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
 
                 # Row 1: modality images with titles
                 raw_modals = [_load_modality_image(ds, mk, stem, orig_h, orig_w) for mk in modals]
+                if viz_thermal:
+                    for mi, mk in enumerate(modals):
+                        if mk == 'thermal':
+                            raw_modals[mi] = _fieldscale_thermal(
+                                raw_modals[mi], grid_size=fs_grid,
+                                gamma=fs_gamma, use_clahe=not fs_no_clahe)
                 rgb = raw_modals[0]
                 if rgb.shape[0] != orig_h or rgb.shape[1] != orig_w:
                     rgb = np.array(Image.fromarray(rgb).resize((orig_w, orig_h), Image.Resampling.LANCZOS))
                 overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
                 overlay[ignore_mask] = [30, 30, 30]
 
-                modality_cols = [_add_title_to_image(img, MODAL_TITLES.get(mk, mk))
+                modality_cols = [_add_title_to_image(img, MODAL_TITLES.get(mk, mk) + (f' (Fieldscale γ={fs_gamma})' if viz_thermal and mk == 'thermal' else ''))
                                  for img, mk in zip(raw_modals, modals)]
                 row1 = np.concatenate(modality_cols, axis=1)
                 main_w = row1.shape[1]
@@ -1458,7 +1577,8 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
 
 @torch.no_grad()
 def run_test_inference(model, dataloader, device, save_dir, modals=None,
-                       tta_flip=False, gamma_list=None):
+                       tta_flip=False, gamma_list=None, viz_thermal=False,
+                       fs_gamma=0.8, fs_grid=8, fs_no_clahe=False):
     """Test inference with routing visualization."""
     model.eval()
     n_classes = dataloader.dataset.n_classes
@@ -1524,12 +1644,18 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
 
             # Row 1: modality images with titles
             raw_modals = [_load_modality_image(ds, mk, stem, orig_h, orig_w) for mk in modals]
+            if viz_thermal:
+                for mi, mk in enumerate(modals):
+                    if mk == 'thermal':
+                        raw_modals[mi] = _fieldscale_thermal(
+                            raw_modals[mi], grid_size=fs_grid,
+                            gamma=fs_gamma, use_clahe=not fs_no_clahe)
             rgb = raw_modals[0]
             if rgb.shape[0] != orig_h or rgb.shape[1] != orig_w:
                 rgb = np.array(Image.fromarray(rgb).resize((orig_w, orig_h), Image.Resampling.LANCZOS))
             overlay = (rgb.astype(np.float32) * 0.5 + colored.astype(np.float32) * 0.5).clip(0, 255).astype(np.uint8)
 
-            modality_cols = [_add_title_to_image(img, MODAL_TITLES.get(mk, mk))
+            modality_cols = [_add_title_to_image(img, MODAL_TITLES.get(mk, mk) + (f' (Fieldscale γ={fs_gamma})' if viz_thermal and mk == 'thermal' else ''))
                              for img, mk in zip(raw_modals, modals)]
             row1 = np.concatenate(modality_cols, axis=1)
             main_w = row1.shape[1]
@@ -1710,6 +1836,14 @@ def main():
                         help='Multi-gamma TTA: comma-separated (e.g., "1.0,1.5,2.0,2.5")')
     parser.add_argument('--eval_day', action='store_true',
                         help='test 시 RGB 서브루트를 zed_day로 사용 (config EVAL_DAY 무시)')
+    parser.add_argument('--viz_thermal', action='store_true',
+                        help='Apply Fieldscale adaptive rescaling to thermal in visualization')
+    parser.add_argument('--fs_gamma', type=float, default=0.8,
+                        help='Fieldscale gamma (default: 0.8, <1=darker, >1=brighter)')
+    parser.add_argument('--fs_grid', type=int, default=8,
+                        help='Fieldscale grid size (default: 8)')
+    parser.add_argument('--fs_no_clahe', action='store_true',
+                        help='Disable CLAHE in Fieldscale')
     args = parser.parse_args()
 
     if args.blocks:
@@ -1783,6 +1917,9 @@ def main():
             modals=dataset_cfg.get('MODALS'),
             tta_flip=tta_flip,
             gamma_list=gamma_list,
+            viz_thermal=args.viz_thermal,
+            fs_gamma=args.fs_gamma, fs_grid=args.fs_grid,
+            fs_no_clahe=args.fs_no_clahe,
         )
         table = {
             'Class': list(dataset.CLASSES) + ['Mean'],
@@ -1807,6 +1944,9 @@ def main():
             modals=dataset_cfg.get('MODALS'),
             tta_flip=tta_flip,
             gamma_list=gamma_list,
+            viz_thermal=args.viz_thermal,
+            fs_gamma=args.fs_gamma, fs_grid=args.fs_grid,
+            fs_no_clahe=args.fs_no_clahe,
         )
 
 

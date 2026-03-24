@@ -1731,27 +1731,27 @@ P25:
 
 ---
 
-## 14. P26: Per-Modality SQG + Multi-Scale + Per-Modal Decoder + Modal-Cond MoE
+## 14. P26 v6: Per-Modality SQG + Auxiliary Decoder + Modal-Cond MoE
 
-P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을 모달리티별로 특화.
+P25의 구조적 문제를 해결. v6 핵심: **Per-Modal Decoder는 auxiliary training 전용, inference는 shared decoder**.
 
-### 14.1 P26 Overview Figure
+### 14.1 P26 v6 Overview Figure
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ LoRA_Sam_P26 — Full v5: 8 Changes from P25                              │
+│ LoRA_Sam_P26 v6 — 8 Changes from P25                                    │
 │                                                                           │
-│  ┌─── Phase 1: Encoding ★⑧ Modal-Cond MoE + ⑦ Per-Modal Decoder ────┐  │
+│  ┌─── Phase 1: Encoding + ⑧ Modal-Cond MoE ─────────────────────────┐  │
 │  │                                                                     │  │
 │  │  for each modality i (RGB=0, THR=1, LID=2):                        │  │
-│  │    ⑧ modal_cond = modal_embed(i)  → (cond_dim=8,)                  │  │
+│  │    ⑧ modal_cond = modal_embed(i) → (cond_dim=8,)                   │  │
 │  │       → set_condition(modal_cond) to all MoE layers                 │  │
-│  │    ⑦ _swap_decoder(i) → sam.sam_mask_decoder = per_modal_decoders[i]│  │
 │  │                                                                     │  │
 │  │    _encode_single_modality(img, i):                                 │  │
-│  │      image_encoder(img) → raw_fpn[0,1,2] (all 256ch)               │  │
-│  │      ⑦ conv_s0/s1 from per-modal decoder → fpn[0](32ch), fpn[1](64ch)│ │
-│  │      → backbone_fpn, vision_pos_enc, raw_fpn(⑥용)                  │  │
+│  │      image_encoder(img) → raw_fpn[0,1,2] (all 256ch) ← clone(⑥용) │  │
+│  │      ★ shared decoder conv_s0/s1 → fpn[0](32ch), fpn[1](64ch)      │  │
+│  │      ★ v6: 항상 shared decoder — per-modal decoder swap 없음        │  │
+│  │      → backbone_fpn, vision_pos_enc, raw_fpn                        │  │
 │  │                                                                     │  │
 │  │    _prepare_backbone_features() → vision_feats, feat_sizes          │  │
 │  │                                                                     │  │
@@ -1773,57 +1773,60 @@ P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을
 │  │       ★ 모달리티별 독립 SQG (P25: 공유 1개)                         │  │
 │  └─────────────────────────────────────────────────────────────────────┘  │
 │                              │                                            │
-│  ┌─── Phase 2.5 (Training): ③ Relative Quality Teacher + KL Loss ────┐  │
+│  ┌─── Phase 2.5 (Training): ⑦ Auxiliary Decode + ③ Relative Target ──┐  │
+│  │  ★ v6 핵심 변경: per_modal_decoder는 auxiliary path 전용            │  │
 │  │                                                                     │  │
 │  │  for each modality i:                                               │  │
-│  │    ⑦ _swap_decoder(i) → per-modal decoder로 teacher decoding       │  │
-│  │    teacher_logits = _teacher_decode_single(vision_feats[i])         │  │
-│  │    CE_i = cross_entropy(teacher_logits, gt_safe)  (B, H, W)         │  │
+│  │    ┌── (1) Auxiliary CE Loss (grad 있음 ★) ────────────────┐        │  │
+│  │    │  aux_logits = _auxiliary_decode_single(                 │        │  │
+│  │    │      per_modal_decoders[i], vision_feats[i])           │        │  │
+│  │    │  ★ decoder를 임시 swap → decode → 원복 (shared로)     │        │  │
+│  │    │  aux_ce = cross_entropy(aux_logits, gt, ignore=255)    │        │  │
+│  │    │  → per-modal decoder + encoder로 grad 전파 ★           │        │  │
+│  │    └────────────────────────────────────────────────────────┘        │  │
+│  │    ┌── (2) SQG Target (detach ★) ─────────────────────────┐        │  │
+│  │    │  with no_grad:                                         │        │  │
+│  │    │    ce_map = cross_entropy(aux_logits.detach(), gt)      │        │  │
+│  │    │    → (B, H, W) per-pixel CE                            │        │  │
+│  │    └────────────────────────────────────────────────────────┘        │  │
 │  │                                                                     │  │
 │  │  ③ ce_stack = stack([CE₀, CE₁, CE₂])  → (3, B, 1, H_fpn, W_fpn)   │  │
 │  │     quality_target_dist = softmax(-ce_stack / τ_teacher, dim=0)     │  │
-│  │     ★ 절대 quality가 아닌 모달리티 간 상대적 비교                   │  │
-│  │     ★ τ_teacher=0.5 (sharpness 조절)                                │  │
 │  │                                                                     │  │
-│  │  Loss = KL(log_softmax(q_logit_stack / τ_uamm), target_dist)       │  │
-│  │  ★ P25의 BCE → KL divergence (분포 간 학습)                         │  │
+│  │  gate_loss_data = {                                                 │  │
+│  │    predicted_logits, quality_target_dist, ignore_mask,              │  │
+│  │    loss_type: 'kl',                                                 │  │
+│  │    aux_ce_losses: [aux_ce_rgb, aux_ce_thr, aux_ce_lid]  ★ v6 신규  │  │
+│  │  }                                                                  │  │
 │  └─────────────────────────────────────────────────────────────────────┘  │
 │                              │                                            │
-│  ┌─── Phase 3: ② UAMM Softmax + ⑦ Per-Modal Decoder + ⑤ No MemMod ─┐  │
+│  ┌─── Phase 3: ② UAMM Softmax + Shared Decoder + ⑤ No MemMod ──────┐  │
 │  │                                                                     │  │
-│  │  ② q_uamm = softmax(q_logit_stack / τ_uamm, dim=modality)          │  │
+│  │  ② q_uamm = softmax(q_logit_stack / τ_uamm, dim=0)                 │  │
 │  │     → (m, B, 1, H_fpn, W_fpn)   pixel별 softmax (합=1)             │  │
-│  │     ★ P25의 max-norm → softmax 교체 (불연속 제거)                   │  │
 │  │                                                                     │  │
 │  │  for each modality frame_idx:                                       │  │
-│  │    ⑦ _swap_decoder(frame_idx)                                       │  │
-│  │    per-level interpolation + modulation (P25와 동일 방식):           │  │
-│  │      vision_feats × q_uamm_i  → modulated_vision_feats              │  │
+│  │    ★ v6: _swap_decoder 없음 — shared decoder 사용                   │  │
+│  │    per-level interpolation + modulation:                             │  │
+│  │      vision_feats × q_uamm_i → modulated_vision_feats               │  │
 │  │                                                                     │  │
-│  │    → track_step(modulated_vision_feats, per_modal_decoder[i])       │  │
+│  │    → track_step(modulated_vision_feats, shared_decoder)              │  │
 │  │      [frame 0: no memory]  [frame 1,2: memory attention]            │  │
 │  │                                                                     │  │
 │  │    ⑤ maskmem 그대로 저장 (Memory Modulation 제거)                   │  │
-│  │       ★ UAMM에서 이미 quality-aware → 이중 페널티 방지              │  │
-│  │       (config memory_mod=true로 복원 가능)                           │  │
 │  └─────────────────────────────────────────────────────────────────────┘  │
 │                              │                                            │
-│  ┌─── Phase 4: ④ AMF Output Entropy (SQG와 독립) ───────────────────┐   │
+│  ┌─── Phase 4: ④ AMF SQG Quality (v6: UAMM weight 재사용) ─────────┐   │
 │  │                                                                     │  │
-│  │  ④ for each modality i:                                             │  │
-│  │    prob = softmax(output[i], dim=class)  → (B, 4, H_out, W_out)     │  │
-│  │    entropy = -Σ(prob × log(prob))  → (B, 1, H_out, W_out)           │  │
-│  │    confidence = 1 - entropy / log(4)  ∈ [0, 1]                      │  │
+│  │  ④ v6: UAMM과 동일한 sqg_weight 재사용 (tau 없음)                  │  │
+│  │    amf_weight = q_uamm_norm  ← Phase 3에서 계산됨                   │  │
+│  │    → interpolate to (H_out, W_out)  (output 해상도)                 │  │
+│  │    ★ UAMM weight == AMF weight (동일 SQG quality, 단일 softmax)    │  │
+│  │    ★ "confident but wrong" 해결: SQG는 CE 기반 실제 정확도 반영     │  │
 │  │                                                                     │  │
-│  │  amf_norm = confidence_stack / sum  → per-pixel fusion weight        │  │
-│  │  m_output = Σ amf_norm[i] × output[i]                               │  │
+│  │  m_output = Σ amf_weight[i] × output[i]                             │  │
 │  │                                                                     │  │
-│  │  ★ AMF가 SQG와 독립 — triple-duty 해소                              │  │
-│  │  ★ 학습 불필요: output 자체 확신도로 판단                            │  │
-│  │  (config amf_mode='quality_map'으로 P25 방식 복원 가능)              │  │
-│  │                                                                     │  │
-│  │  Feature fusion: q_feat = softmax(q_logit/τ, dim=0)                 │  │
-│  │  m_feat = Σ q_feat[i] × fpn[0][i]                                   │  │
+│  │  Feature fusion: m_feat = Σ q_uamm_norm[i] × fpn[0][i]             │  │
 │  └─────────────────────────────────────────────────────────────────────┘  │
 │                                                                           │
 │  Output:                                                                  │
@@ -1832,7 +1835,73 @@ P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 14.2 P26 8가지 변경 모듈 상세
+### 14.2 v6 핵심: Decoder 이중 구조 (Shared + Auxiliary)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ v6 Decoder 구조 — Shared Inference + Per-Modal Auxiliary         │
+│                                                                  │
+│  ┌─── Shared Decoder (sam.sam_mask_decoder) ──────────────┐      │
+│  │  역할: inference 파이프라인 전체 담당                    │      │
+│  │  Phase 1: conv_s0/s1 (fpn channel reduction)            │      │
+│  │  Phase 3: track_step → _forward_sam_heads               │      │
+│  │  ★ 학습 + 추론 모두 사용                                │      │
+│  │  ★ 모든 모달리티 공유 (cross-modal 일관성 유지)         │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  ┌─── Per-Modal Decoders (per_modal_decoders[0,1,2]) ────┐      │
+│  │  역할: 학습 시 auxiliary path 전용                      │      │
+│  │  Phase 2.5: _auxiliary_decode_single()                  │      │
+│  │    → 각 모달리티 vision_feats를 독립 decode              │      │
+│  │    → (1) Auxiliary CE loss (grad → decoder + encoder)   │      │
+│  │    → (2) CE map → SQG target (detach, no grad)          │      │
+│  │  ★ 학습 시만 사용, 추론 시 미사용                       │      │
+│  │  ★ 각 모달리티 feature 분포에 특화 학습                 │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  v5 → v6 변경:                                                   │
+│  ┌────────────────────────────┬────────────────────────────┐     │
+│  │ v5                         │ v6                         │     │
+│  ├────────────────────────────┼────────────────────────────┤     │
+│  │ Phase 1: per-modal decoder │ Phase 1: shared decoder    │     │
+│  │   conv_s0/s1               │   conv_s0/s1               │     │
+│  │ Phase 2.5: per-modal       │ Phase 2.5: per-modal       │     │
+│  │   teacher (no_grad)        │   auxiliary (WITH grad) ★  │     │
+│  │ Phase 3: _swap_decoder     │ Phase 3: shared decoder ★  │     │
+│  │   per-modal track_step     │   shared track_step        │     │
+│  │ 추론: per-modal decoder    │ 추론: shared decoder ★     │     │
+│  ├────────────────────────────┼────────────────────────────┤     │
+│  │ gate_loss_data:            │ gate_loss_data:            │     │
+│  │   predicted_logits         │   predicted_logits         │     │
+│  │   quality_target_dist      │   quality_target_dist      │     │
+│  │   ignore_mask              │   ignore_mask              │     │
+│  │                            │   aux_ce_losses ★ v6 신규  │     │
+│  └────────────────────────────┴────────────────────────────┘     │
+│                                                                  │
+│  _auxiliary_decode_single() 내부:                                 │
+│  ┌────────────────────────────────────────────────────────┐      │
+│  │  orig_decoder = sam.sam_mask_decoder  (shared 백업)     │      │
+│  │  sam.sam_mask_decoder = per_modal_decoders[i] (임시)    │      │
+│  │  try:                                                   │      │
+│  │    _forward_sam_heads(vision_feats[i]) → aux_logits     │      │
+│  │  finally:                                               │      │
+│  │    sam.sam_mask_decoder = orig_decoder  (shared 복원)    │      │
+│  └────────────────────────────────────────────────────────┘      │
+│                                                                  │
+│  분리/공유 원칙:                                                  │
+│  ┌──────────────────┬──────────┬─────────┬──────────────────┐    │
+│  │ 모듈             │ Inference│ Training│ 이유             │    │
+│  ├──────────────────┼──────────┼─────────┼──────────────────┤    │
+│  │ Mask Decoder     │ 공유 ×1  │ 분리 ×3 │ aux CE 특화      │    │
+│  │ conv_s0/s1       │ 공유 ×1  │ 공유 ×1 │ 인코딩 일관성    │    │
+│  │ Memory Attention │ 공유 ×1  │ 공유 ×1 │ cross-modal      │    │
+│  │ Memory Encoder   │ 공유 ×1  │ 공유 ×1 │ bank 포맷 통일   │    │
+│  │ Image Encoder    │ 공유 ×1  │ 공유 ×1 │ MoE로 특화       │    │
+│  └──────────────────┴──────────┴─────────┴──────────────────┘    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 14.3 P26 모듈 상세
 
 #### ① Per-Modality SQG + ⑥ Multi-Scale FPN Input
 
@@ -1869,16 +1938,8 @@ P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을
 │  │          sigmoid × 0.7 + 0.3 = quality ∈ [0.3, 1.0]   │      │
 │  └────────────────────────────────────────────────────────┘      │
 │                                                                  │
-│  P25 vs P26 비교:                                                │
-│  ┌────────────────────────┬────────────────────────────┐        │
-│  │ P25                    │ P26                        │        │
-│  ├────────────────────────┼────────────────────────────┤        │
-│  │ SQG 1개 공유           │ SQG 3개 독립 (per-modal)   │        │
-│  │ fpn[0] only (32ch)     │ fpn[0,1,2] concat (96ch)   │        │
-│  │ min_quality=0.1        │ min_quality=0.3             │        │
-│  │ triple-duty (3곳 공유) │ UAMM 전용 (AMF 분리)       │        │
-│  │ ~12.5K params          │ ~42K + ~19K proj ≈ 61K     │        │
-│  └────────────────────────┴────────────────────────────┘        │
+│  ★ raw_fpn = conv_s0/s1 적용 전 clone (256ch)                   │
+│  ★ fpn_proj0/1/2는 raw_fpn 256ch → 32ch 변환                    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1888,11 +1949,7 @@ P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을
 ┌──────────────────────────────────────────────────────────────────┐
 │ Modal-Conditioned SoftMoE-LoRA Gate (변경 ⑧)                    │
 │                                                                  │
-│  기존 SoftMoE_LoRA_Layer (P9/P25):                               │
-│    gate_logits = gate(x)  ← token feature만, 모달리티 무관       │
-│    → 상수 수렴 (모든 모달리티에서 동일 routing)                  │
-│                                                                  │
-│  P26: modality identity embedding 추가                           │
+│  P26: modality identity embedding → gate bias                    │
 │                                                                  │
 │  ┌─── Initialization ────────────────────────────────────┐       │
 │  │  modal_embed = nn.Embedding(3, cond_dim=8)             │       │
@@ -1905,9 +1962,8 @@ P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을
 │  └────────────────────────────────────────────────────────┘       │
 │                                                                  │
 │  ┌─── Forward (per modality) ────────────────────────────┐       │
-│  │                                                        │       │
-│  │  modal_cond = modal_embed(i)  → (8,)                   │       │
-│  │  → expand(B, 8) → set_condition() to all MoE layers    │       │
+│  │  modal_cond = modal_embed(i) → (8,) → expand(B, 8)    │       │
+│  │  → set_condition() to all 48 MoE layers                │       │
 │  │                                                        │       │
 │  │  Inside SoftMoE_LoRA_Layer.forward():                  │       │
 │  │    gate_logits = gate(x)           → (B,H,W,3)        │       │
@@ -1915,13 +1971,9 @@ P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을
 │  │    gate_logits += cond_bias[...,None,None]  (broadcast) │       │
 │  │    gate_weights = softmax(gate_logits)                  │       │
 │  │                                                        │       │
-│  │  → RGB 처리 시: cond_bias가 RGB 전용 expert 선호 유도  │       │
-│  │  → THR 처리 시: cond_bias가 THR 전용 expert 선호 유도  │       │
 │  │  → zero-init이므로 초기에는 P25와 동일 동작             │       │
+│  │  → 학습하며 모달리티별 expert 선호 분화                 │       │
 │  └────────────────────────────────────────────────────────┘       │
-│                                                                  │
-│  핵심: quality가 아닌 modality IDENTITY로 conditioning            │
-│  비용: Embedding(3,8) + cond_proj(8,3)×48 ≈ 수백 파라미터       │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1929,176 +1981,118 @@ P25의 6가지 구조적 문제를 해결. 8가지 변경으로 모든 모듈을
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ UAMM Softmax 정규화 + Relative Quality Teacher (변경 ②③)       │
+│ UAMM Softmax + Relative Quality Teacher (변경 ②③)              │
 │                                                                  │
-│  ┌─── ② UAMM: softmax 정규화 ────────────────────────────┐     │
-│  │  q_logit_stack: (m, B, 1, H, W) — 3개 SQG raw logits   │     │
-│  │                                                         │     │
+│  ┌─── ② UAMM: softmax (P25 max-norm 대체) ───────────────┐     │
+│  │  q_logit_stack: (m, B, 1, H, W)                        │     │
 │  │  q_uamm = softmax(q_logit_stack / τ_uamm, dim=0)       │     │
-│  │         → (m, B, 1, H, W)   합=1 보장                   │     │
-│  │                                                         │     │
-│  │  P25 max-norm:  max=1.0, 나머지=비율 (불연속 전환점)    │     │
-│  │  P26 softmax:   합=1.0, smooth 전환 (연속 미분 가능) ★  │     │
-│  │                                                         │     │
-│  │  τ_uamm=1.0: 기본 (sharp/soft 조절 가능)               │     │
+│  │         → (m, B, 1, H, W)   합=1, smooth, 연속 ★       │     │
 │  └─────────────────────────────────────────────────────────┘     │
 │                                                                  │
-│  ┌─── ③ Relative Quality Teacher (Training) ──────────────┐     │
+│  ┌─── ③ Relative Teacher (v6: aux decode WITH grad) ──────┐     │
 │  │                                                         │     │
-│  │  Teacher per modality:                                  │     │
-│  │    CE_i = cross_entropy(teacher_logits_i, gt)           │     │
-│  │    → (B, H, W) per-pixel CE loss                        │     │
+│  │  _auxiliary_decode_single(per_modal_decoder[i], ...)     │     │
+│  │  → aux_logits (grad 있음 → aux CE loss)                 │     │
+│  │  → CE_i = CE(aux_logits.detach(), gt) per-pixel (no grad)│     │
 │  │                                                         │     │
-│  │  ce_stack = stack([CE₀, CE₁, CE₂])  → (3, B, 1, H, W)  │     │
+│  │  ce_stack = stack([CE₀, CE₁, CE₂]) → (3, B, 1, H, W)   │     │
 │  │  target_dist = softmax(-ce_stack / τ_teacher, dim=0)    │     │
-│  │              → (3, B, 1, H, W)  모달리티 간 경쟁 분포    │     │
-│  │                                                         │     │
-│  │  ★ P25: exp(-CE_i) → 각각 독립, 대부분 ~1.0 (차별 없음) │     │
-│  │  ★ P26: softmax(-CE/τ) → 상대적 비교 (차이 증폭)        │     │
-│  │                                                         │     │
-│  │  예시 (τ=0.5):                                          │     │
-│  │    쉬운 pixel: CE=[0.01, 0.02, 0.01] → ~uniform [.34,.32,.34]│  │
-│  │    어려운 pixel: CE=[2.0, 0.3, 1.5] → sharp [.01,.97,.02]    │  │
+│  │  ★ 모달리티 간 상대적 비교 (쉬운 pixel=uniform,        │     │
+│  │    어려운 pixel=sharp)                                   │     │
 │  └─────────────────────────────────────────────────────────┘     │
 │                                                                  │
-│  ┌─── Loss: KL Divergence ────────────────────────────────┐     │
-│  │  pred_dist = log_softmax(q_logit_stack / τ_uamm, dim=0)│     │
-│  │  loss = KL(pred_dist, target_dist.detach())             │     │
-│  │                                                         │     │
-│  │  ★ P25 BCE: 각 모달리티 독립 학습 → 관계 무시           │     │
-│  │  ★ P26 KL:  분포 간 비교 학습 → 상대적 순서 학습        │     │
+│  ┌─── Loss ────────────────────────────────────────────────┐     │
+│  │  KL loss: KL(log_softmax(q_logits/τ), target.detach())  │     │
+│  │  Aux CE:  Σ aux_ce_i (per-modal decoder 직접 학습) ★v6  │     │
 │  └─────────────────────────────────────────────────────────┘     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-#### ④ AMF Output Entropy (SQG와 독립)
+#### ④ AMF SQG Quality (v6: Output Entropy → SQG 기반)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ AMF Output Entropy — Decoding Confidence 기반 Fusion (변경 ④)   │
+│ AMF SQG Quality — UAMM weight 재사용 Fusion (변경 ④v6)          │
 │                                                                  │
-│  Input: output[i] (B, 4, H_out, W_out) — per-modality 4-class   │
-│                                           segmentation logits   │
+│  ★ v6 변경: output entropy 제거 → UAMM과 동일 SQG weight 재사용 │
+│  ★ "confident but wrong" 문제 해결                               │
+│    - entropy 기반: 모델이 확신하나 틀린 경우 → AMF가 높은 가중치 │
+│    - SQG 기반: per-modal decoder CE로 학습 → 실제 정확도 반영    │
 │                                                                  │
-│  ┌─── Per-modality Confidence ────────────────────────────┐      │
-│  │  for each modality i:                                   │      │
-│  │    prob = softmax(output[i], dim=1)  (B, 4, H, W)       │      │
-│  │    entropy = -Σ_c (prob_c × log(prob_c))  (B, 1, H, W)  │      │
-│  │    confidence = 1 - entropy / log(4)                     │      │
-│  │              ∈ [0, 1]  (high=certain, low=uncertain)     │      │
-│  └─────────────────────────────────────────────────────────┘      │
-│                              │                                    │
-│  ┌─── Sum-Normalize + Fusion ─────────────────────────────┐      │
-│  │  amf_stack = stack(confidence, dim=0) → (3, B, 1, H, W) │      │
-│  │  amf_norm = amf_stack / sum(dim=0)                       │      │
-│  │  m_output = Σ amf_norm[i] × output[i]                    │      │
-│  └──────────────────────────────────────────────────────────┘     │
+│  sqg_weight = q_uamm_norm  ← Phase 3에서 계산됨                  │
+│  = softmax(q_logit_stack / τ_uamm, dim=0)                       │
 │                                                                  │
-│  Triple-duty 해소 핵심:                                          │
-│  ┌────────────────────────────────────────────────────────┐      │
-│  │ UAMM: SQG quality map → encoding quality (학습)        │      │
-│  │ AMF:  output entropy → decoding confidence (학습 불필요)│      │
-│  │ Memory: 제거됨 (⑤)                                     │      │
-│  │ → 각각 독립적 신호 사용, optimization conflict 없음 ★   │      │
-│  └────────────────────────────────────────────────────────┘      │
+│  amf_weight = interpolate(sqg_weight, output_size)               │
+│  m_output = Σ amf_weight[i] × output[i]                          │
+│                                                                  │
+│  ★ UAMM weight == AMF weight (단일 softmax, tau_amf 제거)       │
+│  ★ feature modulation + output fusion 모두 동일 weight           │
+│                                                                  │
+│  Feature fusion: m_feat = Σ q_uamm_norm[i] × fpn[0][i]          │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-#### ⑦ Per-Modality Decoder
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│ Per-Modality Decoder — 모달리티별 독립 SAM2 Mask Decoder (변경 ⑦)│
-│                                                                  │
-│  ┌─── Initialization ────────────────────────────────────┐       │
-│  │  per_modal_decoders = ModuleList([                     │       │
-│  │    deepcopy(sam_mask_decoder),  # decoder_RGB  ~4M     │       │
-│  │    deepcopy(sam_mask_decoder),  # decoder_THR  ~4M     │       │
-│  │    deepcopy(sam_mask_decoder),  # decoder_LID  ~4M     │       │
-│  │  ])                                                    │       │
-│  │  ★ 동일한 pretrained weight에서 시작, 학습하며 분화     │       │
-│  └────────────────────────────────────────────────────────┘       │
-│                                                                  │
-│  ┌─── _swap_decoder(modal_idx) ──────────────────────────┐       │
-│  │  sam.sam_mask_decoder = per_modal_decoders[modal_idx]   │       │
-│  │  ★ track_step 호출 전 swap → 내부적으로 올바른 decoder  │       │
-│  └────────────────────────────────────────────────────────┘       │
-│                                                                  │
-│  적용 위치:                                                       │
-│  Phase 1: _encode_single_modality → conv_s0/s1 from decoder[i]   │
-│  Phase 2.5: _teacher_decode_single → decoder[i]로 teacher 생성   │
-│  Phase 3: track_step → decoder[i]로 decode                       │
-│                                                                  │
-│  분리/공유 원칙:                                                  │
-│  ┌────────────────────┬──────────┬───────────────────────┐       │
-│  │ 모듈               │ P26      │ 이유                  │       │
-│  ├────────────────────┼──────────┼───────────────────────┤       │
-│  │ Mask Decoder       │ 분리 ×3  │ feat→mask 특화        │       │
-│  │ Memory Attention   │ 공유 ×1  │ cross-modal 상호참조  │       │
-│  │ Memory Encoder     │ 공유 ×1  │ memory bank 포맷 통일 │       │
-│  │ Image Encoder      │ 공유 ×1  │ MoE로 이미 특화       │       │
-│  └────────────────────┴──────────┴───────────────────────┘       │
-│                                                                  │
-│  추가 비용: ~8M params (decoder ×2), ~0.13GB VRAM               │
-│  Activation: 이미 3회 forward하므로 동일                         │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-### 14.3 P25 vs P26 비교
+### 14.4 P25 vs P26 v6 비교
 
 ```
 ┌────────────────────────────────┬────────────────────────────────────┐
-│ P25                            │ P26                                │
+│ P25                            │ P26 v6                             │
 ├────────────────────────────────┼────────────────────────────────────┤
 │ SQG 1개 공유, fpn[0] 32ch     │ SQG 3개 독립, fpn[0,1,2] 96ch ①⑥ │
 │ quality triple-duty (3곳 공유) │ UAMM 전용, AMF 분리 ④            │
 │ UAMM max-norm (불연속)        │ UAMM softmax (연속, smooth) ②     │
-│ Teacher: exp(-CE) 절대 quality │ Teacher: softmax(-CE/τ) 상대적 ③  │
-│ Loss: BCE (독립)               │ Loss: KL divergence (분포 비교) ③ │
-│ AMF: SQG quality sum-norm     │ AMF: output entropy confidence ④   │
+│ Teacher: exp(-CE) 절대, no_grad│ Aux: per-modal CE WITH grad ★ v6  │
+│ Loss: BCE (독립)               │ Loss: KL + aux_CE (분포+직접) ③   │
+│ AMF: SQG quality sum-norm     │ AMF: UAMM weight 재사용 (tau 없음) ④v6│
 │ Memory Mod: maskmem × quality  │ Memory Mod: 제거 (이중 페널티) ⑤  │
-│ Decoder: 1개 공유              │ Decoder: 3개 독립 (per-modal) ⑦   │
+│ Decoder: 1개 공유 (all phases) │ Shared(Phase 1,3) + Aux(2.5) ⑦v6 │
 │ MoE gate: input-only           │ MoE gate: + modal embedding ⑧    │
 │ min_quality: 0.1               │ min_quality: 0.3                   │
-│ 추가 params: ~12.5K            │ 추가 params: ~8M + 61K + ~수백   │
-│ VRAM: baseline                 │ VRAM: +~0.13GB                    │
+│ 추론: shared decoder           │ 추론: shared decoder (동일)       │
 ├────────────────────────────────┼────────────────────────────────────┤
-│ 1개 경로 (SQG → 3곳)          │ 2개 독립 경로 ★                   │
-│                                │ UAMM: SQG → quality (학습)        │
-│                                │ AMF: output → entropy (학습 불필요)│
+│ 1개 경로 (SQG → 3곳)          │ 3개 독립 경로 ★                   │
+│                                │ UAMM: SQG quality (학습)          │
+│                                │ AMF: UAMM weight 재사용 (통합)   │
+│                                │ Aux: per-modal CE (직접 학습) ★v6 │
 └────────────────────────────────┴────────────────────────────────────┘
 ```
 
-### 14.4 P26 정보 흐름
+### 14.5 P26 v6 정보 흐름
 
 ```
-P26 정보 흐름:
+P26 v6 정보 흐름:
+
+  ── Inference ──────────────────────────────────────────────
 
   for each modal i:
     ⑧ modal_embed(i) → set MoE condition
-    ⑦ swap decoder[i]
 
-  3×img → Hiera+MoE(⑧modal-cond) → raw_fpn(256ch×3)
+  3×img → Hiera+MoE(⑧modal-cond) → raw_fpn(256ch×3) → clone
        │                             │
-       │                             ├→ ⑥ proj+resize+cat → (96ch)
-       │                             │      → ① SQG_i (독립×3)
-       │                             │        → q_logit_i
-       │                             │
-       ├→ ⑦ conv_s0/s1 (per-modal)   │
-       │   → fpn(32,64,256)          │
-       │   → vision_feats            │
+       │  shared conv_s0/s1          ├→ ⑥ proj+resize+cat(96ch)
+       │  → fpn(32,64,256)          │    → ① SQG_i (독립×3)
+       │  → vision_feats            │      → q_logit_i
        │                             │
        ├─────────────────────────────┘
        │
        ├→ ② UAMM softmax(q_logits/τ)
        │   → vision_feats × q_uamm
-       │   → ⑦ track_step(per_modal_decoder[i])
-       │      [no memory mod ⑤]
+       │   → track_step(shared_decoder)   ★ v6: shared
+       │     [no memory mod ⑤]
        │   → output[i]
        │
-       └→ ④ AMF: entropy(output[i]) → confidence
-          → sum-norm → m_output
+       └→ ④ AMF: q_uamm_norm 재사용 (tau 없음, UAMM과 동일)
+          → interpolate → m_output
 
-  Training: ③ Teacher(per_modal_decoder[i]) → CE → softmax(-CE/τ)
-            → KL(pred_dist, target_dist)
+  ── Training (추가 경로) ──────────────────────────────────
+
+  vision_feats[i] → _auxiliary_decode_single(per_modal_decoder[i])
+                     → aux_logits (grad)
+                     ├→ aux_CE loss (per_modal_decoder 학습) ★ v6
+                     └→ CE_map.detach() → SQG target
+                        → ③ softmax(-CE_stack/τ) → KL loss
+
+  ★ v6 vs v5 핵심 차이:
+    v5: per-modal decoder가 inference 파이프라인에 직접 개입
+    v6: per-modal decoder는 auxiliary path 전용, inference는 shared
 ```

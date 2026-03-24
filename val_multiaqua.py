@@ -94,7 +94,7 @@ def load_model(cfg, model_path, device):
         model_kwargs['tau_uamm'] = quality_cfg.get('TAU_UAMM', 1.0)
         model_kwargs['tau_teacher'] = quality_cfg.get('TAU_TEACHER', 0.5)
         model_kwargs['memory_mod'] = quality_cfg.get('MEMORY_MOD', False)
-        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'output_entropy')
+        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'sqg_quality')
         model_kwargs['multi_scale_sqg'] = quality_cfg.get('MULTI_SCALE_SQG', True)
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:

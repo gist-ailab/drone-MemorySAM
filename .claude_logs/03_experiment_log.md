@@ -637,6 +637,58 @@
 
 ---
 
+## 아키텍처 심층 분석 (2026-03-24)
+
+### 분석 A: UAMM 스칼라 곱의 실효성 — Pre-Norm + Residual 구조에서의 효과
+
+**배경**: P9의 UAMM은 모달리티별 스칼라 score를 vision_feats에 곱한 뒤 memory attention에 전달. 이 스칼라 곱이 LayerNorm에 의해 상쇄되는지 검증.
+
+**SAM2 memory_attention.py 코드 확인 결과**:
+```python
+# MemoryAttentionLayer._forward_sa (Pre-Norm + Residual)
+def _forward_sa(self, tgt, query_pos):
+    tgt2 = self.norm1(tgt)           # LayerNorm on branch only
+    q = k = tgt2 + query_pos
+    tgt2 = self.self_attn(q, k, v=tgt2)
+    tgt = tgt + self.dropout1(tgt2)  # residual preserves original tgt!
+    return tgt
+```
+
+**분석**:
+- LayerNorm(x × s) = LayerNorm(x) — branch 내에서 스칼라 곱은 완전 상쇄
+- **그러나** residual connection이 `tgt = tgt + attn_output` 형태 → 원래 scaled tgt가 보존됨
+- 4개 layer를 거치며 residual에 누적된 원본 스케일링이 점차 희석되지만 완전히 사라지지는 않음
+- `MemoryAttention.forward`에서 `output = output + 0.1 * curr_pos` (line 141)도 mixing 요인
+
+**결론**: UAMM 스칼라 곱의 효과는 **0은 아니지만 매우 약하다**.
+- Branch path: LayerNorm에 의해 상쇄 (기여 0)
+- Residual path: 원본 scaling 보존 (약한 기여)
+- 4 layers × (self_attn + cross_attn) + pos_enc mixing → 신호가 크게 희석
+
+**시사점**: P9의 성능 우위를 UAMM으로 설명하기 어렵다. P26의 spatial UAMM도 동일한 한계를 가짐 — 다만 spatial map은 각 토큰마다 다른 가중치를 부여하므로 LayerNorm에 상쇄되지 않아 스칼라 UAMM보다는 효과적일 수 있음.
+
+### 분석 B: P9이 MMSamBase보다 성능이 높은 이유
+
+**비교 대상**: `LoRA_Sam` (Base) vs `LoRA_Sam_P9`
+
+| 구성요소 | MMSamBase | P9 |
+|---------|-----------|-----|
+| LoRA 구조 | Simple LoRA (w_A, w_B) | **SoftMoE LoRA (3 experts)** |
+| LoRA 파라미터 | rank r | **rank r × 3 experts** (약 3배) |
+| Fusion | 단순 평균 (`m_output/m`) | **Learnable AMF weights** (CrossModalFusionHead) |
+| UAMM | 없음 | max-norm scalar (효과 미미, 분석 A 참조) |
+| MoE routing | 없음 | Soft routing (entropy_ratio ~0.95, 거의 uniform) |
+
+**핵심 결론**: P9 > Base의 주요 원인은:
+1. **SoftMoE LoRA의 effective rank 증가**: 3개 expert가 soft-combine되므로 사실상 rank가 ~3배. 더 풍부한 adaptation capacity
+2. **Learnable AMF weights**: 단순 평균 대비 모달리티 기여도를 학습으로 최적화
+3. **UAMM 기여 미미**: 분석 A에 따라 실질 기여 무시 가능
+4. **MoE routing 기여 미미**: entropy_ratio ~0.95로 거의 uniform → 특화 routing이 아닌 parameter 증가 효과
+
+**교훈**: "더 복잡한 구조"가 아니라 "더 많은 학습 가능 파라미터 + 학습 가능 fusion weight"가 성능 향상의 핵심. 복잡한 메커니즘(UAMM, MoE routing)의 기여는 기대 대비 미미했음.
+
+---
+
 ## 핵심 교훈
 
 1. **NIGHT_AUG 없이는 Test 성능 극히 낮음** (35.93 vs 63+): 야간 시뮬레이션 필수
@@ -645,6 +697,8 @@
 4. **복잡한 loss/모듈 추가는 과적합 위험**: P10 oracle KL, P11 MI loss 모두 역효과
 5. **측정 방법이 중요**: MoE gate "uniform" 문제는 spatial mean의 artifact였음
 6. **Val mIoU는 모델 비교에 부적합**: 모든 모델이 93-94%로 유사. Test mIoU와 M-score로 비교해야 함
+7. **UAMM 스칼라 곱 효과 미미**: Pre-Norm + Residual 구조에서 branch path는 LayerNorm에 상쇄, residual path만 약하게 보존 (분석 A)
+8. **P9 성능 우위 = parameter 증가 + learnable fusion**: SoftMoE LoRA 3x rank + AMF weights가 핵심, UAMM/MoE routing 기여는 무시 가능 (분석 B)
 
 ---
 

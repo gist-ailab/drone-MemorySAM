@@ -688,7 +688,7 @@ self._last_feats_after_uamm = feats_after_uamm    # list of m tensors
 | ③ | **Relative Quality Teacher** (`softmax(-CE/tau)` + KL loss) | 문제 3 | 구현 완료 |
 | ④ | **AMF output entropy 기반** (SQG와 분리) | 문제 2 | 구현 완료 |
 | ⑤ | **Memory Modulation 제거** | 문제 5 | 구현 완료 |
-| ⑥ | **Per-Modality Decoder** (decoder ×3, +~8M / +0.13GB) | 문제 6 | 미구현 |
+| ⑥ | **Per-Modality Decoder 역할 분리** (auxiliary decoder ×m + shared decoder ×1) | 문제 6 | 🟡 v5 구현됨 (dual-use), **v6 설계 수정 대기** (역할 분리) |
 | ⑦ | **Modality-Conditioned MoE LoRA Gate** (modality embedding → gate bias) | 문제 7 | 미구현 |
 | + | min_quality 0.1→0.3 | 연쇄 약화 방지 | 구현 완료 |
 | + | DeBA-FP (config on/off) | ablation용 | 미구현 |

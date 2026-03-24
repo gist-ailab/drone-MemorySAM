@@ -102,7 +102,7 @@ def load_model(cfg, model_path, device):
         model_kwargs['tau_uamm'] = quality_cfg.get('TAU_UAMM', 1.0)
         model_kwargs['tau_teacher'] = quality_cfg.get('TAU_TEACHER', 0.5)
         model_kwargs['memory_mod'] = quality_cfg.get('MEMORY_MOD', False)
-        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'output_entropy')
+        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'sqg_quality')
         model_kwargs['multi_scale_sqg'] = quality_cfg.get('MULTI_SCALE_SQG', True)
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:
@@ -625,12 +625,16 @@ class MoERoutingCapture:
 # ============================================================================
 
 def _build_stats_row(capture, modals, target_h, target_w):
-    blocks = sorted(capture.routing_data['Q'].keys())
-    if not blocks:
+    all_blocks = sorted(capture.routing_data['Q'].keys())
+    if not all_blocks:
         return np.ones((target_h, target_w, 3), dtype=np.uint8) * 240
-    n_charts = min(len(blocks), 3)
+    # Use REPRESENTATIVE_LAYERS (0, 9, 18) instead of first N blocks
+    blocks = [b for b in REPRESENTATIVE_LAYERS if b in capture.routing_data['Q']]
+    if not blocks:
+        blocks = all_blocks[:3]
+    n_charts = len(blocks)
     chart_w = target_w // n_charts
-    strips = [capture.get_stats_bar_chart(blocks[i], modals, target_h, chart_w) for i in range(n_charts)]
+    strips = [capture.get_stats_bar_chart(block_idx, modals, target_h, chart_w) for block_idx in blocks]
     row = np.concatenate(strips, axis=1)
     if row.shape[1] != target_w:
         row = np.array(Image.fromarray(row).resize((target_w, target_h), Image.Resampling.LANCZOS))

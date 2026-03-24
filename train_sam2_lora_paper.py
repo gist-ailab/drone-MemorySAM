@@ -414,7 +414,7 @@ def main(cfg, gpu, save_dir):
         model_kwargs['tau_uamm'] = quality_cfg.get('TAU_UAMM', 1.0)
         model_kwargs['tau_teacher'] = quality_cfg.get('TAU_TEACHER', 0.5)
         model_kwargs['memory_mod'] = quality_cfg.get('MEMORY_MOD', False)
-        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'output_entropy')
+        model_kwargs['amf_mode'] = quality_cfg.get('AMF_MODE', 'sqg_quality')
         model_kwargs['multi_scale_sqg'] = quality_cfg.get('MULTI_SCALE_SQG', True)
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:
@@ -491,6 +491,9 @@ def main(cfg, gpu, save_dir):
     lambda_mi = train_cfg.get('LAMBDA_MI', 1.0)
     # [P13] Aux loss 가중치
     lambda_aux = train_cfg.get('LAMBDA_AUX', 0.3)
+    # [P26 v6] Per-modal auxiliary CE loss 가중치
+    quality_gate_cfg = cfg['MODEL'].get('QUALITY_GATE', {})
+    lambda_aux_ce = quality_gate_cfg.get('AUX_CE_WEIGHT', 0.5)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     scheduler = get_scheduler(
@@ -620,6 +623,7 @@ def main(cfg, gpu, save_dir):
         gate_loss_accum = 0.0
         mi_loss_accum = 0.0
         aux_loss_accum = 0.0
+        aux_ce_loss_accum = 0.0
        
     
         lr = scheduler.get_lr()
@@ -766,12 +770,19 @@ def main(cfg, gpu, save_dir):
                                 p24_quality_loss = p24_quality_loss + bce.mean()
                         p24_quality_loss = p24_quality_loss / len(predicted_list)
 
+                # [P26 v6] Per-modal auxiliary CE loss
+                p26_aux_ce_loss = torch.tensor(0.0, device=device)
+                if p24_gate_loss_data is not None and 'aux_ce_losses' in p24_gate_loss_data:
+                    aux_ce_list = p24_gate_loss_data['aux_ce_losses']
+                    p26_aux_ce_loss = sum(aux_ce_list) / len(aux_ce_list)
+
                 # 전체 Loss
                 total_loss_unscaled = (loss_orig + protoloss
                                        + lambda_gate * gating_loss
                                        + lambda_mi * mi_loss
                                        + lambda_aux * p13_aux_loss
-                                       + lambda_gate * p24_quality_loss)
+                                       + lambda_gate * p24_quality_loss
+                                       + lambda_aux_ce * p26_aux_ce_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)
@@ -817,6 +828,7 @@ def main(cfg, gpu, save_dir):
             gate_loss_accum += gating_loss.item()
             mi_loss_accum += mi_loss.item()
             aux_loss_accum += p13_aux_loss.item() + p24_quality_loss.item()
+            aux_ce_loss_accum += p26_aux_ce_loss.item()
 
             desc = (
                 f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "
@@ -830,6 +842,8 @@ def main(cfg, gpu, save_dir):
                 desc += f" MI: {mi_loss_accum/(iter+1):.6f}"
             if aux_loss_accum > 0:
                 desc += f" Aux: {aux_loss_accum/(iter+1):.6f}"
+            if aux_ce_loss_accum > 0:
+                desc += f" AuxCE: {aux_ce_loss_accum/(iter+1):.6f}"
             # [P16] Warmup 상태 표시
             if hasattr(_m, 'aux_warmup_epochs'):
                 wu = _m.aux_warmup_epochs
@@ -858,6 +872,8 @@ def main(cfg, gpu, save_dir):
             writer.add_scalar('train/loss', train_loss, epoch)
             writer.add_scalar('train/proto_loss', proto_loss, epoch)
             writer.add_scalar('train/aux_loss', aux_loss_accum / (iter + 1), epoch)
+            if aux_ce_loss_accum > 0:
+                writer.add_scalar('train/aux_ce_loss', aux_ce_loss_accum / (iter + 1), epoch)
             writer.add_scalar('train/lr', avg_lr, epoch)
 
             # Trackio: 학습 메트릭 로깅
@@ -873,6 +889,7 @@ def main(cfg, gpu, save_dir):
                     "train/aux_loss": aux_loss_accum / (iter + 1),
                     "train/gate_loss": gate_loss_accum / (iter + 1),
                     "train/mi_loss": mi_loss_accum / (iter + 1),
+                    "train/aux_ce_loss": aux_ce_loss_accum / (iter + 1),
                     "train/lr": avg_lr,
                 }
                 # P16 warmup ramp 값

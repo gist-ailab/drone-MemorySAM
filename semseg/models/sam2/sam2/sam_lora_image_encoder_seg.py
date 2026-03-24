@@ -6668,7 +6668,7 @@ class LoRA_Sam_P26(nn.Module):
                  num_experts=4, num_modalities=3,
                  quality_hidden_dim=64, quality_min=0.3,
                  tau_uamm=1.0, tau_teacher=0.5,
-                 memory_mod=False, amf_mode='output_entropy',
+                 memory_mod=False, amf_mode='sqg_quality',
                  multi_scale_sqg=True, per_modality_decoder=True,
                  cond_dim=8):
         nn.Module.__init__(self)
@@ -6714,7 +6714,9 @@ class LoRA_Sam_P26(nn.Module):
         # ── 변경 ⑧: Modality Embedding for MoE gate conditioning ──
         self.modal_embed = nn.Embedding(num_modalities, cond_dim)
 
-        # ── 변경 ⑦: Per-Modality Decoder ──
+        # ── 변경 ⑦ (v6): Per-Modality Decoder (학습 전용 auxiliary) ──
+        # per_modal_decoders: 학습 시 직접 CE loss → SQG target 생성 (추론 시 미사용)
+        # self.sam.sam_mask_decoder: shared inference decoder (학습+추론 모두 사용)
         if per_modality_decoder:
             self.per_modal_decoders = nn.ModuleList([
                 copy.deepcopy(sam_model.sam_mask_decoder)
@@ -6780,17 +6782,19 @@ class LoRA_Sam_P26(nn.Module):
             self.sam.sam_mask_decoder = self.per_modal_decoders[modal_idx]
 
     def _encode_single_modality(self, img, modal_idx_tensor):
-        """Checkpoint-safe: encode one modality with correct condition & decoder.
+        """Checkpoint-safe: encode one modality with correct condition.
         Returns flat tuple of tensors for torch.utils.checkpoint compatibility.
         Layout: (*backbone_fpn, *vision_pos_enc[, *raw_fpn if multi_scale_sqg])
+
+        v6: Always uses shared decoder (self.sam.sam_mask_decoder) conv_s0/s1.
+        Per-modal decoders are only used in Phase 2.5 auxiliary path.
 
         Nested checkpointing is used when gradient_checkpointing is enabled:
         - Outer: per-modality checkpoint wraps this entire function
         - Inner: per-block checkpoint inside HieraDet trunk
         set_condition() is called here, so both outer and inner recomputation
-        see the correct _condition state. No need to disable per-block checkpointing.
+        see the correct _condition state.
         """
-        idx = modal_idx_tensor.item()
         B = img.shape[0]
 
         # Set MoE condition for this modality
@@ -6798,8 +6802,7 @@ class LoRA_Sam_P26(nn.Module):
         for layer in self.moe_layers_q + self.moe_layers_v:
             layer.set_condition(modal_cond)
 
-        # Swap to this modality's decoder (for conv_s0/s1)
-        self._swap_decoder(idx)
+        # v6: No _swap_decoder — always use shared decoder's conv_s0/s1
 
         # Run backbone
         emb = self.sam.image_encoder(img)
@@ -6810,15 +6813,53 @@ class LoRA_Sam_P26(nn.Module):
         if self.multi_scale_sqg and use_hr:
             raw_fpn = [f.clone() for f in emb['backbone_fpn']]
 
-        # Apply conv_s0/s1 from current per-modality decoder
+        # Apply conv_s0/s1 from shared decoder (모든 모달리티 공통)
         if use_hr:
             emb["backbone_fpn"][0] = self.sam.sam_mask_decoder.conv_s0(emb["backbone_fpn"][0])
             emb["backbone_fpn"][1] = self.sam.sam_mask_decoder.conv_s1(emb["backbone_fpn"][1])
 
         return tuple(emb['backbone_fpn']) + tuple(emb['vision_pos_enc']) + tuple(raw_fpn)
 
+    def _auxiliary_decode_single(self, decoder, vision_feats, vision_pos_embeds, feat_sizes):
+        """v6: Auxiliary decode using a specific per-modal decoder (with grad).
+
+        Unlike _teacher_decode_single, this takes an explicit decoder module
+        and does NOT wrap in no_grad — used for per-modal auxiliary CE loss.
+        The decoder is temporarily swapped into SAM2 for _forward_sam_heads,
+        then restored to the shared decoder.
+        """
+        if len(vision_feats) > 1:
+            high_res_features = [
+                x.permute(1, 2, 0).view(x.size(1), x.size(2), *s)
+                for x, s in zip(vision_feats[:-1], feat_sizes[:-1])
+            ]
+        else:
+            high_res_features = None
+
+        B = vision_feats[-1].size(1)
+        C = self.sam.hidden_dim
+        H, W = feat_sizes[-1]
+        pix_feat = vision_feats[-1].permute(1, 2, 0).view(B, C, H, W)
+
+        # Temporarily swap decoder for _forward_sam_heads
+        orig_decoder = self.sam.sam_mask_decoder
+        self.sam.sam_mask_decoder = decoder
+        try:
+            sam_outputs = self.sam._forward_sam_heads(
+                backbone_features=pix_feat,
+                point_inputs=None,
+                mask_inputs=None,
+                high_res_features=high_res_features,
+                multimask_output=True,
+            )
+        finally:
+            self.sam.sam_mask_decoder = orig_decoder
+
+        _, high_res_multimasks, _, _, _, _, _ = sam_outputs
+        return high_res_multimasks
+
     def _teacher_decode_single(self, vision_feats, vision_pos_embeds, feat_sizes):
-        """Teacher: single-frame decoding (no memory attention)."""
+        """Teacher: single-frame decoding using current sam_mask_decoder (no memory attention)."""
         if len(vision_feats) > 1:
             high_res_features = [
                 x.permute(1, 2, 0).view(x.size(1), x.size(2), *s)
@@ -6926,7 +6967,8 @@ class LoRA_Sam_P26(nn.Module):
                 quality_maps.append(self.quality_gatings[i].logits_to_quality(q_logit))
 
             # ============================================
-            # Phase 2.5 (Training): 변경 ③ — Relative Quality Teacher + KL loss
+            # Phase 2.5 (Training): v6 — Per-modal auxiliary CE + Relative Quality Teacher
+            # per_modal_decoders로 직접 CE loss (grad 있음) + SQG target (detach)
             # ============================================
             gate_loss_data = None
             if self.training and gt_mask is not None:
@@ -6940,22 +6982,29 @@ class LoRA_Sam_P26(nn.Module):
                 ).bool()
 
                 ce_maps = []
+                aux_losses = []
                 for i in range(m):
-                    # ⑦: Use per-modality decoder for teacher
-                    self._swap_decoder(i)
-                    with torch.no_grad():
-                        teacher_logits = self._teacher_decode_single(
-                            vision_feats[i], vision_pos_embeds[i], feat_sizes[i],
+                    # v6: per-modal decoder로 직접 decode (grad 있음)
+                    aux_logits = self._auxiliary_decode_single(
+                        self.per_modal_decoders[i],
+                        vision_feats[i], vision_pos_embeds[i], feat_sizes[i],
+                    )
+                    if aux_logits.shape[-2:] != gt_mask.shape[-2:]:
+                        aux_logits_resized = F.interpolate(
+                            aux_logits, size=gt_mask.shape[-2:],
+                            mode='bilinear', align_corners=False,
                         )
-                        if teacher_logits.shape[-2:] != gt_mask.shape[-2:]:
-                            teacher_logits_resized = F.interpolate(
-                                teacher_logits, size=gt_mask.shape[-2:],
-                                mode='bilinear', align_corners=False,
-                            )
-                        else:
-                            teacher_logits_resized = teacher_logits
+                    else:
+                        aux_logits_resized = aux_logits
+
+                    # (1) Auxiliary CE loss (grad flows to per_modal_decoder + encoder)
+                    aux_ce = F.cross_entropy(aux_logits_resized, gt_safe, ignore_index=255)
+                    aux_losses.append(aux_ce)
+
+                    # (2) CE map for SQG target (detach — SQG target은 gradient 차단)
+                    with torch.no_grad():
                         ce_map = F.cross_entropy(
-                            teacher_logits_resized, gt_safe,
+                            aux_logits_resized.detach(), gt_safe,
                             reduction='none',
                         )
                         ce_map[ignore_mask_full] = 0.0
@@ -6973,10 +7022,11 @@ class LoRA_Sam_P26(nn.Module):
                     'quality_target_dist': quality_target_dist,
                     'ignore_mask': ignore_mask_fpn,
                     'loss_type': 'kl',
+                    'aux_ce_losses': aux_losses,  # v6: per-modal auxiliary CE losses
                 }
 
             # ============================================
-            # Phase 3: 변경 ② UAMM softmax + Tracking + ⑤ No MemMod + ⑦ Per-Modal Decoder
+            # Phase 3: v6 — UAMM softmax + Shared Decoder track_step + ⑤ No MemMod
             # ============================================
             q_logit_stack = torch.stack(quality_logits, dim=0)  # (m, B, 1, H_fpn, W_fpn)
             q_uamm_norm = F.softmax(q_logit_stack / self.tau_uamm, dim=0)
@@ -6989,8 +7039,8 @@ class LoRA_Sam_P26(nn.Module):
             for frame_idx in range(m):
                 is_init = (frame_idx == 0)
 
-                # ⑦: Swap to per-modality decoder for track_step
-                self._swap_decoder(frame_idx)
+                # v6: No _swap_decoder — shared decoder (sam.sam_mask_decoder) 사용
+                # per_modal_decoders는 Phase 2.5 auxiliary에서만 사용
 
                 q_uamm_i = q_uamm_norm[frame_idx]  # (B, 1, H_fpn, W_fpn)
                 modulated_vision_feats = []
@@ -7045,22 +7095,34 @@ class LoRA_Sam_P26(nn.Module):
                 output.append(multi_mask_output_step["high_res_multimasks"])
 
             # ============================================
-            # Phase 4: 변경 ④ — AMF output entropy 기반 (SQG와 독립)
+            # Phase 4: v6 — AMF (SQG quality softmax 또는 output entropy fallback)
             # ============================================
             out_h, out_w = output[0].shape[-2:]
             num_classes = output[0].shape[1]
 
-            if self.amf_mode == 'output_entropy':
+            if self.amf_mode == 'sqg_quality':
+                # v6: UAMM과 동일한 sqg_weight 재사용 — tau 없음
+                # q_uamm_norm은 Phase 3에서 이미 계산됨
+                amf_norm_list = []
+                for i in range(m):
+                    amf_i = F.interpolate(
+                        q_uamm_norm[i], size=(out_h, out_w),
+                        mode='bilinear', align_corners=False,
+                    )
+                    amf_norm_list.append(amf_i)
+                amf_norm = torch.stack(amf_norm_list, dim=0)  # (m, B, 1, H_out, W_out)
+            elif self.amf_mode == 'output_entropy':
+                # Legacy: output entropy 기반 AMF
                 amf_weights = []
                 for i in range(m):
                     prob = F.softmax(output[i], dim=1)
                     entropy = -(prob * (prob + 1e-8).log()).sum(dim=1, keepdim=True)
                     confidence = 1.0 - entropy / math.log(num_classes)
                     amf_weights.append(confidence)
-
                 amf_stack = torch.stack(amf_weights, dim=0)
                 amf_norm = amf_stack / amf_stack.sum(dim=0, keepdim=True).clamp(min=1e-6)
             else:
+                # Fallback: quality_map sum-norm
                 q_amf_list = []
                 for i in range(m):
                     q_amf_i = F.interpolate(
@@ -7073,9 +7135,8 @@ class LoRA_Sam_P26(nn.Module):
 
             m_output = sum(amf_norm[i] * output[i] for i in range(m))
 
-            # Feature fusion — UAMM softmax weights at fpn resolution
-            q_feat_norm = F.softmax(q_logit_stack / self.tau_uamm, dim=0)
-            m_feat = sum(q_feat_norm[i] * all_backbone_feats[i] for i in range(m))
+            # Feature fusion — UAMM softmax weights at fpn resolution (q_uamm_norm 재사용)
+            m_feat = sum(q_uamm_norm[i] * all_backbone_feats[i] for i in range(m))
 
             # ── Logging ──
             uamm_scalar = torch.stack(
@@ -7099,15 +7160,13 @@ class LoRA_Sam_P26(nn.Module):
             # P26 detailed viz: spatial maps
             self._last_uamm_spatial = [q_uamm_norm[i].detach().cpu().numpy() for i in range(m)]
             self._last_amf_spatial = [amf_norm[i].detach().cpu().numpy() for i in range(m)]
-            if self.amf_mode == 'output_entropy':
-                ent_maps = []
-                for i in range(m):
-                    prob_i = F.softmax(output[i], dim=1)
-                    ent_i = -(prob_i * (prob_i + 1e-8).log()).sum(dim=1, keepdim=True)
-                    ent_maps.append(ent_i.detach().cpu().numpy())
-                self._last_entropy_maps = ent_maps
-            else:
-                self._last_entropy_maps = None
+            # Entropy maps (for viz — computed regardless of amf_mode)
+            ent_maps = []
+            for i in range(m):
+                prob_i = F.softmax(output[i], dim=1)
+                ent_i = -(prob_i * (prob_i + 1e-8).log()).sum(dim=1, keepdim=True)
+                ent_maps.append(ent_i.detach().cpu().numpy())
+            self._last_entropy_maps = ent_maps
         finally:
             for layer in self.moe_layers_q + self.moe_layers_v:
                 layer._gate_callback = None
