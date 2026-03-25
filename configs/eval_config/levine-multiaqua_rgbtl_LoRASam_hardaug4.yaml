@@ -15,13 +15,13 @@ MODEL:
 
 DATASET:
   NAME          : MULTIAQUA
-  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night'
+  ROOT          : '/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'thermal']
 
   RGB_SUBROOT   : null
   THERMAL_SUBROOT : null
-  LIDAR_SUBROOT : null
+  LIDAR_SUBROOT : 'lidar_processed2'
   NUM_CLASSES   : 4
   # hardaug4: P9와 동일 aug 설정 (가장 안정적)
   NIGHT_AUG     :

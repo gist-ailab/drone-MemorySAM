@@ -117,6 +117,7 @@ def load_model(cfg, model_path, device):
     lora_layer = model_cfg.get('LORA_LAYER')
 
     _model_map = {
+        'LoRA_Sam': LoRA_Sam,
         'LoRA_Sam_P9': LoRA_Sam_P9,
         'LoRA_Sam_P10': LoRA_Sam_P10,
         'LoRA_Sam_P11': LoRA_Sam_P11,
@@ -424,8 +425,9 @@ class MoERoutingCapture:
         self.viz_blocks = viz_block_indices or REPRESENTATIVE_LAYERS
         self.hooks = []
         self.call_counter = 0
-        self.num_q = len(model.moe_layers_q)
-        self.num_v = len(model.moe_layers_v)
+        self.has_moe = hasattr(model, 'moe_layers_q') and hasattr(model, 'moe_layers_v')
+        self.num_q = len(model.moe_layers_q) if self.has_moe else 0
+        self.num_v = len(model.moe_layers_v) if self.has_moe else 0
         self.num_moe_layers = self.num_q + self.num_v
 
         # Storage: {'Q': {block_idx: {modal_idx: stats}}, 'V': {block_idx: ...}}
@@ -438,6 +440,8 @@ class MoERoutingCapture:
         """Register forward hooks on ALL Q and V MoE layers."""
         self.call_counter = 0
         self.routing_data = {'Q': {}, 'V': {}}
+        if not self.has_moe:
+            return
 
         for block_idx, layer in enumerate(self.model.moe_layers_q):
             save_map = (block_idx in self.viz_blocks)
@@ -504,6 +508,9 @@ class MoERoutingCapture:
 
     def register_counter_hook(self):
         """Register a lightweight hook on ALL MoE layers just to count calls."""
+        if not self.has_moe:
+            return
+
         def count_hook(module, input, output):
             self.call_counter += 1
 
@@ -1550,8 +1557,8 @@ def evaluate(model, dataloader, device, save_dir=None, modals=None,
                     "modals": modals,
                     "split": "val",
                     "n_images": len(uamm_amf_moe_log),
-                    "num_moe_blocks_q": len(core.moe_layers_q),
-                    "num_moe_blocks_v": len(core.moe_layers_v),
+                    "num_moe_blocks_q": len(core.moe_layers_q) if hasattr(core, 'moe_layers_q') else 0,
+                    "num_moe_blocks_v": len(core.moe_layers_v) if hasattr(core, 'moe_layers_v') else 0,
                     "viz_blocks": REPRESENTATIVE_LAYERS,
                     "lora_model": core.__class__.__name__,
                     "fields": {
@@ -1802,8 +1809,8 @@ def run_test_inference(model, dataloader, device, save_dir, modals=None,
                     "modals": modals,
                     "split": "test",
                     "n_images": len(uamm_amf_moe_log),
-                    "num_moe_blocks_q": len(core.moe_layers_q),
-                    "num_moe_blocks_v": len(core.moe_layers_v),
+                    "num_moe_blocks_q": len(core.moe_layers_q) if hasattr(core, 'moe_layers_q') else 0,
+                    "num_moe_blocks_v": len(core.moe_layers_v) if hasattr(core, 'moe_layers_v') else 0,
                     "viz_blocks": REPRESENTATIVE_LAYERS,
                     "lora_model": core.__class__.__name__,
                 },

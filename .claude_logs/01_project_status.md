@@ -1,8 +1,28 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-24
+> 최종 업데이트: 2026-03-25
 
-## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 v6 설계 수정 (구현 대기)**
+## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 v6 구현 완료 (학습 대기)**, **Memory Attention 진단 도구 구현 완료**
+
+### Memory Attention 진단 — 1단계 문제 존재 증명 (2026-03-25)
+
+- **동기**: 선배 피드백 — P9~P26의 UAMM/SQG가 "degraded modality가 attention을 오염시킨다"는 가정 위에 설계되었지만, 실제 검증 없음
+- **구현**: `MISC/diagnose_memory_attention.py` — SAM2 memory attention의 cross-attention weight를 hooking해서 추출
+  - `RoPEAttention.forward()`를 monkey-patch → manual attention weight 계산 (F.scaled_dot_product_attention은 weight 비노출)
+  - memory token 구성 추적 (어떤 frame=modality에서 온 토큰인지)
+  - Normal vs Degraded 입력 비교, per-layer/per-modality attention mass 통계
+  - 시각화: bar chart, spatial attention map, box plot
+- **초기 결과** (P9 hardaug8_physaug, val 10장, dark_rgb ×0.05):
+  - Frame 2(thermal)의 cross-attention: memory=[img, lidar]
+  - RGB 95% 어둡게 해도 attention 변화 ≤7% — img에 여전히 ~74% attention
+  - 해석: (A) memory attention이 content-insensitive → degraded에 부적절하게 높은 attention 유지, 또는 (B) backbone이 이미 degraded를 유의미하게 인코딩
+- **다음 단계**: zero_rgb, zero_thermal 등 극단적 degradation으로 추가 검증 필요
+
+### P26 v6 구현 완료 — tau_amf 제거, UAMM/AMF weight 통합 (2026-03-25)
+
+- **변경**: tau_amf 파라미터 완전 제거 — UAMM과 AMF가 동일한 `softmax(q_logit_stack / tau_uamm)` weight 사용
+- **수정 파일**: `sam_lora_image_encoder_seg.py` (__init__, Phase 4), configs (×2), scripts (×4)
+- **Feature fusion**: `q_uamm_norm` 재사용 (별도 softmax 계산 제거)
 
 ### P26 v6 설계 수정 — Per-Modal Decoder 역할 분리 + AMF SQG 기반 변경 (2026-03-24)
 

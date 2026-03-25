@@ -10,7 +10,7 @@
     python MISC/physaug_viewer.py --src-dir /path/to/images --src-prefix bl1
 
 컨트롤:
-    ← →        : 소스 이미지 전환
+    ← → / 이미지 슬라이더 : 소스 이미지 전환
     F           : Filter on/off 토글
     W           : Fourier (wave) on/off 토글
     N           : NightSim 결합 on/off 토글
@@ -18,10 +18,12 @@
     S           : 현재 결과를 save_dir에 저장
     Q / ESC     : 종료
 
-슬라이더:
-    sigma x100  : Filter noise 강도 (0~400 → 0.0~4.0)
-    mean_str x10: Fourier wave 강도 (10~200 → 1.0~20.0, 높을수록 약함)
-    decay x100  : Gaussian decay (0~100 → 0.0~1.0)
+슬라이더 (창 하단, 이름이 슬라이더 왼쪽에 표시됨):
+    1.Filter σ     : Random conv 필터 노이즈 (×100 → 0.0~4.0)
+    2.Fourier 강도 : 평면파 perturbation (×10 → 1.0~20.0, 클수록 약함)
+    3.Gaussian decay: 파동 가우시안 감쇠 (×100 → 0.0~1.0)
+    4.NightSim 밝기: NightSim 곱셈 밝기 (×100 → 0.01~0.50)
+    5.이미지 인덱스: 소스 이미지 선택 (0 ~ N-1)
 """
 
 import argparse
@@ -38,6 +40,13 @@ import torch.nn.functional as F
 import torchvision.io as io
 
 WINDOW = 'PhysAug Viewer'
+
+# OpenCV createTrackbar(name, ...) — name이 슬라이더 왼쪽에 표시되는 라벨
+TB_FILTER = '1.Filter σ 노이즈 [x100=0~4.0]'
+TB_FOURIER = '2.Fourier 강도 [x10, 클수록 약함]'
+TB_DECAY = '3.Gaussian decay [x100=0~1]'
+TB_NS = '4.NightSim 밝기 [x100]'
+TB_IMAGE = '5.이미지 인덱스 [0~N-1]'
 
 # ─── PhysAug Core (semseg/augmentations_mm.py의 RandomPhysAug와 동일 로직) ──
 
@@ -215,6 +224,9 @@ class PhysAugViewer:
         self.filter_on = True
         self.fourier_on = True
         self.nightsim_on = True
+        self._need_update = False
+        # 트랙바 콜백이 self.*를 갱신한 뒤에도 메인 루프가 다시 그리도록 _need_update 사용.
+        # (이전 코드는 콜백이 self를 맞춘 뒤 getTrackbarPos 비교가 항상 0이라 갱신 안 됨)
 
     def _load_src(self):
         return load_image(self.src_paths[self.src_idx])
@@ -255,27 +267,46 @@ class PhysAugViewer:
 
     def _on_sigma(self, val):
         self.sigma = val / 100.0
+        self._need_update = True
 
     def _on_mean_str(self, val):
         self.mean_str = max(1.0, val / 10.0)
+        self._need_update = True
 
     def _on_decay(self, val):
         self.decay = val / 100.0
+        self._need_update = True
 
     def _on_ns_brightness(self, val):
         self.ns_brightness = max(0.01, val / 100.0)
+        self._need_update = True
+
+    def _on_src_idx(self, val):
+        n = len(self.src_paths)
+        if n <= 0:
+            return
+        v = int(val)
+        v = max(0, min(n - 1, v))
+        if v != self.src_idx:
+            self.src_idx = v
+            self._need_update = True
 
     def run(self):
         cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
-        cv2.createTrackbar('sigma x100', WINDOW, int(self.sigma * 100), 400, self._on_sigma)
-        cv2.createTrackbar('mean_str x10', WINDOW, int(self.mean_str * 10), 200, self._on_mean_str)
-        cv2.createTrackbar('decay x100', WINDOW, int(self.decay * 100), 100, self._on_decay)
-        cv2.createTrackbar('NS bright x100', WINDOW, int(self.ns_brightness * 100), 50, self._on_ns_brightness)
+        n_img = len(self.src_paths)
+        img_max = max(0, n_img - 1)
 
+        cv2.createTrackbar(TB_FILTER, WINDOW, int(self.sigma * 100), 400, self._on_sigma)
+        cv2.createTrackbar(TB_FOURIER, WINDOW, int(self.mean_str * 10), 200, self._on_mean_str)
+        cv2.createTrackbar(TB_DECAY, WINDOW, int(self.decay * 100), 100, self._on_decay)
+        cv2.createTrackbar(TB_NS, WINDOW, int(self.ns_brightness * 100), 50, self._on_ns_brightness)
+        cv2.createTrackbar(TB_IMAGE, WINDOW, int(self.src_idx), img_max, self._on_src_idx)
+
+        self._need_update = False
         need_update = True
 
         while True:
-            if need_update:
+            if need_update or self._need_update:
                 src = self._load_src()
                 # Filter only
                 filtered = apply_filter(src, self.sigma) if self.filter_on else src.clone()
@@ -296,32 +327,42 @@ class PhysAugViewer:
                 canvas = self._build_layout(src, filtered, fouriered, combined, ns_combined)
                 cv2.imshow(WINDOW, canvas)
                 need_update = False
+                self._need_update = False
 
             key = cv2.waitKey(50) & 0xFF
 
-            # Check slider changes
-            new_sigma = cv2.getTrackbarPos('sigma x100', WINDOW) / 100.0
-            new_mean_str = max(1.0, cv2.getTrackbarPos('mean_str x10', WINDOW) / 10.0)
-            new_decay = cv2.getTrackbarPos('decay x100', WINDOW) / 100.0
-            new_ns = max(0.01, cv2.getTrackbarPos('NS bright x100', WINDOW) / 100.0)
+            # 일부 환경에서 트랙바 콜백이 안 불릴 때를 대비해 폴링 백업
+            new_sigma = cv2.getTrackbarPos(TB_FILTER, WINDOW) / 100.0
+            new_mean_str = max(1.0, cv2.getTrackbarPos(TB_FOURIER, WINDOW) / 10.0)
+            new_decay = cv2.getTrackbarPos(TB_DECAY, WINDOW) / 100.0
+            new_ns = max(0.01, cv2.getTrackbarPos(TB_NS, WINDOW) / 100.0)
+            new_idx = cv2.getTrackbarPos(TB_IMAGE, WINDOW)
+            n_img = len(self.src_paths)
+            if n_img > 0:
+                new_idx = max(0, min(n_img - 1, int(new_idx)))
 
             if (abs(new_sigma - self.sigma) > 0.005 or
                 abs(new_mean_str - self.mean_str) > 0.05 or
                 abs(new_decay - self.decay) > 0.005 or
-                abs(new_ns - self.ns_brightness) > 0.005):
+                abs(new_ns - self.ns_brightness) > 0.005 or
+                (n_img > 0 and new_idx != self.src_idx)):
                 self.sigma = new_sigma
                 self.mean_str = new_mean_str
                 self.decay = new_decay
                 self.ns_brightness = new_ns
+                if n_img > 0:
+                    self.src_idx = new_idx
                 need_update = True
 
             if key == ord('q') or key == 27:
                 break
             elif key == 81 or key == 2:  # Left
                 self.src_idx = (self.src_idx - 1) % len(self.src_paths)
+                cv2.setTrackbarPos(TB_IMAGE, WINDOW, self.src_idx)
                 need_update = True
             elif key == 83 or key == 3:  # Right
                 self.src_idx = (self.src_idx + 1) % len(self.src_paths)
+                cv2.setTrackbarPos(TB_IMAGE, WINDOW, self.src_idx)
                 need_update = True
             elif key == ord('f'):
                 self.filter_on = not self.filter_on
@@ -382,7 +423,7 @@ def main():
     print(f"Initial mean_str: {args.mean_str}")
     print(f"Initial decay : {args.decay}")
     print(f"\nControls:")
-    print(f"  ← →       : Source image 전환")
+    print(f"  ← → / 이미지 슬라이더: Source image 전환")
     print(f"  F          : Filter on/off 토글")
     print(f"  W          : Fourier (wave) on/off 토글")
     print(f"  N          : NightSim 결합 on/off 토글")
