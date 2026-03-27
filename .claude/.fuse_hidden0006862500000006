@@ -13,7 +13,9 @@
       "Bash(grep -r \"modals\" /media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/configs/levine-multiaqua*.yaml)",
       "Bash(grep -n \"MODALS\" /media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/configs/*.yaml)",
       "Bash(grep -n \"MODALS\" /media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/configs/*P9*.yaml)",
-      "Bash(/tmp/experiment_results_summary.txt:*)"
+      "Bash(/tmp/experiment_results_summary.txt:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''MISC/viz_memory_attention.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''val_multiaqua_detailed.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")"
     ]
   }
 }
