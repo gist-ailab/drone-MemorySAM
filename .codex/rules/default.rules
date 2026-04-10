@@ -1,0 +1,70 @@
+# Prompt before potentially irreversible or external-impact commands.
+# Rules are applied outside the sandbox; keep them narrow and explicit.
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "Pushing changes should always be reviewed.",
+    match = [
+        "git push",
+        "git push origin main",
+    ],
+    not_match = [
+        "git status",
+        "git commit -m update",
+    ],
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf", "/"],
+    decision = "forbidden",
+    justification = "Do not delete the filesystem root.",
+    match = [
+        "rm -rf /",
+    ],
+    not_match = [
+        "rm -rf dist",
+        "rm -rf ./tmp",
+    ],
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "prompt",
+    justification = "Recursive deletions should be reviewed before running.",
+    match = [
+        "rm -rf dist",
+        "rm -rf node_modules",
+    ],
+    not_match = [
+        "rm -f file.txt",
+    ],
+)
+
+prefix_rule(
+    pattern = ["npm", ["install", "add"]],
+    decision = "prompt",
+    justification = "Dependency changes should be confirmed.",
+    match = [
+        "npm install",
+        "npm add zod",
+    ],
+    not_match = [
+        "npm test",
+        "npm run lint",
+    ],
+)
+
+prefix_rule(
+    pattern = ["pnpm", ["add", "remove"]],
+    decision = "prompt",
+    justification = "Package manifest changes should be confirmed.",
+    match = [
+        "pnpm add zod",
+        "pnpm remove lodash",
+    ],
+    not_match = [
+        "pnpm test",
+        "pnpm lint",
+    ],
+)

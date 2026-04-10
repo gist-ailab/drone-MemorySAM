@@ -1,0 +1,6 @@
+# User-level Codex configuration
+# Added to make Codex treat CLAUDE.md as a fallback project guidance file
+# when AGENTS.md is not present in a directory.
+
+project_doc_fallback_filenames = ["CLAUDE.md"]
+project_doc_max_bytes = 32768

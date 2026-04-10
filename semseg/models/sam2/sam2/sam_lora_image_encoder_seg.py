@@ -7278,3 +7278,218 @@ class LoRA_Sam_P26(nn.Module):
                 module_new_state_dict = {k: v for k, v in zip(module_keys, module_values)}
                 sam_dict.update(module_new_state_dict)
         self.sam.load_state_dict(sam_dict)
+
+
+class LoRA_Sam_P26_AblB(LoRA_Sam_P26):
+    """
+    LoRA_Sam_P26_AblB: Ablation B — Single LoRA (parameter-matched).
+
+    P26과 동일한 forward / SQG / UAMM / AMF / Per-Modal Decoder / Multi-Scale FPN을
+    상속받고, **SoftMoE LoRA만 Single LoRA로 교체**한다.
+    파라미터 수를 매칭하여 MoE routing의 기여도를 분리 검증.
+
+    제거 (vs P26): SoftMoE LoRA, Modality-Conditioned Gate (modal_embed, cond_dim),
+                   MoE gate collection
+    유지 (상속):   forward, _fuse_fpn_multiscale, _auxiliary_decode_single,
+                   ① SQG / ② UAMM / ③ KL teacher / ④ AMF / ⑤ MemMod / ⑥ MS-FPN / ⑦ per-modal decoder
+
+    P26 forward의 `for layer in self.moe_layers_q + self.moe_layers_v` 구문은 빈
+    ModuleList일 때 자동으로 no-op이 되므로, 빈 더미만 두면 그대로 상속 가능.
+    """
+
+    def __init__(self, sam_model: SAM2Base, r: int, lora_layer=None,
+                 num_modalities=3,
+                 quality_hidden_dim=64, quality_min=0.3,
+                 tau_uamm=1.0, tau_teacher=0.5,
+                 memory_mod=False, amf_mode='sqg_quality',
+                 multi_scale_sqg=True, per_modality_decoder=True):
+        # P26.__init__는 호출하지 않는다 — SoftMoE 생성 경로를 우회해야 함.
+        nn.Module.__init__(self)
+
+        assert r > 0
+        self.lora_layer = lora_layer if lora_layer else list(
+            range(len(sam_model.image_encoder.trunk.blocks))
+        )
+
+        self.num_modalities = num_modalities
+        self.tau_uamm = tau_uamm
+        self.tau_teacher = tau_teacher
+        self.memory_mod = memory_mod
+        self.amf_mode = amf_mode
+        self.multi_scale_sqg = multi_scale_sqg
+        self.per_modality_decoder = per_modality_decoder
+
+        # ── Single LoRA injection (SoftMoE LoRA 자리) ──
+        self.w_As = []
+        self.w_Bs = []
+        for param in sam_model.image_encoder.parameters():
+            param.requires_grad = False
+
+        for t_layer_i, blk in enumerate(sam_model.image_encoder.trunk.blocks):
+            if t_layer_i not in self.lora_layer:
+                continue
+            w_qkv_linear = blk.attn.qkv
+            dim = w_qkv_linear.in_features
+
+            w_a_q = nn.Linear(dim, r, bias=False)
+            w_b_q = nn.Linear(r, dim, bias=False)
+            w_a_v = nn.Linear(dim, r, bias=False)
+            w_b_v = nn.Linear(r, dim, bias=False)
+            self.w_As.extend([w_a_q, w_a_v])
+            self.w_Bs.extend([w_b_q, w_b_v])
+
+            blk.attn.qkv = _LoRA_qkv(w_qkv_linear, w_a_q, w_b_q, w_a_v, w_b_v)
+
+        # LoRA 파라미터는 _LoRA_qkv → self.sam.image_encoder 경로로 등록되므로
+        # 별도 ParameterList는 두지 않음 (이중 카운팅 방지).
+        for w_A in self.w_As:
+            nn.init.kaiming_uniform_(w_A.weight, a=math.sqrt(5))
+        for w_B in self.w_Bs:
+            nn.init.zeros_(w_B.weight)
+
+        # P26 forward는 self.moe_layers_q/v를 순회하므로 빈 더미를 둔다 (no-op).
+        self.moe_layers_q = nn.ModuleList()
+        self.moe_layers_v = nn.ModuleList()
+
+        self.sam = sam_model
+
+        # ── ⑦ Per-Modality Decoder (학습 전용 auxiliary) ──
+        if per_modality_decoder:
+            self.per_modal_decoders = nn.ModuleList([
+                copy.deepcopy(sam_model.sam_mask_decoder)
+                for _ in range(num_modalities)
+            ])
+
+        # ── ⑥ Multi-Scale FPN projection ──
+        use_high_res = getattr(self.sam, "use_high_res_features_in_sam", False)
+        if use_high_res:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim // 8
+        else:
+            fusion_dim = self.sam.sam_mask_decoder.transformer_dim
+
+        if multi_scale_sqg and use_high_res:
+            d_model = self.sam.sam_mask_decoder.transformer_dim
+            self.fpn_proj0 = nn.Conv2d(d_model, fusion_dim, 1)
+            self.fpn_proj1 = nn.Conv2d(d_model, fusion_dim, 1)
+            self.fpn_proj2 = nn.Conv2d(d_model, fusion_dim, 1)
+            sqg_in_channels = fusion_dim * 3
+        else:
+            sqg_in_channels = fusion_dim
+
+        # ── ① Per-modality SpatialQualityGating ──
+        self.quality_gatings = nn.ModuleList([
+            SpatialQualityGating(
+                in_channels=sqg_in_channels,
+                hidden_dim=quality_hidden_dim,
+                min_quality=quality_min,
+            )
+            for _ in range(num_modalities)
+        ])
+
+        # Visualization buffers (P26 forward가 채움)
+        self._last_uamm_scores = None
+        self._last_amf_weights = None
+        self._last_moe_gates = None
+        self._last_quality_maps = None
+        self._last_per_modal_outputs = None
+        self._last_per_modal_feats = None
+        self._last_uamm_spatial = None
+        self._last_amf_spatial = None
+        self._last_entropy_maps = None
+
+    def _encode_single_modality(self, img, modal_idx_tensor=None):
+        """P26.forward에서 호출되는 시그니처와 호환 — modal_idx_tensor는 무시한다.
+        Single LoRA는 modality condition이 없음."""
+        emb = self.sam.image_encoder(img)
+        use_hr = getattr(self.sam, "use_high_res_features_in_sam", False)
+
+        raw_fpn = []
+        if self.multi_scale_sqg and use_hr:
+            raw_fpn = [f.clone() for f in emb['backbone_fpn']]
+
+        if use_hr:
+            emb["backbone_fpn"][0] = self.sam.sam_mask_decoder.conv_s0(emb["backbone_fpn"][0])
+            emb["backbone_fpn"][1] = self.sam.sam_mask_decoder.conv_s1(emb["backbone_fpn"][1])
+
+        return tuple(emb['backbone_fpn']) + tuple(emb['vision_pos_enc']) + tuple(raw_fpn)
+
+    # forward, _fuse_fpn_multiscale, _auxiliary_decode_single 는 P26에서 그대로 상속.
+
+    def save_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+
+        a_tensors = {f"w_a_{i:03d}": w.weight for i, w in enumerate(self.w_As)}
+        b_tensors = {f"w_b_{i:03d}": w.weight for i, w in enumerate(self.w_Bs)}
+
+        quality_gating_tensors = {
+            f"quality_gating_{idx}.{k}": v
+            for idx, qg in enumerate(self.quality_gatings)
+            for k, v in qg.state_dict().items()
+        }
+
+        extra_tensors = {}
+        if self.multi_scale_sqg and hasattr(self, 'fpn_proj0'):
+            for proj_name in ('fpn_proj0', 'fpn_proj1', 'fpn_proj2'):
+                for k, v in getattr(self, proj_name).state_dict().items():
+                    extra_tensors[f"{proj_name}.{k}"] = v
+
+        model_ref = self.sam.module if isinstance(
+            self.sam, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)
+        ) else self.sam
+        state_dict = model_ref.state_dict()
+        prompt_encoder_tensors = {k: v for k, v in state_dict.items() if 'prompt_encoder' in k}
+        mask_decoder_tensors = {k: v for k, v in state_dict.items() if 'mask_decoder' in k}
+
+        per_decoder_tensors = {}
+        if self.per_modality_decoder:
+            for idx, dec in enumerate(self.per_modal_decoders):
+                for k, v in dec.state_dict().items():
+                    per_decoder_tensors[f"per_modal_decoder_{idx}.{k}"] = v
+
+        torch.save({
+            **a_tensors, **b_tensors,
+            **quality_gating_tensors, **extra_tensors,
+            **prompt_encoder_tensors, **mask_decoder_tensors,
+            **per_decoder_tensors,
+        }, filename)
+
+    def load_lora_parameters(self, filename: str) -> None:
+        assert filename.endswith(".pt") or filename.endswith('.pth')
+        state_dict = torch.load(filename)
+
+        for i, w_A in enumerate(self.w_As):
+            key = f"w_a_{i:03d}"
+            if key in state_dict:
+                w_A.weight = Parameter(state_dict[key])
+        for i, w_B in enumerate(self.w_Bs):
+            key = f"w_b_{i:03d}"
+            if key in state_dict:
+                w_B.weight = Parameter(state_dict[key])
+
+        for idx, qg in enumerate(self.quality_gatings):
+            prefix = f"quality_gating_{idx}."
+            sub = {k.replace(prefix, ""): v for k, v in state_dict.items() if k.startswith(prefix)}
+            if sub:
+                qg.load_state_dict(sub)
+
+        if hasattr(self, 'fpn_proj0'):
+            for proj_name in ('fpn_proj0', 'fpn_proj1', 'fpn_proj2'):
+                prefix = f"{proj_name}."
+                sub = {k.replace(prefix, ""): v for k, v in state_dict.items() if k.startswith(prefix)}
+                if sub:
+                    getattr(self, proj_name).load_state_dict(sub)
+
+        if self.per_modality_decoder:
+            for idx, dec in enumerate(self.per_modal_decoders):
+                prefix = f"per_modal_decoder_{idx}."
+                sub = {k.replace(prefix, ""): v for k, v in state_dict.items() if k.startswith(prefix)}
+                if sub:
+                    dec.load_state_dict(sub)
+
+        sam_dict = self.sam.state_dict()
+        for module_name in ('prompt_encoder', 'mask_decoder'):
+            module_keys = [k for k in sam_dict.keys() if module_name in k]
+            module_values = [state_dict[k] for k in module_keys if k in state_dict]
+            if len(module_keys) == len(module_values):
+                sam_dict.update({k: v for k, v in zip(module_keys, module_values)})
+        self.sam.load_state_dict(sam_dict)

@@ -1,6 +1,6 @@
 # 실험 기록 (Experiment Log)
 
-> 최종 업데이트: 2026-03-23
+> 최종 업데이트: 2026-04-10
 
 ## MACVi Challenge 평가 지표
 
@@ -9,6 +9,64 @@
 - Val: 주간 145장 (로컬 평가 가능)
 - Test: 야간 (challenge server에서만 평가, `--macvi` 플래그로 제출 파일 생성)
 - 클래스: Static(0), Dynamic(1), Water(2), Sky(3)
+
+---
+
+## 진행 중 실험 계획
+
+### P26 DELIVER AMP on + GC off 단일 GPU 메모리 프로브 (2026-04-10)
+
+- **목적**: `configs/levine-deliver_rgbdel_P26_physaug.yaml` 기준 P26 DELIVER를 단일 24GB GPU(RTX TITAN / RTX 3090)에서 실행할 때,
+  - baseline (`AMP=false`, `GRADIENT_CHECKPOINT=true`)
+  - target (`AMP=true`, `GRADIENT_CHECKPOINT=false`)
+  두 조건의 peak VRAM / reserved VRAM / step time을 직접 비교
+- **배경 분석**:
+  - P26는 모달리티별 encoder forward와 auxiliary decode를 추가로 수행하므로 activation 메모리 사용량이 큼
+  - 현재 DELIVER config는 4모달, `BATCH_SIZE=2`, `IMAGE_SIZE=1024`, `GRADIENT_CHECKPOINT=true`
+  - 사전 추정상 checkpoint를 단독으로 끄면 24GB 카드에서 OOM 위험이 높고, AMP를 함께 켠 경우만 현실적인 후보
+- **추가 파일**:
+  - `tmp/p26_amp_gc_probe/probe_p26_memory.py`
+  - `tmp/p26_amp_gc_probe/levine-deliver_rgbdel_P26_physaug_single_gpu_baseline.yaml`
+  - `tmp/p26_amp_gc_probe/levine-deliver_rgbdel_P26_physaug_amp_on_gc_off.yaml`
+- **프로브 방식**:
+  - 실제 학습 코드와 동일하게 dataset/model/loss/optimizer를 구성
+  - warmup step 이후 측정 step에서 `torch.cuda.max_memory_allocated()` / `torch.cuda.max_memory_reserved()` / step time 출력
+  - OOM 발생 시 `status=oom`으로 종료
+  - `DDP=false`, 평가 비활성화(`EVAL_INTERVAL=999999`)로 step-only 비교
+- **실행 예시**:
+  - `python tmp/p26_amp_gc_probe/probe_p26_memory.py --cfg tmp/p26_amp_gc_probe/levine-deliver_rgbdel_P26_physaug_single_gpu_baseline.yaml`
+  - `python tmp/p26_amp_gc_probe/probe_p26_memory.py --cfg tmp/p26_amp_gc_probe/levine-deliver_rgbdel_P26_physaug_amp_on_gc_off.yaml`
+- **현재 상태**:
+  - 스크립트 작성 완료
+  - `python -m py_compile tmp/p26_amp_gc_probe/probe_p26_memory.py` 통과
+  - `MMSS_SAM` 환경에서 `--help` import/CLI 통과
+- **1차 실행 결과 (RTX TITAN, 단일 GPU, 여유 VRAM이 약 18GB 수준인 환경)**:
+  - baseline config (`AMP=false`, `GRADIENT_CHECKPOINT=true`)도 OOM
+  - run A: `peak_allocated_mb=16453.7`, `peak_reserved_mb=16684.0`, 추가 `20 MiB` 할당에서 OOM
+  - run B: `peak_allocated_mb=17262.2`, `peak_reserved_mb=17516.0`, 추가 `64 MiB` 할당에서 OOM
+  - 두 run의 차이는 random batch / augmentation / allocator 상태 차이로 해석하는 것이 안전
+- **2차 실행 결과 (RTX TITAN, 3모달 lower-bound: `['img', 'depth', 'event']`)**:
+  - baseline (`AMP=false`, `GRADIENT_CHECKPOINT=true`)는 통과
+  - warmup: `peak_allocated_mb=15888.3`, `peak_reserved_mb=17470.0`, `step_time_sec=5.70`
+  - measure step 1: `peak_allocated_mb=16563.1`, `peak_reserved_mb=17404.0`, `step_time_sec=5.21`
+  - measure step 2: `peak_allocated_mb=16564.3`, `peak_reserved_mb=17636.0`, `step_time_sec=5.35`
+  - 동일한 3모달에서 target (`AMP=true`, `GRADIENT_CHECKPOINT=false`)는 OOM
+  - target OOM 시점: `peak_allocated_mb=16913.4`, `peak_reserved_mb=17398.0`, 추가 `56 MiB` 할당 실패
+- **해석**:
+  - 현재 TITAN 환경에서는 이미 다른 프로세스가 약 6GB를 점유 중이라 baseline조차 끝까지 못 돈 것으로 보임
+  - baseline 자체의 PyTorch peak는 대략 16.5~17.5GB 수준으로 관측되어, 같은 24GB 카드라도 여유 VRAM이 6GB 더 확보되면 baseline은 통과 가능성이 높음
+  - 3모달 lower-bound에서도 `AMP=true + GRADIENT_CHECKPOINT=false`가 baseline보다 메모리 여유가 좋아지지 않았고 OOM이 발생함
+  - 따라서 TITAN 기준으로는 AMP의 절감폭이 checkpoint 해제로 늘어난 activation 메모리를 상쇄하지 못한 것으로 해석하는 편이 안전
+  - 다만 TITAN은 FlashAttention 경로가 없으므로, 3090(Ampere)에서 완전히 동일하다고 단정할 수는 없음
+  - P26는 모달리티 수 `m`에 대해 encoder / per-modal auxiliary decode / shared decoder track_step가 반복되어 메모리 사용이 크게 증가함
+- **다음 우선순위**:
+  - 1. 서버에서 같은 4모달 baseline을 그대로 재실행
+  - 2. baseline 통과 시, 같은 4모달 `AMP on + GC off`를 그대로 실행
+  - 3. 추가 모달리티 축소(예: 2모달)는 lower-bound 진단용 의미만 있으며, 4모달 24GB 적합성의 직접 근거로 사용하지 않음
+- **판정 기준**:
+  - target config가 warmup + 측정 step을 OOM 없이 완료하면 "3090/TITAN 24GB에서 실험 가능성 있음"
+  - peak allocated가 23GB 근처까지 올라가면 장시간 학습 안정성은 별도 검증 필요
+  - baseline 대비 속도 개선이 있어도 reserved 메모리 여유가 1GB 미만이면 실사용은 보수적으로 판단
 
 ---
 

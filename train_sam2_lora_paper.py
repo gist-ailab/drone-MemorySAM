@@ -40,6 +40,145 @@ from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
 torch.autograd.set_detect_anomaly(True)
 
 
+# Models that consume gt_mask in forward() and emit a quality-gate dict.
+# (P24/P25/P26/P26_AblB share the same train-loop contract.)
+QUALITY_GATE_MODELS = (
+    'LoRA_Sam_P24',
+    'LoRA_Sam_P25',
+    'LoRA_Sam_P26',
+    'LoRA_Sam_P26_AblB',
+)
+
+
+def _unpack_model_output(model_out):
+    """Normalize the variable-arity tuples returned by different LoRA_Sam_P* models
+    into a uniform dict so the train loop can stay flat.
+
+    Returns dict with keys:
+      output, m_feat,
+      aux_outputs, amf_weights, gate_dists  → P10/P11
+      aux_logits_list                       → P13/P14/P15/P16
+      gate_loss_data                        → P24/P25/P26/P26_AblB
+    """
+    parsed = {
+        'output': None, 'm_feat': None,
+        'aux_outputs': None, 'amf_weights': None, 'gate_dists': None,
+        'aux_logits_list': None, 'gate_loss_data': None,
+    }
+    n = len(model_out)
+    if n == 5:
+        # P11: (output, m_feat, aux_outputs, amf_weights, gate_dists)
+        parsed['output'], parsed['m_feat'], parsed['aux_outputs'], \
+            parsed['amf_weights'], parsed['gate_dists'] = model_out
+    elif n == 4:
+        # P10: (output, m_feat, aux_outputs, amf_weights)
+        parsed['output'], parsed['m_feat'], parsed['aux_outputs'], parsed['amf_weights'] = model_out
+    elif n == 3:
+        # P13/14/15/16: (output, m_feat, aux_logits_list)
+        # P24/25/26:    (output, m_feat, gate_loss_data:dict)
+        parsed['output'], parsed['m_feat'], third = model_out
+        if isinstance(third, dict):
+            parsed['gate_loss_data'] = third
+        else:
+            parsed['aux_logits_list'] = third
+    else:
+        # Default: (output, m_feat)
+        parsed['output'], parsed['m_feat'] = model_out
+    return parsed
+
+
+def _compute_quality_gate_loss(gate_loss_data, quality_cfg, device):
+    """Compute spatial quality-gate loss for P24/P25/P26 family.
+
+    Two regimes:
+      - 'kl' (P26): KL divergence between predicted SQG distribution and CE-derived target.
+      - else (P24/P25): per-modality BCE between raw quality logit and exp(-CE) target.
+    """
+    if gate_loss_data is None:
+        return torch.tensor(0.0, device=device)
+
+    ignore_mask = gate_loss_data.get('ignore_mask')
+
+    if gate_loss_data.get('loss_type') == 'kl':
+        pred_logits = gate_loss_data['predicted_logits']        # list of (B,1,H,W)
+        target_dist = gate_loss_data['quality_target_dist']     # (m,B,1,H,W)
+        tau_uamm = quality_cfg.get('TAU_UAMM', 1.0)
+
+        pred_stack = torch.stack(pred_logits, dim=0)            # (m,B,1,H,W)
+        pred_log_dist = F.log_softmax(pred_stack / tau_uamm, dim=0)
+        kl_raw = F.kl_div(pred_log_dist, target_dist.detach(), reduction='none')
+
+        if ignore_mask is None:
+            return kl_raw.mean()
+        valid = ~ignore_mask                                    # (B,1,H,W)
+        kl_raw = kl_raw * valid.unsqueeze(0).float()
+        n_valid = valid.float().sum().clamp(min=1.0) * len(pred_logits)
+        return kl_raw.sum() / n_valid
+
+    # P24/P25: per-modality BCE
+    predicted_list = gate_loss_data['predicted']                # raw logits
+    target_list = gate_loss_data['target']                      # exp(-CE) ∈ (0,1]
+    loss = torch.tensor(0.0, device=device)
+    for pred_q, tgt_q in zip(predicted_list, target_list):
+        bce = F.binary_cross_entropy_with_logits(
+            pred_q, tgt_q.detach(), reduction='none')           # (B,1,H,W)
+        if ignore_mask is None:
+            loss = loss + bce.mean()
+        else:
+            valid = ~ignore_mask
+            n_valid = valid.float().sum().clamp(min=1.0)
+            loss = loss + (bce * valid.float()).sum() / n_valid
+    return loss / len(predicted_list)
+
+
+def _compute_p13_aux_loss(aux_logits_list, lbl, device):
+    """Average per-modality CE for P13/14/15/16 aux heads."""
+    if aux_logits_list is None:
+        return torch.tensor(0.0, device=device)
+    lbl_size = lbl.shape[-2:]
+    total = torch.tensor(0.0, device=device)
+    for al in aux_logits_list:
+        al_up = F.interpolate(al, size=lbl_size, mode='bilinear', align_corners=False)
+        total = total + F.cross_entropy(al_up, lbl, ignore_index=255)
+    return total / len(aux_logits_list)
+
+
+def _compute_p10_gating_loss(aux_outputs, amf_weights, lbl, loss_fn):
+    """P10/P11: Oracle KL on AMF weights + auxiliary segmentation loss."""
+    if aux_outputs is None or amf_weights is None:
+        return None
+    lbl_size = lbl.shape[-2:]
+    aux_losses_per_img = []
+    for ao in aux_outputs:
+        ao_up = F.interpolate(ao, size=lbl_size, mode='bilinear', align_corners=False)
+        loss_per_img = F.cross_entropy(
+            ao_up, lbl, ignore_index=255, reduction='none'
+        ).mean(dim=[-2, -1])  # (B,)
+        aux_losses_per_img.append(loss_per_img)
+
+    aux_losses_stacked = torch.stack(aux_losses_per_img, dim=1)  # (B, m)
+    with torch.no_grad():
+        oracle = F.softmax(-aux_losses_stacked.detach(), dim=1)  # (B, m)
+
+    gating_kl = F.kl_div((amf_weights + 1e-8).log(), oracle, reduction='batchmean')
+    aux_seg = sum(
+        loss_fn(F.interpolate(ao, size=lbl_size, mode='bilinear', align_corners=False), lbl)
+        for ao in aux_outputs
+    ) / len(aux_outputs)
+    return gating_kl + 0.3 * aux_seg
+
+
+def _compute_p11_mi_loss(gate_dists, device):
+    """P11: MI loss = conditional entropy − marginal entropy (push experts apart)."""
+    if gate_dists is None or len(gate_dists) <= 1:
+        return torch.tensor(0.0, device=device)
+    stacked = torch.stack(gate_dists, dim=0)                    # (m, E)
+    cond_entropy = -(stacked * (stacked + 1e-8).log()).sum(dim=-1).mean()
+    marginal = stacked.mean(dim=0)                              # (E,)
+    marg_entropy = -(marginal * (marginal + 1e-8).log()).sum(dim=-1)
+    return cond_entropy - marg_entropy
+
+
 class PrototypeSegmentation:
     def __init__(self, num_classes, feature_dim):
         self.num_classes = num_classes
@@ -639,172 +778,76 @@ def main(cfg, gpu, save_dir):
             lbl = lbl.to(device)
             
             with autocast(enabled=train_cfg['AMP']):
-                # P11: forward가 (output, m_feat, aux_outputs, amf_weights, gate_dists) 리턴
-                # P10: forward가 (output, m_feat, aux_outputs, amf_weights) 리턴
-                # P13/P14/P15/P16: forward가 (output, m_feat, aux_logits_list) 리턴
-                # P24: forward가 (output, m_feat, gate_loss_data:dict) 리턴
-                # 그 외: (output, m_feat) 리턴
-                is_p24 = (lora_model_name in ('LoRA_Sam_P24', 'LoRA_Sam_P25', 'LoRA_Sam_P26'))
-                if is_p24:
+                # Quality-gate models (P24/P25/P26/P26_AblB) need gt_mask in forward.
+                uses_quality_gate = (lora_model_name in QUALITY_GATE_MODELS)
+                if uses_quality_gate:
                     model_out = model(sample, multimask_output=True, gt_mask=lbl)
                 else:
                     model_out = model(sample, multimask_output=True)
-                p24_gate_loss_data = None
-                if len(model_out) == 5:
-                    output, m_feat, aux_outputs, amf_weights, gate_dists = model_out
-                    p13_aux_logits = None
-                elif len(model_out) == 4:
-                    output, m_feat, aux_outputs, amf_weights = model_out
-                    gate_dists = None
-                    p13_aux_logits = None
-                elif len(model_out) == 3:
-                    output, m_feat, third = model_out
-                    if isinstance(third, dict):
-                        # [P24] gate_loss_data dict
-                        p24_gate_loss_data = third
-                        p13_aux_logits = None
-                    else:
-                        # [P13] aux_logits_list
-                        p13_aux_logits = third
-                    aux_outputs, amf_weights = None, None
-                    gate_dists = None
-                else:
-                    output, m_feat = model_out
-                    aux_outputs, amf_weights = None, None
-                    gate_dists = None
-                    p13_aux_logits = None
-                logits = output
 
-                loss_orig = loss_fn(logits, lbl)
+                parsed = _unpack_model_output(model_out)
+                output = parsed['output']
+                m_feat = parsed['m_feat']
+                aux_outputs = parsed['aux_outputs']            # P10/P11
+                amf_weights = parsed['amf_weights']            # P10/P11
+                gate_dists = parsed['gate_dists']              # P11
+                aux_logits_list = parsed['aux_logits_list']    # P13/14/15/16
+                gate_loss_data = parsed['gate_loss_data']      # P24/P25/P26
+
+                loss_orig = loss_fn(output, lbl)
                 protoloss = prototypeseg.compute_loss(m_feat, lbl) * 256 * 256
 
-                # [P10/P11] Gating Auxiliary Loss (oracle KL + aux seg)
-                gating_loss = torch.tensor(0.0, device=device)
-                if aux_outputs is not None and amf_weights is not None:
-                    lbl_size = lbl.shape[-2:]
-                    aux_losses_per_img = []
-                    for ao in aux_outputs:
-                        ao_up = F.interpolate(ao, size=lbl_size,
-                                              mode='bilinear', align_corners=False)
-                        loss_per_img = F.cross_entropy(
-                            ao_up, lbl, ignore_index=255, reduction='none'
-                        ).mean(dim=[-2, -1])  # (B,)
-                        aux_losses_per_img.append(loss_per_img)
+                # [P10/P11] Gating auxiliary (oracle KL + aux seg)
+                gating_aux = _compute_p10_gating_loss(aux_outputs, amf_weights, lbl, loss_fn)
+                gating_loss = gating_aux if gating_aux is not None else torch.tensor(0.0, device=device)
 
-                    aux_losses_stacked = torch.stack(aux_losses_per_img, dim=1)  # (B, m)
-                    with torch.no_grad():
-                        oracle = F.softmax(-aux_losses_stacked.detach(), dim=1)  # (B, m)
+                # [P11] MI routing loss
+                mi_loss = _compute_p11_mi_loss(gate_dists, device)
 
-                    amf = amf_weights  # (B, m), gradient 유지
-                    gating_kl = F.kl_div(
-                        (amf + 1e-8).log(), oracle, reduction='batchmean'
-                    )
-                    aux_seg = sum(
-                        loss_fn(F.interpolate(ao, size=lbl_size,
-                                              mode='bilinear', align_corners=False), lbl)
-                        for ao in aux_outputs
-                    ) / len(aux_outputs)
+                # [P13/14/15/16] Aux segmentation CE
+                p13_aux_loss = _compute_p13_aux_loss(aux_logits_list, lbl, device)
 
-                    gating_loss = gating_kl + 0.3 * aux_seg
-
-                # [P11] MI Routing Loss: MoE expert specialization
-                mi_loss = torch.tensor(0.0, device=device)
-                if gate_dists is not None and len(gate_dists) > 1:
-                    stacked = torch.stack(gate_dists, dim=0)  # (m, E)
-
-                    cond_ent = -(stacked * (stacked + 1e-8).log()).sum(dim=-1)  # (m,)
-                    cond_entropy = cond_ent.mean()
-
-                    marginal = stacked.mean(dim=0)  # (E,)
-                    marg_entropy = -(marginal * (marginal + 1e-8).log()).sum(dim=-1)
-
-                    # MI = marg_entropy - cond_entropy → maximize → minimize (cond - marg)
-                    mi_loss = cond_entropy - marg_entropy
-
-                # [P13] Aux CE Loss: aux head가 각 modality에서 segmentation 학습
-                p13_aux_loss = torch.tensor(0.0, device=device)
-                if p13_aux_logits is not None:
-                    lbl_size = lbl.shape[-2:]
-                    for al in p13_aux_logits:
-                        al_up = F.interpolate(al, size=lbl_size,
-                                              mode='bilinear', align_corners=False)
-                        p13_aux_loss = p13_aux_loss + F.cross_entropy(
-                            al_up, lbl, ignore_index=255)
-                    p13_aux_loss = p13_aux_loss / len(p13_aux_logits)
-
-                # [P24/P25/P26] Spatial Quality Gate Loss
-                p24_quality_loss = torch.tensor(0.0, device=device)
-                if p24_gate_loss_data is not None:
-                    if p24_gate_loss_data.get('loss_type') == 'kl':
-                        # [P26] KL divergence: pred distribution vs teacher distribution
-                        pred_logits = p24_gate_loss_data['predicted_logits']  # list of (B,1,H,W)
-                        target_dist = p24_gate_loss_data['quality_target_dist']  # (m,B,1,H,W)
-                        ignore_mask = p24_gate_loss_data.get('ignore_mask')
-                        quality_cfg = cfg['MODEL'].get('QUALITY_GATE', {})
-                        tau_uamm = quality_cfg.get('TAU_UAMM', 1.0)
-                        pred_stack = torch.stack(pred_logits, dim=0)  # (m,B,1,H,W)
-                        pred_log_dist = F.log_softmax(pred_stack / tau_uamm, dim=0)
-                        # KL with ignore mask
-                        kl_raw = F.kl_div(pred_log_dist, target_dist.detach(), reduction='none')  # (m,B,1,H,W)
-                        if ignore_mask is not None:
-                            valid = ~ignore_mask  # (B,1,H,W)
-                            kl_raw = kl_raw * valid.unsqueeze(0).float()
-                            n_valid = valid.float().sum().clamp(min=1.0) * len(pred_logits)
-                            p24_quality_loss = kl_raw.sum() / n_valid
-                        else:
-                            p24_quality_loss = kl_raw.mean()
-                    else:
-                        # [P24/P25] BCE per-modality
-                        predicted_list = p24_gate_loss_data['predicted']   # raw logits
-                        target_list = p24_gate_loss_data['target']         # exp(-CE) ∈ (0,1]
-                        ignore_mask = p24_gate_loss_data.get('ignore_mask')  # (B,1,H,W) bool
-                        for pred_q, tgt_q in zip(predicted_list, target_list):
-                            bce = F.binary_cross_entropy_with_logits(
-                                pred_q, tgt_q.detach(), reduction='none')  # (B,1,H,W)
-                            if ignore_mask is not None:
-                                valid = ~ignore_mask
-                                bce = bce * valid.float()
-                                n_valid = valid.float().sum().clamp(min=1.0)
-                                p24_quality_loss = p24_quality_loss + bce.sum() / n_valid
-                            else:
-                                p24_quality_loss = p24_quality_loss + bce.mean()
-                        p24_quality_loss = p24_quality_loss / len(predicted_list)
+                # [P24/P25/P26] Spatial quality-gate loss
+                quality_cfg = cfg['MODEL'].get('QUALITY_GATE', {})
+                quality_gate_loss = _compute_quality_gate_loss(gate_loss_data, quality_cfg, device)
 
                 # [P26 v6] Per-modal auxiliary CE loss
-                p26_aux_ce_loss = torch.tensor(0.0, device=device)
-                if p24_gate_loss_data is not None and 'aux_ce_losses' in p24_gate_loss_data:
-                    aux_ce_list = p24_gate_loss_data['aux_ce_losses']
-                    p26_aux_ce_loss = sum(aux_ce_list) / len(aux_ce_list)
+                if gate_loss_data is not None and 'aux_ce_losses' in gate_loss_data:
+                    aux_ce_list = gate_loss_data['aux_ce_losses']
+                    aux_ce_loss = sum(aux_ce_list) / len(aux_ce_list)
+                else:
+                    aux_ce_loss = torch.tensor(0.0, device=device)
 
-                # 전체 Loss
+                # Aggregate
                 total_loss_unscaled = (loss_orig + protoloss
                                        + lambda_gate * gating_loss
                                        + lambda_mi * mi_loss
                                        + lambda_aux * p13_aux_loss
-                                       + lambda_gate * p24_quality_loss
-                                       + lambda_aux_ce * p26_aux_ce_loss)
+                                       + lambda_gate * quality_gate_loss
+                                       + lambda_aux_ce * aux_ce_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)
-            if (is_p24 and p24_gate_loss_data is not None and iter == 0
-                    and ((train_cfg['DDP'] and torch.distributed.get_rank() == 0)
-                         or (not train_cfg['DDP']))):
+            is_rank0 = (not train_cfg['DDP']) or torch.distributed.get_rank() == 0
+            if uses_quality_gate and gate_loss_data is not None and iter == 0 and is_rank0:
                 try:
-                    # P26 has different dict keys — adapt to vis function format
-                    vis_data = p24_gate_loss_data
-                    if p24_gate_loss_data.get('loss_type') == 'kl':
+                    # P26 KL-mode emits different dict keys; adapt to vis function format.
+                    if gate_loss_data.get('loss_type') == 'kl':
+                        pred_logits = gate_loss_data['predicted_logits']
+                        target_dist = gate_loss_data['quality_target_dist']
                         vis_data = {
-                            'predicted': p24_gate_loss_data['predicted_logits'],
-                            'target': [p24_gate_loss_data['quality_target_dist'][i]
-                                       for i in range(len(p24_gate_loss_data['predicted_logits']))],
+                            'predicted': pred_logits,
+                            'target': [target_dist[i] for i in range(len(pred_logits))],
                         }
+                    else:
+                        vis_data = gate_loss_data
                     save_p24_quality_vis(
                         save_dir, epoch, vis_data, sample,
                         dataset_cfg.get('MODALS', [f'mod{i}' for i in range(len(sample))]),
                         mode='train',
                     )
                 except Exception as e:
-                    print(f"[P24 vis] Warning: {e}")
+                    print(f"[quality-gate vis] Warning: {e}")
 
             scaler.scale(loss).backward()
             if (iter + 1) % accumulation_steps == 0:
@@ -827,8 +870,8 @@ def main(cfg, gpu, save_dir):
             proto_loss += protoloss.item()
             gate_loss_accum += gating_loss.item()
             mi_loss_accum += mi_loss.item()
-            aux_loss_accum += p13_aux_loss.item() + p24_quality_loss.item()
-            aux_ce_loss_accum += p26_aux_ce_loss.item()
+            aux_loss_accum += p13_aux_loss.item() + quality_gate_loss.item()
+            aux_ce_loss_accum += aux_ce_loss.item()
 
             desc = (
                 f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "
@@ -956,7 +999,7 @@ def main(cfg, gpu, save_dir):
                 model.eval()
                 val_loss_sum = 0.0
                 val_n = 0
-                p24_val_vis_done = False
+                quality_vis_done = False
                 with torch.no_grad():
                     for val_imgs, val_lbls in valloader:
                         val_imgs = [x.to(device) for x in val_imgs]
@@ -967,14 +1010,14 @@ def main(cfg, gpu, save_dir):
                         vl_ce = loss_fn(val_logits, val_lbls)
                         vl_proto = prototypeseg.compute_loss(val_feat, val_lbls) * 256 * 256
                         val_loss_sum += (vl_ce + vl_proto).item()
-                        # [P24] Val quality vis: 1st batch only
-                        if is_p24 and not p24_val_vis_done:
-                            p24_val_vis_done = True
-                            _m_vis = model.module if hasattr(model, 'module') else model
-                            if hasattr(_m_vis, '_last_quality_maps') and _m_vis._last_quality_maps is not None:
+                        # [P24/P25/P26] Val quality vis: 1st batch only
+                        if uses_quality_gate and not quality_vis_done:
+                            quality_vis_done = True
+                            model_unwrapped = model.module if hasattr(model, 'module') else model
+                            qmaps = getattr(model_unwrapped, '_last_quality_maps', None)
+                            if qmaps is not None:
                                 try:
-                                    import numpy as np
-                                    val_qmaps = [torch.from_numpy(q) for q in _m_vis._last_quality_maps]
+                                    val_qmaps = [torch.from_numpy(q) for q in qmaps]
                                     save_p24_quality_vis(
                                         save_dir, epoch,
                                         {'predicted': val_qmaps},
@@ -983,7 +1026,7 @@ def main(cfg, gpu, save_dir):
                                         mode='val',
                                     )
                                 except Exception as e:
-                                    print(f"[P24 val vis] Warning: {e}")
+                                    print(f"[quality-gate val vis] Warning: {e}")
                         val_n += 1
                 val_loss_avg = val_loss_sum / max(val_n, 1)
                 val_losses.append((epoch + 1, val_loss_avg))

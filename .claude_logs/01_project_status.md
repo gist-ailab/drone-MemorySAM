@@ -1,6 +1,141 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-03-25
+> 최종 업데이트: 2026-04-10
+
+### P26 Ablation B — Single LoRA (Parameter-Matched) 구현 완료 (2026-04-10)
+
+**동기 — 리뷰어 예상 비판 대응**
+
+P26 SoftMoE LoRA (4 experts × rank 4)의 성능 향상이 단순 파라미터 증가 효과인지,
+MoE routing의 가치인지 분리 검증 필요. 동일 파라미터 수의 Single LoRA 대조군 구축.
+
+**파라미터 매칭 결과** (DELIVER, 4 modalities)
+
+| 컴포넌트 | P26 (SoftMoE 4×r4, cond_dim=8) | AblB (Single LoRA r=18) |
+|---|---:|---:|
+| LoRA/MoE+embed | **719,648** | **717,696** |
+| SQG | 369,412 | 369,412 |
+| Per-modal decoder | 28,680,296 | 28,680,296 |
+| FPN proj | 24,672 | 24,672 |
+| **Total trainable** | **44,475,587** | **44,473,635** |
+
+- LoRA 파라미터 매칭률: **99.7%** (차이 1,952개)
+- Total 파라미터 차이: **0.00%**
+- SQG/decoder/FPN 등 나머지 모든 컴포넌트 동일
+
+**구현 변경**
+
+- **새 클래스**: `LoRA_Sam_P26_AblB` ([sam_lora_image_encoder_seg.py:7283+](semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py))
+  - P26의 Phase 1~4 전체 forward flow 동일 유지
+  - SoftMoE LoRA → `_LoRA_qkv` (Single LoRA r=18)로 교체
+  - 제거: `modal_embed`, `cond_dim`, `set_condition()`, MoE gate collection
+  - 유지: ① Per-Modality SQG, ② UAMM softmax, ③ KL teacher loss + aux CE, ④ AMF (sqg_quality), ⑥ Multi-Scale FPN, ⑦ Per-Modality Decoder
+- **train script**: [`train_sam2_lora_paper.py:647`](train_sam2_lora_paper.py#L647) `is_p24` 리스트에 `'LoRA_Sam_P26_AblB'` 추가
+- **신규 config**: [`configs/levine-deliver_rgbdel_P26_AblB_physaug.yaml`](configs/levine-deliver_rgbdel_P26_AblB_physaug.yaml) — DELIVER, LORA_R=18
+
+**기각 가설 (해석 전략)**
+
+- AblB ≥ P26: SoftMoE LoRA의 routing 효과는 없음 → P26 contribution 약화
+- AblB < P26 (유의미한 차이): SoftMoE LoRA의 modality routing이 단순 파라미터 증가 이상의 가치 제공
+- AblB ≈ P26: SoftMoE LoRA의 효과는 expressive capacity 증가에 가깝고 routing 자체는 부차적
+
+**확장 ablation 후보** (선택적, 우선순위 낮음)
+- D: Per-modal LoRA (3 × rank 4, 명시적 모달리티 분리)
+- E: D의 파라미터 매칭 버전
+
+**상태**: 구현 완료, 학습 대기 (DELIVER 4 modalities)
+
+### P27 설계 안 — Additive Attention Bias on Cross-Modal Memory Attention (2026-04-10)
+
+**동기 — P26까지의 구조적 비판**
+
+P26 v6까지 SQG 기반 gating은 feature에 element-wise multiply (`feature × uamm_weight`) 구조.
+이 방식의 세 가지 이론적 문제:
+1. **정보 병목**: SQG 오판단 시 해당 모달리티 feature가 0에 눌려 영구 소실, 후속 attention에서 복구 불가
+2. **기울기 충돌**: Quality gate 학습 경로와 feature 학습 경로가 얽힘 (`∂L/∂feat = uamm * ∂L/∂modulated`)
+3. **이중 가중치**: Feature의 상대 중요도가 gating weight로 왜곡되고 attention softmax가 다시 가중치 적용
+
+또한 2026-03-25 Memory Attention 진단에서 확인된 사실:
+- RGB 95% 어둡게 해도 cross-attention mass 변화 ≤7% → **memory attention이 품질에 반응 못 함**
+- P9~P26의 UAMM/SQG는 feature 쪽만 건드리고 attention routing에는 개입 안 함 → 병목 미해결
+
+**두 대안 비교 결과**
+
+| 기준 | A) Additive Attention Bias | H) Quality-Conditioned Memory Bank |
+|------|---------------------------|----------------------------------|
+| Memory attention content-insensitivity 해결 | ✅ logit 직접 주입 | ⚠️ 우회 (저장 제한) |
+| 정보 병목 | ✅ Value 보존 | ⚠️ 제외 토큰 영구 소실 |
+| 미분 가능성 | ✅ 완전 미분 | 🔴 Gumbel/ST estimator 필요 |
+| 상수 수렴 재발 위험 | 🟡 중간 (Q,K 입력 의존 경로 존재) | 🔴 높음 (threshold 자체 상수화) |
+| Spatial-local 보완성 (LiDAR 물체 영역만) | ✅ soft gating | 🔴 binary 소실 |
+| 이 프로젝트 memory bank 크기 이점 | N/A | ❌ 이미 작음 (모달별 1프레임) |
+| 쓰기 시점 품질 결정 → context 변화 대응 | ✅ 읽기 시 재평가 | 🔴 쓰기 시 고정 |
+| 구현 난이도 | 🟡 attention forward 수정 | 🟢 memory encoder 출력 gating |
+
+**결정: A 채택, H 기각**
+
+- A의 결정적 우위: 현재 최대 병목(attention content-insensitivity)을 직접 해결.
+  UAMM `feature × scalar`는 상수 수렴 시 identity가 되어 무력화됐지만, A는 softmax 입력에 bias를
+  더하므로 bias가 상수여도 Q,K 입력 의존 내적과 결합되어 attention 분포가 변함
+- H 기각 이유:
+  1. P10/P11/P14~P25 전부에서 본 "gate 상수 수렴" 패턴이 H의 threshold에서도 재현 가능성 높음
+  2. SAM2 memory bank가 모달별 1프레임만 저장 → "메모리 비대화 방지" 이점 없음
+  3. Binary gating이 LiDAR의 물체 영역 보완성 제거
+
+**P27 아키텍처 초안**
+
+```
+기존: Attention = softmax(QK^T / √d) V
+변경: Attention = softmax((QK^T / √d) + λ * quality_logit) V
+```
+
+- `quality_logit`: P26의 SQG logit 재활용 (이미 KL loss로 학습됨)
+- `λ`: `nn.Parameter(torch.tensor(1.0))` — 학습 가능 스칼라
+- Cross-attention만 수정, self-attention은 유지
+
+**변경 사항 (P26 v6 → P27)**:
+- [제거] UAMM feature multiplication
+- [제거] AMF (SQG 기반 fusion weight) — ablation으로 유지 여부 결정
+- [추가] Cross-attention additive bias (`RoPEAttention.forward`)
+- [유지] SQG 모듈 + KL teacher loss
+- [유지] SAM2 backbone, memory attention 구조, SoftMoE LoRA
+
+**구현 위치**:
+- `semseg/models/sam2/sam2/modeling/sam/transformer.py` — `RoPEAttention.forward`
+- `F.scaled_dot_product_attention(q, k, v, attn_mask=float_bias)` 경로로 additive bias 주입
+
+**리스크 및 완화**:
+1. logit scale 불일치 → `λ` 학습 가능 스칼라로 자동 조정
+2. 모든 layer 적용 시 학습 불안정 → 우선 cross-attention만, 필요시 단계적 확장
+3. `λ` → 0 수렴 → L2 reg 또는 `0.5 + sigmoid(raw_λ)`로 범위 제한 고려
+4. bias 추가로도 content-insensitivity 해결 안 될 가능성 → **Phase 0 진단으로 선행 검증**
+
+**실험 순서**:
+1. **Phase 0 (진단)**: P26 학습 완료 후 `MISC/diagnose_memory_attention.py` 재실행 — zero_rgb/zero_thermal/zero_lidar 극단 조건에서 attention mass 측정. 여전히 insensitive면 A 채택 정당성 확보
+2. **Phase 1 (구현)**: `LoRA_Sam_P27` 클래스 + `RoPEAttention` cross-attention bias 경로 수정
+3. **Phase 2 (ablation)**: A-only / A+UAMM / A+light-H 비교
+4. **Phase 3 (검증)**: Val >93%, Test >70%, M-score >82.10 목표 + memory attention 재진단으로 content-sensitivity 개선 확인
+
+**선결 조건**:
+- P26 v6 학습 결과 확인 (baseline 비교 대상)
+- Memory Attention Phase 0 진단 재실행
+
+### P26 DELIVER 단일 GPU 메모리 프로브 추가 (2026-04-10)
+
+- **변경**: `tmp/p26_amp_gc_probe/` 폴더 추가
+  - `probe_p26_memory.py`: P26 학습 경로를 그대로 따라가며 1-step warmup + 측정 step에서 `torch.cuda.max_memory_allocated()` / `reserved()` / step time을 기록하는 단일 GPU 프로브
+  - `levine-deliver_rgbdel_P26_physaug_single_gpu_baseline.yaml`: DELIVER P26 baseline 단일 GPU 측정용 config (`AMP=false`, `GRADIENT_CHECKPOINT=true`, `DDP=false`, `EVAL_INTERVAL=999999`)
+  - `levine-deliver_rgbdel_P26_physaug_amp_on_gc_off.yaml`: 비교 config (`AMP=true`, `GRADIENT_CHECKPOINT=false`, `DDP=false`, `EVAL_INTERVAL=999999`)
+- **사유**: RTX TITAN / RTX 3090 24GB 단일 GPU에서 `AMP on + gradient checkpointing off` 조합이 실제로 한 step을 버티는지, baseline 대비 peak VRAM이 얼마인지 빠르게 검증하기 위함.
+- **검증**: `python -m py_compile tmp/p26_amp_gc_probe/probe_p26_memory.py` 통과
+- **1차 결과**: RTX TITAN 단일 GPU에서 baseline(`AMP=false`, `GC=true`)도 여유 VRAM 부족으로 OOM. 다만 프로브 peak는 약 16.5~17.5GB로 관측되어, 현재 로컬에서 이미 점유 중인 약 6GB가 해소된 24GB 환경에서는 baseline 통과 가능성이 높음.
+- **2차 결과**: 3모달 lower-bound(`img/depth/event`)에서는 baseline이 `peak_allocated≈16.56GB`, `peak_reserved≈17.64GB`로 통과했지만, 동일 조건의 `AMP=true + GC=false`는 `peak_allocated≈16.91GB`에서 OOM. 즉 TITAN 기준으로는 AMP 절감폭이 checkpoint 해제 증가분을 상쇄하지 못함. 3090은 FlashAttention 경로가 있어 별도 실측 필요.
+
+### 문서: AGENTS.md Codex/Cursor 정렬 (2026-04-09)
+
+- **변경**: 루트 [`AGENTS.md`](../AGENTS.md)를 MemorySAM 워크플로(conda `MMSS_SAM`, `train_sam2_lora_paper.py` / `val_multiaqua.py`, `.claude_logs` 세션 규칙)에 맞게 재작성. 기존 pnpm/Node 전용 템플릿 제거.
+- **`.codex/AGENTS.md`**: 루트 `AGENTS.md`·`CLAUDE.md`를 가리키도록 단순화(중복 지침 방지).
+- **사유**: Codex가 `AGENTS.md`를 우선 읽을 때 프로젝트와 무관한 지침이 섞이지 않게 함.
 
 ## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 v6 구현 완료 (학습 대기)**, **Memory Attention 진단 도구 구현 완료**
 
