@@ -51,7 +51,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22, LoRA_Sam_P23, LoRA_Sam_P24, LoRA_Sam_P25, LoRA_Sam_P26
+    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22, LoRA_Sam_P23, LoRA_Sam_P24, LoRA_Sam_P25, LoRA_Sam_P26, LoRA_Sam_P27
 )
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
@@ -136,6 +136,7 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P24': LoRA_Sam_P24,
         'LoRA_Sam_P25': LoRA_Sam_P25,
         'LoRA_Sam_P26': LoRA_Sam_P26,
+        'LoRA_Sam_P27': LoRA_Sam_P27,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:
@@ -167,6 +168,9 @@ def load_model(cfg, model_path, device):
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:
         model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
+    if 'lambda_bias_init' in sig.parameters:
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['lambda_bias_init'] = quality_cfg.get('LAMBDA_BIAS_INIT', 1.0)
 
     model = lora_model_class(**model_kwargs)
     ckpt = torch.load(str(model_path), map_location='cpu')

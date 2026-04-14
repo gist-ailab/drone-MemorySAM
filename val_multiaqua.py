@@ -99,6 +99,9 @@ def load_model(cfg, model_path, device):
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:
         model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
+    if 'lambda_bias_init' in sig.parameters:
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['lambda_bias_init'] = quality_cfg.get('LAMBDA_BIAS_INIT', 1.0)
     if 'num_modalities' in sig.parameters:
         model_kwargs['num_modalities'] = num_modalities
 

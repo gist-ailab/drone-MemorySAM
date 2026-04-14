@@ -1,6 +1,50 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-04-10
+> 최종 업데이트: 2026-04-14
+
+### P27 구현 완료 — Additive Attention Bias on Cross-Modal Memory Attention (2026-04-14)
+
+**상태**: 설계 안 → 구현 완료 (학습 대기)
+
+**구현 내용**
+- **RoPEAttention 확장** ([transformer.py](semseg/models/sam2/sam2/modeling/sam/transformer.py))
+  - `_p27_attn_bias` 인스턴스 속성 추가 (기본 None)
+  - `_sdpa_with_optional_bias()` helper: bias 있으면 Flash kernel 우회, math/mem-efficient kernel에서 `attn_mask=bias` 경로 사용
+  - `RoPEAttention.forward`가 자신의 `_p27_attn_bias`를 자동 주입
+- **LoRA_Sam_P27 클래스** ([sam_lora_image_encoder_seg.py:7498+](semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py))
+  - `LoRA_Sam_P26` 상속 — SoftMoE LoRA, SQG, KL teacher, per-modal decoder, multi-scale FPN 그대로 유지
+  - 추가: `self.lambda_bias = nn.Parameter(torch.tensor(1.0))` — 학습 가능 스칼라
+  - **MemoryAttention forward pre-hook**: track_step 호출 시 memory tensor shape에서 N_k / obj_ptr token 수를 산출 → 각 source modality의 `quality_logit`을 memory spatial resolution에 interpolate → `(B, 1, 1, N_k)` bias 구성 → `layer.cross_attn_image._p27_attn_bias`에 주입
+  - **Phase 3 변경**: `level_feat * q_flat` UAMM multiplication 제거 (bias 주입 전에 state만 set → track_step → 클리어)
+  - **Phase 4**: `amf_mode='sqg_quality'` 기본 유지 + `'uniform'` ablation 옵션 추가
+- **Train/Val 스크립트 통합**
+  - [train_sam2_lora_paper.py](train_sam2_lora_paper.py): `QUALITY_GATE_MODELS`에 `LoRA_Sam_P27` 추가, `LAMBDA_BIAS_INIT` config 전달 경로
+  - [val_multiaqua.py](val_multiaqua.py), [val_multiaqua_detailed.py](val_multiaqua_detailed.py): import 및 `_model_map` / kwargs 등록
+- **Config**
+  - 학습: [configs/levine-multiaqua_rgbtl_P27_hardaug8_physaug.yaml](configs/levine-multiaqua_rgbtl_P27_hardaug8_physaug.yaml)
+  - 평가: [configs/eval_config/levine-multiaqua_rgbtl_P27_hardaug8_physaug.yaml](configs/eval_config/levine-multiaqua_rgbtl_P27_hardaug8_physaug.yaml)
+
+**Bias 산출 로직**
+```
+frame f (>0) 처리 시:
+  memory N_k = (f × spatial_tokens_per_frame) + num_obj_ptr_tokens
+  for j in 0..f-1:
+    quality_logit[j] (B,1,H_fpn,W_fpn) → interpolate to (h_mem, w_mem) → flatten → (B, spatial_tokens)
+  obj_ptr 토큰 영역: 0 (학습 가능 bias 없음)
+  bias = λ · concat(...) → (B, 1, 1, N_k)  ← 모든 Q · head에 broadcast
+```
+
+**검증**
+- `py_compile` 통과 (transformer / sam_lora_image_encoder_seg / train / val 스크립트)
+- `LoRA_Sam_P27` import + signature 확인 OK (lambda_bias_init=1.0)
+
+**다음 단계**
+1. 1 iter dry-run으로 bias injection 동작 확인 (λ=1.0 기준 attention 분포 변화 확인)
+2. `MISC/diagnose_memory_attention.py`에 P27 mode 추가 — 학습 완료 후 attention content-sensitivity 재측정
+3. Phase 2 ablation: `amf_mode=uniform` vs `sqg_quality` 비교
+4. Phase 3 검증: Val >93%, Test >70%, M-score >82.10 목표
+
+
 
 ### P26 Ablation B — Single LoRA (Parameter-Matched) 구현 완료 (2026-04-10)
 

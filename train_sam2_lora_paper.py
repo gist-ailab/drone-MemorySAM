@@ -47,6 +47,7 @@ QUALITY_GATE_MODELS = (
     'LoRA_Sam_P25',
     'LoRA_Sam_P26',
     'LoRA_Sam_P26_AblB',
+    'LoRA_Sam_P27',
 )
 
 
@@ -559,6 +560,10 @@ def main(cfg, gpu, save_dir):
     if 'cond_dim' in sig.parameters:
         # [P26] Modality-conditioned MoE LoRA gate
         model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
+    if 'lambda_bias_init' in sig.parameters:
+        # [P27] Learnable attention-bias scalar initial value
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['lambda_bias_init'] = quality_cfg.get('LAMBDA_BIAS_INIT', 1.0)
     if 'num_modalities' in sig.parameters:
         # All LoRA models: pass actual number of modalities from config
         model_kwargs['num_modalities'] = num_modalities

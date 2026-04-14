@@ -286,6 +286,27 @@ class Attention(nn.Module):
         return out
 
 
+def _sdpa_with_optional_bias(q, k, v, attn_bias, dropout_p):
+    """SDPA call that uses attn_mask path when bias is present (disables Flash kernel)."""
+    if attn_bias is None:
+        try:
+            with sdp_kernel_context(dropout_p):
+                return F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p)
+        except Exception as e:
+            warnings.warn(
+                f"Flash Attention kernel failed due to: {e}\nFalling back to all available "
+                f"kernels for scaled_dot_product_attention (which may have a slower speed).",
+                category=UserWarning,
+                stacklevel=2,
+            )
+            global ALLOW_ALL_KERNELS
+            ALLOW_ALL_KERNELS = True
+            return F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p)
+    # Bias path: Flash kernel doesn't support attn_mask; use math/mem-efficient.
+    with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_math=True, enable_mem_efficient=True):
+        return F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=dropout_p)
+
+
 class RoPEAttention(Attention):
     """Attention with rotary position encoding."""
 
@@ -307,6 +328,11 @@ class RoPEAttention(Attention):
         freqs_cis = self.compute_cis(end_x=feat_sizes[0], end_y=feat_sizes[1])
         self.freqs_cis = freqs_cis
         self.rope_k_repeat = rope_k_repeat
+
+        # [P27] additive attention bias for quality-aware cross-attention.
+        # When set to a float tensor broadcastable to (B, H, N_q, N_k), it's
+        # added to pre-softmax attention logits via attn_mask in SDPA.
+        self._p27_attn_bias = None
 
     def forward(
         self, q: Tensor, k: Tensor, v: Tensor, num_k_exclude_rope: int = 0
@@ -338,21 +364,8 @@ class RoPEAttention(Attention):
         )
 
         dropout_p = self.dropout_p if self.training else 0.0
-        # Attention
-        try:
-            with sdp_kernel_context(dropout_p):
-                out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p)
-        except Exception as e:
-            # Fall back to all kernels if the Flash attention kernel fails
-            warnings.warn(
-                f"Flash Attention kernel failed due to: {e}\nFalling back to all available "
-                f"kernels for scaled_dot_product_attention (which may have a slower speed).",
-                category=UserWarning,
-                stacklevel=2,
-            )
-            global ALLOW_ALL_KERNELS
-            ALLOW_ALL_KERNELS = True
-            out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p)
+        # [P27] Use additive bias if provided (see _p27_attn_bias in __init__).
+        out = _sdpa_with_optional_bias(q, k, v, self._p27_attn_bias, dropout_p)
 
         out = self._recombine_heads(out)
         out = self.out_proj(out)
