@@ -61,13 +61,13 @@ DATASET:
 
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]
-  BATCH_SIZE    : 2
+  BATCH_SIZE    : 6
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 1
   AMP           : false
   DDP           : True
-  GRADIENT_CHECKPOINT : true
+  GRADIENT_CHECKPOINT : false
   LAMBDA_GATE   : 0.5
 
 LOSS:

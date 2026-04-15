@@ -83,6 +83,62 @@ About the entire model part, we use the same code as standard SAM2, which is in�
 
 ---
 
+### B200 GPU (NVIDIA Blackwell, sm_100) 환경 설정
+
+> **주의**: PyTorch ≤ 2.5 (cu121 빌드)는 B200 GPU(sm_100 아키텍처)를 지원하지 않습니다.  
+> 아래 절차를 따르지 않으면 `no kernel image is available for execution on the device` 에러가 발생합니다.
+
+#### 요구사항
+- NVIDIA 드라이버 ≥ 555 (CUDA runtime 12.8 이상 포함)
+- Python 3.10+
+
+#### 설치 절차
+
+1. 기본 환경 생성은 동일:
+    ```bash
+    conda create -n MMSS_SAM python=3.10
+    conda activate MMSS_SAM
+    ```
+
+2. **PyTorch를 B200 호환 버전(cu128 빌드)으로 설치**:
+    ```bash
+    pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+    ```
+
+3. 추가 의존성 설치:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4. SAM2 설치:
+    ```bash
+    cd semseg/models/sam2
+    pip install -e .
+    ```
+
+5. `timm` 버전 확인 (0.4.12 기준):
+    ```bash
+    # requirements.txt에 timm==0.4.12 지정되어 있어야 함
+    python -c "import timm; print(timm.__version__)"
+    ```
+
+6. GPU 인식 확인:
+    ```bash
+    python -c "import torch; print(torch.cuda.device_count(), torch.cuda.get_device_name(0))"
+    # 출력 예: 1  NVIDIA B200
+    ```
+
+#### 주요 차이점 (A100/H100 환경 vs B200 환경)
+
+| 항목 | A100/H100 (기존) | B200 |
+|------|-----------------|------|
+| CUDA Compute Capability | sm_80 / sm_90 | sm_100 |
+| PyTorch 버전 | `torch==2.3.1+cu121` | `torch==2.7.0+cu128` |
+| `--index-url` | `whl/cu121` | `whl/cu128` |
+| Flash Attention | `flash-attn` 기설치 | `pip install flash-attn` 재빌드 필요 |
+
+---
+
 ## Run
 
 ### Data Preparation

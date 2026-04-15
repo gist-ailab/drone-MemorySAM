@@ -54,7 +54,7 @@ nest-asyncio==1.5.4
 notebook==6.4.8
 nuscenes-devkit==1.1.9
 oauthlib==3.2.1
-opencv-python
+opencv-python<4.9
 packaging==21.3
 pandocfilters==1.5.0
 parso==0.8.3
@@ -110,6 +110,8 @@ widgetsnbextension==3.5.2
 yacs==0.1.8
 yapf==0.32.0
 zipp==3.7.0
+numpy==1.26.0
 pycocotools
 safetensors
 icecream
+timm
