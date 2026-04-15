@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.autograd
 from timm.models.layers import DropPath
 from fvcore.nn import flop_count_table, FlopCountAnalysis
-from mmcv.cnn import build_norm_layer
+from semseg.models.modules._mmcv_compat import build_norm_layer
 
 class DWConv(nn.Module):
     def __init__(self, dim=768):

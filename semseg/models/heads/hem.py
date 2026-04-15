@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.cnn import ConvModule
+from semseg.models.modules._mmcv_compat import ConvModule
 from fvcore.nn import flop_count_table, FlopCountAnalysis
 
 class _MatrixDecomposition2DBase(nn.Module):
