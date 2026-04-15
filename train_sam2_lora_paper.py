@@ -684,12 +684,21 @@ def main(cfg, gpu, save_dir):
         print(f"Resuming training from epoch {start_epoch + 1}, best mIoU: {best_mIoU:.4f}")
         
 
-    trainloader = DataLoader(trainset, batch_size=train_cfg['BATCH_SIZE'], num_workers=num_workers, drop_last=True, pin_memory=False, sampler=sampler)
-    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val)
+    # Data loader tuning (pin_memory + persistent_workers + prefetch_factor)
+    # persistent/prefetch only valid when num_workers > 0.
+    _loader_kwargs = {
+        'num_workers': num_workers,
+        'pin_memory': True,
+    }
+    if num_workers > 0:
+        _loader_kwargs['persistent_workers'] = True
+        _loader_kwargs['prefetch_factor'] = 4
+    trainloader = DataLoader(trainset, batch_size=train_cfg['BATCH_SIZE'], drop_last=True, sampler=sampler, **_loader_kwargs)
+    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_loader_kwargs)
     # [Night-Val] 야간 시뮬 val loader (NIGHT_AUG.ENABLE 시에만 생성)
-    night_valloader = DataLoader(nightvalset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val) if nightvalset is not None else None
+    night_valloader = DataLoader(nightvalset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_loader_kwargs) if nightvalset is not None else None
     # [Test] test set loader (DELIVER 등 test split이 있는 데이터셋)
-    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=num_workers, pin_memory=False, sampler=sampler_val) if testset is not None else None
+    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_loader_kwargs) if testset is not None else None
 
 
     scaler = GradScaler(enabled=train_cfg['AMP'])
@@ -779,8 +788,8 @@ def main(cfg, gpu, save_dir):
             for param_group in optimizer.param_groups:
                 param_group['lr'] = float(param_group['lr'])
 
-            sample = [x.to(device) for x in sample]
-            lbl = lbl.to(device)
+            sample = [x.to(device, non_blocking=True) for x in sample]
+            lbl = lbl.to(device, non_blocking=True)
             
             with autocast(enabled=train_cfg['AMP']):
                 # Quality-gate models (P24/P25/P26/P26_AblB) need gt_mask in forward.
@@ -860,7 +869,8 @@ def main(cfg, gpu, save_dir):
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
                 scheduler.step()
-            torch.cuda.synchronize()
+            # [removed] torch.cuda.synchronize() — DDP all-reduce + scaler.step은
+            # 이미 동기화를 제공. 매 iter sync는 H2D overlap을 막아 GPU util을 떨어뜨림.
 
             lr = scheduler.get_lr()
             lr = sum(lr) / len(lr)
@@ -1007,8 +1017,8 @@ def main(cfg, gpu, save_dir):
                 quality_vis_done = False
                 with torch.no_grad():
                     for val_imgs, val_lbls in valloader:
-                        val_imgs = [x.to(device) for x in val_imgs]
-                        val_lbls = val_lbls.to(device)
+                        val_imgs = [x.to(device, non_blocking=True) for x in val_imgs]
+                        val_lbls = val_lbls.to(device, non_blocking=True)
                         val_out = model(val_imgs, True)
                         val_logits = val_out[0]
                         val_feat = val_out[1]

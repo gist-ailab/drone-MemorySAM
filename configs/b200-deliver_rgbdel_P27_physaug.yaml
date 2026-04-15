@@ -65,7 +65,7 @@ TRAIN:
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 1
-  AMP           : false
+  AMP           : true            # B200 bf16 Tensor Core 활용
   DDP           : True
   GRADIENT_CHECKPOINT : false
   LAMBDA_GATE   : 0.5
