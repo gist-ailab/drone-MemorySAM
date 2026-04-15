@@ -64,7 +64,7 @@ TRAIN:
   BATCH_SIZE    : 6
   EPOCHS        : 200
   EVAL_START    : 0
-  EVAL_INTERVAL : 1
+  EVAL_INTERVAL : 2
   AMP           : true            # B200 bf16 Tensor Core 활용
   AMP_DTYPE     : bfloat16        # B200/Ampere+: bf16이 overflow 없고 GradScaler 불필요
   DDP           : True

@@ -1290,8 +1290,8 @@ class LoRA_Sam_P8(LoRA_Sam_P6):
                 m_feat = m_feat + image_embedding[i]['backbone_fpn'][0] * wi
 
             # Store for visualization
-            self._last_uamm_scores = all_scores.detach().cpu().numpy()
-            self._last_amf_weights = weights.detach().cpu().numpy()
+            self._last_uamm_scores = all_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -1526,8 +1526,8 @@ class LoRA_Sam_P9(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Store for visualization (val_multiaqua.py 호환)
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -1800,8 +1800,8 @@ class LoRA_Sam_P12(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Store for visualization (val_multiaqua.py 호환)
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -2051,8 +2051,8 @@ class LoRA_Sam_P10(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Visualization용 버퍼 (detach)
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -2349,8 +2349,8 @@ class LoRA_Sam_P11(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Visualization용 버퍼 (detach)
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -2942,8 +2942,8 @@ class LoRA_Sam_P13(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Visualization buffers
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             # [P13] aux logits per modality: List[(B, C, H_feat, W_feat)]
             self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
@@ -3205,8 +3205,8 @@ class LoRA_Sam_P14(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Visualization buffers
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
@@ -3497,8 +3497,8 @@ class LoRA_Sam_P15(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
 
             # Visualization buffers (spatial mean으로 압축)
-            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()  # (B, m)
-            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()  # (B, m)
+            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().float().cpu().numpy()  # (B, m)
+            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().float().cpu().numpy()  # (B, m)
             self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
@@ -3818,8 +3818,8 @@ class LoRA_Sam_P16(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
 
             # Visualization buffers
-            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().float().cpu().numpy()
             self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
@@ -4145,8 +4145,8 @@ class LoRA_Sam_P17(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
 
             # Visualization buffers
-            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().float().cpu().numpy()
             self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
@@ -4500,11 +4500,11 @@ class LoRA_Sam_P18(nn.Module):
 
             # Visualization buffers
             if self.use_entropy_fusion:
-                self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
-                self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
+                self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().float().cpu().numpy()
+                self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().float().cpu().numpy()
             else:
-                self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-                self._last_amf_weights = amf_weights.detach().cpu().numpy()
+                self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+                self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             self._last_aux_logits = [z.detach().cpu() for z in aux_logits_list]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
@@ -4810,8 +4810,8 @@ class LoRA_Sam_P19(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * amf_weights[:, i:i+1]
 
             # Visualization buffers (spatial mean for backward compat with P9 visualizers)
-            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.mean(dim=[2, 3]).detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.mean(dim=[2, 3]).detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -5038,8 +5038,8 @@ class LoRA_Sam_P20(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Store for visualization
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -5285,8 +5285,8 @@ class LoRA_Sam_P21(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Store for visualization
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -5559,8 +5559,8 @@ class LoRA_Sam_P22(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Store for visualization
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -5843,8 +5843,8 @@ class LoRA_Sam_P23(nn.Module):
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
             # Store for visualization
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
             if deba_gate_collector:
                 self._last_moe_gates = np.stack(deba_gate_collector, axis=0).mean(axis=0)
             else:
@@ -6191,9 +6191,9 @@ class LoRA_Sam_P24(nn.Module):
                 m_output = m_output + output[i] * wi
                 m_feat = m_feat + all_backbone_feats[i] * wi
 
-            self._last_uamm_scores = uamm_scores.detach().cpu().numpy()
-            self._last_amf_weights = amf_weights.detach().cpu().numpy()
-            self._last_quality_maps = [q.detach().cpu().numpy() for q in quality_maps]
+            self._last_uamm_scores = uamm_scores.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_weights.detach().float().cpu().numpy()
+            self._last_quality_maps = [q.detach().float().cpu().numpy() for q in quality_maps]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -6568,9 +6568,9 @@ class LoRA_Sam_P25(nn.Module):
             # Renormalize to sum=1
             amf_log = amf_log / amf_log.sum(dim=1, keepdim=True).clamp(min=1e-6)
 
-            self._last_uamm_scores = uamm_log.detach().cpu().numpy()
-            self._last_amf_weights = amf_log.detach().cpu().numpy()
-            self._last_quality_maps = [q.detach().cpu().numpy() for q in quality_maps]
+            self._last_uamm_scores = uamm_log.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_log.detach().float().cpu().numpy()
+            self._last_quality_maps = [q.detach().float().cpu().numpy() for q in quality_maps]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -7148,9 +7148,9 @@ class LoRA_Sam_P26(nn.Module):
             )
             amf_log = amf_log / amf_log.sum(dim=1, keepdim=True).clamp(min=1e-6)
 
-            self._last_uamm_scores = uamm_scalar.detach().cpu().numpy()
-            self._last_amf_weights = amf_log.detach().cpu().numpy()
-            self._last_quality_maps = [q.detach().cpu().numpy() for q in quality_maps]
+            self._last_uamm_scores = uamm_scalar.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_log.detach().float().cpu().numpy()
+            self._last_quality_maps = [q.detach().float().cpu().numpy() for q in quality_maps]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
@@ -7158,14 +7158,14 @@ class LoRA_Sam_P26(nn.Module):
             self._last_per_modal_outputs = [o.detach().cpu() for o in output]
             self._last_per_modal_feats = [f.detach().cpu() for f in all_backbone_feats]
             # P26 detailed viz: spatial maps
-            self._last_uamm_spatial = [q_uamm_norm[i].detach().cpu().numpy() for i in range(m)]
-            self._last_amf_spatial = [amf_norm[i].detach().cpu().numpy() for i in range(m)]
+            self._last_uamm_spatial = [q_uamm_norm[i].detach().float().cpu().numpy() for i in range(m)]
+            self._last_amf_spatial = [amf_norm[i].detach().float().cpu().numpy() for i in range(m)]
             # Entropy maps (for viz — computed regardless of amf_mode)
             ent_maps = []
             for i in range(m):
                 prob_i = F.softmax(output[i], dim=1)
                 ent_i = -(prob_i * (prob_i + 1e-8).log()).sum(dim=1, keepdim=True)
-                ent_maps.append(ent_i.detach().cpu().numpy())
+                ent_maps.append(ent_i.detach().float().cpu().numpy())
             self._last_entropy_maps = ent_maps
         finally:
             for layer in self.moe_layers_q + self.moe_layers_v:
@@ -7855,22 +7855,22 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
             )
             amf_log = amf_log / amf_log.sum(dim=1, keepdim=True).clamp(min=1e-6)
 
-            self._last_uamm_scores = uamm_scalar.detach().cpu().numpy()
-            self._last_amf_weights = amf_log.detach().cpu().numpy()
-            self._last_quality_maps = [q.detach().cpu().numpy() for q in quality_maps]
+            self._last_uamm_scores = uamm_scalar.detach().float().cpu().numpy()
+            self._last_amf_weights = amf_log.detach().float().cpu().numpy()
+            self._last_quality_maps = [q.detach().float().cpu().numpy() for q in quality_maps]
             if moe_gate_collector:
                 self._last_moe_gates = np.stack(moe_gate_collector, axis=0).mean(axis=0)
             else:
                 self._last_moe_gates = None
             self._last_per_modal_outputs = [o.detach().cpu() for o in output]
             self._last_per_modal_feats = [f.detach().cpu() for f in all_backbone_feats]
-            self._last_uamm_spatial = [q_uamm_norm[i].detach().cpu().numpy() for i in range(m)]
-            self._last_amf_spatial = [amf_norm[i].detach().cpu().numpy() for i in range(m)]
+            self._last_uamm_spatial = [q_uamm_norm[i].detach().float().cpu().numpy() for i in range(m)]
+            self._last_amf_spatial = [amf_norm[i].detach().float().cpu().numpy() for i in range(m)]
             ent_maps = []
             for i in range(m):
                 prob_i = F.softmax(output[i], dim=1)
                 ent_i = -(prob_i * (prob_i + 1e-8).log()).sum(dim=1, keepdim=True)
-                ent_maps.append(ent_i.detach().cpu().numpy())
+                ent_maps.append(ent_i.detach().float().cpu().numpy())
             self._last_entropy_maps = ent_maps
         finally:
             self._p27_state['enabled'] = False

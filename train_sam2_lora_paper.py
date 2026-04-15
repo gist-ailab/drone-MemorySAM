@@ -360,7 +360,7 @@ def save_p24_quality_vis(save_dir, epoch, gate_loss_data, sample_img, modal_name
 
         # Row 2: Target quality map (train only)
         if has_target:
-            tgt_q = target[i][0, 0].detach().cpu().numpy()
+            tgt_q = target[i][0, 0].detach().float().cpu().numpy()
             im2 = axes[2, i].imshow(tgt_q, cmap='hot', vmin=0, vmax=1)
             axes[2, i].set_title(f'Target Q [{tgt_q.min():.2f},{tgt_q.max():.2f}]', fontsize=9)
             axes[2, i].axis('off')
