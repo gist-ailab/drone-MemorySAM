@@ -1,6 +1,43 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-04-14
+> 최종 업데이트: 2026-04-15
+
+### B200 학습 파이프라인 처리량 개선 (2026-04-15)
+
+**문제**: B200 단일 GPU util이 10~80% 왔다갔다 → 데이터 파이프라인 병목 패턴
+
+**적용한 조치 4건**
+
+| 항목 | 위치 | 변경 |
+|------|------|------|
+| (a) AMP on | `configs/b200-deliver_rgbdel_P27_physaug.yaml` | `AMP: false → true` — B200 bf16 Tensor Core 활용 |
+| (b) DataLoader tuning | [train_sam2_lora_paper.py:687-697](train_sam2_lora_paper.py#L687-L697) | `pin_memory=True`, `persistent_workers=True`, `prefetch_factor=4` (num_workers>0 조건부) |
+| (c) synchronize 제거 | [train_sam2_lora_paper.py:863](train_sam2_lora_paper.py#L863) | `torch.cuda.synchronize()` 제거 — DDP all-reduce + scaler.step이 이미 동기화 제공. legacy 코드로 추정 |
+| (d) non_blocking=True | [train_sam2_lora_paper.py:782-783, 1010-1011](train_sam2_lora_paper.py#L782) | `.to(device)` → `.to(device, non_blocking=True)` train/val 경로 모두 |
+
+**기존 코드 호환성**
+- 다른 모델 config(P9~P26)는 그대로 유지됨 — AMP 설정은 config별 독립
+- DataLoader 변경은 `num_workers>0` 조건 분기로 단일 GPU 케이스 보호
+- DDP + persistent_workers 조합은 PyTorch 2.x 표준 패턴
+
+**주의사항**
+- P27 + AMP 조합은 1 iter dry-run으로 `lambda_bias` grad 흐름 / attn_mask float bias SDPA 수치 확인 필요
+- 여전히 util 불안정하면 PhysAug `P: 0.40 → 0.20` 하향 또는 Fourier를 GPU로 이동 (별도 리팩토링)
+
+**관련 파일**
+- 학습 스크립트: [train_sam2_lora_paper.py](train_sam2_lora_paper.py)
+- B200 config: [configs/b200-deliver_rgbdel_P27_physaug.yaml](configs/b200-deliver_rgbdel_P27_physaug.yaml)
+- B200 MULTIAQUA config: [configs/b200-multiaqua_rgbtl_P27_hardaug8_physaug.yaml](configs/b200-multiaqua_rgbtl_P27_hardaug8_physaug.yaml)
+
+### P27 DELIVER config 생성 (2026-04-15)
+
+- **파일**: [configs/b200-deliver_rgbdel_P27_physaug.yaml](configs/b200-deliver_rgbdel_P27_physaug.yaml)
+- **기반**: `levine-deliver_rgbdel_P26_physaug.yaml` + P27 차이점
+  - `LORA_MODEL: LoRA_Sam_P27`
+  - `LAMBDA_BIAS_INIT: 1.0` 추가
+  - `SAVE_DIR: MMSamP27/b200_deliver_rgbdel_P27_physaug`
+  - DELIVER 4 modalities (`img, depth, event, lidar`), `GRADIENT_CHECKPOINT: true` 유지
+- **사유**: B200 환경에서 P27 ablation + DELIVER 비교를 위한 베이스 config
 
 ### P27 구현 완료 — Additive Attention Bias on Cross-Modal Memory Attention (2026-04-14)
 

@@ -37,7 +37,7 @@ from val_mm_sam import evaluate
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 
 # Models that consume gt_mask in forward() and emit a quality-gate dict.
@@ -701,7 +701,11 @@ def main(cfg, gpu, save_dir):
     testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_loader_kwargs) if testset is not None else None
 
 
-    scaler = GradScaler(enabled=train_cfg['AMP'])
+    # AMP dtype: 'float16' (default, GradScaler 필수) 또는 'bfloat16' (Ampere+/B200 권장, GradScaler 불필요).
+    _amp_dtype_str = str(train_cfg.get('AMP_DTYPE', 'float16')).lower()
+    AMP_DTYPE = torch.bfloat16 if _amp_dtype_str in ('bf16', 'bfloat16') else torch.float16
+    # GradScaler는 fp16에서만 필요. bf16은 range가 fp32와 동일해 overflow 위험 거의 없음.
+    scaler = GradScaler(enabled=(train_cfg['AMP'] and AMP_DTYPE == torch.float16))
     
 
 
@@ -791,7 +795,7 @@ def main(cfg, gpu, save_dir):
             sample = [x.to(device, non_blocking=True) for x in sample]
             lbl = lbl.to(device, non_blocking=True)
             
-            with autocast(enabled=train_cfg['AMP']):
+            with autocast(enabled=train_cfg['AMP'], dtype=AMP_DTYPE):
                 # Quality-gate models (P24/P25/P26/P26_AblB) need gt_mask in forward.
                 uses_quality_gate = (lora_model_name in QUALITY_GATE_MODELS)
                 if uses_quality_gate:
