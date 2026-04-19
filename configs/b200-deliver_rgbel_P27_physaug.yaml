@@ -37,7 +37,7 @@ DATASET:
   NAME          : DELIVER
   ROOT          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/DELIVER'
   IGNORE_LABEL  : 255
-  MODALS        : ['img', 'depth', 'event', 'lidar']
+  MODALS        : ['img', 'event', 'lidar']
 
   RGB_SUBROOT   : null
   THERMAL_SUBROOT : null
