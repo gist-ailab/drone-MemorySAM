@@ -12,6 +12,53 @@
 
 ---
 
+## [진단] P25 Spatial Quality Gating — 야간 Pred Q 분석 (2026-06-14)
+
+**대상**: `outputs/MMSamP25/hpca100_multiaqua_rgbtl_P25_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch27_92.38_top1_checkpoint.pth`
+(P25 = Unified Spatial Quality Fusion. CLAUDE.md 표의 "학습 대기"는 오타 — 실제 27ep 학습됨. val 92.69, night-val best 86.10@ep8, Dynamic IoU ~77.)
+※ night_epoch*_checkpoint.pth는 hpca100→로컬 전송 불완전으로 **손상**(zip central directory 없음). 재전송 필요.
+
+### 진단 1 — 모달리티 가중치 정적 (detailed_log.json 집계)
+test(야간 200장) vs val(주간 145장) UAMM/AMF 비교:
+| | TEST(야간) img/lidar/thermal | VAL(주간) img/lidar/thermal |
+|---|---|---|
+| UAMM | **1.000**/0.583/0.541 | **1.000**/0.554/0.518 |
+| AMF | 0.460/0.280/0.260 | 0.469/0.275/0.256 |
+| UAMM 승자=img | **100%** | **100%** |
+| 이미지 간 std | ~0.00–0.01 | ~0.01 |
+→ **주야간 가중치 거의 동일, RGB가 야간에도 항상 1순위, 입력별 적응 없음(상수 수렴).** P9 정적 UAMM 문제 재현.
+
+### 진단 2 — 야간 Pred Q 공간 분포 (스크립트 `tmp/p25_predq/dump_predq.py`, 200장)
+이미지 내 공간 통계 평균:
+| 모달 | 공간 std(평탄도) | mean | min | max |
+|------|:---:|:---:|:---:|:---:|
+| img(RGB) | **0.173** | 0.533 | 0.164 | 0.882 |
+| lidar | **0.057** | 0.311 | 0.169 | 0.512 |
+| thermal | **0.048** | 0.288 | 0.129 | 0.635 |
+→ **RGB만 공간 분화(std 3배), lidar/thermal은 거의 평탄(공간 무정보).** 야간에도 RGB raw quality가 최고(0.53)라 정규화에서 항상 승자. 패널: `tmp/p25_predq/predq_test/`.
+
+**결론**: P25 quality gating은 RGB 중심이며 lidar/thermal엔 공간 적응 실패. 야간 RGB 의존 유지 → 야간 갭 미해결의 직접 원인 후보.
+
+### 진단 3 — B-2: Teacher Target Q + standalone mIoU (스크립트 `tmp/p25_predq/diag_teacher.py`, val n=145)
+teacher 경로를 eval에서 활성화(top-level `.training=True`, children eval) + `_teacher_decode_single` 캡처.
+| 모달 | standalone mIoU day→night | TargetQ std day→night | PredQ std day→night |
+|------|:---:|:---:|:---:|
+| img(RGB) | 82.9%→**59.2%** | 0.236→**0.307** | 0.212→**0.149** |
+| lidar | 18.3%(불변) | 0.402 | 0.057 |
+| thermal | 14.7%(불변) | 0.402 | 0.048 |
+(NightSim은 RGB만 어둡게 → lidar/thermal 입력·수치 불변)
+
+**결론(원인 확정)**:
+1. **Teacher는 멀쩡 + 환경 인지함** — RGB Target Q 야간에 mean↓(0.87→0.76)/std↑(0.24→0.31). lidar/thermal Target std 0.40으로 구조적(평탄 아님).
+2. **범인 = 예측기(SpatialQualityGating)** — Target std 0.40인데 Pred std 0.05(붕괴). RGB도 야간에 teacher는 std↑인데 Pred는 std↓(반대). 원인: 예측기 입력=frozen 인코더 FPN feature(quality 정보 정규화됨) + tiny conv head로 입력·용량 부족.
+3. **lidar/thermal standalone mIoU 18%/15%(야간 동일) — 거의 무용** → 야간에도 RGB(59%)가 최강이라 RGB 1순위는 합리적. lidar/thermal quality 완벽화의 분할 기여는 제한적.
+
+**처방**: teacher 유지, **예측기 강화** — (a) raw-input 단서 주입(RGB 밝기 / lidar density / thermal coverage), (b) multi-scale feature + 용량↑. 핵심 레버 = **RGB 야간 quality가 teacher를 추종**하게 만들기(못 믿을 RGB 영역을 제대로 억제). lidar/thermal coverage 마스크는 floor 누수 방지용 보조.
+
+(주: night diag는 시스템 RAM 여유 16GB로 bs=1/workers=0에서만 완주. 4-worker 시 OOM-kill.)
+
+---
+
 ## 진행 중 실험 계획
 
 ### P26 DELIVER AMP on + GC off 단일 GPU 메모리 프로브 (2026-04-10)

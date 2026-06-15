@@ -7619,6 +7619,15 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
             if hasattr(layer.cross_attn_image, '_p27_attn_bias'):
                 layer.cross_attn_image._p27_attn_bias = None
 
+    def _compute_bias_source(self, quality_logits, vision_feats, vision_pos_embeds, feat_sizes, m):
+        """Per-modality maps (list of m x (B,1,H_fpn,W_fpn)) used as the additive
+        memory-attention logit-bias source (consumed by the pre-hook).
+
+        P27 default = SpatialQualityGating quality logits. Subclasses override:
+        e.g. P28/RBMA replaces this with training-free per-modality decoder
+        predictive uncertainty. Identity default → preserves P27 behavior."""
+        return quality_logits
+
     # ─────────────────────────────────────────────────────────────────
     # Forward — P26와 동일하되 Phase 3에서 UAMM multiplication 제거
     # ─────────────────────────────────────────────────────────────────
@@ -7750,8 +7759,9 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
                 "non_cond_frame_outputs": {},
             }
 
-            # Prepare bias state for pre-hook
-            self._p27_state['quality_logits'] = quality_logits
+            # Prepare bias state for pre-hook (P27=SQG logits; P28/RBMA=decoder uncertainty)
+            self._p27_state['quality_logits'] = self._compute_bias_source(
+                quality_logits, vision_feats, vision_pos_embeds, feat_sizes, m)
             self._p27_state['enabled'] = True
 
             for frame_idx in range(m):
@@ -7897,3 +7907,53 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
         if 'p27_lambda_bias' in state:
             with torch.no_grad():
                 self.lambda_bias.copy_(state['p27_lambda_bias'].to(self.lambda_bias.device))
+
+
+class LoRA_Sam_P28(LoRA_Sam_P27):
+    """
+    LoRA_Sam_P28: RBMA — Reliability-Biased Memory Attention.
+
+    P27의 additive memory-attention logit-bias 기구(softmax(QK^T/√d + λ·B)V)를 그대로
+    재사용하되, bias 신호 B를 SpatialQualityGating(학습형 예측기, B-2 진단에서
+    underfit·평탄·정적붕괴 확인)에서 **per-modality decoder의 training-free
+    예측 불확실성**으로 교체한다.
+
+      reliability_i(x) = 1 - H(softmax(D_i(f_i)))(x) / log(C)
+        - D_i = per_modal_decoders[i] (모달리티 단독 디코드, memory 융합 이전 → 순환 없음)
+        - H   = per-pixel predictive entropy (GT 불필요, 학습형 quality head 불필요)
+      bias_i = λ · (reliability_i - mean_j reliability_j)   # 모달리티 간 상대 신뢰도
+
+    설계 근거 (deep-research 2026-06-15):
+      - 신규성 축 = B(attention LOGIT additive bias): 선행연구는 모두 feature-multiply /
+        attention-output-scale / loss-level (ReliFusion/READ/UTFNet/HyperDUM 등). logit-bias
+        전례 0. 신호(A)는 UTFNet/HyperDUM의 *학습 evidential/HD head* 대비 "training-free"가 차별점.
+      - B-2 병목 직격: SQG(frozen feature 예측기)를 bias 경로에서 제거, decoder 자체
+        예측분포에서 신뢰도 산출 (Target Q=exp(-CE)의 GT-free 버전).
+
+    SQG/per-modal decoder/aux-CE/KL teacher loss는 학습용으로 유지(점진 제거는 ablation).
+    추론 시 bias는 오직 decoder 불확실성에서 나옴. λ(self.lambda_bias)만 학습.
+    순수 RBMA 평가를 위해 config에서 AMF_MODE: uniform 권장(출력 융합은 등가중).
+    """
+    RBMA_EPS = 1e-6
+
+    def _compute_bias_source(self, quality_logits, vision_feats, vision_pos_embeds, feat_sizes, m):
+        fpn_h, fpn_w = quality_logits[0].shape[-2:]
+        rel_maps = []
+        for i in range(m):
+            with torch.no_grad():
+                aux_logits = self._auxiliary_decode_single(
+                    self.per_modal_decoders[i],
+                    vision_feats[i], vision_pos_embeds[i], feat_sizes[i],
+                )  # (B, C, H, W) class logits
+                C = aux_logits.shape[1]
+                p = F.softmax(aux_logits, dim=1)
+                ent = -(p * torch.log(p + self.RBMA_EPS)).sum(dim=1, keepdim=True)  # (B,1,H,W)
+                ent = ent / math.log(C)                       # normalize → [0,1]
+                rel = 1.0 - ent                               # reliability (high=confident)
+                rel = F.interpolate(rel, size=(fpn_h, fpn_w),
+                                    mode='bilinear', align_corners=False)
+            rel_maps.append(rel)
+        # center across modalities per pixel → zero-mean relative up/down-weight
+        rel_stack = torch.stack(rel_maps, dim=0)              # (m, B, 1, H, W)
+        rel_stack = rel_stack - rel_stack.mean(dim=0, keepdim=True)
+        return [rel_stack[i] for i in range(m)]

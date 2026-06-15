@@ -1,6 +1,34 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-03-13
+> 최종 업데이트: 2026-06-15
+
+## P28 — RBMA: Reliability-Biased Memory Attention (2026-06-15)
+
+**계보**: `LoRA_Sam_P28(LoRA_Sam_P27)`. P27의 additive memory-attention logit-bias 기구는 그대로, **bias 신호만** 교체.
+
+**P27 기구 (재사용)**: cross-modal memory attention에서
+`attn = softmax(QK^T/√d + λ·B) V`, `B[memory_token]` = 그 토큰 source-modality의 신뢰도 맵을 memory grid에 대응, `λ`=학습 스칼라(`self.lambda_bias`). `RoPEAttention._p27_attn_bias`(SDPA `attn_mask`)로 pre-softmax logit에 주입, `memory_attention`의 forward_pre_hook에서 매 frame 설정.
+
+**P27 → P28 변경 (신호)**:
+- P27 bias 신호 = SpatialQualityGating(SQG) quality_logits → **B-2 진단: frozen-feature 예측기 underfit, lidar/thermal 평탄, 정적 RGB-붕괴.**
+- P28 bias 신호 = **per-modality decoder의 training-free 예측 불확실성**:
+  - `aux_logits_i = _auxiliary_decode_single(per_modal_decoders[i], vision_feats[i], ...)` (모달리티 단독 디코드, memory 융합 이전)
+  - `H_i = -Σ_c softmax(aux_logits_i) log softmax(aux_logits_i) / log C` (per-pixel, [0,1])
+  - `reliability_i = 1 - H_i`, 모달리티 간 per-pixel 평균 0 센터링 → `_p27_attn_bias` 신호
+  - `torch.no_grad()`로 detach → per_modal_decoders는 aux-CE로만 학습, bias는 파생 routing 신호(λ만 학습)
+- **순환 없음**: 불확실성은 단독 디코드(융합 전)에서, bias는 융합 attention에 주입.
+
+**구현**: P27에 `_compute_bias_source(quality_logits, vision_feats, vision_pos_embeds, feat_sizes, m)` 훅 추가(기본 identity=SQG). P28은 이 메서드만 오버라이드.
+
+**설계 의의**:
+- 노벨티 축 = **attention LOGIT additive bias** (선행연구는 feature-multiply/output-scale/loss; 전례 0). 신호의 차별점 = **training-free**(학습 evidential/HD head 불필요, vs UTFNet/HyperDUM).
+- B-2 병목(SQG)을 bias 경로에서 제거. 데이터셋 무관(uncertainty는 보편 → DeLiVER/MUSES/MCubeS 공통, coverage mask 불필요).
+
+**평가 설정**: `AMF_MODE: uniform`(출력 융합 등가중) → 적응은 오직 RBMA bias = 순수 효과 측정. configs: `b200-deliver_rgbdel_P28_physaug.yaml`, `b200-multiaqua_rgbtl_P28_hardaug8_physaug.yaml`.
+
+**예정 ablation**: SoftMoE LoRA→단일 LoRA, SQG/KL teacher 제거, AMF uniform↔sqg_quality, λ 고정↔학습.
+
+---
 
 ## 공통 기반: MemorySAM
 

@@ -1,6 +1,30 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-04-15
+> 최종 업데이트: 2026-06-15
+
+### P28 = RBMA (Reliability-Biased Memory Attention) 구현 완료 (학습 대기) — 2026-06-15
+
+**상태**: 구현·등록·검증 완료 → B200 학습 대기.
+
+**배경 (진단)**: P25/P27의 SpatialQualityGating(SQG)이 야간 Pred Q에서 **정적 RGB-붕괴 + lidar/thermal 평탄**(B-1), 원인은 SQG 예측기가 frozen-encoder feature로 학습돼 underfit, teacher(exp(-CE))는 멀쩡(B-2). 상세: [03_experiment_log.md](03_experiment_log.md) 진단 1~3, [10_related_work.md](10_related_work.md).
+
+**노벨티 근거 (deep-research)**: SAM2 memory-attention에서 reliability를 **attention LOGIT에 additive bias**로 거는 전례 0 (선행연구는 feature-multiply/output-scale/loss). 신호는 **training-free decoder 예측 불확실성** (UTFNet/HyperDUM의 학습 evidential/HD head 대비 차별). 차별화 대상: UTFNet, HyperDUM, TMC/ETMC, ReliFusion/READ.
+
+**구현 (P28 = P27 기구 + A 신호)**:
+- `LoRA_Sam_P28(LoRA_Sam_P27)` — `_compute_bias_source` 오버라이드만. P27 forward에 hook 메서드 추가(기본 identity=SQG, 안전).
+- bias 신호: `reliability_i = 1 - H(softmax(per_modal_decoder_i(f_i)))/logC`, 모달리티 간 per-pixel 센터링, `λ=lambda_bias`(학습) 곱 → memory cross-attn logit에 가산.
+- 모달리티 단독 디코드(memory 융합 전) → **순환 없음, GT 불필요**. SQG는 학습용 유지(점진 제거는 ablation).
+
+**변경 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: P27 `_compute_bias_source` 훅 추가 + `LoRA_Sam_P28` 클래스.
+- `train_sam2_lora_paper.py`: `QUALITY_GATE_MODELS`에 P28 추가.
+- `val_multiaqua_detailed.py`: `_model_map`에 P28 추가. (val_multiaqua.py는 eval()로 자동.)
+- 신규 config: `configs/b200-deliver_rgbdel_P28_physaug.yaml`, `configs/b200-multiaqua_rgbtl_P28_hardaug8_physaug.yaml` (둘 다 `AMF_MODE: uniform`=순수 RBMA).
+
+**다음**: B200 학습 → 성능 확인 → ablation (SoftMoE LoRA / SQG / AMF=sqg_quality 제거해도 유지되는지).
+⚠️ multiaqua B200 config의 ROOT/PRETRAINED 경로는 deliver 템플릿 기반 placeholder — 실제 B200 마운트 확인 필요.
+
+---
 
 ### B200 학습 파이프라인 처리량 개선 (2026-04-15)
 

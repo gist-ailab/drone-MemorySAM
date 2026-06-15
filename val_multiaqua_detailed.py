@@ -137,6 +137,7 @@ def load_model(cfg, model_path, device):
         'LoRA_Sam_P25': LoRA_Sam_P25,
         'LoRA_Sam_P26': LoRA_Sam_P26,
         'LoRA_Sam_P27': LoRA_Sam_P27,
+        'LoRA_Sam_P28': LoRA_Sam_P28,
     }
     lora_model_class = _model_map.get(lora_model_name)
     if lora_model_class is None:

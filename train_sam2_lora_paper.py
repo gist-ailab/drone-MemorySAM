@@ -48,6 +48,7 @@ QUALITY_GATE_MODELS = (
     'LoRA_Sam_P26',
     'LoRA_Sam_P26_AblB',
     'LoRA_Sam_P27',
+    'LoRA_Sam_P28',
 )
 
 
