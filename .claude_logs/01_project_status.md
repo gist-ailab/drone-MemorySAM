@@ -26,6 +26,25 @@
 
 ---
 
+### SAM3 포팅 (RBMA → SAM3) 진행 시작 — 2026-06-16
+
+**결정**: 인코더 적응은 **plain LoRA** (원조 MemorySAM/`LoRA_Sam` 방식)로 시작. RBMA가 융합을 memory_mask bias로 가져가므로 인코더 LoRA는 순수 feature 적응만 담당 → SoftMoE gate(모달축 붕괴 진단됨) 불필요.
+
+**📌 TODO (future work)**: **입력/모달리티 조건부 expert LoRA**.
+- 바람: SoftMoE처럼 모달리티 + **입력 상황(밤/낮/연무 등 환경)** 에 맞춰 전문가(expert) LoRA가 선택/혼합되는 구조.
+- 단 기존 SoftMoE의 한계(gate가 환경 무관·모달 축으로 정적 붕괴, B-1/B-2 진단)는 피해야 함 → cond_dim(P12)·환경 신호 주입 또는 RBMA reliability를 라우팅에 재사용하는 방향 검토.
+- 우선순위: plain LoRA + RBMA 검증 후. ablation/확장 단계에서 도입.
+
+**코드 확정 (로컬 `semseg/models/sam3`)**: bias 주입점 = `sam3/model/encoder.py` `TransformerEncoderLayer.cross_attn_image(attn_mask=memory_mask)` (MultiheadAttentionWrapper, 이미 인자 존재). 백본 = `sam3/model/vitdet.py ViT`(LoRA 타겟). memory 순서 = spatial(프레임=모달 블록)→obj_ptr. 상세: [10_related_work.md](10_related_work.md) SAM3 섹션.
+
+**SAM3 RBMA 구현 완료 — 2026-06-16** (상세 진행/체크리스트: [11_sam3_rbma_plan.md](11_sam3_rbma_plan.md))
+- ⚠️ 구현 중 정정: tracker memory cross-attn은 MultiheadAttention이 **아니라 RoPEAttention**(SDPA attn_mask 없음). → P27식으로 `sam3/sam/transformer.py` SDPA 패치(`_rbma_attn_bias`).
+- 신규 파일: `semseg/models/sam3/sam3_lora_rbma.py`(`LoRA_Sam3_RBMA`: plain LoRA + modality-as-frame forward + RBMA bias hook + SemanticHead + training-free entropy reliability + compute_losses), `train_sam3_rbma.py`(전용 트레이너, DDP/AMP), `configs/b200-{multiaqua_rgbtl,deliver_rgbdel}-SAM3RBMA-*.yaml`.
+- 검증: 전 컴포넌트 random-init PASS (forward 출력 (B,C,1008,1008), RBMA bias↔출력 결합, LoRA backward, 배선). **실학습은 서버/B200** (SAM3 가중치 gated=Meta 승인 대기, 로컬 GPU 메모리 부족).
+- 실행: `PYTHONPATH=semseg/models/sam3 [torchrun --nproc_per_node=N] python train_sam3_rbma.py --cfg <cfg>`
+
+---
+
 ### B200 학습 파이프라인 처리량 개선 (2026-04-15)
 
 **문제**: B200 단일 GPU util이 10~80% 왔다갔다 → 데이터 파이프라인 병목 패턴

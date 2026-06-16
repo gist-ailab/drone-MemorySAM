@@ -386,3 +386,52 @@
 - **헤드라인 = B**: SAM2 memory-attention **logit에 additive reliability bias** (전례 0, feature-multiply/output-scale/loss와 명확 구분).
 - **신호 = A(경량 버전)**: per-modality decoder의 **training-free predictive uncertainty**(entropy/conf) — UTFNet/HyperDUM의 *학습 evidential/HD head* 대비 "학습 불필요"가 차별점.
 - 차별화 대상: UTFNet, HyperDUM, TMC/ETMC (+ ReliFusion/READ는 trained-head/loss 대조군).
+
+---
+
+# SAM3 이식성 (RBMA → SAM3) — deep-research 2026-06-16, 99 agents / 23·25 claim
+
+## SAM3 사실 (검증)
+- **"SAM 3: Segment Anything with Concepts"**, arXiv:2511.16719, Meta, 2025-11 공개. 코드 `github.com/facebookresearch/sam3`, 가중치 `huggingface.co/facebook/sam3` (SAM License), 2026-03 SAM 3.1 업데이트.
+- 구조: **detector + tracker 분리**(백본 공유). 백본 = **Perception Encoder(PE, 비전-언어 ViT)** — **Hiera 아님**.
+- 헤드라인: **Promptable Concept Segmentation**(text/exemplar 프롬프트, DETR 검출기). RBMA엔 불필요.
+- **memory 메커니즘 유지** — 단 **tracker 내부에만** ("tracker는 SAM2처럼 학습"). 그러나 SAM2 `memory_attention` 모듈이 아니라 **memory를 prompt token으로 concat하는 encoder-only transformer**로 재구현(RoPE attention은 내부 존재, call site 다름).
+- decoder: two-way transformer 유지하나 **3-mask+confidence + binary prompt-match logit** (multi-class softmax 아님).
+
+## RBMA 이식 판정: 원리적 가능, drop-in 아님 (4곳 재작업)
+| RBMA hook | SAM3 | 작업 |
+|---|---|---|
+| 모달리티-as-프레임 memory attn | ✅ memory bank 유지(tracker) | 위치 이동 |
+| **(A)** LoRA 인코더 | PE (Hiera 아님) | LoRA 타겟 재지정 |
+| **(B)** attn LOGIT bias 주입점 | `memory_attention` 없음, prompt-token concat | P27 `_sdpa_with_optional_bias` 패턴을 tracker encoder attn에 재이식. memory가 prompt token이라 "모달 memory token 컬럼에 reliability bias 가산"으로 자연 매핑 |
+| **(C)** per-modality decoder 불확실성 | binary logit/3-mask conf | ★ 우리 프로젝트는 이미 decoder를 **semantic multi-class로 개조** → SAM3도 동일 개조 시 **softmax entropy 복원**(비차단). 미개조 시 3-mask disagreement surrogate |
+| **(D)** DETR concept 검출기 | 신규 | 우리는 tracker만 활용 → 무시 가능 |
+
+## ✅ 코드 레벨 확인 완료 (2026-06-16, GitHub `facebookresearch/sam3` main 직접 확인)
+
+**메모리 융합 경로**:
+- `sam3_tracker_base.py` `_prepare_memory_conditioned_features()`: maskmem + object pointer를 `prompt = torch.cat(to_cat_prompt)`로 모아 `self.transformer.encoder(src=current_vision_feats, prompt=prompt, prompt_pos=..., prompt_key_padding_mask=..., num_obj_ptr_tokens=...)` 호출. `num_maskmem=7`, `assert transformer.decoder is None`(encoder-only).
+- 그 encoder = **`TransformerEncoderFusion`** (`sam3/model/encoder.py`), 레이어 = `TransformerEncoderLayer`(self-attn → cross-attn-to-memory → MLP). **RoPE 아님** (additive pos enc).
+
+**★ bias 주입점 (RBMA 핵심)** — `TransformerEncoderLayer.forward_pre/forward_post`:
+```python
+tgt2 = self.cross_attn_image(
+    query=tgt + query_pos ...,
+    key=memory + pos ...,
+    value=memory,
+    attn_mask=memory_mask,            # ← 이미 first-class 인자! RBMA bias = 여기
+    key_padding_mask=memory_key_padding_mask,
+)[0]
+```
+- `attn_mask=memory_mask`가 **이미 배선**돼 있음. `cross_attn_image`는 주입식 `nn.Module`(시그니처상 `nn.MultiheadAttention` 계열, `[0]` 인덱싱 + float attn_mask = pre-softmax 가산).
+- → **SAM2처럼 SDPA를 손패치(`_sdpa_with_optional_bias`)할 필요 없음.** `memory_mask`에 per-modality reliability bias를 넣기만 하면 됨. **SAM2보다 오히려 깔끔.**
+- 레이아웃: **seq-first (L,B,C)**. memory(=key) 시퀀스에 모달리티별 memory 블록이 concat → 해당 블록 컬럼에 reliability_i 가산.
+
+**decoder** (`_forward_sam_heads`): `low_res_multimasks [B,M,H,W] (M=3) + ious + object_score_logits`. multi-class softmax 아님 → 우리 semantic 개조 시(MemorySAM 방식) softmax entropy 복원, 미개조 시 ious/3-mask disagreement surrogate.
+
+## SAM3 포팅 결론 (코드 확정)
+**이식 가능 + bias 주입은 SAM2보다 쉬움.** 작업 3곳:
+1. **(A) LoRA → PE 백본** (`sam3/model/encoder.py`의 PE / 인코더 블록 타겟; Hiera QKV 패턴 대체).
+2. **(B) bias** = `TransformerEncoderLayer.cross_attn_image`의 `memory_mask`에 per-modality reliability 가산 (이미 인자 존재, 모달 memory 블록 컬럼에 broadcast). modality-as-frame은 tracker에 각 모달을 frame으로 투입.
+3. **(C) 불확실성 신호** = decoder를 semantic multi-class로 개조해 softmax entropy 복원(권장) 또는 ious/object_score surrogate.
+- 확인 잔여: `cross_attn_image` 구체 클래스가 `nn.MultiheadAttention`인지(float attn_mask 가산 의미 확정), tracker의 memory 토큰 컬럼↔모달리티 매핑 순서.

@@ -1,0 +1,166 @@
+"""
+Dedicated trainer for LoRA_Sam3_RBMA (RBMA on SAM3).
+
+Why a separate script: train_sam2_lora_paper.py is SAM2-specific (build_sam2, sam2
+checkpoint, 1024 input, proto/gate/MI loss coupling). This script reuses the dataset /
+augmentation / loss / scheduler / metric utilities but has a clean loop using the
+model's own forward + compute_losses (main semantic CE + per-modality aux CE).
+
+Run (single GPU):
+  PYTHONPATH=semseg/models/sam3 python train_sam3_rbma.py --cfg configs/b200-multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug.yaml
+Run (DDP):
+  PYTHONPATH=semseg/models/sam3 torchrun --nproc_per_node=8 train_sam3_rbma.py --cfg <cfg>
+
+Notes: SAM3 weights (facebook/sam3) are gated → set MODEL.CHECKPOINT_PATH after approval
+(else random init). Input is 1008 (SAM3), not 1024.
+"""
+import os, sys, argparse, yaml, math, time
+import torch
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
+import torch.distributed as dist
+
+# make `import sam3` work
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "semseg/models/sam3"))
+
+from semseg.datasets import *                       # noqa  (DELIVER, MULTIAQUA, ...)
+from semseg.augmentations_mm import get_train_augmentation, get_val_augmentation
+from semseg.losses import get_loss
+from semseg.schedulers import get_scheduler
+from semseg.metrics import Metrics
+from semseg.utils.utils import fix_seeds, setup_cudnn
+from sam3_lora_rbma import LoRA_Sam3_RBMA
+
+
+def build_datasets(cfg):
+    dcfg, tcfg, ecfg = cfg["DATASET"], cfg["TRAIN"], cfg["EVAL"]
+    tr_t = get_train_augmentation(tcfg["IMAGE_SIZE"], seg_fill=dcfg["IGNORE_LABEL"], dataset_cfg=dcfg)
+    va_t = get_val_augmentation(ecfg["IMAGE_SIZE"], dataset_cfg=dcfg)
+    kw = {}
+    if dcfg["NAME"] == "MULTIAQUA":
+        kw["night_translation"] = bool(dcfg.get("NIGHT_TRANSLATION", False))
+        if "NUM_CLASSES" in dcfg:
+            kw["n_classes"] = dcfg["NUM_CLASSES"]
+    trainset = eval(dcfg["NAME"])(dcfg["ROOT"], "train", tr_t, dcfg["MODALS"], **kw)
+    valset = eval(dcfg["NAME"])(dcfg["ROOT"], "val", va_t, dcfg["MODALS"], **kw)
+    return trainset, valset
+
+
+def build_model(cfg, device):
+    mc = cfg["MODEL"]
+    model = LoRA_Sam3_RBMA(
+        r=mc.get("LORA_R", 4),
+        num_modalities=len(cfg["DATASET"]["MODALS"]),
+        num_classes=mc.get("LORA_NUM_CLASSES", 4),
+        checkpoint_path=(mc.get("CHECKPOINT_PATH") or None),
+        load_from_HF=mc.get("LOAD_FROM_HF", False),
+        lambda_bias_init=mc.get("LAMBDA_BIAS_INIT", 1.0),
+    ).to(device)
+    return model
+
+
+@torch.no_grad()
+def evaluate(model, loader, device, num_classes, ignore_label):
+    model.eval()
+    metric = Metrics(num_classes, ignore_label, device)
+    for sample, lbl in loader:
+        sample = [x.to(device, non_blocking=True) for x in sample]
+        lbl = lbl.to(device, non_blocking=True)
+        sem = model(sample, multimask_output=True)            # (B,C,H,W)
+        metric.update(sem.softmax(dim=1), lbl)
+    ious, miou = metric.compute_iou()
+    return miou, ious
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--cfg", required=True)
+    args = ap.parse_args()
+    cfg = yaml.load(open(args.cfg), Loader=yaml.SafeLoader)
+    mc, dcfg, tcfg, ecfg = cfg["MODEL"], cfg["DATASET"], cfg["TRAIN"], cfg["EVAL"]
+
+    # DDP / device
+    ddp = tcfg.get("DDP", False) and int(os.environ.get("WORLD_SIZE", 1)) > 1
+    if ddp:
+        dist.init_process_group("nccl")
+        rank, world = dist.get_rank(), dist.get_world_size()
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        torch.cuda.set_device(local_rank)
+        device = torch.device("cuda", local_rank)
+    else:
+        rank, world, device = 0, 1, torch.device(cfg.get("DEVICE", "cuda"))
+    is_main = (rank == 0)
+    fix_seeds(42); setup_cudnn()
+
+    num_classes = mc.get("LORA_NUM_CLASSES", 4)
+    save_dir = cfg["SAVE_DIR"]; os.makedirs(save_dir, exist_ok=True)
+
+    trainset, valset = build_datasets(cfg)
+    train_sampler = DistributedSampler(trainset, world, rank, shuffle=True) if ddp else RandomSampler(trainset)
+    lk = dict(num_workers=tcfg.get("NUM_WORKERS", 4), pin_memory=True, drop_last=True)
+    trainloader = DataLoader(trainset, batch_size=tcfg["BATCH_SIZE"], sampler=train_sampler, **lk)
+    valloader = DataLoader(valset, batch_size=ecfg.get("BATCH_SIZE", 1),
+                           num_workers=2, pin_memory=True) if is_main else None
+
+    model = build_model(cfg, device)
+    core = model
+    if ddp:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[local_rank], find_unused_parameters=True)
+        core = model.module
+
+    loss_fn = get_loss(cfg["LOSS"]["NAME"], dcfg["IGNORE_LABEL"], None)
+    aux_w = mc.get("AUX_WEIGHT", 0.5)
+    optimizer = torch.optim.AdamW(core.trainable_parameters(),
+                                  lr=cfg["OPTIMIZER"]["LR"], weight_decay=cfg["OPTIMIZER"]["WEIGHT_DECAY"])
+    upe = len(trainloader); epochs = tcfg["EPOCHS"]
+    scheduler = get_scheduler(cfg["SCHEDULER"]["NAME"], optimizer, (epochs + 1) * upe,
+                              cfg["SCHEDULER"]["POWER"], upe * cfg["SCHEDULER"]["WARMUP"],
+                              cfg["SCHEDULER"]["WARMUP_RATIO"])
+    use_amp = tcfg.get("AMP", False)
+    amp_dtype = torch.bfloat16 if str(tcfg.get("AMP_DTYPE", "bfloat16")) == "bfloat16" else torch.float16
+
+    if is_main:
+        n_tr = sum(p.numel() for p in core.trainable_parameters())
+        print(f"[SAM3-RBMA] trainable params: {n_tr/1e6:.2f}M | classes={num_classes} | "
+              f"img={tcfg['IMAGE_SIZE']} | ddp={ddp}(world={world}) | ckpt={'random' if not mc.get('CHECKPOINT_PATH') else mc['CHECKPOINT_PATH']}")
+
+    best = -1.0
+    for epoch in range(epochs):
+        model.train()
+        if ddp: train_sampler.set_epoch(epoch)
+        t0 = time.time(); run = 0.0
+        for it, (sample, lbl) in enumerate(trainloader):
+            sample = [x.to(device, non_blocking=True) for x in sample]
+            lbl = lbl.to(device, non_blocking=True)
+            optimizer.zero_grad(set_to_none=True)
+            with torch.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
+                sem = model(sample, multimask_output=True, gt_mask=lbl)
+                loss, parts = core.compute_losses(sem, lbl, loss_fn, aux_weight=aux_w,
+                                                  ignore_index=dcfg["IGNORE_LABEL"])
+            loss.backward()
+            optimizer.step(); scheduler.step()
+            run += float(loss)
+            if is_main and it % 20 == 0:
+                print(f"ep{epoch} it{it}/{upe} loss={float(loss):.4f} "
+                      f"(main={float(parts['main']):.4f} aux={float(parts['aux']):.4f}) "
+                      f"lr={optimizer.param_groups[0]['lr']:.2e}")
+
+        if is_main:
+            print(f"[ep{epoch}] mean loss={run/max(upe,1):.4f} time={time.time()-t0:.0f}s")
+            if epoch >= tcfg.get("EVAL_START", 0) and (epoch % tcfg.get("EVAL_INTERVAL", 1) == 0):
+                miou, ious = evaluate(core, valloader, device, num_classes, dcfg["IGNORE_LABEL"])
+                print(f"[ep{epoch}] val mIoU={miou:.2f}")
+                torch.save({"model": core.state_dict(), "epoch": epoch, "miou": miou},
+                           os.path.join(save_dir, "last.pth"))
+                if miou > best:
+                    best = miou
+                    torch.save({"model": core.state_dict(), "epoch": epoch, "miou": miou},
+                               os.path.join(save_dir, f"best_ep{epoch}_{miou:.2f}.pth"))
+                    print(f"  NEW BEST {best:.2f}")
+    if ddp:
+        dist.destroy_process_group()
+
+
+if __name__ == "__main__":
+    main()
