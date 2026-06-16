@@ -60,14 +60,16 @@ def build_model(cfg, device):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, num_classes, ignore_label):
+def evaluate(model, loader, device, num_classes, ignore_label, amp_dtype=torch.bfloat16):
     model.eval()
+    torch.cuda.empty_cache()
     metric = Metrics(num_classes, ignore_label, device)
     for sample, lbl in loader:
         sample = [x.to(device, non_blocking=True) for x in sample]
         lbl = lbl.to(device, non_blocking=True)
-        sem = model(sample, multimask_output=True)            # (B,C,H,W)
-        metric.update(sem.softmax(dim=1), lbl)
+        with torch.autocast("cuda", dtype=amp_dtype):          # match train precision/memory
+            sem = model(sample, multimask_output=True)         # (B,C,H,W)
+        metric.update(sem.float().softmax(dim=1), lbl)
     ious, miou = metric.compute_iou()
     return miou, ious
 
@@ -148,16 +150,23 @@ def main():
 
         if is_main:
             print(f"[ep{epoch}] mean loss={run/max(upe,1):.4f} time={time.time()-t0:.0f}s")
+            # save checkpoint FIRST (so a val crash never loses the epoch's training)
+            torch.save({"model": core.state_dict(), "epoch": epoch},
+                       os.path.join(save_dir, "last.pth"))
             if epoch >= tcfg.get("EVAL_START", 0) and (epoch % tcfg.get("EVAL_INTERVAL", 1) == 0):
-                miou, ious = evaluate(core, valloader, device, num_classes, dcfg["IGNORE_LABEL"])
-                print(f"[ep{epoch}] val mIoU={miou:.2f}")
-                torch.save({"model": core.state_dict(), "epoch": epoch, "miou": miou},
-                           os.path.join(save_dir, "last.pth"))
-                if miou > best:
-                    best = miou
-                    torch.save({"model": core.state_dict(), "epoch": epoch, "miou": miou},
-                               os.path.join(save_dir, f"best_ep{epoch}_{miou:.2f}.pth"))
-                    print(f"  NEW BEST {best:.2f}")
+                try:
+                    miou, ious = evaluate(core, valloader, device, num_classes,
+                                          dcfg["IGNORE_LABEL"], amp_dtype)
+                    print(f"[ep{epoch}] val mIoU={miou:.2f}")
+                    if miou > best:
+                        best = miou
+                        torch.save({"model": core.state_dict(), "epoch": epoch, "miou": miou},
+                                   os.path.join(save_dir, f"best_ep{epoch}_{miou:.2f}.pth"))
+                        print(f"  NEW BEST {best:.2f}")
+                except Exception as e:
+                    import traceback
+                    print(f"[ep{epoch}] eval FAILED (training continues, last.pth saved): {e}")
+                    traceback.print_exc()
     if ddp:
         dist.destroy_process_group()
 
