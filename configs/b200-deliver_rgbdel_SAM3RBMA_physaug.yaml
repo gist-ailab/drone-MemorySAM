@@ -13,7 +13,7 @@ MODEL:
   LORA_MODEL    : LoRA_Sam3_RBMA
   LORA_R        : 4
   LORA_NUM_CLASSES : 25
-  CHECKPOINT_PATH : ''
+  CHECKPOINT_PATH : '/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM/semseg/models/sam3/checkpoints/sam3.pt'   # SAM3 sam3.pt (gated); '' → random init
   LOAD_FROM_HF    : false
   LAMBDA_BIAS_INIT : 1.0
   AUX_WEIGHT      : 0.5
