@@ -134,8 +134,28 @@ def main():
         print(f"[SAM3-RBMA] trainable params: {n_tr/1e6:.2f}M | classes={num_classes} | "
               f"img={tcfg['IMAGE_SIZE']} | ddp={ddp}(world={world}) | ckpt={'random' if not mc.get('CHECKPOINT_PATH') else mc['CHECKPOINT_PATH']}")
 
+    # ── resume (model + optimizer + scheduler + epoch + best) ──
     best = -1.0
-    for epoch in range(epochs):
+    start_epoch = 0
+    resume_path = mc.get("RESUME_PATH", "") if mc.get("RESUME_ENABLE", False) else ""
+    if resume_path and os.path.isfile(resume_path):
+        ck = torch.load(resume_path, map_location="cpu")
+        miss, unexp = core.load_state_dict(ck.get("model", ck), strict=False)
+        start_epoch = int(ck.get("epoch", -1)) + 1
+        best = float(ck.get("best", ck.get("miou", -1.0)))
+        if "optimizer" in ck:
+            try: optimizer.load_state_dict(ck["optimizer"])
+            except Exception as e: print(f"[resume] optimizer state skipped: {e}")
+        if "scheduler" in ck:
+            try: scheduler.load_state_dict(ck["scheduler"])
+            except Exception as e: print(f"[resume] scheduler state skipped: {e}")
+        if is_main:
+            print(f"[resume] {resume_path} → start_epoch={start_epoch} best={best:.2f} "
+                  f"(missing={len(miss)} unexpected={len(unexp)})")
+    elif resume_path and is_main:
+        print(f"[resume] RESUME_PATH not found: {resume_path} → start from scratch")
+
+    for epoch in range(start_epoch, epochs):
         model.train()
         if ddp: train_sampler.set_epoch(epoch)
         t0 = time.time(); run = 0.0
@@ -157,8 +177,9 @@ def main():
 
         if is_main:
             print(f"[ep{epoch}] mean loss={run/max(upe,1):.4f} time={time.time()-t0:.0f}s")
-            # save checkpoint FIRST (so a val crash never loses the epoch's training)
-            torch.save({"model": core.state_dict(), "epoch": epoch},
+            # save checkpoint FIRST (full state for resume; so a val crash never loses the epoch)
+            torch.save({"model": core.state_dict(), "optimizer": optimizer.state_dict(),
+                        "scheduler": scheduler.state_dict(), "epoch": epoch, "best": best},
                        os.path.join(save_dir, "last.pth"))
             if epoch >= tcfg.get("EVAL_START", 0) and (epoch % tcfg.get("EVAL_INTERVAL", 1) == 0):
                 try:

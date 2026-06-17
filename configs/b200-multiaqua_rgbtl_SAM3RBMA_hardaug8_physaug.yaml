@@ -9,8 +9,8 @@ MODEL:
   NAME          : CMNeXt
   BACKBONE      : CMNeXt-B2
   PRETRAINED    : ''
-  RESUME_ENABLE : false
-  RESUME_PATH   : ''
+  RESUME_ENABLE : false        # true로 바꾸면 RESUME_PATH(last.pth)에서 이어서 학습
+  RESUME_PATH   : './outputs/MMSam3RBMA/b200_multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug/last.pth'
   LORA_MODEL    : LoRA_Sam3_RBMA
   LORA_R        : 4
   LORA_NUM_CLASSES : 4
