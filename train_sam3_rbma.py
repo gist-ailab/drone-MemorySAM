@@ -60,16 +60,23 @@ def build_model(cfg, device):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, num_classes, ignore_label, amp_dtype=torch.bfloat16):
+def evaluate(model, loader, device, num_classes, ignore_label,
+             amp_dtype=torch.bfloat16, img_size=1008):
     model.eval()
     torch.cuda.empty_cache()
     metric = Metrics(num_classes, ignore_label, device)
     for sample, lbl in loader:
         sample = [x.to(device, non_blocking=True) for x in sample]
+        # SAM3 ViT needs a FIXED input size (RoPE freqs_cis is precomputed for img_size);
+        # the val transform (Resize: aspect-preserving + 32-align) may not yield img_size²
+        # → force exactly (img_size, img_size). Output is resized back to label size below.
+        sample = [F.interpolate(x, size=(img_size, img_size), mode="bilinear", align_corners=False)
+                  for x in sample]
         lbl = lbl.to(device, non_blocking=True)
         with torch.autocast("cuda", dtype=amp_dtype):          # match train precision/memory
-            sem = model(sample, multimask_output=True)         # (B,C,H,W)
-        metric.update(sem.float().softmax(dim=1), lbl)
+            sem = model(sample, multimask_output=True)         # (B,C,img_size,img_size)
+        sem = F.interpolate(sem.float(), size=lbl.shape[-2:], mode="bilinear", align_corners=False)
+        metric.update(sem.softmax(dim=1), lbl)
     ious, miou = metric.compute_iou()
     return miou, ious
 
@@ -155,8 +162,9 @@ def main():
                        os.path.join(save_dir, "last.pth"))
             if epoch >= tcfg.get("EVAL_START", 0) and (epoch % tcfg.get("EVAL_INTERVAL", 1) == 0):
                 try:
+                    _img = tcfg["IMAGE_SIZE"][0] if isinstance(tcfg["IMAGE_SIZE"], (list, tuple)) else tcfg["IMAGE_SIZE"]
                     miou, ious = evaluate(core, valloader, device, num_classes,
-                                          dcfg["IGNORE_LABEL"], amp_dtype)
+                                          dcfg["IGNORE_LABEL"], amp_dtype, img_size=_img)
                     print(f"[ep{epoch}] val mIoU={miou:.2f}")
                     if miou > best:
                         best = miou
