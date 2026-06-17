@@ -1219,14 +1219,31 @@ if __name__ == '__main__':
     model = cfg['MODEL']['BACKBONE']
     exp_name = '_'.join([cfg['DATASET']['NAME'], model, modals])
     save_dir = Path(cfg['SAVE_DIR'], exp_name)
-    
-    # If resuming, set save_dir from resume path
+
     resume_enable = cfg['MODEL'].get('RESUME_ENABLE', False)
     resume_path = cfg['MODEL'].get('RESUME_PATH', '')
+
+    # AUTO_RESUME: rerun the SAME command after a crash/kill and continue automatically.
+    # If enabled and no explicit RESUME_PATH is set, pick up save_dir/last_checkpoint.pth
+    # (saved every epoch). To start FRESH: set AUTO_RESUME false, or delete that file.
+    # NOTE: this resumes weights AS-IS — after changing model code, start fresh instead
+    # (resuming stale weights silently continues the old run).
+    if cfg['MODEL'].get('AUTO_RESUME', False) and not (resume_enable and resume_path):
+        auto_ckpt = save_dir / 'last_checkpoint.pth'
+        if auto_ckpt.is_file():
+            resume_enable = True
+            resume_path = str(auto_ckpt)
+            cfg['MODEL']['RESUME_ENABLE'] = True
+            cfg['MODEL']['RESUME_PATH'] = resume_path
+            print(f"[AUTO_RESUME] found checkpoint -> resuming: {auto_ckpt}")
+        else:
+            print(f"[AUTO_RESUME] no last_checkpoint.pth in {save_dir} -> starting fresh")
+
+    # If resuming, set save_dir from resume path
     if resume_enable and resume_path and os.path.isfile(resume_path):
         save_dir = Path(os.path.dirname(resume_path))
         print(f"Resume enabled: Using save_dir from checkpoint: {save_dir}")
-    
+
     os.makedirs(save_dir, exist_ok=True)
     logger = get_logger(save_dir / 'train.log')
     main(cfg, gpu, save_dir)
