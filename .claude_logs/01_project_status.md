@@ -1,6 +1,18 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-06-15
+> 최종 업데이트: 2026-06-17
+
+### SAM3-RBMA val mIoU ~2% 디버그 — sam3.pt 로드 0개(백본 random) 수정 — 2026-06-17
+
+**문제**: B200 SAM3-RBMA(DELIVER 25cls) 학습 val mIoU=2.05로 붕괴. 진단 결과 `build_sam3_tracker()`가 full `sam3.pt`(키 접두사 `detector.`/`tracker.`)를 접두사 없는 tracker에 strict=False로 로드 → **0/773 매칭, ViT 백본 100% random+frozen**.
+
+**수정**: `semseg/models/sam3/sam3_lora_rbma.py` `build_sam3_tracker` — prefix 우선순위 remap(tracker.→detector.) + backbone <90% 로드 시 RuntimeError 가드. 진단 스크립트 `diag_sam3_ckpt.py` 추가. 상세: [04_issues_and_fixes.md](04_issues_and_fixes.md) ISSUE-020.
+
+**다음**: B200에서 git pull → `RESUME_ENABLE:false`로 재학습(기존 random-백본 체크포인트 폐기) → `[sam3 ckpt] ... backbone=504/504` 확인 후 val 정상 상승 확인.
+
+---
+
+> (이전) 최종 업데이트: 2026-06-15
 
 ### P28 = RBMA (Reliability-Biased Memory Attention) 구현 완료 (학습 대기) — 2026-06-15
 

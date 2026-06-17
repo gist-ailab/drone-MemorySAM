@@ -7,6 +7,27 @@
 
 ## 열린 이슈 (Open Issues)
 
+### ISSUE-020: SAM3-RBMA val mIoU ~2% — sam3.pt 가중치가 0개 로드됨 (백본 random) [해결]
+
+**상태**: ✅ 해결됨 (2026-06-17)
+**영향**: `LoRA_Sam3_RBMA` (B200 DELIVER/MULTIAQUA SAM3-RBMA 학습 전부)
+**우선순위**: Blocker — 학습이 무의미했음
+
+**증상**: B200 `b200-deliver_rgbdel_SAM3RBMA_physaug.yaml` 학습에서 val mIoU=2.05 (25클래스 random ≈4%보다 낮음), train loss `main≈27~57` (ln25≈3.2 대비 비정상적으로 높음, garbage feature 위 confident-wrong).
+
+**근본 원인**: full `sam3.pt`(3.45GB)는 가중치를 `detector.*`(1156) / `tracker.*`(309) 네임스페이스에 저장하는데, `build_tracker()`로 만든 standalone tracker의 키는 **접두사가 없음**(`backbone.*`, `transformer.*` 등 773개). `build_sam3_tracker()`가 `tracker.load_state_dict(sd, strict=False)`를 그냥 호출 → **identity 매칭 0/773** → ViT 백본이 random인 채 frozen → LoRA(rank4)로 복구 불가 → val 붕괴.
+
+**진단**: `diag_sam3_ckpt.py` (신규, 루트). 파일 존재/크기, ckpt vs tracker 키 접두사 히스토그램, prefix-strip/suffix remap 매칭 카운트, backbone random fraction, 바로 쓸 remap 출력. 결과: identity 0/773, `detector.` strip 520, `tracker.` strip 309, suffix-remap 717/773(backbone 504/504=random 0%).
+
+**수정** (`semseg/models/sam3/sam3_lora_rbma.py` `build_sam3_tracker`):
+- 우선순위 prefix remap — tracker 모듈은 `tracker.*`, 백본은 `detector.backbone.*`(백본은 tracker.*에 없음). shape 체크 후 매핑.
+- 로그에 `loaded=N/773 (tracker.=.. detector.=..) backbone=504/504` 출력.
+- **가드**: backbone 로드 <90%면 `RuntimeError` → 다신 random으로 학습 안 됨 (의도적 random은 `CHECKPOINT_PATH=''`).
+
+**주의**: ep46까지 학습된 LoRA/sem_head는 random 백본 기준이라 폐기. `RESUME_ENABLE: false`로 처음부터 재학습 필요.
+
+---
+
 ### ISSUE-001: Val에 NIGHT_AUG 미적용 → 모델 선택 기준 부적합 [심각]
 
 **상태**: ✅ 해결됨 (2026-02-25)
