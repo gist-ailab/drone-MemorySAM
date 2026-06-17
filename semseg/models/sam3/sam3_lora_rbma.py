@@ -148,8 +148,34 @@ def build_sam3_tracker(checkpoint_path=None, load_from_HF=False,
     if checkpoint_path:
         sd = torch.load(checkpoint_path, map_location="cpu")
         sd = sd.get("model", sd.get("model_state_dict", sd))
-        missing, unexpected = tracker.load_state_dict(sd, strict=False)
-        print(f"[sam3 ckpt] {checkpoint_path}: missing={len(missing)} unexpected={len(unexpected)}")
+        # The FULL SAM3 checkpoint namespaces weights under 'detector.' (~1156) and
+        # 'tracker.' (~309); our standalone tracker's keys carry NEITHER prefix. A plain
+        # strict=False load therefore matches ZERO keys -> the ViT backbone stays RANDOM
+        # and frozen -> features are garbage -> val mIoU collapses (~2%). Remap by prefix,
+        # priority tracker.* (authoritative for tracker-specific modules), then
+        # detector.* (the backbone is stored only under detector.backbone.*).
+        model_sd = tracker.state_dict()
+        remapped, src = {}, {"tracker.": 0, "detector.": 0}
+        for m, mt in model_sd.items():
+            for pref in ("tracker.", "detector."):
+                c = sd.get(pref + m)
+                if c is not None and c.shape == mt.shape:
+                    remapped[m] = c
+                    src[pref] += 1
+                    break
+        missing, unexpected = tracker.load_state_dict(remapped, strict=False)
+        _bb = lambda k: any(t in k for t in ("trunk", "visual", "backbone", "vision"))
+        n_bb = sum(1 for k in model_sd if _bb(k))
+        n_bb_loaded = sum(1 for k in remapped if _bb(k))
+        print(f"[sam3 ckpt] {checkpoint_path}: loaded={len(remapped)}/{len(model_sd)} "
+              f"(tracker.={src['tracker.']} detector.={src['detector.']}) "
+              f"missing={len(missing)} unexpected={len(unexpected)} | backbone={n_bb_loaded}/{n_bb}")
+        # Guard: never silently train on a random frozen backbone again.
+        if n_bb == 0 or n_bb_loaded < 0.9 * n_bb:
+            raise RuntimeError(
+                f"SAM3 backbone load FAILED: only {n_bb_loaded}/{n_bb} backbone keys filled "
+                f"from {checkpoint_path}. Check key prefixes / checkpoint file. "
+                f"(Set MODEL.CHECKPOINT_PATH='' to intentionally use random init.)")
     return tracker
 
 
