@@ -127,6 +127,49 @@ class SemanticHead(nn.Module):
         return self.head(x)
 
 
+class MultiScaleSemanticHead(nn.Module):
+    """FPN-style semantic head fusing 3 feature scales.
+
+    The 1-conv head on the 72x72 (stride-14) feature was the main mIoU bottleneck
+    (vs SAM2 Hiera-L, whose hierarchical multi-scale features feed a strong decoder).
+    Here we fuse the high-res backbone detail (fpn0 @288, fpn1 @144 — per-modality)
+    with the low-res LOW feature (@72) which, at output time, is the MEMORY-CONDITIONED
+    feature (so cross-modal fusion + RBMA bias still flow to the prediction). Decodes at
+    fpn0 resolution (288) instead of 72, then the caller upsamples to input size.
+
+    forward(f_hi, f_mid, f_low):  f_hi (B,Chi,288,288), f_mid (B,Cmid,144,144),
+                                  f_low (B,Clow,72,72) -> logits (B,num_classes,288,288)
+    """
+    def __init__(self, in_hi=32, in_mid=64, in_low=256, hidden=128, num_classes=25):
+        super().__init__()
+        self.in_hi, self.in_mid, self.in_low = in_hi, in_mid, in_low
+        self.l_hi = nn.Conv2d(in_hi, hidden, 1)
+        self.l_mid = nn.Conv2d(in_mid, hidden, 1)
+        self.l_low = nn.Conv2d(in_low, hidden, 1)
+        def smooth():
+            return nn.Sequential(
+                nn.Conv2d(hidden, hidden, 3, padding=1, bias=False),
+                nn.BatchNorm2d(hidden), nn.ReLU(inplace=True))
+        self.smooth_mid = smooth()
+        self.smooth_hi = smooth()
+        self.classifier = nn.Conv2d(hidden, num_classes, 1)
+
+    def forward(self, f_hi, f_mid, f_low):
+        assert f_hi.shape[1] == self.in_hi and f_mid.shape[1] == self.in_mid \
+            and f_low.shape[1] == self.in_low, (
+            f"MultiScaleSemanticHead channel mismatch: got "
+            f"({f_hi.shape[1]},{f_mid.shape[1]},{f_low.shape[1]}) "
+            f"expected ({self.in_hi},{self.in_mid},{self.in_low})")
+        x = self.l_low(f_low)                                                   # @72
+        x = F.interpolate(x, size=f_mid.shape[-2:], mode="bilinear",
+                          align_corners=False) + self.l_mid(f_mid)             # @144
+        x = self.smooth_mid(x)
+        x = F.interpolate(x, size=f_hi.shape[-2:], mode="bilinear",
+                          align_corners=False) + self.l_hi(f_hi)               # @288
+        x = self.smooth_hi(x)
+        return self.classifier(x)                                              # (B,C,288,288)
+
+
 def build_sam3_tracker(checkpoint_path=None, load_from_HF=False,
                        apply_temporal_disambiguation=False):
     """Build SAM3 tracker (Sam3TrackerPredictor, IS-A Sam3TrackerBase) WITH backbone.
@@ -193,7 +236,7 @@ class LoRA_Sam3_RBMA(nn.Module):
                  checkpoint_path=None, load_from_HF: bool = False,
                  apply_temporal_disambiguation: bool = False,
                  lambda_bias_init: float = 1.0,
-                 fpn_channels: int = 256):
+                 fpn_channels: int = 256, fpn_hi_ch: int = 32, fpn_mid_ch: int = 64):
         super().__init__()
         assert r > 0
         self.num_modalities = num_modalities
@@ -215,8 +258,11 @@ class LoRA_Sam3_RBMA(nn.Module):
         self._lora_B = w_Bs
         self.n_lora_blocks = n
 
-        # Phase 4: semantic head (SAM3 decoder emits SAM masks, not classes)
-        self.sem_head = SemanticHead(in_channels=fpn_channels, num_classes=num_classes)
+        # Phase 4: semantic head (SAM3 decoder emits SAM masks, not classes).
+        # Multi-scale FPN head — fuses high-res backbone detail (fpn0/fpn1) with the
+        # low-res memory-conditioned feature (cross-modal + RBMA). Decodes at 288, not 72.
+        self.sem_head = MultiScaleSemanticHead(
+            in_hi=fpn_hi_ch, in_mid=fpn_mid_ch, in_low=fpn_channels, num_classes=num_classes)
 
         # RBMA learnable bias magnitude (used from Phase 3)
         self.lambda_bias = nn.Parameter(torch.tensor(float(lambda_bias_init)))
@@ -334,10 +380,6 @@ class LoRA_Sam3_RBMA(nn.Module):
         return [p for p in self.parameters() if p.requires_grad]
 
     # ── Phase 4 — semantic head + per-modality predictive-uncertainty reliability ──
-    def _sem_logits(self, feat):
-        """feat (B,C,h,w) -> semantic class logits (B,num_classes,h,w)."""
-        return self.sem_head(feat)
-
     @staticmethod
     def _reliability_from_logits(logits, eps=SEM_EPS):
         """class logits (B,C,h,w) -> reliability (B,1,h,w) = 1 - normalized pred. entropy.
@@ -371,10 +413,13 @@ class LoRA_Sam3_RBMA(nn.Module):
         for i in range(m):
             backbone_out = sam.forward_image(batched_input[i])
             _, vision_feats, vision_pos_embeds, feat_sizes = sam._prepare_backbone_features(backbone_out)
+            fpn = backbone_out["backbone_fpn"]                       # [hi@288, mid@144, low@72]
+            f_hi, f_mid, f_low = fpn[0], fpn[1], fpn[-1]
 
-            # reliability signal (standalone backbone feat, pre-fusion → no circularity)
-            low_feat = self._backbone_lowres_feat(backbone_out)      # (B, C, h, w)
-            reliab.append(self._reliability_from_logits(self._sem_logits(low_feat)).detach())
+            # reliability signal: standalone (pre-fusion) multi-scale semantic prediction
+            # → predictive entropy. detached (no circularity; the RBMA 'A' axis).
+            reliab.append(self._reliability_from_logits(
+                self.sem_head(f_hi, f_mid, f_low)).detach())
 
             # RBMA: bias memory cross-attn by PRIOR frames' reliability (frames 0..i-1)
             self._rbma_state = {"frame": i, "reliab": reliab[:i], "num_obj_ptr": 0}
@@ -391,9 +436,10 @@ class LoRA_Sam3_RBMA(nn.Module):
             bucket = "cond_frame_outputs" if i == 0 else "non_cond_frame_outputs"
             output_dict[bucket][i] = step
 
-            # semantic logits from MEMORY-CONDITIONED feature (RBMA bias flows to output)
-            mem_feat = self._captured_mem_feat                       # (B, C, h, w)
-            per_modal_sem.append(self._sem_logits(mem_feat))
+            # semantic output: high-res detail (fpn0/fpn1, per-modality) fused with the
+            # low-res MEMORY-CONDITIONED feature (cross-modal fusion + RBMA bias flow here).
+            mem_feat = self._captured_mem_feat                       # (B, 256, 72, 72)
+            per_modal_sem.append(self.sem_head(f_hi, f_mid, mem_feat))
 
         self._rbma_state = None
         self._mem_bias_fn = None

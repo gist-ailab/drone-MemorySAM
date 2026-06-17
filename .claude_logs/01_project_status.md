@@ -2,6 +2,20 @@
 
 > 최종 업데이트: 2026-06-17
 
+### SAM3-RBMA multi-scale FPN semantic head — underfitting(저 mIoU) 대응 — 2026-06-17
+
+**배경**: 백본 로드 수정 후 fresh 재학습 → loss main 45→1.5 정상화, val mIoU 2→7(ep20). 단 **train loss가 ep19→20 평탄(2.36)인데 val 7** = 학습 부족 아니라 **용량 한계(underfitting)**. SAM2 Hiera-L 기반 모델 대비 큰 격차.
+
+**원인**: ① semantic head가 `Conv3x3→Conv1x1` 1개뿐, ② **최저해상도 fpn[-1](72×72, stride14)만** 사용 → 상위 FPN(288/144) 버림 → 미세 클래스/경계 뭉갬. memory attention은 정상 동작(track_step→`_captured_mem_feat`→head), 다만 72×72에서 muffled.
+
+**구현 (multi-scale FPN head)**: `MultiScaleSemanticHead` 신규 — 고해상도 backbone detail(fpn0@288, fpn1@144, per-modality) + 저해상도 **memory-conditioned** feat(@72, cross-modal+RBMA)를 FPN top-down 융합 → 288에서 디코딩 후 upsample. reliability 신호도 동일 head의 standalone(pre-fusion) 예측 entropy로 산출. head params ~37K→344K. shape 검증 PASS.
+
+**변경**: `semseg/models/sam3/sam3_lora_rbma.py` (`MultiScaleSemanticHead`, `__init__`, `forward`, `_sem_logits` 제거). LoRA rank는 config `LORA_R`로 상향 가능(현 4).
+
+**다음**: B200 git pull → **arch 변경이라 반드시 fresh 재학습**(기존 outputs 폴더 이동, RESUME/AUTO_RESUME off) → ep30~60 곡선으로 mIoU 상승폭 확인. 부족 시 LoRA rank↑ / 백본 마지막 stage unfreeze 검토. 깊은 격차 원인(ViT vs Hiera 계층성, SAM mask decoder 미사용) 추가 분석.
+
+---
+
 ### SAM3-RBMA val mIoU ~2% 디버그 — sam3.pt 로드 0개(백본 random) 수정 — 2026-06-17
 
 **문제**: B200 SAM3-RBMA(DELIVER 25cls) 학습 val mIoU=2.05로 붕괴. 진단 결과 `build_sam3_tracker()`가 full `sam3.pt`(키 접두사 `detector.`/`tracker.`)를 접두사 없는 tracker에 strict=False로 로드 → **0/773 매칭, ViT 백본 100% random+frozen**.
