@@ -43,7 +43,22 @@ def build_datasets(cfg):
             kw["n_classes"] = dcfg["NUM_CLASSES"]
     trainset = eval(dcfg["NAME"])(dcfg["ROOT"], "train", tr_t, dcfg["MODALS"], **kw)
     valset = eval(dcfg["NAME"])(dcfg["ROOT"], "val", va_t, dcfg["MODALS"], **kw)
-    return trainset, valset
+    testset = None
+    if dcfg["NAME"] != "MULTIAQUA":      # DELIVER 등 test split 보유 → SAM2처럼 Test mIoU도 로깅
+        try:
+            testset = eval(dcfg["NAME"])(dcfg["ROOT"], "test", va_t, dcfg["MODALS"], **kw)
+        except Exception as e:
+            print(f"[INFO] test set not available: {e}")
+    return trainset, valset, testset
+
+
+def print_iou_table(tag, epoch, miou, ious, names):
+    """SAM2-style per-class IoU log (reveals dead classes, e.g. Water=0 / Dynamic=0)."""
+    vals = ious.tolist() if hasattr(ious, "tolist") else list(ious)
+    print(f"[ep{epoch}] {tag} mIoU={miou:.2f}")
+    line = " | ".join(f"{names[i] if i < len(names) else i}:{float(v):.1f}"
+                      for i, v in enumerate(vals))
+    print(f"    {tag} per-class IoU: {line}")
 
 
 def build_model(cfg, device):
@@ -104,7 +119,7 @@ def main():
     num_classes = mc.get("LORA_NUM_CLASSES", 4)
     save_dir = cfg["SAVE_DIR"]; os.makedirs(save_dir, exist_ok=True)
 
-    trainset, valset = build_datasets(cfg)
+    trainset, valset, testset = build_datasets(cfg)
     train_sampler = DistributedSampler(trainset, world, rank, shuffle=True) if ddp else RandomSampler(trainset)
     lk = dict(num_workers=tcfg.get("NUM_WORKERS", 4), pin_memory=True, drop_last=True)
     trainloader = DataLoader(trainset, batch_size=tcfg["BATCH_SIZE"], sampler=train_sampler, **lk)
@@ -115,6 +130,11 @@ def main():
     valloader = DataLoader(valset, batch_size=ecfg.get("BATCH_SIZE", 1),
                            num_workers=ecfg.get("NUM_WORKERS", 4),
                            pin_memory=True) if is_main else None
+    eval_test = ecfg.get("EVAL_TEST", True)   # set false to skip test eval (saves time)
+    testloader = DataLoader(testset, batch_size=ecfg.get("BATCH_SIZE", 1),
+                            num_workers=ecfg.get("NUM_WORKERS", 4), pin_memory=True) \
+        if (is_main and eval_test and testset is not None) else None
+    class_names = getattr(trainset, "CLASSES", [str(i) for i in range(num_classes)])
 
     model = build_model(cfg, device)
     core = model
@@ -202,7 +222,11 @@ def main():
                     _img = tcfg["IMAGE_SIZE"][0] if isinstance(tcfg["IMAGE_SIZE"], (list, tuple)) else tcfg["IMAGE_SIZE"]
                     miou, ious = evaluate(core, valloader, device, num_classes,
                                           dcfg["IGNORE_LABEL"], amp_dtype, img_size=_img)
-                    print(f"[ep{epoch}] val mIoU={miou:.2f}")
+                    print_iou_table("val", epoch, miou, ious, class_names)
+                    if testloader is not None:
+                        t_miou, t_ious = evaluate(core, testloader, device, num_classes,
+                                                  dcfg["IGNORE_LABEL"], amp_dtype, img_size=_img)
+                        print_iou_table("test", epoch, t_miou, t_ious, class_names)
                     if miou > best:
                         best = miou
                         torch.save({"model": core.state_dict(), "epoch": epoch, "miou": miou},
