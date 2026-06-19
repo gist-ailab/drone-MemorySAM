@@ -108,8 +108,13 @@ def main():
     train_sampler = DistributedSampler(trainset, world, rank, shuffle=True) if ddp else RandomSampler(trainset)
     lk = dict(num_workers=tcfg.get("NUM_WORKERS", 4), pin_memory=True, drop_last=True)
     trainloader = DataLoader(trainset, batch_size=tcfg["BATCH_SIZE"], sampler=train_sampler, **lk)
+    # Larger eval batch + more workers => higher GPU util during validation (smaller
+    # idle window where the box looks free). For segmentation mIoU under model.eval(),
+    # batch size does NOT change the metric (per-pixel accumulation, BN uses running
+    # stats) — only speed/VRAM. Requires uniform val image sizes (DELIVER = uniform).
     valloader = DataLoader(valset, batch_size=ecfg.get("BATCH_SIZE", 1),
-                           num_workers=2, pin_memory=True) if is_main else None
+                           num_workers=ecfg.get("NUM_WORKERS", 4),
+                           pin_memory=True) if is_main else None
 
     model = build_model(cfg, device)
     core = model
@@ -138,6 +143,17 @@ def main():
     best = -1.0
     start_epoch = 0
     resume_path = mc.get("RESUME_PATH", "") if mc.get("RESUME_ENABLE", False) else ""
+    # AUTO_RESUME: get killed -> just rerun the SAME command -> continue from save_dir/last.pth
+    # (saved every epoch BEFORE eval, so a kill costs <=1 epoch). Opt-in. Do NOT enable right
+    # after changing model code — it would resume stale/incompatible weights. Start fresh by
+    # turning AUTO_RESUME off or deleting last.pth.
+    if not resume_path and mc.get("AUTO_RESUME", False):
+        cand = os.path.join(save_dir, "last.pth")
+        if os.path.isfile(cand):
+            resume_path = cand
+            if is_main: print(f"[AUTO_RESUME] found -> resuming: {cand}")
+        elif is_main:
+            print(f"[AUTO_RESUME] no last.pth in {save_dir} -> starting fresh")
     if resume_path and os.path.isfile(resume_path):
         ck = torch.load(resume_path, map_location="cpu")
         miss, unexp = core.load_state_dict(ck.get("model", ck), strict=False)
