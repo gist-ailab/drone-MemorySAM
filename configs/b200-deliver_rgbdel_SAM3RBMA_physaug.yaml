@@ -7,6 +7,7 @@ SAVE_DIR        : './outputs/MMSam3RBMA/b200_deliver_rgbdel_SAM3RBMA_physaug'
 MODEL:
   NAME          : CMNeXt
   BACKBONE      : CMNeXt-B2
+  AUTO_RESUME : true
   PRETRAINED    : ''
   RESUME_ENABLE : false        # true로 바꾸면 RESUME_PATH(last.pth)에서 이어서 학습
   RESUME_PATH   : './outputs/MMSam3RBMA/b200_deliver_rgbdel_SAM3RBMA_physaug/last.pth'
@@ -62,7 +63,8 @@ SCHEDULER:
 EVAL:
   MODEL_PATH    : ''
   IMAGE_SIZE    : [1008, 1008]
-  BATCH_SIZE    : 1
+  BATCH_SIZE    : 4
+  NUM_WORKERS : 4
   EVAL_DAY      : false
 
 TEST:
