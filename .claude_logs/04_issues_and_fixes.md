@@ -7,6 +7,22 @@
 
 ## 열린 이슈 (Open Issues)
 
+### ISSUE-021: SAM3-RBMA train loss 정상인데 val mIoU ~2 — sem_head BatchNorm train/eval 불일치 [해결]
+
+**상태**: ✅ 해결됨 (2026-06-19)
+**영향**: `LoRA_Sam3_RBMA` (`SemanticHead`/`MultiScaleSemanticHead` 둘 다)
+**우선순위**: Blocker — 평가가 무의미했음
+
+**증상**: 멀티스케일 head 적용 + 백본 로드 정상(504/504) 후에도 **train loss main 1.9~2.2(정상 학습)인데 val mIoU=2.56**. 비교: 동일 DELIVER 25cls에서 SAM2 P28(`LoRA_Sam_P28`)은 ep2부터 Day-Val 42.67/Test 40.14 → ep10 55.26/49.41.
+
+**근본 원인**: head의 `nn.BatchNorm2d`. head가 한 forward에서 **분포가 다른 입력으로 여러 번** 호출됨 — ① reliability용 standalone backbone feat, ② 출력용 memory-conditioned feat, ③ ×4 모달리티(img/depth/event/lidar). 공유 BN의 running_mean/var가 이 8가지 분포의 무의미한 평균이 됨 → **train(batch 통계)은 정상, eval(running 통계)은 어느 분포에도 안 맞아 붕괴**. train-good/eval-bad의 교과서적 패턴.
+
+**수정** (`semseg/models/sam3/sam3_lora_rbma.py`): 두 head의 `BatchNorm2d` → `GroupNorm`(running stats 없음 → train==eval, batch/분포 무관). 검증: 동일 입력에 train/eval 출력 차이 0.0, BN 잔존 0.
+
+**주의**: BN→GN로 param 키가 바뀜(running_mean/var 제거) → 기존 체크포인트와 비호환. **fresh 재학습 필수** (output 폴더 이동, AUTO_RESUME이 옛 last.pth 잡지 않게).
+
+---
+
 ### ISSUE-020: SAM3-RBMA val mIoU ~2% — sam3.pt 가중치가 0개 로드됨 (백본 random) [해결]
 
 **상태**: ✅ 해결됨 (2026-06-17)

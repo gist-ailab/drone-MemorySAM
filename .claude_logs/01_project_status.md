@@ -2,6 +2,14 @@
 
 > 최종 업데이트: 2026-06-17
 
+### SAM3-RBMA val 붕괴 진짜 원인 — sem_head BatchNorm train/eval 불일치 → GroupNorm — 2026-06-19
+
+**핵심**: 멀티스케일 head·백본 로드 정상인데도 **train loss 정상(main~2.0)/val mIoU 2.56**. 원인은 head의 `BatchNorm`: standalone(reliability)+memory-conditioned(출력)×4모달 = 분포 다른 8회 호출이 공유 BN running stats를 오염 → eval만 붕괴. **BN→GroupNorm**으로 수정(train==eval 검증, diff 0.0). 상세 [04_issues_and_fixes.md](04_issues_and_fixes.md) ISSUE-021.
+**비교 기준(SAM2 P28, DELIVER 25cls)**: ep2 Day42.67/Test40.14 → ep10 Day55.26/Test49.41. SAM3-RBMA는 이 GN 수정 후 fresh 재학습으로 비교.
+**주의**: BN→GN 키 변경 → 비호환, **fresh 재학습 필수**(폴더 이동, AUTO_RESUME 옛 ckpt 회피).
+
+---
+
 ### SAM3-RBMA multi-scale FPN semantic head — underfitting(저 mIoU) 대응 — 2026-06-17
 
 **배경**: 백본 로드 수정 후 fresh 재학습 → loss main 45→1.5 정상화, val mIoU 2→7(ep20). 단 **train loss가 ep19→20 평탄(2.36)인데 val 7** = 학습 부족 아니라 **용량 한계(underfitting)**. SAM2 Hiera-L 기반 모델 대비 큰 격차.

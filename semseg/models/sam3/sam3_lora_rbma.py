@@ -116,9 +116,10 @@ class SemanticHead(nn.Module):
     """
     def __init__(self, in_channels=256, hidden=128, num_classes=4):
         super().__init__()
+        gn = 32 if hidden % 32 == 0 else (16 if hidden % 16 == 0 else 8)
         self.head = nn.Sequential(
             nn.Conv2d(in_channels, hidden, 3, padding=1, bias=False),
-            nn.BatchNorm2d(hidden),
+            nn.GroupNorm(gn, hidden),   # GroupNorm: train==eval, batch-/distribution-invariant
             nn.ReLU(inplace=True),
             nn.Conv2d(hidden, num_classes, 1),
         )
@@ -146,10 +147,16 @@ class MultiScaleSemanticHead(nn.Module):
         self.l_hi = nn.Conv2d(in_hi, hidden, 1)
         self.l_mid = nn.Conv2d(in_mid, hidden, 1)
         self.l_low = nn.Conv2d(in_low, hidden, 1)
+        # GroupNorm (not BatchNorm): this head is called on MULTIPLE distinct feature
+        # distributions per forward — standalone (reliability) vs memory-conditioned
+        # (output), x4 modalities. A shared BN's running stats become a meaningless
+        # average of all of them → train (batch stats) looks fine but eval (running
+        # stats) collapses. GroupNorm has no running stats → train==eval, batch-invariant.
+        gn = 32 if hidden % 32 == 0 else (16 if hidden % 16 == 0 else 8)
         def smooth():
             return nn.Sequential(
                 nn.Conv2d(hidden, hidden, 3, padding=1, bias=False),
-                nn.BatchNorm2d(hidden), nn.ReLU(inplace=True))
+                nn.GroupNorm(gn, hidden), nn.ReLU(inplace=True))
         self.smooth_mid = smooth()
         self.smooth_hi = smooth()
         self.classifier = nn.Conv2d(hidden, num_classes, 1)
@@ -373,7 +380,7 @@ class LoRA_Sam3_RBMA(nn.Module):
         teacher_force_obj_scores_for_mem). Gradients to LoRA still flow under eval."""
         super().train(mode)
         self.sam.eval()
-        self.sem_head.train(mode)   # sem_head has BN → needs train mode
+        self.sem_head.train(mode)   # head uses GroupNorm (no running stats) → mode is a no-op, kept for clarity
         return self
 
     def trainable_parameters(self):
