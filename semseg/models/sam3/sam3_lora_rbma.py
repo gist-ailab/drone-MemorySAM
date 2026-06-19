@@ -116,10 +116,9 @@ class SemanticHead(nn.Module):
     """
     def __init__(self, in_channels=256, hidden=128, num_classes=4):
         super().__init__()
-        gn = 32 if hidden % 32 == 0 else (16 if hidden % 16 == 0 else 8)
         self.head = nn.Sequential(
             nn.Conv2d(in_channels, hidden, 3, padding=1, bias=False),
-            nn.GroupNorm(gn, hidden),   # GroupNorm: train==eval, batch-/distribution-invariant
+            nn.BatchNorm2d(hidden, track_running_stats=False),  # batch stats in train AND eval → train==eval
             nn.ReLU(inplace=True),
             nn.Conv2d(hidden, num_classes, 1),
         )
@@ -147,16 +146,18 @@ class MultiScaleSemanticHead(nn.Module):
         self.l_hi = nn.Conv2d(in_hi, hidden, 1)
         self.l_mid = nn.Conv2d(in_mid, hidden, 1)
         self.l_low = nn.Conv2d(in_low, hidden, 1)
-        # GroupNorm (not BatchNorm): this head is called on MULTIPLE distinct feature
-        # distributions per forward — standalone (reliability) vs memory-conditioned
-        # (output), x4 modalities. A shared BN's running stats become a meaningless
-        # average of all of them → train (batch stats) looks fine but eval (running
-        # stats) collapses. GroupNorm has no running stats → train==eval, batch-invariant.
-        gn = 32 if hidden % 32 == 0 else (16 if hidden % 16 == 0 else 8)
+        # BatchNorm with track_running_stats=False: this head is called on MULTIPLE
+        # distinct feature distributions per forward — standalone (reliability) vs
+        # memory-conditioned (output), x4 modalities. With running stats, the EMA becomes
+        # a meaningless average → train (batch stats) fine but eval (running stats)
+        # collapses. GroupNorm fixes that but hurt optimization here (train loss stuck
+        # ~ln C). track_running_stats=False keeps BN's per-channel normalization (good
+        # optimization) while using BATCH stats in BOTH train and eval → train==eval, and
+        # each call self-normalizes. Stable even at eval batch 1 (head spatial is 288x288).
         def smooth():
             return nn.Sequential(
                 nn.Conv2d(hidden, hidden, 3, padding=1, bias=False),
-                nn.GroupNorm(gn, hidden), nn.ReLU(inplace=True))
+                nn.BatchNorm2d(hidden, track_running_stats=False), nn.ReLU(inplace=True))
         self.smooth_mid = smooth()
         self.smooth_hi = smooth()
         self.classifier = nn.Conv2d(hidden, num_classes, 1)

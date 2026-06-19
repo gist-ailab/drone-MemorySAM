@@ -17,9 +17,13 @@
 
 **근본 원인**: head의 `nn.BatchNorm2d`. head가 한 forward에서 **분포가 다른 입력으로 여러 번** 호출됨 — ① reliability용 standalone backbone feat, ② 출력용 memory-conditioned feat, ③ ×4 모달리티(img/depth/event/lidar). 공유 BN의 running_mean/var가 이 8가지 분포의 무의미한 평균이 됨 → **train(batch 통계)은 정상, eval(running 통계)은 어느 분포에도 안 맞아 붕괴**. train-good/eval-bad의 교과서적 패턴.
 
-**수정** (`semseg/models/sam3/sam3_lora_rbma.py`): 두 head의 `BatchNorm2d` → `GroupNorm`(running stats 없음 → train==eval, batch/분포 무관). 검증: 동일 입력에 train/eval 출력 차이 0.0, BN 잔존 0.
+**수정 1차 (GroupNorm) — 실패/되돌림**: 두 head `BatchNorm2d`→`GroupNorm`. train==eval은 맞았으나 **GN이 최적화를 저해** — train loss가 main~3.2(ln25≈3.22, 거의 random)에서 안 내려감(BN 땐 ~2.0), val 0.13. GN 기각.
 
-**주의**: BN→GN로 param 키가 바뀜(running_mean/var 제거) → 기존 체크포인트와 비호환. **fresh 재학습 필수** (output 폴더 이동, AUTO_RESUME이 옛 last.pth 잡지 않게).
+**수정 2차 (확정)**: `BatchNorm2d(track_running_stats=False)`. running stats 자체를 없애 **train·eval 모두 batch 통계 사용 → train==eval**(오염 원천 제거), 각 호출(standalone/mem ×4모달)이 자기 입력으로 self-normalize, **BN의 per-channel 정규화(좋은 최적화) 유지**. head spatial 288²라 eval batch 1도 안정. 검증: train/eval 출력 차이 0.0, batch1 정상.
+
+**교훈**: train-good/eval-bad → 정규화 running stats 의심. 단 GroupNorm이 항상 답은 아님(최적화 저해 가능) → **BN + track_running_stats=False**가 이 케이스 정답.
+
+**주의**: norm 키 변경 → 기존 체크포인트 비호환. **fresh 재학습 필수**(output 폴더 이동, AUTO_RESUME이 옛 last.pth 잡지 않게).
 
 ---
 
