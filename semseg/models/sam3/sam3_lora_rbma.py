@@ -116,9 +116,10 @@ class SemanticHead(nn.Module):
     """
     def __init__(self, in_channels=256, hidden=128, num_classes=4):
         super().__init__()
+        gn = 32 if hidden % 32 == 0 else (16 if hidden % 16 == 0 else 8)
         self.head = nn.Sequential(
             nn.Conv2d(in_channels, hidden, 3, padding=1, bias=False),
-            nn.BatchNorm2d(hidden, track_running_stats=False),  # batch stats in train AND eval → train==eval
+            nn.GroupNorm(gn, hidden),   # batch-independent, train==eval (see MultiScaleSemanticHead note)
             nn.ReLU(inplace=True),
             nn.Conv2d(hidden, num_classes, 1),
         )
@@ -146,18 +147,19 @@ class MultiScaleSemanticHead(nn.Module):
         self.l_hi = nn.Conv2d(in_hi, hidden, 1)
         self.l_mid = nn.Conv2d(in_mid, hidden, 1)
         self.l_low = nn.Conv2d(in_low, hidden, 1)
-        # BatchNorm with track_running_stats=False: this head is called on MULTIPLE
-        # distinct feature distributions per forward — standalone (reliability) vs
-        # memory-conditioned (output), x4 modalities. With running stats, the EMA becomes
-        # a meaningless average → train (batch stats) fine but eval (running stats)
-        # collapses. GroupNorm fixes that but hurt optimization here (train loss stuck
-        # ~ln C). track_running_stats=False keeps BN's per-channel normalization (good
-        # optimization) while using BATCH stats in BOTH train and eval → train==eval, and
-        # each call self-normalizes. Stable even at eval batch 1 (head spatial is 288x288).
+        # GroupNorm — the ONLY correct choice here. This head runs on multiple distinct
+        # feature distributions per forward (standalone-reliability vs memory-conditioned-
+        # output, x4 modalities), so BatchNorm is broken either way: running-stats EMA gets
+        # polluted (eval collapses), and track_running_stats=False makes eval depend on the
+        # batch (proven: SAME checkpoint gave val 8.5 in-trainer vs 1.28 standalone). GN has
+        # NO batch coupling and NO running stats → eval is deterministic and train==eval, so
+        # the val number is finally trustworthy. (Earlier GN rejection was premature: judged
+        # at ep0-3 warmup, where BN-no-rs looked identical before later reaching ~1.4.)
+        gn = 32 if hidden % 32 == 0 else (16 if hidden % 16 == 0 else 8)
         def smooth():
             return nn.Sequential(
                 nn.Conv2d(hidden, hidden, 3, padding=1, bias=False),
-                nn.BatchNorm2d(hidden, track_running_stats=False), nn.ReLU(inplace=True))
+                nn.GroupNorm(gn, hidden), nn.ReLU(inplace=True))
         self.smooth_mid = smooth()
         self.smooth_hi = smooth()
         self.classifier = nn.Conv2d(hidden, num_classes, 1)

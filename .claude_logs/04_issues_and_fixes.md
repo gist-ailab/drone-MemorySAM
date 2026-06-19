@@ -21,7 +21,11 @@
 
 **수정 2차 (확정)**: `BatchNorm2d(track_running_stats=False)`. running stats 자체를 없애 **train·eval 모두 batch 통계 사용 → train==eval**(오염 원천 제거), 각 호출(standalone/mem ×4모달)이 자기 입력으로 self-normalize, **BN의 per-channel 정규화(좋은 최적화) 유지**. head spatial 288²라 eval batch 1도 안정. 검증: train/eval 출력 차이 0.0, batch1 정상.
 
-**교훈**: train-good/eval-bad → 정규화 running stats 의심. 단 GroupNorm이 항상 답은 아님(최적화 저해 가능) → **BN + track_running_stats=False**가 이 케이스 정답.
+**수정 3차 (최종 확정) — GroupNorm**: track_running_stats=False도 결국 **eval batch 통계**라 eval이 batch 의존 → **같은 ckpt(ep45)인데 trainer val=8.5 vs 단독 진단(diag_sam3_eval.py) val=1.28**. batch 독립·train==eval인 **GroupNorm**만이 정답. 2차에서 GN을 "최적화 저해"로 기각한 건 **오판**(ep0~3 warmup만 보고 판단, BN-no-rs도 그때 3.2였다가 ep38 1.4 도달). 검증: GN train==eval diff 0.0, **batch4 sample0 == batch1 단독 = 0.0**(batch 독립).
+**판정 주의**: GN warmup(ep0~10) 구간 train loss는 ~3대로 보일 수 있음 → **ep20~40까지 보고** val 판정(이제 val 숫자 신뢰 가능).
+**미해결(다음)**: GN 재학습 후에도 val 낮으면 = norm이 아닌 모델/구조 한계 → LoRA rank↑ 등. (diag_sam3_eval.py로 val/train-as-val per-class 재측정)
+
+**교훈**: train-good/eval-bad → 정규화 의심. BatchNorm은 다중분포·다중호출 head에서 **양쪽 다 깨짐**(running=오염, batch-stat=batch의존). batch 독립 norm(**GroupNorm/LayerNorm**)이 정답이고, **warmup 지나서 판정**할 것.
 
 **주의**: norm 키 변경 → 기존 체크포인트 비호환. **fresh 재학습 필수**(output 폴더 이동, AUTO_RESUME이 옛 last.pth 잡지 않게).
 
