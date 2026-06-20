@@ -10,6 +10,22 @@
 
 ---
 
+### SAM3-RBMA 디코더 강화 + reliability-gated fusion + LoRA rank16 — 2026-06-20
+
+**상황**: GroupNorm으로 eval 신뢰 확보 후 진짜 결과 — ep14 val 7.77/test 6.83, **Road/Sky/Building만 잡고 22클래스 0**(dominant 붕괴). train loss main~1.5 정체 = train에서도 rare 클래스 못 맞춤 = **capacity/구조 한계**(eval 버그 아님).
+
+**SAM2 MemorySAM 대비 차이(근본 원인)**: SAM2(P9/P28)는 출력=`high_res_multimasks`=**SAM mask decoder를 num_classes로 repurpose**(transformer+transposed-conv 고해상도)+학습된 UAMM/AMF fusion. 우리는 SAM3 decoder 우회(object mask 전용이라 repurpose 위험)+**conv 작은 head@72**+ **naive mean**(RGB 희석). → 약한 저해상도 head + mean이 붕괴 주범.
+
+**수정**(`sam3_lora_rbma.py`, frozen 백본 유지):
+- 디코더 강화: `MultiScaleSemanticHead` hidden 128→256, smooth block 깊이↑(mid×2, hi×3). head 0.34M→**3.05M**.
+- **reliability-gated fusion**: naive mean → `softmax_i(lambda_fuse·reliability_i)` 가중합(spatial, RBMA reliability 재활용 = 노벨티 강화). uniform 시 mean으로 degrade(안전).
+- config `LORA_R 4→16`(적응 여력 4배, adapter 유지).
+
+**검증**: head out (B,25,288,288), fusion 가중치 합=1, compile OK. **fresh 재학습 필수**(구조 변경). ep20~30에서 GroupNorm baseline(~8) 대비 상승폭 비교.
+**다음(부족 시)**: SAM3 mask decoder repurpose(고난도) / class-balanced loss.
+
+---
+
 ### SAM3-RBMA multi-scale FPN semantic head — underfitting(저 mIoU) 대응 — 2026-06-17
 
 **배경**: 백본 로드 수정 후 fresh 재학습 → loss main 45→1.5 정상화, val mIoU 2→7(ep20). 단 **train loss가 ep19→20 평탄(2.36)인데 val 7** = 학습 부족 아니라 **용량 한계(underfitting)**. SAM2 Hiera-L 기반 모델 대비 큰 격차.

@@ -12,7 +12,7 @@ MODEL:
   RESUME_ENABLE : false        # true로 바꾸면 RESUME_PATH(last.pth)에서 이어서 학습
   RESUME_PATH   : './outputs/MMSam3RBMA/b200_deliver_rgbdel_SAM3RBMA_physaug/last.pth'
   LORA_MODEL    : LoRA_Sam3_RBMA
-  LORA_R        : 4
+  LORA_R        : 16
   LORA_NUM_CLASSES : 25
   CHECKPOINT_PATH : '/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM/semseg/models/sam3/checkpoints/sam3.pt'   # SAM3 sam3.pt (gated); '' → random init
   LOAD_FROM_HF    : false

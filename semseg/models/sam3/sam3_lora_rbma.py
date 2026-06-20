@@ -141,27 +141,29 @@ class MultiScaleSemanticHead(nn.Module):
     forward(f_hi, f_mid, f_low):  f_hi (B,Chi,288,288), f_mid (B,Cmid,144,144),
                                   f_low (B,Clow,72,72) -> logits (B,num_classes,288,288)
     """
-    def __init__(self, in_hi=32, in_mid=64, in_low=256, hidden=128, num_classes=25):
+    def __init__(self, in_hi=32, in_mid=64, in_low=256, hidden=256, num_classes=25):
         super().__init__()
         self.in_hi, self.in_mid, self.in_low = in_hi, in_mid, in_low
         self.l_hi = nn.Conv2d(in_hi, hidden, 1)
         self.l_mid = nn.Conv2d(in_mid, hidden, 1)
         self.l_low = nn.Conv2d(in_low, hidden, 1)
-        # GroupNorm — the ONLY correct choice here. This head runs on multiple distinct
-        # feature distributions per forward (standalone-reliability vs memory-conditioned-
-        # output, x4 modalities), so BatchNorm is broken either way: running-stats EMA gets
-        # polluted (eval collapses), and track_running_stats=False makes eval depend on the
-        # batch (proven: SAME checkpoint gave val 8.5 in-trainer vs 1.28 standalone). GN has
-        # NO batch coupling and NO running stats → eval is deterministic and train==eval, so
-        # the val number is finally trustworthy. (Earlier GN rejection was premature: judged
-        # at ep0-3 warmup, where BN-no-rs looked identical before later reaching ~1.4.)
+        # GroupNorm (NOT BatchNorm): the head runs on multiple distinct feature
+        # distributions per forward (standalone-reliability vs memory-conditioned-output,
+        # x4 modalities). BatchNorm is broken either way: running-stats get polluted (eval
+        # collapses) and track_running_stats=False makes eval batch-dependent (proven: SAME
+        # ckpt gave val 8.5 in-trainer vs 1.28 standalone). GN has no batch coupling / no
+        # running stats → eval deterministic, train==eval, trustworthy.
         gn = 32 if hidden % 32 == 0 else (16 if hidden % 16 == 0 else 8)
-        def smooth():
-            return nn.Sequential(
-                nn.Conv2d(hidden, hidden, 3, padding=1, bias=False),
-                nn.GroupNorm(gn, hidden), nn.ReLU(inplace=True))
-        self.smooth_mid = smooth()
-        self.smooth_hi = smooth()
+        def block(n):                      # n stacked 3x3 conv-GN-ReLU
+            layers = []
+            for _ in range(n):
+                layers += [nn.Conv2d(hidden, hidden, 3, padding=1, bias=False),
+                           nn.GroupNorm(gn, hidden), nn.ReLU(inplace=True)]
+            return nn.Sequential(*layers)
+        # wider (128->256) + deeper (extra blocks at the high-res level) so small classes
+        # survive — the 1-conv@72 head collapsed to the 3 biggest classes (Road/Sky/Building).
+        self.smooth_mid = block(2)
+        self.smooth_hi = block(3)
         self.classifier = nn.Conv2d(hidden, num_classes, 1)
 
     def forward(self, f_hi, f_mid, f_low):
@@ -276,6 +278,12 @@ class LoRA_Sam3_RBMA(nn.Module):
 
         # RBMA learnable bias magnitude (used from Phase 3)
         self.lambda_bias = nn.Parameter(torch.tensor(float(lambda_bias_init)))
+
+        # Output fusion temperature: per-modality semantic logits are combined by a softmax
+        # over modalities of (lambda_fuse * reliability) instead of a naive mean — a naive
+        # mean dilutes RGB's strong 25-class signal with weak depth/event/lidar logits
+        # (collapse to dominant classes). Reuses the RBMA reliability as the fusion weight.
+        self.lambda_fuse = nn.Parameter(torch.tensor(1.0))
 
         # RBMA memory-attention bias injection (Phase 3).
         # Hook injects a float attn_mask into each memory-fusion cross-attention
@@ -456,9 +464,14 @@ class LoRA_Sam3_RBMA(nn.Module):
         self._last_reliab = reliab
         self._last_per_modal_sem = per_modal_sem   # for aux per-modality CE (loss)
 
-        # semantic output: average per-modality class logits, upsample to input size
+        # semantic output: reliability-gated fusion of per-modality logits (NOT a naive
+        # mean, which dilutes RGB). w_i = softmax_i(lambda_fuse * reliability_i), spatial &
+        # input-adaptive; degrades to a mean when reliabilities are uniform (safe at init).
         H, W = batched_input[0].shape[-2:]
-        sem = torch.stack(per_modal_sem, dim=0).mean(0)           # (B, num_classes, h, w)
+        sem_stack = torch.stack(per_modal_sem, dim=1)            # (B, m, C, h, w)
+        rel_stack = torch.stack(reliab, dim=1)                   # (B, m, 1, h, w) detached
+        w = torch.softmax(self.lambda_fuse * rel_stack, dim=1)   # (B, m, 1, h, w)
+        sem = (w * sem_stack).sum(dim=1)                         # (B, C, h, w)
         sem = F.interpolate(sem, size=(H, W), mode="bilinear", align_corners=False)
         return sem
 
