@@ -144,8 +144,13 @@ def main():
     core = model
     if ddp:
         model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[local_rank], find_unused_parameters=True,
-            broadcast_buffers=False)   # frozen backbone buffers are identical across ranks
+            model, device_ids=[local_rank], broadcast_buffers=False,
+            # static_graph: reliab_head & sem_decoder are used m times per forward
+            # (modality-as-frame), and sem_decoder.iou_head is unused (not in loss).
+            # find_unused_parameters=True errors ("marked ready twice") on such multi-use
+            # params; static_graph handles both multi-use and unused params (graph is
+            # structurally identical every iteration). broadcast_buffers off: backbone frozen.
+            static_graph=True)
 
         core = model.module
 
