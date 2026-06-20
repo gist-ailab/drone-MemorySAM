@@ -270,11 +270,43 @@ class LoRA_Sam3_RBMA(nn.Module):
         self._lora_B = w_Bs
         self.n_lora_blocks = n
 
-        # Phase 4: semantic head (SAM3 decoder emits SAM masks, not classes).
-        # Multi-scale FPN head — fuses high-res backbone detail (fpn0/fpn1) with the
-        # low-res memory-conditioned feature (cross-modal + RBMA). Decodes at 288, not 72.
-        self.sem_head = MultiScaleSemanticHead(
-            in_hi=fpn_hi_ch, in_mid=fpn_mid_ch, in_low=fpn_channels, num_classes=num_classes)
+        # Reliability head (small): standalone per-modality class logits → predictive
+        # entropy = RBMA reliability signal (detached for the bias), and trained by the
+        # per-modality auxiliary CE so the signal is meaningful.
+        self.reliab_head = SemanticHead(in_channels=fpn_channels, num_classes=num_classes)
+
+        # Semantic decoder = SAM3 mask decoder REPURPOSED for num_classes (like SAM2
+        # MemorySAM's high_res_multimasks). Its TwoWayTransformer lets per-class tokens
+        # ATTEND to the memory-conditioned image features, then transposed-conv upscaling —
+        # far stronger than a conv head (the conv head collapsed to the 3 biggest classes).
+        # We run it ourselves (see _semantic_decode) on the captured memory-conditioned
+        # feature; track_step's own _forward_sam_heads is left untouched for memory/RBMA
+        # (its object-score gating / best-mask selection would corrupt semantic output).
+        from sam3.sam.mask_decoder import MaskDecoder
+        from sam3.sam.transformer import TwoWayTransformer
+        edim = self.sam.sam_prompt_embed_dim
+        self.sem_decoder = MaskDecoder(
+            num_multimask_outputs=num_classes,   # multimask path returns masks[:,1:] = num_classes
+            transformer=TwoWayTransformer(depth=2, embedding_dim=edim, mlp_dim=2048, num_heads=8),
+            transformer_dim=edim,
+            iou_head_depth=3, iou_head_hidden_dim=256,
+            use_high_res_features=False,          # decode from the 72x72 mem feature only
+            iou_prediction_use_sigmoid=True,
+            pred_obj_scores=False,                # semantic: NO object-presence gating
+            dynamic_multimask_via_stability=False,
+        )
+        # warm-start the transformer + upscaling from the pretrained SAM3 mask decoder.
+        # Only SHAPE-MATCHING keys (transformer, output_upscaling, iou_token, hypernet
+        # MLPs 0..3) — the num_classes mask_tokens/iou_head differ in shape and STAY FRESH.
+        # (strict=False still ERRORS on shape mismatch, so we must pre-filter.)
+        try:
+            own = self.sem_decoder.state_dict()
+            filt = {k: v for k, v in self.sam.sam_mask_decoder.state_dict().items()
+                    if k in own and own[k].shape == v.shape}
+            self.sem_decoder.load_state_dict(filt, strict=False)
+            print(f"[sem_decoder] warm-start: loaded {len(filt)}/{len(own)} keys (rest fresh: num_classes tokens)")
+        except Exception as e:
+            print(f"[sem_decoder] warm-start skipped: {e}")
 
         # RBMA learnable bias magnitude (used from Phase 3)
         self.lambda_bias = nn.Parameter(torch.tensor(float(lambda_bias_init)))
@@ -385,13 +417,14 @@ class LoRA_Sam3_RBMA(nn.Module):
         return rel_flat.view(B, 1, 1, Sk).to(q.dtype)   # broadcast over heads & queries
 
     def train(self, mode: bool = True):
-        """Keep the SAM3 tracker in EVAL even when training. We only train LoRA +
-        sem_head + lambda_bias; the tracker/backbone is frozen, and its training-only
-        branches reference attributes not set by build_tracker (e.g.
-        teacher_force_obj_scores_for_mem). Gradients to LoRA still flow under eval."""
+        """Keep the frozen SAM3 tracker in EVAL even when training. We train LoRA +
+        reliab_head + sem_decoder + lambdas; the tracker/backbone is frozen and its
+        training-only branches reference attributes not set by build_tracker (e.g.
+        teacher_force_obj_scores_for_mem). super().train() already set our trainable
+        submodules (reliab_head/sem_decoder) to `mode`; we only force sam back to eval.
+        (No BatchNorm anywhere: reliab_head=GroupNorm, sem_decoder=LayerNorm → train==eval.)"""
         super().train(mode)
         self.sam.eval()
-        self.sem_head.train(mode)   # head uses GroupNorm (no running stats) → mode is a no-op, kept for clarity
         return self
 
     def trainable_parameters(self):
@@ -406,6 +439,28 @@ class LoRA_Sam3_RBMA(nn.Module):
         p = F.softmax(logits, dim=1)
         ent = -(p * (p + eps).log()).sum(dim=1, keepdim=True) / math.log(C)
         return 1.0 - ent
+
+    def _semantic_decode(self, pix_feat):
+        """Repurposed SAM3 mask decoder on a (B,256,72,72) memory-conditioned feature
+        → per-class logits (B, num_classes, 288, 288). Prompt-free: mirrors
+        _forward_sam_heads' empty-point (label -1) + no-mask setup, but bypasses its
+        object-score gating / best-mask selection (which are object-tracking specific)."""
+        sam = self.sam
+        B = pix_feat.size(0); device = pix_feat.device
+        pt_coords = torch.zeros(B, 1, 2, device=device)
+        pt_labels = -torch.ones(B, 1, dtype=torch.int32, device=device)
+        sparse, dense = sam.sam_prompt_encoder(points=(pt_coords, pt_labels), boxes=None, masks=None)
+        image_pe = sam.sam_prompt_encoder.get_dense_pe()
+        masks, _iou, _tok, _obj = self.sem_decoder(
+            image_embeddings=pix_feat,
+            image_pe=image_pe,
+            sparse_prompt_embeddings=sparse,
+            dense_prompt_embeddings=dense,
+            multimask_output=True,        # → masks[:, 1:] = num_classes channels
+            repeat_image=False,
+            high_res_features=None,
+        )
+        return masks                       # (B, num_classes, 288, 288)
 
     def _backbone_lowres_feat(self, backbone_out):
         """Lowest-res FPN level (B, C, h, w) for the semantic head / reliability."""
@@ -424,20 +479,21 @@ class LoRA_Sam3_RBMA(nn.Module):
         m = len(batched_input)
         sam = self.sam
         output_dict = {"cond_frame_outputs": {}, "non_cond_frame_outputs": {}}
-        per_modal_sem = []     # per-modality semantic logits (B, num_classes, h, w)
-        reliab = []            # per-modality reliability maps (B,1,h,w), frame order
+        per_modal_sem = []     # per-modality class logits from sem_decoder (B, C, 288, 288)
+        reliab_logits = []     # per-modality standalone logits (B, C, 72, 72) for aux CE
+        reliab = []            # per-modality reliability (B,1,72,72) for RBMA bias + fusion
         self._mem_bias_fn = self._rbma_bias_fn
 
         for i in range(m):
             backbone_out = sam.forward_image(batched_input[i])
             _, vision_feats, vision_pos_embeds, feat_sizes = sam._prepare_backbone_features(backbone_out)
-            fpn = backbone_out["backbone_fpn"]                       # [hi@288, mid@144, low@72]
-            f_hi, f_mid, f_low = fpn[0], fpn[1], fpn[-1]
+            f_low = backbone_out["backbone_fpn"][-1]                 # (B, 256, 72, 72)
 
-            # reliability signal: standalone (pre-fusion) multi-scale semantic prediction
-            # → predictive entropy. detached (no circularity; the RBMA 'A' axis).
-            reliab.append(self._reliability_from_logits(
-                self.sem_head(f_hi, f_mid, f_low)).detach())
+            # reliability: standalone (pre-fusion) prediction → entropy. detached for the
+            # RBMA bias (no circularity); the raw logits are kept for the aux CE.
+            rl = self.reliab_head(f_low)                            # (B, C, 72, 72)
+            reliab_logits.append(rl)
+            reliab.append(self._reliability_from_logits(rl).detach())
 
             # RBMA: bias memory cross-attn by PRIOR frames' reliability (frames 0..i-1)
             self._rbma_state = {"frame": i, "reliab": reliab[:i], "num_obj_ptr": 0}
@@ -454,26 +510,27 @@ class LoRA_Sam3_RBMA(nn.Module):
             bucket = "cond_frame_outputs" if i == 0 else "non_cond_frame_outputs"
             output_dict[bucket][i] = step
 
-            # semantic output: high-res detail (fpn0/fpn1, per-modality) fused with the
-            # low-res MEMORY-CONDITIONED feature (cross-modal fusion + RBMA bias flow here).
-            mem_feat = self._captured_mem_feat                       # (B, 256, 72, 72)
-            per_modal_sem.append(self.sem_head(f_hi, f_mid, mem_feat))
+            # semantic output: repurposed SAM decoder on the MEMORY-CONDITIONED feature
+            # (cross-modal fusion + RBMA bias flow here). Per-class tokens attend to it.
+            mem_feat = self._captured_mem_feat                      # (B, 256, 72, 72)
+            per_modal_sem.append(self._semantic_decode(mem_feat))  # (B, C, 288, 288)
 
         self._rbma_state = None
         self._mem_bias_fn = None
         self._last_reliab = reliab
-        self._last_per_modal_sem = per_modal_sem   # for aux per-modality CE (loss)
+        self._last_reliab_logits = reliab_logits   # standalone logits → aux CE (trains reliab_head)
 
-        # semantic output: reliability-gated fusion of per-modality logits (NOT a naive
-        # mean, which dilutes RGB). w_i = softmax_i(lambda_fuse * reliability_i), spatial &
-        # input-adaptive; degrades to a mean when reliabilities are uniform (safe at init).
-        sem_stack = torch.stack(per_modal_sem, dim=1)            # (B, m, C, h, w)
-        rel_stack = torch.stack(reliab, dim=1)                   # (B, m, 1, h, w) detached
-        w = torch.softmax(self.lambda_fuse * rel_stack, dim=1)   # (B, m, 1, h, w)
-        sem = (w * sem_stack).sum(dim=1)                         # (B, C, h, w) at head res
-        # NOTE: return at head resolution (no upsample to input size). The loss downsamples
-        # GT to this res and eval resizes to label size — materializing (B,C,1008,1008)
-        # here (and x4 in the aux loss) OOMs on a shared GPU.
+        # reliability-gated fusion of the per-modality decoder outputs (NOT a naive mean,
+        # which dilutes RGB). w_i = softmax_i(lambda_fuse * reliability_i); degrades to a
+        # mean when reliabilities are uniform (safe at init).
+        sem_stack = torch.stack(per_modal_sem, dim=1)              # (B, m, C, 288, 288)
+        Hs, Ws = sem_stack.shape[-2:]
+        rel = torch.stack(reliab, dim=1).flatten(0, 1)            # (B*m, 1, 72, 72)
+        rel = F.interpolate(rel, size=(Hs, Ws), mode="bilinear", align_corners=False)
+        rel = rel.view(sem_stack.size(0), m, 1, Hs, Ws)           # (B, m, 1, 288, 288)
+        w = torch.softmax(self.lambda_fuse * rel, dim=1)
+        sem = (w * sem_stack).sum(dim=1)                          # (B, C, 288, 288)
+        # head-res output (eval resizes to label size; loss downsamples GT to this res).
         return sem
 
     # ── Phase 4.3 — losses (main semantic CE + per-modality auxiliary CE) ──
@@ -484,18 +541,23 @@ class LoRA_Sam3_RBMA(nn.Module):
         if loss_fn is None:
             loss_fn = lambda x, y: F.cross_entropy(x, y, ignore_index=ignore_index)
         gt = gt.long()
-        # Compute losses at the LOGIT resolution (downsample GT, nearest → preserves
-        # ignore_index 255) instead of upsampling logits to full res. Upsampling fused +
-        # 4 per-modality logits to (B,C,1008,1008) is what OOMed.
-        h, w = sem_logits.shape[-2:]
-        if gt.shape[-2:] != (h, w):
-            gt = F.interpolate(gt.unsqueeze(1).float(), size=(h, w), mode="nearest").squeeze(1).long()
-        main = loss_fn(sem_logits, gt)
+
+        # CE at each logit's own resolution (downsample GT nearest → preserves ignore 255).
+        # Main = fused sem_decoder output (288); aux = per-modality standalone reliab_head
+        # logits (72) — trains the reliability head so the RBMA signal is meaningful.
+        def ce_at(logits):
+            hh, ww = logits.shape[-2:]
+            g = gt
+            if g.shape[-2:] != (hh, ww):
+                g = F.interpolate(gt.unsqueeze(1).float(), size=(hh, ww), mode="nearest").squeeze(1).long()
+            return loss_fn(logits, g)
+
+        main = ce_at(sem_logits)
         aux = sem_logits.new_zeros(())
-        pm = getattr(self, "_last_per_modal_sem", None)
-        if pm:
-            for s in pm:                          # each per-modal logit is already at (h,w)
-                aux = aux + loss_fn(s, gt)
-            aux = aux / len(pm)
+        rl = getattr(self, "_last_reliab_logits", None)
+        if rl:
+            for s in rl:
+                aux = aux + ce_at(s)
+            aux = aux / len(rl)
         total = main + aux_weight * aux
         return total, {"main": main.detach(), "aux": aux.detach()}

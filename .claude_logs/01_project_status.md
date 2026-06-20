@@ -10,6 +10,22 @@
 
 ---
 
+### SAM3-RBMA: SAM mask decoder를 num_classes로 repurpose (option 1) — 2026-06-21
+
+**배경**: rank16+강화 conv head(3M)+reliability fusion으로도 ep8 val 8.49인데 **여전히 Road/Sky/Building/Veg 4개만, 나머지 0**. OHEM이 이미 암묵적 imbalance 보정 → class-weight 패치는 부적절(사용자도 거부). 진짜 원인 = **conv head로는 클래스가 이미지에서 자기 영역을 능동적으로 못 찾음**(SAM2 MemorySAM은 SAM mask decoder의 class-token cross-attention으로 해결).
+
+**구현** (`sam3_lora_rbma.py`): conv head 버리고 **SAM3 mask decoder를 num_classes로 repurpose**.
+- `self.sem_decoder = MaskDecoder(num_multimask_outputs=num_classes, use_high_res_features=False, pred_obj_scores=False, dynamic_multimask_via_stability=False)` — multimask 경로가 `masks[:,1:]`=num_classes 반환. 출력 (B,25,288,288).
+- pretrained sam_mask_decoder에서 **shape 맞는 키만 warm-start**(transformer+upscaling+iou_token; mask_tokens/iou_head는 fresh). strict=False가 shape mismatch엔 에러나므로 pre-filter 필수.
+- `_semantic_decode(mem_feat)`: prompt-free(empty point label -1, no-mask) 직접 호출 → track_step의 object-gating/best-mask/obj_ptr 우회. **track_step은 memory/RBMA용으로 그대로 유지**(원본 decoder가 object mask로 memory 생성).
+- reliability는 작은 `reliab_head`(SemanticHead, standalone f_low@72)로 분리, **aux CE로 학습** → RBMA 신호 유의미. fusion은 reliability-gated 유지.
+- 학습 대상: LoRA(r16)+reliab_head+sem_decoder+lambdas. **백본 frozen 유지**(노벨티). sem_decoder는 LayerNorm, reliab_head는 GroupNorm → BN 없음(train==eval).
+
+**검증**: compile OK, MaskDecoder pred_obj_scores=False 경로/slicing 코드 확인. 로컬 sam3 deps(iopath) 없어 런타임은 **B200에서**. fresh 재학습 필수.
+**판정**: ep10~20 val per-class에서 **작은 클래스(Cars/Pedestrian/Pole 등)가 0을 벗어나는지** = repurpose 성패. 부족하면 SAM3 ViT single-scale 한계 → P28(Hiera) 비교.
+
+---
+
 ### SAM3-RBMA 디코더 강화 + reliability-gated fusion + LoRA rank16 — 2026-06-20
 
 **상황**: GroupNorm으로 eval 신뢰 확보 후 진짜 결과 — ep14 val 7.77/test 6.83, **Road/Sky/Building만 잡고 22클래스 0**(dominant 붕괴). train loss main~1.5 정체 = train에서도 rare 클래스 못 맞춤 = **capacity/구조 한계**(eval 버그 아님).
