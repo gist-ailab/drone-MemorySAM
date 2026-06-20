@@ -15,6 +15,7 @@ Notes: SAM3 weights (facebook/sam3) are gated → set MODEL.CHECKPOINT_PATH afte
 (else random init). Input is 1008 (SAM3), not 1024.
 """
 import os, sys, argparse, yaml, math, time
+from datetime import timedelta
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
@@ -106,7 +107,10 @@ def main():
     # DDP / device
     ddp = tcfg.get("DDP", False) and int(os.environ.get("WORLD_SIZE", 1)) > 1
     if ddp:
-        dist.init_process_group("nccl")
+        # Long timeout: only rank 0 runs eval (val+test, ~4k imgs single-GPU). The other
+        # ranks idle at the next-epoch collective meanwhile; the default 600s NCCL watchdog
+        # would abort them mid-eval. 2h covers a long eval window.
+        dist.init_process_group("nccl", timeout=timedelta(hours=2))
         rank, world = dist.get_rank(), dist.get_world_size()
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
         torch.cuda.set_device(local_rank)
@@ -140,7 +144,9 @@ def main():
     core = model
     if ddp:
         model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[local_rank], find_unused_parameters=True)
+            model, device_ids=[local_rank], find_unused_parameters=True,
+            broadcast_buffers=False)   # frozen backbone buffers are identical across ranks
+
         core = model.module
 
     loss_fn = get_loss(cfg["LOSS"]["NAME"], dcfg["IGNORE_LABEL"], None)
@@ -236,6 +242,10 @@ def main():
                     import traceback
                     print(f"[ep{epoch}] eval FAILED (training continues, last.pth saved): {e}")
                     traceback.print_exc()
+        # Resync ALL ranks here so non-main ranks wait at this barrier (not at the next
+        # epoch's collective) while rank 0 saves/evals → clean, deterministic sync point.
+        if ddp:
+            dist.barrier()
     if ddp:
         dist.destroy_process_group()
 
