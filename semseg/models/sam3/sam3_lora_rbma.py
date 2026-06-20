@@ -467,12 +467,13 @@ class LoRA_Sam3_RBMA(nn.Module):
         # semantic output: reliability-gated fusion of per-modality logits (NOT a naive
         # mean, which dilutes RGB). w_i = softmax_i(lambda_fuse * reliability_i), spatial &
         # input-adaptive; degrades to a mean when reliabilities are uniform (safe at init).
-        H, W = batched_input[0].shape[-2:]
         sem_stack = torch.stack(per_modal_sem, dim=1)            # (B, m, C, h, w)
         rel_stack = torch.stack(reliab, dim=1)                   # (B, m, 1, h, w) detached
         w = torch.softmax(self.lambda_fuse * rel_stack, dim=1)   # (B, m, 1, h, w)
-        sem = (w * sem_stack).sum(dim=1)                         # (B, C, h, w)
-        sem = F.interpolate(sem, size=(H, W), mode="bilinear", align_corners=False)
+        sem = (w * sem_stack).sum(dim=1)                         # (B, C, h, w) at head res
+        # NOTE: return at head resolution (no upsample to input size). The loss downsamples
+        # GT to this res and eval resizes to label size — materializing (B,C,1008,1008)
+        # here (and x4 in the aux loss) OOMs on a shared GPU.
         return sem
 
     # ── Phase 4.3 — losses (main semantic CE + per-modality auxiliary CE) ──
@@ -483,14 +484,18 @@ class LoRA_Sam3_RBMA(nn.Module):
         if loss_fn is None:
             loss_fn = lambda x, y: F.cross_entropy(x, y, ignore_index=ignore_index)
         gt = gt.long()
+        # Compute losses at the LOGIT resolution (downsample GT, nearest → preserves
+        # ignore_index 255) instead of upsampling logits to full res. Upsampling fused +
+        # 4 per-modality logits to (B,C,1008,1008) is what OOMed.
+        h, w = sem_logits.shape[-2:]
+        if gt.shape[-2:] != (h, w):
+            gt = F.interpolate(gt.unsqueeze(1).float(), size=(h, w), mode="nearest").squeeze(1).long()
         main = loss_fn(sem_logits, gt)
         aux = sem_logits.new_zeros(())
         pm = getattr(self, "_last_per_modal_sem", None)
         if pm:
-            Hs, Ws = gt.shape[-2:]
-            for s in pm:
-                s_up = F.interpolate(s, size=(Hs, Ws), mode="bilinear", align_corners=False)
-                aux = aux + loss_fn(s_up, gt)
+            for s in pm:                          # each per-modal logit is already at (h,w)
+                aux = aux + loss_fn(s, gt)
             aux = aux / len(pm)
         total = main + aux_weight * aux
         return total, {"main": main.detach(), "aux": aux.detach()}

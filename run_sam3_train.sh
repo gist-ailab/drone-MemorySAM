@@ -17,6 +17,9 @@ export CUDA_VISIBLE_DEVICES="3"
 # OMP_NUM_THREADS 경고 방지 (권장)
 export OMP_NUM_THREADS=1
 
+# 공유 GPU 메모리 단편화 완화 (OOM "reserved but unallocated" 대응)
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 # SAM3 전용 환경 (필수)
 export HF_HUB_OFFLINE=1
 export PYTHONPATH="semseg/models/sam3:${PYTHONPATH}"   # import sam3
