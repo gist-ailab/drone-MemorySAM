@@ -24,6 +24,8 @@
 **검증**: compile OK, MaskDecoder pred_obj_scores=False 경로/slicing 코드 확인. 로컬 sam3 deps(iopath) 없어 런타임은 **B200에서**. fresh 재학습 필수.
 **판정**: ep10~20 val per-class에서 **작은 클래스(Cars/Pedestrian/Pole 등)가 0을 벗어나는지** = repurpose 성패. 부족하면 SAM3 ViT single-scale 한계 → P28(Hiera) 비교.
 
+**결과 (✅ 성공, 2026-06-21)**: class-collapse 깨짐. val 궤적 ep2 7.10 → ep8 11.02 → ep14 13.03 → ep22 **16.27** (test 15.12), **아직 상승 중**(plateau 전). conv head 베이스라인(ep8 8.49, Road/Sky/Building/Veg 4개만)의 ~2배. **하드-0이던 클래스 활성화**: Cars 0→41.7, SideWalk 0→32.7, Vegetation 0→47.6, Wall 0→11.3, Terrain 0→13.2, Pole/Truck도 0 이탈 시작. 진단대로 SAM decoder의 class-token cross-attention이 능동적 localize. **다음**: 끝까지 학습(ep40~60+) 상한 확인 → 가장 작은 클래스(Pedestrian/Pole/sign/Dynamic/Water still 0)는 `use_high_res_features=True`(FPN skip) 후속 실험 후보. SAM2 P28(val~55) 대비 격차는 SAM3 ViT single-scale 한계 가능성.
+
 ---
 
 ### SAM3-RBMA 디코더 강화 + reliability-gated fusion + LoRA rank16 — 2026-06-20
