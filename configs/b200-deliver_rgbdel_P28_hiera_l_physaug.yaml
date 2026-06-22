@@ -1,0 +1,104 @@
+DEVICE          : cuda
+SAVE_DIR        : './outputs/MMSamP28/b200_deliver_rgbdel_P28_hiera_l_physaug'
+
+# P28 (RBMA on SAM2) + Hiera-LARGE backbone — 67 mIoU를 노리는 본 경로.
+# base+ P28은 이미 val ~55 → Large 백본으로 상한을 올림.
+# ⚠️ 첫 1 iter dim 확인 필요(P28 head는 256-dim neck 출력 기준이라 호환 예상이나 dry-run 권장).
+
+MODEL:
+  NAME          : CMNeXt
+  BACKBONE      : CMNeXt-B2
+  PRETRAINED    : ''
+  AUTO_RESUME   : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  LORA_MODEL    : LoRA_Sam_P28
+  LORA_R        : 4
+  LORA_NUM_EXPERTS : null
+  LORA_TOP_K    : None
+  LORA_LAYER    : null
+  LORA_COND_DIM : 8
+  MODAL_COND_MOE : true
+  # ── SAM2 백본 선택 (config-driven) ──
+  SAM2_CHECKPOINT : 'semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_large.pt'
+  SAM2_CONFIG     : 'sam2_hiera_l.yaml'
+  QUALITY_GATE:
+    HIDDEN_DIM   : 64
+    MIN_QUALITY  : 0.3
+    PER_MODALITY : true
+    TAU_UAMM     : 1.0
+    TAU_TEACHER  : 0.5
+    MEMORY_MOD   : false
+    AMF_MODE     : uniform          # 순수 RBMA
+    PER_MODALITY_DECODER : true
+    AUX_CE_WEIGHT : 0.5
+    MULTI_SCALE_SQG : true
+    DEBA_FP      : false
+    LAMBDA_BIAS_INIT : 1.0
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/DELIVER'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : true
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4              # Hiera-L이 더 큼 → 8에서 4로 (공유 GPU OOM 방지; 여유 있으면 6)
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : True
+  GRADIENT_CHECKPOINT : false
+  LAMBDA_GATE   : 0.5
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false

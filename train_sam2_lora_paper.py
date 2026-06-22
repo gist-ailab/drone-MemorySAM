@@ -470,8 +470,11 @@ def main(cfg, gpu, save_dir):
     class_names = trainset.CLASSES
 
     # model = eval(model_cfg['NAME'])(model_cfg['BACKBONE'], trainset.n_classes, dataset_cfg['MODALS'])
-    checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
-    sam2_config_file = "sam2_hiera_b+.yaml"
+    # SAM2 backbone size is config-driven (default Hiera-B+). Set MODEL.SAM2_CHECKPOINT +
+    # MODEL.SAM2_CONFIG to use a bigger backbone, e.g. Hiera-Large for higher mIoU.
+    checkpoint = model_cfg.get("SAM2_CHECKPOINT", "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt")
+    sam2_config_file = model_cfg.get("SAM2_CONFIG", "sam2_hiera_b+.yaml")
+    print(f"[SAM2] backbone config={sam2_config_file} ckpt={checkpoint}")
     num_modalities = len(dataset_cfg['MODALS'])
     
     # Load resume checkpoint if enabled
