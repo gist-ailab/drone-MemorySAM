@@ -71,6 +71,7 @@ def build_model(cfg, device):
         checkpoint_path=(mc.get("CHECKPOINT_PATH") or None),
         load_from_HF=mc.get("LOAD_FROM_HF", False),
         lambda_bias_init=mc.get("LAMBDA_BIAS_INIT", 1.0),
+        decoder_high_res=mc.get("DECODER_HIGH_RES", False),
     ).to(device)
     return model
 

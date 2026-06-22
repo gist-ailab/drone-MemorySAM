@@ -248,7 +248,8 @@ class LoRA_Sam3_RBMA(nn.Module):
                  checkpoint_path=None, load_from_HF: bool = False,
                  apply_temporal_disambiguation: bool = False,
                  lambda_bias_init: float = 1.0,
-                 fpn_channels: int = 256, fpn_hi_ch: int = 32, fpn_mid_ch: int = 64):
+                 fpn_channels: int = 256, fpn_hi_ch: int = 32, fpn_mid_ch: int = 64,
+                 decoder_high_res: bool = False):
         super().__init__()
         assert r > 0
         self.num_modalities = num_modalities
@@ -285,12 +286,17 @@ class LoRA_Sam3_RBMA(nn.Module):
         from sam3.sam.mask_decoder import MaskDecoder
         from sam3.sam.transformer import TwoWayTransformer
         edim = self.sam.sam_prompt_embed_dim
+        # decoder_high_res: feed fpn0(@288,32ch)/fpn1(@144,64ch) into the decoder's
+        # transposed-conv upscaling as skip connections → finer detail for tiny/boundary
+        # classes (Pedestrian/Pole/sign/RoadLine). Helps small classes but NOT a path to
+        # SOTA mIoU — the binding limit is SAM3's single-scale 72x72 frozen ViT.
+        self.decoder_high_res = decoder_high_res
         self.sem_decoder = MaskDecoder(
             num_multimask_outputs=num_classes,   # multimask path returns masks[:,1:] = num_classes
             transformer=TwoWayTransformer(depth=2, embedding_dim=edim, mlp_dim=2048, num_heads=8),
             transformer_dim=edim,
             iou_head_depth=3, iou_head_hidden_dim=256,
-            use_high_res_features=False,          # decode from the 72x72 mem feature only
+            use_high_res_features=decoder_high_res,
             iou_prediction_use_sigmoid=True,
             pred_obj_scores=False,                # semantic: NO object-presence gating
             dynamic_multimask_via_stability=False,
@@ -440,11 +446,13 @@ class LoRA_Sam3_RBMA(nn.Module):
         ent = -(p * (p + eps).log()).sum(dim=1, keepdim=True) / math.log(C)
         return 1.0 - ent
 
-    def _semantic_decode(self, pix_feat):
+    def _semantic_decode(self, pix_feat, high_res_features=None):
         """Repurposed SAM3 mask decoder on a (B,256,72,72) memory-conditioned feature
         → per-class logits (B, num_classes, 288, 288). Prompt-free: mirrors
         _forward_sam_heads' empty-point (label -1) + no-mask setup, but bypasses its
-        object-score gating / best-mask selection (which are object-tracking specific)."""
+        object-score gating / best-mask selection (which are object-tracking specific).
+        high_res_features (when decoder_high_res): [fpn0(B,32,288,288), fpn1(B,64,144,144)]
+        skip-connections for the upscaling path."""
         sam = self.sam
         B = pix_feat.size(0); device = pix_feat.device
         pt_coords = torch.zeros(B, 1, 2, device=device)
@@ -458,7 +466,7 @@ class LoRA_Sam3_RBMA(nn.Module):
             dense_prompt_embeddings=dense,
             multimask_output=True,        # → masks[:, 1:] = num_classes channels
             repeat_image=False,
-            high_res_features=None,
+            high_res_features=high_res_features,
         )
         return masks                       # (B, num_classes, 288, 288)
 
@@ -487,7 +495,9 @@ class LoRA_Sam3_RBMA(nn.Module):
         for i in range(m):
             backbone_out = sam.forward_image(batched_input[i])
             _, vision_feats, vision_pos_embeds, feat_sizes = sam._prepare_backbone_features(backbone_out)
-            f_low = backbone_out["backbone_fpn"][-1]                 # (B, 256, 72, 72)
+            fpn = backbone_out["backbone_fpn"]                       # [fpn0@288/32, fpn1@144/64, low@72/256]
+            f_low = fpn[-1]                                          # (B, 256, 72, 72)
+            hr = [fpn[0], fpn[1]] if self.decoder_high_res else None  # high-res skips (per modality)
 
             # reliability: standalone (pre-fusion) prediction → entropy. detached for the
             # RBMA bias (no circularity); the raw logits are kept for the aux CE.
@@ -513,7 +523,7 @@ class LoRA_Sam3_RBMA(nn.Module):
             # semantic output: repurposed SAM decoder on the MEMORY-CONDITIONED feature
             # (cross-modal fusion + RBMA bias flow here). Per-class tokens attend to it.
             mem_feat = self._captured_mem_feat                      # (B, 256, 72, 72)
-            per_modal_sem.append(self._semantic_decode(mem_feat))  # (B, C, 288, 288)
+            per_modal_sem.append(self._semantic_decode(mem_feat, hr))  # (B, C, 288, 288)
 
         self._rbma_state = None
         self._mem_bias_fn = None
