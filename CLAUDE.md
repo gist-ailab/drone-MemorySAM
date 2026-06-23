@@ -19,12 +19,16 @@
 - `02_model_arch.md`: P8~P13 모델 아키텍처 상세, 변천 과정, 각 버전의 한계점
 - `03_experiment_log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과
 - `04_issues_and_fixes.md`: 알려진 이슈, 해결 기록, 코딩 시 주의사항 (**코드 작성 전 반드시 확인**)
+- `12_novelty_and_related_work.md`: **RBMA 노벨티 & 관련연구(canonical)** — 우리 모델 한눈에, 선행연구 vs RBMA 구조 차별표, 리뷰 방어 포인트, lit-check TODO. **연구 방향·논문 포지셔닝 논의 전 반드시 확인.** (원시 deep-research 로그는 `10_related_work.md`)
+
+> `.claude_logs` 인덱스: 01 상태 · 02 모델상세 · 03 실험 · 04 이슈 · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)**. 관련연구/노벨티는 **12를 먼저** 읽고 필요 시 10/02로.
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
 - 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `02_model_arch.md` 또는 `03_experiment_log.md`를 업데이트하여 기록을 남겨라.
 - 버전(P8, P9, P10 등)을 명시하고, 왜 변경했는지(이전 실험 결과 기반) 타당한 이유를 적어라.
 - 실험 결과 파일 경로는 프로젝트 기준 상대 경로로 기록해라.
+- 새 선행연구를 조사했거나 RBMA 노벨티/차별점 논의가 갱신되면 `12_novelty_and_related_work.md`(canonical 비교표·판정)를 업데이트하고, 원시 조사 로그는 `10_related_work.md`에 추가해라.
 
 ### 3. 구현/작업 완료 시 자동 업데이트 (Auto-update)
 
