@@ -20,8 +20,9 @@
 - `03_experiment_log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과
 - `04_issues_and_fixes.md`: 알려진 이슈, 해결 기록, 코딩 시 주의사항 (**코드 작성 전 반드시 확인**)
 - `12_novelty_and_related_work.md`: **RBMA 노벨티 & 관련연구(canonical)** — 우리 모델 한눈에, 선행연구 vs RBMA 구조 차별표, 리뷰 방어 포인트, lit-check TODO. **연구 방향·논문 포지셔닝 논의 전 반드시 확인.** (원시 deep-research 로그는 `10_related_work.md`)
+- `13_servers_and_launch.md`: **서버 레지스트리 & 원격 실험 자동 실행** — "X 실험을 <서버>에서 돌려줘" 류 지시를 받으면 **반드시 먼저 읽어라.** 서버 메타데이터 단일 출처는 `scripts/servers.conf`, 실행/추적은 `scripts/remote_exp.sh`.
 
-> `.claude_logs` 인덱스: 01 상태 · 02 모델상세 · 03 실험 · 04 이슈 · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)**. 관련연구/노벨티는 **12를 먼저** 읽고 필요 시 10/02로.
+> `.claude_logs` 인덱스: 01 상태 · 02 모델상세 · 03 실험 · 04 이슈 · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)** · **13 서버&원격실행**. 관련연구/노벨티는 **12를 먼저**; 원격 학습 지시는 **13을 먼저** 읽어라.
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
@@ -79,6 +80,21 @@ python val_multiaqua.py --cfg configs/eval_config/<config>.yaml --mode test --mo
 # P9 전용 시각화 평가 (MoE routing 분석 포함)
 python val_multiaqua_P9.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode val
 python val_multiaqua_P9.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode test
+```
+
+### 원격 서버에서 실험 실행 (tmux 세션 `jemo`)
+
+"X 실험을 <서버>에서 돌려줘" → 아래 런처 사용. 상세는 `.claude_logs/13_servers_and_launch.md`, 서버 목록은 `scripts/servers.conf`.
+
+```bash
+# 서버 레지스트리 확인 (repo_path / env / default_gpus)
+bash scripts/remote_exp.sh servers
+# 서버 상태(빈 GPU + jemo 세션 창)
+bash scripts/remote_exp.sh status bengio
+# 실행: ssh -> tmux 세션 'jemo' 새 window -> torchrun -> logs/<cfg>/<cfg>_<ts>.log
+bash scripts/remote_exp.sh run bengio configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
+# 진행 로그 추적
+bash scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 ```
 
 ---
