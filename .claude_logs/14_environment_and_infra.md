@@ -36,6 +36,15 @@
 - `_checkpoint.pth` = `{'model_state_dict', 'optimizer_state_dict', ...}` dict. `val_multiaqua.py`가 기대.
 - arch 변경(BN→GN 등 키 변경) 시 옛 ckpt와 **비호환 → fresh 재학습 필수**. AUTO_RESUME이 옛 ckpt 잡지 않게 폴더 이동.
 
+## 3.5 GPU 가용성 자동 선택 (모든 학습 실행 전 필수)
+
+**규칙**: 어떤 실험이든 실행 전 해당 서버의 **빈 GPU를 확인하고 비어 있는 GPU에만** 배치한다(사용 중 GPU 회피 → OOM/타인 방해). 판정: `memory.used ≤ 2000MiB && util ≤ 10%`, 메모리 적은 순.
+
+- **헬퍼**: `scripts/pick_free_gpus.sh [N] [MAXMEM_MiB] [MAXUTIL_pct]` → 빈 GPU 인덱스를 콤마로 출력(부족하면 실패). `CUDA_VISIBLE_DEVICES`가 이미 있으면 그대로 echo(직접 지정 존중). 임계값은 `GPU_MAXMEM`/`GPU_MAXUTIL` 환경변수로 조정.
+- **로컬 런처**(자동 연결됨): `CUDA_VISIBLE_DEVICES` 미지정 시 빈 GPU 자동 선택.
+  - `NGPU=4 bash run_sam.sh` (SAM2) · `NGPU=1 bash run_sam3_train.sh` (SAM3) · `NPROC=2 bash run_sam3_rbma.sh <cfg>` (RBMA). `CUDA_VISIBLE_DEVICES=0,1 bash ...`로 직접 지정 시 그대로 존중.
+- **원격 런처**: `scripts/remote_exp.sh run <server> <cfg> auto:N` → 원격의 빈 GPU N장 자동 배정(`auto`=1장). 먼저 `status <server>`로 확인 권장.
+
 ## 4. 멀티GPU · DDP
 
 - `TRAIN.DDP: True`로 멀티GPU. 단일 GPU는 `*_singlegpu.py`.

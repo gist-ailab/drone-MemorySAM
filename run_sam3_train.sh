@@ -12,7 +12,17 @@ export cur_dir=`pwd`
 #  --cfg ${CFG} \
 # 2>&1 | tee "logs/${folder_name}/${cfg_name}_${timestamp}.log"
 
-export CUDA_VISIBLE_DEVICES="3"
+# ── GPU 선택: 비어있는 GPU 자동 배정 ─────────────────────────────────────────
+#   - 직접 지정: CUDA_VISIBLE_DEVICES=3 bash run_sam3_train.sh   (그대로 존중)
+#   - 자동 선택: NGPU=1 bash run_sam3_train.sh                   (빈 GPU 1장 자동)
+NGPU="${NGPU:-1}"
+CUDA_VISIBLE_DEVICES="$(bash scripts/pick_free_gpus.sh "$NGPU")" || {
+  echo "[run_sam3] 빈 GPU ${NGPU}장을 찾지 못했습니다. nvidia-smi 확인 후 NGPU/CUDA_VISIBLE_DEVICES를 조정하세요." >&2
+  exit 1
+}
+export CUDA_VISIBLE_DEVICES
+NPROC="$(awk -F',' '{print NF}' <<<"$CUDA_VISIBLE_DEVICES")"
+echo "[run_sam3] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES} (nproc=${NPROC})"
 
 # OMP_NUM_THREADS 경고 방지 (권장)
 export OMP_NUM_THREADS=1
@@ -33,7 +43,7 @@ folder_name="${cfg_name}"
 mkdir -p logs/${folder_name}
 timestamp=$(date +%Y%m%d_%H%M%S)
 
-# torchrun (단일 GPU). DDP면 위 멀티 GPU 블록 참고.
-torchrun --nproc_per_node=1 --master_port=21613 train_sam3_rbma.py \
+# torchrun. nproc는 자동 선택된 GPU 개수(${NPROC})를 따른다.
+torchrun --nproc_per_node=${NPROC} --master_port=21613 train_sam3_rbma.py \
  --cfg ${CFG} \
 2>&1 | tee "logs/${folder_name}/${cfg_name}_${timestamp}.log"

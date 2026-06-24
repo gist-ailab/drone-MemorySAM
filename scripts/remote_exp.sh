@@ -19,7 +19,8 @@
 # Behaviour of `run`:
 #   - ensures tmux session 'jemo' exists on the server (creates if missing)
 #   - opens a NEW window named after the config and runs training there (survives disconnect)
-#   - gpus     : CUDA_VISIBLE_DEVICES; defaults to the registry default_gpus
+#   - gpus     : CUDA_VISIBLE_DEVICES; defaults to the registry default_gpus.
+#                use "auto" (1 free GPU) or "auto:N" (N free GPUs) to auto-pick idle GPUs on the remote.
 #   - nproc    : torchrun --nproc_per_node; defaults to the GPU count
 #   - entry    : train script; 'auto' (default) -> train_sam3_rbma.py for SAM3/RBMA configs,
 #                else train_sam2_lora_paper.py. Pass a filename to override.
@@ -65,7 +66,21 @@ case "$cmd" in
     resolve "$server"
     [ "$REPO" != "FILL_ME" ] || die "repo_path for '$server' is FILL_ME — edit scripts/servers.conf first."
     [ -n "$gpus" ] || gpus="$GPUS"
-    [ "$gpus" != "FILL_ME" ] && [ -n "$gpus" ] || die "no gpus given and no default_gpus in registry for '$server'."
+    # auto GPU selection: gpus="auto" or "auto:N" → pick N free GPUs on the remote
+    # (a GPU is free when memory.used<=2000MiB AND util<=10%, lowest-memory-first).
+    if [ "$gpus" = "auto" ] || [[ "$gpus" == auto:* ]]; then
+      want="${gpus#auto:}"; [[ "$want" =~ ^[0-9]+$ ]] || want=1
+      free="$(ssh -o BatchMode=yes "$server" \
+        "nvidia-smi --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader,nounits" \
+        | awk -F',' '{ gsub(/ /,"",$1);gsub(/ /,"",$2);gsub(/ /,"",$3);
+                       if ($2+0<=2000 && $3+0<=10) print ($2+0)"\t"$1 }' \
+        | sort -n | awk -F"\t" '{print $2}')"
+      nfree="$(printf '%s\n' "$free" | sed '/^$/d' | wc -l | tr -d ' ')"
+      [ "$nfree" -ge "$want" ] || die "auto GPU: '$server'에 빈 GPU ${want}장이 없음(가용 ${nfree}). 'status $server'로 확인하세요."
+      gpus="$(printf '%s\n' "$free" | sed '/^$/d' | head -n "$want" | paste -sd, -)"
+      echo ">> $server : auto-selected free GPUs = $gpus"
+    fi
+    [ "$gpus" != "FILL_ME" ] && [ -n "$gpus" ] || die "no gpus given and no default_gpus in registry for '$server' (try: run $server $config auto:N)."
     if [ -z "$nproc" ]; then nproc="$(awk -F',' '{print NF}' <<<"$gpus")"; fi
     cfg_name="$(basename "$config" .yaml)"
     win="$(echo "$cfg_name" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-40)"

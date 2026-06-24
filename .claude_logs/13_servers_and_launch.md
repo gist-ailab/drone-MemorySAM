@@ -12,9 +12,11 @@
 
 1. **레지스트리 확인**: `bash scripts/remote_exp.sh servers` 로 해당 서버의 repo_path / env / default_gpus 확인.
    - `repo_path` 또는 `gpus` 가 `FILL_ME` 면 멈추고 사용자에게 값을 물어본다 (추측 금지).
-2. **GPU 여유 확인**: `bash scripts/remote_exp.sh status <서버>` 로 빈 GPU와 기존 `jemo` 세션 창 확인.
-   - 사용자가 GPU를 지정하지 않았으면, 비어 있는 GPU를 골라 제안하고 확정받는다 (사용 중 GPU에 얹지 않는다 → OOM).
-3. **실행**: `bash scripts/remote_exp.sh run <서버> <config> <gpus>` 실행. 출력의 `LOG=...` 경로를 기록한다.
+2. **GPU 여유 확인 (필수)**: `bash scripts/remote_exp.sh status <서버>` 로 빈 GPU와 기존 `jemo` 세션 창 확인.
+   - **반드시 비어 있는 GPU에만 배치**한다 (사용 중 GPU에 얹지 않는다 → OOM/타인 작업 방해).
+   - GPU를 직접 안 정했으면 `run ... auto:N` 으로 **원격의 빈 GPU N장을 자동 배정**(`auto`=1장)하거나, `status`로 보고 골라 확정받는다.
+3. **실행**: `bash scripts/remote_exp.sh run <서버> <config> <gpus|auto:N>` 실행. 출력의 `LOG=...` 경로를 기록한다.
+   - 빈 GPU 판정: `memory.used ≤ 2000MiB && util ≤ 10%` (메모리 적은 순). 빈 GPU 부족하면 런처가 실행을 거부한다.
 4. **추적**: 수 분 뒤 `bash scripts/remote_exp.sh log <서버> <cfg_name>` 로 초기 로그(에러/Started epoch 등) 확인.
    초기 몇 스텝이 도는 걸 본 뒤에야 "정상 시작됨"이라고 보고한다.
 5. **기록**: 의미 있는 학습을 시작했으면 `03_experiment_log.md`(+ 필요시 `01_project_status.md`)에
@@ -39,6 +41,7 @@
 | bengio | `/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM`| MMSS_SAM  | RTX 3090 ×8         | port 400, P9 hardaug6 여기서 학습 |
 | levine | `/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM`            | MMSS_SAM  | ?                   | port 500, 현재 최선 P9 config가 `levine-` 프리픽스 (경로 `SSDe`, 짧음) |
 | yeon   | `/SSDb/jemo_maeng/src/Project/**Drone**/detection/drone-MemorySAM`| MMSS_SAM | ?                  | port 600, 경로가 `Drone24`가 아니라 `Drone` |
+| B200   | `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`      | MMSS_SAM  | **B200 180GB ×8** (SHARED) | default_gpus=`FILL_ME`(명시 강제) → **`run B200 <cfg> auto:N`** 권장. 프로세스는 unix user `gm_huis`로 뜸. P28 DELIVER 학습 중(2026-06-24) |
 | hinton | (미등록)                                                         | MMSS_SAM  | -                   | port 200 **UNREACHABLE**(timeout) — 복구되면 `ssh-copy-id hinton` 후 등록 |
 
 - 무비밀번호 SSH: gyuri/lecun/bengio/levine/yeon 완료. hinton은 포트 200 미도달.

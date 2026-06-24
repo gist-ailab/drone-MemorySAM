@@ -155,3 +155,8 @@ drone-MemorySAM/
 3. **MoE Gate "Uniform" 문제**: 공간 평균(`_gate_callback`) 결과 uniform으로 보이지만, per-token 분석 시 실제로는 분화되어 있음 (entropy_ratio=0.55, max_weight=0.72). 측정 artifact임.
 4. **NIGHT_AUG**: 야간 시뮬레이션 증강. hardaug4가 최종 튜닝 버전. `BRIGHTNESS_SAMPLING: dark_biased`로 극저조도 편향.
 5. **DDP 학습**: `TRAIN.DDP: True`로 멀티GPU 학습. 단일 GPU 시 `train_sam2_lora_paper_singlegpu.py` 사용.
+6. **🔴 GPU 가용성 확인 (모든 학습 실행 전 필수)**: 어떤 실험이든 돌리기 **전에 반드시 해당 서버의 빈 GPU를 확인하고, 비어 있는 GPU에만** 배치한다(사용 중 GPU에 얹지 않는다 → OOM/타인 작업 방해).
+   - **로컬 런처**(`run_sam.sh` / `run_sam3_train.sh` / `run_sam3_rbma.sh`): `CUDA_VISIBLE_DEVICES`를 직접 주지 않으면 **`scripts/pick_free_gpus.sh`로 빈 GPU를 자동 선택**한다. 개수는 `NGPU=` (SAM2/3 train) 또는 `NPROC=` (rbma)로 지정. 빈 GPU가 부족하면 실행을 거부한다.
+     - 예: `NGPU=4 bash run_sam.sh` · `NGPU=1 bash run_sam3_train.sh` · `CUDA_VISIBLE_DEVICES=0,1 NPROC=2 bash run_sam3_rbma.sh <cfg>`(직접 지정은 그대로 존중).
+   - **원격 런처**(`scripts/remote_exp.sh`): 먼저 `status <server>`로 확인하고, `run <server> <cfg> auto:N`으로 **원격의 빈 GPU N장을 자동 배정**한다(`auto`=1장). 빈 GPU가 없으면 거부.
+   - 판정 기준: GPU가 `memory.used ≤ 2000MiB && util ≤ 10%`이면 "빈 GPU"(환경변수 `GPU_MAXMEM`/`GPU_MAXUTIL`로 조정). 헬퍼/`auto`는 메모리 적은 순으로 고른다.
