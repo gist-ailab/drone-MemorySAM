@@ -37,7 +37,7 @@
 | gyuri  | **FILL_ME**                                                     | MMSS_SAM  | ?                   | port 100 |
 | lecun  | `/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM`| MMSS_SAM  | ?                   | port 300 |
 | bengio | `/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM`| MMSS_SAM  | RTX 3090 ×8         | port 400, P9 hardaug6 여기서 학습 |
-| levine | **FILL_ME**                                                     | MMSS_SAM  | ?                   | port 500, 현재 최선 P9 config가 `levine-` 프리픽스 |
+| levine | `/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM`            | MMSS_SAM  | ?                   | port 500, 현재 최선 P9 config가 `levine-` 프리픽스 (경로 `SSDe`, 짧음) |
 | yeon   | `/SSDb/jemo_maeng/src/Project/**Drone**/detection/drone-MemorySAM`| MMSS_SAM | ?                  | port 600, 경로가 `Drone24`가 아니라 `Drone` |
 | hinton | (미등록)                                                         | MMSS_SAM  | -                   | port 200 **UNREACHABLE**(timeout) — 복구되면 `ssh-copy-id hinton` 후 등록 |
 
