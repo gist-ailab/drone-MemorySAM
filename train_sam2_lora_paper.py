@@ -21,10 +21,10 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 try:
-    import trackio
-    HAS_TRACKIO = True
+    import wandb
+    HAS_WANDB = True
 except ImportError:
-    HAS_TRACKIO = False
+    HAS_WANDB = False
 
 from semseg.models import *
 from semseg.datasets import *
@@ -419,6 +419,59 @@ def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
     return topk_list
 
 
+# ── Weights & Biases inference-image logging ─────────────────────────────────
+# ImageNet stats used by Normalize() in semseg/augmentations_mm.py — needed to
+# de-normalize the RGB modality back to a viewable image.
+_VIS_MEAN = numpy.array([0.485, 0.456, 0.406], dtype=numpy.float32)
+_VIS_STD = numpy.array([0.229, 0.224, 0.225], dtype=numpy.float32)
+
+
+def _select_fixed_vis_indices(n_total, k=10):
+    """Deterministic, evenly-spaced indices so the SAME samples are visualized
+    every eval — lets the W&B media slider show qualitative progress over epochs."""
+    if n_total <= 0:
+        return []
+    k = min(k, n_total)
+    if k == 1:
+        return [0]
+    step = (n_total - 1) / (k - 1)
+    return sorted({int(round(i * step)) for i in range(k)})
+
+
+def _denorm_rgb(rgb_tensor):
+    """(3,H,W) normalized float tensor -> (H,W,3) uint8 RGB for visualization."""
+    img = rgb_tensor.detach().cpu().float().numpy().transpose(1, 2, 0)
+    img = img * _VIS_STD + _VIS_MEAN
+    return numpy.clip(img * 255.0, 0, 255).astype(numpy.uint8)
+
+
+@torch.no_grad()
+def log_wandb_inference_samples(model, dataset, indices, device, palette, step,
+                                key="val_samples"):
+    """Run inference on a FIXED set of val samples and log [RGB | GT | Pred]
+    panels to wandb under one key, so each eval adds a frame to the media slider."""
+    if not (HAS_WANDB and wandb.run is not None) or not indices:
+        return
+    was_training = model.training
+    model.eval()
+    images = []
+    for idx in indices:
+        item = dataset[idx]
+        sample, label = item[0], item[1]
+        modal_inputs = [m.unsqueeze(0).to(device, non_blocking=True) for m in sample]
+        out = model(modal_inputs, True)
+        logits = out[0] if isinstance(out, (tuple, list)) else out
+        pred = logits.argmax(dim=1)[0].cpu()
+        rgb = _denorm_rgb(sample[0])
+        gt_color = dataset.decode_segmap(label, palette)
+        pred_color = dataset.decode_segmap(pred, palette)
+        panel = numpy.concatenate([rgb, gt_color, pred_color], axis=1)
+        images.append(wandb.Image(panel, caption=f"idx{idx} | RGB | GT | Pred"))
+    wandb.log({key: images}, step=step)
+    if was_training:
+        model.train()
+
+
 def main(cfg, gpu, save_dir):
     start = time.time()
     best_mIoU = 0.0
@@ -713,36 +766,85 @@ def main(cfg, gpu, save_dir):
     
 
 
+    wandb_vis_indices = []
     if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
         writer = SummaryWriter(str(save_dir))
-        # Trackio init
-        if HAS_TRACKIO:
-            trackio.init(
-                project="MemorySAM",
-                config={
-                    "model": lora_model_name,
-                    "backbone": model_cfg['BACKBONE'],
-                    "lora_r": lora_r,
-                    "num_experts": lora_num_experts,
-                    "epochs": epochs,
-                    "batch_size": train_cfg['BATCH_SIZE'],
-                    "lr": lr,
-                    "weight_decay": optim_cfg['WEIGHT_DECAY'],
-                    "scheduler": sched_cfg['NAME'],
-                    "loss": loss_cfg['NAME'],
-                    "lambda_gate": lambda_gate,
-                    "lambda_mi": lambda_mi,
-                    "lambda_aux": lambda_aux,
-                    "amp": train_cfg['AMP'],
-                    "ddp": train_cfg['DDP'],
-                    "night_aug": dataset_cfg.get('NIGHT_AUG', {}).get('ENABLE', False),
-                    "night_sim_p": dataset_cfg.get('NIGHT_AUG', {}).get('NIGHT_SIM_P', 0),
-                    "aux_warmup_epochs": train_cfg.get('AUX_WARMUP_EPOCHS', 0),
-                    "save_dir": str(save_dir),
-                    "dataset": dataset_cfg['NAME'],
-                    "modals": dataset_cfg['MODALS'],
-                },
-            )
+        # ── Weights & Biases init ────────────────────────────────────────────
+        # Per-server setup is manual & one-time: `pip install wandb` then
+        # `wandb login` (paste your API key). No key is stored in the repo.
+        # Disable per-run via `WANDB: {ENABLE: false}` in the config or
+        # `WANDB_DISABLED=1` in the env.
+        wandb_cfg = cfg.get('WANDB', {}) or {}
+        wandb_enabled = (HAS_WANDB and wandb_cfg.get('ENABLE', True)
+                         and os.environ.get('WANDB_DISABLED', '').lower() not in ('1', 'true', 'yes'))
+        if wandb_enabled:
+            modals_str = ''.join([m[0] for m in dataset_cfg['MODALS']])
+            cfg_name = cfg.get('_CFG_NAME', '') or save_dir.name
+            night_on = dataset_cfg.get('NIGHT_AUG', {}).get('ENABLE', False)
+            # Tags group runs by model / dataset / key hyperparameters.
+            run_tags = [
+                f"model:{lora_model_name}",
+                f"backbone:{model_cfg['BACKBONE']}",
+                f"dataset:{dataset_cfg['NAME']}",
+                f"modals:{modals_str}",
+                f"loss:{loss_cfg['NAME']}",
+                f"lr:{lr:g}",
+                f"bs:{train_cfg['BATCH_SIZE']}",
+                f"lora_r:{lora_r}",
+                f"cfg:{cfg_name}",
+            ]
+            if night_on:
+                run_tags.append("night_aug")
+            # Repo-scoped account: if a gitignored `.wandb_key` sits next to this
+            # script, use it for THIS process only (set the env var, never touch
+            # ~/.netrc). On shared boxes (e.g. B200) this means runs from this
+            # repo log to your account without a global `wandb login` that would
+            # affect other users. Falls back to the machine's `wandb login`.
+            if not os.environ.get('WANDB_API_KEY'):
+                _key_file = Path(__file__).resolve().parent / '.wandb_key'
+                if _key_file.is_file():
+                    _k = _key_file.read_text().strip()
+                    if _k:
+                        os.environ['WANDB_API_KEY'] = _k
+                        print(f"[wandb] using repo-local key from {_key_file}")
+            try:
+                wandb.init(
+                    project=wandb_cfg.get('PROJECT', 'MemorySAM'),
+                    entity=wandb_cfg.get('ENTITY', None),
+                    name=wandb_cfg.get('NAME', None) or cfg_name,
+                    dir=str(save_dir),
+                    tags=run_tags,
+                    config={
+                        "model": lora_model_name,
+                        "backbone": model_cfg['BACKBONE'],
+                        "lora_r": lora_r,
+                        "num_experts": lora_num_experts,
+                        "epochs": epochs,
+                        "batch_size": train_cfg['BATCH_SIZE'],
+                        "lr": lr,
+                        "weight_decay": optim_cfg['WEIGHT_DECAY'],
+                        "scheduler": sched_cfg['NAME'],
+                        "loss": loss_cfg['NAME'],
+                        "lambda_gate": lambda_gate,
+                        "lambda_mi": lambda_mi,
+                        "lambda_aux": lambda_aux,
+                        "amp": train_cfg['AMP'],
+                        "ddp": train_cfg['DDP'],
+                        "night_aug": night_on,
+                        "night_sim_p": dataset_cfg.get('NIGHT_AUG', {}).get('NIGHT_SIM_P', 0),
+                        "aux_warmup_epochs": train_cfg.get('AUX_WARMUP_EPOCHS', 0),
+                        "save_dir": str(save_dir),
+                        "dataset": dataset_cfg['NAME'],
+                        "modals": dataset_cfg['MODALS'],
+                        "config_file": cfg_name,
+                    },
+                )
+                # Fixed sample set for qualitative inference panels (same every eval).
+                wandb_vis_indices = _select_fixed_vis_indices(
+                    len(valset), k=int(wandb_cfg.get('NUM_VIS', 10)))
+            except Exception as e:
+                print(f"[wandb] init failed ({e}); continuing without wandb logging. "
+                      f"Run `wandb login` on this server to enable it.")
         logger.info('================== training config =====================')
         logger.info(cfg)
         logger.info(f"Using LoRA model: {lora_model_name}")
@@ -942,9 +1044,9 @@ def main(cfg, gpu, save_dir):
                 writer.add_scalar('train/aux_ce_loss', aux_ce_loss_accum / (iter + 1), epoch)
             writer.add_scalar('train/lr', avg_lr, epoch)
 
-            # Trackio: 학습 메트릭 로깅
-            if HAS_TRACKIO:
-                trackio_train = {
+            # wandb: 학습 메트릭 로깅
+            if HAS_WANDB and wandb.run is not None:
+                wandb_train = {
                     "epoch": epoch + 1,
                     "train/total_loss": train_loss,
                     "train/seg_loss": (train_loss - proto_loss
@@ -962,12 +1064,12 @@ def main(cfg, gpu, save_dir):
                 if hasattr(_m, 'aux_warmup_epochs'):
                     wu = _m.aux_warmup_epochs
                     if epoch < wu:
-                        trackio_train["train/warmup_ramp"] = 0.0
+                        wandb_train["train/warmup_ramp"] = 0.0
                     elif epoch < wu + 5:
-                        trackio_train["train/warmup_ramp"] = (epoch - wu) / 5.0
+                        wandb_train["train/warmup_ramp"] = (epoch - wu) / 5.0
                     else:
-                        trackio_train["train/warmup_ramp"] = 1.0
-                trackio.log(trackio_train)
+                        wandb_train["train/warmup_ramp"] = 1.0
+                wandb.log(wandb_train, step=epoch)
             
             # Plot and save graphs
             plot_training_curves(save_dir, epochs_list, train_losses, train_proto_losses, train_lrs,
@@ -1055,9 +1157,9 @@ def main(cfg, gpu, save_dir):
                 val_losses.append((epoch + 1, val_loss_avg))
                 writer.add_scalar('val/loss', val_loss_avg, epoch)
 
-                # Trackio: Day-Val 전체 메트릭 로깅
-                if HAS_TRACKIO:
-                    trackio_val = {
+                # wandb: Day-Val 전체 메트릭 로깅
+                if HAS_WANDB and wandb.run is not None:
+                    wandb_val = {
                         "epoch": epoch + 1,
                         "val/mIoU": miou,
                         "val/pixel_acc": macc,
@@ -1065,12 +1167,21 @@ def main(cfg, gpu, save_dir):
                         "val/best_mIoU": best_mIoU,
                     }
                     for c, v in zip(class_names, ious):
-                        trackio_val[f"val_iou/{c}"] = v
+                        wandb_val[f"val_iou/{c}"] = v
                     for c, v in zip(class_names, acc):
-                        trackio_val[f"val_acc/{c}"] = v
+                        wandb_val[f"val_acc/{c}"] = v
                     for c, v in zip(class_names, f1):
-                        trackio_val[f"val_f1/{c}"] = v
-                    trackio.log(trackio_val)
+                        wandb_val[f"val_f1/{c}"] = v
+                    wandb.log(wandb_val, step=epoch)
+
+                    # Fixed-sample qualitative inference panels (same imgs every
+                    # eval) — model is already in eval() here.
+                    try:
+                        log_wandb_inference_samples(
+                            model, valset, wandb_vis_indices, device,
+                            valset.PALETTE, step=epoch)
+                    except Exception as e:
+                        print(f"[wandb] sample image logging failed: {e}")
 
                 # Top-5 유지: 현재 top_day_ckpts 최하위보다 높거나 5개 미만이면 저장
                 worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
@@ -1105,9 +1216,9 @@ def main(cfg, gpu, save_dir):
                     night_acc, night_macc, night_f1, night_mf1, night_ious, night_miou = evaluate(model, night_valloader, device)
                     writer.add_scalar('val_night/mIoU', night_miou, epoch)
 
-                    # Trackio: Night-Val 전체 메트릭 로깅
-                    if HAS_TRACKIO:
-                        trackio_night = {
+                    # wandb: Night-Val 전체 메트릭 로깅
+                    if HAS_WANDB and wandb.run is not None:
+                        wandb_night = {
                             "epoch": epoch + 1,
                             "val_night/mIoU": night_miou,
                             "val_night/pixel_acc": night_macc,
@@ -1115,12 +1226,12 @@ def main(cfg, gpu, save_dir):
                             "val_night/best_mIoU": best_night_mIoU,
                         }
                         for c, v in zip(class_names, night_ious):
-                            trackio_night[f"val_night_iou/{c}"] = v
+                            wandb_night[f"val_night_iou/{c}"] = v
                         for c, v in zip(class_names, night_acc):
-                            trackio_night[f"val_night_acc/{c}"] = v
+                            wandb_night[f"val_night_acc/{c}"] = v
                         for c, v in zip(class_names, night_f1):
-                            trackio_night[f"val_night_f1/{c}"] = v
-                        trackio.log(trackio_night)
+                            wandb_night[f"val_night_f1/{c}"] = v
+                        wandb.log(wandb_night, step=epoch)
 
                     worst_night = top_night_ckpts[-1][0] if len(top_night_ckpts) >= 5 else -1.0
                     if night_miou > worst_night:
@@ -1153,8 +1264,8 @@ def main(cfg, gpu, save_dir):
                     test_acc, test_macc, test_f1, test_mf1, test_ious, test_miou = evaluate(model, testloader, device)
                     writer.add_scalar('test/mIoU', test_miou, epoch)
 
-                    if HAS_TRACKIO:
-                        trackio_test = {
+                    if HAS_WANDB and wandb.run is not None:
+                        wandb_test = {
                             "epoch": epoch + 1,
                             "test/mIoU": test_miou,
                             "test/pixel_acc": test_macc,
@@ -1162,8 +1273,8 @@ def main(cfg, gpu, save_dir):
                             "test/best_mIoU": best_test_mIoU,
                         }
                         for c, v in zip(class_names, test_ious):
-                            trackio_test[f"test_iou/{c}"] = v
-                        trackio.log(trackio_test)
+                            wandb_test[f"test_iou/{c}"] = v
+                        wandb.log(wandb_test, step=epoch)
 
                     worst_test = top_test_ckpts[-1][0] if len(top_test_ckpts) >= 5 else -1.0
                     if test_miou > worst_test:
@@ -1193,8 +1304,8 @@ def main(cfg, gpu, save_dir):
 
     if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
         writer.close()
-        if HAS_TRACKIO:
-            trackio.finish()
+        if HAS_WANDB and wandb.run is not None:
+            wandb.finish()
     pbar.close()
     end = time.gmtime(time.time() - start)
 
@@ -1214,6 +1325,7 @@ if __name__ == '__main__':
 
     with open(args.cfg) as f:
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
+    cfg['_CFG_NAME'] = Path(args.cfg).stem  # used for wandb run name / cfg tag
 
     fix_seeds(3407)
     setup_cudnn()

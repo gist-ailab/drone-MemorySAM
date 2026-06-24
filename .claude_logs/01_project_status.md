@@ -31,6 +31,20 @@
 
 ## 역시간순 진행 로그 (History — 아래는 시점별 기록, 현재 상태 아님)
 
+### 실험 추적: trackio → wandb 전환 + 고정 인퍼런스 이미지 로깅 — 2026-06-24
+
+**배경**: trackio가 잘 안 돌아서 모든 서버 공통으로 **wandb**로 통일. 모델/데이터셋/하이퍼파라미터 기준 태그로 run 그룹화 요구.
+**구현** (`train_sam2_lora_paper.py`, `train_sam2_lora_paper_singlegpu.py`):
+- trackio init/log/finish 5곳 → wandb로 교체. project=`MemorySAM`, entity=기본, run 이름=config stem.
+- **태그**: `model:`, `backbone:`, `dataset:`, `modals:`, `loss:`, `lr:`, `bs:`, `lora_r:`, `cfg:`, (+`night_aug`).
+- **스칼라**: 기존 train/val/night/test 메트릭(+per-class IoU/acc/F1) 그대로 wandb로, step=epoch.
+- **신규 이미지**: `_select_fixed_vis_indices`로 val 전체에서 균등 간격 10장 고정 → 매 eval마다 동일 인덱스로 `[RGB|GT|Pred]` 패널을 `val_samples` 키에 로깅(미디어 슬라이더로 epoch별 정성 추적). `log_wandb_inference_samples` 헬퍼(singlegpu가 재사용).
+- 선택적 `WANDB` config 블록(ENABLE/PROJECT/ENTITY/NAME/NUM_VIS), env `WANDB_DISABLED=1`. 미설치/미로그인 시 학습은 그대로 진행, 로깅만 skip.
+- 서버별 셋업은 수동 1회: `pip install wandb` + `wandb login`. 상세 [13_servers_and_launch.md](13_servers_and_launch.md) §4.
+**검증**: 두 스크립트 py_compile OK, 메인 모듈 import OK(HAS_WANDB=False graceful), 이미지 패널 shape(H,W×3,3)/ignore=255 처리 확인. *주의*: singlegpu는 별개의 기존 import 이슈(`LoRA_Sam_P` 미존재)로 자체 실행 불가 — 이번 변경과 무관.
+
+---
+
 ### SAM3-RBMA val 붕괴 진짜 원인 — sem_head BatchNorm train/eval 불일치 → GroupNorm — 2026-06-19
 
 **핵심**: 멀티스케일 head·백본 로드 정상인데도 **train loss 정상(main~2.0)/val mIoU 2.56**. 원인은 head의 `BatchNorm`: standalone(reliability)+memory-conditioned(출력)×4모달 = 분포 다른 8회 호출이 공유 BN running stats를 오염 → eval만 붕괴. **BN→GroupNorm**으로 수정(train==eval 검증, diff 0.0). 상세 [04_issues_and_fixes.md](04_issues_and_fixes.md) ISSUE-021.

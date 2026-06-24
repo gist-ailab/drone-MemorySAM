@@ -89,3 +89,54 @@ scripts/remote_exp.sh status bengio
 - **DDP 실패 'marked ready twice'**: SAM3 trainer는 `static_graph=True` 필요(기록상 해결됨).
 - **로그가 안 보임**: 학습이 아직 첫 출력 전이거나 즉시 죽었을 수 있음 → `status`로 해당 window가 살아있는지 확인.
 - **hinton**: 포트 200 복구 시 `ssh-copy-id hinton` 후 `servers.conf`의 hinton 줄 주석 해제 + repo_path 입력.
+
+---
+
+## 4. Weights & Biases 로깅 (모든 서버 공통)
+
+`train_sam2_lora_paper.py`(메인 DDP 트레이너)는 학습/검증 메트릭과 **고정 인퍼런스 이미지 10장**을
+wandb에 로깅한다. project=`MemorySAM`, entity=기본(로그인 계정). trackio는 제거됨.
+
+### 계정 설정 — 두 가지 방법
+
+**(A) repo-local 키 (기본, 공용 서버 포함) — 키가 레포에 이미 포함됨.**
+이 레포에서 돌리는 학습만 내 계정으로 보냄. 전역 `wandb login`(`~/.netrc`)을 건드리지 않으므로
+B200처럼 공용 서버에서도 다른 사용자/프로세스에 영향 없음.
+레포 루트 `.wandb_key`(API 키 한 줄)를 트레이너가 **그 프로세스 환경변수로만** 읽어 쓴다.
+서버에서는 최신 코드만 받으면 끝:
+```bash
+git pull                                       # .wandb_key 포함해 받아짐
+conda activate MMSS_SAM && pip install wandb   # env에 미설치 시
+```
+- `.wandb_key`는 **의도적으로 커밋됨**(공개 키로 사용 — 계정 쓰기 권한 있음, 로테이트는 wandb.ai/authorize).
+- `train_sam2_lora_paper.py` / `_singlegpu.py` 가 `Path(__file__).parent/.wandb_key` 를 읽어
+  `WANDB_API_KEY`(env)가 비어 있을 때만 적용 → `~/.netrc` 전역 로그인 불변.
+- 우선순위: 이미 설정된 `WANDB_API_KEY` env > repo-local `.wandb_key` > 머신의 `wandb login`.
+
+**(B) 전역 `wandb login` (내 전용 서버에서)** — 머신 전체가 내 계정.
+```bash
+conda activate MMSS_SAM
+pip install wandb
+wandb login                 # API 키 붙여넣기 (키는 repo에 저장하지 않음)
+```
+키(`.wandb_key`/env)도 로그인도 없거나 wandb 미설치면 학습은 **그대로 진행**되고 wandb 로깅만 건너뛴다(크래시 없음).
+
+### 로깅 내용
+- **태그**: `model:<LoRA_Sam_Pxx>`, `backbone:`, `dataset:`, `modals:`(예 `itl`), `loss:`, `lr:`, `bs:`,
+  `lora_r:`, `cfg:<config파일stem>`, (+`night_aug`) — 모델/데이터셋/하이퍼파라미터로 run 그룹화.
+- **run 이름** = config 파일 stem (예 `levine-multiaqua_rgbtl_P9_hardaug8`).
+- **스칼라**: `train/*`, `val/*` + per-class `val_iou/<class>`, `val_night/*`, `test/*`. step=epoch.
+- **이미지**: `val_samples` 키에 **매 eval마다 동일한** val 인덱스 10장(전체에서 균등 간격)의
+  `[RGB | GT | Pred]` 패널 → wandb 미디어 슬라이더로 epoch별 정성적 변화 추적.
+
+### 끄기 / 옵션 (config의 선택적 `WANDB` 블록)
+```yaml
+WANDB:
+  ENABLE: true          # false 또는 env WANDB_DISABLED=1 로 비활성화
+  PROJECT: MemorySAM
+  ENTITY: null          # null이면 로그인 계정 기본
+  NAME: null            # null이면 config stem
+  NUM_VIS: 10           # 인퍼런스 이미지 장수
+```
+`WANDB` 블록이 없으면 위 기본값으로 동작(=켜짐). 단일 GPU 폴백
+`train_sam2_lora_paper_singlegpu.py`도 동일 규칙으로 로깅(단 이 스크립트는 별개의 기존 import 이슈가 있음).

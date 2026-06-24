@@ -28,6 +28,13 @@ import random
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P
+try:
+    import wandb
+    HAS_WANDB = True
+except ImportError:
+    HAS_WANDB = False
+# Reuse the W&B image-logging helpers from the DDP trainer (single source).
+from train_sam2_lora_paper import _select_fixed_vis_indices, log_wandb_inference_samples
 import matplotlib
 import math
 matplotlib.use('Agg')  
@@ -152,8 +159,58 @@ def main(cfg, gpu, save_dir):
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     scaler = GradScaler(enabled=train_cfg['AMP'])
     
+    wandb_vis_indices = []
     if is_main_process:
         writer = SummaryWriter(str(save_dir))
+        # ── Weights & Biases (manual `wandb login` per server; WANDB_DISABLED=1 to skip) ──
+        wandb_cfg = cfg.get('WANDB', {}) or {}
+        if (HAS_WANDB and wandb_cfg.get('ENABLE', True)
+                and os.environ.get('WANDB_DISABLED', '').lower() not in ('1', 'true', 'yes')):
+            modals_str = ''.join([m[0] for m in dataset_cfg['MODALS']])
+            cfg_name = cfg.get('_CFG_NAME', '') or save_dir.name
+            # Repo-scoped account: gitignored `.wandb_key` next to this script is
+            # applied to THIS process only (no global ~/.netrc change).
+            if not os.environ.get('WANDB_API_KEY'):
+                _key_file = Path(__file__).resolve().parent / '.wandb_key'
+                if _key_file.is_file():
+                    _k = _key_file.read_text().strip()
+                    if _k:
+                        os.environ['WANDB_API_KEY'] = _k
+                        print(f"[wandb] using repo-local key from {_key_file}")
+            try:
+                wandb.init(
+                    project=wandb_cfg.get('PROJECT', 'MemorySAM'),
+                    entity=wandb_cfg.get('ENTITY', None),
+                    name=wandb_cfg.get('NAME', None) or cfg_name,
+                    dir=str(save_dir),
+                    tags=[
+                        f"model:{model_cfg_yaml['BACKBONE']}",
+                        f"dataset:{dataset_cfg['NAME']}",
+                        f"modals:{modals_str}",
+                        f"loss:{loss_cfg['NAME']}",
+                        f"lr:{lr:g}",
+                        f"bs:{train_cfg['BATCH_SIZE']}",
+                        f"cfg:{cfg_name}",
+                        "singlegpu",
+                    ],
+                    config={
+                        "backbone": model_cfg_yaml['BACKBONE'],
+                        "epochs": epochs,
+                        "batch_size": train_cfg['BATCH_SIZE'],
+                        "lr": lr,
+                        "weight_decay": optim_cfg['WEIGHT_DECAY'],
+                        "scheduler": sched_cfg['NAME'],
+                        "loss": loss_cfg['NAME'],
+                        "dataset": dataset_cfg['NAME'],
+                        "modals": dataset_cfg['MODALS'],
+                        "config_file": cfg_name,
+                    },
+                )
+                wandb_vis_indices = _select_fixed_vis_indices(
+                    len(valset), k=int(wandb_cfg.get('NUM_VIS', 10)))
+            except Exception as e:
+                print(f"[wandb] init failed ({e}); continuing without wandb. "
+                      f"Run `wandb login` on this server to enable it.")
         logger.info('================== training config =====================')
         logger.info(cfg)
     
@@ -206,6 +263,13 @@ def main(cfg, gpu, save_dir):
             
             writer.add_scalar('train/loss', avg_loss, epoch)
             plot_training_curves(save_dir, epochs_list, train_losses, train_proto_losses, train_lrs)
+            if HAS_WANDB and wandb.run is not None:
+                wandb.log({
+                    "epoch": epoch + 1,
+                    "train/total_loss": avg_loss,
+                    "train/proto_loss": avg_proto,
+                    "train/lr": optimizer.param_groups[0]['lr'],
+                }, step=epoch)
 
         # Evaluation
         if ((epoch+1) % train_cfg['EVAL_INTERVAL'] == 0) or (epoch+1) == epochs:
@@ -217,8 +281,23 @@ def main(cfg, gpu, save_dir):
                     save_path = save_dir / "best_model.pth"
                     torch.save(model.module.state_dict() if hasattr(model, 'module') else model.state_dict(), save_path)
                 logger.info(f"Epoch {epoch+1} mIoU: {miou:.4f} Best: {best_mIoU:.4f}")
+                if HAS_WANDB and wandb.run is not None:
+                    wandb_val = {"epoch": epoch + 1, "val/mIoU": miou,
+                                 "val/pixel_acc": macc, "val/best_mIoU": best_mIoU}
+                    for c, v in zip(class_names, ious):
+                        wandb_val[f"val_iou/{c}"] = v
+                    wandb.log(wandb_val, step=epoch)
+                    try:
+                        log_wandb_inference_samples(
+                            model, valset, wandb_vis_indices, device,
+                            valset.PALETTE, step=epoch)
+                    except Exception as e:
+                        print(f"[wandb] sample image logging failed: {e}")
 
-    if is_main_process: writer.close()
+    if is_main_process:
+        if HAS_WANDB and wandb.run is not None:
+            wandb.finish()
+        writer.close()
     cleanup_ddp() if train_cfg['DDP'] and world_size > 1 else None
 
 if __name__ == '__main__':
@@ -228,6 +307,7 @@ if __name__ == '__main__':
 
     with open(args.cfg) as f:
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
+    cfg['_CFG_NAME'] = Path(args.cfg).stem  # used for wandb run name / cfg tag
 
     fix_seeds(3407)
     setup_cudnn()
