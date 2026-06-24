@@ -1,56 +1,44 @@
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-03-24
+> 최종 업데이트: 2026-06-24
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
 
+## 🔎 이슈 상태 인덱스 (먼저 여기 보고 점프)
+
+> **현재 액션 필요 여부는 이 표의 상태 컬럼으로 판단**할 것. `[해결]`된 ISSUE-021/020/019/018/016은 2026-06-24 "해결된 이슈" 섹션으로 물리 이동 완료(하단 "(이관됨)" 하위). 표의 ✅ 항목은 이력용이다.
+
+| ID | 상태 | 한 줄 |
+|----|------|-------|
+| ISSUE-021 | ✅ 해결 | SAM3-RBMA sem_head BatchNorm→GroupNorm (train/eval 불일치) |
+| ISSUE-020 | ✅ 해결 | SAM3-RBMA sam3.pt 백본 0개 로드(random) prefix remap |
+| ISSUE-019 | ✅ 해결 | P26 entropy NaN (LogBackward gradient explosion) |
+| ISSUE-018 | ✅ 해결 | P9/P22 UAMM 전후 피쳐 시각화 지원 |
+| ISSUE-016 | ✅ 해결 | P26 DELIVER 런타임 에러 6건 |
+| **ISSUE-013** | 🔴 **미해결(긴급)** | P24 Teacher signal sigmoid→CE 기반 수정 필요 |
+| **ISSUE-017** | 🟠 **미수정** | val_multiaqua_detailed.py 시각화 버그 2건 |
+| ISSUE-001 | 🟠 부분 | Val NIGHT_AUG 미적용 → 모델 선택 기준 |
+| ISSUE-002 | 🟠 진행 | MoE Expert Collapse (E1 사망) |
+| ISSUE-003 | 🟠 진행 | CrossModalFusionHead 상수 출력 (RBMA로 대응 중) |
+| ISSUE-007 | 🟠 부분 | CRM/ZERO Overfitting (Night-Val↑ Test↓) |
+| ISSUE-010 | 🟠 부분 | 로깅 시스템 개선 |
+| ISSUE-006 | ⚪ 구현필요 | Aux Head Mask 시각화 (Energy 검증) |
+| ISSUE-004 | ⚪ 예정 | Spatial-wise Confidence Weighting (P15) |
+| ISSUE-005 | 💡 아이디어 | Diffusion 기반 Day→Night 합성 |
+| ISSUE-008 | 📌 구조적 | Aux Head 품질 한계 (frozen backbone) |
+| ISSUE-009 | 📌 결정 | Energy→Calibrated Entropy 교체 |
+| ISSUE-011 | 📌 설계 | Fusion Head multi-scale 미활용 |
+| ISSUE-012 | 🖥 하드웨어 | P23 A100 80GB OOM (deformable conv) |
+| ISSUE-014 | ⚪ 개선 | RandomResizedCrop 패딩 위치 고정 |
+| ISSUE-015 | ✅ 설계반영 | P25 구조적 문제 7가지 → P26 v5 |
+| RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
+
+> ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
 ## 열린 이슈 (Open Issues)
-
-### ISSUE-021: SAM3-RBMA train loss 정상인데 val mIoU ~2 — sem_head BatchNorm train/eval 불일치 [해결]
-
-**상태**: ✅ 해결됨 (2026-06-19)
-**영향**: `LoRA_Sam3_RBMA` (`SemanticHead`/`MultiScaleSemanticHead` 둘 다)
-**우선순위**: Blocker — 평가가 무의미했음
-
-**증상**: 멀티스케일 head 적용 + 백본 로드 정상(504/504) 후에도 **train loss main 1.9~2.2(정상 학습)인데 val mIoU=2.56**. 비교: 동일 DELIVER 25cls에서 SAM2 P28(`LoRA_Sam_P28`)은 ep2부터 Day-Val 42.67/Test 40.14 → ep10 55.26/49.41.
-
-**근본 원인**: head의 `nn.BatchNorm2d`. head가 한 forward에서 **분포가 다른 입력으로 여러 번** 호출됨 — ① reliability용 standalone backbone feat, ② 출력용 memory-conditioned feat, ③ ×4 모달리티(img/depth/event/lidar). 공유 BN의 running_mean/var가 이 8가지 분포의 무의미한 평균이 됨 → **train(batch 통계)은 정상, eval(running 통계)은 어느 분포에도 안 맞아 붕괴**. train-good/eval-bad의 교과서적 패턴.
-
-**수정 1차 (GroupNorm) — 실패/되돌림**: 두 head `BatchNorm2d`→`GroupNorm`. train==eval은 맞았으나 **GN이 최적화를 저해** — train loss가 main~3.2(ln25≈3.22, 거의 random)에서 안 내려감(BN 땐 ~2.0), val 0.13. GN 기각.
-
-**수정 2차 (확정)**: `BatchNorm2d(track_running_stats=False)`. running stats 자체를 없애 **train·eval 모두 batch 통계 사용 → train==eval**(오염 원천 제거), 각 호출(standalone/mem ×4모달)이 자기 입력으로 self-normalize, **BN의 per-channel 정규화(좋은 최적화) 유지**. head spatial 288²라 eval batch 1도 안정. 검증: train/eval 출력 차이 0.0, batch1 정상.
-
-**수정 3차 (최종 확정) — GroupNorm**: track_running_stats=False도 결국 **eval batch 통계**라 eval이 batch 의존 → **같은 ckpt(ep45)인데 trainer val=8.5 vs 단독 진단(diag_sam3_eval.py) val=1.28**. batch 독립·train==eval인 **GroupNorm**만이 정답. 2차에서 GN을 "최적화 저해"로 기각한 건 **오판**(ep0~3 warmup만 보고 판단, BN-no-rs도 그때 3.2였다가 ep38 1.4 도달). 검증: GN train==eval diff 0.0, **batch4 sample0 == batch1 단독 = 0.0**(batch 독립).
-**판정 주의**: GN warmup(ep0~10) 구간 train loss는 ~3대로 보일 수 있음 → **ep20~40까지 보고** val 판정(이제 val 숫자 신뢰 가능).
-**미해결(다음)**: GN 재학습 후에도 val 낮으면 = norm이 아닌 모델/구조 한계 → LoRA rank↑ 등. (diag_sam3_eval.py로 val/train-as-val per-class 재측정)
-
-**교훈**: train-good/eval-bad → 정규화 의심. BatchNorm은 다중분포·다중호출 head에서 **양쪽 다 깨짐**(running=오염, batch-stat=batch의존). batch 독립 norm(**GroupNorm/LayerNorm**)이 정답이고, **warmup 지나서 판정**할 것.
-
-**주의**: norm 키 변경 → 기존 체크포인트 비호환. **fresh 재학습 필수**(output 폴더 이동, AUTO_RESUME이 옛 last.pth 잡지 않게).
-
----
-
-### ISSUE-020: SAM3-RBMA val mIoU ~2% — sam3.pt 가중치가 0개 로드됨 (백본 random) [해결]
-
-**상태**: ✅ 해결됨 (2026-06-17)
-**영향**: `LoRA_Sam3_RBMA` (B200 DELIVER/MULTIAQUA SAM3-RBMA 학습 전부)
-**우선순위**: Blocker — 학습이 무의미했음
-
-**증상**: B200 `b200-deliver_rgbdel_SAM3RBMA_physaug.yaml` 학습에서 val mIoU=2.05 (25클래스 random ≈4%보다 낮음), train loss `main≈27~57` (ln25≈3.2 대비 비정상적으로 높음, garbage feature 위 confident-wrong).
-
-**근본 원인**: full `sam3.pt`(3.45GB)는 가중치를 `detector.*`(1156) / `tracker.*`(309) 네임스페이스에 저장하는데, `build_tracker()`로 만든 standalone tracker의 키는 **접두사가 없음**(`backbone.*`, `transformer.*` 등 773개). `build_sam3_tracker()`가 `tracker.load_state_dict(sd, strict=False)`를 그냥 호출 → **identity 매칭 0/773** → ViT 백본이 random인 채 frozen → LoRA(rank4)로 복구 불가 → val 붕괴.
-
-**진단**: `diag_sam3_ckpt.py` (신규, 루트). 파일 존재/크기, ckpt vs tracker 키 접두사 히스토그램, prefix-strip/suffix remap 매칭 카운트, backbone random fraction, 바로 쓸 remap 출력. 결과: identity 0/773, `detector.` strip 520, `tracker.` strip 309, suffix-remap 717/773(backbone 504/504=random 0%).
-
-**수정** (`semseg/models/sam3/sam3_lora_rbma.py` `build_sam3_tracker`):
-- 우선순위 prefix remap — tracker 모듈은 `tracker.*`, 백본은 `detector.backbone.*`(백본은 tracker.*에 없음). shape 체크 후 매핑.
-- 로그에 `loaded=N/773 (tracker.=.. detector.=..) backbone=504/504` 출력.
-- **가드**: backbone 로드 <90%면 `RuntimeError` → 다신 random으로 학습 안 됨 (의도적 random은 `CHECKPOINT_PATH=''`).
-
-**주의**: ep46까지 학습된 LoRA/sem_head는 random 백본 기준이라 폐기. `RESUME_ENABLE: false`로 처음부터 재학습 필요.
-
----
 
 ### ISSUE-001: Val에 NIGHT_AUG 미적용 → 모델 선택 기준 부적합 [심각]
 
@@ -529,45 +517,6 @@ if quality_maps is not None:
 
 ---
 
-### ISSUE-019: P26 entropy 계산 NaN — LogBackward0 gradient explosion [해결]
-
-**상태**: ✅ 해결됨 (2026-03-24)
-**영향**: P26 학습 (Epoch 10, Iter 83에서 crash)
-**우선순위**: 긴급 — 학습 불가
-
-**에러**:
-```
-RuntimeError: Function 'LogBackward0' returned nan values in its 0th output.
-```
-
-**발생 위치**: `sam_lora_image_encoder_seg.py:7038`
-```python
-entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)
-```
-
-**원인**:
-- `prob`(softmax 출력)에 0 또는 극소값이 포함됨
-- `.clamp(min=-100)`은 **forward 값**만 보호 — `log(0) → -inf → clamp → -100` (OK)
-- 그러나 **backward**에서 `LogBackward0`의 gradient = `1/prob` → `1/0` = **NaN**
-- Epoch 10까지는 prob이 0에 도달하지 않다가, 학습 진행으로 softmax가 한 클래스에 극단적으로 몰리면서 발생
-
-**수정**:
-```python
-# 기존 (line 7038):
-entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)
-
-# 수정:
-entropy = -(prob * (prob + 1e-8).log()).sum(dim=1, keepdim=True)
-```
-- `prob + 1e-8`로 log 입력 자체를 0이 아니게 만듦 → forward/backward 모두 안전
-- 값 변화: `log(1e-8) ≈ -18.4` → entropy 값에 미미한 영향
-
-**관련 파일**:
-- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py:7038`: P26 forward 내 entropy 계산
-- 동일 패턴이 다른 라인에도 있는지 확인 필요 (`prob.log()` 검색)
-
----
-
 ### ISSUE-017: val_multiaqua_detailed.py 시각화 버그 2건 [미수정]
 
 **상태**: 🟡 미수정 (2026-03-24 확인)
@@ -612,99 +561,6 @@ ax.legend(fontsize=14, loc='lower right',
 - `val_multiaqua_detailed.py:278-283`: EXPERT_COLORS 정의
 - `val_multiaqua_detailed.py:426-481`: `get_stats_bar_chart()` — Row 3 차트 생성
 - `val_multiaqua_detailed.py:697-714`: `build_stats_row()` — Row 3 빌더
-
----
-
-### ISSUE-018: P9/P22 UAMM 전/후 피쳐 시각화 미지원 [해결]
-
-**상태**: ✅ 해결됨 (2026-03-24 구현 완료)
-**영향**: P9, P22 (및 기타 UAMM 사용 모델)
-**우선순위**: 중간 — 디버깅/분석 목적
-
-**문제**:
-- `val_multiaqua_detailed.py`는 UAMM/AMF **scalar 가중치**만 시각화 (`_last_uamm_scores`)
-- UAMM 전/후의 **vision_feats 텐서** 자체는 저장/시각화 안 됨
-- `val_mm_samP_detailed.py`에 AnalysisWrapper 기반 피쳐 시각화가 있지만 **P1~P7 전용** (P9/P22 미지원)
-
-**설계 — Option 1 (모델 내부 버퍼 방식)**:
-
-Option 2 (외부 AnalysisWrapper 확장) 대비 장점:
-- P9/P22의 UAMM은 인라인 연산이라 hook으로 전/후를 잡을 수 없음
-- 기존 `_last_uamm_scores` 패턴과 일관
-- 모든 eval 스크립트에서 범용 접근 가능
-
-**P9** (`LoRA_Sam_P9`, line 1365~):
-
-| 위치 | 내용 |
-|------|------|
-| line ~1483 | `vision_feats[frame_idx]` — UAMM 이전 |
-| line 1485 | `modulated_vision_feats = [feat * score_expanded ...]` — UAMM 적용 |
-| line 1519-1527 | 기존 `_last_*` 버퍼 저장 블록 |
-
-**P22** (`LoRA_Sam_P22`, line 5367~):
-
-| 위치 | 내용 |
-|------|------|
-| line ~5513 | `vision_feats[frame_idx]` — UAMM 이전 (DeBA-FP 이후) |
-| line 5515 | `modulated_vision_feats = [feat * score_expanded ...]` — UAMM 적용 |
-| line 5549-5557 | 기존 `_last_*` 버퍼 저장 블록 |
-
-**구현 내용 (P9/P22 각각 동일 패턴)**:
-```python
-# 1) forward 내 UAMM 루프 안에서 수집
-feats_before_uamm = []
-feats_after_uamm = []
-
-for frame_idx in range(m):
-    feats_before_uamm.append(vision_feats[frame_idx][0].detach().cpu())    # 추가
-    modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
-    feats_after_uamm.append(modulated_vision_feats[0].detach().cpu())      # 추가
-
-# 2) 기존 버퍼 저장 블록에 추가
-self._last_feats_before_uamm = feats_before_uamm  # list of m tensors
-self._last_feats_after_uamm = feats_after_uamm    # list of m tensors
-```
-
-**시각화 코드 수정** (`val_multiaqua_detailed.py`):
-- `build_uamm_amf_row()` 또는 신규 Row에서 `_last_feats_before_uamm` / `_last_feats_after_uamm` 읽기
-- 채널 평균 → 2D heatmap (viridis) + diff map
-
-**주의사항**:
-- `detach().cpu()` 필수 (학습 그래프 영향 방지)
-- `vision_feats[frame_idx]`는 multi-scale 리스트 → `[0]`만 저장 (FPN 최저해상도, 메모리 절약)
-- 학습 시 불필요하면 `if not self.training:` 가드 추가
-
-**수정 대상 파일**:
-- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: P9 forward (~4줄), P22 forward (~4줄)
-- `val_multiaqua_detailed.py`: 피쳐 시각화 행 추가 + JSON 피쳐 통계 기록
-
----
-
-### ISSUE-016: P26 DELIVER 학습 시 런타임 에러 6건 — 전수 해결 [해결]
-
-**상태**: ✅ 해결됨 (2026-03-24)
-**영향**: P26 (LoRA_Sam_P26) + DELIVER 4모달 학습
-**우선순위**: Blocker
-
-**에러 1~4**: (이전 세션에서 해결)
-- Conv2d weight mismatch, _swap_decoder KeyError, multi_scale_sqg FPN indexing, scalp parameter 미반영
-
-**에러 5: CheckpointError — 1932 vs 61 tensors saved**:
-- **원인**: `forward()`의 `finally` 블록에서 `trunk.gradient_checkpointing = True` 복원 → backward recomputation 시 per-block checkpointing이 활성화되어 tensor count 불일치 (forward: 1932, recomputation: 61)
-- **수정**: `_encode_single_modality()` 안에서 `trunk.gradient_checkpointing = False` 설정 → recomputation도 동일 설정
-
-**에러 6: CUDA OOM (23.5GB / 24GB)**:
-- **원인**: 에러 5 수정이 per-block checkpointing을 완전 비활성화 → 4모달 full activation이 메모리에 유지
-- **최종 수정**: nested checkpointing 도입
-  - **Outer**: `torch.utils.checkpoint`로 `_encode_single_modality()` 전체를 감싸 (per-modality)
-  - **Inner**: `HieraDet.forward()`의 기존 per-block checkpointing 유지
-  - `set_condition()`이 `_encode_single_modality()` 안에서 호출되므로, outer/inner recomputation 모두 올바른 `_condition` 상태 보장
-  - `finally` 블록에서 gradient_checkpointing 복원 코드 제거 (불필요)
-- **하위 호환성**: `trunk.gradient_checkpointing = False`일 때 (다른 P 버전) nested 아닌 단일 outer checkpoint만 동작 → 기존 코드 영향 없음
-
-**관련 파일**:
-- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: `LoRA_Sam_P26._encode_single_modality()`, `forward()` finally 블록
-- `semseg/models/sam2/sam2/modeling/backbones/hieradet.py:269,295-296`: per-block checkpointing
 
 ---
 
@@ -1302,3 +1158,184 @@ gate_logits = gate_fn(x)
 - **`_current_epoch=0`이면 entropy fusion이 비활성화** (uniform 1/m으로 동작)
 - `val_multiaqua.py`, `val_multiaqua_detailed.py` 모두 로드 후 `model._current_epoch = 9999` 설정
 - P15 이하 모델은 `_current_epoch` 속성 없음 → `hasattr` 체크로 호환성 유지
+
+### (이관됨) 해결된 ISSUE 블록
+> 아래는 원래 "열린 이슈" 섹션에 있었으나 `[해결]` 완료되어 이 섹션으로 물리 이동된 항목이다 (2026-06-24). ID는 원본 유지.
+
+### ISSUE-021: SAM3-RBMA train loss 정상인데 val mIoU ~2 — sem_head BatchNorm train/eval 불일치 [해결]
+
+**상태**: ✅ 해결됨 (2026-06-19)
+**영향**: `LoRA_Sam3_RBMA` (`SemanticHead`/`MultiScaleSemanticHead` 둘 다)
+**우선순위**: Blocker — 평가가 무의미했음
+
+**증상**: 멀티스케일 head 적용 + 백본 로드 정상(504/504) 후에도 **train loss main 1.9~2.2(정상 학습)인데 val mIoU=2.56**. 비교: 동일 DELIVER 25cls에서 SAM2 P28(`LoRA_Sam_P28`)은 ep2부터 Day-Val 42.67/Test 40.14 → ep10 55.26/49.41.
+
+**근본 원인**: head의 `nn.BatchNorm2d`. head가 한 forward에서 **분포가 다른 입력으로 여러 번** 호출됨 — ① reliability용 standalone backbone feat, ② 출력용 memory-conditioned feat, ③ ×4 모달리티(img/depth/event/lidar). 공유 BN의 running_mean/var가 이 8가지 분포의 무의미한 평균이 됨 → **train(batch 통계)은 정상, eval(running 통계)은 어느 분포에도 안 맞아 붕괴**. train-good/eval-bad의 교과서적 패턴.
+
+**수정 1차 (GroupNorm) — 실패/되돌림**: 두 head `BatchNorm2d`→`GroupNorm`. train==eval은 맞았으나 **GN이 최적화를 저해** — train loss가 main~3.2(ln25≈3.22, 거의 random)에서 안 내려감(BN 땐 ~2.0), val 0.13. GN 기각.
+
+**수정 2차 (확정)**: `BatchNorm2d(track_running_stats=False)`. running stats 자체를 없애 **train·eval 모두 batch 통계 사용 → train==eval**(오염 원천 제거), 각 호출(standalone/mem ×4모달)이 자기 입력으로 self-normalize, **BN의 per-channel 정규화(좋은 최적화) 유지**. head spatial 288²라 eval batch 1도 안정. 검증: train/eval 출력 차이 0.0, batch1 정상.
+
+**수정 3차 (최종 확정) — GroupNorm**: track_running_stats=False도 결국 **eval batch 통계**라 eval이 batch 의존 → **같은 ckpt(ep45)인데 trainer val=8.5 vs 단독 진단(diag_sam3_eval.py) val=1.28**. batch 독립·train==eval인 **GroupNorm**만이 정답. 2차에서 GN을 "최적화 저해"로 기각한 건 **오판**(ep0~3 warmup만 보고 판단, BN-no-rs도 그때 3.2였다가 ep38 1.4 도달). 검증: GN train==eval diff 0.0, **batch4 sample0 == batch1 단독 = 0.0**(batch 독립).
+**판정 주의**: GN warmup(ep0~10) 구간 train loss는 ~3대로 보일 수 있음 → **ep20~40까지 보고** val 판정(이제 val 숫자 신뢰 가능).
+**미해결(다음)**: GN 재학습 후에도 val 낮으면 = norm이 아닌 모델/구조 한계 → LoRA rank↑ 등. (diag_sam3_eval.py로 val/train-as-val per-class 재측정)
+
+**교훈**: train-good/eval-bad → 정규화 의심. BatchNorm은 다중분포·다중호출 head에서 **양쪽 다 깨짐**(running=오염, batch-stat=batch의존). batch 독립 norm(**GroupNorm/LayerNorm**)이 정답이고, **warmup 지나서 판정**할 것.
+
+**주의**: norm 키 변경 → 기존 체크포인트 비호환. **fresh 재학습 필수**(output 폴더 이동, AUTO_RESUME이 옛 last.pth 잡지 않게).
+
+---
+
+### ISSUE-020: SAM3-RBMA val mIoU ~2% — sam3.pt 가중치가 0개 로드됨 (백본 random) [해결]
+
+**상태**: ✅ 해결됨 (2026-06-17)
+**영향**: `LoRA_Sam3_RBMA` (B200 DELIVER/MULTIAQUA SAM3-RBMA 학습 전부)
+**우선순위**: Blocker — 학습이 무의미했음
+
+**증상**: B200 `b200-deliver_rgbdel_SAM3RBMA_physaug.yaml` 학습에서 val mIoU=2.05 (25클래스 random ≈4%보다 낮음), train loss `main≈27~57` (ln25≈3.2 대비 비정상적으로 높음, garbage feature 위 confident-wrong).
+
+**근본 원인**: full `sam3.pt`(3.45GB)는 가중치를 `detector.*`(1156) / `tracker.*`(309) 네임스페이스에 저장하는데, `build_tracker()`로 만든 standalone tracker의 키는 **접두사가 없음**(`backbone.*`, `transformer.*` 등 773개). `build_sam3_tracker()`가 `tracker.load_state_dict(sd, strict=False)`를 그냥 호출 → **identity 매칭 0/773** → ViT 백본이 random인 채 frozen → LoRA(rank4)로 복구 불가 → val 붕괴.
+
+**진단**: `diag_sam3_ckpt.py` (신규, 루트). 파일 존재/크기, ckpt vs tracker 키 접두사 히스토그램, prefix-strip/suffix remap 매칭 카운트, backbone random fraction, 바로 쓸 remap 출력. 결과: identity 0/773, `detector.` strip 520, `tracker.` strip 309, suffix-remap 717/773(backbone 504/504=random 0%).
+
+**수정** (`semseg/models/sam3/sam3_lora_rbma.py` `build_sam3_tracker`):
+- 우선순위 prefix remap — tracker 모듈은 `tracker.*`, 백본은 `detector.backbone.*`(백본은 tracker.*에 없음). shape 체크 후 매핑.
+- 로그에 `loaded=N/773 (tracker.=.. detector.=..) backbone=504/504` 출력.
+- **가드**: backbone 로드 <90%면 `RuntimeError` → 다신 random으로 학습 안 됨 (의도적 random은 `CHECKPOINT_PATH=''`).
+
+**주의**: ep46까지 학습된 LoRA/sem_head는 random 백본 기준이라 폐기. `RESUME_ENABLE: false`로 처음부터 재학습 필요.
+
+---
+
+### ISSUE-019: P26 entropy 계산 NaN — LogBackward0 gradient explosion [해결]
+
+**상태**: ✅ 해결됨 (2026-03-24)
+**영향**: P26 학습 (Epoch 10, Iter 83에서 crash)
+**우선순위**: 긴급 — 학습 불가
+
+**에러**:
+```
+RuntimeError: Function 'LogBackward0' returned nan values in its 0th output.
+```
+
+**발생 위치**: `sam_lora_image_encoder_seg.py:7038`
+```python
+entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)
+```
+
+**원인**:
+- `prob`(softmax 출력)에 0 또는 극소값이 포함됨
+- `.clamp(min=-100)`은 **forward 값**만 보호 — `log(0) → -inf → clamp → -100` (OK)
+- 그러나 **backward**에서 `LogBackward0`의 gradient = `1/prob` → `1/0` = **NaN**
+- Epoch 10까지는 prob이 0에 도달하지 않다가, 학습 진행으로 softmax가 한 클래스에 극단적으로 몰리면서 발생
+
+**수정**:
+```python
+# 기존 (line 7038):
+entropy = -(prob * prob.log().clamp(min=-100)).sum(dim=1, keepdim=True)
+
+# 수정:
+entropy = -(prob * (prob + 1e-8).log()).sum(dim=1, keepdim=True)
+```
+- `prob + 1e-8`로 log 입력 자체를 0이 아니게 만듦 → forward/backward 모두 안전
+- 값 변화: `log(1e-8) ≈ -18.4` → entropy 값에 미미한 영향
+
+**관련 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py:7038`: P26 forward 내 entropy 계산
+- 동일 패턴이 다른 라인에도 있는지 확인 필요 (`prob.log()` 검색)
+
+---
+
+### ISSUE-018: P9/P22 UAMM 전/후 피쳐 시각화 미지원 [해결]
+
+**상태**: ✅ 해결됨 (2026-03-24 구현 완료)
+**영향**: P9, P22 (및 기타 UAMM 사용 모델)
+**우선순위**: 중간 — 디버깅/분석 목적
+
+**문제**:
+- `val_multiaqua_detailed.py`는 UAMM/AMF **scalar 가중치**만 시각화 (`_last_uamm_scores`)
+- UAMM 전/후의 **vision_feats 텐서** 자체는 저장/시각화 안 됨
+- `val_mm_samP_detailed.py`에 AnalysisWrapper 기반 피쳐 시각화가 있지만 **P1~P7 전용** (P9/P22 미지원)
+
+**설계 — Option 1 (모델 내부 버퍼 방식)**:
+
+Option 2 (외부 AnalysisWrapper 확장) 대비 장점:
+- P9/P22의 UAMM은 인라인 연산이라 hook으로 전/후를 잡을 수 없음
+- 기존 `_last_uamm_scores` 패턴과 일관
+- 모든 eval 스크립트에서 범용 접근 가능
+
+**P9** (`LoRA_Sam_P9`, line 1365~):
+
+| 위치 | 내용 |
+|------|------|
+| line ~1483 | `vision_feats[frame_idx]` — UAMM 이전 |
+| line 1485 | `modulated_vision_feats = [feat * score_expanded ...]` — UAMM 적용 |
+| line 1519-1527 | 기존 `_last_*` 버퍼 저장 블록 |
+
+**P22** (`LoRA_Sam_P22`, line 5367~):
+
+| 위치 | 내용 |
+|------|------|
+| line ~5513 | `vision_feats[frame_idx]` — UAMM 이전 (DeBA-FP 이후) |
+| line 5515 | `modulated_vision_feats = [feat * score_expanded ...]` — UAMM 적용 |
+| line 5549-5557 | 기존 `_last_*` 버퍼 저장 블록 |
+
+**구현 내용 (P9/P22 각각 동일 패턴)**:
+```python
+# 1) forward 내 UAMM 루프 안에서 수집
+feats_before_uamm = []
+feats_after_uamm = []
+
+for frame_idx in range(m):
+    feats_before_uamm.append(vision_feats[frame_idx][0].detach().cpu())    # 추가
+    modulated_vision_feats = [feat * score_expanded for feat in vision_feats[frame_idx]]
+    feats_after_uamm.append(modulated_vision_feats[0].detach().cpu())      # 추가
+
+# 2) 기존 버퍼 저장 블록에 추가
+self._last_feats_before_uamm = feats_before_uamm  # list of m tensors
+self._last_feats_after_uamm = feats_after_uamm    # list of m tensors
+```
+
+**시각화 코드 수정** (`val_multiaqua_detailed.py`):
+- `build_uamm_amf_row()` 또는 신규 Row에서 `_last_feats_before_uamm` / `_last_feats_after_uamm` 읽기
+- 채널 평균 → 2D heatmap (viridis) + diff map
+
+**주의사항**:
+- `detach().cpu()` 필수 (학습 그래프 영향 방지)
+- `vision_feats[frame_idx]`는 multi-scale 리스트 → `[0]`만 저장 (FPN 최저해상도, 메모리 절약)
+- 학습 시 불필요하면 `if not self.training:` 가드 추가
+
+**수정 대상 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: P9 forward (~4줄), P22 forward (~4줄)
+- `val_multiaqua_detailed.py`: 피쳐 시각화 행 추가 + JSON 피쳐 통계 기록
+
+---
+
+### ISSUE-016: P26 DELIVER 학습 시 런타임 에러 6건 — 전수 해결 [해결]
+
+**상태**: ✅ 해결됨 (2026-03-24)
+**영향**: P26 (LoRA_Sam_P26) + DELIVER 4모달 학습
+**우선순위**: Blocker
+
+**에러 1~4**: (이전 세션에서 해결)
+- Conv2d weight mismatch, _swap_decoder KeyError, multi_scale_sqg FPN indexing, scalp parameter 미반영
+
+**에러 5: CheckpointError — 1932 vs 61 tensors saved**:
+- **원인**: `forward()`의 `finally` 블록에서 `trunk.gradient_checkpointing = True` 복원 → backward recomputation 시 per-block checkpointing이 활성화되어 tensor count 불일치 (forward: 1932, recomputation: 61)
+- **수정**: `_encode_single_modality()` 안에서 `trunk.gradient_checkpointing = False` 설정 → recomputation도 동일 설정
+
+**에러 6: CUDA OOM (23.5GB / 24GB)**:
+- **원인**: 에러 5 수정이 per-block checkpointing을 완전 비활성화 → 4모달 full activation이 메모리에 유지
+- **최종 수정**: nested checkpointing 도입
+  - **Outer**: `torch.utils.checkpoint`로 `_encode_single_modality()` 전체를 감싸 (per-modality)
+  - **Inner**: `HieraDet.forward()`의 기존 per-block checkpointing 유지
+  - `set_condition()`이 `_encode_single_modality()` 안에서 호출되므로, outer/inner recomputation 모두 올바른 `_condition` 상태 보장
+  - `finally` 블록에서 gradient_checkpointing 복원 코드 제거 (불필요)
+- **하위 호환성**: `trunk.gradient_checkpointing = False`일 때 (다른 P 버전) nested 아닌 단일 outer checkpoint만 동작 → 기존 코드 영향 없음
+
+**관련 파일**:
+- `semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py`: `LoRA_Sam_P26._encode_single_modality()`, `forward()` finally 블록
+- `semseg/models/sam2/sam2/modeling/backbones/hieradet.py:269,295-296`: per-block checkpointing
+
+---
+

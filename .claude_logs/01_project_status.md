@@ -1,6 +1,35 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-06-17
+> 최종 업데이트: 2026-06-24
+
+---
+
+## 📌 현재 상태 스냅샷 (CURRENT — 여기만 읽으면 됨)
+
+> 이 블록은 **현재 상태의 단일 출처(single source of truth)**다. 매 갱신 시 이 블록만 덮어쓰고,
+> 과거 진행 내역은 아래 "역시간순 진행 로그"에 엔트리로 남긴다. (아래 로그의 `## 현재 상태:` 같은 옛 헤더는 그 시점 스냅샷일 뿐 현재 아님.)
+
+**연구 정체성**: 기여는 **RBMA (Reliability-Biased Memory Attention)** — SAM2/SAM3 memory cross-attention **logit에 training-free reliability를 additive bias로 가산**. canonical 정리 = [12_novelty_and_related_work.md](12_novelty_and_related_work.md).
+
+**챌린지 최선 (MULTIAQUA, 고정)**: **P9 ep131 & P22 ep120 공동 1위, M-score 82.10** (Val 93.3 / Test 70.9). P10~P27의 adaptive fusion은 모두 gate 상수수렴 병목으로 P9 미돌파 → 이 진단이 RBMA 동기.
+
+**진행 중 트랙**
+
+| 트랙 | 상태 | 최신 수치 / 다음 액션 |
+|------|------|----------------------|
+| **SAM2 RBMA (P28)** | 구현·검증 완료, **B200 학습 대기** | config 2종(multiaqua/deliver, `AMF_MODE:uniform`). ⚠️ multiaqua B200 config ROOT/PRETRAINED 경로 placeholder. DELIVER 베이스라인: ep10 Day55.26/Test49.41 |
+| **SAM3 RBMA (포팅)** | **학습/디버깅 중** (DELIVER 25cls) | ✅6/21 decoder repurpose로 class-collapse 돌파: val 8.49→**16.27@ep22 (상승 중)**. 다음=ep40~60+ 상한 확인 |
+
+**열린 블로커**
+- SAM3 ViT single-scale 한계 → SAM2 P28(val~55) 대비 격차 규명 필요.
+- SAM3 최소 클래스(Pedestrian/Pole/sign/Dynamic/Water) 여전히 0 → `decoder_high_res`(FPN skip) 후속 실험 후보.
+- P28 multiaqua B200 config 경로 검증.
+
+**다음 마일스톤**: ① SAM3-RBMA 수렴 곡선 확보 → ② SAM2 P28 B200 학습 → ③ RBMA ablation(SoftMoE LoRA / SQG / AMF 제거 robustness).
+
+---
+
+## 역시간순 진행 로그 (History — 아래는 시점별 기록, 현재 상태 아님)
 
 ### SAM3-RBMA val 붕괴 진짜 원인 — sem_head BatchNorm train/eval 불일치 → GroupNorm — 2026-06-19
 
@@ -329,7 +358,8 @@ P26 v6까지 SQG 기반 gating은 feature에 element-wise multiply (`feature × 
 - **`.codex/AGENTS.md`**: 루트 `AGENTS.md`·`CLAUDE.md`를 가리키도록 단순화(중복 지침 방지).
 - **사유**: Codex가 `AGENTS.md`를 우선 읽을 때 프로젝트와 무관한 지침이 섞이지 않게 함.
 
-## 현재 상태: P9 ep131 & P22 ep120 **공동 최선 (M=82.10)**, P25 학습 중, **P26 v6 구현 완료 (학습 대기)**, **Memory Attention 진단 도구 구현 완료**
+### [시점 스냅샷 2026-03-25] P9 ep131 & P22 ep120 공동 최선 (M=82.10), P25 학습 중, P26 v6 구현 완료 (학습 대기), Memory Attention 진단 도구 구현 완료
+> ⚠️ 이건 2026-03-25 당시 스냅샷이다. 현재 상태는 파일 최상단 "📌 현재 상태 스냅샷" 참조.
 
 ### Memory Attention 진단 — 1단계 문제 존재 증명 (2026-03-25)
 
