@@ -734,10 +734,8 @@ def main(cfg, gpu, save_dir):
             scheduler.load_state_dict(resume_checkpoint['scheduler_state_dict'])
             print("Scheduler state restored")
         
-        if 'scaler_state_dict' in resume_checkpoint and train_cfg['AMP']:
-            scaler.load_state_dict(resume_checkpoint['scaler_state_dict'])
-            print("Scaler state restored")
-        
+        # NOTE: scaler state is restored after `scaler` is created below (it does
+        # not exist yet here). Loading it here raised UnboundLocalError on resume.
         print(f"Resuming training from epoch {start_epoch + 1}, best mIoU: {best_mIoU:.4f}")
         
 
@@ -763,7 +761,11 @@ def main(cfg, gpu, save_dir):
     AMP_DTYPE = torch.bfloat16 if _amp_dtype_str in ('bf16', 'bfloat16') else torch.float16
     # GradScaler는 fp16에서만 필요. bf16은 range가 fp32와 동일해 overflow 위험 거의 없음.
     scaler = GradScaler(enabled=(train_cfg['AMP'] and AMP_DTYPE == torch.float16))
-    
+    # Restore GradScaler state on resume (only meaningful when the scaler is
+    # enabled, i.e. fp16 AMP; for bf16 the scaler is disabled and has no state).
+    if resume_checkpoint and 'scaler_state_dict' in resume_checkpoint and scaler.is_enabled():
+        scaler.load_state_dict(resume_checkpoint['scaler_state_dict'])
+        print("Scaler state restored")
 
 
     wandb_vis_indices = []
