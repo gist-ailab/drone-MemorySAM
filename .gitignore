@@ -271,3 +271,6 @@ docs/
 thermal_*/
 tmp/
 run_sam.sh
+
+# Claude Code local files (per-machine settings, worktrees) — never commit
+/.claude/
