@@ -643,19 +643,25 @@ class SoftMoE_LoRA_Layer(nn.Module):
     외부에서 set_condition()으로 설정한 (B, cond_dim) 벡터를 gate logit에 bias로 더함.
     Zero-init → 초기에는 기존과 동일하게 동작, 학습 진행 시 condition 활용.
     """
-    def __init__(self, in_features, rank, num_experts=4, cond_dim=0):
+    def __init__(self, in_features, rank, num_experts=4, cond_dim=0, cond_mode='add'):
         super().__init__()
         self.num_experts = num_experts
         self.rank = rank
         self.in_features = in_features
+        assert cond_mode in ('add', 'film'), f"cond_mode must be 'add'|'film', got {cond_mode}"
+        self.cond_mode = cond_mode
 
         # Gating Network: 입력 토큰별로 전문가 가중치를 계산
         self.gate = nn.Linear(in_features, num_experts)
 
-        # [P12] Input condition → gate bias projection
+        # [P12] Input condition → gate bias ('add') / [P29] FiLM (γ,β) ('film')
         self.cond_dim = cond_dim
         if cond_dim > 0:
-            self.cond_proj = nn.Linear(cond_dim, num_experts)
+            if cond_mode == 'film':
+                # outputs [γ(E), β(E)]; zero-init → (1+0)*logits+0 = identity at init
+                self.cond_film = nn.Linear(cond_dim, 2 * num_experts)
+            else:
+                self.cond_proj = nn.Linear(cond_dim, num_experts)
         self._condition = None  # set externally via set_condition()
 
         # Experts: LoRA 어댑터들
@@ -673,10 +679,14 @@ class SoftMoE_LoRA_Layer(nn.Module):
         nn.init.normal_(self.gate.weight, std=0.01)
         nn.init.zeros_(self.gate.bias)
 
-        # [P12] Condition projection zero-init: 초기에는 condition 영향 없음
+        # [P12/P29] Condition projection zero-init: 초기에는 condition 영향 없음
         if self.cond_dim > 0:
-            nn.init.zeros_(self.cond_proj.weight)
-            nn.init.zeros_(self.cond_proj.bias)
+            if self.cond_mode == 'film':
+                nn.init.zeros_(self.cond_film.weight)
+                nn.init.zeros_(self.cond_film.bias)
+            else:
+                nn.init.zeros_(self.cond_proj.weight)
+                nn.init.zeros_(self.cond_proj.bias)
 
         # Expert 초기화
         for i in range(self.num_experts):
@@ -702,11 +712,20 @@ class SoftMoE_LoRA_Layer(nn.Module):
                 nw = x_B // B
                 cond = cond.repeat_interleave(nw, dim=0)  # (B*nw, cond_dim)
 
-            cond_bias = self.cond_proj(cond)  # (x_B, num_experts)
-            # Broadcast over spatial dims: add 1-dims for H, W (or N)
-            for _ in range(x.dim() - 2):
-                cond_bias = cond_bias.unsqueeze(1)
-            gate_logits = gate_logits + cond_bias
+            if self.cond_mode == 'film':
+                # [P29] FiLM: (1+γ)*logits + β, γ/β per-expert from condition
+                gb = self.cond_film(cond)  # (x_B, 2E)
+                gamma, beta = gb[..., :self.num_experts], gb[..., self.num_experts:]
+                for _ in range(x.dim() - 2):
+                    gamma = gamma.unsqueeze(1)
+                    beta = beta.unsqueeze(1)
+                gate_logits = gate_logits * (1.0 + gamma) + beta
+            else:
+                cond_bias = self.cond_proj(cond)  # (x_B, num_experts)
+                # Broadcast over spatial dims: add 1-dims for H, W (or N)
+                for _ in range(x.dim() - 2):
+                    cond_bias = cond_bias.unsqueeze(1)
+                gate_logits = gate_logits + cond_bias
 
         gate_weights = F.softmax(gate_logits, dim=-1)  # (..., num_experts)
 
@@ -730,6 +749,62 @@ class SoftMoE_LoRA_Layer(nn.Module):
             final_output = final_output + weight * expert_out
 
         return final_output
+
+
+class SelfDerivedCondition(nn.Module):
+    """[P29] Self-Derived Condition (SDC): label-free, image-derived condition latent.
+
+    early feature map → (channel-wise spatial mean ⊕ std) descriptor → MLP → z
+    → cosine soft-assign to a learned **prototype bank** (K) → prototype-refined latent z_c.
+    Returns (z_c, clustering_loss). No labels / no text / no extra sensor:
+    prototypes are discovered by an entropy clustering objective
+    (confident per-sample assignment + diverse batch usage). This is the differentiator
+    vs CAFuser (CLIP-text condition) / DGFusion (depth + depth-GT reliability).
+
+    Args:
+        in_channels: channels of the early feature fed in.
+        latent_dim:  condition latent dim z_c (concatenated with modal_embed for the gate).
+        K:           number of condition prototypes.
+        tau:         softmax temperature for cosine assignment.
+    """
+    def __init__(self, in_channels, latent_dim=32, K=6, tau=0.5):
+        super().__init__()
+        self.in_channels = in_channels
+        self.latent_dim = latent_dim
+        self.K = K
+        self.tau = tau
+        self.proj = nn.Sequential(
+            nn.Linear(2 * in_channels, latent_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(latent_dim, latent_dim),
+        )
+        self.prototypes = nn.Parameter(torch.randn(K, latent_dim) * 0.02)
+
+    def forward(self, feat):
+        """feat: (B, C, H, W) early feature map. Returns (z_c: (B, latent_dim), loss: scalar)."""
+        if feat.dim() == 4:
+            mu = feat.mean(dim=(2, 3))                 # (B, C)
+            sd = feat.var(dim=(2, 3), unbiased=False).clamp_min(1e-6).sqrt()
+        elif feat.dim() == 3:                          # (B, N, C)
+            mu = feat.mean(dim=1)
+            sd = feat.var(dim=1, unbiased=False).clamp_min(1e-6).sqrt()
+        else:
+            raise ValueError(f"SDC expects 4D/3D feature, got {feat.shape}")
+        desc = torch.cat([mu, sd], dim=-1)             # (B, 2C)
+        z = self.proj(desc)                            # (B, latent_dim)
+        zc = F.normalize(z, dim=-1)
+        pc = F.normalize(self.prototypes, dim=-1)
+        sim = zc @ pc.t()                              # (B, K)
+        a = F.softmax(sim / self.tau, dim=-1)          # (B, K) soft assignment
+        z_refined = a @ self.prototypes                # (B, latent_dim) prototype-refined
+
+        # label-free clustering loss: confident per-sample + diverse batch usage
+        eps = 1e-8
+        sample_ent = -(a * (a + eps).log()).sum(dim=-1).mean()    # ↓ confident
+        batch_mean = a.mean(dim=0)                                # (K,)
+        batch_ent = -(batch_mean * (batch_mean + eps).log()).sum()  # ↑ diverse
+        loss = sample_ent - batch_ent
+        return z_refined, loss
 
 
 class SharedGateMLP(nn.Module):

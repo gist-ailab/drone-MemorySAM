@@ -49,6 +49,7 @@ QUALITY_GATE_MODELS = (
     'LoRA_Sam_P26_AblB',
     'LoRA_Sam_P27',
     'LoRA_Sam_P28',
+    'LoRA_Sam_P29',
 )
 
 
@@ -617,6 +618,12 @@ def main(cfg, gpu, save_dir):
     if 'cond_dim' in sig.parameters:
         # [P26] Modality-conditioned MoE LoRA gate
         model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
+    if 'sdc_enable' in sig.parameters:
+        # [P29] Self-Derived Condition (SDC) routing config (MODEL.SDC)
+        sdc_cfg = model_cfg.get('SDC', {}) or {}
+        model_kwargs['sdc_enable'] = sdc_cfg.get('ENABLE', True)
+        model_kwargs['sdc_K'] = sdc_cfg.get('K', 6)
+        model_kwargs['sdc_latent'] = sdc_cfg.get('LATENT_DIM', 32)
     if 'lambda_bias_init' in sig.parameters:
         # [P27] Learnable attention-bias scalar initial value
         quality_cfg = model_cfg.get('QUALITY_GATE', {})
@@ -695,6 +702,8 @@ def main(cfg, gpu, save_dir):
     # [P26 v6] Per-modal auxiliary CE loss 가중치
     quality_gate_cfg = cfg['MODEL'].get('QUALITY_GATE', {})
     lambda_aux_ce = quality_gate_cfg.get('AUX_CE_WEIGHT', 0.5)
+    # [P29] SDC label-free clustering loss weight (MODEL.SDC.LAMBDA)
+    lambda_sdc = (cfg['MODEL'].get('SDC', {}) or {}).get('LAMBDA', 0.1)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     scheduler = get_scheduler(
@@ -944,13 +953,19 @@ def main(cfg, gpu, save_dir):
                 else:
                     aux_ce_loss = torch.tensor(0.0, device=device)
 
+                # [P29] SDC label-free clustering loss (model stashes _sdc_loss)
+                _core = model.module if hasattr(model, 'module') else model
+                _sdc = getattr(_core, '_sdc_loss', None)
+                sdc_loss = _sdc if _sdc is not None else torch.tensor(0.0, device=device)
+
                 # Aggregate
                 total_loss_unscaled = (loss_orig + protoloss
                                        + lambda_gate * gating_loss
                                        + lambda_mi * mi_loss
                                        + lambda_aux * p13_aux_loss
                                        + lambda_gate * quality_gate_loss
-                                       + lambda_aux_ce * aux_ce_loss)
+                                       + lambda_aux_ce * aux_ce_loss
+                                       + lambda_sdc * sdc_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)

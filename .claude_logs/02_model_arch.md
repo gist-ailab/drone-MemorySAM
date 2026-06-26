@@ -1,6 +1,37 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-06-15
+> 최종 업데이트: 2026-06-27
+
+## P29 — Self-Derived Condition (SDC) 라우팅: label-free 조건 latent + prototype bank → FiLM Soft-MoE LoRA gate (2026-06-27)
+
+**상태**: **설계 완료 (구현 대기)**. 계보: `LoRA_Sam_P29(LoRA_Sam_P28)` — RBMA 기구(P27/P28 memory-attention logit bias)는 그대로 두고, **Soft-MoE LoRA의 라우팅(gate) 조건화**를 재설계.
+
+**동기 / 근본 원인 (라우팅 비특화 진단)**:
+- **조건(day/night/snow-rain)이 라우터에 구조적으로 안 보임**. P28의 gate 조건은 `self.modal_embed(modal_idx)`(`nn.Embedding(num_modalities, cond_dim=8)`, `sam_lora_image_encoder_seg.py:6715, 6801-6803`)뿐 → 라우팅을 바꿀 수 있는 입력은 **"어느 모달리티냐"가 전부**. 환경 조건은 입력이 아니므로 per-condition 특화가 원천 불가. (P12는 RGB mean/std 통계 `:1621` — RGB-only·전역 스칼라로 매우 약함.)
+- **존재하는 조건화도 너무 약함**. `SoftMoE_LoRA_Layer.forward`(`sam_lola_utils.py:690-709`)는 조건을 gate logit에 **가산 bias**(`cond_proj`)로 주입하는데 **zero-init**(`:677-679`)이라 초기 기여 0, 전 토큰 broadcast로 per-token `gate(x)`와 가산 경쟁 → modal_embed가 near-constant로 표류 가능.
+- **특화 압력 부재 + collapse 유발 init**. 순수 soft-blend(`:725-730`, top-k/load-balance 없음; P11 MI-loss는 취소). `experts_b` zero-init(`:684`)→초기 expert 출력 0→gate gradient≈0→rich-get-richer. 측정(ISSUE-002): Block9 argmax E1≈0~10%(img)/0~0.5%(lidar) = **E1 dead expert**, soft-MoE가 사실상 평균 단일 LoRA로 동작(ISSUE-015 #7 "gate 상수수렴").
+- **"붕괴" vs "오측"은 축이 다름**. viz 콜백은 **spatial-mean** gate 저장(`:714-716`)→uniform처럼 보이는 artifact. per-token 분석(CLAUDE.md)은 entropy_ratio≈0.55/max_weight≈0.72 → **per-token/region 라우팅은 분화**. 그러나 **per-modality 특화는 약하고(E1 dead), per-condition 특화는 설계상 부재**.
+
+**P29 설계 (Proposal A = 헤드라인): SDC latent + prototype bank → FiLM router**
+- **SDC 모듈**: RGB/초기 backbone feature(`fpn[0]`)에서 전역 시각 조건 descriptor 산출 = **GAP + 채널 mean/std** → projection으로 조건 latent `z_c`(latent_dim).
+- **Condition-prototype bank**: 학습되는 K개(K≈4~8) prototype에 `z_c`를 cosine/VQ로 **soft-assign**(label-free). 학습은 entropy/contrastive **clustering term + 본 seg loss**만 사용(조건 라벨/텍스트 불사용) → day/night/snow가 prototype으로 자연 출현하도록.
+- **라우터 주입(FiLM)**: gate 입력을 `[modal_embed ⊕ z_c]`로 구성하고, gate logit에 **FiLM(scale+shift) 변조**로 주입 → 기존 zero-init 가산 `cond_proj`(`:705-709`)를 대체. (multiplicative라 zero-init no-op·가산 약점 탈출.)
+- **텐서 흐름/플러그 지점**: SDC는 encoder당 1회(이미지당) 계산, `SoftMoE_LoRA_Layer.set_condition`이 `[modal_embed, z_c]`를 받도록 확장, forward `:705-709`의 가산 블록을 FiLM으로 교체.
+- **제안 config 키**: `MODEL.SDC: {ENABLE: true, K: 6, LATENT_DIM: 32, CLUSTER_WEIGHT: ...}`, gate `COND_MODE: film`(vs `add`/`none`), label-free term 가중.
+
+**P29-B (확장, optional combine): Reliability-Routed Experts — RBMA를 라우팅으로 확장**
+- RBMA의 **training-free 신뢰도** `B_i = 1 − H(softmax(Decoderᵢ(fᵢ)))/log C`를 **라우터 prior**로 재사용: 신뢰도가 어느 expert가 켜질지/gate를 bias(선택적으로 expert군↔신뢰도 regime 경량 supervision).
+- 의의: **하나의 reliability field가 두 곳을 구동** — 기존 RBMA의 memory-attention logit bias + 신규 LoRA expert routing. 무감독 soft-softmax(uniform-collapse 원인)를 GT-free 의미 신호로 대체. RBMA를 "융합 전용"에서 "라우팅+융합 통합 reliability 프레임워크"로 확장.
+
+**Proposal C (지원 ablation): reliability/importance 기반 pruning** — dead expert(ISSUE-002 E1)·rank를 신뢰도×utilization 중요도로 구조적 prune, 또는 per-token 신뢰도-salient 채널만 보존(feature pruning). RBMA 신뢰도를 **중요도 기준**으로 재사용. 헤드라인 아님, A/B의 "kept expert가 의미 있다"는 분석용.
+
+**Ablation 계획**: ① modal-only(P28) vs +SDC, ② 가산 bias vs FiLM, ③ K sweep, ④ **prototype↔DELIVER 조건 라벨 post-hoc probe**(무감독 latent가 day/night/cloud/rain/sun/fog/night를 복원하는지), ⑤ **per-condition mIoU** 분해(night/rain에서 이득 기대), ⑥ P29-B reliability-prior gate vs 학습 gate(특화도 = per-modality argmax·per-token entropy_ratio).
+
+**리스크**: (1) 무감독 prototype이 **nuisance 요인**(장면 레이아웃 등)으로 군집될 수 있음 → probe + 필요시 약한 self-supervised 조건 contrast(단 label-free 유지). (2) **노벨티≠mIoU**: 실제 천장이 frozen-backbone feature 품질일 수 있음(ISSUE-008) → 라우팅 재설계가 방법론적 기여여도 수치는 소폭일 수 있음, per-condition 분해로 방어. (3) 리뷰어 "왜 DELIVER 조건 라벨 안 씀?" → **무라벨 야간 드론 배치 전제**(배포 시 조건 라벨 없음)로 답, label-free latent가 라벨 조건과 일치함을 probe로 입증.
+
+**노벨티 포지셔닝**: label-free·image-derived·router-level 조건화는 CAFuser(CLIP/text 조건)·DGFusion(depth+depth-GT) 어느 쪽과도 다름. 상세 = [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.7.
+
+---
 
 ## P28 — RBMA: Reliability-Biased Memory Attention (2026-06-15)
 

@@ -106,6 +106,21 @@ B_i = 1 − H(softmax(Decoderᵢ(fᵢ))) / log C      # 모달 i 단독 디코�
 
 → 검출도 대부분 **reliability 미처리(등가 융합)**, 다뤄도 출력/feature 스케일(ReliFusion). **attention logit additive bias는 검출에도 전례 0.** 단 framing 주의: 검출은 **BEV 투영/3D query head + geometry**가 추가 → "**fusion 백본은 공유, head·표현공간(2D dense vs BEV/3D)이 다름**". RBMA의 reliability-bias 메커니즘은 두 분야(seg/det) 공통으로 비점유 영역.
 
+## 2.7 P29 — label-free image-derived 조건 라우팅 (SDC) 포지셔닝
+
+P29(설계, [02_model_arch.md](02_model_arch.md) P29)는 **조건(day/night/snow-rain)을 라우팅 축으로** 도입하되 **시각 feature에서 무감독으로 자기파생**한다. 비교축 = **(조건 신호를 어디서 얻나) × (어디에 주입하나)**.
+
+| 방법 | 조건 신호 출처 | 주입 위치 | P29(SDC)와의 차이 |
+|------|------|------|------|
+| **CAFuser** (2410.10791) | **CLIP/text** 조건 토큰(환경조건 단어 임베딩, verbo-visual) | Condition-Aware Cross-Attention(CA²) — **융합** 변조 | 텍스트/CLIP·조건 인지 의존 vs **이미지 feature에서 무감독 자기파생(prototype), 라벨/텍스트 0**; 융합 변조 vs **LoRA expert 라우팅(gate FiLM)** |
+| **DGFusion** (2509.09828) | **depth + depth-GT**(robust depth loss)로 spatially-varying sensor reliability | depth-token이 **융합을 condition** | depth 센서·GT 필수 vs **추가 센서/라벨 0, 모달 불문**; 융합 conditioning vs **라우터 변조** |
+| **P29 SDC (ours)** | **이미지 feature 전역 통계(GAP+채널 mean/std)→latent→prototype bank**, label-free clustering | **Soft-MoE LoRA gate에 FiLM**(modal_embed ⊕ z_c) | — |
+| **P29-B (ours)** | **RBMA training-free 신뢰도** `1−H(softmax(Decoderᵢ))/logC` | **memory-attn logit bias(기존 RBMA) + LoRA expert routing(신규)** | 하나의 reliability field가 융합+라우팅 동시 구동 |
+
+**노벨티 한 줄**: "조건을 **이미지에서 무감독으로 파생(SDC prototype)** 하여 **LoRA expert 라우팅을 변조**" + "RBMA를 **융합 전용 → 라우팅+융합 통합 reliability 프레임워크**로 확장(P29-B)". 둘 다 CAFuser(text)·DGFusion(depth-GT)·기존 MoE-fusion(학습 gate/task-ID)이 비점유. (라우팅 비특화 근본원인 = 02 P29 "동기/근본 원인": 조건이 라우터에 부재 + zero-init 가산 bias + 무감독 soft-softmax → E1 dead/상수수렴, ISSUE-002/015.)
+
+---
+
 ## 3. 노벨티 판정 (deep-research verdict, 리뷰 방어용)
 
 - **헤드라인 = 기구(B)**: "reliability를 **SAM memory-attention pre-softmax logit에 additive bias**로". feature-multiply / output-scale / loss-level 일색인 선행연구에 **logit-additive bias 전례 0건**. + MemorySAM 핵심 메커니즘 개조 서사.
@@ -124,6 +139,9 @@ B_i = 1 − H(softmax(Decoderᵢ(fᵢ))) / log C      # 모달 i 단독 디코�
 1b. **DELIVER 프로토콜 확정** — CMNeXt 66.30(원논문) vs 53.0(CAFuser 표) 불일치. 우리 P28 val~55가 어느 쪽과 비교 가능한지(같은 test split/모달 구성인지) 확인 → "67" 목표의 정확한 기준선 설정. OmniSegmentor/MM-SAM-adapter의 DELIVER 정량 수치도 미확보(원문 PDF 확인 필요).
 2. **A 신호(decoder predictive uncertainty)가 evidential/TMC dense-seg에서 이미 쓰였는지** — 별도 lit-check (deep-research 미확인 1건).
 3. DGFusion 정량(DELIVER/MUSES mIoU vs CAFuser/MAGIC) + 전체 하이퍼파라미터 — 비교표용 수치 미확보(원문 abstract만 확인).
+4. **(P29) CAFuser/DGFusion 조건화 메커니즘 원문 확인** — CAFuser가 정확히 CLIP-text 임베딩을 어디(CA²/CAA)에 주입하는지, DGFusion이 depth-GT를 어떤 loss로 reliability로 변환하는지 원문 대조(우리 §2.7 차별 주장 방어용).
+5. **(P29) MoE-LoRA 조건-라우팅 선행연구 스캔** — MoE-Adapters4CL(NeurIPS'24, task/domain id embedding), Mod-Squad(CVPR'23), VLMo/BEiT-3(MoME), LD-MoLE/DynMoLE 등에서 **무감독 image-derived 조건 latent로 LoRA expert를 라우팅**한 전례가 있는지 확정(SDC 노벨티 방어).
+6. **(P29) FiLM 라우터 변조 + prototype/VQ 조건 공간** 선행연구(FiLM, VQ-VAE codebook, SwAV/online-clustering)와의 구분 — "조건 prototype을 라우터 FiLM에 쓰는" 조합의 비점유 확인.
 
 ---
 
