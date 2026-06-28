@@ -807,6 +807,80 @@ class SelfDerivedCondition(nn.Module):
         return z_refined, loss
 
 
+class ReliabilityAnchoredRouter(nn.Module):
+    """[P30] Learned modality-fusion router, ANCHORED by RBMA reliability so it cannot
+    collapse to a constant ratio (the documented P10–P27 'gate 상수수렴', ISSUE-002/015).
+
+        w = softmax_modality( learned_logits(feat_i) + anchor_lambda * reliability_i )
+
+    The learned conv head is zero-init → at start w is purely reliability-driven (no
+    collapse), then learns the ratios end-to-end. per_class=True → per-class weights
+    (K=num_classes) so a class can route to the modality that sees it (revive event/LiDAR);
+    else scalar (K=1). Returns (w: (m,B,K,h,w), reg: mean modality-mixing entropy)."""
+
+    def __init__(self, in_ch, num_modalities, num_classes=1, per_class=False,
+                 anchor_lambda=1.0, hidden=64):
+        super().__init__()
+        self.m = num_modalities
+        self.per_class = per_class
+        self.K = num_classes if per_class else 1
+        self.anchor_lambda = anchor_lambda
+        self.heads = nn.ModuleList([
+            nn.Sequential(nn.Conv2d(in_ch, hidden, 1), nn.ReLU(inplace=True),
+                          nn.Conv2d(hidden, self.K, 1))
+            for _ in range(num_modalities)])
+        for h in self.heads:                 # zero-init last conv → start reliability-driven
+            nn.init.zeros_(h[-1].weight)
+            nn.init.zeros_(h[-1].bias)
+
+    def forward(self, feats, reliability=None):
+        # feats: list of m (B, in_ch, h, w); reliability: (m, B, 1, h, w) or None
+        logits = torch.stack([self.heads[i](feats[i]) for i in range(self.m)], dim=0)  # (m,B,K,h,w)
+        if reliability is not None:
+            rb = reliability if reliability.shape[2] == self.K else reliability.expand(-1, -1, self.K, -1, -1)
+            logits = logits + self.anchor_lambda * rb
+        w = F.softmax(logits, dim=0)                         # over modality
+        reg = -(w * (w + 1e-8).log()).sum(dim=0).mean()      # modality-entropy (higher = more mixing)
+        return w, reg
+
+
+class ClassTokenDecoder(nn.Module):
+    """[P30] Class-token decoder (faithful approximation of repurposing the SAM2 mask decoder
+    to class tokens — ports the SAM3-RBMA class-collapse break). C learnable class queries
+    cross-attend the fused cross-modal memory feature (m_feat, already carries all modalities
+    + RBMA bias) → per-class masks via a light transformer-decoder block + dynamic-kernel
+    dot-product. Gives thin/rare classes an active query mechanism instead of losing a
+    per-pixel argmax to dominant classes.
+
+    APPROXIMATION: a small MaskFormer/SAM-style decoder block, NOT surgery on the actual
+    `sam_mask_decoder` weights (kept faithful to the mechanism; noted in docs)."""
+
+    def __init__(self, feat_ch, num_classes, dim=128, heads=4, ffn=256):
+        super().__init__()
+        self.proj = nn.Conv2d(feat_ch, dim, 1)
+        self.class_tokens = nn.Parameter(torch.randn(num_classes, dim) * 0.02)
+        self.self_attn = nn.MultiheadAttention(dim, heads, batch_first=True)
+        self.cross_attn = nn.MultiheadAttention(dim, heads, batch_first=True)
+        self.ffn = nn.Sequential(nn.Linear(dim, ffn), nn.ReLU(inplace=True), nn.Linear(ffn, dim))
+        self.n1 = nn.LayerNorm(dim); self.n2 = nn.LayerNorm(dim); self.n3 = nn.LayerNorm(dim)
+        self.kernel = nn.Linear(dim, dim)
+        self.pix = nn.Conv2d(dim, dim, 1)
+
+    def forward(self, feat):
+        # feat: (B, feat_ch, h, w) fused feature → (B, num_classes, h, w) class logits
+        B, _, h, w = feat.shape
+        f = self.proj(feat)                                  # (B, dim, h, w)
+        mem = f.flatten(2).permute(0, 2, 1)                  # (B, hw, dim)
+        q = self.class_tokens.unsqueeze(0).expand(B, -1, -1)  # (B, C, dim)
+        q = self.n1(q + self.self_attn(q, q, q)[0])
+        q = self.n2(q + self.cross_attn(q, mem, mem)[0])
+        q = self.n3(q + self.ffn(q))
+        k = self.kernel(q)                                   # (B, C, dim)
+        p = self.pix(f)                                      # (B, dim, h, w)
+        masks = torch.einsum('bcd,bdhw->bchw', k, p)         # (B, C, h, w)
+        return masks
+
+
 class SharedGateMLP(nn.Module):
     """
     Shared 2-layer MLP gate for SoftMoE routing (P20).

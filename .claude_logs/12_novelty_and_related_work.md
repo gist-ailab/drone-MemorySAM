@@ -121,6 +121,21 @@ P29(설계, [02_model_arch.md](02_model_arch.md) P29)는 **조건(day/night/snow
 
 ---
 
+## 2.8 P30 — class-token decoder + reliability-anchored learned router 포지셔닝
+
+P30(구현, [02_model_arch.md](02_model_arch.md) P30)는 P28 실패분석(rare-class collapse + dead event/LiDAR)에 직접 대응하는 두 기구를 추가한다.
+
+| 기구 | 가장 가까운 선행 | P30과의 차이(노벨티) |
+|------|------|------|
+| **① Class-token decoder** | MaskFormer/Mask2Former(class query+mask), SAM(mask token), SAM3-RBMA(decoder repurpose) | **SAM2 cross-modal memory feature(전 모달+RBMA bias)에 class query를 cross-attend** → 멀티모달 memory-attention 위의 class-token 디코딩. MaskFormer는 단일 RGB backbone, SAM은 prompt-mask(클래스 아님). RBMA/MemorySAM memory 표현 위 class-token은 비점유 |
+| **② Reliability-anchored learned router** | CAFuser(text-condition fusion), DGFusion(depth-GT reliability), MoE-fusion(학습 gate), UTFNet/HyperDUM(학습 evidential 가중) | **학습 router를 training-free RBMA reliability로 anchor**(softmax(learned+λ·reliability), zero-init→reliability-구동 시작)해 **상수수렴 없이 자동 학습**. per-class 모달 라우팅. 학습 gate(MoE)는 anchor 없어 붕괴(우리 P10–P27 직접 증거), reliability 가중(UTFNet/DGFusion)은 학습형/고정이지 "학습 router를 reliability로 정규화"가 아님 → 조합 비점유 |
+
+**노벨티 한 줄**: "RBMA reliability를 (a) memory-attn logit bias[기존] (b) **modality router의 anchor**[②] (c) **class-token decoder가 attend하는 fused feature**[①] 세 곳에 일관 적용 = reliability 단일 신호로 **융합·라우팅·디코딩**을 묶은 프레임워크". RBMA(융합)→P29(SDC 조건)→P30(라우팅+class 디코딩)으로 확장. CAFuser(text)/DGFusion(depth-GT)/MoE-fusion(무anchor gate) 어느 것도 이 조합 미점유.
+
+**lit-check TODO(P30)**: (7) class-token/query 디코더가 **SAM2/멀티모달 memory feature** 위에서 쓰인 전례 확인(MaskFormer 계열은 단일 backbone). (8) "학습 modality gate를 unsupervised reliability로 anchor/regularize"한 융합 선행연구 스캔(우리 차별 방어).
+
+---
+
 ## 3. 노벨티 판정 (deep-research verdict, 리뷰 방어용)
 
 - **헤드라인 = 기구(B)**: "reliability를 **SAM memory-attention pre-softmax logit에 additive bias**로". feature-multiply / output-scale / loss-level 일색인 선행연구에 **logit-additive bias 전례 0건**. + MemorySAM 핵심 메커니즘 개조 서사.

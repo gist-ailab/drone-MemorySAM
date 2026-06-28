@@ -50,6 +50,7 @@ QUALITY_GATE_MODELS = (
     'LoRA_Sam_P27',
     'LoRA_Sam_P28',
     'LoRA_Sam_P29',
+    'LoRA_Sam_P30',
 )
 
 
@@ -624,6 +625,16 @@ def main(cfg, gpu, save_dir):
         model_kwargs['sdc_enable'] = sdc_cfg.get('ENABLE', True)
         model_kwargs['sdc_K'] = sdc_cfg.get('K', 6)
         model_kwargs['sdc_latent'] = sdc_cfg.get('LATENT_DIM', 32)
+    if 'class_token_decoder' in sig.parameters:
+        # [P30] class-token decoder + reliability-anchored learned router
+        ctd = model_cfg.get('CLASS_TOKEN_DECODER', {}) or {}
+        rtr = model_cfg.get('LEARNED_ROUTER', {}) or {}
+        model_kwargs['class_token_decoder'] = ctd.get('ENABLE', False)
+        model_kwargs['ctd_dim'] = ctd.get('DIM', 128)
+        model_kwargs['learned_router'] = rtr.get('ENABLE', False)
+        model_kwargs['router_per_class'] = rtr.get('PER_CLASS', False)
+        model_kwargs['router_anchor_lambda'] = rtr.get('ANCHOR_LAMBDA', 1.0)
+        model_kwargs['num_classes'] = trainset.n_classes
     if 'lambda_bias_init' in sig.parameters:
         # [P27] Learnable attention-bias scalar initial value
         quality_cfg = model_cfg.get('QUALITY_GATE', {})
@@ -704,6 +715,8 @@ def main(cfg, gpu, save_dir):
     lambda_aux_ce = quality_gate_cfg.get('AUX_CE_WEIGHT', 0.5)
     # [P29] SDC label-free clustering loss weight (MODEL.SDC.LAMBDA)
     lambda_sdc = (cfg['MODEL'].get('SDC', {}) or {}).get('LAMBDA', 0.1)
+    # [P30] router diversity reg weight (encourage modality mixing; MODEL.LEARNED_ROUTER.REG_LAMBDA)
+    lambda_router = (cfg['MODEL'].get('LEARNED_ROUTER', {}) or {}).get('REG_LAMBDA', 0.01)
     start_epoch = 0
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     scheduler = get_scheduler(
@@ -957,6 +970,9 @@ def main(cfg, gpu, save_dir):
                 _core = model.module if hasattr(model, 'module') else model
                 _sdc = getattr(_core, '_sdc_loss', None)
                 sdc_loss = _sdc if _sdc is not None else torch.tensor(0.0, device=device)
+                # [P30] router diversity reg: maximize modality-mixing entropy → subtract
+                _rreg = getattr(_core, '_router_reg', None)
+                router_loss = (-_rreg) if _rreg is not None else torch.tensor(0.0, device=device)
 
                 # Aggregate
                 total_loss_unscaled = (loss_orig + protoloss
@@ -965,7 +981,8 @@ def main(cfg, gpu, save_dir):
                                        + lambda_aux * p13_aux_loss
                                        + lambda_gate * quality_gate_loss
                                        + lambda_aux_ce * aux_ce_loss
-                                       + lambda_sdc * sdc_loss)
+                                       + lambda_sdc * sdc_loss
+                                       + lambda_router * router_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)

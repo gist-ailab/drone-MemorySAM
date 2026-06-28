@@ -1,6 +1,26 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-06-27
+> 최종 업데이트: 2026-06-28
+
+## P30 — Class-token decoder + Reliability-anchored learned modality router (2026-06-28)
+
+**상태**: **구현 완료 (학습 대기, P28 종료 후 GPU 2,3)**. 계보: `LoRA_Sam_P30(LoRA_Sam_P29)` — P29(SDC)+RBMA 상속, 두 기구 추가(둘 다 config-gated, 기본 OFF → P28/P29 불변).
+
+**동기 (P28 실패 분석에서 직접 도출, `analyze_failures.py`)**:
+- **실패는 weather가 아니라 class-driven**: per-condition mIoU는 타이트(night 0.526 … rain 0.561)인데 per-class가 양극화 — Road/Sky/Car ~0.9+ vs **Water 0.00, Bridge 0.00, Wall 0.035, Other 0.054, Dynamic 0.083, Ground 0.097, TrafficLight 0.137**. ~7개 thin/rare class가 mIoU를 끌어내림 = 70 갭 거의 전부.
+- **융합이 2-모달로 퇴화**: ablation(cloud) drop-depth Δ−0.224, drop-RGB Δ−0.097, **drop-event Δ−0.000, drop-LiDAR Δ+0.001 = event/LiDAR 사실상 미사용**. 현 융합 `m_feat=Σ q_uamm_norm[i]·f_i`(`sam_lora_image_encoder_seg.py:7140`)는 **class-agnostic per-pixel scalar**(`q_uamm_norm` (B,1,H,W), SQG quality softmax `:7033`)라 "Water엔 LiDAR 가중" 표현 불가.
+
+**기구 ① Class-token decoder (rare-class fix)**: SAM2 mask decoder를 class token으로 repurpose하는 아이디어를 이식 — C개 학습 class query가 **융합된 cross-modal memory feature `m_feat`**(전 모달 + RBMA bias 보유, `:7140`)에 cross-attention해 per-class mask `(B,C,H,W)`를 직접 생성. thin/rare class에 능동적 query 메커니즘 부여(per-pixel argmax에서 지배 class에 밀리는 구조 제거). **SAM3-RBMA에서 decoder repurpose가 class-collapse를 깸(val 8.49→16.27)** 의 SAM2 이식. **근사 구현**(faithful approximation): `ClassTokenDecoder`(sam_lola_utils.py) = 경량 transformer-decoder block(self+cross attn+FFN) + dynamic-kernel dot-product. 실제 `sam_mask_decoder` 가중치 수술 아님(명시). 통합: `LoRA_Sam_P30.forward`에서 super 반환의 grad-attached `m_feat`에 post-hoc 적용 → end-to-end 학습. config `MODEL.CLASS_TOKEN_DECODER{ENABLE, DIM}`.
+
+**기구 ② Reliability-anchored learned router (dead-modality fix)**: 고정 UAMM scalar를 **학습 router**로 교체하되 **RBMA reliability로 anchor**해 상수수렴(P10–P27 'gate 상수수렴', ISSUE-002/015) 방지. `w = softmax_modality(learned_logits(feat_i) + λ·reliability_i)`, reliability = `1 − H(softmax(output_i))/logC`(training-free). 학습 conv head **zero-init → 초기 w는 reliability-구동(붕괴 없음)**, 이후 비율을 자동 학습(사용자 요구: 라벨 통계가 아니라 모델이 자동 학습). `per_class=true` → per-class 모달 가중(B,C,H,W)로 "class가 자기를 보는 모달에 라우팅" → event/LiDAR 부활. 통합: P26 fusion을 overridable hook `_fuse_outputs`로 추출(기본 byte-identical → P26~P29 불변), `LoRA_Sam_P30._fuse_outputs`가 router 적용. `ReliabilityAnchoredRouter`(sam_lola_utils.py). 선택적 diversity reg `self._router_reg`(모달-mixing entropy) → trainer가 `−λ_router·reg`로 가산. config `MODEL.LEARNED_ROUTER{ENABLE, PER_CLASS, ANCHOR_LAMBDA, REG_LAMBDA}`.
+
+**왜 각 finding을 고치나**: ①은 rare-class collapse(finding 1) 직격(class query가 자기 영역 능동 탐색); ②는 dead-modality(finding 2) 직격(reliability-anchored 학습 router가 event/LiDAR에 의미 가중) + per_class로 rare-class가 geometry 모달을 끌어씀 → 두 finding의 coupling 해소.
+
+**Ablation 계획**: ① class-token decoder on/off (rare-class IoU: Water/Wall/Bridge 0 탈출?), ② router scalar vs per_class vs 고정 UAMM (event/LiDAR ablation Δ가 유의미 음수로 바뀌나 = 부활 확인), ③ anchor λ sweep(0=순수 학습 vs 큰 λ=reliability 지배; 상수수렴 여부), ④ `analyze_failures.py`로 per-condition×class + modality-ablation을 P28/P29 대비 측정. 성공 기준: Water/Wall/Bridge>0, event/LiDAR Δ 유의미 음수.
+
+**리스크**: (1) **frozen-backbone 천장(ISSUE-008)** — rare class가 frozen SAM2 feature에 애초에 안 담겼으면 ①②로도 한계; multi-scale FPN/②의 모달 부활로 완화. (2) class-token decoder는 근사 구현이라 실제 SAM decoder 대비 약할 수 있음. (3) **런타임 미검증**: 두 모듈은 CPU dummy smoke(forward+backward+grad+reliability-anchor 초기성) 통과했으나, `LoRA_Sam_P30`의 full forward(track_step 내부와 _fuse_outputs 상호작용)는 SAM2 로드 없이 compile-only 검증 → 학습 전 main이 GPU 1-forward로 확인 권장. 노벨티 = [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.8.
+
+---
 
 ## P29 — Self-Derived Condition (SDC) 라우팅: label-free 조건 latent + prototype bank → FiLM Soft-MoE LoRA gate (2026-06-27)
 
