@@ -50,6 +50,13 @@ TRAIN:
   NUM_WORKERS: 4
   AMP: true
 
+WANDB:
+  ENABLE: true
+  PROJECT: p29-det
+  ENTITY: null
+  VIZ_COUNT: 8                                    # 매 epoch 동일한 앞 8장 (val shuffle=False → 고정)
+  VIZ_SCORE_THRESH: 0.3
+
 EVAL:
   NMS_THRESH: 0.5
   SCORE_THRESH: 0.05

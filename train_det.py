@@ -70,6 +70,45 @@ def unwrap(model):
     """Return the underlying module whether or not it is DDP-wrapped."""
     return model.module if isinstance(model, DDP) else model
 
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
+
+_VIZ_COLORS = [
+    (220, 20, 60), (0, 128, 0), (0, 0, 255), (255, 165, 0), (128, 0, 128),
+    (0, 200, 200), (255, 0, 255), (128, 128, 0), (0, 128, 128), (255, 99, 71),
+    (30, 144, 255), (50, 205, 50),
+]
+
+
+def draw_boxes_pil(img_np, boxes, scores, cls_ids, class_names=None,
+                   gt_boxes=None, score_thresh=0.3):
+    """Render predicted boxes (colored, with score) + GT boxes (white) on an image.
+
+    img_np: (H,W,3) uint8. boxes/gt_boxes in the same pixel coords as img_np.
+    Returns a PIL.Image for wandb.Image / tensorboard logging.
+    """
+    from PIL import Image, ImageDraw
+    pil = Image.fromarray(img_np)
+    draw = ImageDraw.Draw(pil)
+    if gt_boxes is not None:
+        for b in gt_boxes.tolist():
+            draw.rectangle(b, outline=(255, 255, 255), width=1)
+    for j in range(boxes.shape[0]):
+        s = float(scores[j])
+        if s < score_thresh:
+            continue
+        x1, y1, x2, y2 = boxes[j].tolist()
+        c = int(cls_ids[j])
+        color = _VIZ_COLORS[c % len(_VIZ_COLORS)]
+        name = class_names[c] if class_names and c < len(class_names) else str(c)
+        draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
+        draw.text((x1 + 1, y1 + 1), f"{name}:{s:.2f}", fill=color)
+    return pil
+
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
@@ -252,10 +291,18 @@ def evaluate(
     device: torch.device,
     annotation_path: str,
     idx_to_cat_id: dict,
-) -> dict:
-    """Run evaluation and return COCO metrics."""
+    viz_count: int = 0,
+    class_names=None,
+    viz_score_thresh: float = 0.3,
+):
+    """Run evaluation; return (COCO metrics, list[(PIL.Image, caption)]).
+
+    When viz_count>0, the first viz_count images get a pred(+GT)-box overlay
+    (in the 1024 model-input space) for wandb/tensorboard logging.
+    """
     model.eval()
     all_predictions = []
+    viz_images = []
 
     for batch in tqdm(dataloader, desc='Evaluating'):
         modals = [k for k in batch.keys()
@@ -266,8 +313,22 @@ def evaluate(
 
         orig_sizes = batch['orig_size']  # (B, 2)
         img_size = sample[modals[0]].shape[-2:]  # (H, W)
+        rgb_key = 'img' if 'img' in sample else modals[0]
 
         for i, det in enumerate(results['detections']):
+            # Validation visualization (model-input 1024 space, before COCO rescale)
+            if len(viz_images) < viz_count:
+                img_np = (sample[rgb_key][i].detach().cpu().clamp(0, 1)
+                          .permute(1, 2, 0).numpy() * 255).astype('uint8')
+                gt = batch['bboxes'][i] if 'bboxes' in batch else None
+                pil = draw_boxes_pil(
+                    img_np, det['boxes'].cpu(), det['scores'].cpu(),
+                    det['class_ids'].cpu(), class_names=class_names,
+                    gt_boxes=gt, score_thresh=viz_score_thresh,
+                )
+                n_kept = int((det['scores'] >= viz_score_thresh).sum())
+                viz_images.append((pil, f"{batch['file_name'][i]} | pred={n_kept}"))
+
             if det['boxes'].shape[0] == 0:
                 continue
 
@@ -288,10 +349,10 @@ def evaluate(
 
     if not all_predictions:
         print("No predictions — returning zero AP.")
-        return {'AP': 0.0, 'AP50': 0.0, 'AP75': 0.0}
+        return {'AP': 0.0, 'AP50': 0.0, 'AP75': 0.0}, viz_images
 
     metrics = evaluate_coco(annotation_path, all_predictions)
-    return metrics
+    return metrics, viz_images
 
 
 def main():
@@ -313,11 +374,28 @@ def main():
     # Output directory + writer (rank 0 only)
     save_dir = Path(cfg.get('OUTPUT_DIR', 'outputs/det')) / Path(args.cfg).stem
     writer = None
+    wandb_run = None
     if is_main:
         save_dir.mkdir(parents=True, exist_ok=True)
         writer = SummaryWriter(str(save_dir / 'tb_logs'))
         with open(save_dir / 'config.yaml', 'w') as f:
             yaml.dump(cfg, f)
+        if cfg.get('WANDB', {}).get('ENABLE', False) and wandb is not None:
+            try:
+                wandb_run = wandb.init(
+                    project=cfg['WANDB'].get('PROJECT', 'p29-det'),
+                    entity=cfg['WANDB'].get('ENTITY', None),
+                    name=save_dir.name,
+                    config=cfg,
+                    dir=str(save_dir),
+                )
+                print(f"[wandb] logging to project '{wandb_run.project}' "
+                      f"run '{wandb_run.name}' (mode={wandb_run.settings.mode})")
+            except Exception as e:
+                # No login / offline failure → keep training, fall back to tensorboard.
+                wandb_run = None
+                print(f"[wandb][warn] init failed ({e}); continuing without wandb. "
+                      f"Run `wandb login` (or set WANDB_API_KEY / WANDB_MODE=offline).")
 
     # Datasets (build first so n_classes can be derived from the COCO categories)
     train_dataset = build_dataset(cfg, 'train')
@@ -439,7 +517,7 @@ def main():
 
     if args.eval_only:
         if is_main:
-            metrics = evaluate(
+            metrics, _ = evaluate(
                 unwrap(model), val_loader, device,
                 cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
             )
@@ -463,18 +541,32 @@ def main():
 
         if is_main:
             print(f"Epoch {epoch}: loss={avg_loss:.4f}, lr={scheduler.get_last_lr()[0]:.6f}")
+            if wandb_run is not None:
+                wandb_run.log({'train/loss': avg_loss,
+                               'lr': scheduler.get_last_lr()[0], 'epoch': epoch})
 
         # Evaluate + checkpoint (rank 0 only; others wait at the barrier)
         save_interval = cfg['TRAIN'].get('SAVE_INTERVAL', 5)
         if (epoch + 1) % save_interval == 0 or epoch == epochs - 1:
             if is_main:
-                metrics = evaluate(
+                viz_count = cfg.get('WANDB', {}).get('VIZ_COUNT', 8) if wandb_run is not None else 0
+                metrics, viz = evaluate(
                     unwrap(model), val_loader, device,
                     cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+                    viz_count=viz_count, class_names=train_dataset.class_names,
+                    viz_score_thresh=cfg.get('WANDB', {}).get('VIZ_SCORE_THRESH', 0.3),
                 )
                 print(f"  Val AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}, AP75={metrics['AP75']:.4f}")
                 writer.add_scalar('val/AP', metrics['AP'], epoch)
                 writer.add_scalar('val/AP50', metrics['AP50'], epoch)
+                # wandb: metrics + the same first-N val images each epoch (val_loader
+                # is shuffle=False, so the example set is fixed across epochs).
+                if wandb_run is not None:
+                    log = {'val/AP': metrics['AP'], 'val/AP50': metrics['AP50'],
+                           'val/AP75': metrics['AP75'], 'epoch': epoch}
+                    if viz:
+                        log['val/examples'] = [wandb.Image(im, caption=c) for im, c in viz]
+                    wandb_run.log(log)
 
                 # Full model state preserves fine-tuned backbone (LoRA/memory/RBMA);
                 # detector_state_dict kept for lightweight head-only reuse.
@@ -498,8 +590,11 @@ def main():
             if ddp:
                 dist.barrier()
 
-    if is_main and writer is not None:
-        writer.close()
+    if is_main:
+        if writer is not None:
+            writer.close()
+        if wandb_run is not None:
+            wandb_run.finish()
         print(f"Training complete. Best AP: {best_ap:.4f}")
     if ddp:
         dist.destroy_process_group()
