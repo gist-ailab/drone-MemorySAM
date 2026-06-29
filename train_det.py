@@ -186,16 +186,21 @@ def train_one_epoch(
                 optimizer.step()
             optimizer.zero_grad()
 
-        total_loss += loss.item()
-        total_cls += losses['loss_cls'].item()
-        total_reg += losses['loss_reg'].item()
-        total_ctr += losses['loss_ctr'].item()
+        # FCOSLoss may return plain floats (0.0) for reg/ctr when a batch has no
+        # positive samples — handle both tensor and float when logging.
+        def _f(x):
+            return x.item() if torch.is_tensor(x) else float(x)
+
+        total_loss += _f(losses['loss_total'])
+        total_cls += _f(losses['loss_cls'])
+        total_reg += _f(losses['loss_reg'])
+        total_ctr += _f(losses['loss_ctr'])
         n_iters += 1
 
         pbar.set_postfix({
-            'loss': f'{loss.item():.4f}',
-            'cls': f'{losses["loss_cls"].item():.4f}',
-            'reg': f'{losses["loss_reg"].item():.4f}',
+            'loss': f'{_f(losses["loss_total"]):.4f}',
+            'cls': f'{_f(losses["loss_cls"]):.4f}',
+            'reg': f'{_f(losses["loss_reg"]):.4f}',
             'n_pos': losses['n_pos'],
         })
 
