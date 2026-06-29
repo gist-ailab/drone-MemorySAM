@@ -1564,3 +1564,36 @@ python val_multiaqua_tiled.py \
 ### 파일
 - `val_multiaqua_tiled.py` — 별도 추론 스크립트 (기존 val_multiaqua.py 미수정)
 - 저장 경로: `{checkpoint_dir}/eval_macvi_tiled_test/`
+
+---
+
+## [P29-Det] Object Detection 확장 — 검증 & 데이터 파이프라인 (2026-06-29)
+
+> worktree `worktree-p29-det`. RBMA(P28) 백본 + FPN/FCOS detection head. **학습 미실행**(GPU 제약: 0,1 타연구원 / 2,3 P28 학습 중). CPU 검증·데이터 파이프라인까지만.
+
+### 모델/코드 구조
+- `LoRA_Sam_P29_Det(LoRA_Sam_P28)` (sam_lora_image_encoder_seg.py:8016) — P28과 동일 아키텍처 + `extract_det_features()`(P27에 정의, line 7634 / forward 캡처 훅 7739) 상속.
+  - 캡처: `backbone_fpn[0]`=fpn0(32ch,stride4), `backbone_fpn[1]`=fpn1(64ch,stride8), `_prepare_memory_conditioned_features` 출력=mem(256ch,stride16, memory+RBMA 경로). config `FPN_CHANNELS=[32,64,256]`/`FPN_STRIDES=[4,8,16]`와 정합.
+- `objdet/`: datasets/multimodal_det.py, augmentations_det.py, losses.py(FCOS focal+GIoU+centerness), metrics.py(pycocotools), models/det_model.py(MemorySAMDetector=FPNNeck+FCOSHead), models/heads/fcos_head.py, utils/nms.py, tools/merge_coco.py(신규).
+- 트레이너/평가: train_det.py, val_det.py. config: configs/det/det_P29_indoor.yaml. 설계=option2(FREEZE_BACKBONE=false + TRAIN_MEMORY=true).
+
+### 검증 결과
+- **py_compile**: objdet/**.py + train_det/val_det + sam_lora_image_encoder_seg.py 전부 PASS.
+- **Tier-1 CPU 스모크**(stub backbone, 랜덤텐서): FPNNeck/FCOSHead/FCOSLoss/NMS + forward+backward PASS, grad가 head·neck·backbone 모두 도달.
+- **Tier-2 실데이터 CPU 스모크**(실제 poongsan val 샘플 + 실 SAM2 P29_Det 1024 forward→FCOSLoss→backward): [결과는 RUN 로그 참조].
+- **버그 수정 1 (losses.py focal_loss)**: FCOS 배경 라벨 `target==n_classes`를 size-n_classes one-hot에 scatter → IndexError. 배경행은 all-zeros 유지하도록 foreground만 scatter하게 수정. (이 수정 없으면 학습 첫 step에서 즉시 크래시)
+- **개선 1 (det_model.extract_fpn_features)**: eval 시에도 `enable_grad()` 강제 → in-training validation(fine-tune 모델, no_grad)에서 그래프 재생성 OOM 위험. `self.training and not freeze_backbone`일 때만 enable_grad.
+- **인프라 (블로커)**: editable `sam2` 설치가 `/media/jemo/HDD1/...`(현 마운트 `/mnt/HDD1`로 이전, 부재)를 가리켜 `import sam2` 실패 → 메인 repo 학습도 영향. worktree 스모크는 `sys.path`에 worktree sam2 추가로 우회. 학습 전 editable 재설치 또는 PYTHONPATH 필요.
+
+### 데이터셋 (poongsan indoor 260618, 10 cls)
+- ROOT=`/drone_nas/drone/dataset`. COCO image별 `modalities` map 사용(parallel-ROOT 가정 폐기). 매핑: img→rgb, thermal→thermal_aligned, lidar→**depth_map_lidar**(.png; lidar_aligned는 .pcd라 부적합).
+- 8 capture 중 **6개만 annotations_coco_rgb.json 보유**(113534, 115624 없음). 합계: images 14,903 / anns 22,415.
+- **3모달(rgb+thermal+depth_lidar) 교집합 = 8,299 프레임**(lidar 커버리지 부분적: capture당 rgb≈thermal 전부, depth는 ~55%). 로더가 교집합 필터(`REQUIRE_ALL_MODALITIES`).
+- **split = capture 단위**(시간 인접 leakage 회피). TRAIN={112051,113007,114808,120059} (img 11,677/ann 17,907; 교집합 6,408), VAL(held-out test)={114021,115206} (img 3,226/ann 4,508; 교집합 1,891). 두 split 모두 10개 클래스 전부 + 희소 Lighting(cls7) 포함하도록 선정.
+- 머지 산출물: `…/_det_splits/det_train.json`, `det_val.json`. config의 ANNOTATION_TRAIN/VAL 이 경로로 채움.
+- **depth vs intensity 의견**: depth_map_lidar 채택 권장 — 기하학적 range가 RGB와 상관 낮은 보완정보. intensity는 reflectance라 texture적이고 더 sparse. depth 맵이 너무 hole/sparse하면 intensity_map_lidar 대안.
+
+### 학습 착수에 남은 것
+1. GPU 가용성(현재 0,1,2,3 전부 점유) — 빈 GPU 확보.
+2. editable sam2 경로 수정(/media→/mnt) 또는 PYTHONPATH=semseg/models/sam2.
+3. (선택) BATCH_SIZE/AMP/VRAM 튜닝 — 3모달×SAM2 full 1024라 메모리 큼.

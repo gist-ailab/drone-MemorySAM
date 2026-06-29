@@ -1,20 +1,27 @@
 """
 Multimodal Object Detection Dataset (COCO format).
 
-COCO JSON annotation + per-modality image root 구조를 지원.
-모달리티별 이미지는 동일한 file_name을 공유하며, config의 ROOT prefix로 경로를 결정.
+Two path-resolution modes are supported:
 
-Config 예시:
+(A) modalities-map mode  [preferred for the poongsan indoor dataset]
+    Each COCO image entry carries a per-image ``modalities`` dict mapping a
+    modality key (``rgb`` / ``thermal_aligned`` / ``depth_map_lidar`` / ...) to a
+    path **relative to a single DATASET ROOT**. ``modality_keys`` maps the model's
+    modality names (``img`` / ``thermal`` / ``lidar``) onto those json keys.
+    Frames missing any requested modality (key absent or file not on disk) are
+    dropped → only the 3-modality intersection is used (lidar coverage is partial).
+
+(B) parallel-root mode  [legacy]
+    Every modality shares the same ``file_name`` but lives under a different ROOT
+    directory given in ``modality_roots``.
+
+Config (mode A) example:
   DATASET:
-    ANNOTATION_TRAIN: /path/to/train.json
-    ANNOTATION_VAL: /path/to/val.json
-    MODALITIES:
-      img:
-        ROOT: /path/to/data/zed
-      lidar:
-        ROOT: /path/to/data/lidar_processed
-      thermal:
-        ROOT: /path/to/data/thermal_processed
+    ROOT: /drone_nas/drone/dataset
+    ANNOTATION_TRAIN: .../det_train.json
+    ANNOTATION_VAL:   .../det_val.json
+    MODALS: ['img', 'lidar', 'thermal']
+    MODALITY_KEYS: { img: rgb, thermal: thermal_aligned, lidar: depth_map_lidar }
 """
 
 import os
@@ -23,116 +30,130 @@ import torch
 import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import torchvision.transforms.functional as TF
 
 
 class MultiModalDetDataset(Dataset):
-    """
-    COCO-format multimodal object detection dataset.
-
-    Each image has the same file_name across modalities, loaded from
-    different ROOT directories specified in the config.
-
-    Args:
-        annotation_path: Path to COCO JSON annotation file.
-        modality_roots: Dict[str, str] mapping modality name → image root dir.
-            e.g. {'img': '/data/zed', 'lidar': '/data/lidar', 'thermal': '/data/thermal'}
-        img_size: Resize target (H, W). All modalities resized to this.
-        transform: Optional augmentation callable. Should handle bbox-aware transforms.
-            Expected signature: transform(images: Dict[str, np.ndarray],
-                                          bboxes: np.ndarray, labels: np.ndarray)
-                                → (images, bboxes, labels)
-        modals: List of modality keys to load. If None, uses all keys from modality_roots.
-        min_area: Minimum bbox area to keep (filters tiny annotations).
-    """
-
     def __init__(
         self,
         annotation_path: str,
-        modality_roots: Dict[str, str],
+        modality_roots: Optional[Dict[str, str]] = None,
         img_size: Tuple[int, int] = (1024, 1024),
         transform=None,
         modals: Optional[List[str]] = None,
         min_area: float = 0.0,
+        root: Optional[str] = None,
+        modality_keys: Optional[Dict[str, str]] = None,
+        require_all_modalities: bool = True,
+        verbose: bool = True,
     ):
         super().__init__()
         self.img_size = img_size  # (H, W)
         self.transform = transform
-        self.modals = modals or list(modality_roots.keys())
-        self.modality_roots = {k: modality_roots[k] for k in self.modals}
         self.min_area = min_area
+        self.root = root
+        self.modality_keys = modality_keys
+        self.require_all_modalities = require_all_modalities
 
-        # Load COCO JSON
+        # ── Resolve mode ──────────────────────────────────────────────
+        if modality_keys is not None:
+            self.mode = 'modalities_map'
+            self.modals = modals or list(modality_keys.keys())
+            if root is None:
+                raise ValueError("modalities_map mode requires DATASET.ROOT")
+        else:
+            if modality_roots is None:
+                raise ValueError("parallel-root mode requires modality_roots")
+            self.mode = 'parallel_root'
+            self.modals = modals or list(modality_roots.keys())
+            self.modality_roots = {k: modality_roots[k] for k in self.modals}
+
+        # ── Load COCO ─────────────────────────────────────────────────
         with open(annotation_path, 'r') as f:
             coco = json.load(f)
 
-        # Build category mapping: original_id → contiguous 0-based index
         self.categories = coco['categories']
-        self.cat_id_to_idx = {}
-        self.idx_to_cat = {}
+        self.cat_id_to_idx, self.idx_to_cat = {}, {}
         for idx, cat in enumerate(sorted(self.categories, key=lambda c: c['id'])):
             self.cat_id_to_idx[cat['id']] = idx
             self.idx_to_cat[idx] = cat
-
         self.n_classes = len(self.categories)
         self.class_names = [self.idx_to_cat[i]['name'] for i in range(self.n_classes)]
 
-        # Build image lookup
         self.images = {img['id']: img for img in coco['images']}
 
-        # Group annotations by image_id
-        self.img_ids = []
-        self.img_anns = {}
-        ann_by_img = {}
+        ann_by_img: Dict[int, list] = {}
         for ann in coco.get('annotations', []):
-            img_id = ann['image_id']
-            if img_id not in ann_by_img:
-                ann_by_img[img_id] = []
-            ann_by_img[img_id].append(ann)
+            ann_by_img.setdefault(ann['image_id'], []).append(ann)
 
-        # Keep images that have annotations (or all images if no annotations)
-        for img_id, img_info in self.images.items():
+        # ── Build sample list (+ intersection filter in map mode) ─────
+        self.img_ids: List[int] = []
+        self.img_anns: Dict[int, list] = {}
+        self.modal_paths: Dict[int, Dict[str, str]] = {}
+        n_drop = 0
+        for img_id, info in self.images.items():
+            paths = self._resolve_paths(info)
+            if paths is None:        # missing a required modality
+                n_drop += 1
+                continue
             self.img_ids.append(img_id)
             self.img_anns[img_id] = ann_by_img.get(img_id, [])
-
-        # Sort for reproducibility
+            self.modal_paths[img_id] = paths
         self.img_ids.sort()
+
+        if verbose:
+            print(f"[MultiModalDetDataset] mode={self.mode} modals={self.modals} "
+                  f"kept={len(self.img_ids)} dropped={n_drop} "
+                  f"(require_all_modalities={require_all_modalities})")
+
+    # ──────────────────────────────────────────────────────────────────
+    def _resolve_paths(self, info: dict) -> Optional[Dict[str, str]]:
+        """Return {modal: abs_path} or None if a required modality is missing."""
+        paths = {}
+        if self.mode == 'modalities_map':
+            mod_map = info.get('modalities', {})
+            for modal in self.modals:
+                key = self.modality_keys[modal]
+                rel = mod_map.get(key)
+                if not rel:
+                    return None
+                ap = os.path.join(self.root, rel)
+                if self.require_all_modalities and not os.path.exists(ap):
+                    return None
+                paths[modal] = ap
+        else:
+            for modal in self.modals:
+                ap = os.path.join(self.modality_roots[modal], info['file_name'])
+                if self.require_all_modalities and not os.path.exists(ap):
+                    return None
+                paths[modal] = ap
+        return paths
 
     def __len__(self) -> int:
         return len(self.img_ids)
 
-    def _load_image(self, file_name: str, modal: str) -> np.ndarray:
-        """Load image from modality root. Returns (H, W, 3) uint8."""
-        root = self.modality_roots[modal]
-        path = os.path.join(root, file_name)
-        img = Image.open(path).convert('RGB')
-        return np.array(img)
+    @staticmethod
+    def _load_image(path: str) -> np.ndarray:
+        return np.array(Image.open(path).convert('RGB'))
 
     def __getitem__(self, idx: int) -> dict:
         img_id = self.img_ids[idx]
-        img_info = self.images[img_id]
-        file_name = img_info['file_name']
-        orig_h, orig_w = img_info['height'], img_info['width']
+        info = self.images[img_id]
+        orig_h, orig_w = info['height'], info['width']
+        paths = self.modal_paths[img_id]
 
-        # Load all modalities
-        images = {}
-        for modal in self.modals:
-            images[modal] = self._load_image(file_name, modal)
+        images = {modal: self._load_image(paths[modal]) for modal in self.modals}
 
-        # Parse annotations → bboxes (x1, y1, x2, y2), labels
-        anns = self.img_anns[img_id]
-        bboxes = []
-        labels = []
-        for ann in anns:
+        # annotations → (x1,y1,x2,y2), labels
+        bboxes, labels = [], []
+        for ann in self.img_anns[img_id]:
             if ann.get('iscrowd', 0):
                 continue
-            x, y, w, h = ann['bbox']  # COCO format: (x, y, w, h)
-            area = w * h
-            if area < self.min_area:
+            x, y, w, h = ann['bbox']
+            if w * h < self.min_area:
                 continue
-            bboxes.append([x, y, x + w, y + h])  # → (x1, y1, x2, y2)
+            bboxes.append([x, y, x + w, y + h])
             labels.append(self.cat_id_to_idx[ann['category_id']])
 
         if bboxes:
@@ -142,11 +163,9 @@ class MultiModalDetDataset(Dataset):
             bboxes = np.zeros((0, 4), dtype=np.float32)
             labels = np.zeros((0,), dtype=np.int64)
 
-        # Apply augmentation (bbox-aware)
         if self.transform is not None:
             images, bboxes, labels = self.transform(images, bboxes, labels)
 
-        # Resize all modalities and scale bboxes
         target_h, target_w = self.img_size
         scale_x = target_w / orig_w
         scale_y = target_h / orig_h
@@ -156,42 +175,29 @@ class MultiModalDetDataset(Dataset):
             img = images[modal]
             img = Image.fromarray(img) if isinstance(img, np.ndarray) else img
             img = img.resize((target_w, target_h), Image.BILINEAR)
-            img = TF.to_tensor(img)  # (3, H, W), float32 [0, 1]
-            sample[modal] = img
+            sample[modal] = TF.to_tensor(img)  # (3,H,W) float32 [0,1]
 
-        # Scale bboxes to resized image
         if len(bboxes) > 0:
             bboxes[:, [0, 2]] *= scale_x
             bboxes[:, [1, 3]] *= scale_y
-            # Clip to image bounds
             bboxes[:, [0, 2]] = np.clip(bboxes[:, [0, 2]], 0, target_w)
             bboxes[:, [1, 3]] = np.clip(bboxes[:, [1, 3]], 0, target_h)
 
-        sample['bboxes'] = torch.from_numpy(bboxes)       # (N, 4) x1y1x2y2
-        sample['labels'] = torch.from_numpy(labels)        # (N,)
+        sample['bboxes'] = torch.from_numpy(bboxes)
+        sample['labels'] = torch.from_numpy(labels)
         sample['image_id'] = img_id
         sample['orig_size'] = torch.tensor([orig_h, orig_w])
-        sample['file_name'] = file_name
-
+        sample['file_name'] = info['file_name']
         return sample
 
     @staticmethod
     def collate_fn(batch: List[dict]) -> dict:
-        """
-        Custom collate for variable-length bboxes.
-        Modality images are stacked; bboxes/labels remain as lists.
-        """
         modals = [k for k in batch[0].keys()
                   if isinstance(batch[0][k], torch.Tensor) and batch[0][k].dim() == 3]
-
-        collated = {}
-        for modal in modals:
-            collated[modal] = torch.stack([b[modal] for b in batch])
-
+        collated = {m: torch.stack([b[m] for b in batch]) for m in modals}
         collated['bboxes'] = [b['bboxes'] for b in batch]
         collated['labels'] = [b['labels'] for b in batch]
         collated['image_id'] = [b['image_id'] for b in batch]
         collated['orig_size'] = torch.stack([b['orig_size'] for b in batch])
         collated['file_name'] = [b['file_name'] for b in batch]
-
         return collated

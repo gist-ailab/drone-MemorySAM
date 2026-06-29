@@ -30,6 +30,37 @@
 
 ---
 
+## P29-Det — RBMA backbone → Object Detection (2026-06-29)
+
+**목표**: P28(RBMA) 구조(SAM2 Hiera-B+ encoder + SoftMoE-LoRA + cross-modal memory attention)를 **그대로 통과**시키되 segmentation head 대신 **FPN neck + FCOS detection head**를 부착. 대상 데이터셋 = **실내 멀티모달(poongsan, RGB+LiDAR(depth-map)+Thermal, 640×480, COCO)** — MUSES/DELIVER/MULTIAQUA(실외)와 도메인 상이.
+
+**계보**: `LoRA_Sam_P29_Det(LoRA_Sam_P28)`. arch 변경 없음(pass) — RBMA 백본을 **detection feature path**로 재사용하는 thin subclass. detection feature 추출 메서드는 P27에 추가되어 P27/P28/P29 모두 상속.
+
+**Feature 경로 (사용자 결정 = "encoder FPN + memory-fused")**:
+- `extract_det_features(batched_input)` (P27에 신규): 정규 `forward()`(track_step 루프)를 그대로 실행해 cross-modal memory를 정상 생성하고, 중간 텐서를 **in-graph(비detach)** 로 캡처.
+  - `fpn0` (B,32,256,256, stride4), `fpn1` (B,64,128,128, stride8) = encoder 고/중해상도 detail. forward Phase 2에서 `_capture_det_features` flag 가드로 stash(behaviour-neutral).
+  - `mem` (B,256,64,64, stride16) = `sam._prepare_memory_conditioned_features` 출력을 wrap해 frame별 캡처. **frame0=+no_mem_embed, frame≥1=memory attention+RBMA bias** → coarse level이 곧 cross-modal+RBMA 융합 feature.
+  - 왜 forward 전체를 도는가: MemorySAM의 frame간 memory는 mask decoder 출력→memory encoder로 만들어지므로 mask decoder를 우회하면 진짜 cross-modal memory가 안 생김. 그래서 track_step 유지 + 캡처 방식.
+- **모달리티 융합**: per-level mean(또는 learned softmax) → `[fpn0,fpn1,mem]`.
+- **FPNNeck**(`objdet/models/det_model.py`): lateral 1×1 → 256ch + top-down add(coarsest→finest) + 3×3 GroupNorm conv → P3/P4/P5(모두 256ch, stride 4/8/16). coarse의 cross-modal semantics를 고해상도 detail에 top-down 주입.
+- **FCOSHead**(기존 `objdet/models/heads/fcos_head.py`): anchor-free, cls/reg(ltrb)/centerness. **stride 보정 [4,8,16]** (기존 스캐폴드의 [16,32,64]는 1024 입력 SAM2 실제 stride와 불일치 → box 4× 오정렬 버그였음).
+
+**학습 전략 (사용자 결정 = option 2, fine-tune)**: 실내 도메인 shift로 frozen 전이 부족 판단 → `FREEZE_BACKBONE: false` + `TRAIN_MEMORY: true`. SAM2 base는 LoRA_Sam 생성자에서 이미 frozen, 학습 대상 = **LoRA adapters + per-modal decoders + SQG + RBMA λ + memory_attention + FPN neck + FCOS head**(synthetic 빌드 기준 trainable 44.5M / total 113.6M). RBMA bias 신호 자체는 P28대로 `torch.no_grad`(training-free), λ만 학습.
+
+**기존 스캐폴드 대비 수정(이 작업)**:
+- `MemorySAMDetector`: 입력 dict→MODALS 순서 list 정렬, `extract_det_features` 소비, FPNNeck 추가, stride/grad-context/memory-unfreeze, 체크포인트=full `model_state_dict`(fine-tune된 백본 보존)+경량 detector_state_dict.
+- 기존 `_last_backbone_fpn` 의존(seg 모델에 미구현 → 무조건 RuntimeError였음)을 `extract_det_features`로 대체해 **실제 동작**하게 함.
+- `train_det.py`/`val_det.py`: 생성자 인자(`r`=LoRA rank, `num_modalities`), n_classes=COCO categories 자동 도출, modals 전달, 체크포인트 API 정합.
+- 데이터셋(`MultiModalDetDataset`)은 사용자가 modalities-map 모드(단일 ROOT + per-image `modalities` + `MODALITY_KEYS` + `REQUIRE_ALL_MODALITIES`)로 확장.
+
+**검증(2026-06-29, CPU 부품별)**: 전체 syntax compile OK; LoRA_Sam_P29_Det+MemorySAMDetector 빌드 OK(113.6M/44.5M trainable, memory unfreeze 확인); FPNNeck→FCOS→FCOSLoss→decode 1024 스케일 end-to-end shape/grad/loss(total 2.87, n_pos 1111) OK; `extract_det_features`는 정규 forward 진입 확인(1024 입력 필수 — SAM2 embedding-size assert). **전체 GPU e2e 학습은 jarvis에서 예정.**
+
+**config**: `configs/det/det_P29_indoor.yaml` (IMG_SIZE 1024, FPN_STRIDES [4,8,16], FREEZE_BACKBONE false, TRAIN_MEMORY true).
+
+**한계/후속**: ① IMG_SIZE 1024 고정(SAM2 embedding-size 제약) — 640×480 resize 비용. ② 모달리티 융합 mean 기본(learned 옵션 존재) → AMF/quality 가중 융합 실험 여지. ③ train_det.py 단일프로세스(비DDP) → remote_exp.sh(torchrun) 부적합, jarvis는 단일 GPU 직접 실행. ④ lidar=depth-map 렌더(.pcd aligned는 이미지 모달리티로 미사용).
+
+---
+
 ## 공통 기반: MemorySAM
 
 ### 핵심 아이디어

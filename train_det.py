@@ -67,7 +67,7 @@ def parse_args():
 def build_seg_model(cfg: dict, device: torch.device) -> torch.nn.Module:
     """Build and load pretrained segmentation model."""
     model_name = cfg['MODEL']['SEG_MODEL']
-    checkpoint_path = cfg['MODEL']['SEG_CHECKPOINT']
+    checkpoint_path = cfg['MODEL'].get('SEG_CHECKPOINT', None)
     modals = cfg['DATASET']['MODALS']
 
     sam2_checkpoint = cfg['MODEL'].get('SAM2_CHECKPOINT',
@@ -81,14 +81,24 @@ def build_seg_model(cfg: dict, device: torch.device) -> torch.nn.Module:
     if model_cls is None:
         raise ValueError(f"Unknown model: {model_name}")
 
-    seg_model = model_cls(sam2_model, len(modals))
+    # NOTE: 2nd positional arg of the LoRA_Sam constructors is the LoRA rank `r`,
+    # NOT the modality count. Pass rank/modalities explicitly.
+    seg_model = model_cls(
+        sam2_model,
+        cfg['MODEL'].get('LORA_R', 4),
+        num_modalities=len(modals),
+        amf_mode=cfg['MODEL'].get('AMF_MODE', 'uniform'),
+    )
 
-    # Load checkpoint
+    # Optional warm-start from a segmentation checkpoint (LoRA/decoder weights).
     if checkpoint_path and os.path.exists(checkpoint_path):
         ckpt = torch.load(checkpoint_path, map_location=device)
         state_dict = ckpt.get('model_state_dict', ckpt)
-        seg_model.load_state_dict(state_dict, strict=False)
-        print(f"Loaded seg checkpoint: {checkpoint_path}")
+        missing, unexpected = seg_model.load_state_dict(state_dict, strict=False)
+        print(f"Loaded seg checkpoint: {checkpoint_path} "
+              f"(missing={len(missing)}, unexpected={len(unexpected)})")
+    elif checkpoint_path:
+        print(f"[warn] seg checkpoint not found: {checkpoint_path} — using SAM2 pretrained init.")
 
     return seg_model
 
@@ -98,22 +108,33 @@ def build_dataset(cfg: dict, split: str = 'train'):
     ds_cfg = cfg['DATASET']
     ann_key = f'ANNOTATION_{split.upper()}'
     annotation_path = ds_cfg[ann_key]
-
-    modality_roots = {}
-    for modal_name, modal_cfg in ds_cfg['MODALITIES'].items():
-        modality_roots[modal_name] = modal_cfg['ROOT']
-
     img_size = tuple(ds_cfg.get('IMG_SIZE', [1024, 1024]))
-    modals = ds_cfg.get('MODALS', list(modality_roots.keys()))
 
-    dataset = MultiModalDetDataset(
+    # Mode A: per-image modalities map under a single DATASET ROOT (preferred).
+    if 'MODALITY_KEYS' in ds_cfg:
+        modality_keys = dict(ds_cfg['MODALITY_KEYS'])
+        modals = ds_cfg.get('MODALS', list(modality_keys.keys()))
+        return MultiModalDetDataset(
+            annotation_path=annotation_path,
+            root=ds_cfg['ROOT'],
+            modality_keys=modality_keys,
+            img_size=img_size,
+            modals=modals,
+            min_area=ds_cfg.get('MIN_AREA', 0.0),
+            require_all_modalities=ds_cfg.get('REQUIRE_ALL_MODALITIES', True),
+        )
+
+    # Mode B: legacy parallel per-modality ROOT dirs sharing file_name.
+    modality_roots = {name: mc['ROOT'] for name, mc in ds_cfg['MODALITIES'].items()}
+    modals = ds_cfg.get('MODALS', list(modality_roots.keys()))
+    return MultiModalDetDataset(
         annotation_path=annotation_path,
         modality_roots=modality_roots,
         img_size=img_size,
         modals=modals,
         min_area=ds_cfg.get('MIN_AREA', 0.0),
+        require_all_modalities=ds_cfg.get('REQUIRE_ALL_MODALITIES', False),
     )
-    return dataset
 
 
 def train_one_epoch(
@@ -246,27 +267,37 @@ def main():
     with open(save_dir / 'config.yaml', 'w') as f:
         yaml.dump(cfg, f)
 
+    # Datasets (build first so n_classes can be derived from the COCO categories)
+    train_dataset = build_dataset(cfg, 'train')
+    val_dataset = build_dataset(cfg, 'val')
+
+    n_classes = cfg['MODEL'].get('N_CLASSES', train_dataset.n_classes)
+    if n_classes != train_dataset.n_classes:
+        print(f"[warn] cfg N_CLASSES={n_classes} != dataset n_classes="
+              f"{train_dataset.n_classes}; using dataset value.")
+        n_classes = train_dataset.n_classes
+
     # Build model
     print("Building segmentation backbone...")
     seg_model = build_seg_model(cfg, device)
 
     model = MemorySAMDetector(
         seg_model=seg_model,
-        n_classes=cfg['MODEL']['N_CLASSES'],
-        freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', True),
-        freeze_memory=cfg['MODEL'].get('FREEZE_MEMORY', True),
+        modals=cfg['DATASET']['MODALS'],
+        n_classes=n_classes,
+        fpn_in_channels=cfg['MODEL'].get('FPN_CHANNELS', [32, 64, 256]),
+        fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16]),
+        freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', False),
+        train_memory=cfg['MODEL'].get('TRAIN_MEMORY', True),
         n_convs=cfg['MODEL'].get('N_CONVS', 4),
         hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+        modality_fuse=cfg['MODEL'].get('MODALITY_FUSE', 'mean'),
     ).to(device)
 
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total params: {total_params:,} | Trainable: {trainable_params:,}")
-
-    # Datasets
-    train_dataset = build_dataset(cfg, 'train')
-    val_dataset = build_dataset(cfg, 'val')
 
     train_loader = DataLoader(
         train_dataset,
@@ -312,7 +343,11 @@ def main():
     best_ap = 0.0
     if args.resume:
         ckpt = torch.load(args.resume, map_location=device)
-        model.det_head.load_state_dict(ckpt['det_head_state_dict'])
+        # Full model state (det head + neck + fine-tuned LoRA/memory) when present.
+        if 'model_state_dict' in ckpt:
+            model.load_state_dict(ckpt['model_state_dict'], strict=False)
+        else:
+            model.load_detector_state_dict(ckpt['detector_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         start_epoch = ckpt['epoch'] + 1
         best_ap = ckpt.get('best_ap', 0.0)
@@ -352,9 +387,12 @@ def main():
             writer.add_scalar('val/AP50', metrics['AP50'], epoch)
 
             # Save checkpoint
+            # Save full model state so fine-tuned backbone (LoRA/memory/RBMA) is
+            # preserved; detector_state_dict kept for lightweight head-only reuse.
             ckpt = {
                 'epoch': epoch,
-                'det_head_state_dict': model.det_head.state_dict(),
+                'model_state_dict': model.state_dict(),
+                'detector_state_dict': model.detector_state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'best_ap': best_ap,
                 'metrics': metrics,

@@ -92,31 +92,40 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # Dataset (build first to derive n_classes from COCO categories)
+    from train_det import build_dataset
+    dataset = build_dataset(cfg, args.mode)
+    n_classes = cfg['MODEL'].get('N_CLASSES', dataset.n_classes) or dataset.n_classes
+
     # Build model
     from train_det import build_seg_model
     seg_model = build_seg_model(cfg, device)
 
     model = MemorySAMDetector(
         seg_model=seg_model,
-        n_classes=cfg['MODEL']['N_CLASSES'],
+        modals=cfg['DATASET']['MODALS'],
+        n_classes=n_classes,
+        fpn_in_channels=cfg['MODEL'].get('FPN_CHANNELS', [32, 64, 256]),
+        fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16]),
         freeze_backbone=True,
-        freeze_memory=True,
+        train_memory=False,
         n_convs=cfg['MODEL'].get('N_CONVS', 4),
         hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+        modality_fuse=cfg['MODEL'].get('MODALITY_FUSE', 'mean'),
     ).to(device)
 
-    # Load detection head checkpoint
+    # Load checkpoint — full model state (incl. fine-tuned backbone) if present.
     ckpt = torch.load(args.det_checkpoint, map_location=device)
-    model.det_head.load_state_dict(ckpt['det_head_state_dict'])
+    if 'model_state_dict' in ckpt:
+        model.load_state_dict(ckpt['model_state_dict'], strict=False)
+    else:
+        model.load_detector_state_dict(ckpt['detector_state_dict'])
     print(f"Loaded det checkpoint: {args.det_checkpoint}")
     if 'metrics' in ckpt:
         print(f"  Checkpoint metrics: {ckpt['metrics']}")
 
     model.eval()
 
-    # Dataset
-    from train_det import build_dataset
-    dataset = build_dataset(cfg, args.mode)
     loader = DataLoader(
         dataset,
         batch_size=cfg['TRAIN'].get('VAL_BATCH_SIZE', 1),
@@ -179,8 +188,12 @@ def main():
 
             # Save visualization
             if args.save_vis and boxes.shape[0] > 0:
-                # Load RGB image for visualization
-                rgb_root = cfg['DATASET']['MODALITIES']['img']['ROOT']
+                # Load RGB image for visualization (file_name is the rgb path,
+                # relative to DATASET.ROOT in modalities-map mode).
+                if 'MODALITY_KEYS' in cfg['DATASET']:
+                    rgb_root = cfg['DATASET']['ROOT']
+                else:
+                    rgb_root = cfg['DATASET']['MODALITIES']['img']['ROOT']
                 rgb_path = os.path.join(rgb_root, file_name)
                 if os.path.exists(rgb_path):
                     rgb_img = np.array(Image.open(rgb_path).convert('RGB'))
