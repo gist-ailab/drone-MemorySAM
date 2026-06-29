@@ -39,9 +39,9 @@ MODEL:
 
 TRAIN:
   EPOCHS: 50
-  BATCH_SIZE: 1                                    # 24GB → 1 (3모달 x SAM2 full @1024 + 백본 fine-tune)
-  VAL_BATCH_SIZE: 1
-  GRAD_ACCUM_STEPS: 8                              # 유효 배치 8 (1 x 8) — 안정적 업데이트
+  BATCH_SIZE: 4                                    # grad-ckpt로 batch1이 4.7GB/24GB만 사용 → 4로 상향(가속)
+  VAL_BATCH_SIZE: 4
+  GRAD_ACCUM_STEPS: 2                              # 유효 배치 8 (4 x 2)
   LR: 0.0002
   WEIGHT_DECAY: 0.0001
   WARMUP_EPOCHS: 5
