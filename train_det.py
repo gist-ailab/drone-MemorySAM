@@ -41,11 +41,34 @@ import torch
 import argparse
 import yaml
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
+
+
+def setup_ddp():
+    """Initialise torch.distributed from torchrun env vars.
+
+    Returns (ddp_enabled, rank, world_size, local_rank). Falls back to single-GPU
+    when not launched under torchrun.
+    """
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        dist.init_process_group(backend='nccl')
+        local_rank = int(os.environ.get('LOCAL_RANK', 0))
+        torch.cuda.set_device(local_rank)
+        return True, dist.get_rank(), dist.get_world_size(), local_rank
+    return False, 0, 1, 0
+
+
+def unwrap(model):
+    """Return the underlying module whether or not it is DDP-wrapped."""
+    return model.module if isinstance(model, DDP) else model
 
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
@@ -147,6 +170,8 @@ def train_one_epoch(
     writer: SummaryWriter,
     use_amp: bool = True,
     accum_steps: int = 1,
+    is_main: bool = True,
+    ddp: bool = False,
 ):
     model.train()
     total_loss = 0.0
@@ -157,7 +182,7 @@ def train_one_epoch(
 
     optimizer.zero_grad()
     n_batches = len(dataloader)
-    pbar = tqdm(dataloader, desc=f'Epoch [{epoch}]')
+    pbar = tqdm(dataloader, desc=f'Epoch [{epoch}]') if is_main else dataloader
     for batch_idx, batch in enumerate(pbar):
         # Prepare sample
         modals = [k for k in batch.keys()
@@ -166,19 +191,23 @@ def train_one_epoch(
         gt_bboxes = [b.to(device) for b in batch['bboxes']]
         gt_labels = [l.to(device) for l in batch['labels']]
 
+        is_step = ((batch_idx + 1) % accum_steps == 0) or ((batch_idx + 1) == n_batches)
+
         with autocast(enabled=use_amp):
             losses = model(sample, gt_bboxes=gt_bboxes, gt_labels=gt_labels)
 
         loss = losses['loss_total']
-        # Gradient accumulation (effective batch = BATCH_SIZE * accum_steps) — lets a
-        # 24GB GPU run BATCH_SIZE=1 while keeping a stable update signal.
+        # Gradient accumulation (effective batch = BATCH_SIZE * world * accum_steps).
         scaled = loss / accum_steps
-        if use_amp:
-            scaler.scale(scaled).backward()
-        else:
-            scaled.backward()
+        # Under DDP, skip the gradient all-reduce until the accumulation boundary.
+        sync_ctx = model.no_sync() if (ddp and not is_step) else nullcontext()
+        with sync_ctx:
+            if use_amp:
+                scaler.scale(scaled).backward()
+            else:
+                scaled.backward()
 
-        if (batch_idx + 1) % accum_steps == 0 or (batch_idx + 1) == n_batches:
+        if is_step:
             if use_amp:
                 scaler.step(optimizer)
                 scaler.update()
@@ -197,19 +226,21 @@ def train_one_epoch(
         total_ctr += _f(losses['loss_ctr'])
         n_iters += 1
 
-        pbar.set_postfix({
-            'loss': f'{_f(losses["loss_total"]):.4f}',
-            'cls': f'{_f(losses["loss_cls"]):.4f}',
-            'reg': f'{_f(losses["loss_reg"]):.4f}',
-            'n_pos': losses['n_pos'],
-        })
+        if is_main:
+            pbar.set_postfix({
+                'loss': f'{_f(losses["loss_total"]):.4f}',
+                'cls': f'{_f(losses["loss_cls"]):.4f}',
+                'reg': f'{_f(losses["loss_reg"]):.4f}',
+                'n_pos': losses['n_pos'],
+            })
 
     avg_loss = total_loss / max(n_iters, 1)
-    global_step = epoch * len(dataloader)
-    writer.add_scalar('train/loss_total', avg_loss, global_step)
-    writer.add_scalar('train/loss_cls', total_cls / max(n_iters, 1), global_step)
-    writer.add_scalar('train/loss_reg', total_reg / max(n_iters, 1), global_step)
-    writer.add_scalar('train/loss_ctr', total_ctr / max(n_iters, 1), global_step)
+    if writer is not None:
+        global_step = epoch * len(dataloader)
+        writer.add_scalar('train/loss_total', avg_loss, global_step)
+        writer.add_scalar('train/loss_cls', total_cls / max(n_iters, 1), global_step)
+        writer.add_scalar('train/loss_reg', total_reg / max(n_iters, 1), global_step)
+        writer.add_scalar('train/loss_ctr', total_ctr / max(n_iters, 1), global_step)
 
     return avg_loss
 
@@ -269,20 +300,28 @@ def main():
     with open(args.cfg, 'r') as f:
         cfg = yaml.safe_load(f)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # ── DDP setup (torchrun) ──
+    ddp, rank, world_size, local_rank = setup_ddp()
+    is_main = (rank == 0)
+    if torch.cuda.is_available():
+        device = torch.device(f'cuda:{local_rank}')
+    else:
+        device = torch.device('cpu')
+    if is_main:
+        print(f"[ddp] enabled={ddp} world_size={world_size} device={device}")
 
-    # Output directory
+    # Output directory + writer (rank 0 only)
     save_dir = Path(cfg.get('OUTPUT_DIR', 'outputs/det')) / Path(args.cfg).stem
-    save_dir.mkdir(parents=True, exist_ok=True)
-    writer = SummaryWriter(str(save_dir / 'tb_logs'))
-
-    # Save config
-    with open(save_dir / 'config.yaml', 'w') as f:
-        yaml.dump(cfg, f)
+    writer = None
+    if is_main:
+        save_dir.mkdir(parents=True, exist_ok=True)
+        writer = SummaryWriter(str(save_dir / 'tb_logs'))
+        with open(save_dir / 'config.yaml', 'w') as f:
+            yaml.dump(cfg, f)
 
     # Datasets (build first so n_classes can be derived from the COCO categories)
     train_dataset = build_dataset(cfg, 'train')
-    val_dataset = build_dataset(cfg, 'val')
+    val_dataset = build_dataset(cfg, 'val') if is_main else None
 
     n_classes = cfg['MODEL'].get('N_CLASSES', train_dataset.n_classes)
     if n_classes != train_dataset.n_classes:
@@ -316,40 +355,71 @@ def main():
     if cfg['MODEL'].get('GRAD_CHECKPOINT', False) and not cfg['MODEL'].get('FREEZE_BACKBONE', False):
         try:
             model.seg_model.sam.image_encoder.trunk.gradient_checkpointing = True
-            print("[mem] SAM2 trunk gradient checkpointing: ON")
+            if is_main:
+                print("[mem] SAM2 trunk gradient checkpointing: ON")
         except AttributeError as e:
-            print(f"[mem][warn] could not enable trunk gradient checkpointing: {e}")
+            if is_main:
+                print(f"[mem][warn] could not enable trunk gradient checkpointing: {e}")
 
     # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total params: {total_params:,} | Trainable: {trainable_params:,}")
+    if is_main:
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Total params: {total_params:,} | Trainable: {trainable_params:,}")
 
+    # Optimizer over the raw model's trainable params (build before DDP wrap).
+    optimizer = torch.optim.AdamW(
+        model.get_trainable_params(),
+        lr=cfg['TRAIN']['LR'],
+        weight_decay=cfg['TRAIN'].get('WEIGHT_DECAY', 1e-4),
+    )
+
+    # Resume (load into the raw model before DDP wrapping)
+    start_epoch = 0
+    best_ap = 0.0
+    if args.resume:
+        ckpt = torch.load(args.resume, map_location=device)
+        if 'model_state_dict' in ckpt:
+            model.load_state_dict(ckpt['model_state_dict'], strict=False)
+        else:
+            model.load_detector_state_dict(ckpt['detector_state_dict'])
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        start_epoch = ckpt['epoch'] + 1
+        best_ap = ckpt.get('best_ap', 0.0)
+        if is_main:
+            print(f"Resumed from epoch {start_epoch}, best AP: {best_ap:.4f}")
+
+    # ── DDP wrap ──
+    # find_unused_parameters: per_modal_decoders/SQG are trainable but receive no
+    # gradient from the detection loss (RBMA bias is computed under no_grad and the
+    # seg-fusion path is discarded), so DDP must tolerate unused params.
+    if ddp:
+        model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
+
+    train_sampler = (
+        DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+        if ddp else None
+    )
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg['TRAIN']['BATCH_SIZE'],
-        shuffle=True,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
         num_workers=cfg['TRAIN'].get('NUM_WORKERS', 4),
         collate_fn=MultiModalDetDataset.collate_fn,
         pin_memory=True,
         drop_last=True,
     )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=cfg['TRAIN'].get('VAL_BATCH_SIZE', cfg['TRAIN']['BATCH_SIZE']),
-        shuffle=False,
-        num_workers=cfg['TRAIN'].get('NUM_WORKERS', 4),
-        collate_fn=MultiModalDetDataset.collate_fn,
-        pin_memory=True,
-    )
-
-    # Optimizer
-    trainable = model.get_trainable_params()
-    optimizer = torch.optim.AdamW(
-        trainable,
-        lr=cfg['TRAIN']['LR'],
-        weight_decay=cfg['TRAIN'].get('WEIGHT_DECAY', 1e-4),
-    )
+    val_loader = None
+    if is_main:
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=cfg['TRAIN'].get('VAL_BATCH_SIZE', cfg['TRAIN']['BATCH_SIZE']),
+            shuffle=False,
+            num_workers=cfg['TRAIN'].get('NUM_WORKERS', 4),
+            collate_fn=MultiModalDetDataset.collate_fn,
+            pin_memory=True,
+        )
 
     # Scheduler
     epochs = cfg['TRAIN']['EPOCHS']
@@ -364,78 +434,75 @@ def main():
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     scaler = GradScaler()
 
-    # Resume
-    start_epoch = 0
-    best_ap = 0.0
-    if args.resume:
-        ckpt = torch.load(args.resume, map_location=device)
-        # Full model state (det head + neck + fine-tuned LoRA/memory) when present.
-        if 'model_state_dict' in ckpt:
-            model.load_state_dict(ckpt['model_state_dict'], strict=False)
-        else:
-            model.load_detector_state_dict(ckpt['detector_state_dict'])
-        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
-        start_epoch = ckpt['epoch'] + 1
-        best_ap = ckpt.get('best_ap', 0.0)
-        print(f"Resumed from epoch {start_epoch}, best AP: {best_ap:.4f}")
-
     # idx_to_cat_id for COCO eval
     idx_to_cat_id = {v: k for k, v in train_dataset.cat_id_to_idx.items()}
 
     if args.eval_only:
-        metrics = evaluate(
-            model, val_loader, device,
-            cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
-        )
-        print(f"Eval results: AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}")
+        if is_main:
+            metrics = evaluate(
+                unwrap(model), val_loader, device,
+                cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+            )
+            print(f"Eval results: AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}")
+        if ddp:
+            dist.destroy_process_group()
         return
 
     # Training loop
     for epoch in range(start_epoch, epochs):
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
+
         avg_loss = train_one_epoch(
             model, train_loader, optimizer, scaler, device,
             epoch, writer, use_amp=cfg['TRAIN'].get('AMP', True),
             accum_steps=cfg['TRAIN'].get('GRAD_ACCUM_STEPS', 1),
+            is_main=is_main, ddp=ddp,
         )
         scheduler.step()
 
-        print(f"Epoch {epoch}: loss={avg_loss:.4f}, lr={scheduler.get_last_lr()[0]:.6f}")
+        if is_main:
+            print(f"Epoch {epoch}: loss={avg_loss:.4f}, lr={scheduler.get_last_lr()[0]:.6f}")
 
-        # Evaluate
+        # Evaluate + checkpoint (rank 0 only; others wait at the barrier)
         save_interval = cfg['TRAIN'].get('SAVE_INTERVAL', 5)
         if (epoch + 1) % save_interval == 0 or epoch == epochs - 1:
-            metrics = evaluate(
-                model, val_loader, device,
-                cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
-            )
-            print(f"  Val AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}, AP75={metrics['AP75']:.4f}")
+            if is_main:
+                metrics = evaluate(
+                    unwrap(model), val_loader, device,
+                    cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+                )
+                print(f"  Val AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}, AP75={metrics['AP75']:.4f}")
+                writer.add_scalar('val/AP', metrics['AP'], epoch)
+                writer.add_scalar('val/AP50', metrics['AP50'], epoch)
 
-            writer.add_scalar('val/AP', metrics['AP'], epoch)
-            writer.add_scalar('val/AP50', metrics['AP50'], epoch)
+                # Full model state preserves fine-tuned backbone (LoRA/memory/RBMA);
+                # detector_state_dict kept for lightweight head-only reuse.
+                ckpt = {
+                    'epoch': epoch,
+                    'model_state_dict': unwrap(model).state_dict(),
+                    'detector_state_dict': unwrap(model).detector_state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'best_ap': best_ap,
+                    'metrics': metrics,
+                    'config': cfg,
+                }
+                if metrics['AP'] > best_ap:
+                    best_ap = metrics['AP']
+                    ckpt['best_ap'] = best_ap
+                    torch.save(ckpt, save_dir / 'best_checkpoint.pth')
+                    print(f"  New best AP: {best_ap:.4f}")
+                torch.save(ckpt, save_dir / f'epoch{epoch}_checkpoint.pth')
+            # model was set to eval() inside evaluate() on rank0 — restore train mode
+            model.train()
+            if ddp:
+                dist.barrier()
 
-            # Save checkpoint
-            # Save full model state so fine-tuned backbone (LoRA/memory/RBMA) is
-            # preserved; detector_state_dict kept for lightweight head-only reuse.
-            ckpt = {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'detector_state_dict': model.detector_state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'best_ap': best_ap,
-                'metrics': metrics,
-                'config': cfg,
-            }
-
-            if metrics['AP'] > best_ap:
-                best_ap = metrics['AP']
-                ckpt['best_ap'] = best_ap
-                torch.save(ckpt, save_dir / 'best_checkpoint.pth')
-                print(f"  New best AP: {best_ap:.4f}")
-
-            torch.save(ckpt, save_dir / f'epoch{epoch}_checkpoint.pth')
-
-    writer.close()
-    print(f"Training complete. Best AP: {best_ap:.4f}")
+    if is_main and writer is not None:
+        writer.close()
+        print(f"Training complete. Best AP: {best_ap:.4f}")
+    if ddp:
+        dist.destroy_process_group()
 
 
 if __name__ == '__main__':

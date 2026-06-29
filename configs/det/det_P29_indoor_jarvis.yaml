@@ -35,18 +35,19 @@ MODEL:
   MODALITY_FUSE: mean
   FREEZE_BACKBONE: false
   TRAIN_MEMORY: true
-  GRAD_CHECKPOINT: true                           # 24GB 4090: SAM2 trunk activation 재계산 (Hiera-B+ 유지)
+  GRAD_CHECKPOINT: false                           # DDP 6-GPU: 속도 위해 끔(probe: off+batch1=17.5GB, batch2=OOM)
 
 TRAIN:
+  # 6× RTX 4090 DDP (torchrun --nproc_per_node=6). grad-ckpt off → GPU당 batch 1 (17.5GB).
   EPOCHS: 50
-  BATCH_SIZE: 4                                    # grad-ckpt로 batch1이 4.7GB/24GB만 사용 → 4로 상향(가속)
-  VAL_BATCH_SIZE: 4
-  GRAD_ACCUM_STEPS: 2                              # 유효 배치 8 (4 x 2)
+  BATCH_SIZE: 1                                    # GPU당 1 (no-ckpt batch2는 24GB OOM)
+  VAL_BATCH_SIZE: 1
+  GRAD_ACCUM_STEPS: 1                              # 유효 배치 = 1 x 6 GPU = 6
   LR: 0.0002
   WEIGHT_DECAY: 0.0001
   WARMUP_EPOCHS: 5
   SAVE_INTERVAL: 5
-  NUM_WORKERS: 8
+  NUM_WORKERS: 4
   AMP: true
 
 EVAL:
