@@ -35,11 +35,13 @@ MODEL:
   MODALITY_FUSE: mean
   FREEZE_BACKBONE: false
   TRAIN_MEMORY: true
+  GRAD_CHECKPOINT: true                           # 24GB 4090: SAM2 trunk activation 재계산 (Hiera-B+ 유지)
 
 TRAIN:
   EPOCHS: 50
-  BATCH_SIZE: 2
-  VAL_BATCH_SIZE: 2
+  BATCH_SIZE: 1                                    # 24GB → 1 (3모달 x SAM2 full @1024 + 백본 fine-tune)
+  VAL_BATCH_SIZE: 1
+  GRAD_ACCUM_STEPS: 8                              # 유효 배치 8 (1 x 8) — 안정적 업데이트
   LR: 0.0002
   WEIGHT_DECAY: 0.0001
   WARMUP_EPOCHS: 5

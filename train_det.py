@@ -146,6 +146,7 @@ def train_one_epoch(
     epoch: int,
     writer: SummaryWriter,
     use_amp: bool = True,
+    accum_steps: int = 1,
 ):
     model.train()
     total_loss = 0.0
@@ -154,6 +155,8 @@ def train_one_epoch(
     total_ctr = 0.0
     n_iters = 0
 
+    optimizer.zero_grad()
+    n_batches = len(dataloader)
     pbar = tqdm(dataloader, desc=f'Epoch [{epoch}]')
     for batch_idx, batch in enumerate(pbar):
         # Prepare sample
@@ -163,20 +166,25 @@ def train_one_epoch(
         gt_bboxes = [b.to(device) for b in batch['bboxes']]
         gt_labels = [l.to(device) for l in batch['labels']]
 
-        optimizer.zero_grad()
-
         with autocast(enabled=use_amp):
             losses = model(sample, gt_bboxes=gt_bboxes, gt_labels=gt_labels)
 
         loss = losses['loss_total']
-
+        # Gradient accumulation (effective batch = BATCH_SIZE * accum_steps) — lets a
+        # 24GB GPU run BATCH_SIZE=1 while keeping a stable update signal.
+        scaled = loss / accum_steps
         if use_amp:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            scaler.scale(scaled).backward()
         else:
-            loss.backward()
-            optimizer.step()
+            scaled.backward()
+
+        if (batch_idx + 1) % accum_steps == 0 or (batch_idx + 1) == n_batches:
+            if use_amp:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
+            optimizer.zero_grad()
 
         total_loss += loss.item()
         total_cls += losses['loss_cls'].item()
@@ -294,6 +302,19 @@ def main():
         modality_fuse=cfg['MODEL'].get('MODALITY_FUSE', 'mean'),
     ).to(device)
 
+    # VRAM workaround for 24GB GPUs (e.g. jarvis RTX 4090): gradient-checkpoint the
+    # SAM2 Hiera trunk so per-modality encoder activations are recomputed in backward
+    # instead of stored. The P27 forward already routes through torch.utils.checkpoint
+    # when trunk.gradient_checkpointing is True and the model is training. Keeps the
+    # Hiera-B+ backbone (no downsizing) at ~30% extra compute. Use BATCH_SIZE=1 +
+    # GRAD_ACCUM_STEPS for a larger effective batch.
+    if cfg['MODEL'].get('GRAD_CHECKPOINT', False) and not cfg['MODEL'].get('FREEZE_BACKBONE', False):
+        try:
+            model.seg_model.sam.image_encoder.trunk.gradient_checkpointing = True
+            print("[mem] SAM2 trunk gradient checkpointing: ON")
+        except AttributeError as e:
+            print(f"[mem][warn] could not enable trunk gradient checkpointing: {e}")
+
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -369,6 +390,7 @@ def main():
         avg_loss = train_one_epoch(
             model, train_loader, optimizer, scaler, device,
             epoch, writer, use_amp=cfg['TRAIN'].get('AMP', True),
+            accum_steps=cfg['TRAIN'].get('GRAD_ACCUM_STEPS', 1),
         )
         scheduler.step()
 
