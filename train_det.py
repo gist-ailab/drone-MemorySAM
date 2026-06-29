@@ -316,18 +316,22 @@ def evaluate(
         rgb_key = 'img' if 'img' in sample else modals[0]
 
         for i, det in enumerate(results['detections']):
-            # Validation visualization (model-input 1024 space, before COCO rescale)
+            # Validation visualization (model-input 1024 space, before COCO rescale).
+            # Wrapped so a rendering hiccup can never crash a long training run.
             if len(viz_images) < viz_count:
-                img_np = (sample[rgb_key][i].detach().cpu().clamp(0, 1)
-                          .permute(1, 2, 0).numpy() * 255).astype('uint8')
-                gt = batch['bboxes'][i] if 'bboxes' in batch else None
-                pil = draw_boxes_pil(
-                    img_np, det['boxes'].cpu(), det['scores'].cpu(),
-                    det['class_ids'].cpu(), class_names=class_names,
-                    gt_boxes=gt, score_thresh=viz_score_thresh,
-                )
-                n_kept = int((det['scores'] >= viz_score_thresh).sum())
-                viz_images.append((pil, f"{batch['file_name'][i]} | pred={n_kept}"))
+                try:
+                    img_np = (sample[rgb_key][i].detach().cpu().clamp(0, 1)
+                              .permute(1, 2, 0).numpy() * 255).astype('uint8')
+                    gt = batch['bboxes'][i] if 'bboxes' in batch else None
+                    pil = draw_boxes_pil(
+                        img_np, det['boxes'].cpu(), det['scores'].cpu(),
+                        det['class_ids'].cpu(), class_names=class_names,
+                        gt_boxes=gt, score_thresh=viz_score_thresh,
+                    )
+                    n_kept = int((det['scores'] >= viz_score_thresh).sum())
+                    viz_images.append((pil, f"{batch['file_name'][i]} | pred={n_kept}"))
+                except Exception as e:
+                    print(f"[viz][warn] skipped a visualization: {e}")
 
             if det['boxes'].shape[0] == 0:
                 continue
