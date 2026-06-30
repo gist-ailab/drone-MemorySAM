@@ -7641,6 +7641,66 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
         return quality_logits
 
     # ─────────────────────────────────────────────────────────────────
+    # Detection bridge (P29-Det / P30-Det): run the full encoder + cross-modal
+    # memory-attention pipeline and hand per-modality features to a detection head.
+    # ─────────────────────────────────────────────────────────────────
+    def extract_det_features(self, batched_input):
+        """Run the full encoder + cross-modal memory-attention pipeline and return
+        per-modality features for an object-detection head, keeping the graph intact
+        (gradients flow to LoRA / memory_attention / RBMA λ).
+
+        The cross-modal memory is built from the mask-decoder outputs encoded by the
+        memory encoder, so the regular forward() (track_step loop) must run for the
+        memory attention to be meaningful — we capture intermediate tensors rather than
+        reimplement it.
+
+        Returns dict of in-graph tensor lists (length m, modality order = input):
+          'fpn0'  : (B, 32,  H/4,  W/4)   encoder high-res detail        · per modality
+          'fpn1'  : (B, 64,  H/8,  W/8)   encoder mid-res detail         · per modality
+          'mem'   : (B, 256, H/16, W/16)  memory-conditioned coarse      · per modality
+                    (frame 0 = +no_mem_embed; frames>=1 = memory attention + RBMA bias)
+          'output': (B, Cseg, H/4, W/4)   per-modality seg logits        · per modality
+                    (used by P30-Det as a training-free reliability source 1-H/logC)
+        """
+        mem_feats = []
+        orig_prep = self.sam._prepare_memory_conditioned_features
+
+        def _capture_prep(*args, **kwargs):
+            out = orig_prep(*args, **kwargs)   # (B, C, H, W), in-graph
+            mem_feats.append(out)
+            return out
+
+        self.sam._prepare_memory_conditioned_features = _capture_prep
+        self._capture_det_features = True
+        self._det_fpn0 = None
+        self._det_fpn1 = None
+        self._det_output = None
+        try:
+            # gt_mask=None → aux/KL path skipped; the fused seg output is discarded.
+            self.forward(batched_input, multimask_output=True)
+        finally:
+            self.sam._prepare_memory_conditioned_features = orig_prep
+            self._capture_det_features = False
+
+        feats = {
+            'fpn0': self._det_fpn0,
+            'fpn1': self._det_fpn1,
+            'mem': mem_feats,
+            'output': self._det_output,
+        }
+        self._det_fpn0 = None
+        self._det_fpn1 = None
+        self._det_output = None
+        if (feats['fpn0'] is None or feats['output'] is None
+                or len(mem_feats) != len(batched_input)):
+            raise RuntimeError(
+                f"extract_det_features capture failed: fpn0={feats['fpn0'] is not None}, "
+                f"output={feats['output'] is not None}, "
+                f"mem_feats={len(mem_feats)} (expected {len(batched_input)})."
+            )
+        return feats
+
+    # ─────────────────────────────────────────────────────────────────
     # Forward — P26와 동일하되 Phase 3에서 UAMM multiplication 제거
     # ─────────────────────────────────────────────────────────────────
     def forward(self, batched_input, multimask_output, gt_mask=None):
@@ -7697,6 +7757,12 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
 
             # ── Phase 2: Per-Modality SQG (same as P26) ──
             all_backbone_feats = [image_embedding[i]['backbone_fpn'][0] for i in range(m)]
+
+            # [Det bridge] Expose encoder FPN detail levels (in-graph) for an object
+            # detection head. Behaviour-neutral: only activated by extract_det_features().
+            if getattr(self, '_capture_det_features', False):
+                self._det_fpn0 = all_backbone_feats
+                self._det_fpn1 = [image_embedding[i]['backbone_fpn'][1] for i in range(m)]
 
             quality_logits = []
             quality_maps = []
@@ -7814,6 +7880,12 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
             # Disable bias injection after all track_step calls
             self._p27_state['enabled'] = False
             self._p27_state['quality_logits'] = None
+
+            # [Det bridge] Capture per-modality memory-conditioned seg logits, used by
+            # the detection head as a training-free per-modality reliability source
+            # (1 - H(softmax)/logC). Behaviour-neutral unless extract_det_features().
+            if getattr(self, '_capture_det_features', False):
+                self._det_output = output
 
             # ── Phase 4: Fusion (amf_mode 선택) ──
             out_h, out_w = output[0].shape[-2:]
@@ -8149,3 +8221,28 @@ class LoRA_Sam_P30(LoRA_Sam_P29):
         cls_logits = F.interpolate(cls_logits, size=m_output.shape[-2:],
                                    mode='bilinear', align_corners=False)
         return (cls_logits, m_feat) + tuple(out[2:])
+
+
+class LoRA_Sam_P30_Det(LoRA_Sam_P30):
+    """
+    LoRA_Sam_P30_Det — P30 segmentation backbone repurposed for object detection.
+
+    계보: `LoRA_Sam_P30_Det(LoRA_Sam_P30)` — RBMA(P27/P28 memory-attn logit bias) +
+    SDC(P29 self-derived FiLM gate) + P30의 두 기구(class-token decoder / reliability-
+    anchored router)를 **그대로 상속**. P30 seg 의 두 노벨티는 detection 헤드 쪽으로
+    번역되며(아래), 백본의 seg-level class_token_decoder / learned_router 는 기본 OFF
+    (detection 은 backbone 의 fused seg 출력을 쓰지 않고 detection feature 경로만 구동).
+
+    detection feature 경로는 P27 에서 상속한 `extract_det_features()`:
+      fpn0 (32,s4) · fpn1 (64,s8) · mem (256,s16, memory+RBMA) · output (per-modal seg
+      logits → training-free reliability 1-H/logC). downstream
+      `objdet.models.det_model.MemorySAMDetectorP30` 가 이를 소비:
+        ① ReliabilityAnchoredRouter 로 per-modality FPN 융합 (mean 대신 — P30 ② 이식)
+        ② Object-Query Decoder 가 융합된 mem(memory-conditioned)에 cross-attend (P30 ① 이식)
+        + FCOS dense head (aux, 조기 수렴 안정화)
+
+    백본 fine-tune(indoor domain shift): SAM2 base 는 freeze, LoRA/SQG/per-modal decoder/
+    RBMA λ/SDC 는 학습, detection model 이 `sam.memory_attention` 도 unfreeze 가능
+    (MemorySAMDetectorP30 `train_memory`).
+    """
+    pass

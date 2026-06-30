@@ -1,6 +1,29 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-06-28
+> 최종 업데이트: 2026-06-30
+
+## P30-Det — P30 백본 detection 확장: Reliability-router 융합 + Object-Query decoder + FCOS aux (2026-06-30)
+
+**상태**: **구현 완료 (CPU smoke 통과, lecun 학습 대기)**. 브랜치 `worktree-p30-det` (develop 기준, P30 seg 보유). 계보: `LoRA_Sam_P30_Det(LoRA_Sam_P30)` — RBMA(P27/P28) + SDC(P29) + P30 두 기구를 **그대로 상속**하고, P30 seg의 두 노벨티를 **detection 헤드로 번역**. P29-Det(P28 기반, mean 융합 + FCOS)의 후속.
+
+**동기**: P29-Det는 detection FPN 융합을 **단순 mean**(`MODALITY_FUSE: mean`, `AMF_MODE: uniform`)으로 처리 → 이 프로젝트의 핵심 노벨티(RBMA/SQG 신뢰도 기반 융합)가 detection feature 융합엔 미사용이었음. 실내 RGB+LiDAR+Thermal은 모달리티별 신뢰도 편차가 큰데 mean이 이를 버림. 사용자 결정: **"memory attention을 활용하되, 현재 P30 seg 모델 기반으로 detection 확장"** → P30 seg의 ①②를 detection으로 이식.
+
+**Detection feature 브릿지 (P27에 이식, P29-Det서 확장)**: `extract_det_features()`가 encoder + cross-modal memory-attention(track_step loop)을 그대로 돌려 in-graph 캡처:
+- `fpn0` (B,32,s4) · `fpn1` (B,64,s8) — encoder detail (per modality)
+- `mem` (B,256,s16) — memory-conditioned coarse (frame0 = +no_mem_embed; frame≥1 = memory attention + RBMA bias) (per modality)
+- `output` (B,Cseg,s4) — per-modality seg logits → **training-free reliability `1−H(softmax)/logCseg`** 소스 (**P30-Det 신규 노출**, `_capture_det_features` 플래그로 behaviour-neutral)
+
+**기구 ① (P30 ② 이식) — Reliability-anchored router 모달 융합**: P29-Det의 mean을 **per-level `ReliabilityAnchoredRouter`**(sam_lola_utils.py 재사용)로 교체. 각 FPN level에서 `w = softmax_modality(learned_logits(feat_i) + λ·reliability_i)`, reliability는 위 per-modal seg `output`에서 도출해 level 해상도로 resize. zero-init conv head → 초기 reliability-구동(상수수렴 방지), 이후 자동 학습. fused level = `Σ w_i·feat_i`. 선택적 diversity reg `router_reg`(`ROUTER_REG_LAMBDA>0` → `−λ·entropy` 가산).
+
+**기구 ② (P30 ① 이식) — Object-Query decoder (primary head)**: P30 seg의 class-token decoder를 **per-class mask → per-object (box+class)**로 번역. N개 object query가 **융합된 `mem`(memory-conditioned, RBMA bias 보유)**에 cross-attend(DETR류 transformer decoder, sine PE) → `pred_logits (B,N,C+1)` + `pred_boxes (B,N,4 cxcywh)`. **Hungarian set loss**(CE+L1+GIoU, no-object class, `eos_coef=0.1`). 이것이 사용자가 강조한 **"memory attention 활용" 헤드라인**. (`objdet/models/heads/query_decoder.py`: `ObjectQueryDecoder`/`HungarianMatcher`/`SetCriterion`/`decode_queries`)
+
+**FCOS aux**: 기존 P29-Det FCOS dense head를 **보조**로 유지(`USE_FCOS_AUX: true`) — 융합 FPN 공유, 조기 수렴 안정화. 총손실 = `W_QUERY·query_set_loss + W_FCOS·fcos_loss − ROUTER_REG_LAMBDA·router_entropy`. eval은 **query detection(primary)** 반환(`decode_queries` → NMS).
+
+**구현/검증**: `MemorySAMDetectorP30`(`objdet/models/det_model.py`) = routers(per-level) + FPNNeck + ObjectQueryDecoder + FCOS aux. train_det는 `MODEL.DET_MODEL: MemorySAMDetectorP30`로 분기. config `configs/det/det_P30_indoor.yaml`. **CPU smoke 통과**(백본 mock): loss 유한, grad가 query_decoder·routers·neck·FCOS·백본까지 전파, eval px-space detection, state_dict 왕복. **scipy 설치**(Hungarian; 미설치 시 greedy fallback 내장). 미검증: SAM2 풀로드 e2e(=lecun 1-GPU forward 권장), AP.
+
+**리스크**: (1) query decoder는 소규모 indoor에서 DETR 수렴 느릴 수 있음 → FCOS aux로 완화. (2) reliability는 seg-class 엔트로피 기반(detection-class 아님) — 모달 신뢰도 proxy로는 타당하나 직접 신호 아님. (3) IMG_SIZE 1024 필수(SAM2 assert), mem=64² cross-attn 토큰 4096.
+
+---
 
 ## P30 — Class-token decoder + Reliability-anchored learned modality router (2026-06-28)
 

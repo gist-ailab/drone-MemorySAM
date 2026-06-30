@@ -26,9 +26,16 @@ def focal_loss(
     """
     n_classes = logits.shape[1]
 
-    # One-hot encode targets
+    # One-hot encode targets. FCOS uses `targets == n_classes` to mark background
+    # (negatives), which has no foreground column → that row stays all-zeros so
+    # focal loss pushes every class logit toward 0. Only scatter foreground rows
+    # to avoid an out-of-bounds index for the background label.
     target_onehot = torch.zeros_like(logits)
-    target_onehot.scatter_(1, targets.unsqueeze(1), 1.0)
+    fg = targets < n_classes
+    if fg.any():
+        target_onehot[fg] = target_onehot[fg].scatter(
+            1, targets[fg].unsqueeze(1), 1.0
+        )
 
     p = logits.sigmoid()
     ce = F.binary_cross_entropy_with_logits(logits, target_onehot, reduction='none')

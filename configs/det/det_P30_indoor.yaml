@@ -1,0 +1,72 @@
+# MemorySAM Object Detection — P30-Det
+#   P30 backbone (RBMA + SDC) + Reliability-anchored router fusion (P30 ②) +
+#   Object-Query decoder primary head (P30 ①) + FCOS aux.
+#
+#   Train : python train_det.py --cfg configs/det/det_P30_indoor.yaml
+#   Eval  : python val_det.py   --cfg configs/det/det_P30_indoor.yaml \
+#             --det_checkpoint outputs/det/det_P30_indoor/best_checkpoint.pth --mode val
+#
+# Backbone fine-tune (indoor domain shift): FREEZE_BACKBONE=false + TRAIN_MEMORY=true →
+# LoRA + memory attention + RBMA λ + SDC trained with the detection loss.
+
+OUTPUT_DIR: outputs/det
+
+DATASET:
+  ROOT: /drone_nas/drone/dataset
+  ANNOTATION_TRAIN: /drone_nas/drone/dataset/Labeled/260618_poongsan_raw_20_aligned/_det_splits/det_train.json
+  ANNOTATION_VAL:   /drone_nas/drone/dataset/Labeled/260618_poongsan_raw_20_aligned/_det_splits/det_val.json
+  MODALITY_KEYS:
+    img:     rgb
+    thermal: thermal_aligned
+    lidar:   depth_map_lidar
+  MODALS: ['img', 'lidar', 'thermal']            # backbone frame 0,1,2 order
+  REQUIRE_ALL_MODALITIES: true
+  IMG_SIZE: [1024, 1024]                          # SAM2 입력 해상도
+  MIN_AREA: 16.0
+
+MODEL:
+  SEG_MODEL: LoRA_Sam_P30_Det                     # P30 백본(RBMA+SDC) + detection feature path
+  DET_MODEL: MemorySAMDetectorP30                 # router fusion + query head + FCOS aux
+  SEG_CHECKPOINT: ''                              # (선택) P30 seg 체크포인트 warm-start
+  SAM2_CHECKPOINT: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt
+  SAM2_CONFIG: sam2_hiera_b+.yaml
+  LORA_R: 4
+  AMF_MODE: uniform                               # seg fusion 미사용 — RBMA bias 순수 효과
+  N_CLASSES: null                                 # null → COCO categories 수에서 자동
+  FPN_CHANNELS: [32, 64, 256]                     # [fpn0, fpn1, memory-fused]
+  FPN_STRIDES: [4, 8, 16]                         # 1024 입력 기준 P3/P4/P5
+  HIDDEN_DIM: 256
+  N_CONVS: 4
+  FREEZE_BACKBONE: false
+  TRAIN_MEMORY: true
+  GRAD_CHECKPOINT: false                          # 24GB GPU OOM 시 true
+
+  # ── P30 ② reliability-anchored modality router ──
+  ROUTER_ANCHOR_LAMBDA: 1.0                       # reliability anchor 세기 (0=순수 학습)
+  ROUTER_REG_LAMBDA: 0.0                          # >0 → modality-mixing entropy 가산(다양성)
+
+  # ── P30 ① object-query decoder (primary head) ──
+  NUM_QUERIES: 100
+  QUERY_DIM: 256
+  QUERY_LAYERS: 4
+  QUERY_HEADS: 8
+
+  # ── head balance ──
+  USE_FCOS_AUX: true                              # FCOS dense head 보조(조기 수렴 안정화)
+  W_QUERY: 1.0
+  W_FCOS: 1.0
+
+TRAIN:
+  EPOCHS: 50
+  BATCH_SIZE: 2
+  VAL_BATCH_SIZE: 2
+  LR: 0.0002
+  WEIGHT_DECAY: 0.0001
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 5
+  NUM_WORKERS: 4
+  AMP: true
+
+EVAL:
+  NMS_THRESH: 0.6
+  SCORE_THRESH: 0.05
