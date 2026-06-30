@@ -1,0 +1,80 @@
+# MemorySAM Object Detection — P30-Det — YEON variant
+#   P30 backbone (RBMA+SDC) + reliability-router fusion + object-query decoder + FCOS aux.
+#   Dataset rsync'd to local /SSDb (/drone_nas not mounted on yeon), 3-modality subset
+#   (rgb + depth_map_lidar + thermal_aligned) + _det_splits, COCO relative paths preserved.
+#
+#   Launch (yeon, free GPUs 0,5,6,7):
+#     CUDA_VISIBLE_DEVICES=0,5,6,7 PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python WANDB_MODE=offline \
+#       torchrun --nproc_per_node=4 train_det.py --cfg configs/det/det_P30_indoor_yeon.yaml
+
+OUTPUT_DIR: outputs/det
+
+DATASET:
+  ROOT: /SSDb/jemo_maeng/dset/poongsan
+  ANNOTATION_TRAIN: /SSDb/jemo_maeng/dset/poongsan/Labeled/260618_poongsan_raw_20_aligned/_det_splits/det_train.json
+  ANNOTATION_VAL:   /SSDb/jemo_maeng/dset/poongsan/Labeled/260618_poongsan_raw_20_aligned/_det_splits/det_val.json
+  MODALITY_KEYS:
+    img:     rgb
+    thermal: thermal_aligned
+    lidar:   depth_map_lidar
+  MODALS: ['img', 'lidar', 'thermal']
+  REQUIRE_ALL_MODALITIES: true
+  IMG_SIZE: [1024, 1024]
+  MIN_AREA: 16.0
+
+MODEL:
+  SEG_MODEL: LoRA_Sam_P30_Det                     # P30 백본(RBMA+SDC) + detection feature path
+  DET_MODEL: MemorySAMDetectorP30                 # router fusion + query head + FCOS aux
+  SEG_CHECKPOINT: ''
+  SAM2_CHECKPOINT: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt
+  SAM2_CONFIG: sam2_hiera_b+.yaml
+  LORA_R: 4
+  AMF_MODE: uniform
+  N_CLASSES: null                                 # → 10 (poongsan categories)
+  FPN_CHANNELS: [32, 64, 256]
+  FPN_STRIDES: [4, 8, 16]
+  HIDDEN_DIM: 256
+  N_CONVS: 4
+  FREEZE_BACKBONE: false
+  TRAIN_MEMORY: true
+  GRAD_CHECKPOINT: false                           # 24GB RTX4090: batch1 no-ckpt (jarvis probe 기준)
+
+  # ── P30 ② reliability-anchored modality router ──
+  ROUTER_ANCHOR_LAMBDA: 1.0
+  ROUTER_REG_LAMBDA: 0.0
+
+  # ── P30 ① object-query decoder (primary head) ──
+  NUM_QUERIES: 100
+  QUERY_DIM: 256
+  QUERY_LAYERS: 4
+  QUERY_HEADS: 8
+
+  # ── head balance ──
+  USE_FCOS_AUX: true
+  W_QUERY: 1.0
+  W_FCOS: 1.0
+
+TRAIN:
+  # 4× RTX 4090 DDP (torchrun --nproc_per_node=4). batch1/GPU, no grad-ckpt (P29-Det probe:
+  # off+batch1=17.5GB; P30-Det adds query decoder ~9M → 여유 확인 후 batch↑ 가능).
+  EPOCHS: 50
+  BATCH_SIZE: 1
+  VAL_BATCH_SIZE: 1
+  GRAD_ACCUM_STEPS: 1                              # 유효 배치 = 1 x 4 GPU = 4
+  LR: 0.0002
+  WEIGHT_DECAY: 0.0001
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 5
+  NUM_WORKERS: 4
+  AMP: true
+
+WANDB:
+  ENABLE: true
+  PROJECT: p30-det
+  ENTITY: null
+  VIZ_COUNT: 8
+  VIZ_SCORE_THRESH: 0.3
+
+EVAL:
+  NMS_THRESH: 0.6
+  SCORE_THRESH: 0.05
