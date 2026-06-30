@@ -41,6 +41,7 @@ import torch
 import argparse
 import yaml
 import time
+from datetime import timedelta
 from contextlib import nullcontext
 from pathlib import Path
 from tqdm import tqdm
@@ -59,7 +60,10 @@ def setup_ddp():
     when not launched under torchrun.
     """
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
-        dist.init_process_group(backend='nccl')
+        # Long timeout: rank0 runs the full val set + checkpoint save alone while
+        # other ranks idle at dist.barrier(); the default 10-min NCCL watchdog would
+        # abort them mid-eval (SIGABRT). 2h covers eval(1891 imgs)+save comfortably.
+        dist.init_process_group(backend='nccl', timeout=timedelta(hours=2))
         local_rank = int(os.environ.get('LOCAL_RANK', 0))
         torch.cuda.set_device(local_rank)
         return True, dist.get_rank(), dist.get_world_size(), local_rank
