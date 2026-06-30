@@ -17,7 +17,10 @@
 
 | 트랙 | 상태 | 최신 수치 / 다음 액션 |
 |------|------|----------------------|
-| **SAM2 RBMA (P28)** | 구현·검증 완료, **B200 학습 대기** | config 2종(multiaqua/deliver, `AMF_MODE:uniform`). ⚠️ multiaqua B200 config ROOT/PRETRAINED 경로 placeholder. DELIVER 베이스라인: ep10 Day55.26/Test49.41 |
+| **SAM2 RBMA seg (P30, B200 DELIVER)** | 🟢 **학습 중**(신규, ~11:20 시작, nproc=4) | ep4(2026-06-30 12:48) · Day-Val 13.76 / Test 13.77, fresh ramp-up 정상. config `b200-deliver_rgbdel_P30_physaug`(P29 대비 diff 미확인). EPOCHS=200, ~18.5min/ep→~60h. 모니터 RUN-4 |
+| **SAM2 RBMA seg (P29, B200)** | ⏹ **종료**(ep150, 2026-06-30 11:03; P30 띄우려 수동 중단) | 최종 best **Val 63.20@ep100 / Test 54.34@ep146**(ckpt 보존). val 70 미달·ep34부터 60~63 정체. 모니터 RUN-2 |
+| **SAM2 RBMA seg (P28, B200)** | 🔴 사망(ep16, 2026-06-24) → **P29로 대체됨** | best Val 57.87@ep12 / Test 50.61@ep12. `last_checkpoint.pth` 보존. 모니터 RUN-1 |
+| **P29-Det 객체검출 (Jarvis)** | 🔴 **사망**(2026-06-30 03:09:30, NCCL collective timeout→전 rank SIGABRT) | 01:50 시작 후 ~1h19m 만에 사망, **체크포인트 0개=진척 전부 소실**. 1순위 의심=`find_unused_parameters` DDP rank desync. config `det/det_P29_indoor_jarvis`, wandb `p29-det`. **재시작/수정 사용자 지시 대기.** 상세: [15_training_monitor_log.md](15_training_monitor_log.md) RUN-3 |
 | **SAM3 RBMA (포팅)** | **학습/디버깅 중** (DELIVER 25cls) | ✅6/21 decoder repurpose로 class-collapse 돌파: val 8.49→**16.27@ep22 (상승 중)**. 다음=ep40~60+ 상한 확인 |
 | **P29 (SDC 조건 라우팅)** | **설계 완료 (구현 대기)** | Soft-MoE LoRA 라우팅 비특화 진단 → label-free image-derived 조건 latent+prototype→FiLM gate(헤드라인), RBMA 신뢰도를 라우팅으로 확장(P29-B). 상세 [02_model_arch.md](02_model_arch.md) P29 / 노벨티 [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.7 |
 | **P30 (class-token decoder + reliability-anchored router)** | **구현 완료 (학습 대기, P28 종료 후 GPU 2,3)** | P28 실패분석(rare-class collapse: Water/Bridge=0; event/LiDAR 미사용 Δ≈0) 직격 → ① class-token decoder(SAM3-RBMA class-collapse break 이식, m_feat에 class query cross-attn) ② reliability-anchored 학습 modality router(상수수렴 방지, per-class). 두 모듈 CPU smoke PASS, 모델 wiring compile-only. config `b200-deliver_rgbdel_P30_physaug.yaml`. 상세 [02_model_arch.md](02_model_arch.md) P30 / 노벨티 [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.8 |

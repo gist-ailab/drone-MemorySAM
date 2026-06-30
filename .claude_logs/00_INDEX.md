@@ -41,6 +41,7 @@
 |------|------|
 | [03_experiment_log.md](03_experiment_log.md) | **메인** — 전체 결과 M-score 표 + 버전별 상세 + 진단. **실험 canonical** |
 | [15_training_monitor_log.md](15_training_monitor_log.md) | **진행 중 학습 실시간 모니터 로그** — `/loop` 세션이 주기적으로 append. 학습 추세 분석/판단은 여기서. (현재 RUN-1=B200 P28 DELIVER) |
+| [16_failure_analysis_P28_P29.md](16_failure_analysis_P28_P29.md) | **P28(RBMA)·P29(SDC) 체계적 실패분석 + P30 커버리지 판정(✅/🟡/❌) + P31 프로토타입(high-res class-token decoder)**. DELIVER 로그 파싱 기반 |
 | [05_result_analysis_P9_P12.md](05_result_analysis_P9_P12.md) | 🗄 ARCHIVED — P9~P12 심층 분석(2026-02 동결) |
 | [06_result_analysis_P13.md](06_result_analysis_P13.md) | 🗄 ARCHIVED — P13 심층 분석 |
 | [07_result_analysis_P14.md](07_result_analysis_P14.md) | 🗄 ARCHIVED — P14 분석 |
