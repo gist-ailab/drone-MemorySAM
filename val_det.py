@@ -27,7 +27,7 @@ from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
 
-from objdet.datasets.multimodal_det import MultiModalDetDataset
+from objdet.datasets.multimodal_det import MultiModalDetDataset, rescale_boxes_to_orig
 from objdet.models.det_model import MemorySAMDetector
 from objdet.metrics import evaluate_coco, format_predictions_coco
 from objdet.utils.nms import batched_nms
@@ -169,15 +169,13 @@ def main():
                 scores = det['scores']
                 cls_ids = det['class_ids']
 
-            # Scale to original size
+            # Scale to original size (matches dataset resize_mode)
             orig_h, orig_w = orig_sizes[i].tolist()
-            scale_x = orig_w / img_size[1]
-            scale_y = orig_h / img_size[0]
-
+            resize_mode = cfg['DATASET'].get('RESIZE_MODE', 'stretch')
             boxes_orig = boxes.clone()
             if boxes_orig.shape[0] > 0:
-                boxes_orig[:, [0, 2]] *= scale_x
-                boxes_orig[:, [1, 3]] *= scale_y
+                boxes_orig = rescale_boxes_to_orig(
+                    boxes_orig, orig_h, orig_w, img_size[0], img_size[1], resize_mode)
 
             # COCO format predictions
             preds = format_predictions_coco(

@@ -49,6 +49,25 @@ def random_brightness(
     return result, bboxes, labels
 
 
+def random_contrast(
+    images: Dict[str, np.ndarray],
+    bboxes: np.ndarray,
+    labels: np.ndarray,
+    range: Tuple[float, float] = (0.7, 1.3),
+    modals: list = ['img'],
+) -> Tuple[Dict[str, np.ndarray], np.ndarray, np.ndarray]:
+    """Random contrast around per-image mean (RGB only by default)."""
+    factor = random.uniform(*range)
+    result = {}
+    for k, img in images.items():
+        if k in modals:
+            mean = img.astype(np.float32).mean()
+            result[k] = np.clip((img.astype(np.float32) - mean) * factor + mean, 0, 255).astype(np.uint8)
+        else:
+            result[k] = img
+    return result, bboxes, labels
+
+
 def random_crop(
     images: Dict[str, np.ndarray],
     bboxes: np.ndarray,
@@ -117,11 +136,13 @@ class DetAugmentation:
         self,
         hflip_prob: float = 0.5,
         brightness_range: Tuple[float, float] = (0.6, 1.4),
+        contrast_range: Tuple[float, float] = (0.7, 1.3),
         crop_prob: float = 0.5,
         crop_scale: Tuple[float, float] = (0.8, 1.0),
     ):
         self.hflip_prob = hflip_prob
         self.brightness_range = brightness_range
+        self.contrast_range = contrast_range
         self.crop_prob = crop_prob
         self.crop_scale = crop_scale
 
@@ -138,6 +159,11 @@ class DetAugmentation:
         if random.random() < 0.5:
             images, bboxes, labels = random_brightness(
                 images, bboxes, labels, range=self.brightness_range
+            )
+
+        if random.random() < 0.5:
+            images, bboxes, labels = random_contrast(
+                images, bboxes, labels, range=self.contrast_range
             )
 
         if random.random() < self.crop_prob:

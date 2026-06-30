@@ -117,7 +117,7 @@ from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
 
-from objdet.datasets.multimodal_det import MultiModalDetDataset
+from objdet.datasets.multimodal_det import MultiModalDetDataset, rescale_boxes_to_orig
 from objdet.models.det_model import MemorySAMDetector, MemorySAMDetectorP30
 from objdet.metrics import evaluate_coco, format_predictions_coco
 
@@ -176,6 +176,23 @@ def build_dataset(cfg: dict, split: str = 'train'):
     annotation_path = ds_cfg[ann_key]
     img_size = tuple(ds_cfg.get('IMG_SIZE', [1024, 1024]))
 
+    # letterbox/stretch + drop-empty + augmentation (train only)
+    resize_mode = ds_cfg.get('RESIZE_MODE', 'stretch')
+    drop_empty = bool(ds_cfg.get('DROP_EMPTY', False)) and split == 'train'
+    transform = None
+    aug_cfg = ds_cfg.get('AUG', {})
+    if split == 'train' and aug_cfg.get('ENABLE', False):
+        from objdet.augmentations_det import DetAugmentation
+        transform = DetAugmentation(
+            hflip_prob=aug_cfg.get('HFLIP_PROB', 0.5),
+            brightness_range=tuple(aug_cfg.get('BRIGHTNESS_RANGE', [0.6, 1.4])),
+            contrast_range=tuple(aug_cfg.get('CONTRAST_RANGE', [0.7, 1.3])),
+            crop_prob=aug_cfg.get('CROP_PROB', 0.5),
+            crop_scale=tuple(aug_cfg.get('CROP_SCALE', [0.7, 1.0])),
+        )
+    common = dict(img_size=img_size, min_area=ds_cfg.get('MIN_AREA', 0.0),
+                  resize_mode=resize_mode, drop_empty=drop_empty, transform=transform)
+
     # Mode A: per-image modalities map under a single DATASET ROOT (preferred).
     if 'MODALITY_KEYS' in ds_cfg:
         modality_keys = dict(ds_cfg['MODALITY_KEYS'])
@@ -184,10 +201,9 @@ def build_dataset(cfg: dict, split: str = 'train'):
             annotation_path=annotation_path,
             root=ds_cfg['ROOT'],
             modality_keys=modality_keys,
-            img_size=img_size,
             modals=modals,
-            min_area=ds_cfg.get('MIN_AREA', 0.0),
             require_all_modalities=ds_cfg.get('REQUIRE_ALL_MODALITIES', True),
+            **common,
         )
 
     # Mode B: legacy parallel per-modality ROOT dirs sharing file_name.
@@ -196,10 +212,9 @@ def build_dataset(cfg: dict, split: str = 'train'):
     return MultiModalDetDataset(
         annotation_path=annotation_path,
         modality_roots=modality_roots,
-        img_size=img_size,
         modals=modals,
-        min_area=ds_cfg.get('MIN_AREA', 0.0),
         require_all_modalities=ds_cfg.get('REQUIRE_ALL_MODALITIES', False),
+        **common,
     )
 
 
@@ -298,6 +313,7 @@ def evaluate(
     viz_count: int = 0,
     class_names=None,
     viz_score_thresh: float = 0.3,
+    resize_mode: str = 'stretch',
 ):
     """Run evaluation; return (COCO metrics, list[(PIL.Image, caption)]).
 
@@ -340,14 +356,10 @@ def evaluate(
             if det['boxes'].shape[0] == 0:
                 continue
 
-            # Scale boxes back to original image size
+            # Scale boxes back to original image size (matches dataset resize_mode)
             orig_h, orig_w = orig_sizes[i].tolist()
-            scale_x = orig_w / img_size[1]
-            scale_y = orig_h / img_size[0]
-
-            boxes = det['boxes'].clone()
-            boxes[:, [0, 2]] *= scale_x
-            boxes[:, [1, 3]] *= scale_y
+            boxes = rescale_boxes_to_orig(
+                det['boxes'].cpu(), orig_h, orig_w, img_size[0], img_size[1], resize_mode)
 
             preds = format_predictions_coco(
                 boxes.cpu(), det['scores'].cpu(), det['class_ids'].cpu(),
@@ -430,6 +442,9 @@ def main():
         train_memory=cfg['MODEL'].get('TRAIN_MEMORY', True),
         n_convs=cfg['MODEL'].get('N_CONVS', 4),
         hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+        assigner=cfg['MODEL'].get('ASSIGNER', 'fcos'),
+        atss_topk=cfg['MODEL'].get('ATSS_TOPK', 9),
+        atss_scale=cfg['MODEL'].get('ATSS_SCALE', 8.0),
     )
     if det_name == 'MemorySAMDetectorP30':
         model = MemorySAMDetectorP30(
@@ -547,6 +562,7 @@ def main():
             metrics, _ = evaluate(
                 unwrap(model), val_loader, device,
                 cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+                resize_mode=cfg['DATASET'].get('RESIZE_MODE', 'stretch'),
             )
             print(f"Eval results: AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}")
         if ddp:
@@ -582,6 +598,7 @@ def main():
                     cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
                     viz_count=viz_count, class_names=train_dataset.class_names,
                     viz_score_thresh=cfg.get('WANDB', {}).get('VIZ_SCORE_THRESH', 0.3),
+                    resize_mode=cfg['DATASET'].get('RESIZE_MODE', 'stretch'),
                 )
                 print(f"  Val AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}, AP75={metrics['AP75']:.4f}")
                 writer.add_scalar('val/AP', metrics['AP'], epoch)

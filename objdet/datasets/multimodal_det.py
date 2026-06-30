@@ -34,6 +34,31 @@ from typing import Dict, List, Optional, Tuple
 import torchvision.transforms.functional as TF
 
 
+def letterbox_params(orig_w, orig_h, target_w, target_h):
+    """Aspect-preserving resize+center-pad params. Returns (r, pad_x, pad_y) such that
+    a box at original (x,y) maps to model-input (x*r+pad_x, y*r+pad_y)."""
+    r = min(target_w / orig_w, target_h / orig_h)
+    new_w, new_h = round(orig_w * r), round(orig_h * r)
+    pad_x = (target_w - new_w) // 2
+    pad_y = (target_h - new_h) // 2
+    return r, pad_x, pad_y
+
+
+def rescale_boxes_to_orig(boxes, orig_h, orig_w, in_h, in_w, resize_mode='stretch'):
+    """Invert the dataset resize: map predicted boxes (model-input px, xyxy) back to
+    original image px. `boxes` is a tensor (N,4); returns a new tensor. Used by eval/COCO
+    so it matches the dataset's train/val resize_mode exactly."""
+    boxes = boxes.clone()
+    if resize_mode == 'letterbox':
+        r, pad_x, pad_y = letterbox_params(orig_w, orig_h, in_w, in_h)
+        boxes[:, [0, 2]] = (boxes[:, [0, 2]] - pad_x) / r
+        boxes[:, [1, 3]] = (boxes[:, [1, 3]] - pad_y) / r
+    else:  # stretch
+        boxes[:, [0, 2]] *= orig_w / in_w
+        boxes[:, [1, 3]] *= orig_h / in_h
+    return boxes
+
+
 class MultiModalDetDataset(Dataset):
     def __init__(
         self,
@@ -46,6 +71,8 @@ class MultiModalDetDataset(Dataset):
         root: Optional[str] = None,
         modality_keys: Optional[Dict[str, str]] = None,
         require_all_modalities: bool = True,
+        resize_mode: str = 'stretch',
+        drop_empty: bool = False,
         verbose: bool = True,
     ):
         super().__init__()
@@ -55,6 +82,13 @@ class MultiModalDetDataset(Dataset):
         self.root = root
         self.modality_keys = modality_keys
         self.require_all_modalities = require_all_modalities
+        # resize_mode: 'stretch' (force to img_size, aspect distorted) or 'letterbox'
+        # (aspect-preserving resize + center pad). 'letterbox' removes the 640x480→1024
+        # distortion; eval must invert with the same params (see letterbox_params()).
+        self.resize_mode = resize_mode
+        # drop_empty: skip images whose annotation set is empty (no non-crowd box).
+        # Prevents all-background frames from collapsing FCOS confidence (the v1 failure).
+        self.drop_empty = drop_empty
 
         # ── Resolve mode ──────────────────────────────────────────────
         if modality_keys is not None:
@@ -97,8 +131,12 @@ class MultiModalDetDataset(Dataset):
             if paths is None:        # missing a required modality
                 n_drop += 1
                 continue
+            anns = ann_by_img.get(img_id, [])
+            if self.drop_empty and not any(not a.get('iscrowd', 0) for a in anns):
+                n_drop += 1
+                continue
             self.img_ids.append(img_id)
-            self.img_anns[img_id] = ann_by_img.get(img_id, [])
+            self.img_anns[img_id] = anns
             self.modal_paths[img_id] = paths
         self.img_ids.sort()
 
@@ -166,20 +204,38 @@ class MultiModalDetDataset(Dataset):
         if self.transform is not None:
             images, bboxes, labels = self.transform(images, bboxes, labels)
 
+        # Resize to model input. Scale by the ACTUAL (post-aug) image size, not the COCO
+        # width/height — random_crop can change it (else bboxes misalign once aug is on).
         target_h, target_w = self.img_size
-        scale_x = target_w / orig_w
-        scale_y = target_h / orig_h
+        cur_h, cur_w = images[self.modals[0]].shape[:2]
 
         sample = {}
-        for modal in self.modals:
-            img = images[modal]
-            img = Image.fromarray(img) if isinstance(img, np.ndarray) else img
-            img = img.resize((target_w, target_h), Image.BILINEAR)
-            sample[modal] = TF.to_tensor(img)  # (3,H,W) float32 [0,1]
+        if self.resize_mode == 'letterbox':
+            r, pad_x, pad_y = letterbox_params(cur_w, cur_h, target_w, target_h)
+            new_w, new_h = max(1, round(cur_w * r)), max(1, round(cur_h * r))
+            for modal in self.modals:
+                img = images[modal]
+                img = Image.fromarray(img) if isinstance(img, np.ndarray) else img
+                img = img.resize((new_w, new_h), Image.BILINEAR)
+                canvas = Image.new('RGB', (target_w, target_h), (114, 114, 114))
+                canvas.paste(img, (pad_x, pad_y))
+                sample[modal] = TF.to_tensor(canvas)
+            if len(bboxes) > 0:
+                bboxes[:, [0, 2]] = bboxes[:, [0, 2]] * r + pad_x
+                bboxes[:, [1, 3]] = bboxes[:, [1, 3]] * r + pad_y
+        else:  # 'stretch' — original behaviour (aspect distorted)
+            scale_x = target_w / cur_w
+            scale_y = target_h / cur_h
+            for modal in self.modals:
+                img = images[modal]
+                img = Image.fromarray(img) if isinstance(img, np.ndarray) else img
+                img = img.resize((target_w, target_h), Image.BILINEAR)
+                sample[modal] = TF.to_tensor(img)
+            if len(bboxes) > 0:
+                bboxes[:, [0, 2]] *= scale_x
+                bboxes[:, [1, 3]] *= scale_y
 
         if len(bboxes) > 0:
-            bboxes[:, [0, 2]] *= scale_x
-            bboxes[:, [1, 3]] *= scale_y
             bboxes[:, [0, 2]] = np.clip(bboxes[:, [0, 2]], 0, target_w)
             bboxes[:, [1, 3]] = np.clip(bboxes[:, [1, 3]], 0, target_h)
 

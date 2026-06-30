@@ -25,7 +25,7 @@ try:
 except Exception:
     MemorySAMDetectorP30 = None
 from objdet.metrics import format_predictions_coco
-from objdet.datasets.multimodal_det import MultiModalDetDataset
+from objdet.datasets.multimodal_det import MultiModalDetDataset, rescale_boxes_to_orig
 
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
@@ -86,6 +86,7 @@ def main():
 
     all_preds, all_scores, dets_per_img = [], [], []
     img_size = tuple(cfg['DATASET'].get('IMG_SIZE', [1024, 1024]))
+    resize_mode = cfg['DATASET'].get('RESIZE_MODE', 'stretch')
     viz_saved = 0
 
     for bi, batch in enumerate(loader):
@@ -101,9 +102,8 @@ def main():
         dets_per_img.append(int((sc > 0.05).sum()))
         orig_h, orig_w = batch['orig_size'][0].tolist()
         if det['boxes'].shape[0] > 0:
-            boxes = det['boxes'].clone().cpu()
-            boxes[:, [0, 2]] *= orig_w / img_size[1]
-            boxes[:, [1, 3]] *= orig_h / img_size[0]
+            boxes = rescale_boxes_to_orig(det['boxes'].cpu(), orig_h, orig_w,
+                                          img_size[0], img_size[1], resize_mode)
             all_preds.extend(format_predictions_coco(
                 boxes, det['scores'].cpu(), det['class_ids'].cpu(),
                 batch['image_id'][0], idx_to_cat_id))

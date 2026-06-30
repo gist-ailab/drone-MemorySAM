@@ -98,6 +98,9 @@ class MemorySAMDetector(nn.Module):
         n_convs: int = 4,
         hidden_dim: int = 256,
         regress_ranges: Optional[List[Tuple[int, int]]] = None,
+        assigner: str = 'fcos',
+        atss_topk: int = 9,
+        atss_scale: float = 8.0,
         modality_fuse: str = 'mean',
     ):
         super().__init__()
@@ -146,6 +149,7 @@ class MemorySAMDetector(nn.Module):
             n_classes=n_classes,
             fpn_strides=fpn_strides,
             regress_ranges=regress_ranges or [(-1, 64), (64, 128), (128, 1e8)],
+            assigner=assigner, atss_topk=atss_topk, atss_scale=atss_scale,
         )
 
     # ────────────────────────────────────────────────────────────────
@@ -279,6 +283,9 @@ class MemorySAMDetectorP30(nn.Module):
         n_convs: int = 4,
         hidden_dim: int = 256,
         regress_ranges: Optional[List[Tuple[int, int]]] = None,
+        assigner: str = 'fcos',
+        atss_topk: int = 9,
+        atss_scale: float = 8.0,
         img_size: int = 1024,
         # router (P30 ②)
         router_anchor_lambda: float = 1.0,
@@ -344,7 +351,8 @@ class MemorySAMDetectorP30(nn.Module):
                 regress_ranges=regress_ranges)
             self.criterion = FCOSLoss(
                 n_classes=n_classes, fpn_strides=fpn_strides,
-                regress_ranges=regress_ranges or [(-1, 64), (64, 128), (128, 1e8)])
+                regress_ranges=regress_ranges or [(-1, 64), (64, 128), (128, 1e8)],
+                assigner=assigner, atss_topk=atss_topk, atss_scale=atss_scale)
 
     # ────────────────────────────────────────────────────────────────
     def _ordered_inputs(self, sample: dict) -> List[torch.Tensor]:

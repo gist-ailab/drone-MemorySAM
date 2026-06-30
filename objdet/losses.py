@@ -100,6 +100,18 @@ def giou_loss(
     return loss
 
 
+def _box_iou(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """IoU between two sets of xyxy boxes → (N, M)."""
+    area_a = (a[:, 2] - a[:, 0]).clamp(min=0) * (a[:, 3] - a[:, 1]).clamp(min=0)
+    area_b = (b[:, 2] - b[:, 0]).clamp(min=0) * (b[:, 3] - b[:, 1]).clamp(min=0)
+    lt = torch.max(a[:, None, :2], b[None, :, :2])
+    rb = torch.min(a[:, None, 2:], b[None, :, 2:])
+    wh = (rb - lt).clamp(min=0)
+    inter = wh[..., 0] * wh[..., 1]
+    union = area_a[:, None] + area_b[None, :] - inter
+    return inter / union.clamp(min=1e-6)
+
+
 class FCOSLoss(nn.Module):
     """
     Combined FCOS loss: Focal (cls) + GIoU (reg) + BCE (centerness).
@@ -128,6 +140,9 @@ class FCOSLoss(nn.Module):
         cls_weight: float = 1.0,
         reg_weight: float = 1.0,
         ctr_weight: float = 1.0,
+        assigner: str = 'fcos',
+        atss_topk: int = 9,
+        atss_scale: float = 8.0,
     ):
         super().__init__()
         self.n_classes = n_classes
@@ -138,6 +153,16 @@ class FCOSLoss(nn.Module):
         self.cls_weight = cls_weight
         self.reg_weight = reg_weight
         self.ctr_weight = ctr_weight
+        # 'fcos' (regress-range + center, smallest-area tie-break) or 'atss'
+        # (adaptive IoU-threshold positive selection per GT). ATSS usually lifts AP.
+        self.assigner = assigner
+        self.atss_topk = atss_topk
+        self.atss_scale = atss_scale
+
+    def _assign_targets(self, locations, gt_bboxes, gt_labels):
+        if self.assigner == 'atss':
+            return self._compute_targets_atss(locations, gt_bboxes, gt_labels)
+        return self._compute_targets(locations, gt_bboxes, gt_labels)
 
     def _compute_targets(
         self,
@@ -230,6 +255,87 @@ class FCOSLoss(nn.Module):
 
         return cls_targets, reg_targets, ctr_targets
 
+    def _compute_targets_atss(
+        self,
+        locations: List[torch.Tensor],
+        gt_bboxes: torch.Tensor,
+        gt_labels: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ATSS assignment for the anchor-free point head. Each location gets a virtual
+        anchor box of side = atss_scale*stride. Per GT: take top-k nearest-center points
+        per level → IoU threshold = mean+std over those candidates → positives = candidates
+        with IoU≥thr whose center is inside the GT; multi-GT resolved by highest IoU.
+        reg/centerness targets identical to FCOS."""
+        device = locations[0].device
+        all_locs = torch.cat(locations, dim=0)
+        n_points = all_locs.shape[0]
+        n_gts = gt_bboxes.shape[0]
+        level_sizes = [loc.shape[0] for loc in locations]
+
+        cls_targets = torch.full((n_points,), self.n_classes, dtype=torch.int64, device=device)
+        reg_targets = torch.zeros((n_points, 4), dtype=torch.float32, device=device)
+        ctr_targets = torch.zeros((n_points,), dtype=torch.float32, device=device)
+        if n_gts == 0:
+            return cls_targets, reg_targets, ctr_targets
+
+        # virtual anchor box per point (side = atss_scale * level stride)
+        pt_stride = torch.zeros(n_points, device=device)
+        off = 0
+        for lvl, n in enumerate(level_sizes):
+            pt_stride[off:off + n] = self.fpn_strides[lvl]
+            off += n
+        half = self.atss_scale * pt_stride / 2.0
+        anchors = torch.stack([all_locs[:, 0] - half, all_locs[:, 1] - half,
+                               all_locs[:, 0] + half, all_locs[:, 1] + half], dim=1)  # (P,4)
+        iou = _box_iou(anchors, gt_bboxes)  # (P, M)
+
+        gcx = (gt_bboxes[:, 0] + gt_bboxes[:, 2]) / 2
+        gcy = (gt_bboxes[:, 1] + gt_bboxes[:, 3]) / 2
+        dist = torch.sqrt((all_locs[:, 0:1] - gcx[None]) ** 2
+                          + (all_locs[:, 1:2] - gcy[None]) ** 2 + 1e-9)  # (P, M)
+
+        # per-level top-k nearest-center candidates per GT
+        candidate = torch.zeros(n_points, n_gts, dtype=torch.bool, device=device)
+        off = 0
+        for lvl, n in enumerate(level_sizes):
+            k = min(self.atss_topk, n)
+            idx = dist[off:off + n].topk(k, dim=0, largest=False).indices + off  # (k, M)
+            for m in range(n_gts):
+                candidate[idx[:, m], m] = True
+            off += n
+
+        inside = ((all_locs[:, 0:1] >= gt_bboxes[None, :, 0]) & (all_locs[:, 0:1] <= gt_bboxes[None, :, 2])
+                  & (all_locs[:, 1:2] >= gt_bboxes[None, :, 1]) & (all_locs[:, 1:2] <= gt_bboxes[None, :, 3]))
+
+        pos = torch.zeros_like(candidate)
+        for m in range(n_gts):
+            cm = candidate[:, m]
+            if cm.sum() == 0:
+                continue
+            ci = iou[cm, m]
+            thr = ci.mean() + (ci.std(unbiased=False) if ci.numel() > 1 else ci.new_zeros(()))
+            pos[:, m] = cm & (iou[:, m] >= thr) & inside[:, m]
+
+        iou_masked = torch.where(pos, iou, torch.full_like(iou, -1.0))
+        _, best_gt = iou_masked.max(dim=1)
+        positive = pos.any(dim=1)
+
+        sel = best_gt[positive]
+        cls_targets[positive] = gt_labels[sel]
+        px = all_locs[positive, 0]
+        py = all_locs[positive, 1]
+        l = px - gt_bboxes[sel, 0]
+        t = py - gt_bboxes[sel, 1]
+        r = gt_bboxes[sel, 2] - px
+        b = gt_bboxes[sel, 3] - py
+        reg_targets[positive] = torch.stack([l, t, r, b], dim=1)
+        lr_min = torch.min(l, r); lr_max = torch.max(l, r)
+        tb_min = torch.min(t, b); tb_max = torch.max(t, b)
+        ctr_targets[positive] = torch.sqrt(
+            (lr_min / lr_max.clamp(min=1e-6)) * (tb_min / tb_max.clamp(min=1e-6))
+        ).clamp(min=0)
+        return cls_targets, reg_targets, ctr_targets
+
     def forward(
         self,
         cls_logits: List[torch.Tensor],
@@ -264,7 +370,7 @@ class FCOSLoss(nn.Module):
         total_pos = 0
 
         for b in range(B):
-            cls_tgt, reg_tgt, ctr_tgt = self._compute_targets(
+            cls_tgt, reg_tgt, ctr_tgt = self._assign_targets(
                 locations, gt_bboxes[b], gt_labels[b]
             )
 
