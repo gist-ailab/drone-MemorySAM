@@ -8246,3 +8246,15 @@ class LoRA_Sam_P30_Det(LoRA_Sam_P30):
     (MemorySAMDetectorP30 `train_memory`).
     """
     pass
+
+
+class LoRA_Sam_P29_Det(LoRA_Sam_P28):
+    """
+    LoRA_Sam_P29_Det — P28/RBMA backbone repurposed for object detection (mean-fusion
+    baseline). Identical to P28 (SAM2 Hiera-B+ + SoftMoE-LoRA + cross-modal memory
+    attention with RBMA logit bias); the only addition is the detection-feature path
+    `extract_det_features()` inherited from P27. Used as SEG_MODEL for the P29-Det
+    detector (objdet.models.det_model.MemorySAMDetector). Mirrors the same class on the
+    worktree-p29-det branch so P29-Det configs resolve on this branch too.
+    """
+    pass
