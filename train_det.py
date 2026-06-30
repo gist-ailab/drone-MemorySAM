@@ -483,7 +483,7 @@ def main():
     start_epoch = 0
     best_ap = 0.0
     if args.resume:
-        ckpt = torch.load(args.resume, map_location=device)
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
         if 'model_state_dict' in ckpt:
             model.load_state_dict(ckpt['model_state_dict'], strict=False)
         else:
