@@ -70,7 +70,7 @@ MODEL:
 
 TRAIN:
   EPOCHS: 40
-  BATCH_SIZE: 2                     # grad-ckpt ON으로 확보한 메모리로 b1→b2 (처리량·gradient 안정↑); 여유 남으면 상향
+  BATCH_SIZE: 1                     # AMP off(fp32)로 메모리↑ → b1로 회귀(여유 확인 후 상향); grad-ckpt ON
   VAL_BATCH_SIZE: 1
   GRAD_ACCUM_STEPS: 1
   LR: 0.0002
@@ -78,7 +78,7 @@ TRAIN:
   WARMUP_EPOCHS: 5
   SAVE_INTERVAL: 5
   NUM_WORKERS: 4
-  AMP: true
+  AMP: false                        # full fp32 — AMP+loss-fp32로도 fp16 backbone overflow→NaN 미해결(ep20 100% skip) → NaN 근절 위해 AMP off
 
 WANDB:
   ENABLE: true
