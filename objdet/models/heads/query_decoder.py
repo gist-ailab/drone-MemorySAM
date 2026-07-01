@@ -203,8 +203,8 @@ class SetCriterion(nn.Module):
     def forward(self, outputs: Dict[str, torch.Tensor],
                 targets: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         indices = self.matcher(outputs, targets)
-        pred_logits = outputs['pred_logits']         # (B,N,C+1)
-        pred_boxes = outputs['pred_boxes']           # (B,N,4)
+        pred_logits = outputs['pred_logits'].float()  # (B,N,C+1) — fp32 for stable CE under AMP
+        pred_boxes = outputs['pred_boxes'].float()    # (B,N,4)
         B, N = pred_logits.shape[:2]
         device = pred_logits.device
 
