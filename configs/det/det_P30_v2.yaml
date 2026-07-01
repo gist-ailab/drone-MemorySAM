@@ -70,8 +70,8 @@ MODEL:
 
 TRAIN:
   EPOCHS: 40
-  BATCH_SIZE: 1                     # AMP off(fp32)로 메모리↑ → b1로 회귀(여유 확인 후 상향); grad-ckpt ON
-  VAL_BATCH_SIZE: 1
+  BATCH_SIZE: 4                     # AMP off+grad-ckpt: b1이 ~7GB뿐 → b4로 처리량 4× (AMP off/ckpt 속도손실 만회); ~18-20GB 예상
+  VAL_BATCH_SIZE: 4
   GRAD_ACCUM_STEPS: 1
   LR: 0.0002
   WEIGHT_DECAY: 0.0005             # ↑ (P29-Det v2 1e-4 → overfit); more params in P30
