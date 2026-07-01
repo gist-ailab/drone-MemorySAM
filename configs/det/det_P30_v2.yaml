@@ -46,7 +46,7 @@ MODEL:
   N_CONVS: 4
   FREEZE_BACKBONE: false
   TRAIN_MEMORY: true
-  GRAD_CHECKPOINT: false            # OOM 시 true
+  GRAD_CHECKPOINT: true             # OOM 시 true — resume(안정화패치 4a80058)에서 24GB edge OOM → 활성메모리 절감 위해 ON
 
   # ── P30 ② reliability-anchored modality router ──
   ROUTER_ANCHOR_LAMBDA: 1.0
