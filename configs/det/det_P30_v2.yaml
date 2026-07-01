@@ -70,7 +70,7 @@ MODEL:
 
 TRAIN:
   EPOCHS: 40
-  BATCH_SIZE: 1
+  BATCH_SIZE: 2                     # grad-ckpt ON으로 확보한 메모리로 b1→b2 (처리량·gradient 안정↑); 여유 남으면 상향
   VAL_BATCH_SIZE: 1
   GRAD_ACCUM_STEPS: 1
   LR: 0.0002
