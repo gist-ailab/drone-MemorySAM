@@ -90,6 +90,7 @@ def giou_loss(
     enclose_area = (enclose_x2 - enclose_x1).clamp(min=0) * (enclose_y2 - enclose_y1).clamp(min=0)
 
     giou = iou - (enclose_area - union_area) / enclose_area.clamp(min=1e-6)
+    giou = torch.nan_to_num(giou, nan=0.0, posinf=1.0, neginf=-1.0)  # inf/nan guard (clamp(min=) only guards 0-denom)
 
     loss = 1 - giou
 
@@ -360,9 +361,10 @@ class FCOSLoss(nn.Module):
         B = cls_logits[0].shape[0]
 
         # Flatten predictions across all levels
-        all_cls = torch.cat([c.permute(0, 2, 3, 1).reshape(B, -1, self.n_classes) for c in cls_logits], dim=1)
-        all_reg = torch.cat([r.permute(0, 2, 3, 1).reshape(B, -1, 4) for r in bbox_pred], dim=1)
-        all_ctr = torch.cat([c.permute(0, 2, 3, 1).reshape(B, -1) for c in centerness], dim=1)
+        # fp32 for numerically-stable loss under AMP (avoid fp16 overflow → inf/nan in GIoU/focal)
+        all_cls = torch.cat([c.permute(0, 2, 3, 1).reshape(B, -1, self.n_classes).float() for c in cls_logits], dim=1)
+        all_reg = torch.cat([r.permute(0, 2, 3, 1).reshape(B, -1, 4).float() for r in bbox_pred], dim=1)
+        all_ctr = torch.cat([c.permute(0, 2, 3, 1).reshape(B, -1).float() for c in centerness], dim=1)
 
         total_cls_loss = 0.0
         total_reg_loss = 0.0

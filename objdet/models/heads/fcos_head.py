@@ -139,6 +139,7 @@ class FCOSHead(nn.Module):
             cls_out = self.cls_logits(cls_feat)            # (B, n_classes, H, W)
             reg_out = self.scales[level](self.bbox_pred(reg_feat))  # (B, 4, H, W)
             reg_out = F.relu(reg_out) * self.fpn_strides[level]    # positive distances, scaled by stride
+            reg_out = torch.clamp(reg_out, max=4096.0)            # fp16-safe cap: block AMP overflow→inf→GIoU nan (IMG_SIZE≤1024)
             ctr_out = self.centerness(reg_feat)            # (B, 1, H, W)
 
             all_cls.append(cls_out)

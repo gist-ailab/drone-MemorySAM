@@ -237,6 +237,8 @@ def train_one_epoch(
     total_reg = 0.0
     total_ctr = 0.0
     n_iters = 0
+    nan_skips = 0
+    grad_clip = 10.0  # max grad-norm; guards against loss spikes → divergence (BATCH_SIZE=1 noisy grads)
 
     optimizer.zero_grad()
     n_batches = len(dataloader)
@@ -255,6 +257,13 @@ def train_one_epoch(
             losses = model(sample, gt_bboxes=gt_bboxes, gt_labels=gt_labels)
 
         loss = losses['loss_total']
+        # NaN/Inf guard: skip a bad batch so one spike can't corrupt weights permanently.
+        if not torch.isfinite(loss):
+            optimizer.zero_grad(set_to_none=True)
+            nan_skips += 1
+            if is_main and nan_skips <= 20:
+                print(f'[nan-guard] non-finite loss at epoch {epoch} batch {batch_idx}; skipped (total {nan_skips})')
+            continue
         # Gradient accumulation (effective batch = BATCH_SIZE * world * accum_steps).
         scaled = loss / accum_steps
         # Under DDP, skip the gradient all-reduce until the accumulation boundary.
@@ -267,9 +276,12 @@ def train_one_epoch(
 
         if is_step:
             if use_amp:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
                 scaler.step(optimizer)
                 scaler.update()
             else:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
                 optimizer.step()
             optimizer.zero_grad()
 
