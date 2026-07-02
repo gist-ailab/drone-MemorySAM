@@ -770,12 +770,20 @@ def main(cfg, gpu, save_dir):
     if num_workers > 0:
         _loader_kwargs['persistent_workers'] = True
         _loader_kwargs['prefetch_factor'] = 4
+    # Eval loaders run infrequently — avoid keeping (val+night+test) × num_workers
+    # persistent processes alive for the whole run (RAM/shm/fd pressure, train-loader starvation).
+    _eval_loader_kwargs = {
+        'num_workers': min(num_workers, 4),
+        'pin_memory': True,
+    }
+    if _eval_loader_kwargs['num_workers'] > 0:
+        _eval_loader_kwargs['prefetch_factor'] = 4
     trainloader = DataLoader(trainset, batch_size=train_cfg['BATCH_SIZE'], drop_last=True, sampler=sampler, **_loader_kwargs)
-    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_loader_kwargs)
+    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_eval_loader_kwargs)
     # [Night-Val] 야간 시뮬 val loader (NIGHT_AUG.ENABLE 시에만 생성)
-    night_valloader = DataLoader(nightvalset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_loader_kwargs) if nightvalset is not None else None
+    night_valloader = DataLoader(nightvalset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_eval_loader_kwargs) if nightvalset is not None else None
     # [Test] test set loader (DELIVER 등 test split이 있는 데이터셋)
-    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_loader_kwargs) if testset is not None else None
+    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], sampler=sampler_val, **_eval_loader_kwargs) if testset is not None else None
 
 
     # AMP dtype: 'float16' (default, GradScaler 필수) 또는 'bfloat16' (Ampere+/B200 권장, GradScaler 불필요).
@@ -919,9 +927,6 @@ def main(cfg, gpu, save_dir):
         
         for iter, (sample, lbl) in pbar:
             # optimizer.zero_grad(set_to_none=True)
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = float(param_group['lr'])
-
             sample = [x.to(device, non_blocking=True) for x in sample]
             lbl = lbl.to(device, non_blocking=True)
             
@@ -1147,9 +1152,10 @@ def main(cfg, gpu, save_dir):
                     'best_night_miou': best_night_mIoU,
                 }, periodic_path)
 
-        torch.cuda.empty_cache()
-
         if ((epoch+1) % train_cfg['EVAL_INTERVAL'] == 0 and (epoch+1)>train_cfg['EVAL_START']) or (epoch+1) == epochs:
+            # free cached blocks only before eval (was called every epoch, which reset the
+            # caching allocator and forced re-cudaMalloc next epoch for no memory benefit).
+            torch.cuda.empty_cache()
             if (train_cfg['DDP'] and torch.distributed.get_rank() == 0) or (not train_cfg['DDP']):
                 acc, macc, f1, mf1, ious, miou = evaluate(model, valloader, device)
                 writer.add_scalar('val/mIoU', miou, epoch)

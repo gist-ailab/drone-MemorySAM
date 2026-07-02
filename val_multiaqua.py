@@ -373,7 +373,7 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
 
     desc = f"Val (gamma TTA x{len(gamma_list)})" if use_gamma_tta else "Val"
     for images, labels, metas in tqdm(dataloader, desc=desc):
-        images = [x.to(device) for x in images]
+        images = [x.to(device, non_blocking=True) for x in images]
 
         if use_gamma_tta:
             # Multi-gamma TTA: average softmax across gamma values
@@ -501,7 +501,7 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
     total_inference_time = 0.0
     desc = f"Test inference (gamma TTA x{len(gamma_list)})" if use_gamma_tta else "Test inference"
     for images, _, metas in tqdm(dataloader, desc=desc):
-        images = [x.to(device) for x in images]
+        images = [x.to(device, non_blocking=True) for x in images]
 
         if use_gamma_tta:
             preds_accum = None
@@ -643,7 +643,9 @@ def main():
         dataset,
         batch_size=eval_cfg['BATCH_SIZE'],
         num_workers=4,
-        pin_memory=False,
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4,
         collate_fn=collate_fn,
     )
 
