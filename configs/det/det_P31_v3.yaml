@@ -1,0 +1,92 @@
+# P31.1-Det — P31.1 backbone detection on the v3 clean dataset.
+#   FCOS PRIMARY (query decoder off — P31.1 lesson: light query head as final output collapses,
+#   E0.1 query 0.256 vs FCOS-aux 0.431) + calibrated reliability router (decisive reg) fusion.
+#   Inherits v2+ bundle (letterbox + aug + ATSS). AMP OFF (P30-Det NaN lesson; /T_i adds overflow).
+#
+#   NOTE: calibrated reliability(temperature)는 P31.1 seg 학습에서 보정됨 → 의미 있으려면
+#   SEG_CHECKPOINT를 학습된 P31.1 seg 체크포인트로 warm-start (비우면 T=1 ≈ P30-Det reliability).
+#   backbone unfreeze(UNFREEZE_LAST_N_BLOCKS>0)는 optimizer LR-group 이식 후 사용 (지금은 0=안전).
+#
+#   Train: torchrun --nproc_per_node=N train_det.py --cfg configs/det/det_P31_v3.yaml
+
+OUTPUT_DIR: outputs/det
+
+DATASET:
+  ROOT: /ailab_mat2/Projects/Drone/DATA/260618_poongsan
+  ANNOTATION_TRAIN: /ailab_mat2/Projects/Drone/DATA/260618_poongsan/_det_splits/det_train_v3.json
+  ANNOTATION_VAL:   /ailab_mat2/Projects/Drone/DATA/260618_poongsan/_det_splits/det_test_v3.json
+  MODALITY_KEYS:
+    img:     rgb
+    thermal: thermal_aligned
+    lidar:   depth_map_lidar
+  MODALS: ['img', 'lidar', 'thermal']
+  REQUIRE_ALL_MODALITIES: true
+  IMG_SIZE: [1024, 1024]
+  MIN_AREA: 16.0
+  RESIZE_MODE: letterbox
+  DROP_EMPTY: true
+  AUG:
+    ENABLE: true
+    HFLIP_PROB: 0.5
+    BRIGHTNESS_RANGE: [0.6, 1.4]
+    CONTRAST_RANGE: [0.7, 1.3]
+    CROP_PROB: 0.5
+    CROP_SCALE: [0.7, 1.0]
+
+MODEL:
+  SEG_MODEL: LoRA_Sam_P31_Det          # P31.1 backbone (RBMA + calibrated reliability + decisive router)
+  DET_MODEL: MemorySAMDetectorP30      # reliability-router fusion + FCOS primary
+  SEG_CHECKPOINT: ''                   # ← P31.1 seg ckpt warm-start 권장 (calibrated T·LoRA)
+  SAM2_CHECKPOINT: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt
+  SAM2_CONFIG: sam2_hiera_b+.yaml
+  LORA_R: 4
+  AMF_MODE: uniform
+  N_CLASSES: null
+  FPN_CHANNELS: [32, 64, 256]
+  FPN_STRIDES: [4, 8, 16]
+  HIDDEN_DIM: 256
+  N_CONVS: 4
+  FREEZE_BACKBONE: false
+  TRAIN_MEMORY: true
+  GRAD_CHECKPOINT: true                # AMP off → 활성메모리 절감
+
+  # P31 backbone kwargs (rbma_log_temp 생성 위해 rbma_calibrate 필요)
+  BACKBONE_KWARGS:
+    rbma_calibrate: true
+    unfreeze_last_n_blocks: 0          # >0은 optimizer LR-group 이식 후
+
+  # ── P31.1 detector ──
+  PRIMARY_HEAD: fcos                   # FCOS primary (query off)
+  USE_FCOS_AUX: true                   # (fcos primary라 항상 FCOS head 빌드)
+  USE_QUERY_AUX: false                 # query decoder 완전 제외
+  USE_CALIBRATED_RELIABILITY: true     # backbone rbma_log_temp 적용
+  ROUTER_REG_MODE: decisive            # uniform 융합 해소
+  ROUTER_ANCHOR_LAMBDA: 1.0
+  ROUTER_REG_LAMBDA: 0.1               # decisive reg 가산
+  ASSIGNER: atss
+  ATSS_TOPK: 9
+  ATSS_SCALE: 8.0
+  W_FCOS: 1.0
+
+TRAIN:
+  EPOCHS: 40
+  BATCH_SIZE: 2
+  VAL_BATCH_SIZE: 2
+  GRAD_ACCUM_STEPS: 1
+  LR: 0.0002
+  WEIGHT_DECAY: 0.0005
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 5
+  NUM_WORKERS: 4
+  AMP: false                           # full fp32 — P30-Det NaN 근절, /T_i overflow 방지
+
+WANDB:
+  ENABLE: true
+  PROJECT: p31-det
+  ENTITY: null
+  VIZ_COUNT: 8
+  VIZ_SCORE_THRESH: 0.3
+
+EVAL:
+  NMS_THRESH: 0.6
+  SCORE_THRESH: 0.05

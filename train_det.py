@@ -154,6 +154,7 @@ def build_seg_model(cfg: dict, device: torch.device) -> torch.nn.Module:
         cfg['MODEL'].get('LORA_R', 4),
         num_modalities=len(modals),
         amf_mode=cfg['MODEL'].get('AMF_MODE', 'uniform'),
+        **cfg['MODEL'].get('BACKBONE_KWARGS', {}),   # P31: rbma_calibrate, unfreeze_last_n_blocks, ...
     )
 
     # Optional warm-start from a segmentation checkpoint (LoRA/decoder weights).
@@ -471,6 +472,10 @@ def main():
             use_fcos_aux=cfg['MODEL'].get('USE_FCOS_AUX', True),
             w_query=cfg['MODEL'].get('W_QUERY', 1.0),
             w_fcos=cfg['MODEL'].get('W_FCOS', 1.0),
+            primary_head=cfg['MODEL'].get('PRIMARY_HEAD', 'query'),
+            use_calibrated_reliability=cfg['MODEL'].get('USE_CALIBRATED_RELIABILITY', False),
+            router_reg_mode=cfg['MODEL'].get('ROUTER_REG_MODE', 'diversity'),
+            use_query_aux=cfg['MODEL'].get('USE_QUERY_AUX', False),
         ).to(device)
     else:
         model = MemorySAMDetector(

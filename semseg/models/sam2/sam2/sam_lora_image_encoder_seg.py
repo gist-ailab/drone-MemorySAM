@@ -8526,3 +8526,26 @@ class LoRA_Sam_P31(LoRA_Sam_P30):
                     al, gt_mask.long(), ignore_index=255)
         self._p31_aux_stash = None
         return out
+
+
+class LoRA_Sam_P31_Det(LoRA_Sam_P31):
+    """
+    LoRA_Sam_P31_Det — P31.1 backbone repurposed for object detection.
+
+    계보: `LoRA_Sam_P31_Det(LoRA_Sam_P31)` — RBMA + P31.1의 calibrated reliability
+    (per-modal learnable temperature `rbma_log_temp`) + decisive router + backbone
+    부분 unfreeze를 그대로 상속. detection feature 경로는 P27에서 상속한
+    `extract_det_features()` (fpn0/fpn1/mem + per-modal seg output). downstream
+    `MemorySAMDetectorP30`(primary_head='fcos', use_calibrated_reliability=True,
+    router_reg_mode='decisive')가 이를 소비한다.
+
+    **calibrated reliability**: detector는 `self.rbma_log_temp`(있으면)를 읽어
+    reliability = 1 − H(softmax(seg_output_i / T_i))/logC 로 계산 (P30-Det의 raw
+    1−H/logC 대비 event/lidar anti-calibration 수리). T_i는 P31.1 seg 학습에서
+    보정되므로 **P31.1 seg 체크포인트 warm-start**(SEG_CHECKPOINT)가 권장된다.
+
+    P31.1 교훈 반영: object-query decoder를 최종 출력으로 쓰지 않음(FCOS primary).
+    calibration/CTD aux loss는 seg-GT 의존이라 detection-only 학습에선 비활성
+    (backbone은 seg warm-start로 보정 흡수).
+    """
+    pass

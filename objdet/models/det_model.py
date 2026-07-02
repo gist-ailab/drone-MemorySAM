@@ -299,6 +299,11 @@ class MemorySAMDetectorP30(nn.Module):
         use_fcos_aux: bool = True,
         w_query: float = 1.0,
         w_fcos: float = 1.0,
+        # ── P31.1 extensions ──
+        primary_head: str = 'query',              # 'query' (P30) | 'fcos' (P31.1)
+        use_calibrated_reliability: bool = False,  # apply backbone rbma_log_temp (P31.1 Seg-A)
+        router_reg_mode: str = 'diversity',       # 'diversity' (P30) | 'decisive' (P31 Lever②)
+        use_query_aux: bool = False,              # keep query decoder as aux when fcos primary
     ):
         super().__init__()
         if not hasattr(seg_model, 'extract_det_features'):
@@ -318,6 +323,12 @@ class MemorySAMDetectorP30(nn.Module):
         self.w_fcos = w_fcos
         self.router_reg_lambda = router_reg_lambda
         self._levels = len(fpn_in_channels)
+        # P31.1
+        self.primary_head = primary_head
+        self.use_calibrated_reliability = use_calibrated_reliability
+        self.use_query_aux = use_query_aux
+        self._build_fcos = use_fcos_aux or primary_head == 'fcos'
+        self._build_query = primary_head == 'query' or use_query_aux
 
         # ── Backbone trainability (indoor domain shift → fine-tune) ──
         if freeze_backbone:
@@ -327,24 +338,26 @@ class MemorySAMDetectorP30(nn.Module):
             for p in self.seg_model.sam.memory_attention.parameters():
                 p.requires_grad = True
 
-        # ① per-level reliability-anchored modality router
+        # ① per-level reliability-anchored modality router (P31 Lever②: decisive reg)
         self.routers = nn.ModuleList([
             ReliabilityAnchoredRouter(
                 in_ch=c, num_modalities=self.n_modals, num_classes=1,
-                per_class=False, anchor_lambda=router_anchor_lambda)
+                per_class=False, anchor_lambda=router_anchor_lambda,
+                reg_mode=router_reg_mode)
             for c in fpn_in_channels
         ])
 
         self.neck = FPNNeck(in_channels=fpn_in_channels, out_channels=fpn_out)
 
-        # ② primary object-query decoder on the fused (memory-conditioned) coarse level
-        self.query_decoder = ObjectQueryDecoder(
-            in_ch=fpn_out, n_classes=n_classes, num_queries=num_queries,
-            dim=query_dim, heads=query_heads, n_layers=query_layers)
-        self.set_criterion = SetCriterion(n_classes, HungarianMatcher())
+        # object-query decoder — P30 primary / P31.1 optional aux (default OFF for fcos primary)
+        if self._build_query:
+            self.query_decoder = ObjectQueryDecoder(
+                in_ch=fpn_out, n_classes=n_classes, num_queries=num_queries,
+                dim=query_dim, heads=query_heads, n_layers=query_layers)
+            self.set_criterion = SetCriterion(n_classes, HungarianMatcher())
 
-        # FCOS aux head + loss (shares the fused FPN)
-        if use_fcos_aux:
+        # FCOS head + loss — P31.1 PRIMARY (proven, small-object, stable) / P30 aux
+        if self._build_fcos:
             self.det_head = FCOSHead(
                 fpn_channels=[fpn_out] * self._levels, n_classes=n_classes,
                 n_convs=n_convs, hidden_dim=hidden_dim, fpn_strides=fpn_strides,
@@ -362,10 +375,12 @@ class MemorySAMDetectorP30(nn.Module):
         return [sample[m] for m in self.modals]
 
     @staticmethod
-    def _reliability(seg_output_i: torch.Tensor) -> torch.Tensor:
-        """training-free per-modality reliability = 1 − H(softmax)/logC → (B,1,H,W)."""
+    def _reliability(seg_output_i: torch.Tensor, temp=None) -> torch.Tensor:
+        """training-free per-modality reliability = 1 − H(softmax(logits/T))/logC → (B,1,H,W).
+        temp (P31.1 calibrated): per-modal learned temperature from the backbone."""
         c = seg_output_i.shape[1]
-        p = F.softmax(seg_output_i, dim=1)
+        logits = seg_output_i if temp is None else seg_output_i / temp
+        p = F.softmax(logits, dim=1)
         ent = -(p * (p + 1e-8).log()).sum(dim=1, keepdim=True) / math.log(max(c, 2))
         return 1.0 - ent
 
@@ -379,8 +394,12 @@ class MemorySAMDetectorP30(nn.Module):
         with grad_ctx:
             feats = self.seg_model.extract_det_features(batched_input)
         per_level = [feats['fpn0'], feats['fpn1'], feats['mem']]   # each: list over modalities
-        # per-modality reliability (B,1,Hseg,Wseg)
-        rels = [self._reliability(o) for o in feats['output']]     # m × (B,1,h,w)
+        # per-modality reliability (B,1,Hseg,Wseg) — P31.1: apply calibrated temperature
+        temps = None
+        if self.use_calibrated_reliability and hasattr(self.seg_model, 'rbma_log_temp'):
+            temps = self.seg_model.rbma_log_temp.exp().clamp(0.05, 20.0)   # (m,)
+        rels = [self._reliability(o, None if temps is None else temps[i])
+                for i, o in enumerate(feats['output'])]                    # m × (B,1,h,w)
 
         fused, reg_sum = [], 0.0
         for lvl, feats_m in enumerate(per_level):
@@ -393,8 +412,55 @@ class MemorySAMDetectorP30(nn.Module):
             reg_sum = reg_sum + reg
         return self.neck(fused), reg_sum / max(self._levels, 1)
 
+    def _query_targets(self, gt_bboxes, gt_labels):
+        targets = []
+        for b in range(len(gt_bboxes)):
+            boxes = gt_bboxes[b].float()
+            boxes = box_xyxy_to_cxcywh(boxes) / self.img_size if boxes.numel() > 0 else boxes.reshape(0, 4)
+            targets.append({'labels': gt_labels[b].long(), 'boxes': boxes})
+        return targets
+
+    def _decode_fcos(self, fpn_features):
+        head_out = self.det_head(fpn_features)
+        locations = self.det_head.get_locations(fpn_features, fpn_features[0].device)
+        results = self.det_head.decode_predictions(
+            head_out['cls_logits'], head_out['bbox_pred'], head_out['centerness'], locations)
+        final = []
+        for boxes, scores, cls_ids in results:
+            if boxes.shape[0] > 0:
+                keep = batched_nms(boxes, scores, cls_ids, iou_threshold=0.6)
+                final.append({'boxes': boxes[keep], 'scores': scores[keep], 'class_ids': cls_ids[keep]})
+            else:
+                final.append({'boxes': boxes, 'scores': scores, 'class_ids': cls_ids})
+        return {'detections': final}
+
+    def _forward_fcos_primary(self, fpn_features, router_reg, gt_bboxes, gt_labels):
+        """P31.1: FCOS dense head is the PRIMARY output (query decoder off/aux)."""
+        if not (self.training and gt_bboxes is not None):
+            return self._decode_fcos(fpn_features)
+        head_out = self.det_head(fpn_features)
+        locations = self.det_head.get_locations(fpn_features, fpn_features[0].device)
+        floss = self.criterion(head_out['cls_logits'], head_out['bbox_pred'],
+                               head_out['centerness'], locations, gt_bboxes, gt_labels)
+        total = self.w_fcos * floss['loss_total']
+        losses = {'loss_cls': floss['loss_cls'], 'loss_reg': floss['loss_reg'],
+                  'loss_ctr': floss['loss_ctr'], 'n_pos': floss['n_pos']}
+        if self.use_query_aux:
+            qloss = self.set_criterion(self.query_decoder(fpn_features[-1]),
+                                       self._query_targets(gt_bboxes, gt_labels))
+            total = total + self.w_query * qloss['loss_query_total']
+            losses.update({f'q_{k}': v for k, v in qloss.items()})
+        if self.router_reg_lambda > 0:
+            total = total - self.router_reg_lambda * router_reg
+            losses['loss_router_reg'] = router_reg.detach()
+        losses['loss_total'] = total
+        return losses
+
     def forward(self, sample, gt_bboxes=None, gt_labels=None):
         fpn_features, router_reg = self.extract_fused_fpn(sample)
+
+        if self.primary_head == 'fcos':
+            return self._forward_fcos_primary(fpn_features, router_reg, gt_bboxes, gt_labels)
 
         # ② primary query head on the fused coarse (memory-conditioned) level
         query_out = self.query_decoder(fpn_features[-1])
@@ -456,18 +522,17 @@ class MemorySAMDetectorP30(nn.Module):
         return [p for p in self.parameters() if p.requires_grad]
 
     def detector_state_dict(self) -> dict:
-        state = {
-            'routers': self.routers.state_dict(),
-            'neck': self.neck.state_dict(),
-            'query_decoder': self.query_decoder.state_dict(),
-        }
-        if self.use_fcos_aux:
+        state = {'routers': self.routers.state_dict(), 'neck': self.neck.state_dict()}
+        if self._build_query:
+            state['query_decoder'] = self.query_decoder.state_dict()
+        if self._build_fcos:
             state['det_head'] = self.det_head.state_dict()
         return state
 
     def load_detector_state_dict(self, state: dict):
         self.routers.load_state_dict(state['routers'])
         self.neck.load_state_dict(state['neck'])
-        self.query_decoder.load_state_dict(state['query_decoder'])
-        if self.use_fcos_aux and 'det_head' in state:
+        if self._build_query and 'query_decoder' in state:
+            self.query_decoder.load_state_dict(state['query_decoder'])
+        if self._build_fcos and 'det_head' in state:
             self.det_head.load_state_dict(state['det_head'])
