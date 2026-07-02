@@ -70,6 +70,25 @@ P5(coarse/mem) 레벨 융합 가중치 (6장 평균): **img 0.879 · lidar 8.7e-
 - ⇒ **RBMA(신뢰도 zero-mean 센터링 → bias≈0)와 reliability-anchored router(anchor 균일 → 무의미)가 동시에 inert.** 융합은 결국 router의 학습된 conv head가 만든 **고정 RGB-우위 가중치**. 제안 노벨티의 "reliability" 축이 작동하지 않는 정량적 증거.
 - 처방(정정): RBMA/router를 살리려면 **per-modal decoder의 confidence calibration**(temperature/entropy penalty)으로 reliability 포화부터 해소해야 함.
 
+## 6c. Router 융합은 **non-adaptive** (입력 적응 안 함) — 정량
+24장에 걸친 router 가중치 통계 (mean±std, 이미지 간 변동):
+
+| FPN level | img | lidar | thermal | 변동성 |
+|---|---|---|---|---|
+| P3 (fine, s4) | 0.000±0.000 | **0.992±0.002** | 0.008±0.002 | 사실상 상수 |
+| P4 (mid, s8) | 0.219±0.021 | 0.008±0.001 | **0.773±0.020** | 사실상 상수 |
+| **P5 (coarse, query-decoder 입력)** | **0.879±0.027** | 5.8e-8±1e-7 | 0.121±0.027 | **CV 3.0%, span 0.10** |
+
+- **각 레벨 가중치가 입력 이미지와 무관하게 거의 상수**(P5 img CV=3%, lidar는 24장 전부 <1e-6). reliability가 전모달 포화(§6b)라 anchor가 무의미 → router의 학습 conv head가 **레벨별 고정 모달 배정**으로 수렴: **P3=LiDAR(0.99) / P4=thermal(0.77) / P5=RGB(0.88)**.
+- 즉 제안한 "reliability-anchored **adaptive** fusion"이 **적응성을 상실**하고 정적 배정으로 붕괴. object-query decoder가 쓰는 P5에서 LiDAR≈0·RGB우위 고정 → 소형객체(thermal/lidar 유리) 정보가 주 검출경로에 반영 안 됨 = 소형객체 붕괴(§2)와 인과적으로 연결.
+- **처방**: reliability 포화 해소(per-modal decoder calibration) 없이는 router가 adaptive해질 수 없음. 또는 router에 입력 의존 gating(스칼라 아닌 공간적/조건적) 도입.
+
+**이 수치들이 기록된 위치**:
+- per-image 원시 수치: `p30_feature_probe_full/probe_stats.json` → 각 항목 `router_weights.level{0,1,2}` = `[img,lidar,thermal]` (24장).
+- per-image raw 텐서: `p30_feature_probe_full/raw/<image_id>.npz` → `router_level{0,1,2}`, `mem_*`, `rel_*`, `det_*`.
+- 집계 시각화: `p30_feature_probe_full/summary.png` (좌상단 "router P5 weight" boxplot).
+- (canonical) `/mnt/HDD2/src/logs/P29_vs_P30_v2_20260702/` · (git) `.claude_logs/det_eval/p30_feature_probe/` · (hinton) `~/src/dm_eval/out_probe_p30_ep39_full/`.
+
 ## 7. 시각화 · raw 산출물
 - **panel 24장** `p30_feature_probe_full/panel_*.png` (검출뷰: **GT=빨강 점선, pred=녹색**).
 - **summary.png**: 24장 aggregate(router/mem-rank/cosine/norm/det수/reliability).
