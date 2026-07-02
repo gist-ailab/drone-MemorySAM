@@ -1,3 +1,27 @@
+# === drone-MemorySAM project rules (2026-06 hierarchy cleanup) ===============================================
+# LaTeX build artifacts (keep only .tex/.bib/.pdf in _paper/ _challenge_report/)
+*.aux
+*.bbl
+*.blg
+*.brf
+*.bcf
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.run.xml
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+# vendored SAM2/SAM3 upstream demo/example material (re-fetch from upstream if needed)
+semseg/models/sam2/demo/
+semseg/models/sam2/notebooks/
+semseg/models/sam2/sav_dataset/*.ipynb
+semseg/models/sam3/examples/*.ipynb
+semseg/models/sam3/assets/*.gif
+
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
 *.jpg
 *.jpeg
@@ -270,7 +294,6 @@ docs/
 
 thermal_*/
 tmp/
-run_sam.sh
 
 # Claude Code local files (per-machine settings, worktrees) — never commit
 /.claude/
