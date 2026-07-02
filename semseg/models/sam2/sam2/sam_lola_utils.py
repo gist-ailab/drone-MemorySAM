@@ -816,15 +816,28 @@ class ReliabilityAnchoredRouter(nn.Module):
     The learned conv head is zero-init → at start w is purely reliability-driven (no
     collapse), then learns the ratios end-to-end. per_class=True → per-class weights
     (K=num_classes) so a class can route to the modality that sees it (revive event/LiDAR);
-    else scalar (K=1). Returns (w: (m,B,K,h,w), reg: mean modality-mixing entropy)."""
+    else scalar (K=1). Returns (w: (m,B,K,h,w), reg: reward term the trainer SUBTRACTS).
+
+    reg_mode (P31): the measured P28/P29 fusion weights were near-uniform
+    ([.27,.28,.23,.23] vs true drop-Δ contribution [8.4,23.5,0.02,0.01] — doc 16 §7,
+    "router does not adaptively select modalities"), and the original 'diversity' reward
+    (maximize per-pixel mixing entropy) actively pushes TOWARD uniform.
+      - 'diversity' (P30 default, unchanged): reg = per-pixel modality-mixing entropy.
+      - 'decisive' (P31): reg = batch-marginal entropy − per-pixel entropy → the router is
+        rewarded for committing per pixel/class (low local entropy = adaptive selection)
+        while keeping all modalities used on average (high marginal entropy = no global
+        single-modality collapse). Same confident+diverse pairing as the SDC loss.
+    Stashes `self._last_w_mean` (per-modality mean weight, (m,)) for monitoring."""
 
     def __init__(self, in_ch, num_modalities, num_classes=1, per_class=False,
-                 anchor_lambda=1.0, hidden=64):
+                 anchor_lambda=1.0, hidden=64, reg_mode='diversity'):
         super().__init__()
         self.m = num_modalities
         self.per_class = per_class
         self.K = num_classes if per_class else 1
         self.anchor_lambda = anchor_lambda
+        self.reg_mode = reg_mode
+        self._last_w_mean = None
         self.heads = nn.ModuleList([
             nn.Sequential(nn.Conv2d(in_ch, hidden, 1), nn.ReLU(inplace=True),
                           nn.Conv2d(hidden, self.K, 1))
@@ -840,7 +853,16 @@ class ReliabilityAnchoredRouter(nn.Module):
             rb = reliability if reliability.shape[2] == self.K else reliability.expand(-1, -1, self.K, -1, -1)
             logits = logits + self.anchor_lambda * rb
         w = F.softmax(logits, dim=0)                         # over modality
-        reg = -(w * (w + 1e-8).log()).sum(dim=0).mean()      # modality-entropy (higher = more mixing)
+        ent_pix = -(w * (w + 1e-8).log()).sum(dim=0).mean()  # per-pixel modality-mixing entropy
+        if self.reg_mode == 'decisive':
+            # [P31] reward = marginal entropy − pixel entropy: commit locally, stay
+            # diverse globally (fixes the near-uniform routing measured in doc 16 §7).
+            w_bar = w.mean(dim=(1, 3, 4))                    # (m, K) batch+space marginal
+            ent_bar = -(w_bar * (w_bar + 1e-8).log()).sum(dim=0).mean()
+            reg = ent_bar - ent_pix
+        else:
+            reg = ent_pix                                    # 'diversity' (P30 default)
+        self._last_w_mean = w.detach().float().mean(dim=(1, 2, 3, 4)).cpu()  # (m,)
         return w, reg
 
 
@@ -878,6 +900,76 @@ class ClassTokenDecoder(nn.Module):
         k = self.kernel(q)                                   # (B, C, dim)
         p = self.pix(f)                                      # (B, dim, h, w)
         masks = torch.einsum('bcd,bdhw->bchw', k, p)         # (B, C, h, w)
+        return masks
+
+
+class ClassTokenDecoderMS(ClassTokenDecoder):
+    """[P31] Multi-scale high-res class-token decoder (doc 20 Seg-C).
+
+    Extends the P30 ClassTokenDecoder along two axes identified in the P28/P29 failure
+    analysis (doc 16: m_feat@32ch single low-res query → thin-class boundary muffle):
+
+    ① simple-FPN pyramid (ViTDet recipe): the fused RBMA memory feature (stride-4) is
+       expanded into a {4,8,16,32} pyramid with stride-2 convs; class tokens cross-attend
+       every level coarse→fine (one attn+FFN block per level, learned scale embedding).
+    ② learned-upsample pixel branch (ClassTokenDecoderHR recipe): the dynamic-kernel
+       dot-product runs on a ConvTranspose2d(×up) high-res pixel embed instead of relying
+       on the caller's bilinear upsample — recovers thin-class boundaries.
+    ③ training-only auxiliary per-pixel CE head @H/4 (GOOSE-M2F recipe): a 1×1 conv on the
+       stride-4 pixel embed, exposed as `self.last_aux_logits` (None at inference; the
+       head adds no inference cost). Fixes thin-class gradient starvation.
+
+    Drop-in replacement: same `forward(feat) -> (B, num_classes, h*up, w*up)` contract as
+    the base class (the P30 caller interpolates to output size transparently).
+    NOTE: the base class' single-scale `cross_attn`/`n2` remain unused here (DDP runs with
+    find_unused_parameters=True); kept so base-class checkpoints partially load."""
+
+    def __init__(self, feat_ch, num_classes, dim=128, heads=4, ffn=256,
+                 up=2, num_scales=4, aux_ce=True):
+        super().__init__(feat_ch, num_classes, dim=dim, heads=heads, ffn=ffn)
+        self.up = up
+        self.num_scales = num_scales
+        # ① simple-FPN downsample chain: stride-4 → {8, 16, 32}
+        self.downs = nn.ModuleList([
+            nn.Sequential(nn.Conv2d(dim, dim, 3, stride=2, padding=1),
+                          nn.GroupNorm(8, dim), nn.GELU())
+            for _ in range(num_scales - 1)])
+        self.scale_embed = nn.Parameter(torch.zeros(num_scales, dim))
+        self.ms_cross = nn.ModuleList([
+            nn.MultiheadAttention(dim, heads, batch_first=True) for _ in range(num_scales)])
+        self.ms_norm = nn.ModuleList([nn.LayerNorm(dim) for _ in range(num_scales)])
+        self.ms_ffn = nn.ModuleList([
+            nn.Sequential(nn.Linear(dim, ffn), nn.GELU(), nn.Linear(ffn, dim))
+            for _ in range(num_scales)])
+        self.ms_ffn_norm = nn.ModuleList([nn.LayerNorm(dim) for _ in range(num_scales)])
+        # ② learned high-res pixel branch
+        self.up_conv = nn.ConvTranspose2d(dim, dim, kernel_size=up, stride=up) if up > 1 else None
+        # ③ training-only aux CE head @ stride-4
+        self.aux_head = nn.Conv2d(dim, num_classes, 1) if aux_ce else None
+        self.last_aux_logits = None
+
+    def forward(self, feat):
+        # feat: (B, feat_ch, h, w) fused stride-4 feature → (B, C, h*up, w*up) class logits
+        B = feat.shape[0]
+        f = self.proj(feat)                                   # (B, dim, h, w) stride-4 embed
+        pyr = [f]
+        for down in self.downs:
+            pyr.append(down(pyr[-1]))                         # stride 8, 16, 32
+        q = self.class_tokens.unsqueeze(0).expand(B, -1, -1)  # (B, C, dim)
+        q = self.n1(q + self.self_attn(q, q, q)[0])
+        for s in range(self.num_scales):                      # coarse → fine
+            lvl = self.num_scales - 1 - s
+            mem = pyr[lvl].flatten(2).permute(0, 2, 1) + self.scale_embed[lvl]
+            q = self.ms_norm[s](q + self.ms_cross[s](q, mem, mem)[0])
+            q = self.ms_ffn_norm[s](q + self.ms_ffn[s](q))
+        q = self.n3(q + self.ffn(q))
+        k = self.kernel(q)                                    # (B, C, dim)
+        p = self.pix(f)                                       # (B, dim, h, w)
+        self.last_aux_logits = (self.aux_head(p)
+                                if (self.aux_head is not None and self.training) else None)
+        if self.up_conv is not None:
+            p = self.up_conv(p)                               # (B, dim, h*up, w*up)
+        masks = torch.einsum('bcd,bdhw->bchw', k, p)          # (B, C, h*up, w*up)
         return masks
 
 

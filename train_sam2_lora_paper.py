@@ -51,6 +51,7 @@ QUALITY_GATE_MODELS = (
     'LoRA_Sam_P28',
     'LoRA_Sam_P29',
     'LoRA_Sam_P30',
+    'LoRA_Sam_P31',
 )
 
 
@@ -635,6 +636,21 @@ def main(cfg, gpu, save_dir):
         model_kwargs['router_per_class'] = rtr.get('PER_CLASS', False)
         model_kwargs['router_anchor_lambda'] = rtr.get('ANCHOR_LAMBDA', 1.0)
         model_kwargs['num_classes'] = trainset.n_classes
+    if 'ctd_multi_scale' in sig.parameters:
+        # [P31] calibrated dual-reliability RBMA + multi-scale HR class-token decoder
+        ctd = model_cfg.get('CLASS_TOKEN_DECODER', {}) or {}
+        calib = model_cfg.get('RBMA_CALIB', {}) or {}
+        rtr = model_cfg.get('LEARNED_ROUTER', {}) or {}
+        model_kwargs['ctd_multi_scale'] = ctd.get('MULTI_SCALE', False)
+        model_kwargs['ctd_up'] = ctd.get('UP', 2)
+        model_kwargs['ctd_aux_ce'] = ctd.get('AUX_CE', True)
+        model_kwargs['rbma_calibrate'] = calib.get('ENABLE', False)
+        model_kwargs['consistency_bias'] = calib.get('CONSISTENCY_BIAS', False)
+        model_kwargs['lambda_cons_init'] = calib.get('LAMBDA_CONS_INIT', 0.5)
+        model_kwargs['amf_reliability'] = calib.get('AMF_RELIABILITY', False)
+        model_kwargs['amf_rel_tau'] = calib.get('AMF_REL_TAU', 0.25)
+        model_kwargs['unfreeze_last_n_blocks'] = model_cfg.get('UNFREEZE_LAST_N_BLOCKS', 0)
+        model_kwargs['router_reg_mode'] = rtr.get('REG_MODE', 'diversity')
     if 'lambda_bias_init' in sig.parameters:
         # [P27] Learnable attention-bias scalar initial value
         quality_cfg = model_cfg.get('QUALITY_GATE', {})
@@ -717,8 +733,17 @@ def main(cfg, gpu, save_dir):
     lambda_sdc = (cfg['MODEL'].get('SDC', {}) or {}).get('LAMBDA', 0.1)
     # [P30] router diversity reg weight (encourage modality mixing; MODEL.LEARNED_ROUTER.REG_LAMBDA)
     lambda_router = (cfg['MODEL'].get('LEARNED_ROUTER', {}) or {}).get('REG_LAMBDA', 0.01)
+    # [P31] RBMA calibration loss weight (MODEL.RBMA_CALIB.LAMBDA)
+    lambda_cal = (cfg['MODEL'].get('RBMA_CALIB', {}) or {}).get('LAMBDA', 0.1)
+    # [P31] class-token-decoder aux CE weight @H/4 (MODEL.CLASS_TOKEN_DECODER.AUX_CE_WEIGHT)
+    lambda_ctd_aux = (cfg['MODEL'].get('CLASS_TOKEN_DECODER', {}) or {}).get('AUX_CE_WEIGHT', 0.4)
     start_epoch = 0
-    optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
+    # [P31] unfrozen backbone blocks train at a reduced LR (full LR would wreck pretrained Hiera)
+    unfreeze_lr_scale = cfg['MODEL'].get('UNFREEZE_LR_SCALE', 0.1) \
+        if cfg['MODEL'].get('UNFREEZE_LAST_N_BLOCKS', 0) > 0 else 1.0
+    optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'],
+                              backbone_lr_scale=unfreeze_lr_scale,
+                              backbone_prefix='sam.image_encoder.trunk.blocks')
     scheduler = get_scheduler(
         sched_cfg['NAME'], 
         optimizer, 
@@ -978,6 +1003,11 @@ def main(cfg, gpu, save_dir):
                 # [P30] router diversity reg: maximize modality-mixing entropy → subtract
                 _rreg = getattr(_core, '_router_reg', None)
                 router_loss = (-_rreg) if _rreg is not None else torch.tensor(0.0, device=device)
+                # [P31] RBMA calibration loss + class-token-decoder aux CE (model stashes
+                # both into gate_loss_data; absent for P24–P30)
+                _zero = torch.tensor(0.0, device=device)
+                rbma_cal_loss = gate_loss_data.get('rbma_cal_loss', _zero) if gate_loss_data else _zero
+                ctd_aux_loss = gate_loss_data.get('ctd_aux_ce', _zero) if gate_loss_data else _zero
 
                 # Aggregate
                 total_loss_unscaled = (loss_orig + protoloss
@@ -987,7 +1017,9 @@ def main(cfg, gpu, save_dir):
                                        + lambda_gate * quality_gate_loss
                                        + lambda_aux_ce * aux_ce_loss
                                        + lambda_sdc * sdc_loss
-                                       + lambda_router * router_loss)
+                                       + lambda_router * router_loss
+                                       + lambda_cal * rbma_cal_loss
+                                       + lambda_ctd_aux * ctd_aux_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)

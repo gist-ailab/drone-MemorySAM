@@ -1,6 +1,28 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-06-30
+> 최종 업데이트: 2026-07-02
+
+## P31 — Calibrated Dual-Reliability RBMA + Multi-scale HR Class-Token Decoding (2026-07-02)
+
+**상태**: **구현 완료 (학습 대기, B200 타깃)**. 계보: `LoRA_Sam_P31(LoRA_Sam_P30)` — P30(CTD/router)+P29(SDC)+RBMA 상속. 설계 근거 = `20_p31_design_proposal.md`(P31-Seg core ①②) + `16_failure_analysis_P28_P29.md` §7 정량 진단. 전 기구 config-gated (전부 OFF → P30 byte-identical). config `configs/b200-deliver_rgbdel_P31_physaug.yaml`.
+
+**동기 (doc 16 §7 실측)**: ① reliability AUROC [img .77, depth .62, **event .30, lidar .22**] — geometry 모달이 anti-calibrated(틀린 곳에서 과확신) → RBMA bias 신호 무의미. ② 융합 가중치 거의 uniform [.27,.28,.23,.23] vs 실기여 drop-Δ [8.4,23.5,0.02,0.01] → **router가 모달리티를 adaptive하게 선택 못함**(질량 ~45% 낭비, TrafficLight misalloc 0.37). ③ m_feat 단일 저해상(32ch,s4) 질의 → thin-class(Bridge/Water/Wall) 경계 muffle. ④ frozen-backbone ceiling(ISSUE-008): Bridge/Other modal_competence [0,0,0,0].
+
+**기구 (모델 `sam_lora_image_encoder_seg.py` 말미, 유틸 `sam_lola_utils.py`)**:
+- **[Seg-A] RBMA reliability 재보정** (`RBMA_CALIB.ENABLE`): per-modal 학습 temperature `T_i`(rbma_log_temp)로 `rel_i = 1−H(softmax(D_i(f_i)/T_i))/logC` + **correctness-contrastive calibration loss**(틀린 픽셀 entropy↑·맞은 픽셀 entropy↓, 1/4 해상도, `gate_loss_data['rbma_cal_loss']`, weight `RBMA_CALIB.LAMBDA=0.1`) → reliability의 정답 AUROC 직접 최적화. Phase 2.5 aux logits를 `_auxiliary_decode_single` override로 stash(재디코딩 0). 추론 bias는 여전히 GT-free training-free.
+- **[Seg-B] Consistency 2차 bias** (`RBMA_CALIB.CONSISTENCY_BIAS`, **기본 OFF — A 성공(AUROC>0.5) 후 조건부**): `B_cons_i = mean_j Bhattacharyya(p_i,p_j)` centered → `softmax(QKᵀ/√d + λ_ent·B_ent + λ_ent·λ_cons·B_cons)` dual-axis training-free 항. λ_cons 학습 스칼라.
+- **[Seg-A2] Reliability-proportional AMF** (`RBMA_CALIB.AMF_RELIABILITY`, 기본 OFF): 출력 융합 `w=softmax_m(rel/τ)`. learned_router OFF일 때만 유효(우선순위: router > rel-AMF > amf_mode). doc16 §7-2 "보정 후에만 전환" 게이트.
+- **[Seg-C] Multi-scale HR class-token decoder** (`CLASS_TOKEN_DECODER.MULTI_SCALE`): `ClassTokenDecoderMS(ClassTokenDecoder)` — m_feat(s4)에서 simple-FPN {4,8,16,32} 피라미드(ViTDet 레시피) → class token이 coarse→fine cross-attend(scale embed) → **학습형 ConvTranspose ×UP 고해상 pixel-embed**(HR 프로토타입 흡수) + **training-only aux per-pixel CE head @H/4**(GOOSE-M2F, `gate_loss_data['ctd_aux_ce']`, weight `AUX_CE_WEIGHT=0.4`, 추론 비용 0). drop-in 동일 `(feat)` 시그니처, +1.28M params.
+- **[레버①] backbone 부분 unfreeze** (`UNFREEZE_LAST_N_BLOCKS=3`): Hiera trunk 마지막 stage(blocks 21-23) unfreeze — ISSUE-008 구조적 dead-class의 유일 지렛대. optimizer가 `UNFREEZE_LR_SCALE=0.1` 감쇠 LR 그룹으로 분리(`semseg/optimizers.py` backbone_prefix).
+- **[레버②] Router 'decisive' reg** (`LEARNED_ROUTER.REG_MODE: decisive`): 기존 'diversity' reg(mixing-entropy 보상)는 **uniform 방향으로 미는 모순** → `reg = batch-marginal entropy − per-pixel entropy`(per-pixel commit + 전역 다양성; SDC loss와 동형 confident+diverse 쌍). `ReliabilityAnchoredRouter`에 `reg_mode` 추가(기본 'diversity'=P30 불변) + `_last_w_mean` 모니터링 stash.
+
+**trainer 변경**: `QUALITY_GATE_MODELS`+='LoRA_Sam_P31'; `ctd_multi_scale` sig-guard 배선; loss `+λ_cal·rbma_cal_loss + λ_ctd_aux·ctd_aux_ce`; `get_optimizer(backbone_lr_scale, backbone_prefix)` 확장(기본값 = 기존과 byte-identical).
+
+**검증**: py_compile 4파일 PASS + CPU smoke PASS — CTD-MS shape(up=2→2×)/grad(feat·upsampler·aux_head)/aux head training-only, router decisive reg가 "committed-but-diverse > uniform" 순서 확인(diversity reg는 역방향 = 문서화된 결함 재현), calibration loss 유한·T grad 도달, P31 시그니처/오버라이드 체인 확인. **full SAM2 forward는 GPU 미검증**(P30과 동일 단서 — 학습 전 1-GPU sanity 권장).
+
+**Ablation 세트(doc 20)**: RBMA 단일 vs dual-bias / uniform vs rel-proportional AMF / CTD single vs multi-scale / unfreeze 0 vs 3 / router reg diversity vs decisive. 성공 기준: event/lidar AUROC>0.5, router `_last_w_mean` 비uniform, Water/Wall/Bridge/Pole Test IoU 상승.
+
+---
 
 ## P30-Det — P30 백본 detection 확장: Reliability-router 융합 + Object-Query decoder + FCOS aux (2026-06-30)
 

@@ -1,6 +1,6 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-06-27
+> 최종 업데이트: 2026-07-02
 
 ---
 
@@ -25,6 +25,7 @@
 | **SAM3 RBMA (포팅)** | **학습/디버깅 중** (DELIVER 25cls) | ✅6/21 decoder repurpose로 class-collapse 돌파: val 8.49→**16.27@ep22 (상승 중)**. 다음=ep40~60+ 상한 확인 |
 | **P29 (SDC 조건 라우팅)** | **설계 완료 (구현 대기)** | Soft-MoE LoRA 라우팅 비특화 진단 → label-free image-derived 조건 latent+prototype→FiLM gate(헤드라인), RBMA 신뢰도를 라우팅으로 확장(P29-B). 상세 [02_model_arch.md](02_model_arch.md) P29 / 노벨티 [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.7 |
 | **P30 (class-token decoder + reliability-anchored router)** | **구현 완료 (학습 대기, P28 종료 후 GPU 2,3)** | P28 실패분석(rare-class collapse: Water/Bridge=0; event/LiDAR 미사용 Δ≈0) 직격 → ① class-token decoder(SAM3-RBMA class-collapse break 이식, m_feat에 class query cross-attn) ② reliability-anchored 학습 modality router(상수수렴 방지, per-class). 두 모듈 CPU smoke PASS, 모델 wiring compile-only. config `b200-deliver_rgbdel_P30_physaug.yaml`. 상세 [02_model_arch.md](02_model_arch.md) P30 / 노벨티 [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.8 |
+| **P31 (Calibrated Dual-Reliability RBMA + MS-HR class-token decoder)** | **구현 완료 (학습 대기, B200)** — 2026-07-02, 브랜치 `feat/p31-seg` | doc 20 P31-Seg core 우선순위 ①② 구현: [Seg-A] per-modal temperature + correctness-contrastive **calibration loss**(event/LiDAR AUROC .30/.22 수리) / [Seg-C] `ClassTokenDecoderMS`(simple-FPN {4,8,16,32} + 학습형 ConvTranspose HR pixel-embed + training-only aux CE @H/4) / [레버①] Hiera 마지막 3 block unfreeze(LR×0.1) / [레버②] **router 'decisive' reg**(uniform 라우팅 [.27,.28,.23,.23] 해소: per-pixel commit + batch-marginal 다양성) / [Seg-B] consistency 2차 bias·rel-proportional AMF는 config-gated 기본 OFF(A 성공 조건부). py_compile+CPU smoke PASS, full forward GPU 미검증. config `b200-deliver_rgbdel_P31_physaug.yaml`. 상세 [02_model_arch.md](02_model_arch.md) P31 |
 
 **열린 블로커**
 - SAM3 ViT single-scale 한계 → SAM2 P28(val~55) 대비 격차 규명 필요.
