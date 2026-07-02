@@ -7935,11 +7935,15 @@ class LoRA_Sam_P27(LoRA_Sam_P26):
                 amf_stack = torch.stack(q_amf_list, dim=0)
                 amf_norm = amf_stack / amf_stack.sum(dim=0, keepdim=True).clamp(min=1e-6)
 
-            m_output = sum(amf_norm[i] * output[i] for i in range(m))
-
-            # Feature fusion — keep using q_uamm_norm as spatial weight (no UAMM *feat multiplication
-            # inside track_step; this is the final fusion, not the modulation)
-            m_feat = sum(q_uamm_norm[i] * all_backbone_feats[i] for i in range(m))
+            # [P31.2 fix] Route through the overridable _fuse_outputs hook (P26 hook).
+            # P27's original inline fusion bypassed the hook, so LoRA_Sam_P30/P31's
+            # ReliabilityAnchoredRouter override was NEVER executed for P27-lineage
+            # models (P30's 200ep run trained with the router silently inactive —
+            # find_unused_parameters=True masked the dead params). The default hook
+            # body is byte-identical to the previous inline sums (P27/P28/P29 unchanged):
+            #   m_output = Σ amf_norm[i]·output[i];  m_feat = Σ q_uamm_norm[i]·feat[i]
+            m_output, m_feat = self._fuse_outputs(
+                output, all_backbone_feats, q_uamm_norm, amf_norm, m, num_classes)
 
             # Logging
             uamm_scalar = torch.stack(

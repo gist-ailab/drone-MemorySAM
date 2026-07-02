@@ -11,6 +11,7 @@
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-022** | ✅ **해결(2026-07-03)** | **P27.forward가 `_fuse_outputs` 훅 미호출 → P30 learned router 200ep 내내 미실행** (P31.2 훅 호출로 수정; P30 결과 = router 미참여로 재해석) |
 | ISSUE-021 | ✅ 해결 | SAM3-RBMA sem_head BatchNorm→GroupNorm (train/eval 불일치) |
 | ISSUE-020 | ✅ 해결 | SAM3-RBMA sam3.pt 백본 0개 로드(random) prefix remap |
 | ISSUE-019 | ✅ 해결 | P26 entropy NaN (LogBackward gradient explosion) |
@@ -35,6 +36,22 @@
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-022: P27.forward가 `_fuse_outputs` 훅을 호출하지 않음 → P30 learned router 미실행 [해결, 2026-07-03]
+
+**발견 경위**: P31 첫 학습(B200)에서 `[P31] router w̄` 로그 라인이 출력되지 않아 추적 → `p31_routerw_rows`가 빈 상태 = `ReliabilityAnchoredRouter.forward` 미호출.
+
+**원인**: `_fuse_outputs` 훅(P30 router의 진입점)은 **P26.forward에만** 호출부가 있고, P27이 forward 전체를 오버라이드하면서 융합을 **인라인**(`m_output = Σ amf_norm·output; m_feat = Σ q_uamm·feat`)으로 다시 구현함. P28/P29/P30/P31은 P27.forward를 상속 → **P30의 `_fuse_outputs` override(router)는 도달 불가능 코드**였음. DDP `find_unused_parameters=True`가 죽은 router 파라미터를 은폐(에러 0).
+
+**영향**:
+- **P30 B200 200ep 결과(Val 49.76/Test 44.10)는 "CTD+SDC only, router 미참여"로 재해석**해야 함 — 붕괴 범인 후보가 class-token decoder(+SDC)로 좁혀짐. router는 무죄(참여 자체 없음).
+- doc 16 §2의 P30 Mode C/D "메커니즘 ✅" 판정은 코드 정적 분석 기준 — **런타임 도달성 검증 누락**이 교훈.
+
+**수정 (P31.2)**: P27.forward Phase 4의 인라인 융합 2줄을 `self._fuse_outputs(...)` 호출로 교체. P26 기본 훅 본문이 인라인 수식과 byte-identical → P27/P28/P29 행동 불변, P30/P31 router가 비로소 활성화.
+
+**재발 방지**: 훅 패턴 도입 시 **모든 서브클래스 forward의 호출부 존재를 grep으로 확인**할 것 (`grep -n "_fuse_outputs("` → 정의 수 vs 호출 수).
 
 ---
 
