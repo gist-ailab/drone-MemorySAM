@@ -644,6 +644,9 @@ def main(cfg, gpu, save_dir):
         model_kwargs['ctd_multi_scale'] = ctd.get('MULTI_SCALE', False)
         model_kwargs['ctd_up'] = ctd.get('UP', 2)
         model_kwargs['ctd_aux_ce'] = ctd.get('AUX_CE', True)
+        # [P31.1] CTD 강등: 최종 출력은 SAM decoder 유지, CTD는 training-only aux loss
+        # (P30-seg 실측 붕괴 val −13.4/test −10.2 + det E0.1 query-head 유죄에 근거)
+        model_kwargs['ctd_aux_only'] = ctd.get('AUX_ONLY', False)
         model_kwargs['rbma_calibrate'] = calib.get('ENABLE', False)
         model_kwargs['consistency_bias'] = calib.get('CONSISTENCY_BIAS', False)
         model_kwargs['lambda_cons_init'] = calib.get('LAMBDA_CONS_INIT', 0.5)
@@ -737,6 +740,8 @@ def main(cfg, gpu, save_dir):
     lambda_cal = (cfg['MODEL'].get('RBMA_CALIB', {}) or {}).get('LAMBDA', 0.1)
     # [P31] class-token-decoder aux CE weight @H/4 (MODEL.CLASS_TOKEN_DECODER.AUX_CE_WEIGHT)
     lambda_ctd_aux = (cfg['MODEL'].get('CLASS_TOKEN_DECODER', {}) or {}).get('AUX_CE_WEIGHT', 0.4)
+    # [P31.1] 강등된 CTD의 full-res aux seg CE weight (AUX_ONLY 모드에서만 발생)
+    lambda_ctd_seg = (cfg['MODEL'].get('CLASS_TOKEN_DECODER', {}) or {}).get('SEG_CE_WEIGHT', 0.4)
     start_epoch = 0
     # [P31] unfrozen backbone blocks train at a reduced LR (full LR would wreck pretrained Hiera)
     unfreeze_lr_scale = cfg['MODEL'].get('UNFREEZE_LR_SCALE', 0.1) \
@@ -944,6 +949,13 @@ def main(cfg, gpu, save_dir):
         mi_loss_accum = 0.0
         aux_loss_accum = 0.0
         aux_ce_loss_accum = 0.0
+        # [P31] S2 게이트 모니터링: per-modal reliability AUROC/μ/σ + router 평균 가중치
+        p31_cal_accum = 0.0
+        p31_ctd_accum = 0.0
+        p31_auroc_rows = []
+        p31_relmu_rows = []
+        p31_relsd_rows = []
+        p31_routerw_rows = []
        
     
         lr = scheduler.get_lr()
@@ -1008,6 +1020,7 @@ def main(cfg, gpu, save_dir):
                 _zero = torch.tensor(0.0, device=device)
                 rbma_cal_loss = gate_loss_data.get('rbma_cal_loss', _zero) if gate_loss_data else _zero
                 ctd_aux_loss = gate_loss_data.get('ctd_aux_ce', _zero) if gate_loss_data else _zero
+                ctd_seg_loss = gate_loss_data.get('ctd_seg_ce', _zero) if gate_loss_data else _zero
 
                 # Aggregate
                 total_loss_unscaled = (loss_orig + protoloss
@@ -1019,7 +1032,8 @@ def main(cfg, gpu, save_dir):
                                        + lambda_sdc * sdc_loss
                                        + lambda_router * router_loss
                                        + lambda_cal * rbma_cal_loss
-                                       + lambda_ctd_aux * ctd_aux_loss)
+                                       + lambda_ctd_aux * ctd_aux_loss
+                                       + lambda_ctd_seg * ctd_seg_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)
@@ -1068,6 +1082,18 @@ def main(cfg, gpu, save_dir):
             mi_loss_accum += mi_loss.item()
             aux_loss_accum += p13_aux_loss.item() + quality_gate_loss.item()
             aux_ce_loss_accum += aux_ce_loss.item()
+            # [P31] reliability AUROC(게이트) + router 가중치 수집 (모델이 stash)
+            p31_cal_accum += float(rbma_cal_loss)
+            p31_ctd_accum += float(ctd_aux_loss) + float(ctd_seg_loss)
+            _p31_auroc = getattr(_core, '_last_rel_auroc', None)
+            if _p31_auroc is not None:
+                p31_auroc_rows.append(_p31_auroc)
+                _mu, _sd = _core._last_rel_stats
+                p31_relmu_rows.append(_mu)
+                p31_relsd_rows.append(_sd)
+            _p31_rt = getattr(_core, 'router', None)
+            if _p31_rt is not None and getattr(_p31_rt, '_last_w_mean', None) is not None:
+                p31_routerw_rows.append(_p31_rt._last_w_mean.tolist())
 
             desc = (
                 f"Epoch: [{epoch+1}/{epochs}] Iter: [{iter+1}/{iters_per_epoch}] "
@@ -1115,6 +1141,28 @@ def main(cfg, gpu, save_dir):
                 writer.add_scalar('train/aux_ce_loss', aux_ce_loss_accum / (iter + 1), epoch)
             writer.add_scalar('train/lr', avg_lr, epoch)
 
+            # [P31] S2 게이트 로깅: per-modal reliability AUROC(>0.5 목표)·σ(상수화=퇴화 감지)
+            # + router 평균 가중치(uniform 감지). doc 20 "AUROC 선행 게이트"의 측정 구현.
+            _p31_modals = dataset_cfg.get('MODALS', [])
+            if p31_auroc_rows:
+                _auroc_ep = np.nanmean(np.array(p31_auroc_rows, dtype=np.float64), axis=0)
+                _relmu_ep = np.array(p31_relmu_rows, dtype=np.float64).mean(axis=0)
+                _relsd_ep = np.array(p31_relsd_rows, dtype=np.float64).mean(axis=0)
+                _names = (_p31_modals + [f'mod{i}' for i in range(len(_auroc_ep))])[:len(_auroc_ep)]
+                for _i, _n in enumerate(_names):
+                    writer.add_scalar(f'p31/rel_auroc_{_n}', _auroc_ep[_i], epoch)
+                    writer.add_scalar(f'p31/rel_std_{_n}', _relsd_ep[_i], epoch)
+                writer.add_scalar('p31/cal_loss', p31_cal_accum / (iter + 1), epoch)
+                print(f"[P31] rel AUROC {[f'{n}:{a:.3f}' for n, a in zip(_names, _auroc_ep)]} "
+                      f"| rel μ {np.round(_relmu_ep, 3).tolist()} σ {np.round(_relsd_ep, 4).tolist()} "
+                      f"| cal {p31_cal_accum/(iter+1):.4f} ctd {p31_ctd_accum/(iter+1):.4f}")
+            if p31_routerw_rows:
+                _wbar = np.array(p31_routerw_rows, dtype=np.float64).mean(axis=0)
+                _names = (_p31_modals + [f'mod{i}' for i in range(len(_wbar))])[:len(_wbar)]
+                for _i, _n in enumerate(_names):
+                    writer.add_scalar(f'p31/router_w_{_n}', _wbar[_i], epoch)
+                print(f"[P31] router w̄ {[f'{n}:{w:.3f}' for n, w in zip(_names, _wbar)]}")
+
             # wandb: 학습 메트릭 로깅
             if HAS_WANDB and wandb.run is not None:
                 wandb_train = {
@@ -1140,6 +1188,16 @@ def main(cfg, gpu, save_dir):
                         wandb_train["train/warmup_ramp"] = (epoch - wu) / 5.0
                     else:
                         wandb_train["train/warmup_ramp"] = 1.0
+                # [P31] AUROC 게이트 + router 가중치 wandb 로깅
+                if p31_auroc_rows:
+                    for _i, _n in enumerate(_names[:len(_auroc_ep)]):
+                        wandb_train[f"p31/rel_auroc_{_n}"] = float(_auroc_ep[_i])
+                        wandb_train[f"p31/rel_std_{_n}"] = float(_relsd_ep[_i])
+                    wandb_train["p31/cal_loss"] = p31_cal_accum / (iter + 1)
+                    wandb_train["p31/ctd_loss"] = p31_ctd_accum / (iter + 1)
+                if p31_routerw_rows:
+                    for _i, _n in enumerate((_p31_modals + [f'mod{_j}' for _j in range(len(_wbar))])[:len(_wbar)]):
+                        wandb_train[f"p31/router_w_{_n}"] = float(_wbar[_i])
                 wandb.log(wandb_train, step=epoch)
             
             # Plot and save graphs

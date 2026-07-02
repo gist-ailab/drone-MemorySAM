@@ -8296,6 +8296,13 @@ class LoRA_Sam_P31(LoRA_Sam_P30):
        + coarse→fine cross-attend + 학습형 ConvTranspose(×up) 고해상 pixel-embed +
        training-only aux CE head @H/4 (gate_loss_data['ctd_aux_ce']). P30.forward의
        class_decoder(m_feat)+interpolate가 고해상 mask를 투명 처리 (forward 미수정).
+       [P31.1] ctd_aux_only=True → CTD 강등: P30의 "cls_logits가 최종 출력 대체"를
+       우회하고 최종 출력은 SAM decoder 융합(m_output) 유지, CTD는 학습 시 aux CE
+       (gate_loss_data['ctd_seg_ce'])로만 기여(추론 경로 제거). 근거 = P30-seg 실측
+       붕괴(Day-Val 49.76/Test 44.10, P29 대비 −13.4/−10.2) + det E0.1(query head 유죄).
+       [P31.1 로깅] _calibration_loss가 per-modal reliability AUROC/μ/σ를 stash
+       (_last_rel_auroc/_last_rel_stats) → trainer가 epoch마다 tb/wandb 기록
+       (doc 20 "AUROC>0.5 선행 게이트"의 측정 구현; σ→0 = 엔트로피 상수화 퇴화 감지).
 
     학습 레버 (orthogonal, doc 16 ISSUE-008 — frozen-backbone ceiling의 유일한 지렛대):
     ⑤ unfreeze_last_n_blocks: Hiera trunk 마지막 N개 block unfreeze (Bridge/Other
@@ -8315,7 +8322,7 @@ class LoRA_Sam_P31(LoRA_Sam_P30):
                  num_classes=25,
                  rbma_calibrate=False, consistency_bias=False, lambda_cons_init=0.5,
                  amf_reliability=False, amf_rel_tau=0.25,
-                 ctd_multi_scale=False, ctd_up=2, ctd_aux_ce=True,
+                 ctd_multi_scale=False, ctd_up=2, ctd_aux_ce=True, ctd_aux_only=False,
                  unfreeze_last_n_blocks=0, router_reg_mode='diversity'):
         super().__init__(
             sam_model=sam_model, r=r, lora_layer=lora_layer,
@@ -8336,8 +8343,11 @@ class LoRA_Sam_P31(LoRA_Sam_P30):
         self.amf_reliability = amf_reliability
         self.amf_rel_tau = amf_rel_tau
         self.ctd_multi_scale = ctd_multi_scale
+        self.ctd_aux_only = ctd_aux_only
         self._rbma_rel = None            # uncentered reliability stash (m,B,1,hf,wf)
         self._p31_aux_stash = None       # grad-attached per-modal aux logits (training)
+        self._last_rel_auroc = None      # [P31 logging] per-modal reliability AUROC (list of m)
+        self._last_rel_stats = None      # [P31 logging] (means, stds) of reliability per modality
         if rbma_calibrate:
             self.rbma_log_temp = nn.Parameter(torch.zeros(num_modalities))
         if consistency_bias:
@@ -8441,6 +8451,7 @@ class LoRA_Sam_P31(LoRA_Sam_P30):
         valid = gt_ds != 255
         T = self.rbma_log_temp.exp().clamp(min=0.05, max=20.0)
         total = None
+        aurocs, rel_mu, rel_sd = [], [], []
         for i, logits in enumerate(aux_logits_list):
             C = logits.shape[1]
             lg = F.interpolate(logits.float(), size=(Ht, Wt),
@@ -8454,19 +8465,58 @@ class LoRA_Sam_P31(LoRA_Sam_P30):
             l_correct = (ent * correct.float()).sum() / correct.float().sum().clamp(min=1.0)
             li = l_wrong + l_correct
             total = li if total is None else total + li
+            # [P31 logging] doc 20 "AUROC>0.5 선행 게이트"의 측정: reliability(1−H)가
+            # 정답을 rank하는지(Mann-Whitney AUROC) + 퇴화 해(엔트로피 상수화) 감지용 μ/σ.
+            with torch.no_grad():
+                score = (1.0 - ent).detach()[valid].float()
+                lab = correct[valid]
+                n1 = lab.sum().float(); n0 = lab.numel() - lab.sum().float()
+                if n1 > 0 and n0 > 0:
+                    order = score.argsort()
+                    ranks = torch.zeros_like(score)
+                    ranks[order] = torch.arange(1, score.numel() + 1,
+                                                device=score.device, dtype=score.dtype)
+                    auroc = ((ranks[lab].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)).item()
+                else:
+                    auroc = float('nan')
+                aurocs.append(auroc)
+                rel_mu.append(score.mean().item())
+                rel_sd.append(score.std().item())
+        self._last_rel_auroc = aurocs
+        self._last_rel_stats = (rel_mu, rel_sd)
         return total / len(aux_logits_list)
 
     def forward(self, batched_input, multimask_output, gt_mask=None):
         self._rbma_rel = None
         self._p31_aux_stash = ([] if (self.training and gt_mask is not None
                                       and self.rbma_calibrate) else None)
-        out = super().forward(batched_input, multimask_output, gt_mask)
-        # 학습 시 P30 반환 = (cls_logits|m_output, m_feat, gate_loss_data)
+        # [P31.1] CTD 강등(ctd_aux_only): P30의 "cls_logits가 최종 출력을 대체" 경로를 우회.
+        # 근거: P30-seg 실측 붕괴(Day-Val 49.8/Test 44.1 = P29 대비 −13.4/−10.2) + det
+        # E0.1(같은 ckpt에서 query head 0.256 vs FCOS aux 0.431 = head 단독 유죄) →
+        # 경량 query decoder가 SAM decoder 출력을 대체하는 구조가 주범 후보.
+        # aux-only에서 최종 출력 = SAM decoder 융합(m_output), CTD는 학습 시
+        # auxiliary CE(gate_loss_data['ctd_seg_ce'])로만 rare-class gradient를 공급
+        # (추론 경로에서 완전 제거 — GOOSE-M2F류 training-only head와 동일 지위).
+        bypass = self.ctd_aux_only and self.class_token_decoder_enable
+        if bypass:
+            self.class_token_decoder_enable = False
+        try:
+            out = super().forward(batched_input, multimask_output, gt_mask)
+        finally:
+            if bypass:
+                self.class_token_decoder_enable = True
+        # 학습 시 반환 = (cls_logits|m_output, m_feat, gate_loss_data)
         if self.training and len(out) == 3 and isinstance(out[2], dict):
             gate_loss_data = out[2]
             if self.rbma_calibrate and self._p31_aux_stash:
                 gate_loss_data['rbma_cal_loss'] = self._calibration_loss(
                     self._p31_aux_stash, gt_mask)
+            if bypass and gt_mask is not None:
+                cls_logits = self.class_decoder(out[1])          # grad-attached m_feat
+                cls_logits = F.interpolate(cls_logits.float(), size=gt_mask.shape[-2:],
+                                           mode='bilinear', align_corners=False)
+                gate_loss_data['ctd_seg_ce'] = F.cross_entropy(
+                    cls_logits, gt_mask.long(), ignore_index=255)
             aux_logits = getattr(self.class_decoder, 'last_aux_logits', None) \
                 if self.class_token_decoder_enable else None
             if self.ctd_multi_scale and aux_logits is not None and gt_mask is not None:

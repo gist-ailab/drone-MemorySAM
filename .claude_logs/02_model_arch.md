@@ -22,6 +22,12 @@
 
 **Ablation 세트(doc 20)**: RBMA 단일 vs dual-bias / uniform vs rel-proportional AMF / CTD single vs multi-scale / unfreeze 0 vs 3 / router reg diversity vs decisive. 성공 기준: event/lidar AUROC>0.5, router `_last_w_mean` 비uniform, Water/Wall/Bridge/Pole Test IoU 상승.
 
+**P31.1 수정 (2026-07-03, 비판 리뷰 `/mnt/HDD2/src/logs/P31_review_20260702/` 검증 반영)**:
+- **P30-seg 실측 붕괴 확인** (B200 ep188): Day-Val best 49.76@ep136 / Test best 44.10@ep146 = **P29 대비 −13.4/−10.2**. det E0.1(같은 ckpt에서 query head 0.256 vs FCOS-aux 0.431)과 동일 패턴 → 경량 class-token decoder가 최종 출력을 대체하는 P30 구조가 주범 후보.
+- **① CTD 강등** (`CLASS_TOKEN_DECODER.AUX_ONLY: true`, `ctd_aux_only`): 최종 출력 = SAM decoder 융합(m_output) 복원, CTD(MS)는 학습 시 `ctd_seg_ce`(full-res) + `ctd_aux_ce`(@H/4) aux loss로만 rare-class gradient 공급. 추론 경로에서 CTD 완전 제거.
+- **② AUROC 게이트 로깅** (리뷰 R1): `_calibration_loss`가 per-modal reliability AUROC(Mann-Whitney)·μ·σ를 stash → trainer가 epoch마다 `p31/rel_auroc_*`, `p31/rel_std_*`, `p31/router_w_*`, `p31/cal_loss`를 tb+wandb 기록 + 콘솔 출력. 판정: AUROC>0.5 = Seg-A 성공(B/AMF 전환 가능), σ→0 = 엔트로피 상수화 퇴화.
+- **③ SDC OFF** (리뷰 R2): doc 16 실증 net −1.08 → P31 기본 config에서 제거 (P28식 add 게이트로 복귀).
+
 ---
 
 ## P30-Det — P30 백본 detection 확장: Reliability-router 융합 + Object-Query decoder + FCOS aux (2026-06-30)

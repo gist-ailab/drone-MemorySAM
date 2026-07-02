@@ -14,16 +14,20 @@ MODEL:
   LORA_LAYER    : null
   LORA_COND_DIM : 8
   MODAL_COND_MOE : true
-  COND_MODE     : film            # [P29] SDC FiLM gate (inherited)
-  # [P29] Self-Derived Condition routing (inherited, ON)
+  COND_MODE     : film            # (SDC off → 실제 게이트는 P28식 add 유지)
+  # [P29] SDC — P31에서 OFF (doc 16 실증: net −1.08, TrafficLight 41.3→9.6 붕괴;
+  # doc 20 설계원칙 "조건 routing 재시도 금지". 리뷰 R2 반영)
   SDC:
-    ENABLE      : true
+    ENABLE      : false
     K           : 6
     LATENT_DIM  : 32
     LAMBDA      : 0.1
   # [P30→P31] Class-token decoder — rare-class fix.
   #   P31: MULTI_SCALE=true → ClassTokenDecoderMS (simple-FPN {4,8,16,32} + coarse→fine
   #   cross-attn + 학습형 ConvTranspose ×UP 고해상 pixel-embed + training-only aux CE @H/4).
+  #   AUX_ONLY=true (P31.1 강등): 최종 출력 = SAM decoder 융합 유지, CTD는 학습 시 aux
+  #   CE로만 rare-class gradient 공급 (P30-seg 실측 붕괴 val −13.4/test −10.2 + det
+  #   E0.1 query-head 유죄 판정 반영 — 추론 경로에서 CTD 완전 제거).
   CLASS_TOKEN_DECODER:
     ENABLE      : true
     DIM         : 128
@@ -31,6 +35,8 @@ MODEL:
     UP          : 2               # 학습형 upsample 배율 (thin-class 경계 회복)
     AUX_CE      : true            # training-only per-pixel CE head @H/4
     AUX_CE_WEIGHT : 0.4           # trainer loss weight (GOOSE-M2F 근거)
+    AUX_ONLY    : true            # [P31.1] CTD 강등 (aux loss 전용, 출력 대체 안 함)
+    SEG_CE_WEIGHT : 0.4           # 강등된 CTD full-res aux CE weight
   # [P30→P31] Reliability-anchored learned modality router (dead-modality fix)
   #   REG_MODE decisive: 측정된 P28/P29 융합가중치가 거의 uniform([.27,.28,.23,.23] vs
   #   기여 [8.4,23.5,0.02,0.01], doc16 §7)인데 기존 diversity reg는 uniform으로 미는 방향
