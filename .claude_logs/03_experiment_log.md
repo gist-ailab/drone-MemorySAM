@@ -1564,3 +1564,16 @@ python val_multiaqua_tiled.py \
 ### 파일
 - `val_multiaqua_tiled.py` — 별도 추론 스크립트 (기존 val_multiaqua.py 미수정)
 - 저장 경로: `{checkpoint_dir}/eval_macvi_tiled_test/`
+
+---
+
+## 객체탐지 (Object Detection, poongsan indoor) — 2026-07-02
+
+세그멘테이션과 별개 워크스트림. 상세 = `.claude_logs/17_p29det_data_fix.md`, per-class 비교 = `.claude_logs/det_eval/` (+ `/mnt/HDD2/src/logs/P29_vs_P30_v2_20260702/`).
+
+| 모델 | best | AP50 | AP | 비고 |
+|------|------|------|----|------|
+| **P29-Det** (mean-fusion+FCOS) | ep9(최종) | **0.446** | 0.269 | 현 최선. 깨끗한 v2 라벨셋(미레이블 배경 제거)으로 AP50 0.008→0.446 |
+| P30-Det (router+object-query decoder+FCOS aux) | ep24(학습중) | 0.228 | 0.108 | 대형객체는 P29 대등, 소형객체 붕괴(AP_small 0.006 vs 0.120)가 격차 주원인 |
+
+v2 = 캡처 holdout(test=115206+114808, 1772장), hinton eval(`objdet/tools/diag_det.py`, letterbox).
