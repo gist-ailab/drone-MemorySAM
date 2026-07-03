@@ -1356,3 +1356,24 @@ self._last_feats_after_uamm = feats_after_uamm    # list of m tensors
 
 ---
 
+
+## 2026-07-02: E1.1 YOLO baseline 셋업 중 발견한 함정 3건
+
+**함정 1: `/ailab_mat2` 원본 어노테이션이 jarvis split 생성 이후 변경됨**:
+- `build_det_splits.py`를 지금 재실행하면 jarvis 정본과 다름: train 11,017 vs 10,535 (+500장 신규), 라벨 diff 759건 (test도 2건)
+- **결론**: v2 split 비교 실험은 반드시 **jarvis `/SSDd/jemo_maeng/dset/poongsan_v2/_det_splits/det_{train,test}_v2.json` 정본** 사용. 사본: `objdet/yolo11m-rgb/splits/`
+- 로더가 실제 keep한 프레임 목록도 고정: `kept_{train,test}_v2.txt` (5,862/1,772; box 18,020/5,078 교차 검증 완료). RGB 픽셀은 원본과 md5 동일 확인
+
+**함정 2: hinton CUDA 디바이스 열거 순서 ≠ nvidia-smi 순서**:
+- `CUDA_VISIBLE_DEVICES=1`이 물리 GPU0으로 매핑됨 → `CUDA_DEVICE_ORDER=PCI_BUS_ID` 설정 필요
+
+**함정 3: ultralytics `device=N`은 절대 GPU 번호 (CVD 무시)**:
+- ultralytics는 런타임에 `CUDA_VISIBLE_DEVICES`를 `device=` 값으로 덮어씀 → CVD로 GPU를 고르면 무시됨. `device=1` 직접 지정할 것
+- 이 조합 때문에 학습이 공유 중인 GPU0에 올라가 OOM → ultralytics가 batch 16→4 **무음 자동 축소** (로그에 optimizer 라인 3회 반복이 흔적). iter 수(5862/batch)로 실배치 검증 권장
+
+## 2026-07-03: poongsan lidar 결손 원인 규명 (복사 문제 아님 — 센서 주기 불일치)
+
+- 증상: 라벨 프레임 15,153장 중 depth_map_lidar 존재는 8,538장(63%)뿐 → REQUIRE_ALL_MODALITIES 필터로 대량 탈락
+- 검증: (1) drone_nas raw==Labeled==9,615장 (복사 정상), (2) /ailab_mat2도 어노테이션 참조 파일 전부 보유(누락 1,052장은 라벨셋 밖 프레임), (3) 탈락 6,615장 전부 modalities에 lidar 키 없음 + 같은 이름 lidar 파일이 원본에도 0장
+- 원인: **RGB ~15Hz vs LiDAR ~10Hz 주기 차이** + 1:1 배정 정렬. capture_115624가 결정적 증거(정확히 15 vs 10fps, 결손 전부 1프레임 × 232개, 1,2,1,2 교대). 전 캡처 커버리지 50~67%, 블록 결손 없음(최장 gap ~1초)
+- 복구 방법: 정렬기를 최근접-스캔 재사용(±60ms)으로 변경 시 ~100% 가능 (인접 프레임 depth 공유 trade-off). 업스트림 결정 필요

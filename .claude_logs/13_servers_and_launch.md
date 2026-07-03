@@ -42,7 +42,7 @@
 | levine | `/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM`            | MMSS_SAM  | ?                   | port 500, 현재 최선 P9 config가 `levine-` 프리픽스 (경로 `SSDe`, 짧음) |
 | yeon   | `/SSDb/jemo_maeng/src/Project/**Drone**/detection/drone-MemorySAM`| MMSS_SAM | ?                  | port 600, 경로가 `Drone24`가 아니라 `Drone` |
 | B200   | `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`      | MMSS_SAM  | **B200 180GB ×8** (SHARED) | default_gpus=`FILL_ME`(명시 강제) → **`run B200 <cfg> auto:N`** 권장. 프로세스는 unix user `gm_huis`로 뜸. P28 DELIVER 학습 중(2026-06-24) |
-| hinton | (미등록)                                                         | MMSS_SAM  | -                   | port 200 **UNREACHABLE**(timeout) — 복구되면 `ssh-copy-id hinton` 후 등록 |
+| hinton | `/SSDd/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM` | MMSS_SAM (+`yolo` env: ultralytics) | TITAN RTX 24GB ×3 | port 200 **복구됨**(2026-07-02, 무비밀번호 SSH 동작). 데이터: `/SSDd/jemo_maeng/dset/`. ⚠️ CUDA 열거 순서 ≠ nvidia-smi — `CUDA_DEVICE_ORDER=PCI_BUS_ID` 필요. ultralytics는 `device=N`이 CVD를 덮어씀(절대 번호로 지정) |
 
 - 무비밀번호 SSH: gyuri/lecun/bengio/levine/yeon 완료. hinton은 포트 200 미도달.
 - `MMSS_SAM` conda env는 각 서버에 실재함 (`~/anaconda3/envs` 또는 `~/miniconda3/envs`).

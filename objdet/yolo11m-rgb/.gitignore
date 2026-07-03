@@ -1,0 +1,8 @@
+ultralytics/
+data/
+runs/
+vis_test_labelv3/
+*.pt
+splits/*.json
+convert.log
+*.log

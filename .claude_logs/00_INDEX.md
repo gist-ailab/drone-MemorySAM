@@ -33,6 +33,8 @@
 | 문서 | 내용 |
 |------|------|
 | [12_novelty_and_related_work.md](12_novelty_and_related_work.md) | **canonical** — RBMA 노벨티 포지셔닝, 선행연구 vs RBMA 차별표, 리뷰 방어. **먼저 읽기** |
+| [18_research_digest.md](18_research_digest.md) | **옵시디언 리서치 볼트 다이제스트(2026-07-02 동기화)** — 벤치마크 정량표([val]/[test] 태그), 경쟁자 메커니즘 taxonomy, P29/P30 구현 참고, 2026 위협 워치, 논문 문단 후보, 아이디어 회의 어젠다 |
+| [research_vault/](research_vault/) | 옵시디언 볼트 원본 노트 사본(94개, NAS 불필요) — 논문별 synthesis 노트. 벤치마크 숫자 canonical = `research_vault/relatedworks/09_benchmark_tables_deliver_muses_mcubes.md` |
 | [10_related_work.md](10_related_work.md) | deep-research 원시 로그(시계열). 12의 근거 |
 | [11_sam3_rbma_plan.md](11_sam3_rbma_plan.md) | SAM3 포팅 플랜 & 체크리스트 |
 
@@ -42,7 +44,9 @@
 | [03_experiment_log.md](03_experiment_log.md) | **메인** — 전체 결과 M-score 표 + 버전별 상세 + 진단. **실험 canonical** |
 | [15_training_monitor_log.md](15_training_monitor_log.md) | **진행 중 학습 실시간 모니터 로그** — `/loop` 세션이 주기적으로 append. 학습 추세 분석/판단은 여기서. (현재 RUN-1=B200 P28 DELIVER) |
 | [16_failure_analysis_P28_P29.md](16_failure_analysis_P28_P29.md) | **P28(RBMA)·P29(SDC) 체계적 실패분석 + P30 커버리지 판정(✅/🟡/❌) + P31 프로토타입(high-res class-token decoder)**. DELIVER 로그 파싱 기반 |
-| [20_p31_design_proposal.md](20_p31_design_proposal.md) | **P31 재설계 제안(2026-07-02)** — research_vault 전수 매핑 기반. Seg core(A 재보정/B consistency/C MS-HR decoder/D complementary) + 학습 레버 + Det 분리 트랙. **P31 구현(`LoRA_Sam_P31`, `feat/p31-seg`)의 설계 근거** |
+| [19_det_diagnosis_plan.md](19_det_diagnosis_plan.md) | **P29/P30-Det 성능 진단 계획(2026-07-02)** — mAP50 0.45/0.25 vs 목표 0.85 원인 분석. 핵심: P30 하락은 router↔query-head confound(단일 s16 query decoder가 소물체 병목), 외부 baseline 전무. Phase 0(무학습 ckpt 분석)→1(YOLO 기준점)→2(통제 ablation)→3(breakthrough) 실험 체크리스트 + 결과 기록표. **det 작업 전 필독** |
+| [21_egofill_dataset.md](21_egofill_dataset.md) | **lidar egofill 데이터셋 v20260703_egofill(2026-07-03)** — RGB15Hz/LiDAR10Hz 주기차 결손(라벨프레임 37%)을 ego-motion 보정 최근접 스캔 재투영으로 fill (6,403장, 커버리지 98.6%). 역공학 확정값(pcd=카메라좌표, RealSense 공장 K, 실측 extrinsic — calib yaml 믿지 말 것) + train 2.01배 확장 + P29-Det 재학습(bengio) 실험. 파이프라인=sensors/.../scripts/egofill/ |
+| [20_p31_design_proposal.md](20_p31_design_proposal.md) | **P31 재설계 제안(2026-07-02, proposal 상태)** — research_vault 전수 매핑 기반. Seg core: reliability 재보정(event/LiDAR AUROC .30/.22 수리)+consistency 2차 bias+multi-scale HR class-token decoder+complementary assignment / 학습 레버: backbone unfreeze·RGB-zero·타깃 증강 / Det 분리 트랙: COCO-pretrained Deformable-DETR head 이식+RBMA-in-head+데이터 복원(5,862→13,712). 우선순위·ablation·novelty 방어 포함 |
 | [05_result_analysis_P9_P12.md](05_result_analysis_P9_P12.md) | 🗄 ARCHIVED — P9~P12 심층 분석(2026-02 동결) |
 | [06_result_analysis_P13.md](06_result_analysis_P13.md) | 🗄 ARCHIVED — P13 심층 분석 |
 | [07_result_analysis_P14.md](07_result_analysis_P14.md) | 🗄 ARCHIVED — P14 분석 |

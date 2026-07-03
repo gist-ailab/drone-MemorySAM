@@ -81,6 +81,8 @@ B_i = 1 − H(softmax(Decoderᵢ(fᵢ))) / log C      # 모달 i 단독 디코�
 > **우리 평가 split 확정 (코드 확인)**: `train_sam3_rbma.py:46,50` 트레이너는 **val(2005장)과 test(1897장)를 둘 다** 평가. 그동안 본 **"val~55" = DELIVER val split**. → DGFusion 56.7/CAFuser 55.6은 **test**라서 우리 val과 직접 비교 불가. **Cluster B 비교용 숫자는 로그의 P28 *test* mIoU**(이미 계산됨)를 써야 함.
 > **포지셔닝별 봐야 할 숫자**: (a) DGFusion/CAFuser(reliability-aware 직접 경쟁, Cluster B) 대비 → P28 **test** mIoU. (b) MemorySAM(구조적 base, Cluster A, 65.38, split 미표기→val 추정) 대비 → P28 **val** mIoU.
 > **남은 TODO**: (1) P28 test mIoU 실측치 doc 12/03에 기록. (2) **유일한 안전책 = CMNeXt(가능하면 MemorySAM)를 우리 단일 프로토콜(같은 split·해상도)로 직접 재평가**해 같은 표에 넣기. 남의 표 숫자 그대로 인용 시 리뷰어가 cluster 불일치 지적. (3) MemorySAM split(val/test) 원저자 코드/표에서 확정.
+>
+> **✅ 2026-07-02 해소 업데이트 (옵시디언 리서치 볼트 `/nas_jm/Research/26_MultimodalSeg/relatedworks/09_benchmark_tables_deliver_muses_mcubes.md` 원문표 대조)**: 세 숫자는 서로 다른 프로토콜 — **66.30 = CMNeXt MiT-B2 · DELIVER *val* · RGB-D-E-L**(StitchFusion Table 7 + CAFuser Table III "mIoU-val 66.3"), **53.0 = MiT-B2 · *test* · CLDE**(DGFusion/CAFuser Table III), **59.18 = MiT-*B0***(MemorySAM Table 1 — **B2가 아님**). → "두 cluster" = **val↔test + backbone(B0/B2)** 차이로 설명됨. CAFuser val 수치도 확보: CA² **val 67.8**/test 55.6, CAA val 68.6/test 55.2 → **P28 val~55는 CAFuser val 67.8과 비교해야 함(주의: val끼리 비교 시 격차 큼)**. 잔여 미확정: MemorySAM 65.38의 split(여전히 미표기), val 2005/test 1897 count 원문 재확인.
 
 **Taxonomy (관련연구 작성용):**
 1. **Arbitrary/any-modal** (가변·결측 모달): CMNeXt(SQ-Hub, CVPR'23, arXiv 2303.01480, DELIVER 벤치마크 제안), MAGIC(modality-agnostic), AnySeg(2411.17141, uni/cross-modal distillation), **OmniSegmentor**(2509.15096, pretrain-finetune+ImageNeXt, 새 SOTA 주장).
@@ -151,9 +153,9 @@ P30(구현, [02_model_arch.md](02_model_arch.md) P30)는 P28 실패분석(rare-c
 ## 4. 열린 lit-check TODO (반드시 채울 것)
 
 1. ~~DAFusion~~ → **CAFuser 오기였음**(2410.10791). 표 정정 완료. (이름 혼동 해소.)
-1b. **DELIVER 프로토콜 확정** — CMNeXt 66.30(원논문) vs 53.0(CAFuser 표) 불일치. 우리 P28 val~55가 어느 쪽과 비교 가능한지(같은 test split/모달 구성인지) 확인 → "67" 목표의 정확한 기준선 설정. OmniSegmentor/MM-SAM-adapter의 DELIVER 정량 수치도 미확보(원문 PDF 확인 필요).
-2. **A 신호(decoder predictive uncertainty)가 evidential/TMC dense-seg에서 이미 쓰였는지** — 별도 lit-check (deep-research 미확인 1건).
-3. DGFusion 정량(DELIVER/MUSES mIoU vs CAFuser/MAGIC) + 전체 하이퍼파라미터 — 비교표용 수치 미확보(원문 abstract만 확인).
+1b. **DELIVER 프로토콜 확정** — ✅ **2026-07-02 대부분 해소** (§2.5 "해소 업데이트" 참조: 66.30=B2·val, 53.0=B2·test·CLDE, 59.18=**B0**). 잔여: MemorySAM 65.38의 split 확정, OmniSegmentor/MM-SAM-adapter DELIVER 수치(옵시디언 볼트에도 abstract-stub만 — 병렬 리서치 Track 1/3 진행).
+2. **A 신호(decoder predictive uncertainty)가 evidential/TMC dense-seg에서 이미 쓰였는지** — 별도 lit-check (deep-research 미확인 1건). *(옵시디언 볼트 `40/42` 노트도 동일 결론 "선행 미발견"이나 RSGMamba(2604.12319)·EQUISeg(2509.24505) 등 2026 신규가 stub 상태 → 병렬 리서치 Track 4/8에서 확정.)*
+3. ~~DGFusion 정량~~ — ✅ **2026-07-02 해소** (옵시디언 볼트 `02`/`09` 원문표): **MUSES test mIoU 79.5·PQ 61.03, DELIVER test CLDE 56.7·CLE 51.6** (vs CAFuser 55.6). 메커니즘도 검증(LiDAR=입력+depth-GT, robust log-depth loss, local depth tokens + global condition token). 잔여: 하이퍼파라미터 세부, per-condition breakdown.
 4. **(P29) CAFuser/DGFusion 조건화 메커니즘 원문 확인** — CAFuser가 정확히 CLIP-text 임베딩을 어디(CA²/CAA)에 주입하는지, DGFusion이 depth-GT를 어떤 loss로 reliability로 변환하는지 원문 대조(우리 §2.7 차별 주장 방어용).
 5. **(P29) MoE-LoRA 조건-라우팅 선행연구 스캔** — MoE-Adapters4CL(NeurIPS'24, task/domain id embedding), Mod-Squad(CVPR'23), VLMo/BEiT-3(MoME), LD-MoLE/DynMoLE 등에서 **무감독 image-derived 조건 latent로 LoRA expert를 라우팅**한 전례가 있는지 확정(SDC 노벨티 방어).
 6. **(P29) FiLM 라우터 변조 + prototype/VQ 조건 공간** 선행연구(FiLM, VQ-VAE codebook, SwAV/online-clustering)와의 구분 — "조건 prototype을 라우터 FiLM에 쓰는" 조합의 비점유 확인.
@@ -161,6 +163,7 @@ P30(구현, [02_model_arch.md](02_model_arch.md) P30)는 P28 실패분석(rare-c
 ---
 
 ## 5. 근거 / 더 읽기
+- **옵시디언 리서치 볼트 (외부 사전조사, 2026-07-02 동기화)**: `/nas_jm/Research/26_MultimodalSeg/` — relatedworks 30노트(논문별 synthesis, Priority-A PDF 원문표 추출), 벤치마크 canonical = `relatedworks/09_benchmark_tables_deliver_muses_mcubes.md`, 노벨티 방어 = `relatedworks/42_attention_logit_bias_novelty_defense.md`, 병렬 리서치 프롬프트 = `sources/07_parallel_research_prompts_2026-07-02.md`. 정량 인용은 볼트 `09`를 우선 참조.
 - RBMA 신규성 deep-research 원문·판정: `10_related_work.md` §"신규성 조사 A vs B"(L329~), §"A 신호 신규성 확정"(L367~).
 - SAM3 이식 분석: `10_related_work.md` §"SAM3 이식성"(L392~), `11_sam3_rbma_plan.md`.
 - 모델 상세(P8~P28 forward/한계): `02_model_arch.md`.
