@@ -48,5 +48,29 @@
 2. **corroboration ⟂ calibration** — P31의 per-modal temperature와 직교. corroboration은 self-entropy가 깨진 raw 모달에서 강하고, calibration은 보정 후 self-confidence를 살림 → **둘 다 살리는 blend**(veto-gated, 또는 per-pixel max)가 순수 대체보다 우세일 여지.
 3. 따라서 P32-B 권장 형태 = **corroboration-primary bias + unique-info veto**, P31 calibration/CTD 위에 config-gated 합성(P28~P31 byte-identical 유지).
 
-## 다음 (Step 2)
-`LoRA_Sam_P32(LoRA_Sam_P31)`: `_compute_bias_source` override — bias 소스를 self-entropy → corroboration(+veto)로. 코드상 P31 `consistency_bias`(line 8421-8424)가 이미 Bhattacharyya 합의를 2차 항으로 계산 → 이를 1차 신호로 승격 + veto 추가. config `corroboration_bias` 플래그.
+## 결과 C — v2 재측정 (veto/max 변형 추가, 2026-07-05) → 신호형 확정
+
+무학습으로 signal-form을 좁히기 위해 도구에 2개 변형 추가:
+- **corr_veto** = `g·selfent + (1−g)·corr_bc`, `g_i = clamp(selfent_i − max_{j≠i} selfent_j, 0, 1)` (threshold-free soft unique-info veto: 모달 i가 나머지보다 얼마나 *더* 확신하는가 → uniquely-confident workhorse를 self-confidence 쪽으로 보호).
+- **corr_max** = per-pixel `max(corr_bc, selfent)`.
+
+**cross-condition mean AUROC (min = worst modality):**
+
+| 신호 | P28 [img,dep,evt,lid] | P28 worst | P31 [img,dep,evt,lid] | **P31 worst** |
+|------|----------------------|:---:|----------------------|:---:|
+| selfent | [.773,.621,.296,.215] | .215 | [.322,.904,.634,.850] | .322 |
+| corr_bc (순수) | [.664,.690,.543,.808] | .543 | [.602,**.283**,.660,.528] | **.283** |
+| corr_js (순수) | [.704,.701,.509,.804] | .509 | [.638,**.278**,.692,.551] | **.278** |
+| **corr_veto** | [.681,**.723**,.543,.808] | **.543** | [.603,**.708**,.664,.839] | **.603** |
+| corr_max | [**.789**,.621,.543,.807] | .543 | [**.498**,.914,.520,.898] | .498 |
+
+**확정: 신호형 = `corr_veto`.** 두 모델 모두에서 **worst-modality AUROC 최고**(P28 .543 tie, P31 .603 단독) — 유일하게 어떤 모달도 anti-calibrated로 남기지 않음:
+- 순수 corroboration이 P31 depth(workhorse)를 .283으로 죽이는 걸 **veto가 .708로 회복**.
+- P31의 calibration이 깨뜨린 img(selfent .322)도 corr_veto가 .603으로 살림.
+- event/LiDAR 전부 >.6 유지 (원래 목표).
+- corr_max는 mean은 살짝 높으나(P31 .708) selfent의 깨진 신호를 그대로 물려받아 P31 img worst .498 → 탈락.
+
+**메커니즘 요지**: reliability = "상호검증(corroboration)"을 기본으로 하되, **혼자만 자신 있는 센서**(다수가 못 보는 곳에서 홀로 confident)는 합의 불일치로 벌하지 않고 self-confidence를 유지(veto). threshold-free, training-free, RBMA logit-bias 배관 그대로.
+
+## 다음 (Step 2 — 구현 착수)
+`LoRA_Sam_P32(LoRA_Sam_P31)`: `_compute_bias_source` override — bias 소스 = **corr_veto**. 코드상 P31 `consistency_bias`(line 8421-8424)가 이미 Bhattacharyya 합의(pairwise-mean)를 2차 항으로 계산 → corroboration을 1차 신호로 승격 + soft veto gate. config `corroboration_bias=True`. P31 calibration/CTD와 orthogonal 합성(전부 OFF → P28~P31 byte-identical). 학습 파라미터는 λ만(무학습 신호 유지). tools/eval의 `corr_veto`와 동일 수식.
