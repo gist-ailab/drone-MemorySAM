@@ -184,6 +184,22 @@ L_ccr = −sim(r(x), r(x̃)|θ 유사) + sim(r(x), r(x')|θ 상이)    # r = 라
 
 ## 7. 권장 조합과 실행 순서 (로드맵)
 
+### 실행 우선순위 (확정 2026-07-05)
+
+의존성이 순서를 강제한다 — **R3(신호 붕괴)가 모든 라우팅의 병목**이므로 신호 수리가 1순위, 나머지는 그 결과에 종속.
+
+| 순위 | 무엇 | 왜 지금 / 왜 이 순서 | 비용 | Gate(다음 단계 조건) |
+|:---:|------|---------------------|------|---------------------|
+| **1** | **Phase 0 진단** — 특히 **P32-B corroboration AUROC 측정** (기존 P28/P29/P31 ckpt, DELIVER val 1-pass) | 신호가 안 고쳐지면 B/C/D 전부 착수 무의미. **무학습·eval 1회**로 최저비용이면서 다음 분기를 결정하는 관문. 병렬로 C의 pruning sweep·D의 cluster purity도 같은 pass에서 측정 | ~1일, GPU eval only | event/LiDAR corroboration-AUROC **> 0.5** → 2번 GO. 실패 시 신호 재설계로 회귀(온도보정·decoder 용량) |
+| **2** | **P32-B (CoRB) 학습** — `_compute_bias_source` override, λ만 학습 | **override 1개·신규 파라미터 λ뿐·RBMA 배관 그대로** = 최저 위험 & 최고 노벨티 서사(자기확신→상호검증). P31 Seg-A 온도보정과 직교 결합 | 학습 1회 (DELIVER) | Test mIoU가 P31(54.75) 상회 + AUROC 반전 확인 |
+| **3** | **P32-C (PruneMem)** — `_fuse_outputs` 재작성, soft→hard 스케줄 | **반드시 B 이후** (신호 깨진 채 pruning하면 event/LiDAR 영구 삭제). Mode C(dead modality) 직격, B와 같은 무대(DELIVER)에서 바로 이어짐. drop-Δ 재측정으로 판정 | 학습 1회 | drop-Δ가 event/LiDAR에서 유의미하게 상승(2-모달 퇴화 탈출) |
+| **4** | **P32-A (PhysCond)** ▸ 이후 **D (ProtoTable)** | 조건 라우팅은 **MULTIAQUA/MUSES 무대**(DELIVER Mode B엔 P29가 무력 실증). A 우선(θ supervision이 D 클러스터보다 강신호, A의 z_c를 D가 재사용). MUSES는 벤치 셋업 선행 필요 | 조건인코더+학습 | z_c 조건 선형-probe acc ≥90% → 라우팅 연결 |
+| **상시** | **P32-E (CCR)** | 3·4의 학습형 라우터에 부착하는 정칙화. 단독 아님. ±L_ccr ablation으로 router 분산·AUROC·mIoU 3종 비교 | loss 1개 | — |
+
+**한 줄 요약**: 지금 당장 = **① Phase 0에서 corroboration-AUROC부터 측정**(무학습, 기존 ckpt). >0.5면 → **② P32-B 학습**(헤드라인) → **③ P32-C**(dead modality 부활) 순. 조건 라우팅(A/D)은 MULTIAQUA/MUSES로 미룸. DELIVER 공식목표(66.51/56.71)는 P32-B/C의 Mode C 회복분 + P31 레버(backbone unfreeze) **병행**이 전제 — 라우팅 단독으론 Mode B 갭이 안 닫힘.
+
+---
+
 원칙: **무학습 진단 먼저(B·C·D는 기존 ckpt로 사전 검증 가능)** → 신호 수리(B) 없이는 어떤 라우팅(C·D)도 착수 금지.
 
 ```
