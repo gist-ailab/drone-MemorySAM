@@ -33,6 +33,8 @@
 
 **다음 마일스톤**: ① SAM3-RBMA 수렴 곡선 확보 → ② SAM2 P28 B200 학습 → ③ RBMA ablation(SoftMoE LoRA / SQG / AMF 제거 robustness).
 
+**신규 제안(2026-07-05)**: 라우팅 실패 4원인 분해 기반 **P32 아키텍처 제안 5종** = [23_seg_arch_proposals_P32.md](23_seg_arch_proposals_P32.md)(proposal, 코드 seam 검증 완료·미구현). 헤드라인 후보 **P32-B(CoRB)** = RBMA 신호를 self-entropy→cross-modal 상호검증으로 교체(`_compute_bias_source` override, training-free, **기존 ckpt로 event/LiDAR AUROC 무학습 사전검증 가능** = Phase 0 최우선). 이어 P32-C(PruneMem, hard token-pruning) → A/D(조건 라우팅). DELIVER는 조건라우팅만으론 갭 미해소(Mode B=class-transfer 실증) → P31 레버(backbone unfreeze) 병행 전제, 조건 라우팅 주무대는 MULTIAQUA/MUSES.
+
 ---
 
 ## 역시간순 진행 로그 (History — 아래는 시점별 기록, 현재 상태 아님)
