@@ -67,7 +67,16 @@ def auroc_from_hist(neg, pos):
 
 def corroboration_signals(logits_list):
     """logits_list: list of M tensors (C,H,W) = per-modal decoder logits (native res, on device).
-    Returns per modality, at native res: (self_entropy_rel, corr_bc, corr_js, argmax_pred), each (H,W)."""
+    Returns dict of per-modal signal lists (each entry a (H,W) tensor) + argmax preds:
+      selfent  : 1 - H(p_i)/logC                                  (per-modal self-confidence)
+      corr_bc  : Bhattacharyya coeff Σ√(p_i·p̄_{-i})               (corroboration, leave-one-out)
+      corr_js  : 1 - JSD(p_i‖p̄_{-i})/log2
+      corr_veto: unique-info veto blend  g_i·selfent_i + (1-g_i)·corr_bc_i
+                 g_i = clamp(selfent_i - max_{j≠i} selfent_j, 0, 1)  (threshold-free: how much
+                 MORE confident modality i is than the best OTHER → protect uniquely-confident
+                 workhorse; roadmap §3 unique-info veto, soft form)
+      corr_max : max(corr_bc_i, selfent_i)                        (per-pixel take-the-higher)
+    corr_veto uses corr_bc as the corroboration base (matches P31 consistency_bias formulation)."""
     M = len(logits_list)
     C = logits_list[0].shape[0]
     logC = math.log(C)
@@ -79,7 +88,7 @@ def corroboration_signals(logits_list):
     for i in range(M):
         p = ps[i]
         H = -(p * (p + 1e-8).log()).sum(0)                             # (H,W)
-        se.append(1.0 - H / logC)
+        se.append((1.0 - H / logC).clamp(0, 1))
         if M >= 2:
             cons = (p_sum - p) / (M - 1)                               # leave-one-out consensus (C,H,W)
             cons = cons.clamp_min(0)
@@ -94,7 +103,18 @@ def corroboration_signals(logits_list):
             js_i = torch.ones_like(H)
         bc.append(bc_i.clamp(0, 1))
         js.append(js_i.clamp(0, 1))
-    return se, bc, js, preds
+    # unique-info veto blend + per-pixel max (need all se[] first)
+    veto, mx = [], []
+    for i in range(M):
+        if M >= 2:
+            others_max = torch.stack([se[j] for j in range(M) if j != i], 0).amax(0)
+            g = (se[i] - others_max).clamp(0, 1)                       # unique-confidence gate ∈[0,1]
+        else:
+            g = torch.ones_like(se[i])
+        veto.append(g * se[i] + (1.0 - g) * bc[i])
+        mx.append(torch.maximum(bc[i], se[i]))
+    return {'selfent': se, 'corr_bc': bc, 'corr_js': js,
+            'corr_veto': veto, 'corr_max': mx}, preds
 
 
 def main():
@@ -128,7 +148,8 @@ def main():
     core = model.module if hasattr(model, 'module') else model
     NB = 20  # signal bins
 
-    SIGNALS = ['selfent', 'corr_bc', 'corr_js']
+    SIGNALS = ['selfent', 'corr_bc', 'corr_js', 'corr_veto', 'corr_max']
+    CORR_FAMILY = ['corr_bc', 'corr_js', 'corr_veto', 'corr_max']
     report = {'model': Path(args.model_path).stem, 'signals': SIGNALS, 'conditions': {}}
     # accumulate for the cross-condition mean
     agg = {s: None for s in SIGNALS}
@@ -160,8 +181,7 @@ def main():
             gt = rs_nn(torch.as_tensor(np.asarray(label)).to(device), WR).cpu().numpy()
             valid = gt != ign
             gg = gt[valid]
-            se, bc, js, preds = corroboration_signals(logits)
-            sig_maps = {'selfent': se, 'corr_bc': bc, 'corr_js': js}
+            sig_maps, preds = corroboration_signals(logits)
             for i in range(M):
                 pred_i = rs_nn(preds[i], WR).cpu().numpy()
                 cc = (pred_i[valid] == gg).astype(int)                 # per-modal correctness target
@@ -182,10 +202,19 @@ def main():
     report['mean'] = {'modals': modal_names}
     for s in SIGNALS:
         report['mean'][s] = [round(auroc_from_hist(agg[s][i, :, 0], agg[s][i, :, 1]), 3) for i in range(Mn)]
-    # gate verdict: does any corroboration variant lift event/lidar above 0.5?
+    # per-signal robustness across modalities: min (worst modality) + mean.
+    # The whole point: NO modality should stay anti-calibrated -> rank forms by worst-modality AUROC.
+    stats = {}
+    for s in SIGNALS:
+        v = report['mean'][s]
+        stats[s] = {'min': round(min(v), 3), 'mean': round(sum(v) / len(v), 3)}
+    report['signal_stats'] = stats
+    best_form = max(SIGNALS, key=lambda s: stats[s]['min'])   # form that lifts the WORST modality highest
+    report['best_form'] = best_form
+    # gate verdict: does the best corroboration-family form lift event/lidar above 0.5?
     gate = {}
     for i, mname in enumerate(modal_names):
-        best_corr = max(report['mean']['corr_bc'][i], report['mean']['corr_js'][i])
+        best_corr = max(report['mean'][s][i] for s in CORR_FAMILY)
         gate[mname] = {
             'selfent': report['mean']['selfent'][i],
             'corr_best': round(best_corr, 3),
@@ -197,8 +226,11 @@ def main():
     Path(args.out + '.json').write_text(json.dumps(report, indent=1))
     print("\n[relAUROC] === cross-condition mean (modals=%s) ===" % modal_names)
     for s in SIGNALS:
-        print(f"  {s:8s}: {report['mean'][s]}")
-    print("[relAUROC] GATE (corroboration best vs self-entropy, per modality):")
+        st = stats[s]
+        print(f"  {s:9s}: {report['mean'][s]}   min={st['min']:.3f} mean={st['mean']:.3f}")
+    print(f"[relAUROC] BEST FORM (max worst-modality AUROC) = {best_form}  "
+          f"(min={stats[best_form]['min']:.3f}, mean={stats[best_form]['mean']:.3f})")
+    print("[relAUROC] GATE (best corroboration-family vs self-entropy, per modality):")
     for mname, g in gate.items():
         flag = 'PASS>0.5' if g['crosses_0.5'] else 'fail'
         print(f"    {mname:8s} selfent={g['selfent']:.3f} -> corr={g['corr_best']:.3f} (Δ{g['delta']:+.3f}) [{flag}]")
