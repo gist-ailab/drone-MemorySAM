@@ -1,6 +1,29 @@
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-07-02
+> 최종 업데이트: 2026-07-06
+
+## P32 — CoRB: Corroboration-Biased Memory Attention (2026-07-06)
+
+**계보**: `LoRA_Sam_P32(LoRA_Sam_P31)` — RBMA 배관(P27 memory-attn logit additive bias) 그대로. **변경점은 신뢰도 신호의 의미뿐**: self-entropy → cross-modal corroboration.
+
+**동기(진단)**: RBMA 신뢰도 `rel_i=1−H(softmax(D_i(f_i)))/logC`는 per-modal decoder 용량과 confound → event/LiDAR anti-calibrated(correctness-AUROC .30/.22, [16] §7). "자기확신"이 아니라 "상호검증"으로 측정해야 한다.
+
+**신호 (training-free, corr_veto — Phase 0 v2 확정)**:
+```
+p_i = softmax(D_i(f_i))                              # per-modal posterior (무학습)
+p̄_{−i} = mean_{j≠i} p_j                              # leave-one-out 합의
+corr_i = Σ_c √(p_i · p̄_{−i})                         # Bhattacharyya coeff ∈[0,1]
+selfent_i = 1 − H(p_i)/logC
+g_i = clamp(selfent_i − max_{j≠i} selfent_j, 0, 1)   # unique-info veto gate (threshold-free)
+rel_i = g_i·selfent_i + (1−g_i)·corr_i               # veto blend
+bias_i = λ·(rel_i − mean_j rel_j)                    # RBMA 배관, λ만 학습
+```
+- **veto 근거**: 순수 corroboration은 "다수가 못 보는 곳에서 홀로 confident한 workhorse"(P31 depth)를 벌해 AUROC .90→.28 붕괴 → g_i가 uniquely-confident 모달을 self-confidence로 보호. corr_veto가 depth .71 회복·event/LiDAR >.6 유지.
+- 구현: `sam_lora_image_encoder_seg.py` `LoRA_Sam_P32._compute_bias_source` override(temperature-free, `tools/eval_reliability_auroc.py` corr_veto와 동일). config `CORROBORATION.ENABLE/VETO`, OFF→P31 byte-identical. corr 수식은 P31 `consistency_bias`(2차 항)를 1차 신호로 승격한 것.
+
+**한계(실측, [16]/[24]·`/mnt/HDD2/src/logs/P32_eval_20260706/`)**: 신호 AUROC는 반전(event/lidar .59/.85)됐으나 **drop-modality Δ event/lidar≈0 = 여전히 미사용(Mode C)**. soft attention-bias는 feature/decoder가 약한 모달(competence≈0)을 못 살림 → Test 53.45<P28 55.27. **후속 P32-C(PruneMem: hard token pruning+modality dropout)** 가 이 R4(soft 융합이 select 못함)를 직격.
+
+**선행연구 차별**: RSGMamba consistency gate=learned MLP; 우리는 무학습 통계+attention logit bias. "training-free cross-modal corroboration을 attention logit bias로" 셀 미점유(vault 42/47).
 
 ## P31 — Calibrated Dual-Reliability RBMA + Multi-scale HR Class-Token Decoding (2026-07-02)
 
