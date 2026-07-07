@@ -16,6 +16,7 @@
 
 #### Step 1 — 프로젝트 상태 파악
 - **`00_INDEX.md`를 먼저 읽어라** — 폴더 전체를 6개 카테고리(프로젝트·아키텍처·Related Works·실험·환경/인프라·이슈)로 묶은 front door. 어떤 문서를 볼지 여기서 결정한다.
+- **`00_EXPERIMENT_LEDGER.md`: 무조건 읽어라** — 모든 실험을 **시도순(시간순) 타임라인**으로 훑는 목차(트랙 A=MULTIAQUA seg / B=DELIVER RBMA seg / C=det). 각 실험의 상태 + 상세(03/02)·분석문서(`experiments/`) 링크. **"지금까지 뭘 어떤 순서로 시도했나"는 여기서 파악.** 새 실험/분석 문서를 만들면 `experiments/YYYY-MM-DD_<모델>_<종류>.md`로 저장하고 **이 원장에 한 줄 추가**한다(수치 상세는 03).
 - `01_project_status.md`: **상단 "📌 현재 상태 스냅샷"이 현재 상태의 단일 출처** (하단은 역시간순 history). 전체 진행 상황·현재 최선 모델·남은 과제.
 - `02_model_arch.md`: P8~P28 + SAM3-RBMA 모델 아키텍처 상세, 변천 과정, 각 버전의 한계점
 - `03_experiment_log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과
@@ -24,7 +25,7 @@
 - `13_servers_and_launch.md`: **서버 레지스트리 & 원격 실험 자동 실행** — "X 실험을 <서버>에서 돌려줘" 류 지시를 받으면 **반드시 먼저 읽어라.** 서버 메타데이터 단일 출처는 `scripts/servers.conf`, 실행/추적은 `scripts/remote_exp.sh`.
 - `14_environment_and_infra.md`: 실행 환경/명령, 데이터·가중치 경로, 체크포인트 포맷, DDP, B200 파이프라인 튜닝.
 
-> `.claude_logs` 인덱스: **00 인덱스(front door)** · 01 상태(상단 스냅샷) · 02 모델상세 · 03 실험 · 04 이슈(상단 상태표) · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)** · **13 서버&원격실행** · 14 환경·인프라. **먼저 00**, 관련연구/노벨티는 **12**, 원격 학습 지시는 **13**을 읽어라. (05~07·P13_design_guide = 🗄 ARCHIVED)
+> `.claude_logs` 인덱스: **00 인덱스(front door)** · **00_EXPERIMENT_LEDGER(시도순 타임라인 목차, 필독)** · `experiments/`(실험별 분석·설계 문서, 날짜 프리픽스) · 01 상태(상단 스냅샷) · 02 모델상세 · 03 실험(결과 canonical) · 04 이슈(상단 상태표) · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)** · **13 서버&원격실행** · 14 환경·인프라. **먼저 00 인덱스 → 00_EXPERIMENT_LEDGER**, 관련연구/노벨티는 **12**, 원격 학습 지시는 **13**을 읽어라. (05~07·P13_design_guide = 🗄 ARCHIVED)
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
@@ -40,6 +41,7 @@
   - 변경 파일 목록 및 핵심 내용 기록
   - 디자인 가이드 대비 의도적 차이가 있으면 사유 기록
 - 모델 아키텍처 변경이 있었으면 `02_model_arch.md`도 함께 업데이트해라.
+- **실험을 새로 돌리거나 실험별 분석/설계 문서를 만들면**: 문서는 `.claude_logs/experiments/YYYY-MM-DD_<모델>_<종류>.md`로 저장하고, **`00_EXPERIMENT_LEDGER.md`의 해당 트랙 표에 한 줄(날짜·상태·링크) 추가**해라(수치 상세는 `03_experiment_log.md`).
 
 ### 4. 세션 종료 시 (Wrap-up)
 
