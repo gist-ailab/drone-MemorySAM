@@ -10,8 +10,9 @@
 
 1. `CLAUDE.md` — 세션 규칙 + 프로젝트 개요
 2. **이 인덱스(00)** — 어디에 뭐가 있는지
-3. [01_project_status.md](01_project_status.md) **상단 "📌 현재 상태 스냅샷"만** — 지금 무엇을 하는 중인지
-4. 작업 카테고리 문서로 이동 (아래)
+3. **[00_EXPERIMENT_LEDGER.md](00_EXPERIMENT_LEDGER.md) — 무조건 먼저 읽기**: 모든 실험을 **시도순 타임라인**으로 훑는 목차(각 실험 → 상세/분석 링크)
+4. [01_project_status.md](01_project_status.md) **상단 "📌 현재 상태 스냅샷"만** — 지금 무엇을 하는 중인지
+5. 작업 카테고리 문서로 이동 (아래)
 
 ---
 
@@ -41,6 +42,8 @@
 ### 4. 🧪 실험 로그 (Experiments)
 | 문서 | 내용 |
 |------|------|
+| [00_EXPERIMENT_LEDGER.md](00_EXPERIMENT_LEDGER.md) | **⭐ 필독 목차** — 모든 실험을 **시도순 타임라인**으로 한 줄씩(트랙 A/B/C) + 상태 + 상세/분석 링크. 새 실험·분석 문서 추가 시 여기 한 줄 갱신 |
+| [experiments/](experiments/) | **실험별 분석/설계 문서 폴더** — `YYYY-MM-DD_<모델>_<종류>.md`(시간순 정렬). 예: `2026-07-07_P32_perimage_analysis.md`, `2026-07-07_P33_design.md`. 목차는 위 원장 |
 | [03_experiment_log.md](03_experiment_log.md) | **메인** — 전체 결과 M-score 표 + 버전별 상세 + 진단. **실험 canonical** |
 | [15_training_monitor_log.md](15_training_monitor_log.md) | **진행 중 학습 실시간 모니터 로그** — `/loop` 세션이 주기적으로 append. 학습 추세 분석/판단은 여기서. (현재 RUN-1=B200 P28 DELIVER) |
 | [16_failure_analysis_P28_P29.md](16_failure_analysis_P28_P29.md) | **P28(RBMA)·P29(SDC) 체계적 실패분석 + P30 커버리지 판정(✅/🟡/❌) + P31 프로토타입(high-res class-token decoder)**. DELIVER 로그 파싱 기반 |

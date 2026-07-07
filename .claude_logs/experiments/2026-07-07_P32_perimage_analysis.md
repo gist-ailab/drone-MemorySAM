@@ -80,4 +80,4 @@
 - 도구: `tools/viz_features_full.py` (`--split test --num -1` 전체, corroboration ON/OFF diff, per-image CSV). ep108 ckpt는 학습 로테이션 삭제 방지 위해 `/home/gm_huis/p32_best_ep108.pth`로 복사 후 사용.
 - per-image CSV 컬럼: `miou, miou_off, dmiou, iou_<25cls>, smiou_<modal>, rel_<modal>, uamm_<modal>, best_modal, top_uamm_modal, misalloc, corrb_dlogit_mean/rel, corrb_frac_flipped`.
 
-→ 개선 설계는 `26_p33_design.md` 참조.
+→ 개선 설계는 [`2026-07-07_P33_design.md`](2026-07-07_P33_design.md) 참조. (목차: [`../00_EXPERIMENT_LEDGER.md`](../00_EXPERIMENT_LEDGER.md))
