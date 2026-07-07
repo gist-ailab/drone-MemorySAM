@@ -159,6 +159,9 @@ P30(구현, [02_model_arch.md](02_model_arch.md) P30)는 P28 실패분석(rare-c
 4. **(P29) CAFuser/DGFusion 조건화 메커니즘 원문 확인** — CAFuser가 정확히 CLIP-text 임베딩을 어디(CA²/CAA)에 주입하는지, DGFusion이 depth-GT를 어떤 loss로 reliability로 변환하는지 원문 대조(우리 §2.7 차별 주장 방어용).
 5. **(P29) MoE-LoRA 조건-라우팅 선행연구 스캔** — MoE-Adapters4CL(NeurIPS'24, task/domain id embedding), Mod-Squad(CVPR'23), VLMo/BEiT-3(MoME), LD-MoLE/DynMoLE 등에서 **무감독 image-derived 조건 latent로 LoRA expert를 라우팅**한 전례가 있는지 확정(SDC 노벨티 방어).
 6. **(P29) FiLM 라우터 변조 + prototype/VQ 조건 공간** 선행연구(FiLM, VQ-VAE codebook, SwAV/online-clustering)와의 구분 — "조건 prototype을 라우터 FiLM에 쓰는" 조합의 비점유 확인.
+7. **(P33-C3) correctness-contrastive / confidence-ranking calibration loss** — "entropy가 정답을 예측하도록 per-modal decoder logit을 shaping"하는 loss의 전례(ConfidNet·correctness-ranking·trust-score·failure-prediction 계열). vault 미커버 → **외부 서치 전 노벨티 주장 보류**(점유 가정). 근거 = experiments/2026-07-07_P33_design §7.
+8. **(P33-C2) asymmetric modality-dropout 전례** — "dominant 모달만 확률적 제거해 weak 모달 사용 강제"의 전례. EQUISeg(2509.24505, 랜덤 holdout)·Reducing-Unimodal-Bias(2505.06635, entropy reg)가 최근접이나 **비대칭+진단주도**는 미점유로 보임 — 확정 필요.
+9. **(P33-C4) focal/class-balanced/Lovász seg loss** 문헌 — vault 전무. thin-class 처방 관련연구로 인용하려면 effective-number CB-CE·focal·Lovász-softmax·seesaw 추가 필요. + **판정: night-consistency는 DELIVER(spread 2.7~3.6, 조명 아님)엔 부적합, MULTIAQUA 전용**(`16` §1-B/§7 실증).
 
 ---
 
