@@ -37,6 +37,7 @@ from _archive.oneoff.val_mm_sam import evaluate
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+from semseg.models.sam2.sam2.lora_sam import get_model
 # torch.autograd.set_detect_anomaly(True)
 
 
@@ -564,7 +565,7 @@ def main(cfg, gpu, save_dir):
     lora_layer = model_cfg.get('LORA_LAYER', None)
     
     # Dynamically load LoRA model class
-    lora_model_class = eval(lora_model_name)
+    lora_model_class = get_model(lora_model_name)  # registry lookup (구 eval() 대체)
     
     # Build model with config parameters
     model_kwargs = {

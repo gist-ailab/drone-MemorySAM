@@ -42,6 +42,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+from semseg.models.sam2.sam2.lora_sam import get_model
 
 
 def load_model(cfg, model_path, device):
@@ -72,7 +73,7 @@ def load_model(cfg, model_path, device):
     lora_top_k = model_cfg.get('LORA_TOP_K')
     lora_layer = model_cfg.get('LORA_LAYER')
 
-    lora_model_class = eval(lora_model_name)
+    lora_model_class = get_model(lora_model_name)  # registry lookup (구 eval() 대체)
     model_kwargs = {
         'sam_model': sam2,
         'r': lora_r,

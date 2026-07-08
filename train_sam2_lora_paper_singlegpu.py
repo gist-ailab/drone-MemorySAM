@@ -27,7 +27,6 @@ import numpy
 import random
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P
 try:
     import wandb
     HAS_WANDB = True
