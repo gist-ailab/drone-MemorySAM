@@ -14,7 +14,7 @@ diagnose_memory_attention.py — Memory Attention Cross-Modal Weight 분석
 
 사용법:
   python MISC/diagnose_memory_attention.py \
-    --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml \
+    --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml \
     --model_path <checkpoint_path> \
     --mode val \
     --num_samples 10 \

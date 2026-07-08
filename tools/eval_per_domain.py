@@ -15,14 +15,14 @@ Examples
 --------
 # P28 (two checkpoints, all 5 weather conditions, test split, GPU0)
 python tools/eval_per_domain.py \
-  --cfg configs/b200-deliver_rgbdel_P28_physaug.yaml \
+  --cfg configs/deliver/b200-deliver_rgbdel_P28_physaug.yaml \
   --ckpt ep178=ckpt_P28/test_epoch178_55.27_top1_checkpoint.pth \
   --ckpt ep100=ckpt_P28/epoch100_63.4_top1_checkpoint.pth \
   --dataset-root /ailab_mat2/dataset/DELIVER \
   --gpu 0 --out-dir ~/eval_P28_out
 
 # P29 / P30 — identical call, just swap --cfg and --ckpt
-python tools/eval_per_domain.py --cfg configs/b200-deliver_rgbdel_P30_physaug.yaml \
+python tools/eval_per_domain.py --cfg configs/deliver/b200-deliver_rgbdel_P30_physaug.yaml \
   --ckpt best=outputs/.../P30_best_checkpoint.pth \
   --dataset-root /ailab_mat2/dataset/DELIVER --gpu 1 --out-dir ~/eval_P30_out
 """

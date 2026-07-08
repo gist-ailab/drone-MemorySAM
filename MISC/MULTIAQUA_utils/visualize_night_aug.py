@@ -6,8 +6,8 @@ Config 파일의 NIGHT_AUG 설정을 읽어 원본과 augmented 이미지를 비
 모달리티 3개(RGB, LiDAR, Thermal)를 한 화면에서 비교.
 
 Usage:
-    python visualize_night_aug.py --cfg configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml --split train
-    python visualize_night_aug.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml  --split val --force
+    python visualize_night_aug.py --cfg configs/archive/levine-multiaqua_rgbtl_P13_hardaug4.yaml --split train
+    python visualize_night_aug.py --cfg configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml  --split val --force
 
 Keyboard:
     n / → / d  : 다음 이미지
@@ -381,7 +381,7 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument('--cfg',   required=True,
-                        help='Config YAML (e.g. configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml)')
+                        help='Config YAML (e.g. configs/archive/levine-multiaqua_rgbtl_P13_hardaug4.yaml)')
     parser.add_argument('--split', default='train', choices=['train', 'val', 'test'],
                         help='Dataset split')
     parser.add_argument('--panel', type=int, default=380,

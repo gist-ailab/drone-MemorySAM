@@ -21,7 +21,7 @@ moved: 2026-07-08
 | 학습 (SAM2) | `python train_sam2_lora_paper.py --cfg configs/<config>.yaml` |
 | 학습 (단일 GPU) | `train_sam2_lora_paper_singlegpu.py` |
 | 학습 (SAM3-RBMA) | `PYTHONPATH=semseg/models/sam3 [torchrun --nproc_per_node=N] python train_sam3_rbma.py --cfg <cfg>` (또는 `run_sam3_train.sh`) |
-| 평가 (val/test) | `python val_multiaqua.py --cfg configs/eval_config/<cfg>.yaml --mode {val,test} --model_path <ckpt> [--macvi]` |
+| 평가 (val/test) | `python val_multiaqua.py --cfg configs/eval/<cfg>.yaml --mode {val,test} --model_path <ckpt> [--macvi]` |
 | P9 전용 평가 | `python val_multiaqua_P9.py --cfg <cfg> --mode {val,test}` |
 
 ## 2. 데이터셋 · 가중치 경로

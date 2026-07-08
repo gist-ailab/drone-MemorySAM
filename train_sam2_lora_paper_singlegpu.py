@@ -301,7 +301,7 @@ def main(cfg, gpu, save_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM/configs/bengio_deliver_rgbdel_sam.yaml')
+    parser.add_argument('--cfg', type=str, default='configs/deliver/bengio_deliver_rgbdel_sam.yaml')
     args = parser.parse_args()
 
     with open(args.cfg) as f:

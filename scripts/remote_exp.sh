@@ -12,7 +12,7 @@
 #   scripts/remote_exp.sh servers
 #
 # Examples:
-#   scripts/remote_exp.sh run bengio configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
+#   scripts/remote_exp.sh run bengio configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
 #   scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 #   scripts/remote_exp.sh status bengio
 #

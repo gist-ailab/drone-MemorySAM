@@ -22,7 +22,7 @@ if [ "$MODE" != "val" ] && [ "$MODE" != "test" ]; then
   exit 1
 fi
 
-CFG="${CFG:-configs/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml}"
+CFG="${CFG:-configs/multiaqua/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml}"
 CKPT="${CKPT:-outputs/MMSamBase/levine_multiaqua_rgbtl_LoRASam_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch24_93.54_checkpoint.pth}"
 
 CMD=(python3 val_multiaqua_detailed.py --cfg "${CFG}" --model_path "${CKPT}" --mode "${MODE}")

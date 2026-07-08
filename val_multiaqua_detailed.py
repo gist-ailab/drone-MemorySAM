@@ -18,7 +18,7 @@ Per-token entropy, argmax fraction, spatial routing map을 시각화.
   save_dir/detailed_log.json : 전체 블록 per-token MoE 통계 + fusion + prediction 분석
 
 사용:
-  python val_multiaqua_detailed.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml \\
+  python val_multiaqua_detailed.py --cfg configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml \\
       --mode val --model_path outputs/MMSamP9/.../epoch47_94.18.pth
 
   # TTA (horizontal flip, 2 passes/image):

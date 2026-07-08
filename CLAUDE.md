@@ -74,14 +74,14 @@ conda activate MMSS_SAM
 python train_sam2_lora_paper.py --cfg configs/<config>.yaml
 
 # 평가 (val)
-python val_multiaqua.py --cfg configs/eval_config/<config>.yaml --mode val --model_path <checkpoint_path>
+python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode val --model_path <checkpoint_path>
 
 # 평가 (test + challenge 제출)
-python val_multiaqua.py --cfg configs/eval_config/<config>.yaml --mode test --model_path <checkpoint_path> --macvi
+python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode test --model_path <checkpoint_path> --macvi
 
 # P9 전용 시각화 평가 (MoE routing 분석 포함)
-python val_multiaqua_P9.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode val
-python val_multiaqua_P9.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode test
+python val_multiaqua_P9.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode val
+python val_multiaqua_P9.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode test
 ```
 
 ### 원격 서버에서 실험 실행 (tmux 세션 `jemo`)
@@ -94,7 +94,7 @@ bash scripts/remote_exp.sh servers
 # 서버 상태(빈 GPU + jemo 세션 창)
 bash scripts/remote_exp.sh status bengio
 # 실행: ssh -> tmux 세션 'jemo' 새 window -> torchrun -> logs/<cfg>/<cfg>_<ts>.log
-bash scripts/remote_exp.sh run bengio configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
+bash scripts/remote_exp.sh run bengio configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
 # 진행 로그 추적
 bash scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 ```
@@ -126,8 +126,8 @@ drone-MemorySAM/
 ├── val_multiaqua_P9.py                # P9 전용 시각화 + MoE routing 분석
 ├── diagnose_moe_gate.py               # MoE gate 진단 스크립트
 ├── configs/
-│   ├── levine-multiaqua_rgbtl_P{8-12}_hardaug{2-4}.yaml  # 학습 configs
-│   └── eval_config/                   # 평가 configs (MODEL_PATH 포함)
+│   ├── deliver/ · multiaqua/ · det/   # 학습 configs (분류 기준: configs/README.md)
+│   └── eval/                          # 평가 configs (MODEL_PATH 포함, 구 eval_config/)
 ├── semseg/
 │   └── models/sam2/sam2/
 │       ├── sam_lora_image_encoder_seg.py  # LoRA_Sam_P8~P12 모델 정의

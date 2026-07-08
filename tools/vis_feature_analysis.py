@@ -12,7 +12,7 @@ AMF 이후 fused mask를 비교 시각화.
 
 사용:
   python vis_feature_analysis.py \
-    --cfg configs/eval_config/<config>.yaml \
+    --cfg configs/eval/<config>.yaml \
     --model_path <checkpoint_path> \
     --mode val \
     --save_dir outputs/vis_feature_analysis \
@@ -20,7 +20,7 @@ AMF 이후 fused mask를 비교 시각화.
 
   # DELIVER 데이터셋
   python vis_feature_analysis.py \
-    --cfg configs/eval_config/<deliver_config>.yaml \
+    --cfg configs/eval/<deliver_config>.yaml \
     --model_path <checkpoint_path> \
     --mode val --dataset DELIVER \
     --save_dir outputs/vis_feature_analysis

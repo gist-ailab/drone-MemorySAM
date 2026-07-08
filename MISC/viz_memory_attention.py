@@ -11,25 +11,25 @@ SAM2 memory attention의 cross-attention weight를 이미지별로 시각화.
 
   # MMSamBase — Val (주간)
   python MISC/viz_memory_attention.py \
-    --cfg configs/eval_config/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml \
+    --cfg configs/eval/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml \
     --model_path outputs/MMSamBase/.../best_checkpoint.pth \
     --mode val --model_name MMSamBase
 
   # MMSamBase — Test (야간)
   python MISC/viz_memory_attention.py \
-    --cfg configs/eval_config/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml \
+    --cfg configs/eval/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml \
     --model_path outputs/MMSamBase/.../best_checkpoint.pth \
     --mode test --model_name MMSamBase
 
   # P9 — Val (주간)
   python MISC/viz_memory_attention.py \
-    --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml \
+    --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml \
     --model_path outputs/MMSamP9/.../epoch131_94.41_top1_checkpoint.pth \
     --mode val --model_name P9
 
   # P9 — Test (야간)
   python MISC/viz_memory_attention.py \
-    --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml \
+    --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml \
     --model_path outputs/MMSamP9/.../epoch131_94.41_top1_checkpoint.pth \
     --mode test --model_name P9
 
@@ -618,10 +618,10 @@ def main():
         epilog="""
 예시:
   # Val (주간) 전체
-  python MISC/viz_memory_attention.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml --model_path <ckpt> --mode val
+  python MISC/viz_memory_attention.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml --model_path <ckpt> --mode val
 
   # Test (야간) 전체
-  python MISC/viz_memory_attention.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml --model_path <ckpt> --mode test
+  python MISC/viz_memory_attention.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml --model_path <ckpt> --mode test
 
   # 특정 이미지 + degradation 비교
   python MISC/viz_memory_attention.py ... --indices 0 5 10 --degradations dark_rgb zero_lidar

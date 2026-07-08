@@ -51,8 +51,8 @@ bash scripts/remote_exp.sh status bengio
 bash scripts/remote_exp.sh run bengio configs/<config>.yaml auto:4
 
 # 평가 (val / test+MACVi 제출)
-python val_multiaqua.py --cfg configs/eval_config/<config>.yaml --mode val --model_path <ckpt>
-python val_multiaqua.py --cfg configs/eval_config/<config>.yaml --mode test --model_path <ckpt> --macvi
+python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode val --model_path <ckpt>
+python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode test --model_path <ckpt> --macvi
 ```
 
 ⚠️ 어떤 학습이든 실행 전 **빈 GPU 확인 필수** — 규칙은 `CLAUDE.md` 주의사항 6번.

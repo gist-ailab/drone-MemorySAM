@@ -13,7 +13,7 @@ MaCVi 리더보드 제출 시:
   예: python val_multiaqua.py ... --macvi
 
 사용:
-  python val_multiaqua.py --cfg configs/lecun_multiaqua_rgbtl_P8.yaml --mode val --model_path outputs/.../epoch15_93.95_checkpoint.pth
+  python val_multiaqua.py --cfg configs/multiaqua/lecun_multiaqua_rgbtl_P8.yaml --mode val --model_path outputs/.../epoch15_93.95_checkpoint.pth
   python val_multiaqua.py --cfg ... --mode val --model_path ... --save_dir outputs/.../val_pred
   python val_multiaqua.py --cfg ... --mode test --model_path ... --save_dir outputs/.../test_pred
 """
@@ -591,7 +591,7 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='configs/lecun_multiaqua_rgbtl_P8.yaml')
+    parser.add_argument('--cfg', type=str, default='configs/multiaqua/lecun_multiaqua_rgbtl_P8.yaml')
     parser.add_argument('--mode', type=str, choices=['val', 'test'], default='val')
     parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--save_dir', type=str, default=None)

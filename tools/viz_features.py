@@ -19,7 +19,7 @@ P29/P30 work by swapping --cfg/--model_path. Selection: --case <condition>, --in
 dead classes, RailTrack for domain-sensitive).
 
 Example:
-  python tools/viz_features.py --cfg configs/b200-deliver_rgbdel_P28_physaug.yaml \
+  python tools/viz_features.py --cfg configs/deliver/b200-deliver_rgbdel_P28_physaug.yaml \
     --model_path ckpt_P28/test_epoch178_55.27_top1_checkpoint.pth \
     --dataset-root /ailab_mat2/dataset/DELIVER --case sun --contains RailTrack \
     --num 2 --gpu 0 --out-dir ~/viz_P28

@@ -5,7 +5,7 @@ Supports MULTIAQUA, DELIVER, and future datasets via config DATASET.NAME.
 
 Usage:
   # Basic validation (seg/ + seg_viz/ + uamm_amf_moe_log.json)
-  python val.py --cfg configs/eval_config/xxx.yaml --mode val --model_path xxx.pth
+  python val.py --cfg configs/eval/xxx.yaml --mode val --model_path xxx.pth
 
   # Detailed mode: per-token MoE routing analysis + extended viz + detailed_log.json
   python val.py --cfg ... --mode val --model_path ... --detailed

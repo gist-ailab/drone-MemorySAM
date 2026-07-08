@@ -80,7 +80,7 @@ scripts/remote_exp.sh servers                  # 레지스트리 출력
 ### 예시
 ```bash
 # bengio에서 빈 GPU 4장으로 P9 hardaug6 학습
-scripts/remote_exp.sh run bengio configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
+scripts/remote_exp.sh run bengio configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
 # 진행 로그 확인
 scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 # 서버 상태(창 + GPU)

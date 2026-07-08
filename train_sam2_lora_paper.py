@@ -1451,7 +1451,7 @@ def main(cfg, gpu, save_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='configs/deliver_rgbdel.yaml', help='Configuration file to use')
+    parser.add_argument('--cfg', type=str, default='configs/deliver/deliver_rgbdel_sam.yaml', help='Configuration file to use')
     args = parser.parse_args()
 
     with open(args.cfg) as f:

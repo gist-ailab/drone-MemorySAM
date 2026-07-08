@@ -9,7 +9,7 @@
 #   DRY_RUN=1 bash run_sam3.sh [cfg]                    # 커맨드만 출력(실행 안 함)
 set -e
 
-CFG="${1:-configs/b200-deliver_rgbdel_SAM3RBMA_physaug.yaml}"
+CFG="${1:-configs/deliver/b200-deliver_rgbdel_SAM3RBMA_physaug.yaml}"
 NPROC="${NPROC:-${NGPU:-1}}"
 
 # GPU 선택: CUDA_VISIBLE_DEVICES를 직접 주면 존중, 없으면 빈 GPU NPROC장 자동 배정.
