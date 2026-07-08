@@ -67,6 +67,7 @@
 | 문서 | 내용 |
 |------|------|
 | [09_bot_roles_guide.md](09_bot_roles_guide.md) | 세션 역할(코드분석봇/코딩봇/실험분석봇/그림봇) 지침 |
+| [22_supervisor_taskboard.md](22_supervisor_taskboard.md) | **Supervisor 세션별 목표 태스크보드** — 각 세션(코딩봇Det/모니터링봇/그림봇/리팩토링봇)의 할당 태스크·우선순위·상태. **세션 시작 시 자기 섹션 확인, 완료 시 상태 갱신** |
 | [P13_design_guide.md](P13_design_guide.md) | 🗄 ARCHIVED — P13 설계 시점 가이드 |
 
 ---

@@ -1,5 +1,7 @@
 # 관련 연구 (Related Work) — 멀티모달 융합 & 어텐션 동역학
 
+> **[2026-07-08 append] 차세대 아키텍처 deep-research 원시 로그**: 2트랙(VFM 후보 / adaptive fusion) 병렬 조사 수행 — 전체 결과·문헌 인덱스·미확인 표기는 `research_vault/material/brainstorm_next_arch_20260708.md` §5에 통합 기록(본 문서엔 중복 미전개). 핵심: DINOv3(2508.10104) frozen ADE20K 63.0/COCO 66.1, C-RADIOv4(2601.17237) SigLIP2+DINOv3+SAM3 3교사, SAM3 가중치 gated, entropy-신뢰도 비판 계열(MG-MTTA 2604.24602) 대두, det-head additive-bias 셀 빈 것 재확인.
+
 > 최초 작성: 2026-06-12
 > 출처: NotebookLM 큐레이션 (Research Bibliography: Diffusion Transformers and Multi-Modal Fusion)
 > 목적: MemorySAM 추가 연구·실험을 위한 외부 소스 정리 및 프로젝트 매핑
