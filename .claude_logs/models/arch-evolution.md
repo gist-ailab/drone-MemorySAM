@@ -75,7 +75,7 @@ moved: 2026-07-08
 
 **Ablation 계획**: ① class-token decoder on/off (rare-class IoU: Water/Wall/Bridge 0 탈출?), ② router scalar vs per_class vs 고정 UAMM (event/LiDAR ablation Δ가 유의미 음수로 바뀌나 = 부활 확인), ③ anchor λ sweep(0=순수 학습 vs 큰 λ=reliability 지배; 상수수렴 여부), ④ `analyze_failures.py`로 per-condition×class + modality-ablation을 P28/P29 대비 측정. 성공 기준: Water/Wall/Bridge>0, event/LiDAR Δ 유의미 음수.
 
-**리스크**: (1) **frozen-backbone 천장(ISSUE-008)** — rare class가 frozen SAM2 feature에 애초에 안 담겼으면 ①②로도 한계; multi-scale FPN/②의 모달 부활로 완화. (2) class-token decoder는 근사 구현이라 실제 SAM decoder 대비 약할 수 있음. (3) **런타임 미검증**: 두 모듈은 CPU dummy smoke(forward+backward+grad+reliability-anchor 초기성) 통과했으나, `LoRA_Sam_P30`의 full forward(track_step 내부와 _fuse_outputs 상호작용)는 SAM2 로드 없이 compile-only 검증 → 학습 전 main이 GPU 1-forward로 확인 권장. 노벨티 = [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.8.
+**리스크**: (1) **frozen-backbone 천장(ISSUE-008)** — rare class가 frozen SAM2 feature에 애초에 안 담겼으면 ①②로도 한계; multi-scale FPN/②의 모달 부활로 완화. (2) class-token decoder는 근사 구현이라 실제 SAM decoder 대비 약할 수 있음. (3) **런타임 미검증**: 두 모듈은 CPU dummy smoke(forward+backward+grad+reliability-anchor 초기성) 통과했으나, `LoRA_Sam_P30`의 full forward(track_step 내부와 _fuse_outputs 상호작용)는 SAM2 로드 없이 compile-only 검증 → 학습 전 main이 GPU 1-forward로 확인 권장. 노벨티 = [research/novelty-and-related-work.md](../research/novelty-and-related-work.md) §2.8.
 
 ---
 
@@ -106,7 +106,7 @@ moved: 2026-07-08
 
 **리스크**: (1) 무감독 prototype이 **nuisance 요인**(장면 레이아웃 등)으로 군집될 수 있음 → probe + 필요시 약한 self-supervised 조건 contrast(단 label-free 유지). (2) **노벨티≠mIoU**: 실제 천장이 frozen-backbone feature 품질일 수 있음(ISSUE-008) → 라우팅 재설계가 방법론적 기여여도 수치는 소폭일 수 있음, per-condition 분해로 방어. (3) 리뷰어 "왜 DELIVER 조건 라벨 안 씀?" → **무라벨 야간 드론 배치 전제**(배포 시 조건 라벨 없음)로 답, label-free latent가 라벨 조건과 일치함을 probe로 입증.
 
-**노벨티 포지셔닝**: label-free·image-derived·router-level 조건화는 CAFuser(CLIP/text 조건)·DGFusion(depth+depth-GT) 어느 쪽과도 다름. 상세 = [12_novelty_and_related_work.md](12_novelty_and_related_work.md) §2.7.
+**노벨티 포지셔닝**: label-free·image-derived·router-level 조건화는 CAFuser(CLIP/text 조건)·DGFusion(depth+depth-GT) 어느 쪽과도 다름. 상세 = [research/novelty-and-related-work.md](../research/novelty-and-related-work.md) §2.7.
 
 ---
 

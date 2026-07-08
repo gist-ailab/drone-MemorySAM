@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # P14 실험 결과 분석
 
-> 🗄 **[ARCHIVED — 2026-02 동결]** P14 1회성 분석본. 현행 실험 요약은 [03_experiment_log.md](03_experiment_log.md) 참조.
+> 🗄 **[ARCHIVED — 2026-02 동결]** P14 1회성 분석본. 현행 실험 요약은 [experiments/log.md](../experiments/log.md) 참조.
 > 생성일: 2026-02-27
 
 ## 1. P14 실험 개요

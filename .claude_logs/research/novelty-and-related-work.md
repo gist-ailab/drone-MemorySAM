@@ -116,7 +116,7 @@ B_i = 1 − H(softmax(Decoderᵢ(fᵢ))) / log C      # 모달 i 단독 디코�
 
 ## 2.7 P29 — label-free image-derived 조건 라우팅 (SDC) 포지셔닝
 
-P29(설계, [02_model_arch.md](02_model_arch.md) P29)는 **조건(day/night/snow-rain)을 라우팅 축으로** 도입하되 **시각 feature에서 무감독으로 자기파생**한다. 비교축 = **(조건 신호를 어디서 얻나) × (어디에 주입하나)**.
+P29(설계, [models/arch-evolution.md](../models/arch-evolution.md) P29)는 **조건(day/night/snow-rain)을 라우팅 축으로** 도입하되 **시각 feature에서 무감독으로 자기파생**한다. 비교축 = **(조건 신호를 어디서 얻나) × (어디에 주입하나)**.
 
 | 방법 | 조건 신호 출처 | 주입 위치 | P29(SDC)와의 차이 |
 |------|------|------|------|
@@ -131,7 +131,7 @@ P29(설계, [02_model_arch.md](02_model_arch.md) P29)는 **조건(day/night/snow
 
 ## 2.8 P30 — class-token decoder + reliability-anchored learned router 포지셔닝
 
-P30(구현, [02_model_arch.md](02_model_arch.md) P30)는 P28 실패분석(rare-class collapse + dead event/LiDAR)에 직접 대응하는 두 기구를 추가한다.
+P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 실패분석(rare-class collapse + dead event/LiDAR)에 직접 대응하는 두 기구를 추가한다.
 
 | 기구 | 가장 가까운 선행 | P30과의 차이(노벨티) |
 |------|------|------|

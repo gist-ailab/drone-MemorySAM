@@ -9,7 +9,7 @@ moved: 2026-07-08
 > 생성: 2026-06-24
 > **이 파일은 `/loop` 모니터 세션이 주기적으로 append하고, 모든 세션이 읽어 분석·판단·개선에 쓰는 공유 로그다.**
 > loop 세션의 채팅은 다른 세션에 안 보이지만, 여기 기록된 내용은 `.claude_logs` init 규칙을 통해 전 세션이 공유한다.
-> 규칙: ① 매 점검마다 한 줄 timestamped 엔트리 추가(append-only, 과거 줄 수정 금지). ② 이상징후(사망/정체/완료/신기록)는 엔트리 아래 `> ⚠️`로 강조. ③ 학습 종료/사망 시 [01_project_status.md](01_project_status.md) 스냅샷의 해당 트랙도 갱신.
+> 규칙: ① 매 점검마다 한 줄 timestamped 엔트리 추가(append-only, 과거 줄 수정 금지). ② 이상징후(사망/정체/완료/신기록)는 엔트리 아래 `> ⚠️`로 강조. ③ 학습 종료/사망 시 [status/current.md](../status/current.md) 스냅샷의 해당 트랙도 갱신.
 
 ---
 
@@ -18,7 +18,7 @@ moved: 2026-07-08
 - **서버/소유자**: B200 (unix user `gm_huis`), repo `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`
 - **config**: `configs/b200-deliver_rgbdel_P28_physaug.yaml` (순수 RBMA, AMF_MODE=uniform, λ_bias init 1.0, 4모달 img/depth/event/lidar, 목표 200 ep)
 - **출력**: `outputs/MMSamP28/b200_deliver_rgbdel_P28_physaug/DELIVER_CMNeXt-B2_idel/` (`train.log`, `epochN_<val>_topK…pth`, `test_epochN_<test>…pth`)
-- **비교 기준**: 직접 경쟁군(Cluster B, test) DGFusion 56.7 / CAFuser 55.6 · 구조적 base(Cluster A) MemorySAM val 65.38 — 자세히는 [12_novelty_and_related_work.md](12_novelty_and_related_work.md).
+- **비교 기준**: 직접 경쟁군(Cluster B, test) DGFusion 56.7 / CAFuser 55.6 · 구조적 base(Cluster A) MemorySAM val 65.38 — 자세히는 [research/novelty-and-related-work.md](../research/novelty-and-related-work.md).
 
 | 점검 시각(KST) | epoch | Val mIoU | Test mIoU | best | GPU(util/mem) | 프로세스 | 상태 판정 |
 |---|---|---|---|---|---|---|---|
@@ -52,7 +52,7 @@ moved: 2026-07-08
 - **서버/소유자**: B200 (`gm_huis`), repo `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`
 - **config**: `configs/b200-deliver_rgbdel_P29_physaug.yaml` (P29 seg, 4모달 img/depth/event/lidar). torchrun nproc=3, GPU 4-7 사용(공유 박스, G0-3은 타 사용자).
 - **출력**: `outputs/MMSamP29/b200_deliver_rgbdel_P29_physaug/DELIVER_CMNeXt-B2_idel/` (`train.log`, `test_epochN_*_topK_checkpoint.pth`, `last_checkpoint.pth`)
-- **비교 기준**: 직접경쟁군 DGFusion test 56.7 / CAFuser 55.6 — [12_novelty_and_related_work.md](12_novelty_and_related_work.md).
+- **비교 기준**: 직접경쟁군 DGFusion test 56.7 / CAFuser 55.6 — [research/novelty-and-related-work.md](../research/novelty-and-related-work.md).
 
 | 점검 시각(KST) | epoch | Day-Val mIoU | Test mIoU | best | GPU(util/mem) | 프로세스 | 상태 판정 |
 |---|---|---|---|---|---|---|---|

@@ -8,7 +8,7 @@ moved: 2026-07-08
 
 > 최종 업데이트: 2026-06-24
 > 카테고리: **환경세팅 로그**. 학습/평가 실행 환경, 데이터/가중치 경로, 멀티GPU·B200 튜닝, 체크포인트 포맷 등 "재현·실행"에 필요한 모든 인프라 사실을 모은다.
-> 명령어 원본(canonical)은 [CLAUDE.md](../CLAUDE.md) "환경 설정" 섹션. 여기는 그 위에 쌓인 인프라 변경 이력까지 포함.
+> 명령어 원본(canonical)은 [CLAUDE.md](../../CLAUDE.md) "환경 설정" 섹션. 여기는 그 위에 쌓인 인프라 변경 이력까지 포함.
 
 ---
 
@@ -78,4 +78,4 @@ moved: 2026-07-08
 
 ---
 
-> 관련: 실험 결과 → [03_experiment_log.md](03_experiment_log.md), 이슈 → [04_issues_and_fixes.md](04_issues_and_fixes.md), 인덱스 → [00_INDEX.md](00_INDEX.md).
+> 관련: 실험 결과 → [experiments/log.md](../experiments/log.md), 이슈 → [issues/issues-and-fixes.md](../issues/issues-and-fixes.md), 인덱스 → [00_INDEX.md](../00_INDEX.md).

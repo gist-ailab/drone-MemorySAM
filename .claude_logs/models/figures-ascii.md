@@ -9,7 +9,7 @@ moved: 2026-07-08
 > 최종 업데이트: 2026-02-28
 > ⚠️ **커버리지: P26까지만.** 현재 핵심인 **P27 / P28(=RBMA) / SAM3-RBMA 피규어는 아직 없음.**
 > 노벨티(RBMA) 발표/논문 피규어가 필요하면 이 문서에 P28·SAM3-RBMA 섹션을 추가해야 한다.
-> 아키텍처 본문 설명은 [02_model_arch.md](02_model_arch.md), 노벨티는 [12_novelty_and_related_work.md](12_novelty_and_related_work.md) 참조.
+> 아키텍처 본문 설명은 [models/arch-evolution.md](arch-evolution.md), 노벨티는 [research/novelty-and-related-work.md](../research/novelty-and-related-work.md) 참조.
 >
 > 이 문서는 논문/발표용 피규어 가이드입니다.
 > 모듈별 I/O 텐서 shape, 내부 구조, 버전 간 차이를 시각화합니다.

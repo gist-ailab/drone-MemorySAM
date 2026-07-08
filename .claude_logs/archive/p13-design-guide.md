@@ -5,7 +5,7 @@ moved: 2026-07-08
 
 # P13 설계 가이드: Energy-Confidence Fusion + Expert Collapse Fix
 
-> 🗄 **[ARCHIVED — 2026-02 동결]** P13 설계 시점 가이드. 구현 결과/한계는 [02_model_arch.md](02_model_arch.md) P13 섹션, [06_result_analysis_P13.md](06_result_analysis_P13.md) 참조.
+> 🗄 **[ARCHIVED — 2026-02 동결]** P13 설계 시점 가이드. 구현 결과/한계는 [models/arch-evolution.md](../models/arch-evolution.md) P13 섹션, [archive/result-analysis-p13.md](result-analysis-p13.md) 참조.
 > 작성일: 2026-02-25
 > 기반 모델: P9 (LoRA_Sam_P9, M-score 81.47)
 > 목표: CrossModalFusionHead 상수 수렴 문제 해결 + MoE expert collapse 해결

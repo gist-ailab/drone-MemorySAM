@@ -20,14 +20,14 @@ period: 2026-01-01 ~ 2026-06-30
 - **스칼라**: 기존 train/val/night/test 메트릭(+per-class IoU/acc/F1) 그대로 wandb로, step=epoch.
 - **신규 이미지**: `_select_fixed_vis_indices`로 val 전체에서 균등 간격 10장 고정 → 매 eval마다 동일 인덱스로 `[RGB|GT|Pred]` 패널을 `val_samples` 키에 로깅(미디어 슬라이더로 epoch별 정성 추적). `log_wandb_inference_samples` 헬퍼(singlegpu가 재사용).
 - 선택적 `WANDB` config 블록(ENABLE/PROJECT/ENTITY/NAME/NUM_VIS), env `WANDB_DISABLED=1`. 미설치/미로그인 시 학습은 그대로 진행, 로깅만 skip.
-- 서버별 셋업은 수동 1회: `pip install wandb` + `wandb login`. 상세 [13_servers_and_launch.md](13_servers_and_launch.md) §4.
+- 서버별 셋업은 수동 1회: `pip install wandb` + `wandb login`. 상세 [infra/servers-and-launch.md](../infra/servers-and-launch.md) §4.
 **검증**: 두 스크립트 py_compile OK, 메인 모듈 import OK(HAS_WANDB=False graceful), 이미지 패널 shape(H,W×3,3)/ignore=255 처리 확인. *주의*: singlegpu는 별개의 기존 import 이슈(`LoRA_Sam_P` 미존재)로 자체 실행 불가 — 이번 변경과 무관.
 
 ---
 
 ### SAM3-RBMA val 붕괴 진짜 원인 — sem_head BatchNorm train/eval 불일치 → GroupNorm — 2026-06-19
 
-**핵심**: 멀티스케일 head·백본 로드 정상인데도 **train loss 정상(main~2.0)/val mIoU 2.56**. 원인은 head의 `BatchNorm`: standalone(reliability)+memory-conditioned(출력)×4모달 = 분포 다른 8회 호출이 공유 BN running stats를 오염 → eval만 붕괴. **BN→GroupNorm**으로 수정(train==eval 검증, diff 0.0). 상세 [04_issues_and_fixes.md](04_issues_and_fixes.md) ISSUE-021.
+**핵심**: 멀티스케일 head·백본 로드 정상인데도 **train loss 정상(main~2.0)/val mIoU 2.56**. 원인은 head의 `BatchNorm`: standalone(reliability)+memory-conditioned(출력)×4모달 = 분포 다른 8회 호출이 공유 BN running stats를 오염 → eval만 붕괴. **BN→GroupNorm**으로 수정(train==eval 검증, diff 0.0). 상세 [issues/issues-and-fixes.md](../issues/issues-and-fixes.md) ISSUE-021.
 **비교 기준(SAM2 P28, DELIVER 25cls)**: ep2 Day42.67/Test40.14 → ep10 Day55.26/Test49.41. SAM3-RBMA는 이 GN 수정 후 fresh 재학습으로 비교.
 **주의**: BN→GN 키 변경 → 비호환, **fresh 재학습 필수**(폴더 이동, AUTO_RESUME 옛 ckpt 회피).
 
@@ -85,7 +85,7 @@ period: 2026-01-01 ~ 2026-06-30
 
 **문제**: B200 SAM3-RBMA(DELIVER 25cls) 학습 val mIoU=2.05로 붕괴. 진단 결과 `build_sam3_tracker()`가 full `sam3.pt`(키 접두사 `detector.`/`tracker.`)를 접두사 없는 tracker에 strict=False로 로드 → **0/773 매칭, ViT 백본 100% random+frozen**.
 
-**수정**: `semseg/models/sam3/sam3_lora_rbma.py` `build_sam3_tracker` — prefix 우선순위 remap(tracker.→detector.) + backbone <90% 로드 시 RuntimeError 가드. 진단 스크립트 `diag_sam3_ckpt.py` 추가. 상세: [04_issues_and_fixes.md](04_issues_and_fixes.md) ISSUE-020.
+**수정**: `semseg/models/sam3/sam3_lora_rbma.py` `build_sam3_tracker` — prefix 우선순위 remap(tracker.→detector.) + backbone <90% 로드 시 RuntimeError 가드. 진단 스크립트 `diag_sam3_ckpt.py` 추가. 상세: [issues/issues-and-fixes.md](../issues/issues-and-fixes.md) ISSUE-020.
 
 **다음**: B200에서 git pull → `RESUME_ENABLE:false`로 재학습(기존 random-백본 체크포인트 폐기) → `[sam3 ckpt] ... backbone=504/504` 확인 후 val 정상 상승 확인.
 
@@ -97,7 +97,7 @@ period: 2026-01-01 ~ 2026-06-30
 
 **상태**: 구현·등록·검증 완료 → B200 학습 대기.
 
-**배경 (진단)**: P25/P27의 SpatialQualityGating(SQG)이 야간 Pred Q에서 **정적 RGB-붕괴 + lidar/thermal 평탄**(B-1), 원인은 SQG 예측기가 frozen-encoder feature로 학습돼 underfit, teacher(exp(-CE))는 멀쩡(B-2). 상세: [03_experiment_log.md](03_experiment_log.md) 진단 1~3, [10_related_work.md](10_related_work.md).
+**배경 (진단)**: P25/P27의 SpatialQualityGating(SQG)이 야간 Pred Q에서 **정적 RGB-붕괴 + lidar/thermal 평탄**(B-1), 원인은 SQG 예측기가 frozen-encoder feature로 학습돼 underfit, teacher(exp(-CE))는 멀쩡(B-2). 상세: [experiments/log.md](../experiments/log.md) 진단 1~3, [research/related-work-raw.md](../research/related-work-raw.md).
 
 **노벨티 근거 (deep-research)**: SAM2 memory-attention에서 reliability를 **attention LOGIT에 additive bias**로 거는 전례 0 (선행연구는 feature-multiply/output-scale/loss). 신호는 **training-free decoder 예측 불확실성** (UTFNet/HyperDUM의 학습 evidential/HD head 대비 차별). 차별화 대상: UTFNet, HyperDUM, TMC/ETMC, ReliFusion/READ.
 
@@ -126,9 +126,9 @@ period: 2026-01-01 ~ 2026-06-30
 - 단 기존 SoftMoE의 한계(gate가 환경 무관·모달 축으로 정적 붕괴, B-1/B-2 진단)는 피해야 함 → cond_dim(P12)·환경 신호 주입 또는 RBMA reliability를 라우팅에 재사용하는 방향 검토.
 - 우선순위: plain LoRA + RBMA 검증 후. ablation/확장 단계에서 도입.
 
-**코드 확정 (로컬 `semseg/models/sam3`)**: bias 주입점 = `sam3/model/encoder.py` `TransformerEncoderLayer.cross_attn_image(attn_mask=memory_mask)` (MultiheadAttentionWrapper, 이미 인자 존재). 백본 = `sam3/model/vitdet.py ViT`(LoRA 타겟). memory 순서 = spatial(프레임=모달 블록)→obj_ptr. 상세: [10_related_work.md](10_related_work.md) SAM3 섹션.
+**코드 확정 (로컬 `semseg/models/sam3`)**: bias 주입점 = `sam3/model/encoder.py` `TransformerEncoderLayer.cross_attn_image(attn_mask=memory_mask)` (MultiheadAttentionWrapper, 이미 인자 존재). 백본 = `sam3/model/vitdet.py ViT`(LoRA 타겟). memory 순서 = spatial(프레임=모달 블록)→obj_ptr. 상세: [research/related-work-raw.md](../research/related-work-raw.md) SAM3 섹션.
 
-**SAM3 RBMA 구현 완료 — 2026-06-16** (상세 진행/체크리스트: [11_sam3_rbma_plan.md](11_sam3_rbma_plan.md))
+**SAM3 RBMA 구현 완료 — 2026-06-16** (상세 진행/체크리스트: [decisions/2026-06-16-sam3-porting-plan.md](../decisions/2026-06-16-sam3-porting-plan.md))
 - ⚠️ 구현 중 정정: tracker memory cross-attn은 MultiheadAttention이 **아니라 RoPEAttention**(SDPA attn_mask 없음). → P27식으로 `sam3/sam/transformer.py` SDPA 패치(`_rbma_attn_bias`).
 - 신규 파일: `semseg/models/sam3/sam3_lora_rbma.py`(`LoRA_Sam3_RBMA`: plain LoRA + modality-as-frame forward + RBMA bias hook + SemanticHead + training-free entropy reliability + compute_losses), `train_sam3_rbma.py`(전용 트레이너, DDP/AMP), `configs/b200-{multiaqua_rgbtl,deliver_rgbdel}-SAM3RBMA-*.yaml`.
 - 검증: 전 컴포넌트 random-init PASS (forward 출력 (B,C,1008,1008), RBMA bias↔출력 결합, LoRA backward, 배선). **실학습은 서버/B200** (SAM3 가중치 gated=Meta 승인 대기, 로컬 GPU 메모리 부족).
@@ -348,7 +348,7 @@ P26 v6까지 SQG 기반 gating은 feature에 element-wise multiply (`feature × 
 
 ### 문서: AGENTS.md Codex/Cursor 정렬 (2026-04-09)
 
-- **변경**: 루트 [`AGENTS.md`](../AGENTS.md)를 MemorySAM 워크플로(conda `MMSS_SAM`, `train_sam2_lora_paper.py` / `val_multiaqua.py`, `.claude_logs` 세션 규칙)에 맞게 재작성. 기존 pnpm/Node 전용 템플릿 제거.
+- **변경**: 루트 [`AGENTS.md`](../../AGENTS.md)를 MemorySAM 워크플로(conda `MMSS_SAM`, `train_sam2_lora_paper.py` / `val_multiaqua.py`, `.claude_logs` 세션 규칙)에 맞게 재작성. 기존 pnpm/Node 전용 템플릿 제거.
 - **`.codex/AGENTS.md`**: 루트 `AGENTS.md`·`CLAUDE.md`를 가리키도록 단순화(중복 지침 방지).
 - **사유**: Codex가 `AGENTS.md`를 우선 읽을 때 프로젝트와 무관한 지침이 섞이지 않게 함.
 

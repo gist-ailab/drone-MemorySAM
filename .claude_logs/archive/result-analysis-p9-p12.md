@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # P9 vs P12 실험결과 종합 분석 보고서
 
-> 🗄 **[ARCHIVED — 2026-02 동결]** P9~P12 시절 1회성 심층 분석본. 현행 실험 요약은 [03_experiment_log.md](03_experiment_log.md) 참조.
+> 🗄 **[ARCHIVED — 2026-02 동결]** P9~P12 시절 1회성 심층 분석본. 현행 실험 요약은 [experiments/log.md](../experiments/log.md) 참조.
 > 분석일: 2026-02-25
 > 분석 대상: P9 hardaug4 (Submission #15635), P12 hardaug4 (Submission #15949)
 
