@@ -10,7 +10,9 @@ moved: 2026-07-08
 
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-07-02
+> 최종 업데이트: 2026-07-08 (리포 재구조화 — 브랜치 `restructure/ia-taxonomy`)
+
+**⚠️ 리포 재구조화 (2026-07-08, PR 대기)**: `.claude_logs` 폴더 택소노미 개편(구번호→새경로 매핑은 [00_INDEX.md](../00_INDEX.md)), 모델 코드 `lora_sam/`·`modules/` 패키지화(구경로 shim 유지, `MODEL_REGISTRY` 41종), configs 데이터셋별 재편(파일명 불변), NAS 볼트 수리+`scripts/sync_research_vault.sh`. **원격 서버(B200/jarvis)는 진행 중 학습 종료 전까지 pull 금지.** 상세 = [history-2026H2.md](history-2026H2.md) 최신 엔트리.
 
 ---
 
