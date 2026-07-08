@@ -1,5 +1,6 @@
 ---
 title: Uncertainty and Reliability Fusion Related Work for RBMA
+aliases: [TMC]
 tags: [related-work, uncertainty, reliability, evidential-fusion, multimodal-segmentation, rbma, key-paper]
 created: 2026-06-24
 source: OpenAlex API verification; arXiv API verification; [[sources/01_source_index_multimodal_segmentation]]; [[sources/02_openalex_top_venue_literature_database]]; [[relatedworks/02_dgfusion_relatedwork]]; [[relatedworks/07_cmx_tokenfusion_magic_cafuser_baselines]]

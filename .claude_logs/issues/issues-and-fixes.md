@@ -17,6 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-023** | 🔴 **미해결(인프라, 2026-07-08)** | **/mnt/HDD2(ntfs-3g)가 df상 16T 여유인데도 전체 쓰기를 ENOSPC로 거부** — 공유 eval 로그 위치(`/mnt/HDD2/src/logs/`) 및 아카이브 쓰기 전부 불가. 사용자 조치 필요(사용 중 세션 종료 후 재마운트 또는 Windows chkdsk). 상세: 하단 ISSUE-023 + `outputs/ARCHIVE_MANIFEST.md` |
 | **ISSUE-022** | ✅ **해결(2026-07-03)** | **P27.forward가 `_fuse_outputs` 훅 미호출 → P30 learned router 200ep 내내 미실행** (P31.2 훅 호출로 수정; P30 결과 = router 미참여로 재해석) |
 | ISSUE-021 | ✅ 해결 | SAM3-RBMA sem_head BatchNorm→GroupNorm (train/eval 불일치) |
 | ISSUE-020 | ✅ 해결 | SAM3-RBMA sam3.pt 백본 0개 로드(random) prefix remap |
@@ -42,6 +43,20 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-023: /mnt/HDD2 전체 쓰기 불능 (ENOSPC, ntfs-3g) [미해결, 2026-07-08]
+
+**발견 경위**: 재구조화 세션에서 데드 실험 outputs(~170G)를 HDD2 아카이브로 이동 중, P10~P17(68G)까지 정상 이동 후 P18부터 rsync mkstemp가 전부 `No space left on device (28)` 실패. 이후 `touch`/`dd` 등 모든 신규 쓰기가 즉시 ENOSPC.
+
+**증상/증거**: `df -h` = 17T 중 1.3T 사용(16T 여유), `df -i` = inode 1% 사용 — 그런데도 ENOSPC. 파일시스템은 `fuseblk`(ntfs-3g). 읽기는 정상.
+
+**영향**: ① 공유 eval/분석 산출물 정규 위치 `/mnt/HDD2/src/logs/`에 새 결과 저장 불가 (모든 세션 영향) ② 데드 outputs 이동 잔여분 ~105G 보류 (`outputs/ARCHIVE_MANIFEST.md` 참조 — 원본은 그대로 보존됨).
+
+**시도한 것**: 3회 재시도(즉시 실패 재현), lsof 확인 — nautilus + 타 프로젝트(tactile) Claude 세션들이 HDD2 사용 중이라 **재마운트는 하지 않음**(타 세션 파괴).
+
+**조치 필요(사용자)**: HDD2 사용 세션 정리 후 `sudo umount /mnt/HDD2 && sudo mount ...` 재마운트, 그래도 재발 시 Windows에서 chkdsk (ntfs-3g $Bitmap 불일치 의심). 복구 후 이동 재개: `bash /home/jemo/.claude/jobs/ac8fdb6e/tmp/move_dead_outputs.sh` (이동완료분 자동 SKIP).
 
 ---
 

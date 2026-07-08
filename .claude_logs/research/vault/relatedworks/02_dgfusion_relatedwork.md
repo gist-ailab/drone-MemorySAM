@@ -1,5 +1,6 @@
 ---
 title: DGFusion — Depth-Guided Sensor Fusion for Robust Semantic Perception
+aliases: [DGFusion]
 tags: [related-work, key-paper, multimodal-segmentation, lidar, depth, ra-l]
 created: 2026-06-24
 source: arXiv:2509.09828 / IEEE RA-L 2026; downloaded PDF text in [[sources/pdfs/priority_a/text/2509.09828.txt]]

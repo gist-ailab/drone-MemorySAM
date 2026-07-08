@@ -1,5 +1,6 @@
 ---
 title: SegFormer and encoder-lightweight semantic segmentation heads
+aliases: [SegFormer]
 tags: [related-work, key-paper, segmentation-head, semantic-segmentation, transformer]
 created: 2026-06-24
 source: [SegFormer arXiv 2105.15203](https://arxiv.org/abs/2105.15203), [SETR arXiv 2012.15840](https://arxiv.org/abs/2012.15840), [UPerNet arXiv 1807.10221](https://arxiv.org/abs/1807.10221), [DeepLabv3+ arXiv 1802.02611](https://arxiv.org/abs/1802.02611)

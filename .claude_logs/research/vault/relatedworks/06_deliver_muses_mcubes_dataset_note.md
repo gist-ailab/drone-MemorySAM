@@ -1,5 +1,6 @@
 ---
 title: DeLiVER, MUSES, and MCubeS — Multimodal Segmentation Benchmarks
+aliases: [DELIVER, DeLiVER, MUSES, MCubeS]
 tags: [related-work, dataset, benchmark, multimodal-segmentation]
 created: 2026-06-24
 source: arXiv:2303.01480; MUSES ECCV 2024 DOI; MCubeS-related papers; downloaded source PDFs in [[sources/pdfs/priority_a]]

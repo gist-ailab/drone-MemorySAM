@@ -6,6 +6,8 @@ source: arXiv
 status: candidate-verified-metadata
 ---
 
+> → 승격: [[relatedworks/62_equiseg_balanced_modality_contributions]] — 이 스텁은 relatedworks gap-fill 노트로 승격됨 (2026-07-08 archive 이동). 인용은 승격 노트를 사용할 것.
+
 # Robust Multimodal Semantic Segmentation with Balanced Modality Contributions
 
 - Project link: [[00_MOC_26_MultimodalSeg]]; weekly log: [[sources/04_weekly_source_sweep_log]]

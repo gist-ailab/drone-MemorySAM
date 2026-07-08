@@ -6,6 +6,8 @@ source: arXiv
 status: candidate-verified-metadata
 ---
 
+> → 승격: [[relatedworks/48_m4sam_moe_lora_sam2_threat]] — 이 스텁은 relatedworks gap-fill 노트로 승격됨 (2026-07-08 archive 이동). 인용은 승격 노트를 사용할 것.
+
 # M$^4$-SAM: Multi-Modal Mixture-of-Experts with Memory-Augmented SAM for RGB-D Video Salient Object Detection
 
 - Project link: [[00_MOC_26_MultimodalSeg]]; weekly log: [[sources/04_weekly_source_sweep_log]]

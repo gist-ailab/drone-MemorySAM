@@ -1,5 +1,6 @@
 ---
 title: AnySeg — Robust Anymodal Segmentation via Distillation
+aliases: [AnySeg]
 tags: [related-work, anymodal, distillation, multimodal-segmentation]
 created: 2026-06-24
 source: arXiv:2411.17141; downloaded PDF text in [[sources/pdfs/priority_a/text/2411.17141.txt]]

@@ -1,5 +1,6 @@
 ---
 title: CMX, TokenFusion, MAGIC++, CAFuser — Core Multimodal Fusion Baselines
+aliases: [CMX, TokenFusion, MAGIC, MAGIC++, CAFuser]
 tags: [related-work, baseline, multimodal-fusion, rgb-x, token-fusion]
 created: 2026-06-24
 source: arXiv:2203.04838, 2204.08721, 2412.16876, 2410.10791; downloaded PDFs in [[sources/pdfs/priority_a]]
