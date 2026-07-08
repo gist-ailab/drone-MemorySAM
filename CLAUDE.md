@@ -26,6 +26,14 @@
 
 > `.claude_logs` 진입 순서: **00_INDEX(front door)** → `status/current.md`(현재 스냅샷) → 작업 폴더 `00_MOC.md`. 관련연구/노벨티는 **research/novelty-and-related-work.md**, 원격 학습 지시는 **infra/servers-and-launch.md**, det 작업은 **det/diagnosis-plan.md**, 세션 태스크는 **meta/taskboard.md**를 읽어라. (archive/ = 🗄 동결 문서)
 
+### 1.5 구조 유지 규칙 (Conventions — 파일 생성·코드 추가·브랜치 생성 전 필수)
+
+**`.claude_logs/meta/conventions.md`가 리포 구조 유지의 단일 출처다.** 핵심만 요약하면:
+- **Git**: 모든 브랜치는 **`develop` 기준**으로 분기하고, 병합도 PR 없이 `git push origin HEAD:develop` 직접 병합. `main` 금지. 병합 후 로컬 허브 체크아웃 pull 유지. **진행 중 학습이 있는 원격 서버는 pull 금지.**
+- **문서**: 새 문서는 `.claude_logs/` 주제 폴더에 kebab-case로 생성하고 해당 폴더 `00_MOC.md`에 등록. 번호 프리픽스 신규 부여 금지.
+- **코드**: 새 모델 버전은 `lora_sam/pNN.py` + `MODEL_REGISTRY` 등록 (메가파일·shim에 클래스 추가 금지), 공통 모듈은 `modules/`에, 신규 코드는 shim 경유 import 금지.
+- **Configs**: `<dataset>_<modal>_<version>_<aug>.yaml` (서버접두어 금지), 학습=`configs/<dataset>/`, 평가=`configs/eval/`, 신규 실험은 `experiments/registry.md`에 행 추가.
+
 ### 2. 실험 및 코드 변경 시 (Execution)
 
 - 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `models/arch-evolution.md` 또는 `experiments/log.md`를 업데이트하여 기록을 남겨라 (새 실험 launch/상태 변화는 `experiments/registry.md` 행도 갱신).

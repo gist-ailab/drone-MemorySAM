@@ -17,7 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
-| **ISSUE-023** | 🔴 **미해결(인프라, 2026-07-08)** | **/mnt/HDD2(ntfs-3g)가 df상 16T 여유인데도 전체 쓰기를 ENOSPC로 거부** — 공유 eval 로그 위치(`/mnt/HDD2/src/logs/`) 및 아카이브 쓰기 전부 불가. 사용자 조치 필요(사용 중 세션 종료 후 재마운트 또는 Windows chkdsk). 상세: 하단 ISSUE-023 + `outputs/ARCHIVE_MANIFEST.md` |
+| **ISSUE-023** | 🟠 **완화 중(원인 확정, 2026-07-08)** | **/mnt/HDD2 ENOSPC = NTFS MFT 레코드 고갈** (클러스터 92% 여유·기존 파일 append 정상·새 파일 생성만 불가, 삭제 수=생성 가능 수 1:1 확인). 완화 = HDD2의 아카이브 68G/19k파일을 drone NAS로 소산해 레코드 해방(진행 중). 근본 해결 = 전 홀더 종료 후 재마운트(ntfs-3g 할당자 리셋 시도) 또는 Windows 연결. 상세: 하단 ISSUE-023 |
 | **ISSUE-022** | ✅ **해결(2026-07-03)** | **P27.forward가 `_fuse_outputs` 훅 미호출 → P30 learned router 200ep 내내 미실행** (P31.2 훅 호출로 수정; P30 결과 = router 미참여로 재해석) |
 | ISSUE-021 | ✅ 해결 | SAM3-RBMA sem_head BatchNorm→GroupNorm (train/eval 불일치) |
 | ISSUE-020 | ✅ 해결 | SAM3-RBMA sam3.pt 백본 0개 로드(random) prefix remap |
@@ -57,6 +57,14 @@ moved: 2026-07-08
 **시도한 것**: 3회 재시도(즉시 실패 재현), lsof 확인 — nautilus + 타 프로젝트(tactile) Claude 세션들이 HDD2 사용 중이라 **재마운트는 하지 않음**(타 세션 파괴).
 
 **조치 필요(사용자)**: HDD2 사용 세션 정리 후 `sudo umount /mnt/HDD2 && sudo mount ...` 재마운트, 그래도 재발 시 Windows에서 chkdsk (ntfs-3g $Bitmap 불일치 의심). 복구 후 이동 재개: `bash /home/jemo/.claude/jobs/ac8fdb6e/tmp/move_dead_outputs.sh` (이동완료분 자동 SKIP).
+
+**2026-07-08 오후 갱신 — 원인 확정 + 완화**:
+- **근본 원인 = NTFS MFT 레코드 고갈**: 판별 실험으로 확정 — 기존 파일 append/truncate 정상, 새 파일 생성만 ENOSPC, **파일 1개 삭제 → 정확히 1개 생성 가능(1:1)**, 대량 생성 즉시 실패. `ntfsinfo`(-f, docker root nsenter, 읽기전용): 클러스터 92.3% 여유·MFT zone 여유 → 용량 문제 아님, MFT 확장 실패(장기 마운트된 ntfs-3g 할당자 상태 또는 ntfs-3g 한계).
+- 오늘 오전 아카이브 push(P10~P17, 19k 파일)가 잔여 레코드를 소진시킨 트리거로 추정.
+- `mount -o remount`는 ntfs-3g 미지원("umount 후 재마운트 필요"). 완전 재마운트는 활성 홀더(nautilus + tactile 프로젝트 Claude 세션들) 때문에 보류 — lazy umount는 이중 데몬 위험이라 금지.
+- **완화(진행)**: HDD2의 임시 아카이브 68G/19k 파일을 drone NAS(`/drone_nas/home/jemo_archive/`)로 소산 → HDD2 MFT 레코드 ~19k 해방 = eval 로그 쓰기 정상화. 잔여 데드 105G도 HDD1→NAS 직행 (HDD2 경유 안 함).
+- **잔여 리스크**: 해방된 레코드를 다 쓰면 재발. 근본 해결 = ① 전 홀더 종료 후 재마운트(ntfs-3g가 fresh mount에서 MFT 확장 성공하는지 확인) ② 안 되면 Windows에 연결해 파일 생성(Windows 드라이버는 MFT 확장 가능) 또는 백업 후 재포맷. HDD2에 대량 파일 쓰기(수천 개 단위)는 재마운트 검증 전까지 금지.
+- 참고: 진단 과정에서 `.Trash-1000/files/SMPLX_FEMALE.npz`(사용자 휴지통) 1건을 판별용으로 삭제함.
 
 ---
 

@@ -14,6 +14,8 @@
 4. [meta/taskboard.md](meta/taskboard.md) — 내 세션에 할당된 태스크 확인
 5. 작업 폴더의 `00_MOC.md` → 해당 문서로 이동
 
+> ✋ **파일 생성·코드 추가·브랜치 생성 전**: [meta/conventions.md](meta/conventions.md) — 구조 유지 규칙(git develop 기준, 문서 배치, MODEL_REGISTRY, configs 명명) 필수 확인.
+
 ---
 
 ## 🗂 폴더 구조
@@ -29,7 +31,7 @@
 | [decisions/](decisions/00_MOC.md) | 설계 제안·감사 (날짜 prefix) | 2026-07-02 P31 재설계 · 2026-07-03 최적화 감사 · 2026-06-16 SAM3 포팅 |
 | [infra/](infra/00_MOC.md) | 서버·환경 | [servers-and-launch.md](infra/servers-and-launch.md)(원격 실행 시 먼저) · environment |
 | [issues/](issues/00_MOC.md) | 이슈 트래킹 | [issues-and-fixes.md](issues/issues-and-fixes.md)(코딩 전 상단 상태표 확인) |
-| [meta/](meta/00_MOC.md) | 세션 운영 | bot-roles · taskboard |
+| [meta/](meta/00_MOC.md) | 세션 운영 | **[conventions.md](meta/conventions.md)(구조 유지 규칙)** · bot-roles · taskboard |
 | [archive/](archive/00_MOC.md) | 🗄 동결 문서 | P9~P14 분석 · P13 설계 가이드 |
 
 ---
