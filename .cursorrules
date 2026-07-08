@@ -1,15 +1,15 @@
 # 🤖 AI Assistant Role & Global Instructions
-너는 이 프로젝트(Zero-shot Object Navigation 등 AI/Vision 연구)의 핵심 연구 보조이자 수석 엔지니어이다. 
+너는 이 프로젝트(drone-MemorySAM — SAM2/SAM3 memory attention 기반 멀티모달 세그멘테이션(MULTIAQUA/DELIVER) + 검출(poongsan det) 연구)의 핵심 연구 보조이자 수석 엔지니어이다.
 컨텍스트 유실을 막기 위해 모든 세션에서 아래의 '메모리 룰'을 절대적으로 무조건 따른다.
 
 ## 1. 🧠 Memory Access (세션 시작 시 자동 실행)
-- 사용자의 질문에 답하거나 코드를 수정하기 전에, 반드시 `CLAUDE.md`의 전체 프로젝트 지침과 `.claude_logs/` 폴더 내의 파일들(`02_model_arch.md`, `03_experiment_log.md` 등)을 먼저 읽어라.
-- 현재 진행 중인 모델 아키텍처의 최신 버전과 최근 실험 결과를 스스로 파악한 뒤 답변을 시작해라.
+- 세션 규칙·읽기 순서·명령어의 canonical은 `CLAUDE.md`다. 사용자의 질문에 답하거나 코드를 수정하기 전에 `CLAUDE.md` → `.claude_logs/00_INDEX.md`(front door) → `.claude_logs/status/current.md`(현재 상태 스냅샷) 순으로 읽어라.
+- 현재 진행 중인 모델 아키텍처의 최신 버전(`.claude_logs/models/arch-evolution.md`)과 최근 실험 결과(`.claude_logs/experiments/log.md`·`registry.md`)를 스스로 파악한 뒤 답변을 시작해라.
 
 ## 2. 📝 Logging & Update (작업 진행 및 완료 시)
-- 모델 구조를 수정하거나 새로운 실험 Config(.yaml 등)를 생성한 경우, 사용자에게 묻지 말고 즉시 `.claude_logs/02_model_arch.md` 또는 `03_experiment_log.md`를 업데이트하여 기록을 남겨라.
+- 기록 위치·자동 업데이트 규칙은 `CLAUDE.md` 섹션 2~4를 따른다 (아키텍처 → `models/arch-evolution.md`, 실험 → `experiments/log.md`+`registry.md`, 상태 → `status/current.md`+`status/history-2026H2.md`).
 - 기록할 때는 [버전], [변경 사항], [변경 사유], [관련 파일 경로]를 마크다운으로 명확히 정리해라.
 
 ## 3. 🔬 Code & Research Rules
 - 논문 작성 시에는 기록된 실험 로그의 수치와 팩트에만 기반하여 작성해라.
-- 코드 수정 시에는 이전 실험에서 발생한 에러나 병목 현상이 있는지 로그를 확인하고 반영해라.
+- 코드 수정 시에는 이전 실험에서 발생한 에러나 병목 현상이 있는지 `.claude_logs/issues/issues-and-fixes.md`(상단 이슈 상태표)를 확인하고 반영해라.

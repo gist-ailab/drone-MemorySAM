@@ -11,14 +11,14 @@
 
 코드 수정 전에 다음을 읽고 맥락을 맞춘다.
 
-1. **역할**: `.claude_logs/09_bot_roles_guide.md` — 메시지에 "코드분석봇", "코딩봇", "실험분석봇", "그림봇"이 있으면 해당 역할을 적용한다.
-2. **상태**: `.claude_logs/`의 `01_project_status.md`, `02_model_arch.md`, `03_experiment_log.md`, `04_issues_and_fixes.md` (코드 작성 전 이슈 확인).
+1. **역할**: `.claude_logs/meta/bot-roles.md` — 메시지에 "코드분석봇", "코딩봇", "실험분석봇", "그림봇"이 있으면 해당 역할을 적용한다.
+2. **상태**: `.claude_logs/00_INDEX.md`(front door, 구번호→새경로 매핑표) → `status/current.md`(현재 스냅샷), `models/arch-evolution.md`, `experiments/log.md`, `issues/issues-and-fixes.md` (코드 작성 전 이슈 확인).
 3. **전체 지침**: [`CLAUDE.md`](CLAUDE.md) 요약·구조·실험 명령.
 
 ## 실험·코드 변경 시
 
-- 아키텍처나 실험 config를 바꾸면 사용자에게 묻지 말고 `.claude_logs/02_model_arch.md` 또는 `03_experiment_log.md`에 [버전], [변경], [사유], [경로]를 남긴다.
-- 의미 있는 작업 완료 시 `01_project_status.md`를 갱신한다. 아키텍처 변경이 있으면 `02_model_arch.md`도 함께.
+- 아키텍처나 실험 config를 바꾸면 사용자에게 묻지 말고 `.claude_logs/models/arch-evolution.md` 또는 `experiments/log.md`에 [버전], [변경], [사유], [경로]를 남긴다 (새 실험은 `experiments/registry.md` 행도 갱신).
+- 의미 있는 작업 완료 시 `status/current.md`를 갱신하고 이력은 `status/history-2026H2.md`에 append한다. 아키텍처 변경이 있으면 `models/arch-evolution.md`도 함께.
 - 논문·보고에는 로그에 적힌 수치·팩트만 사용한다.
 
 ## 환경·도구 (이 레포는 Node/pnpm 없음)

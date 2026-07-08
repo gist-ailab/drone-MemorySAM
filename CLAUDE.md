@@ -10,36 +10,36 @@
 새로운 대화나 작업 지시를 받으면, 코드 수정을 시작하기 전에 **반드시** 아래 순서대로 `.claude_logs` 폴더 내의 파일들을 읽어라:
 
 #### Step 0 — 역할 판별 (최우선)
-- **가장 먼저** `09_bot_roles_guide.md`를 읽어라.
+- **가장 먼저** `meta/bot-roles.md`를 읽어라.
 - 사용자의 첫 메시지에 역할 키워드("코드분석봇", "코딩봇", "실험분석봇", "그림봇")가 포함되어 있으면, 해당 역할의 지침을 이번 세션 전체에 적용한다.
 - 역할이 지정되지 않으면 기본 모드(AI 연구 보조 및 엔지니어)로 동작한다.
 
 #### Step 1 — 프로젝트 상태 파악
-- **`00_INDEX.md`를 먼저 읽어라** — 폴더 전체를 6개 카테고리(프로젝트·아키텍처·Related Works·실험·환경/인프라·이슈)로 묶은 front door. 어떤 문서를 볼지 여기서 결정한다.
-- `01_project_status.md`: **상단 "📌 현재 상태 스냅샷"이 현재 상태의 단일 출처** (하단은 역시간순 history). 전체 진행 상황·현재 최선 모델·남은 과제.
-- `02_model_arch.md`: P8~P28 + SAM3-RBMA 모델 아키텍처 상세, 변천 과정, 각 버전의 한계점
-- `03_experiment_log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과
-- `04_issues_and_fixes.md`: 알려진 이슈, 해결 기록, 코딩 시 주의사항 — **상단 "이슈 상태 인덱스 표" 먼저** (**코드 작성 전 반드시 확인**)
-- `12_novelty_and_related_work.md`: **RBMA 노벨티 & 관련연구(canonical)** — 우리 모델 한눈에, 선행연구 vs RBMA 구조 차별표, 리뷰 방어 포인트, lit-check TODO. **연구 방향·논문 포지셔닝 논의 전 반드시 확인.** (원시 deep-research 로그는 `10_related_work.md`)
-- `13_servers_and_launch.md`: **서버 레지스트리 & 원격 실험 자동 실행** — "X 실험을 <서버>에서 돌려줘" 류 지시를 받으면 **반드시 먼저 읽어라.** 서버 메타데이터 단일 출처는 `scripts/servers.conf`, 실행/추적은 `scripts/remote_exp.sh`.
-- `14_environment_and_infra.md`: 실행 환경/명령, 데이터·가중치 경로, 체크포인트 포맷, DDP, B200 파이프라인 튜닝.
+- **`00_INDEX.md`를 먼저 읽어라** — 주제 폴더 구조(status/models/experiments/det/datasets/research/decisions/infra/issues/meta/archive)의 front door + 구번호("doc N")→새경로 매핑표. 어떤 문서를 볼지 여기서 결정한다. 각 폴더의 `00_MOC.md`가 폴더 내 문서를 안내한다.
+- `status/current.md`: **현재 상태 스냅샷 — 현재 상태의 단일 출처**. 전체 진행 상황·현재 최선 모델·남은 과제. (진행 이력은 `status/history-2026H2.md`·`history-2026H1.md`)
+- `models/arch-evolution.md`: P8~P31 + SAM3-RBMA 모델 아키텍처 상세, 변천 과정, 각 버전의 한계점
+- `experiments/log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과 (한눈표는 `experiments/registry.md`, 실시간 모니터는 `experiments/monitor-log.md`)
+- `issues/issues-and-fixes.md`: 알려진 이슈, 해결 기록, 코딩 시 주의사항 — **상단 "이슈 상태 인덱스 표" 먼저** (**코드 작성 전 반드시 확인**)
+- `research/novelty-and-related-work.md`: **RBMA 노벨티 & 관련연구(canonical)** — 우리 모델 한눈에, 선행연구 vs RBMA 구조 차별표, 리뷰 방어 포인트, lit-check TODO. **연구 방향·논문 포지셔닝 논의 전 반드시 확인.** (원시 deep-research 로그는 `research/related-work-raw.md`)
+- `infra/servers-and-launch.md`: **서버 레지스트리 & 원격 실험 자동 실행** — "X 실험을 <서버>에서 돌려줘" 류 지시를 받으면 **반드시 먼저 읽어라.** 서버 메타데이터 단일 출처는 `scripts/servers.conf`, 실행/추적은 `scripts/remote_exp.sh`.
+- `infra/environment.md`: 실행 환경/명령, 데이터·가중치 경로, 체크포인트 포맷, DDP, B200 파이프라인 튜닝.
 
-> `.claude_logs` 인덱스: **00 인덱스(front door)** · 01 상태(상단 스냅샷) · 02 모델상세 · 03 실험 · 04 이슈(상단 상태표) · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)** · **13 서버&원격실행** · 14 환경·인프라. **먼저 00**, 관련연구/노벨티는 **12**, 원격 학습 지시는 **13**을 읽어라. (05~07·P13_design_guide = 🗄 ARCHIVED)
+> `.claude_logs` 진입 순서: **00_INDEX(front door)** → `status/current.md`(현재 스냅샷) → 작업 폴더 `00_MOC.md`. 관련연구/노벨티는 **research/novelty-and-related-work.md**, 원격 학습 지시는 **infra/servers-and-launch.md**, det 작업은 **det/diagnosis-plan.md**, 세션 태스크는 **meta/taskboard.md**를 읽어라. (archive/ = 🗄 동결 문서)
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
-- 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `02_model_arch.md` 또는 `03_experiment_log.md`를 업데이트하여 기록을 남겨라.
+- 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `models/arch-evolution.md` 또는 `experiments/log.md`를 업데이트하여 기록을 남겨라 (새 실험 launch/상태 변화는 `experiments/registry.md` 행도 갱신).
 - 버전(P8, P9, P10 등)을 명시하고, 왜 변경했는지(이전 실험 결과 기반) 타당한 이유를 적어라.
 - 실험 결과 파일 경로는 프로젝트 기준 상대 경로로 기록해라.
-- 새 선행연구를 조사했거나 RBMA 노벨티/차별점 논의가 갱신되면 `12_novelty_and_related_work.md`(canonical 비교표·판정)를 업데이트하고, 원시 조사 로그는 `10_related_work.md`에 추가해라.
+- 새 선행연구를 조사했거나 RBMA 노벨티/차별점 논의가 갱신되면 `research/novelty-and-related-work.md`(canonical 비교표·판정)를 업데이트하고, 원시 조사 로그는 `research/related-work-raw.md`에 추가해라.
 
 ### 3. 구현/작업 완료 시 자동 업데이트 (Auto-update)
 
-- 새 모델 버전 구현, config 생성, 학습/평가 스크립트 수정 등 **의미 있는 작업이 완료되면** 사용자 요청 없이도 자동으로 `.claude_logs/01_project_status.md`를 업데이트해라.
+- 새 모델 버전 구현, config 생성, 학습/평가 스크립트 수정 등 **의미 있는 작업이 완료되면** 사용자 요청 없이도 자동으로 `.claude_logs/status/current.md`(스냅샷 덮어쓰기)를 업데이트하고, 진행 이력은 `.claude_logs/status/history-2026H2.md` 최상단에 append해라.
   - 상태 변경 (예: "설계 완료 (구현 대기)" → "구현 완료 (학습 대기)")
   - 변경 파일 목록 및 핵심 내용 기록
   - 디자인 가이드 대비 의도적 차이가 있으면 사유 기록
-- 모델 아키텍처 변경이 있었으면 `02_model_arch.md`도 함께 업데이트해라.
+- 모델 아키텍처 변경이 있었으면 `models/arch-evolution.md`도 함께 업데이트해라.
 
 ### 4. 세션 종료 시 (Wrap-up)
 
@@ -86,7 +86,7 @@ python val_multiaqua_P9.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_h
 
 ### 원격 서버에서 실험 실행 (tmux 세션 `jemo`)
 
-"X 실험을 <서버>에서 돌려줘" → 아래 런처 사용. 상세는 `.claude_logs/13_servers_and_launch.md`, 서버 목록은 `scripts/servers.conf`.
+"X 실험을 <서버>에서 돌려줘" → 아래 런처 사용. 상세는 `.claude_logs/infra/servers-and-launch.md`, 서버 목록은 `scripts/servers.conf`.
 
 ```bash
 # 서버 레지스트리 확인 (repo_path / env / default_gpus)
@@ -113,10 +113,14 @@ bash scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 ```
 drone-MemorySAM/
 ├── CLAUDE.md                          # 이 파일
-├── .claude_logs/                      # AI 세션 로그
-│   ├── 01_project_status.md
-│   ├── 02_model_arch.md
-│   └── 03_experiment_log.md
+├── .claude_logs/                      # AI 세션 로그 (front door = 00_INDEX.md)
+│   ├── 00_INDEX.md                    # 폴더 구조 안내 + 구번호→새경로 매핑표
+│   ├── status/                        # current.md(현재 스냅샷) + history-2026H1/H2
+│   ├── models/                        # arch-evolution.md, figures-ascii.md, explain/
+│   ├── experiments/                   # registry.md, log.md, monitor-log.md, analysis/
+│   ├── det/  datasets/  research/     # det 진단 · 데이터셋 · 관련연구(vault 포함)
+│   ├── decisions/  infra/  issues/    # 설계 제안 · 서버/환경 · 이슈
+│   └── meta/  archive/                # 봇 역할·태스크보드 · 동결 문서
 ├── train_sam2_lora_paper.py           # 메인 학습 스크립트
 ├── val_multiaqua.py                   # 범용 평가 스크립트 (P8~P12)
 ├── val_multiaqua_P9.py                # P9 전용 시각화 + MoE routing 분석
