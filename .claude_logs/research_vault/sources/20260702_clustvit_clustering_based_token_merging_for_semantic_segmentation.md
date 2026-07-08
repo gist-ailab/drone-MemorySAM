@@ -6,6 +6,8 @@ source: arXiv
 status: candidate-verified-metadata
 ---
 
+> ⚠️ **abstract-only 미검증** — arXiv metadata만 수집된 스텁. 원문 정독 전 정량 인용 금지.
+
 # ClustViT: Clustering-based Token Merging for Semantic Segmentation
 
 - Project link: [[00_MOC_26_MultimodalSeg]]; weekly log: [[sources/04_weekly_source_sweep_log]]

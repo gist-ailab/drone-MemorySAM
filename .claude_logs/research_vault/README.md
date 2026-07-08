@@ -1,7 +1,13 @@
 # research_vault/ — 옵시디언 리서치 볼트 사본 (front-door)
 
-> **출처**: 사용자 Obsidian 볼트 `/nas_jm/Research/26_MultimodalSeg/` — **2026-07-02 동기화 사본**.
+> **출처**: 사용자 Obsidian 볼트 `/nas_jm/Research/26_MultimodalSeg/` — **2026-07-08 동기화 사본** (`bash scripts/sync_vault.sh`).
 > 활용 요약본은 `../18_research_digest.md` (아이디어 회의/구현용 다이제스트).
+
+## 🔄 동기화 & 실험보고서 규약 (2026-07-08 제정)
+
+- **NAS 볼트가 canonical.** repo 사본 갱신 = `bash scripts/sync_vault.sh` (NAS→repo 단방향 pull; `.obsidian`·`sources/{db,pdfs,raw,archive}`·PDF 제외). repo에서 먼저 생긴 문서(예: Cowork 산출물)는 NAS로 복사 후 pull.
+- **실험폴더 패턴**: 매 실험은 볼트에 `P<N>_<이름>/` 폴더(= `00_<이름>_index.md` 진입점 + 리포트 md + `assets/`)를 갖는다. 완료 시 리포트 추가 + `PROJECT_TRACKING`·`00_MOC`에 링크. 현재: `P32_CoRB/`(검증 리포트 포함) · `P33_CGMoD/`(P33-v2 설계).
+- **수치 단일 출처**: repo `experiments/monitor-log.md`(재구조화 브랜치) + `/mnt/HDD2/src/logs/<model>_eval_<date>/`. 볼트 리포트는 인용+경로 명기, 성적은 aggregate test/per-class test/adverse-split 3종 병기.
 
 ## 포함 / 제외
 

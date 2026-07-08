@@ -316,7 +316,7 @@ C=RGB camera, D=Depth, E=Events, L=LiDAR. The source extraction interleaves Tabl
 
 ## 2026-07-02 deep-research update (Track 3 — protocol resolution + SOTA table 확정판)
 
-Source: parallel deep-research Track 3 (see [[sources/07_parallel_research_prompts_2026-07-02]]) + adversarial verification (2 independent skeptic passes, all 5 critical claims **confirmed**). Detailed protocol analysis in [[relatedworks/46_benchmark_protocol_split_resolution]]. Everything below re-extracted from arXiv HTML / official GitHub on 2026-07-02.
+Source: parallel deep-research Track 3 (see [[sources/07_parallel_research_prompts_2026-07-02]]) + adversarial verification (2 independent skeptic passes, all 5 critical claims **confirmed**). Detailed protocol analysis in [[relatedworks/93_benchmark_protocol_split_resolution]]. Everything below re-extracted from arXiv HTML / official GitHub on 2026-07-02.
 
 ### U1. DELIVER "two-cluster" problem — RESOLVED (actually three clusters) [skeptic-confirmed ×2]
 

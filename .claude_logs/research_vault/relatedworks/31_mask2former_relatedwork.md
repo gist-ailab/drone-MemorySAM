@@ -1,5 +1,6 @@
 ---
 title: Mask2Former as a universal mask-classification head
+aliases: [Mask2Former]
 tags: [related-work, key-paper, segmentation-head, mask-classification, panoptic-segmentation]
 created: 2026-06-24
 source: [Mask2Former arXiv 2112.01527](https://arxiv.org/abs/2112.01527)
