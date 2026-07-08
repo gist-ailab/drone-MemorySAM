@@ -52,6 +52,7 @@ QUALITY_GATE_MODELS = (
     'LoRA_Sam_P29',
     'LoRA_Sam_P30',
     'LoRA_Sam_P31',
+    'LoRA_Sam_P32',
 )
 
 
@@ -654,6 +655,12 @@ def main(cfg, gpu, save_dir):
         model_kwargs['amf_rel_tau'] = calib.get('AMF_REL_TAU', 0.25)
         model_kwargs['unfreeze_last_n_blocks'] = model_cfg.get('UNFREEZE_LAST_N_BLOCKS', 0)
         model_kwargs['router_reg_mode'] = rtr.get('REG_MODE', 'diversity')
+    if 'corroboration_bias' in sig.parameters:
+        # [P32] CoRB — corroboration-biased memory attention: RBMA 신뢰도 신호를
+        # self-entropy → cross-modal corroboration(corr_veto)으로 교체 (무학습, λ만 학습).
+        corrb = model_cfg.get('CORROBORATION', {}) or {}
+        model_kwargs['corroboration_bias'] = corrb.get('ENABLE', False)
+        model_kwargs['corrb_veto'] = corrb.get('VETO', True)
     if 'lambda_bias_init' in sig.parameters:
         # [P27] Learnable attention-bias scalar initial value
         quality_cfg = model_cfg.get('QUALITY_GATE', {})

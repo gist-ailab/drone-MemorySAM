@@ -167,6 +167,20 @@ teacher 경로를 eval에서 활성화(top-level `.training=True`, children eval
 
 ## 상세 실험별 기록
 
+### P32 (CoRB — Corroboration-Biased Memory Attention) — DELIVER, 2026-07-06
+
+- **config**: `configs/b200-deliver_rgbdel_P32_physaug.yaml` (LORA_MODEL=`LoRA_Sam_P32`, CORROBORATION.ENABLE=true/VETO=true, SDC off, AMF uniform = 순수 P28+corroboration ablation). branch `worktree-p32-corrb`(미병합).
+- **학습**: B200 4-GPU DDP(GPU2-5), 200ep 목표. **plateau ep26~30**.
+- **결과**: **Test best 53.45@ep40 / Day-Val best 61.65@ep30**. (vs P28 55.27/63.40, P31 54.75/63.20 → −1.8/−1.8 미달.)
+- **ckpt**: `outputs/MMSamP32/b200_deliver_rgbdel_P32_physaug/DELIVER_CMNeXt-B2_idel/test_epoch40_53.45_top1_checkpoint.pth` (B200). eval용 slim(frozen trunk 제외 183MB) = hinton `~/ckpt_p32/P32_ep40.pth`.
+- **Phase 0 무학습 게이트 PASS**: self-entropy [.77,.62,.30,.22] → corroboration event/LiDAR .54/.81 반전. 상세 [24_p32_phase0_results.md](24_p32_phase0_results.md).
+- **분석(full test, hinton)** — `/mnt/HDD2/src/logs/P32_eval_20260706/` (ANALYSIS.md + analysis_P32.md + moddiag/relauroc json + viz):
+  - per-domain(GT-res): cloud 52.69 / fog 52.34 / **night 49.29** / rain 53.08 / sun 50.69 (spread 3.79 → class-transfer, Mode B).
+  - **routing 실패(핵심)**: drop-modality Δ [img 6.2, depth 15.6, **event ~0, lidar ~0**] = event/LiDAR 미사용(Mode C). corr_veto AUROC는 양호(event .59/lidar .85)지만 mIoU 전환 안 됨. UAMM uniform [.30,.28,.21,.21]. MoE gate=측정 artifact.
+  - **도메인-불변 사망**(max IoU<10): Bridge 0.0 / Water 0.0 / Wall ~1 / Other ~3 (competence [0,0,0,0]=frozen-backbone ceiling).
+  - **도메인-민감**(spread>12): RailTrack(46.7) / TwoWheeler(30) / Fence(18) / Bus(16) / Terrain(13) / Ground(12).
+- **판정**: signal AUROC ≠ routing 이득. soft bias로 죽은 모달 부활 불가. **다음=P32-C(PruneMem)**.
+
 ### P8 Experiments
 
 #### P8-1: no-aug (beforeAug)
