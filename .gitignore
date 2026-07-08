@@ -297,3 +297,6 @@ tmp/
 
 # Claude Code local files (per-machine settings, worktrees) — never commit
 /.claude/
+# Restructure C0: repo hygiene additions
+outputs_model_explain/
+.wandb_key
