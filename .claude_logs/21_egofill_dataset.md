@@ -1,4 +1,4 @@
-# 20. lidar egofill 데이터셋 (v20260703_egofill)
+# 21. lidar egofill 데이터셋 (v20260703_egofill)
 
 > 2026-07-03. 목적: RGB 15Hz vs LiDAR 10Hz 주기 차이로 라벨 프레임의 37%가
 > `depth_map_lidar` 없음 → `REQUIRE_ALL_MODALITIES`로 대량 폐기되는 문제를
@@ -59,3 +59,24 @@ ego 보정은 **드론 자기움직임만** 보상 — 사람이 스캔↔rgb �
 - 정적 7클래스는 정상, 사람 3클래스(Allies/Enemies/Casualties)는 egofill 프레임에서 lidar 단서 열화
 - 평가는 원본-lidar 1,772 프레임만 사용하므로 평가 오염 없음. train 에서의 영향은
   P29-Det egofill run 결과로 판단 → 필요 시 gap-fill 제외 ablation (train ~10,000장)
+
+## final split + egofill 통합 (2026-07-07)
+
+레이블링 에이전트가 만든 `/ailab_mat2/.../260618_poongsan/final/` split (클립 holdout,
+**test에 저조도 클립 3개**: 114021🌙/115624🌙/114808 — 멀티모달 robustness를 처음으로
+드러낼 수 있는 구성). train 12,681 / test 3,423, 10클래스 양쪽 존재.
+
+**문제**: 에이전트 산출 JSON은 egofill을 별개 키(`depth_map_lidar_egofill`)로 둠 →
+멀티모달 로더(`lidar:depth_map_lidar` 단일 키)가 egofill 프레임을 못 씀(train 7,043장만).
+**해결**: `build_final_egofill_unified.py` — 원본 lidar 없는 프레임의 `depth_map_lidar`/
+`intensity_map_lidar`를 egofill 경로로 승격(통합 키), `image['lidar_egofill']` 표식.
+
+산출 (final/annotations/):
+- `instances_train_egofill.json` — 통합 lidar. **lidar 커버리지 7,043→12,255 (96.6%)** (egofill 5,212 추가)
+- `instances_test_egofill.json` — 통합 lidar 전체 test 3,239/3,423 (94.6%)
+- `instances_test_lidar_clean.json` — 원본 lidar 프레임만 2,066장 (egofill 동적객체 오차 없는 깨끗한 lidar 평가용)
+- no_lidar(300ms 초과 gap): train 426 / test 184 — REQUIRE_ALL_MODALITIES 시 자동 drop
+
+평가 권장: 멀티모달 fusion 성능은 `_egofill`(전체), lidar 단서 순도가 중요하면 `_lidar_clean`.
+동적객체(사람 3클래스) egofill 오차는 clean 셋으로 통제. 마운트 주의: 빌드 시 /ailab_mat2 sshfs가
+egofill 재생성으로 간헐 거부 → 파일 재stat 대신 에이전트 검증 + 직전 정상확인(ego 5,212/1,173 존재)한 키 신뢰.

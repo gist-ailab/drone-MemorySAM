@@ -76,3 +76,34 @@
 | 2026-07-03 | E1.1 YOLO11-m RGB-only (hinton GPU1, 100ep, batch16, imgsz640, seed0, 2.6h) | **test mAP50 0.821 / mAP50-95 0.526 / P 0.831 / R 0.831** (best@ep12). per-class mAP50: Allies 0.941, LandingMarkers 0.960, Casualties 0.941, Windows 0.881, Enemies 0.826, Lighting 0.811, FireExt 0.803, EmExits 0.802, Obstacles 0.747, **Doors 0.499(최악)**. ep12 피크 후 val_cls loss 상승(과적합) — P29 ep9 피크와 동일 병리. 산출물: `objdet/yolo11m-rgb/runs/` (로컬 동기화됨, best.pt 포함) | **"데이터/난이도 문제" 기각 — 우리 스택 문제 확정** (RGB 단독 0.821 vs 우리 3-modal 0.4455). 목표 0.85는 RGB-only 기성 모델로도 근접 가능한 수치 → 데이터 무죄. Doors가 유일한 난제 클래스. Phase 2 (E2.x) 진행 근거 확보, B1(head 이식) 방향 지지 |
 | 2026-07-03 | E1.1b YOLO11-m RGB-only **label-v3**(=어노테이션 v20260702_2303, train 6,766장 +15.4%; test는 E1.1과 동일 1,772장/5,078box) 50ep | **test mAP50 0.864 / mAP50-95 0.581 / P 0.877 / R 0.883** (1.5h). 산출물: `objdet/yolo11m-rgb/runs/yolo11m_rgb_labelv3_50ep/`, 전체 test GT\|Pred 시각화 `vis_test_labelv3/` | **신규 라벨 +904장으로 mAP50 +0.043 (0.821→0.864) — 목표 0.85 돌파.** RGB-only로도 목표 달성 가능 확정. 데이터 추가 라벨링의 한계효용 확인. YOLOv5m 교차검증 완료(아래 행) |
 | 2026-07-03 | E1.1c YOLOv5m(u) RGB-only label-v3 50ep (교차검증) | **test mAP50 0.866 / mAP50-95 0.577 / P 0.860 / R 0.873** (1.3h). `objdet/yolo11m-rgb/runs/yolov5mu_rgb_labelv3_50ep/` | **YOLO11m(0.864)과 동률 — 0.86 수준은 모델 아키텍처가 아니라 라벨/데이터가 결정.** 목표 0.85는 세대 무관 기성 RGB 모델로 재현 가능 확정 |
+| 2026-07-03 | E1.1d YOLOv5m(u) RGB-only **split-v3**(시간순 80/20, 라벨 v20260702_2303, train 6,663/test 1,807) 50ep | **test mAP50 0.866 / mAP50-95 0.605 / P 0.886 / R 0.854** (1.3h). `objdet/yolo11m-rgb/runs/yolov5mu_rgb_v3split_50ep/` | **mAP50은 capture-holdout(0.866)과 동률, mAP50-95만 +0.028** — 예상한 시간순 split 낙관 편향이 mAP50 수준에선 미미. 0.86~0.87이 이 데이터의 라벨/난이도 상한으로 보임 (잔여 오류는 일반화가 아니라 태스크 고유: Doors·소물체). 단 test 프레임이 서로 달라 직접 비교는 주의 |
+| 2026-07-04 | **E2.5 P29-Det × v20260703_egofill** (rgb+**lidar(egofill)**+thermal; 신규 라벨 + egofill lidar 복원 → train 5,862→11,799장 2.01배; 레시피 원본 동일, bengio 5×3090, 50ep 완주; eval=원본 lidar 1,772 프레임) | ✅ **완료(2026-07-05): best AP50 0.8501 @ep9 (AP 0.513 / AP75 0.551)**. ep9 피크 후 완만 하락(ep49 0.812) — P29 관례 곡선, best ckpt 보존. best_ckpt=`bengio:.../outputs/det_egofill/det_P29_egofill_bengio/best_checkpoint.pth` | **동일 스택·동일 레시피에서 데이터만으로 0.4455→0.850 (목표 0.85 도달).** "우리 스택 문제"의 주범이 데이터(구라벨+절반 폐기)였음이 확정. 라벨 효과는 E1.1b(+0.043)로 분리 참조 → egofill 데이터 복원 기여가 지배적. 상세=21_egofill_dataset.md |
+| 2026-07-05 | **E2.6 P29-Det 모달리티 ablation: lidar→event** (rgb+**event**+thermal; train/eval을 E2.5와 동일한 11,799/1,772 프레임으로 고정 → 유일 변인=모달리티; bengio 5×3090) | 🔄 **학습 중**: ep0 진행(최초 launch가 egofill 종료 직후 GPU 메모리 해제 지연으로 OOM→좀비 정리 후 clean GPU 재실행). config `det_P29_event_bengio.yaml` | (예정) event vs lidar(egofill) 검출 기여 직접 비교. event_aligned 커버리지 100%(결손 0) |
+
+## 7. split-v3 구조 검증 (2026-07-03, 에이전트 실증 분석)
+
+**v3 = 캡처 내 시간순 프레임 분할** (클립 holdout 아님): 8개 캡처 각각 타임스탬프 순 앞 80% train / 뒤 20% test(연속 블록), 경계 15프레임 drop — 스크립트 의도와 실제 JSON 완전 일치 (`min(test ts) > max(train ts)` 8/8, 재구성식 8/8 성립).
+**낙관 편향 주의**: 경계 gap 대부분 1~2.7초(15fps) → 장면·객체·조명이 train/test 공유. v3 수치는 상한선 성격, 일반화 측정은 v2(캡처 holdout)가 정본. 보고 시 병기 권장.
+
+## 8. best weights 모음 위치 (2026-07-07)
+
+**전 서버 학습 best 웨이트 → `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/weights/`**
+- `yolo_rgb_baselines/` — YOLO RGB 기준점 5종 (v2/labelv3/v3split/final)
+- `p29det_multimodal/` — P29-Det 멀티모달 (egofill best/peak, event, 릴레이 final_*)
+- `README.md` — 파일별 실험·데이터·mAP50 매니페스트
+- 진행 중 run(Y1/event/릴레이)은 각 서버 수집기가 완료 시 자동 복사.
+
+## 9. final 저조도 split 실험 (릴레이, 2026-07-07~)
+
+**데이터**: final split (train 5클립 / test 3클립 중 114021🌙·115624🌙 저조도). egofill 통합 lidar.
+평가 = 저조도(1,768~1,769) vs 정상(1,654~1,671) 분해. **멀티모달 robustness 검증 목적**.
+
+| run | 입력 | 전체 mAP50/AP50 | 저조도 | 정상 | 저조도 delta |
+|-----|------|------|------|------|------|
+| **Y1** YOLOv5m (완료) | RGB | 0.907 | **0.865** | **0.935** | **−0.070** (RGB 저조도 취약 확인) |
+| M3 P29 full (학습중) | RGB+LiDAR+Thermal | - | - | - | (관건: <0.070이면 fusion robustness 승) |
+| M1 P29 (대기) | RGB | - | - | - | - |
+| M2 P29 (대기) | RGB+Thermal | - | - | - | - |
+
+- **event ablation(E2.6) 완료**: best AP50 0.8427 (COCO AP peak 0.5174, ep14) — lidar egofill(0.850)과 동등. **3번째 모달 lidar≈event 확정**.
+- Y1 all-test 0.907(v2/v3 0.866보다 높음): final test 클립 구성이 RGB에 유리한 면. 핵심은 저조도-정상 delta.

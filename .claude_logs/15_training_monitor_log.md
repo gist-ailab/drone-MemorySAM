@@ -237,6 +237,8 @@
 | 2026-07-03 04:13 | Epoch[58] (ep54 eval done) | **ep54 mAP 0.224 / mAP50 0.3523 / mAP75 0.248** (ep49 0.3544→평탄) | epoch54(03:17)·49 | G1-4 8~61%@~19GB, 21 proc, nan-skip 0 | **정상(정체)**. resume run ep58, mAP50 ~0.35 진동 지속(peak 0.4455 미회복). EPOCHS 50 초과 진행(60 추정). |
 | 2026-07-03 06:13 | Epoch[63] 83% (ep59 eval done) | **ep59 mAP 0.248 / mAP50 0.3844 / mAP75 0.274** (ep54 0.3523→**+0.032 반등**) | epoch59(05:01)·54 | G1-4 66~91%@~19GB, 21 proc, nan-skip 0 | **정상·반등**. resume run ep63, mAP50 오랜 ~0.35 정체 후 **0.3844로 상승**(peak 0.4455 근접 시도). best(COCO mAP)=ep59. |
 | 2026-07-03 08:13 | Epoch[69] 66% (ep64 eval done) | **ep64 mAP 0.221 / mAP50 0.3423 / mAP75 0.248** (ep59 0.3844→되돌림) | epoch64(06:46)·59 | G1-4 43~98%@~19GB, 21 proc, nan-skip 0 | **정상(진동)**. resume run ep69, mAP50 ~0.34-0.38 진동(ep59 0.3844 스파이크 후 ep64 0.3423). peak 0.4455 미회복, 지속개선 아님. best(COCO mAP)=ep59. |
+| 2026-07-03 10:13 | Epoch[74] 100% (ep69 eval done) | **ep69 mAP 0.206 / mAP50 0.3116 / mAP75 0.230** (ep64 0.3423→하락) | epoch69(08:30)·64 | G2-4 100%@~19GB, 9 proc(ep경계), nan-skip 0 | **🔻 하락세**. resume run ep74, mAP50 ep59 0.384→64 0.342→**69 0.312** 하락 — 연장이 오히려 악화(overfit). best 가용 ckpt는 초기(ep9 peak 0.4455) 또는 ep59. 계속 연장 무의미. |
+| 2026-07-03 12:13 | ⏹ **종료**(~ep74, ~10:52) | 최종 오실레이션 mAP50 ~0.31~0.38, best_ckpt(COCO mAP)=ep59(mAP50 0.384) | epoch74·69·64 | proc 0→det_P31_v3clip로 교체 | **종료**. bundle 연장(ep35~74)은 mAP50 peak(0.4455@ep9) 미회복·후반 하락. → RUN-10(det_P31_v3clip)로 이관. |
 
 > ⚠️ **22:13**: bundle 연장(ep35~50)은 mAP50 0.3565로 여전히 peak(0.4455@ep9) 아래. 남은 10ep로 재돌파 가능성 낮음(post-ep9 하락 패턴). 목적 확인 필요할 수 있음(단순 50ep 완주 vs 개선 기대).
 
@@ -254,3 +256,175 @@
 | 2026-07-03 04:13 | 5/200 (초기) | (아직 미로깅) | (미로깅) | — | G5,6,7 100%@~150GB, 42 proc, .log 04:12 신선 | **정상 초기 학습**. 03:11 시작, ep5 eval 진입, loss 2.95(ep4). 첫 Day-Val/Test는 다음 점검에서. P30 대비 개선 여부 관찰. |
 | 2026-07-03 06:13 | 8/200 | **49.03** (best 49.03@ep8) | 44.18 (best **45.18@ep6**) | val ep8 / test ep6 | G5,6,7 100%@~150GB, 42 proc, .log 05:47 신선 | **✅ 정상·유망**. Test ep4→6: 39.51→**45.18**(신기록), **P30 최종 best 44.10 이미 돌파(@ep6)**. Day-Val 49.03@ep8도 P30 best(49.76) 근접. ep8/200이라 상방 큼 → P31이 P30 회귀 만회 조짐. |
 | 2026-07-03 08:13 | 14/200 | **57.70** (best 57.70@ep12) | **50.82** (best **50.82@ep14** 신기록) | val ep12 / test ep14 | G5,6,7 100%@~150GB, 42 proc, .log 07:44 신선 | **✅ 강상승**. Day-Val ep8→12: 49.03→**57.70**(+8.7). Test ep6→14: 45.18→50.32→**50.82** 연속신기록. **P30(49.76/44.10) 대폭 상회**, P29(63.20/54.34) 근접 중. ep14/200 상방 큼. |
+| 2026-07-03 10:13 | 22/200 | **59.76** (best 59.76@ep22 신기록) | 50.24 (best **51.69@ep18**) | val ep22 / test ep18 | G5,6,7 100%@~150GB, 42 proc, .log 10:12 신선 | **✅ 계속 강상승**. Day-Val ep12→22: 57.70→**59.76**. Test ep14→18: 50.82→**51.69**. **P29(63.20/54.34)에 바짝 근접**(Day-Val -3.4/Test -2.7), P30 완전 상회. ep22/200 → P29 추월 유력. |
+| 2026-07-03 12:13 | 28/200 | 59.53 (best **59.76@ep22**) | 51.24 (best **51.69@ep18**) | val ep22 / test ep18 | G5,6,7 100%@~150GB, 42 proc, .log 12:10 신선 | **✅ 정상(소폭 정체)**. ep24~28 신기록 없이 Day-Val ~57~59.5, Test ~48~51. best 59.76/51.69 유지. P29(63.20/54.34)에 -3.4/-2.7. ep28/200, 재상승 여지. |
+| 2026-07-03 14:13 | 34/200 | **60.71** (best 60.71@ep32 신기록) | 52.29 (best **52.29@ep32** 신기록) | val ep32 / test ep32 | G5,6,7 100%@~150GB, 42 proc, .log 14:08 신선 | **✅ 계속 상승**. Day-Val ep22→32: 59.76→**60.71**. Test ep28→32: 51.95→**52.29** 신기록. P29(63.20/54.34)에 -2.5/-2.0 근접. ep34/200 상승 지속. |
+| 2026-07-03 16:13 | 40/200 | 59.30 (best **60.71@ep32**) | 52.23 (best **52.29@ep32**) | val ep32 / test ep32 | G5,6,7 100%@~150GB, 42 proc, .log 16:08 신선 | **✅ 정상(소폭 정체)**. ep34~40 신기록 없이 Day-Val ~57~59.3, Test ~50~52.2. best 60.71/52.29@ep32 유지. P29(63.20/54.34)에 -2.5/-2.0. ep40/200. |
+| 2026-07-03 18:13 | 46/200 | 58.06 (best **60.71@ep32**) | 51.87 (best **52.29@ep32**) | val ep32 / test ep32 | G5,6,7 100%@~150GB, 42 proc, .log 18:06 신선 | **⚠️정체(ep32 peak)**. ep34~46 Day-Val ~57~59(peak 60.71 미회복), Test ~51~52. best 60.71/52.29@ep32 고착. P29(63.20/54.34) 추월 불투명(peak-2.5/-2.0). ep46/200. |
+| 2026-07-03 20:13 | 52/200 | 57.73 (best **60.71@ep32**) | 51.24 (best **52.57@ep46** 신기록) | val ep32 / test ep46 | G5,6,7 100%@~150GB, 42 proc, .log 20:05 신선 | **정상**. Test ep46 **52.57 신기록**(52.29→52.57). Day-Val ep32 peak 60.71 유지(56~58 진동, 미회복). ep52/200. P29(63.20/54.34)와 gap 유지. |
+| 2026-07-03 22:13 | 58/200 | 57.94 (best **60.71@ep32**) | 53.79 (best **53.88@ep56** 신기록) | val ep32 / test ep56 | G5,6,7 0~8%@~150GB(epoch경계), 42 proc, .log 22:11 신선 | **✅ Test 상승**. Test ep54→56: 53.55→**53.88** 연속신기록, **P29 Test 54.34에 -0.46 근접!** Day-Val 60.71@ep32 peak 유지(~58 진동). ep58/200. |
+| 2026-07-04 00:13 | 64/200 | 59.75 (best **60.71@ep32**) | 52.49 (best **53.88@ep56**) | val ep32 / test ep56 | G4-7 93~98%@~150GB, 38 proc, .log 00:09 신선 | **정체**. ep58~64 Day-Val ~59-60(peak 60.71 미회복), Test ~52-53.8. best 60.71/53.88 유지. 공식목표 val66.51/test56.71 미달, P29(63.20/54.34)도 미달. ep64/200. |
+| 2026-07-04 06:37 | 84/200 | **60.87** (best 60.87@ep80 신기록) | 53.98 (best **54.06@ep78**) | val ep80 / test ep78 | G5,6,7 100%@~150GB, 42 proc, .log 06:34 신선 | **✅ 재상승**. Day-Val ep32 peak 넘어 **60.87@ep80** 신고점. Test 54.06@ep78(P29 54.34에 -0.28). P29 추격 재개. ep84/200. |
+| 2026-07-04 08:37 | 90/200 | **61.48** (best 61.48@ep86 신기록) | 51.58 (best **54.06@ep78**) | val ep86 / test ep78 | G5,6,7 100%@~150GB, 42 proc, .log 08:31 신선 | **✅ 상승 지속**. Day-Val ep80→86: 60.87→**61.48**(신고점, P29 63.20에 -1.7). Test 54.06@ep78(P29 -0.28). ep90/200. |
+| 2026-07-04 12:37 | 102/200 | **62.87** (best 62.87@ep96 신기록) | **54.67** (best **54.67@ep96** 신기록) | val ep96 / test ep96 | G4-7 89~96%@~150GB, 38 proc, .log 12:36 신선 | **✅🏆 P29 Test 돌파**. Day-Val 61.48→**62.87@ep96**(P29 63.20에 -0.33). **Test 54.67@ep96 > P29 54.34(+0.33)!** P31 seg=현 best/tied-best seg. ep102/200 더 여지. |
+| 2026-07-04 14:37 | 108/200 | **63.20** (best 63.20@ep106 신기록) | 54.29 (best **54.67@ep96**) | val ep106 / test ep96 | G4-7 76~95%@~150GB, 38 proc, .log 14:33 신선 | **✅🏆 P29 동률 달성**. Day-Val **63.20@ep106 = P29 63.20**! Test 54.67@ep96 > P29 54.34. **P31=최선 DELIVER seg**(Day-Val 동률·Test 우세). ep108/200. 공식목표 66.51/56.71엔 아직 갭. |
+| 2026-07-04 16:37 | 114/200 | 58.79 (best **63.20@ep106**) | 52.84 (best **54.67@ep96**) | val ep106 / test ep96 | G4-7 8%@~150GB(epoch경계), 38 proc, .log 16:30 신선 | **정상**. best 63.20@ep106(=P29)/54.67@ep96(>P29) 유지, ep114 일시 dip(58.79). 최선 seg 지위 유지. ep114/200. |
+| 2026-07-04 18:37 | 120/200 | 62.22 (best **63.20@ep106**) | 54.08 (best **54.67@ep96**) | val ep106 / test ep96 | 42 proc, .log 18:26 신선 | **정상(정체)**. best 63.20/54.67 유지(61-62/54 진동). 최선 seg 지위 유지. ep120/200. |
+| 2026-07-04 20:37 | 126/200 | 62.69 (best **63.20@ep106**) | 53.38 (best **54.67@ep96**) | val ep106 / test ep96 | 42 proc, .log 20:24 신선 | **정상(정체)**. best 63.20/54.67 유지(62~62.7/53~54 진동). ep126/200. 최선 seg 유지. |
+| 2026-07-04 22:37 | 132/200 | 61.00 (best **63.20@ep106**) | 54.47 (best **54.67@ep96**) | val ep106 / test ep96 | 42 proc, .log 22:22 신선 | **정상(정체)**. best 63.20/54.67 유지(61~62/53~54.5 진동). ep132/200. 최선 seg 유지. |
+| 2026-07-05 00:37 | 138/200 | 61.29 (best **63.20@ep106**) | 54.14 (best **54.67@ep96**) | val ep106 / test ep96 | 42 proc, .log 00:19 신선 | **정상(정체)**. best 63.20/54.67 유지(~61/~54 진동). ep138/200. 최선 seg 유지. |
+| 2026-07-05 02:37 | 144/200 | 61.85 (best **63.20@ep106**) | 54.09 (best **54.67@ep96**) | val ep106 / test ep96 | 42 proc, .log 02:18 신선 | **정상(정체)**. best 63.20/54.67 유지(~61.5/~54 진동). ep144/200. 최선 seg 유지. |
+| 2026-07-05 04:37 | 150/200 | 61.18 (best **63.20@ep106**) | 53.94 (best **54.67@ep96**) | val ep106 / test ep96 | 42 proc, .log 04:17 신선 | **정상(정체)**. best 63.20/54.67 유지(~61/~54 진동). ep150/200. 최선 seg 유지. |
+| 2026-07-05 06:37 | 156/200 | 61.55 (best **63.20@ep106**) | 53.82 (best **54.67@ep96**) | val ep106 / test ep96 | 42 proc, .log 06:17 신선 | **정상(정체)**. best 63.20/54.67 유지(~61/~54). ep156/200. 최선 seg 유지. |
+| 2026-07-05 08:37 | 162/200 | 61.21 (best **63.20@ep106**) | 54.20 (best **54.75@ep158** 신기록) | val ep106 / test ep158 | 42 proc, .log 08:17 신선 | **✅ Test 소폭↑**. Test **54.75@ep158**(54.67→54.75, P29 54.34에 +0.41). Day-Val 63.20@ep106 유지. 최선 seg. ep162/200. |
+| 2026-07-05 10:37 | 168/200 | 61.76 (best **63.20@ep106**) | 54.00 (best **54.75@ep158**) | val ep106 / test ep158 | 42 proc, .log 10:18 신선 | **정상(정체)**. best 63.20/54.75 유지(~61.8/~54). ep168/200. 최선 seg 유지. |
+| 2026-07-05 12:37 | 174/200 | 62.08 (best **63.20@ep106**) | 54.22 (best **54.75@ep158**) | val ep106 / test ep158 | 42 proc, .log 12:18 신선 | **정상(정체)**. best 63.20/54.75 유지(~62/~54). ep174/200. 최선 seg 유지. |
+| 2026-07-05 16:37 | 186/200 | 62.07 (best **63.20@ep106**) | 54.49 (best **54.85@ep182** 신기록) | val ep106 / test ep182 | .log 16:18 신선 | **✅ Test 소폭↑**. Test **54.85@ep182**(54.75→54.85, P29 54.34에 +0.51). Day-Val 63.20@ep106. 최선 seg. ep186/200. |
+| 2026-07-05 18:37 | 192/200 | 62.50 (best **63.20@ep106**) | 54.44 (best **54.85@ep182**) | val ep106 / test ep182 | .log 18:18 신선 | **정상(종료근접)**. best 63.20/54.85 유지(~62.5/~54.5). ep192/200(~8ep 남음). 최선 seg. |
+| 2026-07-05 20:37 | 198/200 (곧 완주) | 62.44 (best **63.20@ep106**) | 54.37 (best **54.85@ep182**) | val ep106 / test ep182 | .log 20:18 | **정상·종료임박**. best 63.20/54.85 유지. ep198/200(~20분 뒤 완주). 최선 seg 확정 예정. |
+| 2026-07-05 22:37 | 🏁 **완주**(200ep) | 최종 best **Day-Val 63.20@ep106 / Test 54.85@ep182** | best_ckpt 보존 | proc 0→P32로 대체 | **🏁 완주**. P31 seg 200ep 완료. **P29(63.20/54.34) 동률(Day-Val)+Test 우세(54.85)** → 최선 DELIVER seg. 공식목표 66.51/56.71엔 미달. → P32로 승계. |
+
+---
+
+## RUN-10 · Jarvis **det_P31_v3clip** (P31.1 det: calibrated reliability + decisive router + FCOS primary) — P30-Det 교훈 반영
+
+- **서버/owner**: jarvis. **2026-07-03 ~11:03 시작**, nproc=4, GPU 1-4(~24GB, batch4 fp32), `--cfg configs/det/det_P31_v3clip_jarvis.yaml`.
+- **개선점(P30-Det 대비)**: SEG_MODEL=**LoRA_Sam_P31_Det**(RBMA + **calibrated reliability**(포화 해소) + **decisive router**(비적응 fusion 수정) — 메모리 feature-probe 발견 대응). DET_MODEL=MemorySAMDetectorP30, **FCOS primary**(object-query decoder small-obj 약점 회피). **AMP off**(P30-Det NaN 교훈), grad-ckpt ON, batch4, **v3clip split**(det_{train,test}_v3clip.json), letterbox+aug+ATSS 계승. EPOCHS=40.
+- **출력**: `outputs/det/det_P31_v3clip_jarvis/`, 로그 `logs/det_P31_v3clip_*.log`. 비교선: P29-Det ep9 mAP50 0.446(검출 best-overall), P30-Det 0.256.
+- **리포트**: mAP/mAP50(목표)/mAP75.
+
+| 점검 시각(KST) | epoch | mAP / **mAP50** / mAP75 | ckpt | GPU/proc | 상태 판정 |
+|---|---|---|---|---|---|
+| 2026-07-03 12:13 | Epoch[2] 48% | (아직 없음 — 첫 eval=ep4) | 0개 | G1-4 9~92%@~24GB, 21 proc, nan-skip 0, finite loss 1818 | **정상 초기 학습**. AMP off로 NaN 없음(P30-Det 교훈 적용). loss 1.07. 첫 mAP50=ep4(~40분뒤) → P30-Det(0.256)·P29-Det(0.446) 대비 개선 여부 첫 판정. |
+| 2026-07-03 14:12 | Epoch[6] 32% (ep4 eval done) | **ep4 mAP 0.2531 / mAP50 0.4619 / mAP75 0.2560** 🏆 | epoch4·best(13:35) | G1-4 100%@24GB, 21 proc, nan-skip 0 | **✅🏆 검출 best-overall 경신**. ep4만에 mAP50 **0.4619** — 기존 best P29-Det ep9(0.446)·bundle peak(0.4455) 돌파, P30-Det(0.256) 압도. AMP off로 NaN 없음. ep4/40 상방 큼 → 목표 0.85 가장 유망. |
+| 2026-07-03 14:13 | Epoch[6] 36% | 최신 **ep4 mAP50 0.4619**(ep9 eval ~1h뒤); best=ep4 | epoch4·best(13:35) | G1-4 100%@24GB, 21 proc, nan-skip 0 | **✅ 정상**. fp32라 ~28분/ep(느림). ep4 mAP50 0.4619(검출 best-overall) 유지, ep9 상승 지속 여부 관건. |
+| 2026-07-03 16:13 | Epoch[10] 20% (ep9 eval done) | **ep9 mAP 0.2814 / mAP50 0.4701 / mAP75 0.3101** 🏆(ep4 0.4619→상승) | epoch9·best(16:07)·4 | G1-4 8~100%@24GB, 21 proc, nan-skip 0 | **✅🏆 계속 경신**. mAP50 ep4 0.4619→**ep9 0.4701**, mAP75 0.256→0.310 큰 개선(localization↑). 검출 best-overall 유지·상승. ep10/40 상방 큼. |
+| 2026-07-03 18:13 | Epoch[14] 47% | 최신 **ep9 mAP50 0.4701**(ep14 eval ~15분뒤); best=ep9 | epoch9·best·4 | G1-4 79~100%@24GB, 21 proc, nan-skip 0 | **✅ 정상**. fp32 ~28분/ep. ep9 mAP50 0.4701(검출 best-overall) 유지, ep14 상승 지속 여부 대기. |
+| 2026-07-03 20:13 | Epoch[18] 34% (ep14 eval done) | **ep14 mAP 0.287 / mAP50 0.4724 / mAP75 0.310** 🏆(ep9 0.4701→상승) | epoch14·best(18:38)·9·4 | G1-4 95~100%@24GB, 21 proc, nan-skip 0 | **✅🏆 계속 경신**. mAP50 ep4 0.4619→9 0.4701→**14 0.4724** 완만 상승. 검출 best-overall 유지. ep18/40 상방 남음. |
+| 2026-07-03 22:13 | Epoch[22] 21% (ep19 eval done) | **ep19 mAP 0.294 / mAP50 0.4674 / mAP75 0.3217** (ep14 0.4724→소폭↓) | epoch19·best(=ep19 by COCO mAP)·14 | G1-4 98%@24GB, 21 proc, nan-skip 0 | **✅ 정상(mAP50 평탄)**. mAP50 ep4→19: 0.4619→9 0.4701→14 **0.4724(peak)**→19 0.4674. mAP75·mAP은 상승(localization↑). **mAP50-best=ep14 0.4724**, 여전히 검출 best-overall. ep22/40. |
+| 2026-07-04 00:13 | Epoch[26] 9% (ep24 eval done) | **ep24 mAP 0.295 / mAP50 0.4639 / mAP75 0.321** (ep14 peak 0.4724→하락) | epoch24·best(=ep24 COCO mAP)·19·14 | G1-4 100%@24GB, 21 proc, nan-skip 0 | **✅ 정상(mAP50 하락)**. mAP50 ep14 0.4724(peak)→19 0.4674→24 0.4639. COCO mAP 평탄(0.295). **mAP50-best=ep14 0.4724**(검출 best-overall). ep26/40, ep14 재돌파 불확실. |
+| 2026-07-04 06:37 | Epoch[38] 99% (ep34 eval done) | ep34 mAP 0.2912 / **mAP50 0.4636** / mAP75 0.312 (mAP50-best=ep14 0.4724) | epoch34·best(=ep29 COCO mAP) | G1-4 @24GB, 21 proc, nan-skip 0 | **정상·종료임박**. ep38/40. mAP50 ~0.464 수렴(v3clip split). best mAP50=ep14 0.4724. 곧 완료. |
+| 2026-07-04 08:37 | 🏁 **완료**(40ep, ~07:16) | 최종 ep39 mAP 0.2936 / **mAP50 0.4637** / mAP75 0.315; **best mAP50=ep14 0.4724** | epoch39·best(=ep29 COCO mAP 0.2961) | proc 0, GPU free | **🏁 완주**. 'Training complete. Best AP 0.2961'. mAP50 ~0.464 수렴(v3clip split=비공식). NaN 0. 검출 공식 best는 여전히 bengio egofill 0.85. |
+
+---
+
+## RUN-11 · bengio **det_P29_egofill** (P29-Det + egofill lidar 데이터) — 🎯 mAP50 0.85 도달
+
+- **서버/owner**: bengio (`jemo_maeng`, 8-GPU). **별도 체크아웃** `/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM-p29det-egofill`. GPU **1,3,5,6,7**(nproc=5), AMP on. 로그 `train_p29_egofill.log`(tee), 출력 `outputs/det_egofill/`.
+- **config**: `configs/det/det_P29_egofill_bengio.yaml`. SEG_MODEL=LoRA_Sam_P29_Det, **EPOCHS=50**, BATCH_SIZE=1. ROOT=poongsan_v2. **핵심=데이터**: lidar **egofill**(ego-motion 보정 최근접 스캔 재투영)으로 조밀화 + train 5,862→**11,799장(2.01×)**. VAL=`det_test_v2_orig1772.json`(=P29/P30-Det과 동일 1772 test, 직접비교 가능).
+- **의미**: P30 feature-probe의 "lidar degenerate/sparse" 병목을 데이터로 해결 → 검출 대약진.
+- **리포트**: mAP/mAP50(목표)/mAP75.
+
+| 점검 시각(KST) | epoch | mAP / **mAP50** / mAP75 | ckpt | 상태 판정 |
+|---|---|---|---|---|
+| 2026-07-04 01:08 | Epoch[11] 61% | **~ep9 mAP 0.5128 / mAP50 0.8501 / mAP75 0.5514** 🎯(~ep4 0.8279) | best(=ep9) | **🎯 목표 mAP50 0.85 도달!** 기존 검출 best(det_P31_v3clip 0.4724·P29-Det 0.446) 압도. egofill lidar+2× 데이터 효과. EPOCHS=50 아직 상방. AMP on nan-skip 0. **검출 best-overall = det_P29_egofill으로 갱신.** |
+| 2026-07-04 06:37 | Epoch[17] 62% (ep14 eval done) | **ep14 mAP 0.5081 / mAP50 0.8486 / mAP75 0.5395** 🎯 (ep9 0.8501→유지) | epoch14·best(=ep9)·9·4 | G1,3,5,6,7 활성, 27 proc, nan-skip 0 | **🎯 목표 유지**. mAP50 ep4 0.8279→9 **0.8501**→14 0.8486, ~0.85 안정. best(COCO mAP)=ep9. EPOCHS=50, ep17/50 상방 남음. 검출 best-overall. |
+| 2026-07-04 08:37 | Epoch[19] 95% | ep14 mAP 0.5081 / **mAP50 0.8486** / mAP75 0.540 🎯 (ep19 eval 임박); best=ep9 | epoch14·best(=ep9) | G1,3,5,6,7 활성, 27 proc, nan-skip 0 | **🎯 목표 유지**. mAP50 ~0.85 안정(ep9 0.8501/ep14 0.8486). ep19/50 상방 남음. 검출 best-overall. |
+| 2026-07-04 12:37 | Epoch[24] 21% (ep19 eval done) | ep19 mAP 0.5080 / **mAP50 0.8360** / mAP75 0.545 (ep14 0.8486→소폭↓) | epoch19·best(=ep9 mAP50 0.8501) | G1,3,5,6,7 활성, 27 proc, nan-skip 0 | **🎯 목표권 유지**. mAP50 ep9 0.8501→14 0.8486→19 0.8360(~0.84 진동). best mAP50=ep9 0.8501. ep24/50. 검출 best-overall. |
+| 2026-07-04 14:37 | Epoch[26] 15% (ep24 eval done) | ep24 mAP **0.5142** / mAP50 0.8364 / mAP75 0.545 (COCO mAP 신기록) | epoch24·best(=ep24 COCO mAP) | G1,3,5,6,7 활성, 27 proc, nan-skip 0 | **🎯 목표권 유지**. mAP50 ~0.836(ep19 0.8360/ep24 0.8364), peak mAP50=ep9 0.8501. COCO mAP는 ep24 0.5142로 상승(best_ckpt=ep24). ep26/50. 검출 best-overall. |
+| 2026-07-04 16:37 | Epoch[28] 39% (P29 egofill) | 최신 ep24 mAP 0.5142 / mAP50 0.8364; **best mAP50=ep9 0.8501** | epoch24·best | G1,3,5,6,7(nproc5), 27 proc, nan-skip 0 | **🎯 정상 진행**. mAP50 ~0.84 유지. ep28/50. 검출 best-overall. ⚠️ 같은 서버에 P31 egofill(RUN-12) 병렬 시작됨. |
+| 2026-07-04 18:37 | Epoch[30] 24% (ep29 eval) | ep29 mAP 0.5102 / mAP50 0.8315 / mAP75 0.544 (best mAP50=ep9 0.8501) | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지**. mAP50 ~0.83(ep24 0.8364→ep29 0.8315). best COCO mAP=ep24 0.5142. ep30/50. |
+| 2026-07-04 20:37 | Epoch[32] 44% | 최신 ep29 mAP50 0.8315(ep34 eval 대기); best mAP50=ep9 0.8501 | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지**. mAP50 ~0.83권. best COCO mAP=ep24 0.5142. ep32/50. |
+| 2026-07-04 22:37 | Epoch[34] 66% | 최신 ep29 mAP50 0.8315(ep34 eval 대기); best mAP50=ep9 0.8501 | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지**. mAP50 ~0.83권. ep34/50. |
+| 2026-07-05 00:37 | Epoch[36] 44% (ep34 eval) | ep34 mAP 0.5015 / mAP50 0.8202 / mAP75 0.535 (best mAP50=ep9 0.8501) | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지(완만↓)**. mAP50 ep9 0.8501→29 0.8315→34 0.8202. peak는 ep9. ep36/50. |
+| 2026-07-05 02:37 | Epoch[38] 70% | 최신 ep34 mAP50 0.8202(ep39 eval 대기); best mAP50=ep9 0.8501 | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지**. ep38/50, 곧 종료. best mAP50 ep9 0.8501 유력. |
+| 2026-07-05 04:37 | Epoch[40] 55% (ep39 eval) | ep39 mAP 0.4982 / mAP50 0.8170 / mAP75 0.531 (best mAP50=ep9 0.8501) | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지(완만↓)**. mAP50 0.85(ep9)→0.82(ep39). ep40/50, 곧 종료. best=ep9. |
+| 2026-07-05 06:37 | Epoch[42] 79% | 최신 ep39 mAP50 0.8170(ep44 eval 대기); best mAP50=ep9 0.8501 | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지**. mAP50 ~0.82권. ep42/50, 곧 종료. best=ep9 0.8501. |
+| 2026-07-05 08:37 | Epoch[44] 100%(ep45 진입) | 최신 ep39 mAP50 0.8170; best mAP50=ep9 0.8501 | epoch24·best | G1,3,5,6,7, proc 11(ep경계), nan-skip 0 | **🎯 유지**. mAP50 ~0.82권. ep44/50, ~5ep 남음. best=ep9 0.8501. |
+| 2026-07-05 10:37 | Epoch[46] 97% (ep44 eval) | ep44 mAP 0.4941 / mAP50 0.8135 / mAP75 0.524 (best mAP50=ep9 0.8501) | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 유지(완만↓)**. mAP50 0.85(ep9)→0.81(ep44). ep46/50, ~4ep 남음. best=ep9. |
+| 2026-07-05 12:37 | **Epoch[49]=마지막** 28% | 최신 ep44 mAP50 0.8135; best mAP50=ep9 0.8501 | epoch24·best | G1,3,5,6,7, 27 proc, nan-skip 0 | **🎯 완주 임박**. ep49/50 마지막 epoch(~35분 뒤 완료). 최종 mAP50 ~0.81 예상이나 best=ep9 0.8501(목표달성분). |
+| 2026-07-05 16:37 | 🏁 **완주**(50ep, ~13:35) | 최종 best **mAP50 0.8501@ep9** / best COCO mAP 0.5142@ep24; 최종ep49 mAP50 0.8119 | best·epoch49 | proc 0, GPU 반환 | **🏁🎯 완주·목표달성**. 'Training complete. Best AP 0.5142'. mAP50 ep9 0.8501(목표 0.85 달성)이 최선, 후반 완만 하락(→0.81). egofill 데이터가 검출 결정타. |
+
+> 🎯 **2026-07-04 01:08 — det 목표(mAP50 0.85) 사실상 달성**: bengio P29-Det **egofill** 데이터 변형이 **mAP50 0.8501@~ep9**(동일 v2 test 1772). 아키텍처(P29/P30/P31) 개선보다 **lidar egofill 데이터 조밀화 + 2× 증량**이 결정적. 이전 최고 det_P31_v3clip 0.4724 대비 +0.38. → 검출 방향은 이 egofill 데이터가 정답. EPOCHS=50, ~ep11 진행 중(최종 더 오를 수 있음).
+
+---
+
+## RUN-12 · bengio **det_P31_egofill** (P31.1 backbone × egofill 데이터) — 최선 backbone × 최선 데이터 조합
+
+- **서버/owner**: bengio, 체크아웃 `/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM`(P29 egofill과 다른 체크아웃). **2026-07-04 14:59 시작**(nproc=1 단독, 느림) → **2026-07-05 20:19 nproc=6 재기동**(GPU 0,1,3,5,6,7, master_port 29532, fresh ep0; ~69분/epoch). 로그 `logs/det_P31_egofill_6gpu_*.log`. 로그 `logs/det_P31_egofill_20260704_145911.log`, 출력 `outputs/det/det_P31_egofill_bengio/`.
+- **config**: `configs/det/det_P31_egofill_bengio.yaml`. SEG_MODEL=**LoRA_Sam_P31_Det**(P31.1: calibrated reliability+decisive router), DET_MODEL=MemorySAMDetectorP30(FCOS primary), **egofill 데이터**(det_train_v2_egofill.json, 2×), AMP off, grad-ckpt, batch4, EPOCHS=40.
+- **동기**: egofill 데이터(P29에서 mAP50 0.85)와 P31.1 개선 backbone을 결합 → 검출 추가 향상 기대. 비교선: P29 egofill 0.85(RUN-11), det_P31_v3clip 0.4724(v3clip).
+
+| 점검 시각(KST) | epoch | mAP / **mAP50** / mAP75 | GPU/proc | 상태 판정 |
+|---|---|---|---|---|
+| 2026-07-04 16:37 | **Epoch[0] 29%** | (아직 없음 — 첫 eval=ep4) | G4 단독(nproc=1), 6 proc | **⚠️ 극도로 느림**. **nproc=1(단일 GPU)**로 **7.96s/it → ~6.5h/epoch, 40ep=~11일**. AMP off·fp32·grad-ckpt·2×egofill data(2949 iter/ep). 첫 mAP50(ep4)이 ~26h 뒤 → 실용성 낮음. |
+| 2026-07-04 18:37 | **Epoch[0] 54%** (eval 아직) | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1), 6 proc | **⚠️ 여전히 단일GPU 느림**. 8.18s/it, ep0 54%(~6.7h/ep). 사용자 GPU 재배정 결정 대기(jarvis 아직 huisu_kim 점유, bengio 만석). 첫 mAP50까지 하루+. |
+| 2026-07-04 20:37 | **Epoch[0] 84%**(5.6h째) | (없음) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 8.4s/it. ep0조차 미완(~1h 더). GPU 재배정 미결정 → 계속 느림. 첫 eval(ep4)까지 하루+. |
+| 2026-07-04 22:37 | **Epoch[1] 14%** | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 7.9s/it, ep0완료→ep1. eval(ep4) 아직 멀음. GPU 재배정 미결정. |
+| 2026-07-05 00:37 | Epoch[1] 44% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 8.1s/it. ep1 진행, eval(ep4) 멀음. GPU 재배정 미결정. |
+| 2026-07-05 02:37 | Epoch[1] 75% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 8.0s/it. ep1 마무리 중, eval(ep4) 멀음. GPU 재배정 미결정. |
+| 2026-07-05 04:37 | Epoch[2] 5% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 8.0s/it. ep2 진입, eval(ep4)까지 ~13h. GPU 재배정 미결정. |
+| 2026-07-05 06:37 | Epoch[2] 35% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 8.0s/it. ep2 진행. eval(ep4)까지 ~10h. GPU 재배정 미결정. |
+| 2026-07-05 08:37 | Epoch[2] 66% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 7.9s/it. ep2 진행. eval(ep4)까지 ~8h. GPU 재배정 미결정. |
+| 2026-07-05 10:37 | Epoch[2] 96% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 8.0s/it. ep3 진입 임박, eval(ep4)까지 ~6h. GPU 재배정 미결정. |
+| 2026-07-05 12:37 | Epoch[3] 27% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 8.1s/it. ep3 진행. eval(ep4)까지 ~6.5h. GPU 재배정 미결정. |
+| 2026-07-05 16:37 | Epoch[3] 88% | (없음 — 첫 eval ep4) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 7.8s/it. ep4 진입 임박 → 첫 eval ~7h 뒤. GPU 재배정 미결정. (P29 egofill 완주로 bengio GPU 5장 방금 반환됨 → nproc↑ 재기동 가능해짐) |
+| 2026-07-05 18:37 | Epoch[4] 19% | (없음 — ep4 끝에서 첫 eval) | 0개 | G4 단독(nproc=1) | **⚠️ 단일GPU 지속**. 7.8s/it. ep4 진입, 첫 eval ~5h 뒤. **bengio 6장(0,1,3,5,6,7) idle인데 재기동 미승인** → nproc=6로 재기동 시 5배↑ 가능. |
+| 2026-07-05 20:19 | 🚀 **nproc=6 재기동**(fresh ep0) | (없음 — 첫 eval ep4 ~4.6h뒤) | 0개 | G0,1,3,5,6,7 98~100%@~22GB, 31 proc, nan-skip 0 | **✅ 다중GPU 재기동 성공**. 단일GPU run 중단 후 nproc=6(GPU 0,1,3,5,6,7)로 재시작(사용자 승인). 491 iter/ep, 8.4s/it → **~69분/epoch**(단일 6.5h 대비 5.6×). 40ep=~46h, 첫 eval ep4 ~01시. finite loss, OOM 없음. 로그 det_P31_egofill_6gpu_20260705_201747.log. |
+| 2026-07-05 20:37 | Epoch[0] 27% (6-GPU) | (없음 — 첫 eval ep4 ~4h뒤) | 0개 | G0,1,3,5,6,7 98~100%@~22GB, 31 proc, nan-skip 0 | **✅ 6-GPU 정상**. loss 2.38→1.25 하강. 8.6s/it, 491iter/ep(~71분/ep). 재기동 안정. 첫 mAP50 ~01시. |
+| 2026-07-05 22:37 | 🔴 **크래시**(SIGKILL -9, ep0 56%, ~20:57) | (없음) | 0개 | 외부 kill, GPU 타작업 재점유 | **🔴 6-GPU run 사망(원인규명)**. exitcode -9(SIGKILL). **사용자가 20:55 새 `det_P29_event`(nproc=5, GPU 0,1,3,4,6) 실험을 띄우며 GPU가 겹쳐(0,1,3,6) 메모리 초과→내 P31 egofill이 OOM-kill**됨(내 잘못/config문제 아님). 사용자가 event ablation 우선. 빈 GPU 5,7뿐 → 6-GPU 재기동 불가. best 검출=P29 egofill 0.8501. → RUN-14로 GPU 이관됨. |
+
+> ⚠️ **2026-07-04 16:37 — P31 egofill 단일 GPU 문제**: RUN-12(det_P31_egofill)가 **nproc=1**로 돌아 ~6.5h/epoch(40ep≈11일)로 극도로 비효율. jarvis(4 GPU idle, 단 egofill 데이터 없음) 또는 bengio 다중 GPU 배정으로 **nproc↑ 재기동 권장**. 아니면 첫 결과(ep4)까지 하루 이상 소요.
+
+---
+
+## RUN-13 · B200 **P32** RBMA seg (DELIVER) — P31 완주 후 승계
+
+- **서버**: B200. **2026-07-05 ~22:02 시작**(P31 완주 후 자동 승계), torchrun nproc=4, master_port 29538.
+- **config**: `configs/b200-deliver_rgbdel_P32_physaug.yaml`. EPOCHS=200. P31 대비 diff 미확인.
+- **출력**: `outputs/MMSamP32/.../train.log`. 비교선: P31 seg best Day-Val 63.20@ep106/Test 54.85@ep182(현 최선), P29 63.20/54.34. 공식목표 val 66.51/test 56.71.
+
+| 점검 시각(KST) | epoch | Day-Val | Test | best | 상태 판정 |
+|---|---|---|---|---|---|
+| 2026-07-05 22:37 | 2/200 (초기) | 36.37 | (미로깅) | val ep2 | **정상 초기 학습**. fresh ramp-up(Day-Val 36.37@ep2). P31(63.20/54.85) 넘는지 관찰. 첫 Test는 다음 점검. |
+| 2026-07-06 00:37 | 6/200 | **51.11** (best 51.11@ep6) | **43.47** (best 43.47@ep6) | val ep6 / test ep6 | 41 proc, .log 00:18 신선 | **정상 초기상승**. Day-Val ep2→6: 36.37→**51.11**, Test **43.47@ep6**(신기록). P31 ep6(48.96/45.18) 대비 Day-Val↑/Test↓ 혼조(초기). ep6/200. |
+| 2026-07-06 02:37 | 12/200 | **56.60** (best 56.60@ep12) | **48.89** (best 48.89@ep12 신기록) | val ep12 / test ep12 | 37 proc, .log 02:34 신선 | **정상 상승이나 P31 열세**. Day-Val ep10→12: 52.14→56.60, Test 46.93→**48.89**. **P31 ep12(57.70/50.32) 대비 -1.1/-1.4 뒤짐** 지속. baseline 56.71/66.51엔 한참. ep12/200. |
+| 2026-07-06 04:37 | 16/200 | 53.17 (best **56.60@ep12**) | 46.54 (best **49.56@ep14** 신기록) | val ep12 / test ep14 | 41 proc, .log 04:04 신선 | **⚠️ ep12-16 정체·하락**. Day-Val ep12→14→16: 56.60→55.49→**53.17**(하락), Test ep14 **49.56**(peak, 신기록)→ep16 46.54. P32가 P31 궤도 못 따라가고 조기 정체 조짐. baseline 66.51/56.71엔 여전히 큰 격차. ep16/200. |
+| 2026-07-06 06:37 | 22/200 | 58.04 (best **59.45@ep20**) | 51.16 (best **51.16@ep22** 신기록) | val ep20 / test ep22 | 41 proc, .log 06:19 신선 | **🎯 반등(정체 아님)**. Day-Val ep16→20→22: 53.17→**59.45**(신기록)→58.04, Test ep16 46.54→ep20 50.61→**ep22 51.16**(연속 신기록). 직전 '조기정체' 우려는 epoch 노이즈였음. Test 51.16이 P31 ep12(50.32) 상회, 궤도 추격 중. baseline 66.51/56.71엔 아직 격차. ep22/200. |
+| 2026-07-06 08:37 | 28/200 | 57.52 (best **60.23@ep26**) | 51.65 (best **51.86@ep26** 신기록) | val ep26 / test ep26 | 37 proc, .log 08:35 신선 | **✅ 상승 지속**. Day-Val ep22→26: 58.04→**60.23**(신기록), Test 51.16→**51.86@ep26**(신기록)→ep28 51.65. 짝수ep 고점/홀수 저점 진동 유지되며 best 꾸준↑. P31 best(63.20/54.85)엔 val -3/test -3, 아직 추격 중. ep28/200. |
+| 2026-07-06 10:37 | 32/200 | 61.19 (best **61.65@ep30**) | 52.24 (best **52.24@ep32** 신기록) | val ep30 / test ep32 | 41 proc, .log 10:05 신선 | **✅ 신기록 지속**. Day-Val ep26→30: 60.23→**61.65**(신기록), Test ep26 51.86→**ep32 52.24**(신기록). val loss 0.844로 하강 지속. P31 best(63.20/54.85) 대비 val −1.6/test −2.6로 격차 축소 중. baseline 66.51/56.71엔 아직. ep32/200. |
+| 2026-07-06 12:37 | 38/200 | 58.40 (best **61.65@ep30**) | 51.28 (best **52.36@ep34** 신기록) | val ep30 / test ep34 | 41 proc, .log 12:22 신선 | **✅ Test 신기록·Val 정체조짐**. Test ep32→34 52.24→**52.36**(신기록), ep36 52.34/ep38 51.28. Day-Val ep30 61.65 이후 미갱신(ep36 61.23, ep38 58.40 진동). val loss 0.829로 하강 지속. P31(63.20/54.85) 대비 val −1.55/test −2.49. ep38/200. |
+| 2026-07-06 14:37 | 44/200 | 55.44 (best **61.65@ep30**; vs 66.51 **−4.86**) | 53.45@ep40 신기록 (best **53.45**; vs 56.71 **−3.26**) | val ep30 / test ep40 | 41 proc, .log 14:27 신선 | **✅ Test 신기록 −3.26**. Test ep34 52.36→**ep40 53.45**(신기록, SOTA 56.71에 −3.26 근접). Day-Val ep30 61.65 이후 미갱신·진동폭↑(ep42 54.93/ep44 55.44). val loss 0.80~0.86. SOTA대비 test −3.26 / val −4.86. (진행 상세로그는 완주 후 정리) ep44/200. |
+| 2026-07-06 20:37 | 60/200 | **62.52@ep56 신기록** (best 62.52; vs 66.51 **−3.99**) | 52.69 (best **53.45@ep40**; vs 56.71 **−3.26**) | val ep56 / test ep40 | 41 proc, .log 20:30 신선 | **✅ Day-Val 신기록 −3.99**. Day-Val ep30 61.65→**ep56 62.52**(신기록, SOTA 66.51에 −3.99로 개선). Test는 ep40 53.45 유지(ep56 53.33 근접). val loss 0.78 하강 지속. SOTA대비 val −3.99 / test −3.26. ep60/200. |
+| 2026-07-07 00:37 | 70/200 | **62.56@ep66 신기록** (best 62.56; vs 66.51 **−3.95**) | **53.52@ep68 신기록** (best 53.52; vs 56.71 **−3.19**) | val ep66 / test ep68 | 37 proc, .log 00:26 신선 | **✅ val·test 동시 신기록(소폭)**. Day-Val 62.52→**62.56@ep66**, Test 53.45→**53.52@ep68**(둘 다 미세 갱신). val loss 0.72로 하강 지속. SOTA대비 val −3.95 / test −3.19(소폭 개선). 여전히 수렴권 미세 상방. ep70/200. |
+| 2026-07-07 02:37 | 76/200 | **62.70@ep74 신기록** (best 62.70; vs 66.51 **−3.81**) | **53.62@ep74 신기록** (best 53.62; vs 56.71 **−3.09**) | val ep74 / test ep74 | 41 proc, .log 02:31 신선 | **✅ val·test 동시 신기록(ep74)**. Day-Val 62.56→**62.70**, Test 53.52→**53.62**(둘 다 ep74에서 갱신). 느리지만 꾸준한 상방 드리프트 지속(수렴권이나 미세 개선 누적). SOTA대비 val −3.81 / test −3.09. ep76/200. |
+| 2026-07-07 04:37 | 80/200 | 62.08 (best **62.70@ep74**; vs 66.51 **−3.81**) | **53.63@ep80 신기록** (best 53.63; vs 56.71 **−3.08**) | val ep74 / test ep80 | 41 proc, .log 04:20 신선 | **✅ Test 미세 신기록**. Test 53.62→**53.63@ep80**(+0.01, 사실상 수렴 상한). Day-Val 62.70@ep74 유지(ep78/80 62.17/62.08). val loss 0.707까지 하강. SOTA대비 val −3.81 / test −3.08. Test는 ~53.6에서 상한 도달한 모습. ep80/200. |
+| 2026-07-07 06:37 | 84/200 | **63.25@ep84 신기록** (best 63.25; vs 66.51 **−3.26**) | 53.55 (best **53.63@ep80**; vs 56.71 **−3.08**) | val ep84 / test ep80 | 41 proc, .log 06:12 신선 | **🎯 Day-Val P31 추월**. Day-Val 62.70→**63.25@ep84**(신기록) → **P31 best 63.20을 val 기준 근소 상회**(+0.05). Test는 53.63@ep80 유지(P31 54.85엔 아직 −1.2). val loss 0.70. SOTA대비 val −3.26 / test −3.08. **P32가 절반(84/200) 만에 P31 val 도달** → 남은 116ep 상방 기대. |
+| 2026-07-07 08:37 | 90/200 | 60.52 (best **63.25@ep84**; vs 66.51 **−3.26**) | **54.05@ep88 신기록** (best 54.05; vs 56.71 **−2.66**) | val ep84 / test ep88 | 37 proc, .log 08:27 신선 | **🎯 Test 신기록·P31 근접**. Test 53.63→86 53.87→**88 54.05**(신기록). **P31 best 54.85에 −0.80까지 추격**(val은 이미 63.25>63.20 추월). val loss 0.68. SOTA대비 val −3.26 / test −2.66(개선 지속). P32가 양지표 모두 P31 경신 시야권 → 남은 110ep 관건. ep90/200. |
+| 2026-07-07 14:44 | 106/200 | **64.12@ep98 신기록** (best 64.12; vs 66.51 **−2.39**) | **54.74@ep106 신기록** (best 54.74; vs 56.71 **−1.97**) | val ep98 / test ep106 | 41 proc, .log 14:29 신선 | **🎯 P32가 P31 추월(양지표)**. Day-Val **64.12**(>P31 63.20, +0.92), Test **54.74**(P31 54.85에 −0.11, 사실상 동률·계속 상승중). SOTA대비 val −2.39 / test −1.97(둘 다 개선 지속). **P32 = 사실상 최선 DELIVER seg** 등극(val 우세·test 근동률). val loss 0.66. ep106/200, test 아직 상승 → P31 test도 넘길 시야권. |
+| 2026-07-07 16:37 | 110/200 | 61.49 (best **64.12@ep98**; vs 66.51 **−2.39**) | **54.79@ep108 신기록** (best 54.79; vs 56.71 **−1.92**) | val ep98 / test ep108 | 41 proc, .log 16:11 신선 | **🎯 Test P31 근접(−0.06)**. Test 54.74→**54.79@ep108**(신기록). **P31 test best 54.85에 −0.06까지**(다음 갱신 시 추월). val은 이미 64.12>63.20 우세. SOTA대비 val −2.39 / test −1.92. val loss 0.65. P32가 양지표 P31 완전추월 임박. ep110/200(아직 90ep). |
+| 2026-07-08 02:07 | 134/200 | 62.69 (best **64.12@ep98**; vs 66.51 **−2.39**) | 54.71 (best **54.79@ep108**; vs 56.71 **−1.92**) | val ep98 / test ep108 | 41 proc, .log 01:35 신선 | **수렴(신기록 없음)**. ep110~134 val 61~63/test 53~54.7 진동, best 미갱신(val 64.12@ep98, test 54.79@ep108). **P32 최종상: val 64.12(>P31 63.20) / test 54.79(P31 54.85에 −0.06)** — val 우세·test 근동률로 최선 seg. val loss 0.63. ep134/200(아직 66ep이나 수렴). |
+
+---
+
+## RUN-14 · bengio **det_P29_event** (모달리티 ablation: lidar egofill → event) — 사용자 신규 실험
+
+- **서버/owner**: bengio, 체크아웃 `.../drone-MemorySAM-p29det-egofill`. **2026-07-05 ~20:55 시작**(사용자 jemo_maeng), nproc=5, **GPU 0,1,3,4,6**. 로그 `train_p29_event.log`, 출력 `outputs/det_event/det_P29_event_bengio/`. (이 실행이 내 P31 egofill 6-GPU를 GPU 겹침으로 밀어냄 → RUN-12 사망.)
+- **config**: `configs/det/det_P29_event_bengio.yaml`. **모달리티 ablation**: MODALS ['img,lidar,thermal']→['img,**event**,thermal'](event_aligned, 100% 커버리지). 학습=egofill_common11799 split, val=동일 1772. **유일 변인=lidar(egofill) vs event**. P29-Det backbone.
+- **의미**: egofill lidar(mAP50 0.85)의 대안으로 event 카메라 모달리티가 검출에 얼마나 기여하는지 clean 비교.
+
+| 점검 시각(KST) | epoch | mAP / **mAP50** / mAP75 | GPU/proc | 상태 판정 |
+|---|---|---|---|---|
+| 2026-07-05 22:37 | Epoch[1] 95% | (없음 — 첫 eval ep4) | G0,1,3,4,6(nproc5) 17.5GB, nan-skip 0 | **정상 초기 학습**. ep1, 1.3s/it. 첫 mAP50=ep4 → egofill(0.85) 대비 event 성능 첫 비교점. |
+| 2026-07-06 00:37 | Epoch[4] 18% | (없음 — ep4 끝 첫 eval, ~40분뒤) | 0개 | G0,1,3,4,6(nproc5) 17.5GB, 27 proc, nan-skip 0 | **정상 초기학습**. ep4 진입, 1.45s/it. 첫 mAP50 ~01:20 → egofill(0.85) 대비 event 모달리티 첫 비교. 빈GPU 2,5,7. |
+| 2026-07-06 02:37 | Epoch[5] 92% (ep4 eval done) | **ep4 mAP 0.4820 / mAP50 0.8250 / mAP75 0.5186** | epoch4·best | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **🎯 event≈egofill**. ep4 mAP50 0.8250 ≈ **egofill ep4 0.8279**(거의 동률!). event 카메라 모달리티가 egofill-lidar만큼 검출 기여 → ablation 유의미. ep5/50, ~0.85 궤도 예상. |
+| 2026-07-06 04:37 | Epoch[7] 96% | 최신 **ep4 mAP50 0.8250**(ep7 eval 대기); best mAP50=ep4 0.8250 | epoch4·best | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **🎯 정상**. ep5-6 eval 미로깅(SAVE_INTERVAL), ep7 진행 중 1.49s/it. event ep4 0.8250 = egofill 수준 유지. ep7/50. |
+| 2026-07-06 06:37 | Epoch[9] 93% | 최신 **ep4 mAP50 0.8250**(ep9 eval 임박); best mAP50=ep4 0.8250 | epoch4·best | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **🎯 정상**. ep5-8 eval 미로깅(eval~5ep 간격), ep9 93%→ep9 eval 곧. 1.42s/it. event ep4 0.8250 유지. ep9/50. |
+| 2026-07-06 08:37 | Epoch[11] 67% | ep9 mAP 0.4781 / **mAP50 0.8113** / mAP75 0.5047 (peak mAP50=ep4 0.8250) | epoch9·best(=ep4) | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **🎯 유지(완만↓)**. mAP50 ep4 0.8250→ep9 0.8113(egofill과 동일 패턴: ep초반 peak 후 완만↓). COCO mAP best 여전히 ep4 0.4820. event≈egofill(0.85) 수준 확인. ep11/50. |
+| 2026-07-06 10:37 | Epoch[13] 92% | 최신 ep9 mAP50 0.8113(ep14 eval 임박); peak mAP50=ep4 0.8250 | epoch9·best(=ep4) | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **🎯 정상**. ep13 92%→ep14 eval 곧. 1.35s/it. event peak mAP50 ep4 0.8250 유지(egofill 0.85 동급). ep13/50. |
+| 2026-07-06 12:37 | Epoch[15] 68% | **ep14 mAP 0.5142 / mAP50 0.8427 / mAP75 0.5600** 🎯(신기록) | epoch14·best | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **🎯 event 신기록·egofill 근접**. mAP50 ep4 0.8250→9 0.8113→**14 0.8427**(반등·신기록). COCO mAP 0.5142 = egofill best mAP와 동일. **event≈egofill(0.8501) 거의 동급 확정** — 모달리티 ablation 강한 증거. ep15/50. |
+| 2026-07-06 18:37 | Epoch[21] 75% (ep19 eval) | ep19 mAP **0.5174** / mAP50 0.8324 / mAP75 0.5581 (best_ckpt=ep19 by COCO mAP; **목표 mAP50 peak=ep14 0.8427**) | epoch19·best | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **✅ COCO mAP 신기록·mAP50는 미갱신**. COCO mAP 0.5142(ep14)→**0.5174(ep19)** best_ckpt 이동. 그러나 **헤드라인 목표 mAP50은 ep14 0.8427이 여전히 peak**(ep19 0.8324로 소폭↓). event best mAP50 0.8427 = egofill 0.8501에 −0.008 근접 유지. ep21/50. |
+| 2026-07-07 14:44 | Epoch[42] 9% (ep39 eval) | ep39 mAP 0.5033 / mAP50 0.8261 / mAP75 0.5379 (peak mAP50=ep14 0.8427) | epoch39·best(=ep19 COCO mAP) | G0,1,3,4,6(nproc5), 27 proc, nan-skip 0 | **수렴(완만↓)**. mAP50 ep34 0.8274→39 0.8261. best mAP50 여전히 ep14 0.8427(egofill 0.8501에 −0.008). ep42/50, ~8ep 남음(곧 완주). |
+| 2026-07-08 02:07 | 🏁 **완주**(50ep, ~22:38) | 최종 best **mAP 0.5174@ep19 / mAP50 0.8427@ep14 / mAP75 0.5600**; 최종ep49 mAP50 0.8233 | best·epoch49 | proc 0→det_P29_final_full로 승계 | **🏁 완주**. 'Training complete. Best AP 0.5174'. **event 모달리티: 목표 mAP50 peak 0.8427@ep14 = egofill 0.8501에 −0.008**(거의 동급). 후반 완만↓(→0.823). nan 0. **결론: event≈egofill-lidar**(검출 ablation 유의미). → GPU를 det_P29_final_full로 승계. |
+
+## RUN-15 · bengio **det_P29_final_full** (P29-Det + egofill lidar, **최종 annotation셋**) — 사용자 신규 실험
+
+- **서버/owner**: bengio(egofill 체크아웃 `/SSDb/.../drone-MemorySAM-p29det-egofill`). **2026-07-08 ~01:15 시작**, nproc=5(GPU 0,1,3,4,6), master_port 21834, `--cfg configs/det/det_P29_final_full.yaml`. det_P29_event 완주(RUN-14) 후 GPU 승계.
+- **구성**: SEG_MODEL=LoRA_Sam_P29_Det, MODALS=['img','lidar','thermal'](egofill lidar 복귀), **최종 annotation `_final_ann/instances_train_egofill.json`**(기존 _det_splits 아닌 최종본), EPOCHS=50, batch1. 데이터 외 하이퍼파라미터는 det_P29_egofill_bengio와 동일(변수격리=annotation셋만).
+- **의도**: 검출 best(egofill mAP50 0.8501@ep9)를 **최종 확정 annotation**으로 재학습해 제출용 final 수치 확보. 로그 `train_m3_full.log`, 출력 `outputs/det_final_full/`.
+- **리포트**: mAP/mAP50(목표 0.85)/mAP75.
+
+| 점검 시각(KST) | epoch | mAP / **mAP50** / mAP75 | ckpt | GPU/proc | 상태 판정 |
+|---|---|---|---|---|---|
+| 2026-07-08 02:07 | Epoch[0] 91% | (없음 — 첫 eval ep4) | 0개 | G0,1,3,4,6(nproc5), 26 proc, nan-skip 0 | **정상 초기 학습**. 2399 iter/ep, 1.4s/it(~56분/ep). loss 0.9~1.3 정상, n_pos 정상. 첫 mAP50=ep4(~4h 뒤) → 최종 annotation 기준 egofill(0.8501) 재현 여부 첫 판정. |
+| 2026-07-08 04:20 | Epoch[5] 62% (ep4 eval) | **ep4 mAP 0.4689 / mAP50 0.7515 / mAP75 0.5311** | epoch4·best | G0,1,3,4,6(nproc5), 26 proc, nan-skip 0 | **첫 eval — egofill보다 낮게 출발**. ep4 mAP50 **0.7515** < egofill ep4 0.8279·event ep4 0.8250(동일 epoch 대비 −0.07). **단 최종 annotation셋(_final_ann)이라 val 분포 다름 → 직접 비교 주의**. egofill은 ep9에 peak(0.8501)였으므로 아직 초반. ep5/50, ep9 eval에서 궤도 재판정. |
