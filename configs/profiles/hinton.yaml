@@ -1,0 +1,22 @@
+# configs/profiles/hinton.yaml — 서버별 경로 참조 문서 (hinton)
+# ⚠️ 참조 문서일 뿐, 학습 config에 자동 머지되지 않는다 (자동 머지 = 후속 과제).
+# 출처: scripts/servers.conf(주석 처리 상태) + 2026-07-06 재접속 확인 메모
+
+server:
+  alias: hinton
+  port: 200
+  gpus_default: "0"
+  notes: |
+    servers.conf에는 UNREACHABLE로 주석 처리되어 있으나 2026-07-06부터 ssh hinton 재접속 가능.
+    repo는 non-git 복사본 — ckpt-only inference 용도 (B200 만석 시 대체).
+
+repo_path: /home/jemo_maeng/src/drone-MemorySAM
+conda_env: MMSS_SAM
+
+data_roots:
+  DELIVER: FILL_ME   # /SSDd 또는 /SSDb 에 존재 — 사용 시 확인
+  MULTIAQUA: FILL_ME
+
+pretrained:
+  segformer_mit_b2: /hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth  # 레거시 절대경로 관행
+  sam2_hiera_base_plus: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt
