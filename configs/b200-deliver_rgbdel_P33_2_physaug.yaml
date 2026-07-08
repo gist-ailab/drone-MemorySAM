@@ -31,9 +31,12 @@ MODEL:
     MULTI_SCALE_SQG : true
     DEBA_FP      : false
     LAMBDA_BIAS_INIT : 1.0
-  # [P32 상속] corroboration 신호 ON — memory-attn bias source (corr_veto).
+  # [P33-v2 M4] CoRB attn-bias 제거 — P32 4축 독립검증에서 corroboration bias가
+  # 유의한 순손해로 확정(p=4.5e-22, vault issues/P32_정량검증_실패분석_20260708).
+  # OFF → bias는 P31식 calibrated self-entropy(RBMA_CALIB의 T_i 적용)로 복귀.
+  # seam은 논문 ablation용으로 보존(ENABLE:true로 재활성 가능).
   CORROBORATION:
-    ENABLE   : true
+    ENABLE   : false
     VETO     : true
   # [P33/M3] RBMA calibration restore — per-modal temperature T_i + correctness-contrastive loss.
   #   M1의 competence 신호가 이 T_i로 보정된 self-entropy를 사용하므로 필수.
