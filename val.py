@@ -143,6 +143,22 @@ def load_model(cfg, model_path, device):
         corrb = model_cfg.get('CORROBORATION', {}) or {}
         model_kwargs['corroboration_bias'] = corrb.get('ENABLE', False)
         model_kwargs['corrb_veto'] = corrb.get('VETO', True)
+    if 'competence_fusion' in sig.parameters:
+        # [P33] M1 competence-weighted fusion + M2 modal dropout (dropout eval=no-op).
+        comp = model_cfg.get('COMPETENCE_FUSION', {}) or {}
+        model_kwargs['competence_fusion'] = comp.get('ENABLE', False)
+        model_kwargs['comp_tau'] = comp.get('TAU', 0.25)
+        model_kwargs['comp_topk'] = comp.get('TOPK', 0)
+        model_kwargs['comp_entropy_reg'] = comp.get('ENTROPY_REG', 0.0)
+        mdrop = model_cfg.get('MODAL_DROPOUT', {}) or {}
+        model_kwargs['modal_dropout'] = mdrop.get('ENABLE', False)
+        model_kwargs['modal_dropout_p'] = mdrop.get('P', 0.3)
+        model_kwargs['modal_dropout_warmup_ep'] = mdrop.get('WARMUP_EP', 20)
+        modals = dataset_cfg['MODALS']
+        raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
+        tgt_idx = [modals.index(t) if isinstance(t, str) else int(t)
+                   for t in raw_targets if (not isinstance(t, str)) or (t in modals)]
+        model_kwargs['modal_dropout_targets'] = tuple(tgt_idx) if tgt_idx else (0, 1)
     if 'lambda_bias_init' in sig.parameters:
         quality_cfg = model_cfg.get('QUALITY_GATE', {})
         model_kwargs['lambda_bias_init'] = quality_cfg.get('LAMBDA_BIAS_INIT', 1.0)

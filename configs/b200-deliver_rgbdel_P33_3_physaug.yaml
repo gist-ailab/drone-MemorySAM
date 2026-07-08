@@ -1,0 +1,127 @@
+DEVICE          : cuda
+SAVE_DIR        : './outputs/MMSamP33/b200_deliver_rgbdel_P33_3_physaug'
+
+MODEL:
+  NAME          : CMNeXt
+  BACKBONE      : CMNeXt-B2
+  PRETRAINED    : '/hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth'
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  LORA_MODEL    : LoRA_Sam_P33
+  LORA_R        : 4
+  LORA_NUM_EXPERTS : null
+  LORA_TOP_K    : None
+  LORA_LAYER    : null
+  LORA_COND_DIM : 8
+  MODAL_COND_MOE : true
+  # [P33.3] = P33.2 (full: M1+M2+M3) 동일 — 추가 튜닝용 placeholder (comp_tau/P/TARGETS 스윕).
+  #   병목 진단(module_diagnostics): AMF uniform misallocation 51.6% → M1이 출력 융합을
+  #   calibrated self-entropy(competent depth 최상위 rank)로 교체. corr_veto(죽은 lidar 오상향)는
+  #   memory-bias 전용으로만 유지 — 융합에는 절대 사용 안 함. M2로 약모달 활용 강제.
+  QUALITY_GATE:
+    HIDDEN_DIM   : 64
+    MIN_QUALITY  : 0.3
+    PER_MODALITY : true
+    TAU_UAMM     : 1.0
+    TAU_TEACHER  : 0.5
+    MEMORY_MOD   : false
+    AMF_MODE     : competence        # [M1] 출력 융합 = softmax(calibrated self-entropy / comp_tau)
+    PER_MODALITY_DECODER : true
+    AUX_CE_WEIGHT : 0.5
+    MULTI_SCALE_SQG : true
+    DEBA_FP      : false
+    LAMBDA_BIAS_INIT : 1.0
+  # [P32 상속] corroboration 신호 ON — memory-attn bias source (corr_veto).
+  CORROBORATION:
+    ENABLE   : true
+    VETO     : true
+  # [P33/M3] RBMA calibration restore — per-modal temperature T_i + correctness-contrastive loss.
+  #   M1의 competence 신호가 이 T_i로 보정된 self-entropy를 사용하므로 필수.
+  RBMA_CALIB:
+    ENABLE   : true
+    LAMBDA   : 0.1
+  # [P33/M1] Competence-Weighted Fusion — 신호 = calibrated self-entropy (NOT corr_veto).
+  COMPETENCE_FUSION:
+    ENABLE      : true
+    TAU         : 0.25              # 낮을수록 competent 모달로 sharp
+    TOPK        : 0                 # 0 → 전 모달 soft (hard top-k 비활성)
+    ENTROPY_REG : 0.0              # anti-collapse 정칙 (0 = off; T_i 통해서만 grad)
+  # [P33/M2] Asymmetric Modality Dropout — P33.1에서는 비활성 (이번 config에서 ON).
+  MODAL_DROPOUT:
+    ENABLE   : true                 # [M2] img/depth 중 한 모달 입력 zero (event/lidar 절대 유지)
+    P        : 0.3
+    TARGETS  : ['img', 'depth']
+    WARMUP_EP : 20
+  # [P32 상속] SDC 라우팅 OFF (순수 계보 유지)
+  SDC:
+    ENABLE   : false
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/DELIVER'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # PhysAug: dataset-level (NIGHT_AUG와 독립)
+  PHYSAUG:
+    ENABLE    : true
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 8
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true            # B200 bf16 Tensor Core 활용
+  AMP_DTYPE     : bfloat16
+  DDP           : True
+  GRADIENT_CHECKPOINT : false
+  LAMBDA_GATE   : 0.5
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
