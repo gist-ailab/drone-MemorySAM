@@ -22,7 +22,7 @@ from semseg.losses import get_loss
 from semseg.schedulers import get_scheduler
 from semseg.optimizers import get_optimizer
 from semseg.utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp, get_logger, cal_flops, print_iou
-from _archive.oneoff.val_mm_sam import evaluate
+from val_mm_sam import evaluate
 import numpy
 import random
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
