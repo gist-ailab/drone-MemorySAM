@@ -1,5 +1,6 @@
 ---
 title: Reducing Unimodal Bias — Functional Entropy Regularization
+aliases: [Reducing Unimodal Bias, Reducing Unimodal Bias in Multi-Modal Semantic Segmentation]
 tags: [related-work, key-paper, uncertainty, multimodal-segmentation, loss]
 created: 2026-06-24
 source: arXiv:2505.06635; downloaded PDF text in [[sources/pdfs/priority_a/text/2505.06635.txt]]

@@ -136,7 +136,7 @@ status: draft
 
 Source PDFs and extracted text are archived under [[sources/pdfs/priority_a]].
 - [[relatedworks/09_benchmark_tables_deliver_muses_mcubes]] — in-progress benchmark table extraction for DeLiVER/MUSES/MCubeS. **2026-07-02 update (§U1–U9)**: two-cluster resolved (split×backbone), split-tagged SOTA tables, MM-SAM-adapter scoop alert (DELIVER test 57.35 RGB-D / MUSES test 81.07 RGB-L with only 2 modalities), MULTIAQUA, per-condition + EMM/RMM/NM robustness protocol.
-- [[relatedworks/46_benchmark_protocol_split_resolution]] — 2026-07-02, verified-draft (adversarially verified ×2): DELIVER protocol forensics (66.30 = B2-val / 53.0 = B2-test / 59.18 = B0-val; official-code line evidence), MemorySAM 65.38 = val [code-inferred, val_mm_sam.py L146], dual-split reporting rules, English related-work paragraph candidate. ⚠️ Numbering collision (parallel tracks): distinct from [[relatedworks/46_attention_reweighting_detection_nearmisses]] (Track 2).
+- [[relatedworks/93_benchmark_protocol_split_resolution]] — 2026-07-02, verified-draft (adversarially verified ×2): DELIVER protocol forensics (66.30 = B2-val / 53.0 = B2-test / 59.18 = B0-val; official-code line evidence), MemorySAM 65.38 = val [code-inferred, val_mm_sam.py L146], dual-split reporting rules, English related-work paragraph candidate. (2026-07-08: 구 `46_benchmark_protocol_split_resolution` — Track 2 [[relatedworks/46_attention_reweighting_detection_nearmisses]]와의 번호 충돌 해소를 위해 `93_`으로 rename.)
 ## Adapter / LoRA / foundation-model adaptation notes — added 2026-06-24
 
 | Note | Coverage | Status |
@@ -161,7 +161,7 @@ Key synthesis: PEFT is useful because it preserves foundation-model shape/bounda
 Key synthesis: semantic heads such as SegFormer/UPerNet/DeepLabv3+ are the cleanest mIoU baselines for fused RGB-X/SAM-style features; Mask2Former/OneFormer/MaskDINO add mask-query universality for instance and panoptic outputs; DETR/Deformable DETR/DINO/YOLO/Mask R-CNN and BEV heads are detection branches evaluated by AP/NDS rather than semantic mIoU. For [[26_MultimodalSeg]], head choice should be decoupled from the reliability-aware multimodal encoder so RBMA/fusion gains can be attributed cleanly.
 
 
-- [[90_jepa_predictive_representations_for_multimodal_seg]] — JEPA/I-JEPA/V-JEPA implications for multimodal segmentation representation learning.
+- [[91_jepa_predictive_representations_for_multimodal_seg]] — JEPA/I-JEPA/V-JEPA implications for multimodal segmentation representation learning. (2026-07-08: 구 `90_jepa_*` — [[relatedworks/90_clustered_relatedwork_synthesis]]와의 번호 충돌 해소를 위해 `91_`로 rename.)
 - [[92_rf_detr_detection_segmentation_head]] — RF-DETR as real-time DETR/NAS detection and instance-segmentation head baseline.
 
 ## 2026-07-02 deep-research update — Track 1 VFM multimodal landscape (52–57)
@@ -233,3 +233,12 @@ Other verdicts: SAM2-memory-attention-for-cross-modal-fusion base claim CONFIRME
 - [[86_cbc_slp_structured_latent_projection]] — per-paper gap-fill note.
 - [[87_unimrseg_modality_relax_segmentation]] — per-paper gap-fill note.
 - [[88_mle_sam_moe_lora_prior]] — per-paper gap-fill note.
+
+## Index completeness additions — 2026-07-08
+
+이 인덱스에 누락되어 있던 기존 노트 (파일 목록 대조로 추가):
+
+- [[relatedworks/49_corb_novelty_defense]] — CoRB (P32-B) novelty defense: 4-pillar claim, RSGMamba/MAGIC++ near-misses, posterior-Bhattacharyya discriminator. See also [[P32_CoRB_novelty_risk_register]] and [[00_P32_CoRB_index]].
+- [[relatedworks/90_clustered_relatedwork_synthesis]] — 6-cluster related-work synthesis + related-work paragraph candidates; exported to `material/01_multimodal_seg_clustered_relatedwork_{en,ko}.md/.pdf`.
+
+번호 rename 기록 (2026-07-08, 충돌 해소): `46_benchmark_protocol_split_resolution` → `93_`, `90_jepa_predictive_representations_for_multimodal_seg` → `91_`. 상세는 [[VAULT_CHANGELOG_2026-07-08]].

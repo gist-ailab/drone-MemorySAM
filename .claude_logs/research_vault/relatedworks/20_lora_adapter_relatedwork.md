@@ -1,5 +1,6 @@
 ---
 title: LoRA, adapters, and visual prompt tuning for parameter-efficient dense prediction
+aliases: [LoRA]
 tags: [related-work, peft, lora, adapter, visual-prompt-tuning, dense-prediction, key-paper]
 created: 2026-06-24
 source: arXiv:2106.09685; arXiv:2205.13535; arXiv:2203.12119; arXiv:2412.04220; [[sources/02_source_map_adapter_lora_foundation_seg_det]]

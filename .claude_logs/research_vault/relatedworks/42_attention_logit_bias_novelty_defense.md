@@ -1,5 +1,6 @@
 ---
 title: Attention-Logit Bias Novelty Defense for RBMA
+aliases: [RBMA, Reliability-Biased Memory Attention]
 tags: [related-work, novelty-defense, attention, logit-bias, rbma, sam2, multimodal-segmentation]
 created: 2026-06-24
 source: [[relatedworks/40_uncertainty_reliability_fusion_relatedwork]]; [[relatedworks/41_unimodal_bias_and_modality_collapse]]; [[relatedworks/01_memorysam_relatedwork]]; [[relatedworks/07_cmx_tokenfusion_magic_cafuser_baselines]]

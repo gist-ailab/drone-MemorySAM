@@ -1,5 +1,6 @@
 ---
 title: HyperDUM — Hyperdimensional Uncertainty Quantification for Multimodal Fusion (CVPR 2025)
+aliases: [HyperDUM]
 tags: [related-work, uncertainty, hyperdimensional-computing, multimodal-segmentation, deliver, rbma, competitor]
 created: 2026-07-02
 source: Track 2 deep-research 2026-07-02 (07_parallel_research_prompts_2026-07-02.md); arXiv:2503.20011 [VERIFIED-PDF]; adversarially verified (skeptic1 + skeptic2 both reproduced Table 4 from primary HTML)

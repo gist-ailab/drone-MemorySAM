@@ -1,5 +1,6 @@
 ---
 title: StitchFusion — MultiAdapter Weaving for Multimodal Semantic Segmentation
+aliases: [StitchFusion]
 tags: [related-work, adapter, multimodal-segmentation, parameter-efficient]
 created: 2026-06-24
 source: arXiv:2408.01343; downloaded PDF text in [[sources/pdfs/priority_a/text/2408.01343.txt]]

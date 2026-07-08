@@ -1,5 +1,6 @@
 ---
 title: OneFormer and task-conditioned universal image segmentation
+aliases: [OneFormer]
 tags: [related-work, key-paper, segmentation-head, universal-segmentation, transformer]
 created: 2026-06-24
 source: [OneFormer arXiv 2211.06220](https://arxiv.org/abs/2211.06220)

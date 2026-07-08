@@ -1,5 +1,6 @@
 ---
 title: MemorySAM — SAM2 Memory for Multimodal Semantic Segmentation
+aliases: [MemorySAM]
 tags: [related-work, key-paper, memorysam, sam2, multimodal-segmentation]
 created: 2026-06-24
 source: arXiv:2503.06700; downloaded PDF text in [[sources/pdfs/priority_a/text/2503.06700.txt]]

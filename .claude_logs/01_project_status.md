@@ -1,6 +1,6 @@
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-07-02
+> 최종 업데이트: 2026-07-08
 
 ---
 
@@ -13,7 +13,16 @@
 
 **챌린지 최선 (MULTIAQUA, 고정)**: **P9 ep131 & P22 ep120 공동 1위, M-score 82.10** (Val 93.3 / Test 70.9). P10~P27의 adaptive fusion은 모두 gate 상수수렴 병목으로 P9 미돌파 → 이 진단이 RBMA 동기.
 
-**진행 중 트랙**
+**⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
+
+| 트랙 | 상태 | 수치 / 다음 액션 |
+|------|------|------------------|
+| **P32 (CoRB) seg** | 🏁 **학습 완료 + 4축 독립 검증 완료** | 최종 **Day-Val 64.12@ep98(계보 최고) / Test 55.00**(P31 54.85 +0.15, P28 55.27에 −0.27 미달; 목표 갭 val −2.39/test −1.71). 검증 결론: CoRB attn-bias는 **유의한 순손해**(ΔmIoU −0.013, p=4.5e-22) — 신호는 유효, pre-softmax 주입은 무효. 지배 원인 = per-class 전이 붕괴(복구 상한 +7.9pt). 상세 [27_p32_verification_p33v2.md](27_p32_verification_p33v2.md) + 볼트 `research_vault/P32_CoRB/P32_정량검증_실패분석_20260708.md` |
+| **P33-v2 (CG-MoD 개정)** | ✅ **설계 완료 (구현 대기)** | 원안(doc 26) 적대적 비판 + 딥리서치 3축 반영: M0 무학습 진단 3종 → M1 class-transfer 복구(RCS+text-anchor+MIC consistency, night+**sun**) → M2 dropout+distillation → M3 soft gate(corr_veto) → M4 CoRB 제거. 기대 test 56.5~58. Global escape: val<65.5 → 카드 A(DINOv3-RBMA) 전환. 볼트 `research_vault/P33_CGMoD/P33_v2_설계개정_20260708.md` |
+| **Det (국책과제)** | 🎯 **목표 달성** | egofill 데이터(2.01×)만으로 **mAP50 0.8501**@ep9 (official v2 test). 남은 서사 = 저조도 robustness delta. 상세 doc 19 E2.5 |
+| **옵시디언↔repo 동기화** | ✅ 규약 제정 | NAS 볼트 canonical, `scripts/sync_vault.sh`(NAS→repo pull), 실험폴더 패턴 `P<N>_<이름>/`. `research_vault/README.md` §🔄 |
+
+**진행 중 트랙 (2026-07-02 시점 기록 — 위 표가 최신)**
 
 | 트랙 | 상태 | 최신 수치 / 다음 액션 |
 |------|------|----------------------|

@@ -300,4 +300,6 @@ Deliverable: threat-triage table + full notes for HIGH items only.
 
 번호 충돌 주의: `46_`이 2개 (Track 2 `46_attention_reweighting_detection_nearmisses` vs Track 3 `46_benchmark_protocol_split_resolution`), Track 8 HIGH 노트는 45–47 충돌 회피로 58/59/60/48로 재번호.
 
+> ✅ **2026-07-08 해소**: Track 3 노트는 `93_benchmark_protocol_split_resolution`으로 rename됨 (46_은 이제 Track 2 노트만). 또한 `90_jepa_*`는 `91_jepa_*`로 rename (`90_clustered_relatedwork_synthesis`와의 충돌 해소). 위 표의 `46_benchmark_protocol_split_resolution` 언급은 당시 기록 그대로 둠.
+
 drone 쪽 §4 TODO 매핑 (체크오프용): TODO 1b→Track 3 완료, TODO 2→Track 4 완료, TODO 3→Track 2 완료(DGFusion), TODO 4→Track 2 완료(CAFuser CA²/CAA 메커니즘 확정), TODO 5/6→Track 6 완료, TODO 7/8→Track 7 완료, det 확장(doc 12 §2.6)→Track 5 완료, 스쿠프 경보→Track 8 완료(MemorySAM 13개 인용 논문 전수 확인, memory attention 변경 없음).

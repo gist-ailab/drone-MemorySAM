@@ -73,3 +73,27 @@ Use RSGMamba as a strong learned-reliability baseline. In writing, position RBMA
 ```text
 attention_logits = QK^T/sqrt(d) + lambda_entropy * B_entropy + lambda_consistency * B_consistency
 ```
+
+## ⚠️ CoRB collision (2026-07-06)
+
+**Correction of scope.** The "Novelty relative to RBMA / P29 / P30" section above scopes the collision to P30 and concludes "P30 does not directly collide." That reading **understates the risk**: an internal audit (2026-07-06) finds RSGMamba is the **#1 prior-art threat to CoRB (P32-B)**, not merely a P30 neighbor. CoRB's entire premise — reliability from cross-modal agreement — is exactly what RSGMamba's **consistency-aware gate** also targets. This is the collision that matters for the paper. (Existing content above kept unchanged; this section supersedes its "does not directly collide" wording for the CoRB axis.)
+
+### 4 confirmed facts (all `[VERIFIED-PDF]`)
+
+1. **Uncertainty self-gate is LEARNED:** `g_u = σ(MLP(f))`.
+2. **Consistency gate is FEATURE-space abs-diff through a LEARNED MLP, NOT a posterior:** `g_c = σ(𝒢_c([f_rgb, f_x, |f_rgb − f_x|]))`.
+3. **PAIRWISE only** (RGB + one X modality), **never a joint N≥3 consensus**.
+4. **Injection is MULTIPLICATIVE into the Mamba SSM C-matrices:** `C_eff_rgb = g_u^rgb · (1 − g_c) · C_rgb`.
+
+### 4 axes on which CoRB differs (we beat it on all four)
+
+| Axis | RSGMamba | CoRB (P32-B) |
+|---|---|---|
+| Reliability estimator | **Learned** gates (MLP) | **Training-free**, closed-form |
+| Agreement space | **Feature** abs-diff | **Posterior-space Bhattacharyya** ← cleanest discriminator |
+| Modality scope | **Pairwise** RGB+X | **Leave-one-out consensus, N≥3** |
+| Injection | **Multiplicative** into SSM C-matrices | **Additive pre-softmax** into SAM2 memory attention |
+
+Plus CoRB's **unique-info veto** (training-free protect-the-dissenter) has no counterpart in RSGMamba.
+
+**Verdict: NEAR-MISS, and RSGMamba is MUST-CITE in the CoRB related-work.** Full defense: [[relatedworks/49_corb_novelty_defense]]; consolidated ranking: [[P32_CoRB/P32_CoRB_novelty_risk_register]].
