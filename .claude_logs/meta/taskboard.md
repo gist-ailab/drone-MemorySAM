@@ -82,7 +82,7 @@ moved: 2026-07-08
 | R1 | **`.wandb_key` 시크릿 rotate + git history purge** (origin에 이미 커밋됨 — 보안) | 🔴 | 🔄 부분 (2026-07-08 재구조화 PR에서 추적중단+gitignore — **key rotate와 history purge는 여전히 필요**) |
 | R2 | doc 19가 경고한 stale 경로 정리: repo 루트 `objdet/`·`configs/det/det_P9_base.yaml`(구버전 stride) — worktree(p30-det/p29-det) 최신본과의 관계 명시 or 아카이브 | 🟠 | 🔄 부분 (2026-07-08 configs 데드군 27개 archive/ 이동; det_P9_base.yaml·objdet 구본 관계 명시는 잔여) |
 | R3 | 리팩토링 후속: 각 서버(B200/jarvis)에서 develop pull 시 학습 스크립트 무결성 확인 (진행 중 학습은 pull 금지) | 🟠 | ☐ (**재구조화 PR 병합 후 필수** — 구경로 shim·symlink 있으나 pull은 학습 종료 후) |
-| R4 | 데드 outputs 이동 재개 (~105G 보류분) — ISSUE-023(/mnt/HDD2 쓰기불능) 해소 후 `outputs/ARCHIVE_MANIFEST.md`의 재실행 명령 | 🟠 | ☐ (2026-07-08 등록, P10~P17 68G는 이동 완료) |
+| R4 | 데드 outputs 아카이브 이동 | 🟠 | ✅ 2026-07-08 **전량 완료** — 18개 디렉토리 ~176G → `/drone_nas/home/jemo_archive/MemorySAM_dead_outputs_20260708/` (HDD2 경유분 포함 재이동, HDD1 ~170G 회수, HDD2 쓰기 정상화. `outputs/ARCHIVE_MANIFEST.md`) |
 
 ## 5. Supervisor (이 문서 관리 — 세션 a1282180 계열)
 

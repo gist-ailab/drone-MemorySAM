@@ -17,7 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
-| **ISSUE-023** | 🟠 **완화 중(원인 확정, 2026-07-08)** | **/mnt/HDD2 ENOSPC = NTFS MFT 레코드 고갈** (클러스터 92% 여유·기존 파일 append 정상·새 파일 생성만 불가, 삭제 수=생성 가능 수 1:1 확인). 완화 = HDD2의 아카이브 68G/19k파일을 drone NAS로 소산해 레코드 해방(진행 중). 근본 해결 = 전 홀더 종료 후 재마운트(ntfs-3g 할당자 리셋 시도) 또는 Windows 연결. 상세: 하단 ISSUE-023 |
+| **ISSUE-023** | ✅ **완화 완료(2026-07-08)** / 🟡 근본해결 대기 | **/mnt/HDD2 ENOSPC = NTFS MFT 레코드 고갈** — 아카이브 27k+파일을 drone NAS로 전량 소산해 레코드 해방, **쓰기 정상화 검증 완료(2,000파일 연속 생성 OK)**. 단 대량 파일 쓰기(수만 개)는 재마운트/Windows 검증 전까지 자제. 상세: 하단 ISSUE-023 |
 | **ISSUE-022** | ✅ **해결(2026-07-03)** | **P27.forward가 `_fuse_outputs` 훅 미호출 → P30 learned router 200ep 내내 미실행** (P31.2 훅 호출로 수정; P30 결과 = router 미참여로 재해석) |
 | ISSUE-021 | ✅ 해결 | SAM3-RBMA sem_head BatchNorm→GroupNorm (train/eval 불일치) |
 | ISSUE-020 | ✅ 해결 | SAM3-RBMA sam3.pt 백본 0개 로드(random) prefix remap |
