@@ -34,13 +34,11 @@
 - **코드**: 새 모델 버전은 `lora_sam/pNN.py` + `MODEL_REGISTRY` 등록 (메가파일·shim에 클래스 추가 금지), 공통 모듈은 `modules/`에, 신규 코드는 shim 경유 import 금지.
 - **Configs**: `<dataset>_<modal>_<version>_<aug>.yaml` (서버접두어 금지), 학습=`configs/<dataset>/`, 평가=`configs/eval/`, 신규 실험은 `experiments/registry.md`에 행 추가.
 
-#### ⚠️ 연구 문서 단일 원본 (2026-07-08 재편)
+#### ⚠️ 프로젝트 로그 vs 리서치 콘텐츠 — 원본 위치 규칙 (2026-07-09 정합화)
 
-- **연구 문서의 물리적 원본은 NAS 볼트 `/nas_jm/Research/26_MultimodalSeg` 하나뿐이다.** `.claude_logs/research_vault`는 그 볼트로의 심링크이고, `.claude_logs/`의 연구 문서(02·03·04·05~08·10~12·15~19·21·24·27·P13)는 볼트 표준 폴더로 이관된 파일로의 심링크다. 기존 경로 읽기/쓰기는 그대로 동작한다.
-- **새 연구 문서를 만들 때**는 `.claude_logs/`가 아니라 `research_vault/` 아래 표준 폴더에 생성한다. 배치 결정표: `research_vault/00_MOC_26_MultimodalSeg.md` 또는 `/nas_jm/Research/00_RESEARCH_STANDARD.md`.
-  - raw deep-research → `sources/` · 논문 노트 → `relatedworks/` · 클러스터링/종합 → `synthesis/` · 아이디어/회의 → `ideas/` · 아키텍처 설계 → `architecture/` · 실험 로그/분석 → `experiments/` · 실패분석/픽스 → `issues/` · 보고서/리포트 산출물 → `products/`
-  - **새 폴더를 임의로 만들지 않는다.** 위치가 애매하면 사용자에게 묻는다.
-- `.claude_logs/`에 물리적으로 남는 것은 repo 운영 문서 7종뿐: 00 인덱스 · 01 상태 · 09 봇 역할 · 13 서버 · 14 인프라 · 20 코드 감사 · 22 태스크보드.
+- **프로젝트 로그(상태·아키 evolution·실험 로그/분석·이슈·결정·인프라)의 원본 = repo `.claude_logs/` 주제 폴더** (git 추적). NAS로 이관하거나 심링크로 대체하지 말 것 — 2026-07-08 심링크 이관 시도는 sshfs `.fuse_hidden` 파손 사고 + 원격 서버(NAS 미마운트) dangling으로 **철회**됐다 (구경로들은 리다이렉트 스텁).
+- **리서치 콘텐츠(논문 노트·소스·아이디어·볼트 실험노트 `P<N>_<이름>/`)의 원본 = NAS Obsidian 볼트** `/nas_jm/Research/26_MultimodalSeg`. repo의 `.claude_logs/research/vault/`는 **동기화 사본(손편집 금지)** — 갱신은 `bash scripts/sync_research_vault.sh`. 볼트 배치 규약·에이전트 규칙 = `/nas_jm/Research/00_AGENT_PROTOCOL_HERMES.md` + `research/vault/README.md`.
+- 볼트에 `architecture/ experiments/ issues/ synthesis/` 등 repo-로그 미러 폴더를 만들지 말 것 (위 사고 잔재 폴더는 격리됨). 위치가 애매하면 사용자에게 묻는다.
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
