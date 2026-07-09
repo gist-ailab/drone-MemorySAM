@@ -1,8 +1,13 @@
 # 📁 .claude_logs 인덱스 (Master Index)
 
-> 최종 업데이트: 2026-06-24
+> 최종 업데이트: 2026-07-08 (연구 문서 단일 원본 재편)
 > 이 폴더의 **front door**. 모든 문서를 6개 카테고리로 분류한다. 새 세션은 `CLAUDE.md` → **이 인덱스** → 작업 카테고리 순으로 진입.
 > (번호는 역사적 생성순이라 카테고리와 1:1이 아니다. **카테고리는 아래 표를 따른다.**)
+>
+> ⚠️ **단일 원본 원칙 (2026-07-08)**: 연구 문서의 물리적 원본은 NAS 볼트 `/nas_jm/Research/26_MultimodalSeg`이다.
+> `research_vault/`는 그 볼트로의 **심링크**, 아래 표의 연구 문서(02·03·04·05~08·10~12·15~19·21·24·27·P13)도 볼트로 이관된 파일로의 **심링크**다 (기존 경로 그대로 읽기/쓰기 가능).
+> 이 폴더에 물리적으로 남는 것은 운영 문서 7종(00·01·09·13·14·20·22)뿐.
+> **새 연구 문서는 이 폴더가 아니라 `research_vault/` 표준 폴더에 만든다** — 배치 결정표: `research_vault/00_MOC_26_MultimodalSeg.md` 또는 `/nas_jm/Research/00_RESEARCH_STANDARD.md`.
 
 ---
 
@@ -34,7 +39,7 @@
 |------|------|
 | [12_novelty_and_related_work.md](12_novelty_and_related_work.md) | **canonical** — RBMA 노벨티 포지셔닝, 선행연구 vs RBMA 차별표, 리뷰 방어. **먼저 읽기** |
 | [18_research_digest.md](18_research_digest.md) | **옵시디언 리서치 볼트 다이제스트(2026-07-02 동기화)** — 벤치마크 정량표([val]/[test] 태그), 경쟁자 메커니즘 taxonomy, P29/P30 구현 참고, 2026 위협 워치, 논문 문단 후보, 아이디어 회의 어젠다 |
-| [research_vault/](research_vault/) | 옵시디언 볼트 원본 노트 사본(94개, NAS 불필요) — 논문별 synthesis 노트. 벤치마크 숫자 canonical = `research_vault/relatedworks/09_benchmark_tables_deliver_muses_mcubes.md` |
+| [research_vault/](research_vault/) | **NAS 옵시디언 볼트로의 심링크** (`/nas_jm/Research/26_MultimodalSeg`, 사본 아님 — 단일 원본). 논문별 노트=`relatedworks/`, 종합=`synthesis/`. 벤치마크 숫자 canonical = `research_vault/relatedworks/09_benchmark_tables_deliver_muses_mcubes.md` |
 | [10_related_work.md](10_related_work.md) | deep-research 원시 로그(시계열). 12의 근거 |
 | [11_sam3_rbma_plan.md](11_sam3_rbma_plan.md) | SAM3 포팅 플랜 & 체크리스트 |
 
@@ -79,3 +84,4 @@
 - **새 선행연구/노벨티**는 `12`(canonical) 먼저, 원시 로그는 `10`.
 - **환경/인프라 변경**(GPU·경로·파이프라인)은 `13`에 기록.
 - 새 문서 추가 시 **이 인덱스의 카테고리 표에 등록**.
+- **새 연구 문서는 `research_vault/` 표준 폴더에 생성** (sources/relatedworks/synthesis/ideas/architecture/experiments/issues/products). 이 폴더(.claude_logs)에는 운영 문서 외 새 파일을 만들지 않는다. 위치가 애매하면 새 폴더를 만들지 말고 사용자에게 묻는다.

@@ -28,7 +28,7 @@
 
 | 트랙 | 상태 | 최신 수치 / 다음 액션 |
 |------|------|----------------------|
-| **SAM2 RBMA seg (P32, B200 DELIVER)** | 🟢 **학습 중**(ep156/200, 07-08) — 🎯 **P32=확정 최선 seg**(val 64.12@ep98>P31 63.20 / test 55.00@ep154>P31 54.85; SOTA대비 val −2.39/test −1.71). 모니터 RUN-13. | <!-- 이하 P30/P31 히스토리 -->
+| **SAM2 RBMA seg (P33.1, B200 DELIVER)** | 🟢 **학습 중**(07-09~ ep0, competence-fusion+RBMA calib+modal-cond MoE) — 이전 **P32 🏁완주**(ep200, 최선 seg): **val 64.12@ep98 / test 55.01@ep158**(P31 63.20/54.85 양지표 완전추월; SOTA대비 val −2.39/test −1.70). P33.1이 P32 상회 여부 관건. 모니터 RUN-16(P33.1)/RUN-13(P32).
 | **SAM2 RBMA seg (P29, B200)** | ⏹ **종료**(ep150, 2026-06-30 11:03; P30 띄우려 수동 중단) | 최종 best **Val 63.20@ep100 / Test 54.34@ep146**(ckpt 보존). val 70 미달·ep34부터 60~63 정체. 모니터 RUN-2 |
 | **SAM2 RBMA seg (P28, B200)** | 🔴 사망(ep16, 2026-06-24) → **P29로 대체됨** | best Val 57.87@ep12 / Test 50.61@ep12. `last_checkpoint.pth` 보존. 모니터 RUN-1 |
 | **Det 객체검출** | 🎯 **best=bengio det_P29_egofill mAP50 0.8501** / event ablation 완주·final_full 진행 | **egofill(RUN-11) 🏁완주**: best **mAP50 0.8501@ep9**(공식 v2 test) — **목표 0.85 달성**(lidar egofill+2×데이터). **det_P29_event(RUN-14) 🏁완주**(07-07): best mAP50 **0.8427@ep14** → event≈egofill-lidar(−0.008, 모달 ablation 유의미). **det_P29_final_full(RUN-15) 🟢학습중**(07-08~): P29+egofill을 최종 annotation(_final_ann/instances_train_egofill.json)으로 재학습, EPOCHS50 ep0. det_P31_v3clip(RUN-10) 완료: mAP50 0.4724(v3clip=비공식). P30-Det 0.256. 모니터 RUN-10/11/14/15 |

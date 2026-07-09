@@ -26,6 +26,14 @@
 
 > `.claude_logs` 인덱스: **00 인덱스(front door)** · 01 상태(상단 스냅샷) · 02 모델상세 · 03 실험 · 04 이슈(상단 상태표) · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)** · **13 서버&원격실행** · 14 환경·인프라. **먼저 00**, 관련연구/노벨티는 **12**, 원격 학습 지시는 **13**을 읽어라. (05~07·P13_design_guide = 🗄 ARCHIVED)
 
+#### ⚠️ 연구 문서 단일 원본 (2026-07-08 재편)
+
+- **연구 문서의 물리적 원본은 NAS 볼트 `/nas_jm/Research/26_MultimodalSeg` 하나뿐이다.** `.claude_logs/research_vault`는 그 볼트로의 심링크이고, `.claude_logs/`의 연구 문서(02·03·04·05~08·10~12·15~19·21·24·27·P13)는 볼트 표준 폴더로 이관된 파일로의 심링크다. 기존 경로 읽기/쓰기는 그대로 동작한다.
+- **새 연구 문서를 만들 때**는 `.claude_logs/`가 아니라 `research_vault/` 아래 표준 폴더에 생성한다. 배치 결정표: `research_vault/00_MOC_26_MultimodalSeg.md` 또는 `/nas_jm/Research/00_RESEARCH_STANDARD.md`.
+  - raw deep-research → `sources/` · 논문 노트 → `relatedworks/` · 클러스터링/종합 → `synthesis/` · 아이디어/회의 → `ideas/` · 아키텍처 설계 → `architecture/` · 실험 로그/분석 → `experiments/` · 실패분석/픽스 → `issues/` · 보고서/리포트 산출물 → `products/`
+  - **새 폴더를 임의로 만들지 않는다.** 위치가 애매하면 사용자에게 묻는다.
+- `.claude_logs/`에 물리적으로 남는 것은 repo 운영 문서 7종뿐: 00 인덱스 · 01 상태 · 09 봇 역할 · 13 서버 · 14 인프라 · 20 코드 감사 · 22 태스크보드.
+
 ### 2. 실험 및 코드 변경 시 (Execution)
 
 - 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `02_model_arch.md` 또는 `03_experiment_log.md`를 업데이트하여 기록을 남겨라.
