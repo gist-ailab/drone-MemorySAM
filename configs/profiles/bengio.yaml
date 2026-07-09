@@ -1,0 +1,20 @@
+# configs/profiles/bengio.yaml — 서버별 경로 참조 문서 (bengio)
+# ⚠️ 참조 문서일 뿐, 학습 config에 자동 머지되지 않는다 (자동 머지 = 후속 과제).
+# 출처: scripts/servers.conf + 기존 bengio-*/bengio_* config 관행
+
+server:
+  alias: bengio
+  port: 400
+  gpus_default: "0,1,2,3,4,5,6,7"
+  notes: 8-GPU box (P9 hardaug6이 여기서 학습됨)
+
+repo_path: /SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM
+conda_env: MMSS_SAM
+
+data_roots:
+  DELIVER: /ailab_mat2/dataset/DELIVER
+  MULTIAQUA: /ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night
+
+pretrained:
+  segformer_mit_b2: /hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth  # 레거시 절대경로 관행
+  sam2_hiera_base_plus: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt

@@ -5,7 +5,7 @@ Supports MULTIAQUA, DELIVER, and future datasets via config DATASET.NAME.
 
 Usage:
   # Basic validation (seg/ + seg_viz/ + uamm_amf_moe_log.json)
-  python val.py --cfg configs/eval_config/xxx.yaml --mode val --model_path xxx.pth
+  python val.py --cfg configs/eval/xxx.yaml --mode val --model_path xxx.pth
 
   # Detailed mode: per-token MoE routing analysis + extended viz + detailed_log.json
   python val.py --cfg ... --mode val --model_path ... --detailed
@@ -48,6 +48,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+from semseg.models.sam2.sam2.lora_sam import get_model
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
 
 
@@ -80,7 +81,7 @@ def load_model(cfg, model_path, device):
     lora_top_k = model_cfg.get('LORA_TOP_K')
     lora_layer = model_cfg.get('LORA_LAYER')
 
-    lora_model_class = eval(lora_model_name)
+    lora_model_class = get_model(lora_model_name)  # registry lookup (구 eval() 대체)
     model_kwargs = {'sam_model': sam2, 'r': lora_r, 'lora_layer': lora_layer}
     sig = inspect.signature(lora_model_class.__init__)
     if 'num_experts' in sig.parameters:
@@ -143,6 +144,22 @@ def load_model(cfg, model_path, device):
         corrb = model_cfg.get('CORROBORATION', {}) or {}
         model_kwargs['corroboration_bias'] = corrb.get('ENABLE', False)
         model_kwargs['corrb_veto'] = corrb.get('VETO', True)
+    if 'competence_fusion' in sig.parameters:
+        # [P33] M1 competence-weighted fusion + M2 modal dropout (dropout eval=no-op).
+        comp = model_cfg.get('COMPETENCE_FUSION', {}) or {}
+        model_kwargs['competence_fusion'] = comp.get('ENABLE', False)
+        model_kwargs['comp_tau'] = comp.get('TAU', 0.25)
+        model_kwargs['comp_topk'] = comp.get('TOPK', 0)
+        model_kwargs['comp_entropy_reg'] = comp.get('ENTROPY_REG', 0.0)
+        mdrop = model_cfg.get('MODAL_DROPOUT', {}) or {}
+        model_kwargs['modal_dropout'] = mdrop.get('ENABLE', False)
+        model_kwargs['modal_dropout_p'] = mdrop.get('P', 0.3)
+        model_kwargs['modal_dropout_warmup_ep'] = mdrop.get('WARMUP_EP', 20)
+        modals = dataset_cfg['MODALS']
+        raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
+        tgt_idx = [modals.index(t) if isinstance(t, str) else int(t)
+                   for t in raw_targets if (not isinstance(t, str)) or (t in modals)]
+        model_kwargs['modal_dropout_targets'] = tuple(tgt_idx) if tgt_idx else (0, 1)
     if 'lambda_bias_init' in sig.parameters:
         quality_cfg = model_cfg.get('QUALITY_GATE', {})
         model_kwargs['lambda_bias_init'] = quality_cfg.get('LAMBDA_BIAS_INIT', 1.0)

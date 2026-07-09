@@ -13,9 +13,9 @@ NPROC="$(awk -F',' '{print NF}' <<<"$CUDA_VISIBLE_DEVICES")"
 echo "[run_sam] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES} (nproc=${NPROC})"
 
 # ── 실행할 config 파일 설정 ────────────────────────────────────────────────
-CFG="configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml"
-# CFG="configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml"
-# CFG="configs/levine-multiaqua_rgbtl_P13_hardaug4.yaml"
+CFG="configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml"
+# CFG="configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml"
+# CFG="configs/archive/levine-multiaqua_rgbtl_P13_hardaug4.yaml"
 
 # config 파일명에서 폴더명 자동 생성
 cfg_name=$(basename ${CFG} .yaml)

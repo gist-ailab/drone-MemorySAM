@@ -27,7 +27,6 @@ import numpy
 import random
 from semseg.models.sam2.sam2.build_sam import build_sam2 as build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import LoRA_Sam_P
 try:
     import wandb
     HAS_WANDB = True
@@ -302,7 +301,7 @@ def main(cfg, gpu, save_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM/configs/bengio_deliver_rgbdel_sam.yaml')
+    parser.add_argument('--cfg', type=str, default='configs/deliver/bengio_deliver_rgbdel_sam.yaml')
     args = parser.parse_args()
 
     with open(args.cfg) as f:

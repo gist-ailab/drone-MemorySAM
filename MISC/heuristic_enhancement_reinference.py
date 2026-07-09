@@ -7,7 +7,7 @@
 사용법:
     # 기본: mIoU < 55인 이미지에 brightness=0.11, contrast=0.9 적용
     python MISC/heuristic_enhancement_reinference.py \
-        --config configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml \
+        --config configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml \
         --checkpoint outputs/MMSamP9/.../epoch47_94.18_checkpoint.pth \
         --frames-csv outputs/MMSamP9/.../P9_15635_results/frames_test.csv \
         --macvi-dir outputs/MMSamP9/.../epoch47_94.18_eval_macvi_CV2 \
@@ -17,7 +17,7 @@
 
     # gamma도 같이 적용
     python MISC/heuristic_enhancement_reinference.py \
-        --config configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml \
+        --config configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml \
         --checkpoint outputs/MMSamP9/.../epoch47_94.18_checkpoint.pth \
         --frames-csv outputs/MMSamP9/.../P9_15635_results/frames_test.csv \
         --macvi-dir outputs/MMSamP9/.../epoch47_94.18_eval_macvi_CV3 \

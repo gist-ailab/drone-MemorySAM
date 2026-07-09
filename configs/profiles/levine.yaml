@@ -1,0 +1,22 @@
+# configs/profiles/levine.yaml — 서버별 경로 참조 문서 (levine)
+# ⚠️ 참조 문서일 뿐, 학습 config에 자동 머지되지 않는다 (자동 머지 = 후속 과제).
+#    신규 config 작성 시 이 값들을 수동으로 복사해 넣는다.
+# 출처: scripts/servers.conf + 기존 levine-*/levine_* config 관행
+
+server:
+  alias: levine            # ssh alias (~/.ssh/config)
+  port: 500
+  gpus_default: "0,1,2,3"
+  notes: current-best(P9) 학습 서버. SSD는 SSDe(짧은 경로) 주의.
+
+repo_path: /SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM
+conda_env: MMSS_SAM
+
+data_roots:
+  DELIVER: /SSDe/jemo_maeng/dset/DELIVER
+  MULTIAQUA: /ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night      # 구 버전
+  MULTIAQUA_night2: /ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night2  # 현행 (hardaug8/physaug 계열)
+
+pretrained:
+  segformer_mit_b2: /hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth  # 레거시 절대경로 관행 (전 서버 공통 표기)
+  sam2_hiera_base_plus: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt  # repo 상대경로

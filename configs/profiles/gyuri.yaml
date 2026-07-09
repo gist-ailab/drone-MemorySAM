@@ -1,0 +1,20 @@
+# configs/profiles/gyuri.yaml — 서버별 경로 참조 문서 (gyuri)
+# ⚠️ 참조 문서일 뿐, 학습 config에 자동 머지되지 않는다 (자동 머지 = 후속 과제).
+# 출처: scripts/servers.conf (repo_path = FILL_ME 상태)
+
+server:
+  alias: gyuri
+  port: 100
+  gpus_default: "0"
+  notes: servers.conf에 repo_path FILL_ME — 사용 전 채울 것 (remote_exp.sh가 FILL_ME면 실행 거부)
+
+repo_path: FILL_ME
+conda_env: MMSS_SAM
+
+data_roots:
+  DELIVER: FILL_ME
+  MULTIAQUA: FILL_ME
+
+pretrained:
+  segformer_mit_b2: /hpc2hdd/home/cliao127/MMSS-SAM-S1/sam/checkpoints/pretrained/segformer/mit_b2.pth  # 레거시 절대경로 관행
+  sam2_hiera_base_plus: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt

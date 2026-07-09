@@ -205,7 +205,7 @@ def main(cfg):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # parser.add_argument('--cfg', type=str, default='val')
-    parser.add_argument('--cfg', type=str, default='/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM/configs/levine_deliver_rgbdel_sam_eval.yaml')
+    parser.add_argument('--cfg', type=str, default='configs/deliver/levine_deliver_rgbdel_sam_eval.yaml')
     args = parser.parse_args()
 
     with open(args.cfg) as f:
