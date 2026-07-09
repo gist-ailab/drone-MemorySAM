@@ -18,7 +18,7 @@ data_source: ".claude_logs/24_p32_phase0_results.md, 16_failure_analysis_P28_P29
 
 ## 0. 한 장 요약 (storyboard)
 
-![P28→P32 storyboard](assets/fig0_storyboard.png)
+![P28→P32 storyboard](../assets/P32_CoRB/fig0_storyboard.png)
 
 네 칸이 곧 이 리포트의 논리 전개다: **문제 → 수리 → 안전장치 → 신호 선택**. 각 칸을 아래에서 하나씩 푼다.
 
@@ -54,7 +54,7 @@ B_i(x)    = 1 − H(softmax(D_i(f_i)))(x) / log C      # 모달 i 단독 디코�
 
 ## 2. 문제: self-entropy 신뢰도가 약한 모달에서 붕괴한다
 
-![P28 self-entropy anti-calibrated](assets/fig1_p28_selfentropy_anticalibrated.png)
+![P28 self-entropy anti-calibrated](../assets/P32_CoRB/fig1_p28_selfentropy_anticalibrated.png)
 
 세로축은 **correctness AUROC** — "이 신뢰도 값이 실제로 맞는 픽셀을 예측하나?"를 잰다(0.5=우연). `1 − H(softmax(D_i))`는 사실 "모달 i의 **decoder가 얼마나 확신하나**"이지 "모달 i에 **정보가 있나**"가 아니다. event/LiDAR의 per-modal decoder는 애초에 약해 어디서나 고엔트로피 → 신호가 "이 센서 decoder가 약하다"를 인코딩한다.
 
@@ -62,7 +62,7 @@ B_i(x)    = 1 − H(softmax(D_i(f_i)))(x) / log C      # 모달 i 단독 디코�
 
 ### 진단 ↔ 증상 연결
 
-![Mode C dead modality](assets/fig5_dead_modality_symptom.png)
+![Mode C dead modality](../assets/P32_CoRB/fig5_dead_modality_symptom.png)
 
 (a) anti-calibrated 신뢰도가 (b) 실제 성능에서 **drop-modality ΔmIoU ≈ 0**으로 이어진다 — event/LiDAR를 빼도 성능이 안 변함 = 사실상 미사용. 융합이 RGB+Depth 2-모달로 퇴화(**Mode C**). **결론: 라우팅이 안 된 게 아니라, 라우팅이 참조하는 신호가 틀렸다.**
 
@@ -70,7 +70,7 @@ B_i(x)    = 1 − H(softmax(D_i(f_i)))(x) / log C      # 모달 i 단독 디코�
 
 ## 3. 수리: self-entropy → cross-modal corroboration
 
-![Corroboration repair](assets/fig2_corroboration_repair.png)
+![Corroboration repair](../assets/P32_CoRB/fig2_corroboration_repair.png)
 
 핵심 교체: "이 모달이 **스스로** 확신하나" → "이 모달의 주장이 **다른 모달들의 합의와 얼마나 상호검증되나**".
 
@@ -86,7 +86,7 @@ corr_i(x)  = Σ_c √( p_i · p̄_{−i} )                # Bhattacharyya 계수
 
 ## 4. 안전장치: unique-info veto (왜 순수 corroboration은 위험한가)
 
-![Veto protects workhorse](assets/fig3_veto_protects_workhorse.png)
+![Veto protects workhorse](../assets/P32_CoRB/fig3_veto_protects_workhorse.png)
 
 합의 기반의 알려진 위험: 야간에 thermal/LiDAR만 물체를 보는 곳은 "다수와 불일치"로 오히려 벌점받는다 = **혼자 옳은 workhorse 처벌**. 실제로 순수 corroboration은 P31의 workhorse인 depth를 **0.90 → 0.28로 죽인다**(그림 가운데). 이를 막는 threshold-free veto:
 
@@ -102,7 +102,7 @@ corr_veto_i = g_i · selfent_i + (1 − g_i) · corr_i
 
 ## 5. 신호형 확정: corr_veto (worst-modality 기준)
 
-![Signal form selection](assets/fig4_signal_form_selection.png)
+![Signal form selection](../assets/P32_CoRB/fig4_signal_form_selection.png)
 
 5개 신호형을 "**worst-modality AUROC**"(가장 약한 모달리티도 얼마나 살아있나)로 비교했다 — 강모달 평균이 아니라 **최악 모달을 최대화**하는 게 목표(어떤 센서도 죽이지 않아야 하므로).
 

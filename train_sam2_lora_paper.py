@@ -53,6 +53,8 @@ QUALITY_GATE_MODELS = (
     'LoRA_Sam_P29',
     'LoRA_Sam_P30',
     'LoRA_Sam_P31',
+    'LoRA_Sam_P32',
+    'LoRA_Sam_P33',
 )
 
 
@@ -655,6 +657,30 @@ def main(cfg, gpu, save_dir):
         model_kwargs['amf_rel_tau'] = calib.get('AMF_REL_TAU', 0.25)
         model_kwargs['unfreeze_last_n_blocks'] = model_cfg.get('UNFREEZE_LAST_N_BLOCKS', 0)
         model_kwargs['router_reg_mode'] = rtr.get('REG_MODE', 'diversity')
+    if 'corroboration_bias' in sig.parameters:
+        # [P32] CoRB — corroboration-biased memory attention: RBMA 신뢰도 신호를
+        # self-entropy → cross-modal corroboration(corr_veto)으로 교체 (무학습, λ만 학습).
+        corrb = model_cfg.get('CORROBORATION', {}) or {}
+        model_kwargs['corroboration_bias'] = corrb.get('ENABLE', False)
+        model_kwargs['corrb_veto'] = corrb.get('VETO', True)
+    if 'competence_fusion' in sig.parameters:
+        # [P33] M1 competence-weighted fusion (calibrated self-entropy, NOT corr_veto) +
+        #       M2 asymmetric modality dropout. OFF → P32 byte-identical.
+        comp = model_cfg.get('COMPETENCE_FUSION', {}) or {}
+        model_kwargs['competence_fusion'] = comp.get('ENABLE', False)
+        model_kwargs['comp_tau'] = comp.get('TAU', 0.25)
+        model_kwargs['comp_topk'] = comp.get('TOPK', 0)
+        model_kwargs['comp_entropy_reg'] = comp.get('ENTROPY_REG', 0.0)
+        mdrop = model_cfg.get('MODAL_DROPOUT', {}) or {}
+        model_kwargs['modal_dropout'] = mdrop.get('ENABLE', False)
+        model_kwargs['modal_dropout_p'] = mdrop.get('P', 0.3)
+        model_kwargs['modal_dropout_warmup_ep'] = mdrop.get('WARMUP_EP', 20)
+        # TARGETS = 모달 이름 리스트(예: [img, depth]) → DATASET.MODALS 순서로 인덱스 해석.
+        modals = cfg['DATASET']['MODALS']
+        raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
+        tgt_idx = [modals.index(t) if isinstance(t, str) else int(t)
+                   for t in raw_targets if (not isinstance(t, str)) or (t in modals)]
+        model_kwargs['modal_dropout_targets'] = tuple(tgt_idx) if tgt_idx else (0, 1)
     if 'lambda_bias_init' in sig.parameters:
         # [P27] Learnable attention-bias scalar initial value
         quality_cfg = model_cfg.get('QUALITY_GATE', {})
@@ -1022,6 +1048,9 @@ def main(cfg, gpu, save_dir):
                 rbma_cal_loss = gate_loss_data.get('rbma_cal_loss', _zero) if gate_loss_data else _zero
                 ctd_aux_loss = gate_loss_data.get('ctd_aux_ce', _zero) if gate_loss_data else _zero
                 ctd_seg_loss = gate_loss_data.get('ctd_seg_ce', _zero) if gate_loss_data else _zero
+                # [P33] M1 competence-fusion anti-collapse entropy reg (coeff already applied
+                # in-model via comp_entropy_reg; absent for P24–P32). Zero unless enabled.
+                comp_entropy_loss = gate_loss_data.get('comp_entropy', _zero) if gate_loss_data else _zero
 
                 # Aggregate
                 total_loss_unscaled = (loss_orig + protoloss
@@ -1034,7 +1063,8 @@ def main(cfg, gpu, save_dir):
                                        + lambda_router * router_loss
                                        + lambda_cal * rbma_cal_loss
                                        + lambda_ctd_aux * ctd_aux_loss
-                                       + lambda_ctd_seg * ctd_seg_loss)
+                                       + lambda_ctd_seg * ctd_seg_loss
+                                       + comp_entropy_loss)
                 loss = total_loss_unscaled / accumulation_steps
 
             # [P24/P25/P26] Save quality map visualization (1st iter per epoch, rank 0 only)

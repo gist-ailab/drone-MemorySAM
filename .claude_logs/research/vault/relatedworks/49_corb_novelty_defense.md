@@ -2,7 +2,7 @@
 title: CoRB (Corroboration-Biased Memory Attention) Novelty Defense
 tags: [related-work, novelty-defense, corroboration, reliability, bhattacharyya, veto, rbma, sam2, multimodal-segmentation, P32]
 created: 2026-07-06
-source: [[relatedworks/61_rsgmamba_reliability_self_gated_mamba]]; [[relatedworks/60_primed_attention_logit_bias_threat]]; [[relatedworks/45_sae_additive_logit_entropy_lvlm_nearmiss]]; [[relatedworks/42_attention_logit_bias_novelty_defense]]; [[relatedworks/40_uncertainty_reliability_fusion_relatedwork]]; [[P32_CoRB/P32_CoRB_리포트]]
+source: [[relatedworks/61_rsgmamba_reliability_self_gated_mamba]]; [[relatedworks/60_primed_attention_logit_bias_threat]]; [[relatedworks/45_sae_additive_logit_entropy_lvlm_nearmiss]]; [[relatedworks/42_attention_logit_bias_novelty_defense]]; [[relatedworks/40_uncertainty_reliability_fusion_relatedwork]]; [[products/P32_CoRB_리포트]]
 status: verified-draft
 ---
 
@@ -123,4 +123,4 @@ Must appear in the CoRB related-work / rebuttal:
 - [[relatedworks/42_attention_logit_bias_novelty_defense]]
 - [[relatedworks/40_uncertainty_reliability_fusion_relatedwork]]
 - [[relatedworks/62_equiseg_balanced_modality_contributions]]
-- [[P32_CoRB/P32_CoRB_리포트]] · [[P32_CoRB/00_P32_CoRB_index]] · [[P32_CoRB/P32_CoRB_novelty_risk_register]]
+- [[products/P32_CoRB_리포트]] · [[00_P32_CoRB_index]] · [[synthesis/P32_CoRB_novelty_risk_register]]

@@ -53,3 +53,21 @@
   - Next work queue: 벤치표(→09)·비교 matrix(→08)·related-work 문단(→90)·study material PDF(→material/01) 4항목 [ ]→[x] + 근거 링크
 - UPDATE: `relatedworks/00_relatedworks_index.md` — "Index completeness additions — 2026-07-08" 섹션 추가: 누락이던 [[relatedworks/49_corb_novelty_defense]], [[relatedworks/90_clustered_relatedwork_synthesis]] 등재 (그 외 76개 노트는 기존 등재 확인) + rename 기록
 - CONFIRM: `P32_CoRB/00_P32_CoRB_index.md` 링크가 00_MOC Core folders 표 + Current notes에 존재
+
+---
+
+## 2026-07-08 (2차) — 볼트 표준 구조 재편 + repo 단일 원본 통합
+
+**표준 제정**: `/nas_jm/Research/00_RESEARCH_STANDARD.md` — 전 볼트 공통 타입 폴더(sources/relatedworks/synthesis/ideas/architecture/experiments/issues/products/study/assets) + 배치 결정표.
+
+**이 볼트 재편**:
+- `material/` 해체 → clustered relatedwork(en/ko+pdf)는 `synthesis/`, brainstorm은 `ideas/`
+- `P32_CoRB/`·`P33_CGMoD/` 해체 → 인덱스 노트는 루트, 리포트/조사보고서는 `products/`, novelty register는 `synthesis/`, 정량검증 실패분석은 `issues/`, P33 설계개정은 `architecture/`, figure는 `assets/P32_CoRB/`
+- 경로형 위키링크 전수 재작성 (잔존 0 확인), 리포트 이미지 링크 수정
+
+**repo(drone-MemorySAM) 통합**:
+- `.claude_logs/research_vault` 사본(111파일) 제거 → 이 볼트로의 심링크 (사본은 볼트의 완전 부분집합임을 diff로 검증; 사본 README는 `_archive/`에 보존)
+- `.claude_logs` 연구 문서 20편 이관: architecture(02, 08, 11, 20_p31, P13) · experiments(03, 05~07, 15, 21, 24, 27) · issues(04, 16, 17, 19) · synthesis(10, 12, 18). 옛 경로는 상대 심링크로 유지
+- repo에 물리 잔류: 운영 문서 7종(00, 01, 09, 13, 14, 20, 22)
+
+**백업**: `_backups/20260708_pre_restructure/` (4개 tar.gz, 재편 직전 전체 스냅샷)

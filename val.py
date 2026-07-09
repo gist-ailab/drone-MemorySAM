@@ -108,6 +108,61 @@ def load_model(cfg, model_path, device):
         model_kwargs['per_modality_decoder'] = quality_cfg.get('PER_MODALITY_DECODER', True)
     if 'cond_dim' in sig.parameters:
         model_kwargs['cond_dim'] = model_cfg.get('LORA_COND_DIM', 8)
+    # [P29–P32] structural mechanisms — must mirror train_sam2_lora_paper.py so eval builds
+    # the SAME module graph the checkpoint was trained with (else strict=False silently leaves
+    # SDC/CTD/router/temperature modules random). Each uses the same config path + default.
+    if 'sdc_enable' in sig.parameters:
+        sdc_cfg = model_cfg.get('SDC', {}) or {}
+        model_kwargs['sdc_enable'] = sdc_cfg.get('ENABLE', True)
+        model_kwargs['sdc_K'] = sdc_cfg.get('K', 6)
+        model_kwargs['sdc_latent'] = sdc_cfg.get('LATENT_DIM', 32)
+    if 'class_token_decoder' in sig.parameters:
+        ctd = model_cfg.get('CLASS_TOKEN_DECODER', {}) or {}
+        rtr = model_cfg.get('LEARNED_ROUTER', {}) or {}
+        model_kwargs['class_token_decoder'] = ctd.get('ENABLE', False)
+        model_kwargs['ctd_dim'] = ctd.get('DIM', 128)
+        model_kwargs['learned_router'] = rtr.get('ENABLE', False)
+        model_kwargs['router_per_class'] = rtr.get('PER_CLASS', False)
+        model_kwargs['router_anchor_lambda'] = rtr.get('ANCHOR_LAMBDA', 1.0)
+    if 'ctd_multi_scale' in sig.parameters:
+        ctd = model_cfg.get('CLASS_TOKEN_DECODER', {}) or {}
+        calib = model_cfg.get('RBMA_CALIB', {}) or {}
+        rtr = model_cfg.get('LEARNED_ROUTER', {}) or {}
+        model_kwargs['ctd_multi_scale'] = ctd.get('MULTI_SCALE', False)
+        model_kwargs['ctd_up'] = ctd.get('UP', 2)
+        model_kwargs['ctd_aux_ce'] = ctd.get('AUX_CE', True)
+        model_kwargs['ctd_aux_only'] = ctd.get('AUX_ONLY', False)
+        model_kwargs['rbma_calibrate'] = calib.get('ENABLE', False)
+        model_kwargs['consistency_bias'] = calib.get('CONSISTENCY_BIAS', False)
+        model_kwargs['lambda_cons_init'] = calib.get('LAMBDA_CONS_INIT', 0.5)
+        model_kwargs['amf_reliability'] = calib.get('AMF_RELIABILITY', False)
+        model_kwargs['amf_rel_tau'] = calib.get('AMF_REL_TAU', 0.25)
+        model_kwargs['unfreeze_last_n_blocks'] = model_cfg.get('UNFREEZE_LAST_N_BLOCKS', 0)
+        model_kwargs['router_reg_mode'] = rtr.get('REG_MODE', 'diversity')
+    if 'corroboration_bias' in sig.parameters:
+        # [P32] CoRB — corroboration-biased memory attention (self-entropy → corr_veto).
+        corrb = model_cfg.get('CORROBORATION', {}) or {}
+        model_kwargs['corroboration_bias'] = corrb.get('ENABLE', False)
+        model_kwargs['corrb_veto'] = corrb.get('VETO', True)
+    if 'competence_fusion' in sig.parameters:
+        # [P33] M1 competence-weighted fusion + M2 modal dropout (dropout eval=no-op).
+        comp = model_cfg.get('COMPETENCE_FUSION', {}) or {}
+        model_kwargs['competence_fusion'] = comp.get('ENABLE', False)
+        model_kwargs['comp_tau'] = comp.get('TAU', 0.25)
+        model_kwargs['comp_topk'] = comp.get('TOPK', 0)
+        model_kwargs['comp_entropy_reg'] = comp.get('ENTROPY_REG', 0.0)
+        mdrop = model_cfg.get('MODAL_DROPOUT', {}) or {}
+        model_kwargs['modal_dropout'] = mdrop.get('ENABLE', False)
+        model_kwargs['modal_dropout_p'] = mdrop.get('P', 0.3)
+        model_kwargs['modal_dropout_warmup_ep'] = mdrop.get('WARMUP_EP', 20)
+        modals = dataset_cfg['MODALS']
+        raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
+        tgt_idx = [modals.index(t) if isinstance(t, str) else int(t)
+                   for t in raw_targets if (not isinstance(t, str)) or (t in modals)]
+        model_kwargs['modal_dropout_targets'] = tuple(tgt_idx) if tgt_idx else (0, 1)
+    if 'lambda_bias_init' in sig.parameters:
+        quality_cfg = model_cfg.get('QUALITY_GATE', {})
+        model_kwargs['lambda_bias_init'] = quality_cfg.get('LAMBDA_BIAS_INIT', 1.0)
 
     model = lora_model_class(**model_kwargs)
     ckpt = torch.load(str(model_path), map_location='cpu')

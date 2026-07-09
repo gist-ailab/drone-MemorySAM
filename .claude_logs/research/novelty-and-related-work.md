@@ -169,6 +169,7 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 ---
 
 ## 5. 근거 / 더 읽기
+- **차세대 아키텍처 브레인스토밍 + 신규 deep-research (2026-07-08)**: `research_vault/material/brainstorm_next_arch_20260708.md` — VFM 후보(DINOv3/SAM3/C-RADIOv4/V-JEPA2.1/Mamba) × adaptive fusion 신규 문헌(MG-MTTA/AECF/CLoE/PCDF/DAMSDet 등), 후보 카드 5개+추천 top-2(DINOv3-RBMA, SAM2-RBMA v2)+검증 실험. **RBMA 4축 셀 미점유 재확인 + det-head additive-bias 빈 셀 재확인** (near-miss 워치: UGDDL 2605.09600, MG-MTTA 2604.24602).
 - **옵시디언 리서치 볼트 (외부 사전조사, 2026-07-02 동기화)**: `/nas_jm/Research/26_MultimodalSeg/` — relatedworks 30노트(논문별 synthesis, Priority-A PDF 원문표 추출), 벤치마크 canonical = `relatedworks/09_benchmark_tables_deliver_muses_mcubes.md`, 노벨티 방어 = `relatedworks/42_attention_logit_bias_novelty_defense.md`, 병렬 리서치 프롬프트 = `sources/07_parallel_research_prompts_2026-07-02.md`. 정량 인용은 볼트 `09`를 우선 참조.
 - RBMA 신규성 deep-research 원문·판정: `10_related_work.md` §"신규성 조사 A vs B"(L329~), §"A 신호 신규성 확정"(L367~).
 - SAM3 이식 분석: `10_related_work.md` §"SAM3 이식성"(L392~), `11_sam3_rbma_plan.md`.

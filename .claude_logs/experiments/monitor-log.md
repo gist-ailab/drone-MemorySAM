@@ -9,7 +9,7 @@ moved: 2026-07-08
 > 생성: 2026-06-24
 > **이 파일은 `/loop` 모니터 세션이 주기적으로 append하고, 모든 세션이 읽어 분석·판단·개선에 쓰는 공유 로그다.**
 > loop 세션의 채팅은 다른 세션에 안 보이지만, 여기 기록된 내용은 `.claude_logs` init 규칙을 통해 전 세션이 공유한다.
-> 규칙: ① 매 점검마다 한 줄 timestamped 엔트리 추가(append-only, 과거 줄 수정 금지). ② 이상징후(사망/정체/완료/신기록)는 엔트리 아래 `> ⚠️`로 강조. ③ 학습 종료/사망 시 [status/current.md](../status/current.md) 스냅샷의 해당 트랙도 갱신.
+> 규칙: ① 매 점검마다 한 줄 timestamped 엔트리 추가(append-only, 과거 줄 수정 금지). ② 이상징후(사망/정체/완료/신기록)는 엔트리 아래 `> ⚠️`로 강조. ③ 학습 종료/사망 시 [01_project_status.md](01_project_status.md) 스냅샷의 해당 트랙도 갱신.
 
 ---
 
@@ -18,7 +18,7 @@ moved: 2026-07-08
 - **서버/소유자**: B200 (unix user `gm_huis`), repo `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`
 - **config**: `configs/b200-deliver_rgbdel_P28_physaug.yaml` (순수 RBMA, AMF_MODE=uniform, λ_bias init 1.0, 4모달 img/depth/event/lidar, 목표 200 ep)
 - **출력**: `outputs/MMSamP28/b200_deliver_rgbdel_P28_physaug/DELIVER_CMNeXt-B2_idel/` (`train.log`, `epochN_<val>_topK…pth`, `test_epochN_<test>…pth`)
-- **비교 기준**: 직접 경쟁군(Cluster B, test) DGFusion 56.7 / CAFuser 55.6 · 구조적 base(Cluster A) MemorySAM val 65.38 — 자세히는 [research/novelty-and-related-work.md](../research/novelty-and-related-work.md).
+- **비교 기준**: 직접 경쟁군(Cluster B, test) DGFusion 56.7 / CAFuser 55.6 · 구조적 base(Cluster A) MemorySAM val 65.38 — 자세히는 [12_novelty_and_related_work.md](12_novelty_and_related_work.md).
 
 | 점검 시각(KST) | epoch | Val mIoU | Test mIoU | best | GPU(util/mem) | 프로세스 | 상태 판정 |
 |---|---|---|---|---|---|---|---|
@@ -52,7 +52,7 @@ moved: 2026-07-08
 - **서버/소유자**: B200 (`gm_huis`), repo `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`
 - **config**: `configs/b200-deliver_rgbdel_P29_physaug.yaml` (P29 seg, 4모달 img/depth/event/lidar). torchrun nproc=3, GPU 4-7 사용(공유 박스, G0-3은 타 사용자).
 - **출력**: `outputs/MMSamP29/b200_deliver_rgbdel_P29_physaug/DELIVER_CMNeXt-B2_idel/` (`train.log`, `test_epochN_*_topK_checkpoint.pth`, `last_checkpoint.pth`)
-- **비교 기준**: 직접경쟁군 DGFusion test 56.7 / CAFuser 55.6 — [research/novelty-and-related-work.md](../research/novelty-and-related-work.md).
+- **비교 기준**: 직접경쟁군 DGFusion test 56.7 / CAFuser 55.6 — [12_novelty_and_related_work.md](12_novelty_and_related_work.md).
 
 | 점검 시각(KST) | epoch | Day-Val mIoU | Test mIoU | best | GPU(util/mem) | 프로세스 | 상태 판정 |
 |---|---|---|---|---|---|---|---|
@@ -400,6 +400,8 @@ moved: 2026-07-08
 | 2026-07-07 14:44 | 106/200 | **64.12@ep98 신기록** (best 64.12; vs 66.51 **−2.39**) | **54.74@ep106 신기록** (best 54.74; vs 56.71 **−1.97**) | val ep98 / test ep106 | 41 proc, .log 14:29 신선 | **🎯 P32가 P31 추월(양지표)**. Day-Val **64.12**(>P31 63.20, +0.92), Test **54.74**(P31 54.85에 −0.11, 사실상 동률·계속 상승중). SOTA대비 val −2.39 / test −1.97(둘 다 개선 지속). **P32 = 사실상 최선 DELIVER seg** 등극(val 우세·test 근동률). val loss 0.66. ep106/200, test 아직 상승 → P31 test도 넘길 시야권. |
 | 2026-07-07 16:37 | 110/200 | 61.49 (best **64.12@ep98**; vs 66.51 **−2.39**) | **54.79@ep108 신기록** (best 54.79; vs 56.71 **−1.92**) | val ep98 / test ep108 | 41 proc, .log 16:11 신선 | **🎯 Test P31 근접(−0.06)**. Test 54.74→**54.79@ep108**(신기록). **P31 test best 54.85에 −0.06까지**(다음 갱신 시 추월). val은 이미 64.12>63.20 우세. SOTA대비 val −2.39 / test −1.92. val loss 0.65. P32가 양지표 P31 완전추월 임박. ep110/200(아직 90ep). |
 | 2026-07-08 02:07 | 134/200 | 62.69 (best **64.12@ep98**; vs 66.51 **−2.39**) | 54.71 (best **54.79@ep108**; vs 56.71 **−1.92**) | val ep98 / test ep108 | 41 proc, .log 01:35 신선 | **수렴(신기록 없음)**. ep110~134 val 61~63/test 53~54.7 진동, best 미갱신(val 64.12@ep98, test 54.79@ep108). **P32 최종상: val 64.12(>P31 63.20) / test 54.79(P31 54.85에 −0.06)** — val 우세·test 근동률로 최선 seg. val loss 0.63. ep134/200(아직 66ep이나 수렴). |
+| 2026-07-08 10:20 | 156/200 | 62.41 (best **64.12@ep98**; vs 66.51 **−2.39**) | **55.00@ep154 신기록** (best 55.00; vs 56.71 **−1.71**) | val ep98 / test ep154 | 41 proc, .log 09:54 신선 | **🎯 P32가 P31 test도 추월(양지표 완승)**. Test 54.79→ep152 54.95→**ep154 55.00**(신기록). **P31 test best 54.85를 +0.15 상회** → P32가 val(64.12>63.20)·test(55.00>54.85) **양쪽 모두 P31 능가 = 확정 최선 seg**. SOTA대비 val −2.39 / test −1.71(개선). val loss 0.62. ep156/200. |
+| 2026-07-08 12:20 | 162/200 | 63.62 (best **64.12@ep98**; vs 66.51 **−2.39**) | **55.01@ep158 신기록** (best 55.01; vs 56.71 **−1.70**) | val ep98 / test ep158 | 37 proc, .log 12:10 신선 | **✅ Test 미세 신기록**. Test 55.00→**55.01@ep158**(+0.01). Day-Val ep160/162 63.53/63.62로 회복세이나 best 64.12@ep98 미갱신. P31 완전추월 상태 유지(양지표). SOTA대비 val −2.39 / test −1.70. val loss 0.62. ep162/200(~38ep 남음). |
 
 ---
 
@@ -434,3 +436,5 @@ moved: 2026-07-08
 |---|---|---|---|---|---|
 | 2026-07-08 02:07 | Epoch[0] 91% | (없음 — 첫 eval ep4) | 0개 | G0,1,3,4,6(nproc5), 26 proc, nan-skip 0 | **정상 초기 학습**. 2399 iter/ep, 1.4s/it(~56분/ep). loss 0.9~1.3 정상, n_pos 정상. 첫 mAP50=ep4(~4h 뒤) → 최종 annotation 기준 egofill(0.8501) 재현 여부 첫 판정. |
 | 2026-07-08 04:20 | Epoch[5] 62% (ep4 eval) | **ep4 mAP 0.4689 / mAP50 0.7515 / mAP75 0.5311** | epoch4·best | G0,1,3,4,6(nproc5), 26 proc, nan-skip 0 | **첫 eval — egofill보다 낮게 출발**. ep4 mAP50 **0.7515** < egofill ep4 0.8279·event ep4 0.8250(동일 epoch 대비 −0.07). **단 최종 annotation셋(_final_ann)이라 val 분포 다름 → 직접 비교 주의**. egofill은 ep9에 peak(0.8501)였으므로 아직 초반. ep5/50, ep9 eval에서 궤도 재판정. |
+| 2026-07-08 10:20 | Epoch[11] 77% (ep9 eval) | **ep9 mAP 0.4910 / mAP50 0.7608 / mAP75 0.5408** (신기록) | epoch9·best | G0,1,3,4,6(nproc5), 26 proc, nan-skip 0 | **⚠️ egofill보다 ep9 −0.09 낮음**. mAP50 ep4 0.7515→**ep9 0.7608**(자체 신기록이나 상승 완만). **egofill ep9 peak 0.8501 대비 −0.089** — 최종 annotation셋(_final_ann)이 기존 v2 split과 달라 수치대 자체가 낮은 것으로 보임(동일모델·동일하이퍼, 데이터만 상이). 절대 비교 불가·재현 실패 아님에 유의. ep11/50, 상방 여지 관찰. |
+| 2026-07-08 14:20 | Epoch[15] 66% (ep14 eval) | **ep14 mAP 0.4965 / mAP50 0.7649 / mAP75 0.5568** (신기록) | epoch14·best | G0,1,3,4,6(nproc5), 26 proc, nan-skip 0 | **완만 상승 지속**. mAP50 ep4 0.7515→9 0.7608→**14 0.7649**. egofill ep14(0.8486) 대비 −0.084로 **일관된 스케일차**(최종 annotation셋 영향, 재현실패 아님). 절대 상승세는 유지. ep15/50, 후반 상방 관찰. |

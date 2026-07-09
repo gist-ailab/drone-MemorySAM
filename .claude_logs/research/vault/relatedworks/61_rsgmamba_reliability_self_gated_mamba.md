@@ -96,4 +96,4 @@ attention_logits = QK^T/sqrt(d) + lambda_entropy * B_entropy + lambda_consistenc
 
 Plus CoRB's **unique-info veto** (training-free protect-the-dissenter) has no counterpart in RSGMamba.
 
-**Verdict: NEAR-MISS, and RSGMamba is MUST-CITE in the CoRB related-work.** Full defense: [[relatedworks/49_corb_novelty_defense]]; consolidated ranking: [[P32_CoRB/P32_CoRB_novelty_risk_register]].
+**Verdict: NEAR-MISS, and RSGMamba is MUST-CITE in the CoRB related-work.** Full defense: [[relatedworks/49_corb_novelty_defense]]; consolidated ranking: [[synthesis/P32_CoRB_novelty_risk_register]].

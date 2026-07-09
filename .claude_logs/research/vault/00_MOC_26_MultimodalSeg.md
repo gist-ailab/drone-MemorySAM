@@ -16,22 +16,37 @@ Write a paper on **semantic segmentation using multimodal sensor data** — RGB,
 
 The current conceptual center is robust multimodal fusion under sensor unreliability: daytime/RGB-dominant training can collapse at night or adverse conditions, so the system needs input-adaptive reliability handling rather than static modality averaging.
 
-## Core project folders
+## Core project folders — 표준 구조 (2026-07-08 재편, [[../00_RESEARCH_STANDARD|Research 표준]] 준수)
 
-| Folder | Role |
+**새 문서는 반드시 아래 표의 폴더에 생성한다. 새 폴더를 임의로 만들지 않는다.**
+
+| Folder | Role (무엇이 들어가는가) |
 |---|---|
-| [[sources/00_MOC_sources\|sources]] | Raw and first-pass source collection: source maps, discovery DBs, sweep logs, stubs, archive (see folder MOC) |
-| [[relatedworks/00_relatedworks_index\|relatedworks]] | Per-paper research synthesis: novelty, claims, method, figures, limitations, comparisons |
-| [[material]] | Study materials and PDF-ready explanations, always English + Korean versions (currently `01_multimodal_seg_clustered_relatedwork_{en,ko}.md/.pdf`) |
-| [[P32_CoRB/00_P32_CoRB_index\|P32_CoRB]] | Our-method reports & figures for **P32-B CoRB** (reliability-signal redesign): figure report, text report, PDF, figure assets |
+| [[sources/00_MOC_sources\|sources/]] | **Raw**: deep-research 원본 덤프, API 결과(raw/), 문헌 DB(db/), 논문 PDF(pdfs/), 스윕/트렌드 로그, 스텁 (see folder MOC) |
+| [[relatedworks/00_relatedworks_index\|relatedworks/]] | **논문 1편 = 노트 1개**: novelty, claims, method, figures, limitations, comparisons |
+| synthesis/ | **클러스터링·종합**: clustered related-work (en/ko + PDF), novelty risk register, research digest |
+| ideas/ | **아이디어 회의·브레인스토밍**: brainstorm 노트, 회의 기록 |
+| architecture/ | **모델 아키텍처**: 설계 문서, 설계 개정, ASCII/figure 문서 (02_model_arch, 08_architecture_figures, P33-v2 등) |
+| experiments/ | **실험**: 실험 로그, 결과 분석(P9~), training monitor, phase 결과, 데이터셋 구축 노트 |
+| issues/ | **이슈 핸들링**: issues_and_fixes, failure analysis, 정량검증 실패분석, 진단 계획 |
+| products/ | **산출물(프로덕트)**: 요구사항 기반 보고서·리포트·조사보고서 + PDF (P32_CoRB 리포트/조사보고서 등) |
+| study/ | **분석 스킬·학습 노트** (필요 시) |
+| assets/ | 이미지·figure 파일 (하위: P32_CoRB/ 등) |
+
+Sub-project(P32, P33 …) 문서는 전용 폴더 대신 **위 타입 폴더에 P-prefix 파일명**으로 두고, 진입점은 루트의 [[00_P32_CoRB_index]] / [[00_P33_CGMoD_index]] 인덱스 노트가 담당한다.
+
+> 코드 repo(`drone-MemorySAM`)의 `.claude_logs/research_vault`는 이 볼트로의 **심링크**다. 연구 문서의 물리적 원본은 오직 여기 하나. repo `.claude_logs`에는 repo 종속 운영 문서(서버/인프라/봇 역할/상태)만 남는다.
 
 ## Current notes (updated 2026-07-08)
 
 ### Status / our-method
 - [[PROJECT_TRACKING_26_MultimodalSeg]] — live project status board
-- [[P32_CoRB/00_P32_CoRB_index\|P32_CoRB index]] — P32-B CoRB folder MOC (reports, PDF, figures)
-- [[P32_CoRB/P32_CoRB_리포트\|P32_CoRB 리포트 (그림판)]] — our-method report: why P28 failed and what P32-B changes (self-entropy → corroboration), with figures
-- [[P32_CoRB/P32_CoRB_novelty_risk_register]] — consolidated novelty risk register across RBMA-mechanism / RBMA-signal / CoRB (most-dangerous-first threat table)
+- [[issues/P32_정량검증_실패분석_20260708|P32 정량검증+실패분석 (2026-07-08)]] — **P32 최종 성적 + 4축 독립 검증** (misalloc=증상, event/lidar=잉여, CoRB attn-bias 순손해, sun 하드씬 NEW)
+- [[architecture/P33_v2_설계개정_20260708|P33-v2 설계 개정 (2026-07-08)]] — CG-MoD 적대적 비판 + 문헌 3축: class-transfer 복구 1순위, dropout+distillation, soft gate(corr_veto), CoRB 제거
+- [[ideas/brainstorm_next_arch_20260708|차세대 백본 브레인스토밍 (Cowork, 검증됨)]] — 카드 A(DINOv3-RBMA)/B(SAM2 v2) 릴레이; P33-v2의 global escape가 카드 A 전환 트리거
+- [[00_P32_CoRB_index\|P32_CoRB index]] — P32-B CoRB folder MOC (reports, PDF, figures)
+- [[products/P32_CoRB_리포트\|P32_CoRB 리포트 (그림판)]] — our-method report: why P28 failed and what P32-B changes (self-entropy → corroboration), with figures
+- [[synthesis/P32_CoRB_novelty_risk_register]] — consolidated novelty risk register across RBMA-mechanism / RBMA-signal / CoRB (most-dangerous-first threat table)
 - [[relatedworks/49_corb_novelty_defense]] — CoRB (P32-B) novelty defense: 4-pillar claim, RSGMamba/MAGIC++ near-misses, posterior-Bhattacharyya discriminator
 
 ### Related work (synthesis)
@@ -39,7 +54,7 @@ The current conceptual center is robust multimodal fusion under sensor unreliabi
 - [[relatedworks/90_clustered_relatedwork_synthesis]] — 6-cluster synthesis + related-work paragraph candidates (exported to material/)
 - [[relatedworks/09_benchmark_tables_deliver_muses_mcubes]] — **canonical benchmark number tables** (split-tagged, §U1–U9)
 - [[relatedworks/93_benchmark_protocol_split_resolution]] — DELIVER/MUSES protocol forensics + dual-split reporting rules
-- [[material/01_multimodal_seg_clustered_relatedwork_ko|클러스터 related-work 자료 (ko)]] / [[material/01_multimodal_seg_clustered_relatedwork_en|(en)]] — PDF-ready study material
+- [[synthesis/01_multimodal_seg_clustered_relatedwork_ko|클러스터 related-work 자료 (ko)]] / [[synthesis/01_multimodal_seg_clustered_relatedwork_en|(en)]] — PDF-ready study material
 
 ### Sources / discovery
 - [[sources/00_MOC_sources]] — **sources folder MOC** (소스맵 / DB / 스윕로그 / 스텁 / archive 분류)
@@ -113,4 +128,4 @@ Because the applied task includes multimodal object detection, also track:
 - [x] Create verified-draft per-paper notes in [[relatedworks/00_relatedworks_index|relatedworks]] for top-priority papers.
 - [x] Build a comparison matrix: method, modalities, dataset, fusion level, uncertainty/reliability handling, train/test requirements, metrics. → [[relatedworks/08_priority_a_comparison_matrix]]
 - [x] Draft related-work paragraphs grouped by datasets, fusion mechanisms, uncertainty/reliability, SAM/ViT adaptation, and detection transfer. → [[relatedworks/90_clustered_relatedwork_synthesis]] (paragraph candidates per cluster)
-- [x] Produce study material PDFs in English and Korean once the first source set is stabilized. → `material/01_multimodal_seg_clustered_relatedwork_{en,ko}.pdf`
+- [x] Produce study material PDFs in English and Korean once the first source set is stabilized. → `synthesis/01_multimodal_seg_clustered_relatedwork_{en,ko}.pdf`

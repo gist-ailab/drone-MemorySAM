@@ -4,7 +4,7 @@
 - heads.py  : aux head 5종 + energy/entropy confidence 함수
 - viz.py    : save_sam2_full_report 등 시각화 헬퍼
 - legacy.py : P1~P7, P10~P21, P23~P26(+AblB) — configs 호환 위해 전부 보존
-- p08/p09/p22/p27/p28/p29/p30/p31.py : ACTIVE 버전 개별 파일
+- p08/p09/p22/p27/p28/p29/p30/p31/p32/p33.py : ACTIVE 버전 개별 파일
 - det.py    : P29_Det / P30_Det / P31_Det
 
 모델 클래스 조회는 `get_model(name)` 또는 `MODEL_REGISTRY[name]`을 사용할 것
@@ -63,6 +63,8 @@ from .p28 import LoRA_Sam_P28
 from .p29 import LoRA_Sam_P29
 from .p30 import LoRA_Sam_P30
 from .p31 import LoRA_Sam_P31
+from .p32 import LoRA_Sam_P32
+from .p33 import LoRA_Sam_P33
 from .det import LoRA_Sam_P29_Det, LoRA_Sam_P30_Det, LoRA_Sam_P31_Det
 
 #: 클래스명 문자열 → 클래스. configs의 MODEL.LORA_MODEL 값으로 조회한다.
@@ -103,6 +105,8 @@ MODEL_REGISTRY = {
     "LoRA_Sam_P30_Det": LoRA_Sam_P30_Det,
     "LoRA_Sam_P31": LoRA_Sam_P31,
     "LoRA_Sam_P31_Det": LoRA_Sam_P31_Det,
+    "LoRA_Sam_P32": LoRA_Sam_P32,
+    "LoRA_Sam_P33": LoRA_Sam_P33,
     # aux head 클래스 (LORA_MODEL로는 쓰이지 않지만 구 메가파일 40개 클래스 전부 등록)
     "ConfidenceAuxHead": ConfidenceAuxHead,
     "ModalAuxDecoder": ModalAuxDecoder,

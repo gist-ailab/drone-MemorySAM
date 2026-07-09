@@ -163,7 +163,7 @@ The project argument is currently converging to:
 | ✅ Done | P3 multimodal object detection | `a08e907d9127` | 2026-06-24 22:47 KST, once | [[relatedworks/10_bevfusion_relatedwork]] through [[relatedworks/14_multimodal_detection_survey_note]] |
 | 🟡 Scheduled | P4 adapter / LoRA / SAM adaptation | `58ec3bc0b8d2` | 2026-06-24 22:57 KST, once | [[relatedworks/20_lora_adapter_relatedwork]] through [[relatedworks/23_multimodal_sam_adapter_matrix]] |
 | 🟡 Scheduled | P5 segmentation / detection heads | `4c758ef85268` | 2026-06-24 23:07 KST, once | [[relatedworks/30_segformer_relatedwork]] through [[relatedworks/34_maskdino_yolo_maskrcnn_heads]] |
-| 🟡 Recurring | Daily top-venue source sweep | `11306d3e510d` | daily 08:30 KST | [[sources/04_daily_source_sweep_log]] |
+| 🟡 Recurring | Weekly top-venue source sweep | `11306d3e510d` | every 7 days | [[sources/04_weekly_source_sweep_log]] |
 
 All cron jobs are pinned to `openai-codex / gpt-5.5`, with `file`, `terminal`, and `web` toolsets enabled, and `obsidian` + `arxiv` skills loaded.
 ## 5. Adapter / LoRA / SAM foundation-model adaptation — 2026-06-24 cron update
@@ -202,9 +202,9 @@ Current policy: new-source collection is weekly; current collected sources shoul
 | Status | Item | Output |
 |---|---|---|
 | ✅ | Clustered related-work synthesis | [[relatedworks/90_clustered_relatedwork_synthesis]] |
-| ✅ | English PDF-ready review material | [[material/01_multimodal_seg_clustered_relatedwork_en]] |
-| ✅ | Korean PDF-ready review material | [[material/01_multimodal_seg_clustered_relatedwork_ko]] |
-| ✅ | PDF export | ReportLab export completed: [[material/01_multimodal_seg_clustered_relatedwork_en.pdf]] and [[material/01_multimodal_seg_clustered_relatedwork_ko.pdf]]. Note: pandoc/LaTeX/wkhtmltopdf were unavailable, so PDFs use the local ReportLab renderer. |
+| ✅ | English PDF-ready review material | [[synthesis/01_multimodal_seg_clustered_relatedwork_en]] |
+| ✅ | Korean PDF-ready review material | [[synthesis/01_multimodal_seg_clustered_relatedwork_ko]] |
+| ✅ | PDF export | ReportLab export completed: [[synthesis/01_multimodal_seg_clustered_relatedwork_en.pdf]] and [[synthesis/01_multimodal_seg_clustered_relatedwork_ko.pdf]]. Note: pandoc/LaTeX/wkhtmltopdf were unavailable, so PDFs use the local ReportLab renderer. |
 
 Synthesis clusters completed: direct multimodal semantic segmentation; multimodal object detection; adapters/LoRA/foundation-model adaptation; segmentation/detection heads; uncertainty/reliability/novelty; benchmarks/datasets. Main paper-writing conclusion: RBMA should be positioned as reliability-aware SAM2-style memory fusion where predictive reliability is injected as an additive pre-softmax attention-logit bias, distinct from feature scaling, late evidential fusion, modality selection, distillation, and condition/depth-token fusion.
 
@@ -222,3 +222,27 @@ Synthesis clusters completed: direct multimodal semantic segmentation; multimoda
 | 🟡 | API caveats | arXiv/GitHub/OpenAlex primary metadata usable; Semantic Scholar/Papers with Code partially rate-limited/unavailable; LinkedIn probe yielded no promoted primary links | X Search intentionally not used |
 
 High-priority additions this run include RSGMamba, M4-SAM, GeomPrompt, ModalPatch, AW-MoE, MULTIAQUA, FS-SAM2, ClustViT, balanced-modality multimodal segmentation, OmniSegmentor, and selected SAM2 code candidates.
+
+## P32 검증 + P33-v2 + 실험보고서 파이프라인 — 2026-07-08
+
+| Status | Item | Output |
+|---|---|---|
+| ✅ | P32(CoRB) 학습 완료 + 4축 독립 검증 (멀티에이전트 9-agent) | [[issues/P32_정량검증_실패분석_20260708]] — val 64.12/test 55.00, CoRB attn-bias 순손해 확정(p=4.5e-22), 지배 원인=class-transfer(상한 +7.9pt), NEW sun 하드씬 |
+| ✅ | P33-v2 설계 개정 (원안 CG-MoD 적대적 비판 + 딥리서치 3축 R1/R2/R3) | [[architecture/P33_v2_설계개정_20260708]] — ablation 순서 역전(class-transfer 1순위), top-k 삭제, dropout+distillation 필수, unfreeze 삭제, kill criteria/escape 명시 |
+| ✅ | 차세대 백본 브레인스토밍 (Cowork) + 검증 | [[ideas/brainstorm_next_arch_20260708]] — 내부수치 13/14 정확, 외부인용 검증(수정 3건), 카드 A(DINOv3)/B(SAM2 v2) 릴레이 |
+| ⏭ | P33-v2 M0 진단 3종 (무학습) | SOTA ckpt per-class test 삼각측량 → M1 타깃 확정 |
+
+### 실험보고서 규약 (2026-07-08 제정)
+
+- **모든 실험은 볼트에 실험폴더를 갖는다**: `P<N>_<이름>/` = `00_<이름>_index.md`(진입점) + 리포트 md + `assets/`(figure). 매 실험 완료 시 리포트를 이 구조로 추가하고 이 트래킹 보드와 [[00_MOC_26_MultimodalSeg]]에 링크를 단다.
+- **동기화**: NAS 볼트(`/nas_jm/Research/26_MultimodalSeg/`)가 canonical. repo 사본(`<repo>/.claude_logs/research_vault/`)은 `bash scripts/sync_vault.sh`(NAS→repo pull, 무거운 sources/db·pdfs 제외)로 갱신 후 커밋. repo에서 먼저 생긴 문서(예: Cowork 산출물)는 NAS로 복사 후 pull.
+- **수치 출처 고정**: 실험 성적의 단일 출처 = repo `experiments/monitor-log.md`(재구조화 브랜치) + `/mnt/HDD2/src/logs/<model>_eval_<date>/` 원시 산출물. 볼트 리포트는 여기서 인용하고 경로를 명기한다. 성적은 aggregate test + per-class test + adverse-split 3종 병기.
+
+## Weekly source sweep — 2026-07-09
+
+| Status | Item | Output | Count / note |
+|---|---|---|---|
+| ✅ | Weekly top-venue/source sweep | [[sources/04_weekly_source_sweep_log]] | 6 verified new/missing candidates promoted; 6 short source notes created |
+| 🟡 | API caveats | arXiv/OpenAlex/GitHub primary metadata usable; Semantic Scholar returned HTTP 429; LinkedIn/Bing probe was discovery-only with no unverified LinkedIn result promoted | X Search intentionally not used |
+
+High-priority additions this run: SegFly (ECCV 2026 RGB-T aerial dataset), Spatial Balancing (TRO 2026 RGB-T spatial bias), RTPSeg (ISPRS JPRS 2026 RGB+thermal+LiDAR 3D segmentation dataset), SHIFNet/SAM2 RGB-T segmentation, Segformer++ token merging, and Frequency-Guided Fusion RGB-T segmentation.
