@@ -23,6 +23,7 @@
 | **P33-v2 (CG-MoD 개정)** | ✅ **설계 완료 (구현 대기)** | 원안(doc 26) 적대적 비판 + 딥리서치 3축 반영: M0 무학습 진단 3종 → M1 class-transfer 복구(RCS+text-anchor+MIC consistency, night+**sun**) → M2 dropout+distillation → M3 soft gate(corr_veto) → M4 CoRB 제거. 기대 test 56.5~58. Global escape: val<65.5 → 카드 A(DINOv3-RBMA) 전환. 볼트 `research_vault/P33_CGMoD/P33_v2_설계개정_20260708.md` |
 | **Det (국책과제)** | 🎯 **목표 달성** | egofill 데이터(2.01×)만으로 **mAP50 0.8501**@ep9 (official v2 test). 남은 서사 = 저조도 robustness delta. 상세 doc 19 E2.5 |
 | **옵시디언↔repo 동기화** | ✅ 규약 제정 | NAS 볼트 canonical, `scripts/sync_vault.sh`(NAS→repo pull), 실험폴더 패턴 `P<N>_<이름>/`. `research_vault/README.md` §🔄 |
+| **P34-ReliaDINO (카드 A)** | ✅ **구현 완료 (feasibility probe 확정 시 학습 착수)** — 2026-07-12, branch `worktree-p33-impl` | DINOv3-RBMA 스켈레톤: `semseg/models/reliadino/`(FrozenViTEncoder=timm DINOv3 ViT-L/16 frozen+per-modality LoRA(qkv Q/V, r8)+SimpleFPN / ReliabilityGatedFusion=cross-modal memory-style attn+RBMA-v2 bias(λ₁B_cal+λ₂B_cons)+competence gate(rel_cal softmax τ0.25)+corr_veto training-free floor / conv seg head, **SAM2 import 0**) + `train_reliadino.py`(OHEM+DDP+2ep eval+top-5 ckpt 동일 포맷) + configs `{b200,hinton}-deliver_rgbdel_P34_reliadino.yaml`. CPU smoke PASS(양 ViT 계열+patch14 폴백; LoRA grad 4모달 확인, frozen 무grad). **HF timm dinov3 가중치 un-gated 확인**(폴백 dinov2 불필요할 전망). 설계 = `research_vault/architecture/P34_ReliaDINO_design_20260712.md` |
 
 **진행 중 트랙 (2026-07-02 시점 기록 — 위 표가 최신)**
 
@@ -49,6 +50,14 @@
 
 ## 역시간순 진행 로그 (History — 아래는 시점별 기록, 현재 상태 아님)
 
+### P34-ReliaDINO (카드 A) 스켈레톤 구현 완료 — 2026-07-12
+
+**배경**: 브레인스토밍(07-08) 추천 1순위 카드 A(DINOv3-RBMA)의 즉시-학습-가능 스켈레톤. P32/P33 실측 제약 4종 준수(① gate 신호=calibrated self-entropy(corr_veto 금지) ② consistency=attn-bias 2차 항만 ③ dead-class=DINOv3 존재 이유 ④ modal dropout seam만, 기본 OFF).
+**산출물**: `semseg/models/reliadino/{encoder,fusion,model,__init__}.py`(신규 패키지, SAM2 의존 0; P31 calibration loss·P32 corr_veto·P33 dropout 수식 포팅) · `train_reliadino.py`(lean trainer, ckpt 포맷/명명 기존과 동일) · `configs/{b200,hinton}-deliver_rgbdel_P34_reliadino.yaml` · 설계 문서 `research_vault/architecture/P34_ReliaDINO_design_20260712.md`(ablation 4종+게이트+리스크).
+**검증**: py_compile 전체 PASS + CPU smoke 3종(VisionTransformer 계열/Eva=dinov3 계열/patch14 폴백 라운딩) — logits (B,25,H,W)·loss finite·4모달 LoRA B-grad>0·frozen backbone grad 0·eval `(output,_)` 계약 확인. HF `timm/vit_large_patch16_dinov3.lvd1689m` **un-gated**(API probe) — 가중치 접근 리스크 해소.
+**다음**: A-1 feasibility probe(병행) 확정 → B200 launch `torchrun --standalone --nproc_per_node=4 train_reliadino.py --cfg configs/b200-deliver_rgbdel_P34_reliadino.yaml` (빈 GPU 확인 필수).
+
+---
 ### 차세대 아키텍처 브레인스토밍 + deep-research 완료 — 2026-07-08
 
 **산출물**: `research_vault/material/brainstorm_next_arch_20260708.md` (proposal, 미승인). 내부 문서 전수 + 신규 deep-research 2트랙(VFM/fusion) 기반 후보 카드 5개(A DINOv3-RBMA / B SAM2-RBMA v2 / C SAM3-RBMA 2.0 / D C-RADIOv4 / E Det-deformable) → **추천 top-2 = A(본명)+B(안전판, 병행)**. 선행 검증 실험 6건 제안(최우선 = B-1: 학습 없는 consistency-신호 AUROC 스왑). doc 12 §5·doc 10 상단에 포인터 기록. 다음 액션 = 사용자 승인 + B-1 실행.
