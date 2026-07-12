@@ -60,6 +60,24 @@ def load_model(cfg, model_path, device):
     model_cfg = cfg['MODEL']
     dataset_cfg = cfg['DATASET']
 
+    # [P34] ReliaDINO family — timm ViT 백본 + 전용 빌더 (SAM2 경로 불필요).
+    # ckpt가 백본 포함 전체 state라 PRETRAINED_BACKBONE을 꺼서 다운로드 의존 제거.
+    if str(model_cfg.get('NAME', '')).strip() == 'ReliaDINO':
+        from semseg.models.reliadino import build_reliadino
+        _ds_default = {'DELIVER': 25, 'MULTIAQUA': 4}.get(
+            str(dataset_cfg.get('NAME', '')).upper(), 25)
+        n_cls = model_cfg.get('LORA_NUM_CLASSES', dataset_cfg.get('NUM_CLASSES', _ds_default))
+        import copy as _copy
+        _cfg = _copy.deepcopy(cfg)
+        _cfg['MODEL']['PRETRAINED_BACKBONE'] = False
+        model = build_reliadino(_cfg, n_cls)
+        ckpt = torch.load(model_path, map_location='cpu', weights_only=False)
+        state = ckpt.get('model_state_dict', ckpt)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(f"[val] ReliaDINO loaded: missing={len(missing)} unexpected={len(unexpected)}"
+              + (" ⚠️ (많으면 백본 변형 불일치 — BACKBONE_TIMM 확인)" if len(missing) > 20 else ""))
+        return model.to(device)
+
     checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     sam2_config_file = "sam2_hiera_b+.yaml"
     num_modalities = len(dataset_cfg['MODALS'])

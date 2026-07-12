@@ -72,6 +72,31 @@ def make_toggles(core):
     attr_toggle('temp_off', 'rbma_log_temp', 0.0, is_param=True)
     attr_toggle('cons_off', 'lambda_cons', 0.0, is_param=True)
     attr_toggle('amf_uniform', 'amf_mode', 'uniform')
+
+    # [P34 ReliaDINO] fusion 서브모듈 위 토글 (없으면 자동 skip)
+    fus = getattr(core, 'fusion', None)
+    if fus is not None:
+        def fus_toggle(name, attr, value, is_param=False):
+            if not hasattr(fus, attr) or getattr(fus, attr) is None:
+                return
+            def apply():
+                old = getattr(fus, attr)
+                if is_param:
+                    saved = old.detach().clone()
+                    with torch.no_grad():
+                        old.fill_(value)
+                    def restore():
+                        with torch.no_grad():
+                            old.copy_(saved)
+                    return restore
+                setattr(fus, attr, value)
+                return lambda: setattr(fus, attr, old)
+            T[name] = apply
+        fus_toggle('p34_bias_off', 'lambda1', 0.0, is_param=True)      # B_cal attn-bias
+        fus_toggle('p34_cons_off', 'lambda2', 0.0, is_param=True)      # B_cons 2차 항
+        fus_toggle('p34_gate_off', 'gate_enable', False)               # reliability gate
+        fus_toggle('p34_veto_off', 'veto_floor', False)                # veto floor
+        fus_toggle('p34_calib_off', 'calibrate', False)                # temperature 보정
     return T
 
 

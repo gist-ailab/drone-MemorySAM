@@ -46,33 +46,54 @@ def rs_nn(t, hw):
 
 def find_adapter_modules(core):
     """Every additive adapter module on the encoder path, family-agnostic.
-    Returns (modules, kind). SAM2 SoftMoE family exposes moe_layers_q/v; plain-LoRA
-    families inject linear_b_* (B of B@A, output added)."""
+    Returns (modules, kind, mechanism). SAM2 SoftMoE family exposes moe_layers_q/v;
+    plain-LoRA families inject linear_b_* (output added → hook o*0); ReliaDINO(P34)의
+    MultiModalLoRAQKV는 delta가 내부에서 합쳐지므로 `scale=0` 토글로 끈다."""
     mods = []
     if hasattr(core, 'moe_layers_q'):
         mods = list(core.moe_layers_q) + list(getattr(core, 'moe_layers_v', []))
         if mods:
-            return mods, 'softmoe_lora'
+            return mods, 'softmoe_lora', 'hook'
     for name, m in core.named_modules():
         if name.rsplit('.', 1)[-1] in ('linear_b_q', 'linear_b_v', 'linear_b'):
             mods.append(m)
-    return mods, ('plain_lora' if mods else 'none')
+    if mods:
+        return mods, 'plain_lora', 'hook'
+    for name, m in core.named_modules():
+        if type(m).__name__ == 'MultiModalLoRAQKV' and hasattr(m, 'scale'):
+            mods.append(m)
+    if mods:
+        return mods, 'mm_lora', 'scale'
+    return mods, 'none', 'none'
 
 
 class AdapterSwitch:
-    """Context manager: zero every adapter's output (adapters are additive)."""
-    def __init__(self, modules):
+    """Context manager: disable every adapter — additive 모듈은 output hook `o*0`,
+    scale-carrying wrapper(MultiModalLoRAQKV)는 scale=0."""
+    def __init__(self, modules, mechanism='hook'):
         self.modules = modules
+        self.mechanism = mechanism
         self.handles = []
+        self.saved = []
 
     def __enter__(self):
-        self.handles = [m.register_forward_hook(lambda mod, i, o: o * 0) for m in self.modules]
+        if self.mechanism == 'scale':
+            self.saved = [m.scale for m in self.modules]
+            for m in self.modules:
+                m.scale = 0.0
+        else:
+            self.handles = [m.register_forward_hook(lambda mod, i, o: o * 0)
+                            for m in self.modules]
         return self
 
     def __exit__(self, *a):
         for h in self.handles:
             h.remove()
         self.handles = []
+        if self.mechanism == 'scale':
+            for m, s in zip(self.modules, self.saved):
+                m.scale = s
+            self.saved = []
 
 
 def flat_stats(f_on, f_off):
@@ -113,7 +134,7 @@ def main():
     model.eval()
     core = model.module if hasattr(model, 'module') else model
 
-    adapters, kind = find_adapter_modules(core)
+    adapters, kind, mechanism = find_adapter_modules(core)
     modals = ds_cfg.get('MODALS', [])
     report = {'model': Path(args.model_path).stem, 'adapter_kind': kind,
               'n_adapter_modules': len(adapters), 'modals': modals, 'conditions': {}}
@@ -138,23 +159,29 @@ def main():
             with torch.no_grad():
                 model(imgs, multimask_output=True)
             f_on = [t.clone() for t in core._last_per_modal_feats]
-            o_on = [t.clone() for t in core._last_per_modal_outputs]
-            with AdapterSwitch(adapters), torch.no_grad():
+            _pmo = getattr(core, '_last_per_modal_outputs', None)
+            o_on = [t.clone() for t in _pmo] if _pmo is not None else None
+            with AdapterSwitch(adapters, mechanism), torch.no_grad():
                 model(imgs, multimask_output=True)
             f_off = [t.clone() for t in core._last_per_modal_feats]
-            o_off = [t.clone() for t in core._last_per_modal_outputs]
+            _pmo = getattr(core, '_last_per_modal_outputs', None)
+            o_off = [t.clone() for t in _pmo] if _pmo is not None else None
             if M is None:
                 M = len(f_on)
                 acc = np.zeros((M, 7))
             for i in range(M):
                 fr, fc = flat_stats(f_on[i], f_off[i])
-                orr, oc = flat_stats(o_on[i], o_off[i])
-                p_on = rs_nn(o_on[i][0].argmax(0).to(device), WR).cpu().numpy()
-                p_off = rs_nn(o_off[i][0].argmax(0).to(device), WR).cpu().numpy()
-                acc[i] += [fr, fc, orr, oc,
-                           float(((p_on == gt) & valid).sum()),
-                           float(((p_off == gt) & valid).sum()),
-                           float(valid.sum())]
+                if o_on is not None and o_off is not None:
+                    orr, oc = flat_stats(o_on[i], o_off[i])
+                    p_on = rs_nn(o_on[i][0].argmax(0).to(device), WR).cpu().numpy()
+                    p_off = rs_nn(o_off[i][0].argmax(0).to(device), WR).cpu().numpy()
+                    acc[i] += [fr, fc, orr, oc,
+                               float(((p_on == gt) & valid).sum()),
+                               float(((p_off == gt) & valid).sum()),
+                               float(valid.sum())]
+                else:
+                    # per-modal 출력이 없는 family(예: ReliaDINO eval) — feat 지표만
+                    acc[i] += [fr, fc, 0.0, 0.0, 0.0, 0.0, float(valid.sum())]
         res = {}
         for i in range(M):
             name = modals[i] if i < len(modals) else f'mod{i}'

@@ -121,6 +121,40 @@ def collect_softmoe(sd):
     return out
 
 
+def collect_multimodal_lora(sd, modals=('img', 'depth', 'event', 'lidar')):
+    """[P34 ReliaDINO] MultiModalLoRAQKV: batched per-modality params
+    `*.qkv.a_q` (M,r,in) + `*.qkv.b_q` (M,attn,r) (and _v). dW_m = B[m]@A[m] —
+    항목① '모달별 adapter 적응도'를 정적으로 직접 답한다 (per-modality per-site)."""
+    sites = {}
+    pat = re.compile(r'^(.*)\.(a|b)_(q|v)$')
+    for k, v in sd.items():
+        m = pat.match(k)
+        if m is None or v.dim() != 3:
+            continue
+        prefix, ab, qv = m.group(1), m.group(2), m.group(3)
+        sites.setdefault(prefix, {})[f'{ab}_{qv}'] = v
+    out = []
+    for prefix, d in sorted(sites.items()):
+        for qv in ('q', 'v'):
+            A, B = d.get(f'a_{qv}'), d.get(f'b_{qv}')  # (M,r,in), (M,attn,r)
+            if A is None or B is None or A.shape[0] != B.shape[0]:
+                continue
+            M = A.shape[0]
+            per_modal = [fro(B[m].float() @ A[m].float()) for m in range(M)]
+            names = list(modals)[:M] + [f'mod{i}' for i in range(len(modals), M)]
+            t = torch.tensor(per_modal)
+            out.append({
+                'layer': f'{prefix}[{qv}]', 'type': 'mm_lora',
+                'dW_norm': float(t.mean()),
+                'dW_norm_per_modality': {names[m]: round(per_modal[m], 4) for m in range(M)},
+                'B_norm': float(B.float().norm()), 'A_norm': float(A.float().norm()),
+                'rank': int(A.shape[1]),
+                'modal_cv': float(t.std(unbiased=False) / t.mean()) if t.mean() > 0 else None,
+                'ratio_to_base': None,
+            })
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -133,7 +167,8 @@ def main():
     sd = load_state(args.ckpt)
     plain = collect_plain_lora(sd)
     moe = collect_softmoe(sd)
-    layers = plain + moe
+    mm = collect_multimodal_lora(sd)
+    layers = plain + moe + mm
 
     if not layers:
         print(f"[adapter_health] NO LoRA/adapter sites found in {args.ckpt}. "
@@ -144,6 +179,8 @@ def main():
         # dead flag: plain via ||B||, moe via near-zero mean dW
         for L in layers:
             if L['type'] == 'plain_lora':
+                L['dead'] = (L['B_norm'] < args.dead_thresh)
+            elif L['type'] == 'mm_lora':
                 L['dead'] = (L['B_norm'] < args.dead_thresh)
             else:
                 L['dead'] = (L['dW_norm_mean'] < args.dead_thresh)
@@ -157,8 +194,17 @@ def main():
             'dW_norm_min': float(dW.min()), 'dW_norm_max': float(dW.max()),
             'dW_norm_mean': float(dW.mean()), 'dW_norm_median': float(dW.median()),
             'plain_lora_sites': len(plain), 'softmoe_sites': len(moe),
+            'mm_lora_sites': len(mm),
             'layers': layers,
         }
+        if mm:  # [항목①] 전 site 평균 per-modality ||dW|| — 모달별 적응 총량 헤드라인
+            keys = list(mm[0]['dW_norm_per_modality'].keys())
+            summary['mm_per_modality_dW_mean'] = {
+                k: round(float(torch.tensor(
+                    [L['dW_norm_per_modality'][k] for L in mm]).mean()), 4)
+                for k in keys}
+            print(f"[adapter_health] per-modality mean ||dW|| (mm_lora): "
+                  f"{summary['mm_per_modality_dW_mean']}")
         # console report
         try:
             from tabulate import tabulate
