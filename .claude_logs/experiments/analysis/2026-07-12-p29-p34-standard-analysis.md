@@ -63,10 +63,21 @@ tools: tools/seg_analysis_pipeline.py 스위트 (develop aecba1d)
 3. **P31 router는 유효 기전** — P34에 learned router(P31식 decisive) 이식이 자연스러운 다음 ablation (P34 gate ±0.7 대비 P31 router +10~13).
 4. **잔여 STRUCTURAL(Bridge/Other/Wall)** 은 모델 축으로 미해결 — 데이터·해상도·라벨 정합 조사 트랙 분리.
 
+## 항목②③ 시각화 보강 (2026-07-13 추가 — P34 표준훅 미러링 후)
+
+- **P34 fusion 내부가 표준 도구로 열림** (ReliaDINO에 `_last_per_modal_outputs`/`_last_uamm_spatial` 미러링): module_diagnostics 전 조건 완료 —
+  - **rel AUROC (전 조건) = [img .85~.87, depth .78~.81, event .82~.87, lidar .68~.72] — 계보 최초로 4모달 전부 균형 보정** (P31은 img 희생 .43, P29/P32는 event/lidar 사망).
+  - gate 할당 ≈ [.28,.26,.24,.22] (완만한 img 우위), **drop-Δ = [img 4~6, depth 15~17, event ≈0(음수 포함), lidar 0.2~1.7]** — depth 지배·event 무기여 구조는 P34에서도 지속.
+  - **night misallocation top: RoadLine .79 / TrafficLight .62 / Wall .54** — gate가 유능 모달을 못 고르는 지점 = P31식 learned router 이식의 타깃 근거.
+- **per-image 패널 전 조건 확장** (`P34_eval_20260712/viz/`, 5 cond × 2장): 입력 4모달 + 모달별 featPCA + FUSED PCA + (미러링 후) reliability·per-modal mask·gate맵 행 포함.
+- **모듈 A/B 전후 패널 신규** (`module_ablation --viz-num`, `*_viz_viz/`):
+  - **P31 router on/off (night)**: 불일치 2.7%가 **RoadLine(차선)·가는 구조 경계에 집중** — router +10~13 기여의 공간적 실체 = thin-class 경계 유지. rbma_off는 0.1% 무변화(no-op 시각 확정).
+  - **P34 gate/calib/bias off (night/sun)**: 낮은 불일치 — 모듈 no-op 판정의 시각적 재확인.
+
 ## 산출물 맵 (후속 분석용)
 
 - NAS `/drone_nas/drone/analysis_logs/` (HDD2 ISSUE-023 재발로 대체 canonical):
-  - `{P29,P31,P32,P34}_eval_20260712/` — report.md, capability.json, per_domain/(5 cond 로그), per_domain_analysis.md, adapter_health.json, modal_adaptation.{json,md}, feature_stats.{json,md,_pca.png}, module_ablation.{json,md}, module_diag.json(P29/P31/P32), viz/(패널 png)
+  - `{P29,P31,P32,P34}_eval_20260712/` — report.md, capability.json, per_domain/(5 cond 로그), per_domain_analysis.md, adapter_health.json, modal_adaptation.{json,md}, feature_stats.{json,md,_pca.png}, module_ablation.{json,md}, **module_diag.json(P29/P31/P32/P34 전부)**, viz/(패널 png, P34는 5 cond), `module_ablation_viz_viz/`(P31 router·P34 gate 전후 패널)
   - `compare_P29_P31_P32_P34_20260712.md` — 4모델 통합표+digest (구 3모델판은 P29 프로토콜 오염으로 폐기)
 - lecun 원본: `/SSDb/jemo_maeng/analysis/` + 실행로그 `~/analysis_logs/*.log`
 - 재현: `tools/README_seg_analysis.md` 매핑표 (P34는 `PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34` 필요 — timm 1.0.24 사이드로드)
