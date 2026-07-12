@@ -160,7 +160,8 @@ def main():
             if results['D1_eval_per_domain']['status'] == 'ok':
                 run('D1_analyze_per_domain',
                     [py, str(TOOLS / 'analyze_per_domain.py'),
-                     '--logs-dir', str(ed), '--out', str(out / 'per_domain_analysis.md')],
+                     '--logs-dir', str(ed), '--label', 'best=best',
+                     '--out', str(out / 'per_domain_analysis.md')],
                     note='per-domain x per-class matrix + failure-class classification')
 
     # ---- D2/D3/D4 numeric: module_diagnostics (needs SAM2-style hooks) ----
