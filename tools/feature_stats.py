@@ -111,7 +111,8 @@ def main():
             if M is None:
                 M = len(feats); Cch = feats[0].shape[0]
                 norm_sum = np.zeros(M + 1)
-                chan_absmean = np.zeros((M + 1, Cch))
+                # 채널 수는 feature마다 다를 수 있음 (예: ReliaDINO per-modal 1024 vs fused 256)
+                chan_absmean = [np.zeros(f.shape[0]) for f in feats] + [np.zeros(m_feat.shape[0])]
                 samples = [[] for _ in range(M + 1)]
                 fused_cos_sum = np.zeros(M)
             h, w = feats[0].shape[-2:]
@@ -129,7 +130,8 @@ def main():
                     ff = torch.as_tensor(fl, device=device)
                     if mf.shape[1] == ff.shape[1]:
                         fused_cos_sum[i] += F.cosine_similarity(mf, ff, dim=1).mean().item()
-        banks = [np.concatenate(s, 0) if s else np.zeros((1, Cch)) for s in samples]
+        banks = [np.concatenate(sl, 0) if sl else np.zeros((1, len(chan_absmean[i])))
+                 for i, sl in enumerate(samples)]
         names = [modals[i] if i < len(modals) else f'mod{i}' for i in range(M)] + ['FUSED']
         per = {}
         for i, name in enumerate(names):
@@ -137,7 +139,7 @@ def main():
             per[name] = {
                 'mean_feat_norm': round(norm_sum[i] / n, 4),
                 'dead_channels': int((ch < 0.01 * max(ch.max(), 1e-8)).sum()),
-                'total_channels': int(Cch),
+                'total_channels': int(len(ch)),
                 'effective_rank': round(participation_ratio(banks[i]), 2),
             }
             if i < M:
