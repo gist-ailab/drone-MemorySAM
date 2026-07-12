@@ -1,0 +1,72 @@
+---
+created: 2026-07-12
+scope: P29/P31/P32/P34 표준 분석항목 1-4 (동일 프로토콜)
+artifacts: /drone_nas/drone/analysis_logs/ (HDD2 ISSUE-023 재발로 NAS 대체)
+tools: tools/seg_analysis_pipeline.py 스위트 (develop aecba1d)
+---
+
+# P29·P31·P32·P34 표준 분석 종합 (2026-07-12, lecun)
+
+> **프로토콜**: DELIVER test 5-condition, 동일 파이프라인(batch 2, PHYSAUG off, GT-res D1 + WR-256 모듈 진단).
+> 대상 ckpt: P29 test_ep146(54.34) · P31 test_ep182(54.85) · P32 test_ep158(55.01) · **P34 test_ep40(55.08, 학습 중 스냅샷)**.
+> ⚠️ 기존 P29 per-domain 로그(2026-06-30, mean 59.06)는 **프로토콜 상이 확정**(재평가 52.21과 −6.9 편차) — 과거 표와 혼용 금지.
+> ⚠️ P31/P32의 module_diagnostics·ablation은 WR-256 상대분석 수치 — 헤드라인 IoU는 D1(GT-res) 기준.
+
+## 항목4 — 모델×클래스×도메인 (canonical: `compare_P29_P31_P32_P34_20260712.md`)
+
+| model | cloud | fog | night | rain | sun | **mean** |
+|---|---|---|---|---|---|---|
+| P29 | 53.34 | 51.93 | 50.66 | 54.12 | 51.01 | 52.21 |
+| P31 | 53.28 | 53.72 | 51.48 | 53.53 | 52.07 | 52.82 |
+| P32 | 52.89 | 53.54 | 51.82 | 54.65 | 51.20 | 52.82 |
+| **P34** | **54.14** | **55.07** | **52.43** | **55.30** | **52.87** | **53.96** |
+
+- **P34(ReliaDINO, ep40 스냅샷)가 전 도메인 1위** (+1.14 vs P31/P32, +1.75 vs P29).
+- **Water 부활**: SAM2 계열 0.0~0.2 (STRUCTURAL) → P34 **12.0**. TrafficLight 12~21 → **35.1**. → frozen-SAM2-backbone ceiling(ISSUE-008)이 두 클래스의 원인이었음이 실증.
+- **잔여 STRUCTURAL** (전 모델 <10): **Bridge(~0)·Other·Wall** — 백본 교체로도 안 풀림 → 데이터/해상도/annotation 레벨 개입 필요.
+- DOMAIN-GAP(타깃 증강 후보): RailTrack(spread 58), TwoWheeler(29), Fence, Water.
+- P29 대비 P31/P32의 클래스 이동: RailTrack +7~10, TrafficSign +6 / Ground −4, Pedestrian∼.
+
+## 항목1 — VFM adapter 모달 적응도
+
+| | P31 (SAM2+SoftMoE-LoRA, 96 site) | P34 (DINOv3+per-modal LoRA, 48 site) |
+|---|---|---|
+| dead adapter | **0** | **0** |
+| 정적 ‖dW‖ | site 평균 1.5~22.8 (모달 공유 MoE라 모달 분해 불가) | **per-modality**: img 11.5 / depth **13.4** / event 10.2 / lidar 11.3 |
+| on/off Δfeat (rain) | img 0.61 / depth 1.59 / event 2.88 / lidar (대) | img 0.92 / depth **1.18** / event 0.76 / lidar 1.02 |
+| on/off Δacc (rain) | img +3.8pt / depth **+13.4pt** / event·lidar 大 | (per-modal 출력 없음 — feat 지표만) |
+
+**판정**: 두 계열 모두 non-RGB adapter가 RGB보다 크게 적응 (dead adaptation 없음). 적응 자체는 문제가 아니었고, 문제는 적응된 피쳐의 **질**(아래 항목2).
+
+## 항목2 — 모달별 피쳐 통계 (night, 120img; full-testset 수치는 json)
+
+| | P31 (SAM2) | P34 (DINOv3) |
+|---|---|---|
+| eff.rank (img/depth/event/lidar) | 6.1 / **1.1** / 5.6 / 6.0 (32ch) | **13.1 / 10.7 / 19.6 / 13.3** (1024ch) |
+| FUSED eff.rank | **1.26** (붕괴) | 6.75 (256ch) |
+| cross-modal CKA | 0.02~0.16 (모달 간 비정렬) | 0.80~0.91 (공통 표현으로 정렬) |
+| dead channels | 0 | ~1/1024 |
+
+**판정 (핵심 발견)**: SAM2 계열 피쳐는 **rank-1 수준으로 붕괴**(특히 depth 1.1, 융합 후 1.26)돼 있고 모달 간 표현이 정렬되지 않음 → 어떤 fusion 모듈을 얹어도 정보가 부족했던 근본 배경. DINOv3는 rank 풍부 + 모달 정렬 → 융합이 쉬워짐. **P29~P33의 fusion 모듈 반복이 한계에 부딪힌 이유의 피쳐-레벨 설명.**
+
+## 항목3 — 모듈 전후 A/B (`module_ablation`, Δ>0 = 모듈 기여)
+
+- **P31**: **learned router +10.7~+13.8 mIoU (유일한 대형 기여 모듈)** — 끄면 Bus −74/RoadLine −70/TwoWheeler −45 붕괴. RBMA bias ≈0 (**no-op**), temperature ≈0, CTD(aux-only)/SDC(off) = 설계 그대로 no-op 확인. ISSUE-022 수정으로 router가 실제 학습된 P31에서 router는 융합의 중추가 됨.
+- **P32**: **모든 토글 |Δ|<0.05 — 제안 모듈(CoRB 계열) 전부 no-op** (P32-B 결론 재확인).
+- **P34**: attn-bias(λ1)/consistency(λ2)/veto **≈0.00 (no-op)**, gate ±0.7 혼재, calib 평균 −0.3. **P34의 우위는 제안 모듈이 아니라 백본+per-modal LoRA+FPN 구조 자체에서 나옴.**
+- reliability AUROC (night, 동일 프로토콜): P29 [.84,.63,**.26,.38**] / P31 [.43,**.92,.55,.97**] / P32 [.86,.70,.35,.34] — **P31 calibration loss만이 geometry 모달의 reliability를 실제로 수리** (대가: img 역보정 .43). 단, 수리된 신호조차 성능 기여는 router 경유로만 실현(직접 bias는 no-op).
+
+## 설계 반영 (P35 인풋, 수치 근거)
+
+1. **백본이 최대 지렛대** — P34 스냅샷이 이미 계보 1위 + Water/TrafficLight 부활 + 피쳐 rank/정렬 우위. P34 완주·튜닝이 최우선.
+2. **pre-softmax additive bias 계열은 3세대 연속 no-op** (P32 CoRB, P31 RBMA-eval, P34 λ1/λ2) — novelty 서사를 bias가 아니라 **calibration(P31이 유일하게 AUROC 수리) × 강한 백본** 조합으로 재구성 필요.
+3. **P31 router는 유효 기전** — P34에 learned router(P31식 decisive) 이식이 자연스러운 다음 ablation (P34 gate ±0.7 대비 P31 router +10~13).
+4. **잔여 STRUCTURAL(Bridge/Other/Wall)** 은 모델 축으로 미해결 — 데이터·해상도·라벨 정합 조사 트랙 분리.
+
+## 산출물 맵 (후속 분석용)
+
+- NAS `/drone_nas/drone/analysis_logs/` (HDD2 ISSUE-023 재발로 대체 canonical):
+  - `{P29,P31,P32,P34}_eval_20260712/` — report.md, capability.json, per_domain/(5 cond 로그), per_domain_analysis.md, adapter_health.json, modal_adaptation.{json,md}, feature_stats.{json,md,_pca.png}, module_ablation.{json,md}, module_diag.json(P29/P31/P32), viz/(패널 png)
+  - `compare_P29_P31_P32_P34_20260712.md` — 4모델 통합표+digest (구 3모델판은 P29 프로토콜 오염으로 폐기)
+- lecun 원본: `/SSDb/jemo_maeng/analysis/` + 실행로그 `~/analysis_logs/*.log`
+- 재현: `tools/README_seg_analysis.md` 매핑표 (P34는 `PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34` 필요 — timm 1.0.24 사이드로드)
