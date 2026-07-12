@@ -245,11 +245,18 @@ class MemorySAMDetector(nn.Module):
 # P30-Det: Reliability-anchored router fusion + Object-Query decoder + FCOS aux
 # ════════════════════════════════════════════════════════════════════════
 import math
-from objdet.models.heads.query_decoder import (
-    ObjectQueryDecoder, HungarianMatcher, SetCriterion, decode_queries,
-    box_xyxy_to_cxcywh,
-)
-from semseg.models.sam2.sam2.sam_lola_utils import ReliabilityAnchoredRouter
+# P30-only deps (query decoder + router). Imported lazily so that P29-Det /
+# P34-Det (ReliaDINODetector) can be used on checkouts that lack the P30 modules.
+try:
+    from objdet.models.heads.query_decoder import (
+        ObjectQueryDecoder, HungarianMatcher, SetCriterion, decode_queries,
+        box_xyxy_to_cxcywh,
+    )
+    from semseg.models.sam2.sam2.sam_lola_utils import ReliabilityAnchoredRouter
+    _P30_AVAILABLE = True
+except ImportError as _e:
+    _P30_IMPORT_ERROR = _e
+    _P30_AVAILABLE = False
 
 
 class MemorySAMDetectorP30(nn.Module):
@@ -306,6 +313,10 @@ class MemorySAMDetectorP30(nn.Module):
         use_query_aux: bool = False,              # keep query decoder as aux when fcos primary
     ):
         super().__init__()
+        if not _P30_AVAILABLE:
+            raise ImportError(
+                f"MemorySAMDetectorP30 needs the P30 modules (query_decoder / "
+                f"ReliabilityAnchoredRouter) which are unavailable here: {_P30_IMPORT_ERROR}")
         if not hasattr(seg_model, 'extract_det_features'):
             raise TypeError(
                 f"{type(seg_model).__name__} has no extract_det_features(); use a "
