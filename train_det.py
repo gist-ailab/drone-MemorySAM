@@ -113,10 +113,9 @@ def draw_boxes_pil(img_np, boxes, scores, cls_ids, class_names=None,
         draw.text((x1 + 1, y1 + 1), f"{name}:{s:.2f}", fill=color)
     return pil
 
-from semseg.models.sam2.sam2.build_sam import build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
-
+# SAM2 imports are LAZY (moved into build_seg_model's non-ReliaDINO branch) so that
+# P34-Det (ReliaDINO/DINOv3) can run in envs lacking SAM2's dep tree (hydra/iopath/
+# icecream/...). P29/P30 paths import them on demand.
 from objdet.datasets.multimodal_det import MultiModalDetDataset, rescale_boxes_to_orig
 from objdet.models.det_model import MemorySAMDetector, MemorySAMDetectorP30, ReliaDINODetector
 from objdet.metrics import evaluate_coco, format_predictions_coco
@@ -148,14 +147,18 @@ def build_seg_model(cfg: dict, device: torch.device, n_classes: int = 10) -> tor
                   f"(missing={len(missing)}, unexpected={len(unexpected)})")
         return seg_model
 
+    # Lazy SAM2 imports (only reached for P29/P30 SAM2 backbones).
+    from semseg.models.sam2.sam2.build_sam import build_sam2
+    import semseg.models.sam2.sam2.sam_lora_image_encoder_seg as _segmod
+
     sam2_checkpoint = cfg['MODEL'].get('SAM2_CHECKPOINT',
         'semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt')
     model_cfg_path = cfg['MODEL'].get('SAM2_CONFIG', 'sam2_hiera_b+.yaml')
 
     sam2_model = build_sam2(model_cfg_path, sam2_checkpoint, device=device)
 
-    # Dynamically get model class
-    model_cls = globals().get(model_name)
+    # Dynamically get model class from the SAM2 seg module.
+    model_cls = getattr(_segmod, model_name, None)
     if model_cls is None:
         raise ValueError(f"Unknown model: {model_name}")
 
