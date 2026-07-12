@@ -55,16 +55,26 @@ from semseg.utils.utils import (cleanup_ddp, fix_seeds, get_logger, print_iou,
 
 
 @torch.no_grad()
-def evaluate(model, dataloader, device):
-    """val_mm_sam.evaluate equivalent, re-declared here to avoid its SAM2 imports."""
+def evaluate(model, dataloader, device, dist_sync=False):
+    """val_mm_sam.evaluate equivalent, re-declared here to avoid its SAM2 imports.
+
+    dist_sync=True: dataloader는 rank별 shard(DistributedSampler)이고, confusion
+    hist를 all_reduce해 모든 rank가 전체셋 지표를 동일하게 반환한다(전 rank가
+    같은 횟수의 collective 호출 = 대칭). ⚠️ DDP에서는 반드시 UNWRAPPED module을
+    넘길 것 — wrapper forward는 buffer broadcast collective를 rank0에서만 enqueue
+    해 peers의 barrier와 어긋나 NCCL desync/hang을 만든다(2026-07-12 크래시 원인).
+    DistributedSampler 패딩 중복은 ≤ world_size-1장(무시 가능, 최종치는 val.py로)."""
     model.eval()
     n_classes = dataloader.dataset.n_classes
     metrics = Metrics(n_classes, dataloader.dataset.ignore_label, device)
-    for images, labels in tqdm(dataloader, desc='eval', leave=False):
+    show_bar = not (dist_sync and dist.get_rank() != 0)
+    for images, labels in tqdm(dataloader, desc='eval', leave=False, disable=not show_bar):
         images = [x.to(device, non_blocking=True) for x in images]
         labels = labels.to(device, non_blocking=True)
         output, _ = model(images, True)
         metrics.update(output.softmax(dim=1), labels)
+    if dist_sync:
+        dist.all_reduce(metrics.hist)
     ious, miou = metrics.compute_iou()
     acc, macc = metrics.compute_pixel_acc()
     f1, mf1 = metrics.compute_f1()
@@ -187,8 +197,21 @@ def main(cfg, gpu, save_dir, logger):
     trainloader = DataLoader(trainset, batch_size=train_cfg['BATCH_SIZE'],
                              drop_last=True, sampler=sampler, **_loader_kwargs)
     _eval_kwargs = {'num_workers': min(num_workers, 4), 'pin_memory': True}
-    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], **_eval_kwargs)
-    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], **_eval_kwargs) \
+    # DDP: eval도 rank별 shard로 분산 (기존: rank0 단독 3902장 ≈30분 동안 peers가
+    # barrier 대기 → NCCL desync/timeout으로 사망). shuffle=False, hist는 evaluate()
+    # 안에서 all_reduce.
+    if ddp_enable:
+        _val_sampler = DistributedSampler(valset, dist.get_world_size(),
+                                          dist.get_rank(), shuffle=False)
+        _test_sampler = (DistributedSampler(testset, dist.get_world_size(),
+                                            dist.get_rank(), shuffle=False)
+                         if testset is not None else None)
+    else:
+        _val_sampler = _test_sampler = None
+    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'],
+                           sampler=_val_sampler, **_eval_kwargs)
+    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'],
+                            sampler=_test_sampler, **_eval_kwargs) \
         if testset is not None else None
 
     _amp_dtype_str = str(train_cfg.get('AMP_DTYPE', 'float16')).lower()
@@ -326,28 +349,36 @@ def main(cfg, gpu, save_dir, logger):
         do_eval = (((epoch + 1) % train_cfg['EVAL_INTERVAL'] == 0
                     and (epoch + 1) > train_cfg['EVAL_START'])
                    or (epoch + 1) == epochs)
-        if do_eval and is_rank0:
+        if do_eval:
+            # 전 rank가 자기 shard를 평가(hist all_reduce로 전체 지표 동일) — 기존
+            # rank0-단독-eval + peers-barrier 구조는 DDP wrapper의 buffer-broadcast
+            # collective가 barrier와 어긋나 NCCL desync SIGABRT를 유발했음(07-12 ×2).
             torch.cuda.empty_cache()
-            acc, macc, f1, mf1, ious, miou = evaluate(model, valloader, device)
-            writer.add_scalar('val/mIoU', miou, epoch)
-            iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, ious))
-            worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
-            if miou > worst_day:
-                top_day_ckpts = _update_topk_checkpoints(
-                    top_day_ckpts, miou, epoch + 1, save_dir, prefix='',
-                    ckpt_dict=_ckpt({'best_miou': miou}), k=5)
-                if miou > best_mIoU:
-                    best_mIoU, best_epoch = miou, epoch + 1
-                    logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
-            logger.info(f"[Val] epoch:{epoch+1}  mIoU: {miou:.4f}  "
-                        f"Best: {best_mIoU:.4f} (ep{best_epoch})\n     IoU: {iou_str}")
-            if wandb_enabled:
-                wlog = {'epoch': epoch + 1, 'val/mIoU': miou, 'val/best_mIoU': best_mIoU}
-                wlog.update({f'val_iou/{c}': v for c, v in zip(class_names, ious)})
-                wandb.log(wlog, step=epoch)
+            _eval_model = model.module if ddp_enable else model
+            acc, macc, f1, mf1, ious, miou = evaluate(
+                _eval_model, valloader, device, dist_sync=ddp_enable)
+            if is_rank0:
+                writer.add_scalar('val/mIoU', miou, epoch)
+                iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, ious))
+                worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
+                if miou > worst_day:
+                    top_day_ckpts = _update_topk_checkpoints(
+                        top_day_ckpts, miou, epoch + 1, save_dir, prefix='',
+                        ckpt_dict=_ckpt({'best_miou': miou}), k=5)
+                    if miou > best_mIoU:
+                        best_mIoU, best_epoch = miou, epoch + 1
+                        logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
+                logger.info(f"[Val] epoch:{epoch+1}  mIoU: {miou:.4f}  "
+                            f"Best: {best_mIoU:.4f} (ep{best_epoch})\n     IoU: {iou_str}")
+                if wandb_enabled:
+                    wlog = {'epoch': epoch + 1, 'val/mIoU': miou, 'val/best_mIoU': best_mIoU}
+                    wlog.update({f'val_iou/{c}': v for c, v in zip(class_names, ious)})
+                    wandb.log(wlog, step=epoch)
 
             if testloader is not None:
-                t_acc, t_macc, t_f1, t_mf1, t_ious, t_miou = evaluate(model, testloader, device)
+                t_acc, t_macc, t_f1, t_mf1, t_ious, t_miou = evaluate(
+                    _eval_model, testloader, device, dist_sync=ddp_enable)
+            if testloader is not None and is_rank0:
                 writer.add_scalar('test/mIoU', t_miou, epoch)
                 t_iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, t_ious))
                 worst_test = top_test_ckpts[-1][0] if len(top_test_ckpts) >= 5 else -1.0

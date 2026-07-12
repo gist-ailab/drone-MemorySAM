@@ -128,7 +128,7 @@ SCHEDULER:
 EVAL:
   MODEL_PATH    : ''
   IMAGE_SIZE    : [1024, 1024]
-  BATCH_SIZE    : 1
+  BATCH_SIZE    : 4               # eval 분산+bs4 (07-12 NCCL desync fix)
   EVAL_DAY      : false
   MSF:
     ENABLE      : false
