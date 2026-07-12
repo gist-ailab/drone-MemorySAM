@@ -155,6 +155,20 @@ class ReliaDINO(nn.Module):
             return logits, m_feat, aux
         return logits, m_feat
 
+    # ── Detection feature path (P34-Det) ──────────────────────────────────
+    def extract_det_pyramid(self, batched_input: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Multi-scale pyramid for a detection head (FCOS/FPN).
+
+        Runs per-modality frozen-ViT+LoRA encoding → reliability-gated cross-modal
+        fusion → SimpleFPN, and returns the ViTDet pyramid *before* the seg head:
+          [stride4, stride8, stride16, stride32], each (B, fpn_dim, h, w).
+        Fusion is internal (already cross-modal), so the detector needs no extra
+        modality fusion. No modal-dropout / no seg head (det-only path).
+        """
+        feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
+        fused, _ = self.fusion(feats, None)
+        return self.fpn(fused)
+
 
 def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     """Map a training-config dict (configs/*_P34_reliadino.yaml) to ReliaDINO."""

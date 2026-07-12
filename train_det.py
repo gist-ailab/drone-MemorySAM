@@ -118,7 +118,7 @@ from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
 
 from objdet.datasets.multimodal_det import MultiModalDetDataset, rescale_boxes_to_orig
-from objdet.models.det_model import MemorySAMDetector, MemorySAMDetectorP30
+from objdet.models.det_model import MemorySAMDetector, MemorySAMDetectorP30, ReliaDINODetector
 from objdet.metrics import evaluate_coco, format_predictions_coco
 
 
@@ -130,11 +130,23 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_seg_model(cfg: dict, device: torch.device) -> torch.nn.Module:
+def build_seg_model(cfg: dict, device: torch.device, n_classes: int = 10) -> torch.nn.Module:
     """Build and load pretrained segmentation model."""
     model_name = cfg['MODEL']['SEG_MODEL']
     checkpoint_path = cfg['MODEL'].get('SEG_CHECKPOINT', None)
     modals = cfg['DATASET']['MODALS']
+
+    # ── P34: ReliaDINO (DINOv3, no SAM2) — separate build path ────────────
+    if model_name == 'ReliaDINO':
+        from semseg.models.reliadino import build_reliadino
+        seg_model = build_reliadino(cfg, n_classes).to(device)
+        if checkpoint_path and os.path.exists(checkpoint_path):
+            ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+            state_dict = ckpt.get('model_state_dict', ckpt)
+            missing, unexpected = seg_model.load_state_dict(state_dict, strict=False)
+            print(f"Loaded ReliaDINO seg checkpoint: {checkpoint_path} "
+                  f"(missing={len(missing)}, unexpected={len(unexpected)})")
+        return seg_model
 
     sam2_checkpoint = cfg['MODEL'].get('SAM2_CHECKPOINT',
         'semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt')
@@ -442,7 +454,7 @@ def main():
 
     # Build model
     print("Building segmentation backbone...")
-    seg_model = build_seg_model(cfg, device)
+    seg_model = build_seg_model(cfg, device, n_classes)
 
     det_name = cfg['MODEL'].get('DET_MODEL', 'MemorySAMDetector')
     common = dict(
@@ -459,7 +471,23 @@ def main():
         atss_topk=cfg['MODEL'].get('ATSS_TOPK', 9),
         atss_scale=cfg['MODEL'].get('ATSS_SCALE', 8.0),
     )
-    if det_name == 'MemorySAMDetectorP30':
+    if det_name == 'ReliaDINODetector':
+        # P34: ReliaDINO fuses internally + exposes a 256-ch 4-level pyramid;
+        # no per-modality fusion / neck / memory_attention.
+        model = ReliaDINODetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            fpn_dim=cfg['MODEL'].get('FPN_DIM', 256),
+            fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16, 32]),
+            freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', False),
+            n_convs=cfg['MODEL'].get('N_CONVS', 4),
+            hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+            assigner=cfg['MODEL'].get('ASSIGNER', 'fcos'),
+            atss_topk=cfg['MODEL'].get('ATSS_TOPK', 9),
+            atss_scale=cfg['MODEL'].get('ATSS_SCALE', 8.0),
+        ).to(device)
+    elif det_name == 'MemorySAMDetectorP30':
         model = MemorySAMDetectorP30(
             **common,
             img_size=tuple(cfg['DATASET'].get('IMG_SIZE', [1024, 1024]))[0],
@@ -491,9 +519,14 @@ def main():
     # GRAD_ACCUM_STEPS for a larger effective batch.
     if cfg['MODEL'].get('GRAD_CHECKPOINT', False) and not cfg['MODEL'].get('FREEZE_BACKBONE', False):
         try:
-            model.seg_model.sam.image_encoder.trunk.gradient_checkpointing = True
-            if is_main:
-                print("[mem] SAM2 trunk gradient checkpointing: ON")
+            if hasattr(model.seg_model, 'set_grad_checkpointing'):   # P34 ReliaDINO (DINOv3 ViT)
+                model.seg_model.set_grad_checkpointing(True)
+                if is_main:
+                    print("[mem] ReliaDINO ViT gradient checkpointing: ON")
+            else:
+                model.seg_model.sam.image_encoder.trunk.gradient_checkpointing = True
+                if is_main:
+                    print("[mem] SAM2 trunk gradient checkpointing: ON")
         except AttributeError as e:
             if is_main:
                 print(f"[mem][warn] could not enable trunk gradient checkpointing: {e}")

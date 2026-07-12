@@ -536,3 +536,132 @@ class MemorySAMDetectorP30(nn.Module):
             self.query_decoder.load_state_dict(state['query_decoder'])
         if self._build_fcos and 'det_head' in state:
             self.det_head.load_state_dict(state['det_head'])
+
+
+# ════════════════════════════════════════════════════════════════════════
+# P34-Det: ReliaDINO (frozen DINOv3 + per-modality LoRA + reliability-gated
+# fusion + ViTDet SimpleFPN) backbone + FCOS head.
+#
+# ReliaDINO fuses modalities INTERNALLY and exposes a 4-level pyramid
+# (strides 4/8/16/32, all fpn_dim ch) via extract_det_pyramid(). So this
+# detector needs neither per-modality fusion nor an FPN neck (unlike the
+# SAM2-based MemorySAMDetector). No `.sam` / memory_attention here.
+# ════════════════════════════════════════════════════════════════════════
+class ReliaDINODetector(nn.Module):
+    """ReliaDINO backbone + FCOS head (P34-Det).
+
+    Args:
+        seg_model: ReliaDINO instance exposing extract_det_pyramid(list)->[4 levels].
+        modals: modality order (e.g. ['img','lidar','thermal']); sample dict is
+            ordered to this list before the backbone (backbone takes a list).
+        n_classes: detection class count.
+        fpn_dim: channel width of every pyramid level (ReliaDINO fpn_dim, =256).
+        fpn_strides: pyramid strides (patch16 DINOv3 → [4,8,16,32]).
+        freeze_backbone: True → freeze the whole ReliaDINO (train head only).
+            (The DINOv3 ViT is already frozen inside FrozenViTEncoder regardless;
+            when False only the LoRA adapters + fusion + SimpleFPN stay trainable.)
+    """
+
+    def __init__(
+        self,
+        seg_model: nn.Module,
+        modals: List[str],
+        n_classes: int = 10,
+        fpn_dim: int = 256,
+        fpn_strides: List[int] = [4, 8, 16, 32],
+        freeze_backbone: bool = False,
+        n_convs: int = 4,
+        hidden_dim: int = 256,
+        regress_ranges: Optional[List[Tuple[int, int]]] = None,
+        assigner: str = 'fcos',
+        atss_topk: int = 9,
+        atss_scale: float = 8.0,
+    ):
+        super().__init__()
+        if not hasattr(seg_model, 'extract_det_pyramid'):
+            raise TypeError(
+                f"{type(seg_model).__name__} has no extract_det_pyramid(); use a "
+                "ReliaDINO backbone for ReliaDINODetector."
+            )
+        self.seg_model = seg_model
+        self.modals = list(modals)
+        self.n_modals = len(self.modals)
+        self.freeze_backbone = freeze_backbone
+
+        if freeze_backbone:
+            for p in self.seg_model.parameters():
+                p.requires_grad = False
+        # else: FrozenViTEncoder already froze the ViT; LoRA/fusion/fpn keep their
+        # seg-time requires_grad. No memory_attention to unfreeze (no SAM2).
+
+        n_levels = len(fpn_strides)
+        default_ranges = [(-1, 64), (64, 128), (128, 256), (256, 1e8)]
+        rr = regress_ranges or default_ranges[:n_levels]
+
+        self.det_head = FCOSHead(
+            fpn_channels=[fpn_dim] * n_levels,
+            n_classes=n_classes,
+            n_convs=n_convs,
+            hidden_dim=hidden_dim,
+            fpn_strides=fpn_strides,
+            regress_ranges=rr,
+        )
+        self.criterion = FCOSLoss(
+            n_classes=n_classes,
+            fpn_strides=fpn_strides,
+            regress_ranges=rr,
+            assigner=assigner, atss_topk=atss_topk, atss_scale=atss_scale,
+        )
+
+    def _ordered_inputs(self, sample: dict) -> List[torch.Tensor]:
+        missing = [m for m in self.modals if m not in sample]
+        if missing:
+            raise KeyError(f"sample missing modalities {missing}; have {list(sample.keys())}")
+        return [sample[m] for m in self.modals]
+
+    def extract_fpn_features(self, sample: dict) -> List[torch.Tensor]:
+        batched_input = self._ordered_inputs(sample)
+        backbone_trains = self.training and not self.freeze_backbone
+        grad_ctx = torch.enable_grad() if backbone_trains else torch.no_grad()
+        with grad_ctx:
+            pyramid = self.seg_model.extract_det_pyramid(batched_input)
+        return pyramid                    # already [fpn_dim]*n_levels, strides 4/8/16/32
+
+    def forward(
+        self,
+        sample: dict,
+        gt_bboxes: Optional[List[torch.Tensor]] = None,
+        gt_labels: Optional[List[torch.Tensor]] = None,
+    ) -> dict:
+        fpn_features = self.extract_fpn_features(sample)
+        head_out = self.det_head(fpn_features)
+        locations = self.det_head.get_locations(fpn_features, fpn_features[0].device)
+
+        if self.training and gt_bboxes is not None:
+            return self.criterion(
+                head_out['cls_logits'], head_out['bbox_pred'], head_out['centerness'],
+                locations, gt_bboxes, gt_labels,
+            )
+
+        results_per_img = self.det_head.decode_predictions(
+            head_out['cls_logits'], head_out['bbox_pred'], head_out['centerness'], locations,
+        )
+        final_results = []
+        for boxes, scores, cls_ids in results_per_img:
+            if boxes.shape[0] > 0:
+                keep = batched_nms(boxes, scores, cls_ids, iou_threshold=0.5)
+                final_results.append({
+                    'boxes': boxes[keep], 'scores': scores[keep], 'class_ids': cls_ids[keep],
+                })
+            else:
+                final_results.append({'boxes': boxes, 'scores': scores, 'class_ids': cls_ids})
+        return {'detections': final_results}
+
+    def get_trainable_params(self) -> List[nn.Parameter]:
+        return [p for p in self.parameters() if p.requires_grad]
+
+    def detector_state_dict(self) -> dict:
+        return {'det_head': self.det_head.state_dict()}
+
+    def load_detector_state_dict(self, state: dict):
+        self.det_head.load_state_dict(state['det_head'])
