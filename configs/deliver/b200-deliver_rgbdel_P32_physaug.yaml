@@ -10,6 +10,7 @@ MODEL:
   LORA_MODEL    : LoRA_Sam_P32
   LORA_R        : 4
   LORA_NUM_EXPERTS : null
+  LORA_NUM_CLASSES : 25            # eval 빌드용 (trainer는 trainset.n_classes 사용; val.py 일치 필수)
   LORA_TOP_K    : None
   LORA_LAYER    : null
   LORA_COND_DIM : 8

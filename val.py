@@ -89,7 +89,13 @@ def load_model(cfg, model_path, device):
     if 'top_k' in sig.parameters:
         model_kwargs['top_k'] = lora_top_k
     if 'num_classes' in sig.parameters:
-        model_kwargs['num_classes'] = model_cfg.get('LORA_NUM_CLASSES', dataset_cfg.get('NUM_CLASSES', 4))
+        # 학습 시(trainer)는 trainset.n_classes로 빌드됨 — eval도 같은 값이어야 P30+ 계열
+        # (class_decoder/router가 num_classes로 파라미터화)의 state_dict가 맞는다.
+        # 마지막 fallback 4는 MULTIAQUA 레거시 → 데이터셋 이름으로 기본값 결정.
+        _ds_default = {'DELIVER': 25, 'MULTIAQUA': 4}.get(
+            str(dataset_cfg.get('NAME', '')).upper(), 4)
+        model_kwargs['num_classes'] = model_cfg.get(
+            'LORA_NUM_CLASSES', dataset_cfg.get('NUM_CLASSES', _ds_default))
     if 'num_modalities' in sig.parameters:
         model_kwargs['num_modalities'] = num_modalities
     if 'use_entropy_fusion' in sig.parameters:
