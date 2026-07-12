@@ -116,6 +116,8 @@ def main():
     ap.add_argument('--toggles', default='rbma_off,router_off,ctd_off,sdc_off,temp_off,cons_off,amf_uniform')
     ap.add_argument('--gpu', default='0')
     ap.add_argument('--out', required=True)
+    ap.add_argument('--viz-num', type=int, default=0,
+                    help='condition당 N장: toggle 전후 비교 패널 저장 (RGB/GT/pred_base/pred_off/불일치맵)')
     args = ap.parse_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     os.environ.setdefault('PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION', 'python')
@@ -165,6 +167,7 @@ def main():
             base_pred = rs_nn(out[0][0].argmax(0), WR).cpu().numpy()
             base_feat = out[1][0].detach().float()
             np.add.at(cf['base'], (gt[valid], base_pred[valid]), 1)
+            viz_preds = {}
             for k in avail:
                 restore = toggles[k]()
                 try:
@@ -180,6 +183,34 @@ def main():
                 feat_cos[k] += F.cosine_similarity(a[None], b[None]).item()
                 feat_rel[k] += (a - b).norm().item() / max(b.norm().item(), 1e-8)
                 agree[k] += float((p2[valid] == base_pred[valid]).mean())
+                if idx < args.viz_num:
+                    viz_preds[k] = p2
+            # [항목③ 시각화] toggle 전후 비교 패널 (모듈이 예측을 '어디서' 바꾸는지)
+            if idx < args.viz_num and viz_preds:
+                import matplotlib
+                matplotlib.use('Agg')
+                import matplotlib.pyplot as plt
+                K = len(viz_preds)
+                fig, axes = plt.subplots(K, 5, figsize=(19, 3.6 * K), squeeze=False)
+                rgb = images[0].permute(1, 2, 0).cpu().numpy()
+                rgb = (rgb - rgb.min()) / max(rgb.max() - rgb.min(), 1e-6)
+                gt_show = np.where(gt == ign, -1, gt)
+                for r, (k, p2) in enumerate(viz_preds.items()):
+                    dis = ((p2 != base_pred) & valid)
+                    for c, (im, ttl, kw) in enumerate([
+                            (rgb, 'RGB', {}),
+                            (gt_show, 'GT', dict(cmap='tab20', vmin=-1, vmax=C - 1)),
+                            (base_pred, 'pred (module ON)', dict(cmap='tab20', vmin=-1, vmax=C - 1)),
+                            (p2, f'pred ({k})', dict(cmap='tab20', vmin=-1, vmax=C - 1)),
+                            (dis, f'disagree {dis.mean()*100:.1f}%', dict(cmap='Reds'))]):
+                        axes[r, c].imshow(im, **kw)
+                        axes[r, c].set_title(ttl, fontsize=9)
+                        axes[r, c].axis('off')
+                fig.suptitle(f'{cond} #{idx} — module A/B', fontsize=11)
+                fig.tight_layout()
+                vdir = Path(args.out + '_viz'); vdir.mkdir(parents=True, exist_ok=True)
+                fig.savefig(vdir / f'{cond}_{idx:03d}.png', dpi=110)
+                plt.close(fig)
         base_iou = np.array([cf['base'][c, c] / max(1, cf['base'][c, :].sum()
                              + cf['base'][:, c].sum() - cf['base'][c, c]) for c in range(C)])
         res = {'n': n, 'base_miou': round(miou_of(cf['base']) * 100, 2), 'toggles': {}}

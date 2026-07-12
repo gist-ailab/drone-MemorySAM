@@ -225,6 +225,7 @@ def main():
                  '--conditions', args.conditions,
                  '--max-imgs', str(min(args.max_imgs, 40)),
                  '--toggles', args.ablation_toggles,
+                 '--viz-num', str(args.viz_num),
                  '--gpu', args.gpu, '--out', str(out / 'module_ablation')],
                 note='module toggle 전후 ΔmIoU + fused-feat 변화 (no-op 모듈 감지 포함)')
 

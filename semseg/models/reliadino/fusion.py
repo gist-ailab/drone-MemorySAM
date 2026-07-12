@@ -162,6 +162,10 @@ class ReliabilityGatedFusion(nn.Module):
         self._last_rel_auroc = None
         self._last_rel_stats = None
         self._last_gate_mean = None
+        # [analysis] eval 전용 스태시 (tools/seg_analysis 계열이 소비; 학습 영향 0)
+        self._last_aux_logits = None      # m x (B,C,h,w) per-modal aux decoder logits
+        self._last_rel_spatial = None     # (m,B,1,h,w) calibrated reliability
+        self._last_gate_spatial = None    # (m,B,1,h,w) competence gate weights
 
     # ── signals ──────────────────────────────────────────────────────────────
     def _temps(self, grad_ok: bool) -> Optional[torch.Tensor]:
@@ -235,6 +239,8 @@ class ReliabilityGatedFusion(nn.Module):
             H = -(w * (w + 1e-8).log()).sum(dim=0).mean()
             gate_ent = self.gate_entropy_reg * F.relu(self.gate_entropy_floor - H)
         self._last_gate_mean = w.detach().mean(dim=(1, 2, 3, 4))
+        if not self.training:
+            self._last_gate_spatial = w.detach()
         return w, gate_ent
 
     # ── calibration loss: exact P31._calibration_loss port ──────────────────
@@ -294,6 +300,9 @@ class ReliabilityGatedFusion(nn.Module):
         # 2) reliability signals
         rel_cal, corr_veto, b_cons = self._compute_signals(aux_logits)
         b_cal = rel_cal.detach() - rel_cal.detach().mean(dim=0, keepdim=True)
+        if not self.training:
+            self._last_aux_logits = [al.detach() for al in aux_logits]
+            self._last_rel_spatial = rel_cal.detach()
 
         # 3) cross-modal attention with per-key additive bias.
         #    Key set for modality i = concat of the other modalities' tokens;

@@ -115,8 +115,13 @@ class ReliaDINO(nn.Module):
         self._current_epoch = 0          # trainer sets this each epoch
         self._last_dropped_modality = None
         # [analysis] 표준 분석항목 1/2용 eval 전용 스태시 (tools/seg_analysis_pipeline이
-        # capability probe로 감지 — 학습 동작에는 영향 0)
+        # capability probe로 감지 — 학습 동작에는 영향 0). SAM2 계열과 같은 훅 이름으로
+        # 미러링해 module_diagnostics/viz_features가 무수정으로 동작:
+        #   _last_per_modal_outputs ← fusion의 per-modal aux decoder logits
+        #   _last_uamm_spatial      ← fusion competence gate (per-modality 융합 가중치)
         self._last_per_modal_feats = None
+        self._last_per_modal_outputs = None
+        self._last_uamm_spatial = None
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -152,6 +157,13 @@ class ReliaDINO(nn.Module):
         if not self.training:
             self._last_per_modal_feats = [f.detach() for f in feats]
         fused, aux = self.fusion(feats, gt_mask if self.training else None)
+        if not self.training:
+            al = getattr(self.fusion, '_last_aux_logits', None)
+            self._last_per_modal_outputs = list(al) if al is not None else None
+            gs = getattr(self.fusion, '_last_gate_spatial', None)
+            self._last_uamm_spatial = (
+                [gs[i].float().cpu().numpy() for i in range(gs.shape[0])]
+                if gs is not None else None)
         pyramid = self.fpn(fused)
         logits, m_feat = self.head(pyramid)
         logits = F.interpolate(logits.float(), size=(H, W),
