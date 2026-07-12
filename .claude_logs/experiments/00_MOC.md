@@ -8,3 +8,4 @@
 | [log.md](log.md) | 전체 결과 M-score 표 + 버전별 상세 + 진단 — **실험 canonical** | 03 |
 | [monitor-log.md](monitor-log.md) | 진행 중 학습 실시간 모니터 로그 (RUN-N 단위, `/loop` 세션이 append) | 15 |
 | [analysis/2026-06-30-p28-p29-failure-analysis.md](analysis/2026-06-30-p28-p29-failure-analysis.md) | P28(RBMA)·P29(SDC) 체계적 실패분석 + P30 커버리지 판정 + P31 프로토타입 | 16 |
+| (repo) [tools/README_seg_analysis.md](../../tools/README_seg_analysis.md) | **표준 분석항목 1–4 ↔ 도구 매핑 (canonical)** — 모델 분석 지시를 받으면 **먼저 읽기**. adapter 적응도(D3B)·피쳐 통계(D2N)·모듈 A/B(D5)·멀티모델 비교(compare_models) 전부 model-agnostic, P31/32/33/34+ 재사용. **새 모델 분석 코드를 새로 짜지 말 것** | — (2026-07-12) |
