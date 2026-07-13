@@ -74,9 +74,23 @@ tools: tools/seg_analysis_pipeline.py 스위트 (develop aecba1d)
   - **P31 router on/off (night)**: 불일치 2.7%가 **RoadLine(차선)·가는 구조 경계에 집중** — router +10~13 기여의 공간적 실체 = thin-class 경계 유지. rbma_off는 0.1% 무변화(no-op 시각 확정).
   - **P34 gate/calib/bias off (night/sun)**: 낮은 불일치 — 모듈 no-op 판정의 시각적 재확인.
 
+## P34 최신 웨이트 재분석 (2026-07-13, test-best ep140 = Test 57.60 — 🏆 공식 양대 목표 최초 동시 달성)
+
+> ckpt: `test_epoch140_57.6_top1` (Test 57.60 > 목표 56.71 **+0.89** / Val-best 68.19@ep120 > 66.51 +1.68). canonical 비교표 = `compare_P29_P31_P32_P34_20260713.md` (P34ep40/ep140 병렬).
+
+**항목④ (동일 프로토콜)**: mean **55.65** (ep40 +1.69, P29 +3.44) — 전 도메인 55± (night 54.56). 클래스 이동(ep40→ep140): **Static 27.9→39.1(+11.2)**, Pole 39.5→48.6(+9.1), TrafficSign +5.4, RailTrack→61.0★, TwoWheeler→63.4★, TrafficLight→36.6★ — **retarget 클래스(M0-a 판정) 전부 계보 1위 달성**. ⚠️ 역행: **Water 12.0→5.4**, Wall 8.5→7.1 (test-best 운용점이 rare 클래스 일부를 희생 — val-best ep120와의 클래스 트레이드오프 확인 후보).
+
+**항목①②③ (ep40 대비 수렴 변화)**:
+- reliability AUROC 4모달 균형 유지([.85,.78,.87,.70] night) — 보정이 수렴에도 붕괴 안 함(P28/P29의 수렴-후-역보정과 대조).
+- drop-Δ: depth 14.2→**10.6**, img 6.1→8.0 — **모달 의존 분산 진행**(robust화). event 여전히 ≈0(−0.11) = 4세대 공통 미해결.
+- misallocation(night): RoadLine .79→.74, TrafficLight .62→.55, Wall .54→.42 — 개선되나 여전히 높음 → **learned-router 이식 여지 유지**.
+- FUSED eff.rank 6.75→**10.18** — 융합 표현이 수렴하며 더 풍부해짐.
+- 모듈 A/B: ep140에서도 bias/cons ≈0.00, gate/veto/calib ±0.3 — **no-op 판정 유지** (모듈 아닌 백본 우위 결론 불변).
+
 ## 산출물 맵 (후속 분석용)
 
 - NAS `/drone_nas/drone/analysis_logs/` (HDD2 ISSUE-023 재발로 대체 canonical):
+  - `P34_eval_20260713/` — **최신 ep140 풀 산출물** (동일 구성 + A/B 패널)
   - `{P29,P31,P32,P34}_eval_20260712/` — report.md, capability.json, per_domain/(5 cond 로그), per_domain_analysis.md, adapter_health.json, modal_adaptation.{json,md}, feature_stats.{json,md,_pca.png}, module_ablation.{json,md}, **module_diag.json(P29/P31/P32/P34 전부)**, viz/(패널 png, P34는 5 cond), `module_ablation_viz_viz/`(P31 router·P34 gate 전후 패널)
   - `compare_P29_P31_P32_P34_20260712.md` — 4모델 통합표+digest (구 3모델판은 P29 프로토콜 오염으로 폐기)
 - lecun 원본: `/SSDb/jemo_maeng/analysis/` + 실행로그 `~/analysis_logs/*.log`
