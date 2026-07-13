@@ -1,0 +1,155 @@
+# ═══ P35-paper (T1) = stripped P34 + PhysAug-off + val-only selection ═══
+# 근거: 7-agent 워크플로우 wf_f0272055 (vault architecture/P35_design_20260713.md v2)
+#  - ATTN_BIAS/CONSISTENCY off: 3세대 일관 무효(|Δ|≤0.03, cos=1.0) + P32 순손해 p=4.5e-22
+#  - GATE/VETO off: ep140 D5(부호교정 Δ=on−off)에서 제거 시 4/5·5/5조건 개선 → 균등평균 fallback
+#  - CALIBRATION ON 유지: 학습 loss는 D5로 검증불가 — AUROC 진단용으로만(성능 주장 금지).
+#    ⚠️ 이 config는 G0c(전체셋 full-res ablation) 결과로 최종 동결 후 launch할 것.
+#  - PHYSAUG off: DGFusion은 표준 aug만(레포 실사) — headline 공정성 (마진 +0.89 < 기대기여)
+#  - ckpt 선정: val-best만 보고(reviewer-legal). test topk 저장은 모니터링용으로 유지.
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/b200_deliver_rgbdel_P35_paper'
+
+# P34-ReliaDINO (카드 A, DINOv3-RBMA) — stage P34.1: RGB+depth+event+lidar fusion
+# with reliability gate. Trainer = train_reliadino.py (NOT train_sam2_lora_paper.py).
+#   torchrun --standalone --nproc_per_node=4 train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only (outputs/<...>/DELIVER_ReliaDINO-ViTL16_idel)
+  # timm backbone (frozen). Primary = DINOv3 ViT-L/16 (HF weights are GATED —
+  # if the download fails at launch, the encoder auto-falls back to DINOv2 below;
+  # a RANDOM-INIT fallback also exists but must never be used for a real run
+  # (watch the launch log for "[ReliaDINO] create_model ... failed").
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  # per-modality LoRA on qkv (Q/V slices), independent adapters per modality
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5                     # per-modal aux decoder CE weight
+    # RBMA-v2 pre-softmax additive attention bias: λ1·B_cal + λ2·B_cons.
+    # B_cal = calibrated self-entropy (centered). SECONDARY term B_cons under
+    # CONSISTENCY below. P32 lesson: bias alone doesn't change decisions —
+    # kept as mechanism heritage + ablation axis (-attn-bias run = ENABLE false).
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0                    # learnable scalar
+
+  # B_cons = leave-one-out Bhattacharyya corroboration (centered), secondary
+  # additive term only — NEVER a fusion-gate signal (P32: corr mis-ranks dead
+  # modalities high). Ablation "-consistency-term" = ENABLE false.
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5                      # learnable scalar
+
+  # Output-fusion competence gate (P33-v2 M3): soft w = softmax(rel_cal/τ),
+  # hinge-entropy reg (penalize only below floor; 0 = off), training-free veto
+  # floor (corr_veto extreme-low modality gate cap — kept OUTSIDE learning).
+  GATE:
+    ENABLE        : false
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0                     # hinge coeff (grad reaches T only)
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10                         # corr_veto below this = flagged
+      CAP    : 0.05                         # gate weight cap for flagged modals
+
+  # P31-style correctness-contrastive calibration (per-modal temperature T_i).
+  # Prerequisite for the gate signal (constraint 1). Monitor p34/rel_auroc_img
+  # (P31 over-rotate precedent: img AUROC must stay > 0.7).
+  CALIBRATION:
+    ENABLE : true
+    LAMBDA : 0.1
+
+  # Asymmetric modality dropout seam (dominant-only). Default OFF — no mid-run
+  # gain observed in P33.2 so far; turn on only in a dedicated P34.2 ablation.
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/DELIVER'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # PhysAug: same dataset-level setting as the P28~P33 physaug lineage
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 0               # >0이면 b_q/b_v Frobenius cap (G0c 후 활성 결정; ep140 blocks.1 ‖dW‖606 폭주 대응 seam)
+  IMAGE_SIZE    : [1024, 1024]    # /16 -> 64x64 tokens per modality
+  # ViT-L frozen fwd x4 modalities + LoRA bwd: ~10-12GB/sample bf16 (est.) —
+  # BS 4/GPU is conservative for 180GB B200; raise to 6-8 after the first
+  # nvidia-smi check. Effective batch is held at 16 via grad accumulation.
+  BATCH_SIZE    : 4
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006          # LoRA+fusion+head only (backbone frozen) — P28~P33 lineage LR
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4               # eval 분산+bs4 (07-12 NCCL desync fix)
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false

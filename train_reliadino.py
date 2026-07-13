@@ -165,6 +165,11 @@ def main(cfg, gpu, save_dir, logger):
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)
     lambda_aux_ce = (model_cfg.get('FUSION', {}) or {}).get('AUX_CE_WEIGHT', 0.5)
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
+    # [P35/T1 seam] LoRA up-projection(b_q/b_v) Frobenius norm cap — ep140 진단에서
+    # blocks.1 depth-q ‖dW‖ 606(ep40 대비 36×) 폭주 관찰(리뷰 리스크). 기본 0=off.
+    lora_norm_cap = float(train_cfg.get('LORA_NORM_CAP', 0) or 0)
+    _lora_up_params = [p for n, p in model.named_parameters()
+                       if n.endswith(('.b_q', '.b_v'))] if lora_norm_cap > 0 else []
     scheduler = get_scheduler(sched_cfg['NAME'], optimizer,
                               int((epochs + 1) * updates_per_epoch), sched_cfg['POWER'],
                               updates_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
@@ -279,6 +284,13 @@ def main(cfg, gpu, save_dir, logger):
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
                 scheduler.step()
+                if lora_norm_cap > 0:
+                    # per-modality slice별 cap (b[m] (attn_dim,r)) — 방향 보존 renorm
+                    with torch.no_grad():
+                        for p in _lora_up_params:
+                            nrm = p.flatten(1).norm(dim=1, keepdim=True).clamp(min=1e-12)
+                            factor = (lora_norm_cap / nrm).clamp(max=1.0)
+                            p.mul_(factor.view(-1, *([1] * (p.dim() - 1))))
 
             train_loss += total.item()
             cal_accum += float(cal_loss)
