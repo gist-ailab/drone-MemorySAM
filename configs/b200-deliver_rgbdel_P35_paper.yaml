@@ -1,11 +1,12 @@
-# ═══ P35-paper (T1) = stripped P34 + PhysAug-off + val-only selection ═══
-# 근거: 7-agent 워크플로우 wf_f0272055 (vault architecture/P35_design_20260713.md v2)
-#  - ATTN_BIAS/CONSISTENCY off: 3세대 일관 무효(|Δ|≤0.03, cos=1.0) + P32 순손해 p=4.5e-22
-#  - GATE/VETO off: ep140 D5(부호교정 Δ=on−off)에서 제거 시 4/5·5/5조건 개선 → 균등평균 fallback
-#  - CALIBRATION ON 유지: 학습 loss는 D5로 검증불가 — AUROC 진단용으로만(성능 주장 금지).
-#    ⚠️ 이 config는 G0c(전체셋 full-res ablation) 결과로 최종 동결 후 launch할 것.
-#  - PHYSAUG off: DGFusion은 표준 aug만(레포 실사) — headline 공정성 (마진 +0.89 < 기대기여)
-#  - ckpt 선정: val-best만 보고(reviewer-legal). test topk 저장은 모니터링용으로 유지.
+# ═══ P35-paper (T1, FINAL) — G0c로 동결된 config (2026-07-13) ═══
+# G0c 판정(ep120, full-res 전체셋 toggle):
+#   baseline           val 68.20 / test 56.64
+#   gate+calib off     val 68.45 / test 56.38  ← test −0.26 = gate/calib는 test에 실기여!
+#   strip-full         val 68.45 / test 56.38  ← bias/cons/veto 합산 효과 ≈ 0
+# → 동결 결정: GATE·VETO·CALIBRATION 유지 / ATTN_BIAS·CONSISTENCY 제거(전 해상도·전 세대 무효)
+#   (n=40 저해상 D5의 "gate/calib 유해" 판정은 full-res test에서 반전 — G0c 게이트가 잡음)
+# PHYSAUG off: DGFusion 공정성(레포 실사 — 표준 aug만). ckpt 선정: val-best만 보고(합법).
+# 합법 baseline(P34 ep120): val 68.20 / test 56.64 (DGFusion 대비 val +1.69 / test −0.07)
 DEVICE          : cuda
 SAVE_DIR        : './outputs/ReliaDINO/b200_deliver_rgbdel_P35_paper'
 
@@ -55,12 +56,12 @@ MODEL:
   # hinge-entropy reg (penalize only below floor; 0 = off), training-free veto
   # floor (corr_veto extreme-low modality gate cap — kept OUTSIDE learning).
   GATE:
-    ENABLE        : false
+    ENABLE        : true
     TAU           : 0.25
     ENTROPY_REG   : 0.0                     # hinge coeff (grad reaches T only)
     ENTROPY_FLOOR : 0.5
     VETO_FLOOR:
-      ENABLE : false
+      ENABLE : true
       THRESH : 0.10                         # corr_veto below this = flagged
       CAP    : 0.05                         # gate weight cap for flagged modals
 
