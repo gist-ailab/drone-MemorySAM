@@ -23,10 +23,8 @@ from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
-from semseg.models.sam2.sam2.build_sam import build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
-
+# SAM2 seg backbone is built lazily via train_det.build_seg_model; no eager SAM2
+# import here so P34 (ReliaDINO/DINOv3) eval runs in envs without SAM2's dep tree.
 from objdet.datasets.multimodal_det import MultiModalDetDataset, rescale_boxes_to_orig
 from objdet.models.det_model import MemorySAMDetector
 from objdet.metrics import evaluate_coco, format_predictions_coco
