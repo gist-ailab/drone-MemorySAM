@@ -99,23 +99,37 @@ def main():
 
     # Build model
     from train_det import build_seg_model
-    seg_model = build_seg_model(cfg, device)
+    seg_model = build_seg_model(cfg, device, n_classes)
 
-    model = MemorySAMDetector(
-        seg_model=seg_model,
-        modals=cfg['DATASET']['MODALS'],
-        n_classes=n_classes,
-        fpn_in_channels=cfg['MODEL'].get('FPN_CHANNELS', [32, 64, 256]),
-        fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16]),
-        freeze_backbone=True,
-        train_memory=False,
-        n_convs=cfg['MODEL'].get('N_CONVS', 4),
-        hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
-        modality_fuse=cfg['MODEL'].get('MODALITY_FUSE', 'mean'),
-    ).to(device)
+    det_name = cfg['MODEL'].get('DET_MODEL', 'MemorySAMDetector')
+    if det_name == 'ReliaDINODetector':
+        from objdet.models.det_model import ReliaDINODetector
+        model = ReliaDINODetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            fpn_dim=cfg['MODEL'].get('FPN_DIM', 256),
+            fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16, 32]),
+            freeze_backbone=True,
+            n_convs=cfg['MODEL'].get('N_CONVS', 4),
+            hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+        ).to(device)
+    else:
+        model = MemorySAMDetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            fpn_in_channels=cfg['MODEL'].get('FPN_CHANNELS', [32, 64, 256]),
+            fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16]),
+            freeze_backbone=True,
+            train_memory=False,
+            n_convs=cfg['MODEL'].get('N_CONVS', 4),
+            hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+            modality_fuse=cfg['MODEL'].get('MODALITY_FUSE', 'mean'),
+        ).to(device)
 
     # Load checkpoint — full model state (incl. fine-tuned backbone) if present.
-    ckpt = torch.load(args.det_checkpoint, map_location=device)
+    ckpt = torch.load(args.det_checkpoint, map_location=device, weights_only=False)
     if 'model_state_dict' in ckpt:
         model.load_state_dict(ckpt['model_state_dict'], strict=False)
     else:
