@@ -55,16 +55,26 @@ from semseg.utils.utils import (cleanup_ddp, fix_seeds, get_logger, print_iou,
 
 
 @torch.no_grad()
-def evaluate(model, dataloader, device):
-    """val_mm_sam.evaluate equivalent, re-declared here to avoid its SAM2 imports."""
+def evaluate(model, dataloader, device, dist_sync=False):
+    """val_mm_sam.evaluate equivalent, re-declared here to avoid its SAM2 imports.
+
+    dist_sync=True: dataloader는 rank별 shard(DistributedSampler)이고, confusion
+    hist를 all_reduce해 모든 rank가 전체셋 지표를 동일하게 반환한다(전 rank가
+    같은 횟수의 collective 호출 = 대칭). ⚠️ DDP에서는 반드시 UNWRAPPED module을
+    넘길 것 — wrapper forward는 buffer broadcast collective를 rank0에서만 enqueue
+    해 peers의 barrier와 어긋나 NCCL desync/hang을 만든다(2026-07-12 크래시 원인).
+    DistributedSampler 패딩 중복은 ≤ world_size-1장(무시 가능, 최종치는 val.py로)."""
     model.eval()
     n_classes = dataloader.dataset.n_classes
     metrics = Metrics(n_classes, dataloader.dataset.ignore_label, device)
-    for images, labels in tqdm(dataloader, desc='eval', leave=False):
+    show_bar = not (dist_sync and dist.get_rank() != 0)
+    for images, labels in tqdm(dataloader, desc='eval', leave=False, disable=not show_bar):
         images = [x.to(device, non_blocking=True) for x in images]
         labels = labels.to(device, non_blocking=True)
         output, _ = model(images, True)
         metrics.update(output.softmax(dim=1), labels)
+    if dist_sync:
+        dist.all_reduce(metrics.hist)
     ious, miou = metrics.compute_iou()
     acc, macc = metrics.compute_pixel_acc()
     f1, mf1 = metrics.compute_f1()
@@ -155,6 +165,11 @@ def main(cfg, gpu, save_dir, logger):
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)
     lambda_aux_ce = (model_cfg.get('FUSION', {}) or {}).get('AUX_CE_WEIGHT', 0.5)
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
+    # [P35/T1 seam] LoRA up-projection(b_q/b_v) Frobenius norm cap — ep140 진단에서
+    # blocks.1 depth-q ‖dW‖ 606(ep40 대비 36×) 폭주 관찰(리뷰 리스크). 기본 0=off.
+    lora_norm_cap = float(train_cfg.get('LORA_NORM_CAP', 0) or 0)
+    _lora_up_params = [p for n, p in model.named_parameters()
+                       if n.endswith(('.b_q', '.b_v'))] if lora_norm_cap > 0 else []
     scheduler = get_scheduler(sched_cfg['NAME'], optimizer,
                               int((epochs + 1) * updates_per_epoch), sched_cfg['POWER'],
                               updates_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
@@ -187,8 +202,21 @@ def main(cfg, gpu, save_dir, logger):
     trainloader = DataLoader(trainset, batch_size=train_cfg['BATCH_SIZE'],
                              drop_last=True, sampler=sampler, **_loader_kwargs)
     _eval_kwargs = {'num_workers': min(num_workers, 4), 'pin_memory': True}
-    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'], **_eval_kwargs)
-    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'], **_eval_kwargs) \
+    # DDP: eval도 rank별 shard로 분산 (기존: rank0 단독 3902장 ≈30분 동안 peers가
+    # barrier 대기 → NCCL desync/timeout으로 사망). shuffle=False, hist는 evaluate()
+    # 안에서 all_reduce.
+    if ddp_enable:
+        _val_sampler = DistributedSampler(valset, dist.get_world_size(),
+                                          dist.get_rank(), shuffle=False)
+        _test_sampler = (DistributedSampler(testset, dist.get_world_size(),
+                                            dist.get_rank(), shuffle=False)
+                         if testset is not None else None)
+    else:
+        _val_sampler = _test_sampler = None
+    valloader = DataLoader(valset, batch_size=eval_cfg['BATCH_SIZE'],
+                           sampler=_val_sampler, **_eval_kwargs)
+    testloader = DataLoader(testset, batch_size=eval_cfg['BATCH_SIZE'],
+                            sampler=_test_sampler, **_eval_kwargs) \
         if testset is not None else None
 
     _amp_dtype_str = str(train_cfg.get('AMP_DTYPE', 'float16')).lower()
@@ -231,8 +259,8 @@ def main(cfg, gpu, save_dir, logger):
         _core._current_epoch = epoch
         if ddp_enable:
             sampler.set_epoch(epoch)
-        train_loss = cal_accum = aux_accum = gate_ent_accum = 0.0
-        auroc_rows, gate_rows = [], []
+        train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
+        auroc_rows, gate_rows, router_rows = [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
                     desc=f"Epoch [{epoch+1}/{epochs}]", disable=not is_rank0)
@@ -247,8 +275,9 @@ def main(cfg, gpu, save_dir, logger):
                 cal_loss = aux.get('rbma_cal_loss', _zero)
                 aux_ce = aux.get('aux_ce', _zero)
                 gate_ent = aux.get('gate_entropy', _zero)
+                router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
                 total = (loss_seg + lambda_cal * cal_loss
-                         + lambda_aux_ce * aux_ce + gate_ent)
+                         + lambda_aux_ce * aux_ce + gate_ent + router_reg)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -256,15 +285,25 @@ def main(cfg, gpu, save_dir, logger):
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
                 scheduler.step()
+                if lora_norm_cap > 0:
+                    # per-modality slice별 cap (b[m] (attn_dim,r)) — 방향 보존 renorm
+                    with torch.no_grad():
+                        for p in _lora_up_params:
+                            nrm = p.flatten(1).norm(dim=1, keepdim=True).clamp(min=1e-12)
+                            factor = (lora_norm_cap / nrm).clamp(max=1.0)
+                            p.mul_(factor.view(-1, *([1] * (p.dim() - 1))))
 
             train_loss += total.item()
             cal_accum += float(cal_loss)
             aux_accum += float(aux_ce)
             gate_ent_accum += float(gate_ent)
+            router_accum += float(router_reg)
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
                 gate_rows.append(_core.fusion._last_gate_mean.cpu().tolist())
+            if getattr(_core.fusion, '_last_router_mean', None) is not None:
+                router_rows.append(_core.fusion._last_router_mean.tolist())
             if is_rank0:
                 pbar.set_description(
                     f"Epoch [{epoch+1}/{epochs}] Loss {train_loss/(it+1):.4f} "
@@ -294,11 +333,23 @@ def main(cfg, gpu, save_dir, logger):
                     log_extra[f'p34/gate_w_{name}'] = float(gbar[i])
                 logger.info(f"[P34] gate w̄ " +
                             " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, gbar)))
+            if router_rows:
+                rbar = np.array(router_rows, dtype=np.float64).mean(axis=0)
+                alpha = float(_core.fusion.router_alpha.detach())
+                for i, name in enumerate(modals[:len(rbar)]):
+                    writer.add_scalar(f'p36/router_w_{name}', rbar[i], epoch)
+                    log_extra[f'p36/router_w_{name}'] = float(rbar[i])
+                writer.add_scalar('p36/router_alpha', alpha, epoch)
+                log_extra['p36/router_alpha'] = alpha
+                logger.info(f"[P36] router w̄ " +
+                            " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, rbar)) +
+                            f" alpha:{alpha:.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),
                            'train/aux_ce': aux_accum / (it + 1),
                            'train/gate_entropy': gate_ent_accum / (it + 1),
+                           'train/router_reg': router_accum / (it + 1),
                            'train/lr': avg_lr, **log_extra}, step=epoch)
 
             # last checkpoint every epoch (same dict format as SAM2 trainer)
@@ -326,28 +377,36 @@ def main(cfg, gpu, save_dir, logger):
         do_eval = (((epoch + 1) % train_cfg['EVAL_INTERVAL'] == 0
                     and (epoch + 1) > train_cfg['EVAL_START'])
                    or (epoch + 1) == epochs)
-        if do_eval and is_rank0:
+        if do_eval:
+            # 전 rank가 자기 shard를 평가(hist all_reduce로 전체 지표 동일) — 기존
+            # rank0-단독-eval + peers-barrier 구조는 DDP wrapper의 buffer-broadcast
+            # collective가 barrier와 어긋나 NCCL desync SIGABRT를 유발했음(07-12 ×2).
             torch.cuda.empty_cache()
-            acc, macc, f1, mf1, ious, miou = evaluate(model, valloader, device)
-            writer.add_scalar('val/mIoU', miou, epoch)
-            iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, ious))
-            worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
-            if miou > worst_day:
-                top_day_ckpts = _update_topk_checkpoints(
-                    top_day_ckpts, miou, epoch + 1, save_dir, prefix='',
-                    ckpt_dict=_ckpt({'best_miou': miou}), k=5)
-                if miou > best_mIoU:
-                    best_mIoU, best_epoch = miou, epoch + 1
-                    logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
-            logger.info(f"[Val] epoch:{epoch+1}  mIoU: {miou:.4f}  "
-                        f"Best: {best_mIoU:.4f} (ep{best_epoch})\n     IoU: {iou_str}")
-            if wandb_enabled:
-                wlog = {'epoch': epoch + 1, 'val/mIoU': miou, 'val/best_mIoU': best_mIoU}
-                wlog.update({f'val_iou/{c}': v for c, v in zip(class_names, ious)})
-                wandb.log(wlog, step=epoch)
+            _eval_model = model.module if ddp_enable else model
+            acc, macc, f1, mf1, ious, miou = evaluate(
+                _eval_model, valloader, device, dist_sync=ddp_enable)
+            if is_rank0:
+                writer.add_scalar('val/mIoU', miou, epoch)
+                iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, ious))
+                worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
+                if miou > worst_day:
+                    top_day_ckpts = _update_topk_checkpoints(
+                        top_day_ckpts, miou, epoch + 1, save_dir, prefix='',
+                        ckpt_dict=_ckpt({'best_miou': miou}), k=5)
+                    if miou > best_mIoU:
+                        best_mIoU, best_epoch = miou, epoch + 1
+                        logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
+                logger.info(f"[Val] epoch:{epoch+1}  mIoU: {miou:.4f}  "
+                            f"Best: {best_mIoU:.4f} (ep{best_epoch})\n     IoU: {iou_str}")
+                if wandb_enabled:
+                    wlog = {'epoch': epoch + 1, 'val/mIoU': miou, 'val/best_mIoU': best_mIoU}
+                    wlog.update({f'val_iou/{c}': v for c, v in zip(class_names, ious)})
+                    wandb.log(wlog, step=epoch)
 
             if testloader is not None:
-                t_acc, t_macc, t_f1, t_mf1, t_ious, t_miou = evaluate(model, testloader, device)
+                t_acc, t_macc, t_f1, t_mf1, t_ious, t_miou = evaluate(
+                    _eval_model, testloader, device, dist_sync=ddp_enable)
+            if testloader is not None and is_rank0:
                 writer.add_scalar('test/mIoU', t_miou, epoch)
                 t_iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, t_ious))
                 worst_test = top_test_ckpts[-1][0] if len(top_test_ckpts) >= 5 else -1.0

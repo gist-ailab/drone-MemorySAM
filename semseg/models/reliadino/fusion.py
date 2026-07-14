@@ -57,6 +57,61 @@ class AuxDecoder(nn.Module):
         return self.net(x)
 
 
+class PerClassRouter(nn.Module):
+    """[P36] Per-class reliability-anchored modality router — port of the P31
+    ReliabilityAnchoredRouter mechanism (sam_lola_utils.py), the only large-
+    contribution module in the SAM2 lineage. No SAM2 imports.
+
+        w_i = softmax_over_modalities( zero_init_head(feat_i) + λ_anchor · rel_cal_i )
+
+    producing per-class per-pixel weights (m, B, num_classes, h, w). The zero-init
+    last conv makes routing purely reliability-driven at start (collapse-safe —
+    the documented P10–P27 'gate 상수수렴' fix), then learns per-class ratios
+    end-to-end. Motivation: the scalar competence gate anti-selects per class
+    (measured night RoadLine: competence img .798 / depth .001, gate depth .432);
+    a per-CLASS router lets each class pick the modality that sees it.
+
+    reg_mode 'decisive' (P31): reward = batch-marginal mixing entropy − per-pixel
+    mixing entropy → commit locally, stay diverse globally. Returned as a REWARD
+    (caller negates into a loss). 'diversity' = per-pixel entropy (P30 legacy).
+    Stashes `self._last_w_mean` (per-modality mean weight, (m,) cpu tensor)."""
+
+    def __init__(self, dim: int, num_classes: int, num_modalities: int,
+                 anchor_lambda: float = 1.0, hidden: int = 64,
+                 reg_mode: str = 'decisive'):
+        super().__init__()
+        self.m = num_modalities
+        self.num_classes = num_classes
+        self.anchor_lambda = anchor_lambda
+        self.reg_mode = reg_mode
+        self._last_w_mean = None
+        self.heads = nn.ModuleList([
+            nn.Sequential(nn.Conv2d(dim, hidden, 1), nn.ReLU(inplace=True),
+                          nn.Conv2d(hidden, num_classes, 1))
+            for _ in range(num_modalities)])
+        for h in self.heads:            # zero-init last conv → reliability-driven start
+            nn.init.zeros_(h[-1].weight)
+            nn.init.zeros_(h[-1].bias)
+
+    def forward(self, feats: List[torch.Tensor], rel_cal: torch.Tensor):
+        """feats: m x (B, dim, h, w) PRE-fusion features; rel_cal: (m, B, 1, h, w)
+        calibrated self-entropy reliability (detached by the caller).
+        Returns (w: (m, B, num_classes, h, w), reward: scalar)."""
+        logits = torch.stack(
+            [self.heads[i](feats[i]).float() for i in range(self.m)], dim=0)
+        logits = logits + self.anchor_lambda * rel_cal      # broadcast over classes
+        w = F.softmax(logits, dim=0)                        # over modalities
+        ent_pix = -(w * (w + 1e-8).log()).sum(dim=0).mean()
+        if self.reg_mode == 'decisive':
+            w_bar = w.mean(dim=(1, 3, 4))                   # (m, K) marginal
+            ent_bar = -(w_bar * (w_bar + 1e-8).log()).sum(dim=0).mean()
+            reward = ent_bar - ent_pix
+        else:                                               # 'diversity' (legacy)
+            reward = ent_pix
+        self._last_w_mean = w.detach().float().mean(dim=(1, 2, 3, 4)).cpu()
+        return w, reward
+
+
 class CrossModalAttentionLayer(nn.Module):
     """One pre-norm cross-attention + MLP block. Weights are shared across
     modalities (like SAM2 memory attention across frames); modality identity
@@ -105,8 +160,11 @@ class ReliabilityGatedFusion(nn.Module):
       'rbma_cal_loss'  correctness-contrastive calibration loss (P31 port)
       'aux_ce'         mean per-modal auxiliary CE (at 1/4 label res)
       'gate_entropy'   hinge-entropy gate regularizer (0 unless configured)
+      'router_reg'     [P36] decisive-router regularizer (only if ROUTER on)
+    With ROUTER on, aux also carries 'routed_logits' (B,C,h,w) in train AND
+    eval — the model consumes (pops) it as a residual on the head output.
     Always stashed for logging: self._last_rel_auroc / _last_rel_stats /
-    self._last_gate_mean (per-modality mean gate weight).
+    self._last_gate_mean (per-modality mean gate weight) / _last_router_mean.
     """
 
     RBMA_EPS = 1e-8
@@ -133,7 +191,17 @@ class ReliabilityGatedFusion(nn.Module):
                  veto_thresh: float = 0.10,
                  veto_cap: float = 0.05,
                  # calibration (P31/P33 M3)
-                 calibrate: bool = True):
+                 calibrate: bool = True,
+                 # [P36] per-class reliability-anchored router (P31 port).
+                 # Routed per-class aux logits enter the FINAL prediction as a
+                 # residual: final = head_logits + router_alpha · up(routed);
+                 # router_alpha zero-init → byte-identical to P35 at start.
+                 router_enable: bool = False,
+                 router_anchor_lambda: float = 1.0,
+                 router_reg_mode: str = 'decisive',
+                 router_reg_lambda: float = 0.01,
+                 router_alpha_init: float = 0.0,
+                 router_hidden: int = 64):
         super().__init__()
         self.num_modalities = num_modalities
         self.num_classes = num_classes
@@ -158,10 +226,19 @@ class ReliabilityGatedFusion(nn.Module):
                 self.lambda2 = nn.Parameter(torch.tensor(float(lambda2_init)))
         if calibrate:
             self.rbma_log_temp = nn.Parameter(torch.zeros(num_modalities))
+        self.router_enable = router_enable
+        self.router_reg_lambda = router_reg_lambda
+        if router_enable:
+            self.router = PerClassRouter(
+                dim, num_classes, num_modalities,
+                anchor_lambda=router_anchor_lambda, hidden=router_hidden,
+                reg_mode=router_reg_mode)
+            self.router_alpha = nn.Parameter(torch.tensor(float(router_alpha_init)))
 
         self._last_rel_auroc = None
         self._last_rel_stats = None
         self._last_gate_mean = None
+        self._last_router_mean = None
 
     # ── signals ──────────────────────────────────────────────────────────────
     def _temps(self, grad_ok: bool) -> Optional[torch.Tensor]:
@@ -325,6 +402,20 @@ class ReliabilityGatedFusion(nn.Module):
         else:
             fused = sum(fused_tokens) / m
             self._last_gate_mean = None
+
+        # 4b) [P36] per-class reliability-anchored router (train AND eval — the
+        #     routed residual is part of the prediction). Anchor = detached
+        #     rel_cal (training-free signal, P31 convention); heads see the
+        #     PRE-fusion feats; routed logits reweight the per-modal aux logits.
+        #     The model adds them to the head output scaled by router_alpha.
+        if self.router_enable and m >= 2:
+            w_route, route_reward = self.router(feats, rel_cal.detach())
+            aux['routed_logits'] = sum(
+                w_route[i] * aux_logits[i].float() for i in range(m))
+            self._last_router_mean = self.router._last_w_mean
+            if self.training and self.router_reg_lambda > 0:
+                # 'decisive' returns a REWARD → negate into an added loss
+                aux['router_reg'] = self.router_reg_lambda * (-route_reward)
 
         # 5) training losses
         if self.training and gt_mask is not None:

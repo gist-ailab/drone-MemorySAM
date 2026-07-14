@@ -1,5 +1,14 @@
+# ═══ P35-paper (T1, FINAL) — G0c로 동결된 config (2026-07-13) ═══
+# G0c 판정(ep120, full-res 전체셋 toggle):
+#   baseline           val 68.20 / test 56.64
+#   gate+calib off     val 68.45 / test 56.38  ← test −0.26 = gate/calib는 test에 실기여!
+#   strip-full         val 68.45 / test 56.38  ← bias/cons/veto 합산 효과 ≈ 0
+# → 동결 결정: GATE·VETO·CALIBRATION 유지 / ATTN_BIAS·CONSISTENCY 제거(전 해상도·전 세대 무효)
+#   (n=40 저해상 D5의 "gate/calib 유해" 판정은 full-res test에서 반전 — G0c 게이트가 잡음)
+# PHYSAUG off: DGFusion 공정성(레포 실사 — 표준 aug만). ckpt 선정: val-best만 보고(합법).
+# 합법 baseline(P34 ep120): val 68.20 / test 56.64 (DGFusion 대비 val +1.69 / test −0.07)
 DEVICE          : cuda
-SAVE_DIR        : './outputs/ReliaDINO/b200_deliver_rgbdel_P34_reliadino'
+SAVE_DIR        : './outputs/ReliaDINO/b200_deliver_rgbdel_P35_paper'
 
 # P34-ReliaDINO (카드 A, DINOv3-RBMA) — stage P34.1: RGB+depth+event+lidar fusion
 # with reliability gate. Trainer = train_reliadino.py (NOT train_sam2_lora_paper.py).
@@ -33,14 +42,14 @@ MODEL:
     # CONSISTENCY below. P32 lesson: bias alone doesn't change decisions —
     # kept as mechanism heritage + ablation axis (-attn-bias run = ENABLE false).
     ATTN_BIAS:
-      ENABLE       : true
+      ENABLE       : false
       LAMBDA1_INIT : 1.0                    # learnable scalar
 
   # B_cons = leave-one-out Bhattacharyya corroboration (centered), secondary
   # additive term only — NEVER a fusion-gate signal (P32: corr mis-ranks dead
   # modalities high). Ablation "-consistency-term" = ENABLE false.
   CONSISTENCY:
-    ENABLE       : true
+    ENABLE       : false
     LAMBDA2_INIT : 0.5                      # learnable scalar
 
   # Output-fusion competence gate (P33-v2 M3): soft w = softmax(rel_cal/τ),
@@ -82,7 +91,7 @@ DATASET:
   NIGHT_TRANSLATION : false
   # PhysAug: same dataset-level setting as the P28~P33 physaug lineage
   PHYSAUG:
-    ENABLE    : true
+    ENABLE    : false
     P         : 0.40
     FILTER:
       ENABLE      : true
@@ -97,6 +106,7 @@ DATASET:
       DECAY       : 0.3
 
 TRAIN:
+  LORA_NORM_CAP : 0               # >0이면 b_q/b_v Frobenius cap (G0c 후 활성 결정; ep140 blocks.1 ‖dW‖606 폭주 대응 seam)
   IMAGE_SIZE    : [1024, 1024]    # /16 -> 64x64 tokens per modality
   # ViT-L frozen fwd x4 modalities + LoRA bwd: ~10-12GB/sample bf16 (est.) —
   # BS 4/GPU is conservative for 180GB B200; raise to 6-8 after the first

@@ -1,5 +1,14 @@
+# ═══ P36-router — P35-paper 동결 레시피 + Per-Class Reliability-Anchored Router ═══
+# Base = b200-deliver_rgbdel_P35_paper.yaml (G0c 동결: GATE·VETO·CALIB on /
+# ATTN_BIAS·CONSISTENCY off / PHYSAUG off — DGFusion 공정 레시피) 그대로.
+# 추가 = MODEL.ROUTER (P31 ReliabilityAnchoredRouter 포트, per-class):
+#   w_i = softmax_m(zero-init head(feat_i) + λ_anchor·rel_cal_i) per class/pixel,
+#   routed = Σ w_i·aux_logits_i 를 head 출력에 residual로 (alpha zero-init →
+#   시작 시 P35와 완전 동일, collapse-safe). 동기: scalar competence gate의
+#   per-class 역선택(야간 RoadLine: competence img .798/depth .001인데 gate
+#   depth .432) — per-class router = SAM2 계보 유일 대형기여 모듈(P31).
 DEVICE          : cuda
-SAVE_DIR        : './outputs/ReliaDINO/b200_deliver_rgbdel_P34_reliadino'
+SAVE_DIR        : './outputs/ReliaDINO/b200_deliver_rgbdel_P36_router'
 
 # P34-ReliaDINO (카드 A, DINOv3-RBMA) — stage P34.1: RGB+depth+event+lidar fusion
 # with reliability gate. Trainer = train_reliadino.py (NOT train_sam2_lora_paper.py).
@@ -33,14 +42,14 @@ MODEL:
     # CONSISTENCY below. P32 lesson: bias alone doesn't change decisions —
     # kept as mechanism heritage + ablation axis (-attn-bias run = ENABLE false).
     ATTN_BIAS:
-      ENABLE       : true
+      ENABLE       : false
       LAMBDA1_INIT : 1.0                    # learnable scalar
 
   # B_cons = leave-one-out Bhattacharyya corroboration (centered), secondary
   # additive term only — NEVER a fusion-gate signal (P32: corr mis-ranks dead
   # modalities high). Ablation "-consistency-term" = ENABLE false.
   CONSISTENCY:
-    ENABLE       : true
+    ENABLE       : false
     LAMBDA2_INIT : 0.5                      # learnable scalar
 
   # Output-fusion competence gate (P33-v2 M3): soft w = softmax(rel_cal/τ),
@@ -63,6 +72,19 @@ MODEL:
     ENABLE : true
     LAMBDA : 0.1
 
+  # [P36] Per-class reliability-anchored router (P31 port). Routed per-class
+  # aux logits enter the final prediction as a residual scaled by a learnable
+  # alpha (zero-init → P35-identical start). REG 'decisive' = commit per pixel,
+  # stay diverse in the batch marginal (P31 anti-uniform fix). Monitor
+  # p36/router_w_* and p36/router_alpha.
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
   # Asymmetric modality dropout seam (dominant-only). Default OFF — no mid-run
   # gain observed in P33.2 so far; turn on only in a dedicated P34.2 ablation.
   MODAL_DROPOUT:
@@ -82,7 +104,7 @@ DATASET:
   NIGHT_TRANSLATION : false
   # PhysAug: same dataset-level setting as the P28~P33 physaug lineage
   PHYSAUG:
-    ENABLE    : true
+    ENABLE    : false
     P         : 0.40
     FILTER:
       ENABLE      : true
@@ -97,6 +119,7 @@ DATASET:
       DECAY       : 0.3
 
 TRAIN:
+  LORA_NORM_CAP : 0               # >0이면 b_q/b_v Frobenius cap (G0c 후 활성 결정; ep140 blocks.1 ‖dW‖606 폭주 대응 seam)
   IMAGE_SIZE    : [1024, 1024]    # /16 -> 64x64 tokens per modality
   # ViT-L frozen fwd x4 modalities + LoRA bwd: ~10-12GB/sample bf16 (est.) —
   # BS 4/GPU is conservative for 180GB B200; raise to 6-8 after the first

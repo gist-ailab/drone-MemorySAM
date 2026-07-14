@@ -79,6 +79,12 @@ class ReliaDINO(nn.Module):
                  veto_thresh: float = 0.10,
                  veto_cap: float = 0.05,
                  calibrate: bool = True,
+                 router_enable: bool = False,
+                 router_anchor_lambda: float = 1.0,
+                 router_reg_mode: str = 'decisive',
+                 router_reg_lambda: float = 0.01,
+                 router_alpha_init: float = 0.0,
+                 router_hidden: int = 64,
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
@@ -102,7 +108,10 @@ class ReliaDINO(nn.Module):
             gate_enable=gate_enable, gate_tau=gate_tau,
             gate_entropy_reg=gate_entropy_reg, gate_entropy_floor=gate_entropy_floor,
             veto_floor=veto_floor, veto_thresh=veto_thresh, veto_cap=veto_cap,
-            calibrate=calibrate)
+            calibrate=calibrate,
+            router_enable=router_enable, router_anchor_lambda=router_anchor_lambda,
+            router_reg_mode=router_reg_mode, router_reg_lambda=router_reg_lambda,
+            router_alpha_init=router_alpha_init, router_hidden=router_hidden)
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
 
@@ -147,8 +156,16 @@ class ReliaDINO(nn.Module):
         H, W = x[0].shape[-2:]
         feats = [self.encoder(x[i], i) for i in range(self.num_modalities)]
         fused, aux = self.fusion(feats, gt_mask if self.training else None)
+        routed = aux.pop('routed_logits', None)     # [P36] consumed here, not by trainer
         pyramid = self.fpn(fused)
         logits, m_feat = self.head(pyramid)
+        if routed is not None:
+            # [P36] router-refined residual: per-class routed aux logits added to
+            # the head output. router_alpha is zero-init → identical to the
+            # router-off path at start (collapse-safe); grads reach alpha, the
+            # router heads AND the aux decoders through this decision path.
+            logits = logits + self.fusion.router_alpha * F.interpolate(
+                routed, size=logits.shape[-2:], mode='bilinear', align_corners=False)
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
@@ -179,6 +196,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     veto = gate.get('VETO_FLOOR', {}) or {}
     cal = mc.get('CALIBRATION', {}) or {}
     cons = mc.get('CONSISTENCY', {}) or {}
+    router = mc.get('ROUTER', {}) or {}
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -211,6 +229,12 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         veto_thresh=veto.get('THRESH', 0.10),
         veto_cap=veto.get('CAP', 0.05),
         calibrate=cal.get('ENABLE', True),
+        router_enable=router.get('ENABLE', False),
+        router_anchor_lambda=router.get('ANCHOR_LAMBDA', 1.0),
+        router_reg_mode=router.get('REG_MODE', 'decisive'),
+        router_reg_lambda=router.get('REG_LAMBDA', 0.01),
+        router_alpha_init=router.get('ALPHA_INIT', 0.0),
+        router_hidden=router.get('HIDDEN', 64),
         modal_dropout=mdrop.get('ENABLE', False),
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),
