@@ -43,10 +43,17 @@ def main():
     ap.add_argument('--gpu', default='0')
     ap.add_argument('--batch', type=int, default=None,
                     help='기본 = cfg EVAL.BATCH_SIZE (프로토콜 유지; 변경 시 명시)')
+    ap.add_argument('--dataset-root', default=None,
+                    help='DATASET.ROOT만 서버-로컬 경로로 override (프로토콜 무관)')
+    ap.add_argument('--toggles', default='',
+                    help='쉼표목록 post-load 모듈 off (module_ablation.py와 동일 시맨틱): '
+                         'bias,cons,gate,veto,calib')
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(args.cfg))
     dataset_cfg, eval_cfg = cfg['DATASET'], cfg['EVAL']
+    if args.dataset_root:
+        dataset_cfg['ROOT'] = args.dataset_root
     device = torch.device('cuda')
 
     valtransform = get_val_augmentation(eval_cfg['IMAGE_SIZE'], dataset_cfg=dataset_cfg)
@@ -63,6 +70,16 @@ def main():
           f"missing={n_missing} unexpected={n_unexp}")
     assert n_missing == 0 and n_unexp == 0, \
         f"state_dict mismatch — 모델/ckpt config 불일치: {msg.missing_keys[:3]} {msg.unexpected_keys[:3]}"
+    # G0c: post-load 모듈 toggle (tools/module_ablation.py p34_* 와 동일 시맨틱)
+    for t in [x.strip() for x in args.toggles.split(',') if x.strip()]:
+        fus = model.fusion
+        if t == 'bias':    fus.lambda1.data.zero_()
+        elif t == 'cons':  fus.lambda2.data.zero_()
+        elif t == 'gate':  fus.gate_enable = False
+        elif t == 'veto':  fus.veto_floor = False
+        elif t == 'calib': fus.calibrate = False
+        else: raise ValueError(f'unknown toggle {t}')
+        print(f"[G0c] toggle OFF: {t}")
     model = model.to(device)
 
     bs = args.batch or eval_cfg['BATCH_SIZE']
@@ -72,7 +89,10 @@ def main():
             dataset_cfg['ROOT'], split, valtransform, dataset_cfg['MODALS'])
         loader = DataLoader(dset, batch_size=bs, num_workers=4, pin_memory=True)
         with torch.no_grad():
-            acc, macc, f1, mf1, ious, miou = evaluate(model, loader, device, dist_sync=False)
+            try:
+                acc, macc, f1, mf1, ious, miou = evaluate(model, loader, device, dist_sync=False)
+            except TypeError:   # 구버전 train_reliadino.evaluate (dist_sync 이전)
+                acc, macc, f1, mf1, ious, miou = evaluate(model, loader, device)
         print(f"\n[G0a][{split}] n={len(dset)}  mIoU: {miou:.4f}  mAcc: {macc:.4f}  mF1: {mf1:.4f}")
         print("  per-class IoU: " + " | ".join(
             f"{c}: {float(v):.2f}" for c, v in zip(class_names, ious)))

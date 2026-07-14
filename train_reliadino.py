@@ -259,8 +259,8 @@ def main(cfg, gpu, save_dir, logger):
         _core._current_epoch = epoch
         if ddp_enable:
             sampler.set_epoch(epoch)
-        train_loss = cal_accum = aux_accum = gate_ent_accum = 0.0
-        auroc_rows, gate_rows = [], []
+        train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
+        auroc_rows, gate_rows, router_rows = [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
                     desc=f"Epoch [{epoch+1}/{epochs}]", disable=not is_rank0)
@@ -275,8 +275,9 @@ def main(cfg, gpu, save_dir, logger):
                 cal_loss = aux.get('rbma_cal_loss', _zero)
                 aux_ce = aux.get('aux_ce', _zero)
                 gate_ent = aux.get('gate_entropy', _zero)
+                router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
                 total = (loss_seg + lambda_cal * cal_loss
-                         + lambda_aux_ce * aux_ce + gate_ent)
+                         + lambda_aux_ce * aux_ce + gate_ent + router_reg)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -296,10 +297,13 @@ def main(cfg, gpu, save_dir, logger):
             cal_accum += float(cal_loss)
             aux_accum += float(aux_ce)
             gate_ent_accum += float(gate_ent)
+            router_accum += float(router_reg)
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
                 gate_rows.append(_core.fusion._last_gate_mean.cpu().tolist())
+            if getattr(_core.fusion, '_last_router_mean', None) is not None:
+                router_rows.append(_core.fusion._last_router_mean.tolist())
             if is_rank0:
                 pbar.set_description(
                     f"Epoch [{epoch+1}/{epochs}] Loss {train_loss/(it+1):.4f} "
@@ -329,11 +333,23 @@ def main(cfg, gpu, save_dir, logger):
                     log_extra[f'p34/gate_w_{name}'] = float(gbar[i])
                 logger.info(f"[P34] gate w̄ " +
                             " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, gbar)))
+            if router_rows:
+                rbar = np.array(router_rows, dtype=np.float64).mean(axis=0)
+                alpha = float(_core.fusion.router_alpha.detach())
+                for i, name in enumerate(modals[:len(rbar)]):
+                    writer.add_scalar(f'p36/router_w_{name}', rbar[i], epoch)
+                    log_extra[f'p36/router_w_{name}'] = float(rbar[i])
+                writer.add_scalar('p36/router_alpha', alpha, epoch)
+                log_extra['p36/router_alpha'] = alpha
+                logger.info(f"[P36] router w̄ " +
+                            " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, rbar)) +
+                            f" alpha:{alpha:.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),
                            'train/aux_ce': aux_accum / (it + 1),
                            'train/gate_entropy': gate_ent_accum / (it + 1),
+                           'train/router_reg': router_accum / (it + 1),
                            'train/lr': avg_lr, **log_extra}, step=epoch)
 
             # last checkpoint every epoch (same dict format as SAM2 trainer)

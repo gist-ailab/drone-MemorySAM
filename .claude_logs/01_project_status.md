@@ -50,6 +50,13 @@
 
 ## 역시간순 진행 로그 (History — 아래는 시점별 기록, 현재 상태 아님)
 
+### P36-router 구현 완료 (스모크 검증, 학습 대기) — 2026-07-14
+
+**배경**: P35-paper 동결 레시피 위에 P31 `ReliabilityAnchoredRouter`(SAM2 계보 유일 대형기여 모듈)의 per-class 메커니즘 포트. 동기 = scalar competence gate의 per-class 역선택 실측(야간 RoadLine: competence img .798/depth .001인데 gate가 depth에 .432).
+**설계 (residual routing)**: `PerClassRouter`(fusion.py 신규) — 모달별 zero-init conv head(feats_i, PRE-fusion) 로짓 + λ_anchor·rel_cal_i(detached) → 모달축 softmax = per-class per-pixel w (m,B,K,h,w) → `routed = Σ w_i·aux_logits_i` 를 head 출력에 **learnable α(zero-init) residual**로 가산(model.py). α=0 시작 = P35와 출력 완전 동일(collapse-safe, CPU smoke에서 maxdiff 0.0 확인). 'decisive' reg(per-pixel 커밋 − batch-marginal 다양성) = `aux['router_reg']`(trainer 합산). Config seam `MODEL.ROUTER.{ENABLE,ANCHOR_LAMBDA,REG_MODE,REG_LAMBDA,ALPHA_INIT,HIDDEN}` 기본 OFF(=P35 byte-identical). 모니터링 `p36/router_w_*`, `p36/router_alpha`.
+**산출물**: `semseg/models/reliadino/fusion.py`(+PerClassRouter, forward 4b단계) · `model.py`(residual add + build seam) · `train_reliadino.py`(router_reg 손실 합산 + wandb/tb 로깅) · `configs/b200-deliver_rgbdel_P36_router.yaml`(P35 클론 + ROUTER on, PhysAug OFF/gate·calib ON/bias·cons OFF 유지).
+**검증**: py_compile·yaml OK; CPU smoke(vit_small 224, 4모달) — OFF 경로 aux 불변, ON@init 출력=OFF(allclose exact), 손실 유한, α·router head grad 정상, 3 step 후 α/head 갱신 확인. 학습 런칭 대기.
+
 ### P34-ReliaDINO (카드 A) 스켈레톤 구현 완료 — 2026-07-12
 
 **배경**: 브레인스토밍(07-08) 추천 1순위 카드 A(DINOv3-RBMA)의 즉시-학습-가능 스켈레톤. P32/P33 실측 제약 4종 준수(① gate 신호=calibrated self-entropy(corr_veto 금지) ② consistency=attn-bias 2차 항만 ③ dead-class=DINOv3 존재 이유 ④ modal dropout seam만, 기본 OFF).
