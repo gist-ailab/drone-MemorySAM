@@ -100,7 +100,24 @@ def main():
     seg_model = build_seg_model(cfg, device, n_classes)
 
     det_name = cfg['MODEL'].get('DET_MODEL', 'MemorySAMDetector')
-    if det_name == 'ReliaDINODetector':
+    if det_name == 'ReliaDINORFDETRDetector':
+        from objdet.models.det_model import ReliaDINORFDETRDetector
+        model = ReliaDINORFDETRDetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            fpn_dim=cfg['MODEL'].get('FPN_DIM', 256),
+            fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16, 32]),
+            det_levels=cfg['MODEL'].get('DET_LEVELS', [2]),
+            freeze_backbone=True,
+            num_queries=cfg['MODEL'].get('NUM_QUERIES', 300),
+            group_detr=cfg['MODEL'].get('GROUP_DETR', 13),
+            dec_layers=cfg['MODEL'].get('DEC_LAYERS', 4),
+            dec_n_points=cfg['MODEL'].get('DEC_N_POINTS', 2),
+            coco_ckpt=None,   # weights come from the trained det checkpoint below
+            num_select=cfg['MODEL'].get('NUM_SELECT', 300),
+        ).to(device)
+    elif det_name == 'ReliaDINODetector':
         from objdet.models.det_model import ReliaDINODetector
         model = ReliaDINODetector(
             seg_model=seg_model,

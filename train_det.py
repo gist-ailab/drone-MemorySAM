@@ -474,7 +474,25 @@ def main():
         atss_topk=cfg['MODEL'].get('ATSS_TOPK', 9),
         atss_scale=cfg['MODEL'].get('ATSS_SCALE', 8.0),
     )
-    if det_name == 'ReliaDINODetector':
+    if det_name == 'ReliaDINORFDETRDetector':
+        # P37: same ReliaDINO backbone, RF-DETR NMS-free head (COCO-initialised).
+        from objdet.models.det_model import ReliaDINORFDETRDetector
+        model = ReliaDINORFDETRDetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            fpn_dim=cfg['MODEL'].get('FPN_DIM', 256),
+            fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16, 32]),
+            det_levels=cfg['MODEL'].get('DET_LEVELS', [2]),
+            freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', False),
+            num_queries=cfg['MODEL'].get('NUM_QUERIES', 300),
+            group_detr=cfg['MODEL'].get('GROUP_DETR', 13),
+            dec_layers=cfg['MODEL'].get('DEC_LAYERS', 4),
+            dec_n_points=cfg['MODEL'].get('DEC_N_POINTS', 2),
+            coco_ckpt=cfg['MODEL'].get('COCO_CKPT', None),
+            num_select=cfg['MODEL'].get('NUM_SELECT', 300),
+        ).to(device)
+    elif det_name == 'ReliaDINODetector':
         # P34: ReliaDINO fuses internally + exposes a 256-ch 4-level pyramid;
         # no per-modality fusion / neck / memory_attention.
         model = ReliaDINODetector(
@@ -541,9 +559,24 @@ def main():
         print(f"Total params: {total_params:,} | Trainable: {trainable_params:,}")
 
     # Optimizer over the raw model's trainable params (build before DDP wrap).
+    base_lr = cfg['TRAIN']['LR']
+    pre_mult = cfg['TRAIN'].get('PRETRAINED_HEAD_LR_MULT', None)
+    if pre_mult is not None and hasattr(model, 'pretrained_head_params'):
+        # A COCO-initialised head carries a prior worth keeping: run it at a fraction
+        # of the base LR so the from-scratch parts can move without washing it out.
+        pre_ids = {id(p) for p in model.pretrained_head_params()}
+        pre = [p for p in model.get_trainable_params() if id(p) in pre_ids]
+        rest = [p for p in model.get_trainable_params() if id(p) not in pre_ids]
+        param_groups = [{'params': rest, 'lr': base_lr},
+                        {'params': pre, 'lr': base_lr * pre_mult}]
+        if is_main:
+            print(f"  LR groups: {len(rest)} tensors @ {base_lr:g} | "
+                  f"{len(pre)} pretrained-head tensors @ {base_lr * pre_mult:g}")
+    else:
+        param_groups = model.get_trainable_params()
     optimizer = torch.optim.AdamW(
-        model.get_trainable_params(),
-        lr=cfg['TRAIN']['LR'],
+        param_groups,
+        lr=base_lr,
         weight_decay=cfg['TRAIN'].get('WEIGHT_DECAY', 1e-4),
     )
 

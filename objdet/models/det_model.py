@@ -676,3 +676,166 @@ class ReliaDINODetector(nn.Module):
 
     def load_detector_state_dict(self, state: dict):
         self.det_head.load_state_dict(state['det_head'])
+
+
+class ReliaDINORFDETRDetector(nn.Module):
+    """ReliaDINO backbone + RF-DETR NMS-free head (P37-Det).
+
+    Same backbone contract as ReliaDINODetector — the segmentation methodology
+    (frozen DINOv3 + per-modality LoRA + ReliabilityGatedFusion + SimpleFPN) is
+    untouched. Only the head changes: FCOS dense prediction + NMS is replaced by
+    RF-DETR's transformer decoder, initialised from COCO weights and supervised
+    with one-to-one Hungarian matching, so no NMS runs at any point.
+
+    Args:
+        det_levels: indices into the ReliaDINO pyramid to feed the decoder.
+            Defaults to [2] (stride 16) — RF-DETR is natively single-scale there,
+            which both matches its COCO weights exactly and keeps the two-stage
+            proposal branch's token count sane (2,304 vs 48,960 for all 4 levels).
+        coco_ckpt: path to rf-detr-*.pth. None → random init (ablation only).
+    """
+
+    def __init__(
+        self,
+        seg_model: nn.Module,
+        modals: List[str],
+        n_classes: int = 10,
+        fpn_dim: int = 256,
+        fpn_strides: List[int] = [4, 8, 16, 32],
+        det_levels: Optional[List[int]] = None,
+        freeze_backbone: bool = False,
+        num_queries: int = 300,
+        group_detr: int = 13,
+        dec_layers: int = 4,
+        dec_n_points: int = 2,
+        coco_ckpt: Optional[str] = None,
+        num_select: int = 300,
+    ):
+        super().__init__()
+        from semseg.models.rfdetr_head import (
+            RFDETRHead, build_rfdetr_criterion, build_rfdetr_postprocessor,
+        )
+
+        if not hasattr(seg_model, 'extract_det_pyramid'):
+            raise TypeError(
+                f"{type(seg_model).__name__} has no extract_det_pyramid(); use a "
+                "ReliaDINO backbone for ReliaDINORFDETRDetector."
+            )
+        self.seg_model = seg_model
+        self.modals = list(modals)
+        self.n_classes = n_classes
+        self.freeze_backbone = freeze_backbone
+        if freeze_backbone:
+            for p in self.seg_model.parameters():
+                p.requires_grad = False
+
+        self.det_levels = list(det_levels) if det_levels else [2]
+        bad = [i for i in self.det_levels if i >= len(fpn_strides)]
+        if bad:
+            raise ValueError(f"det_levels {bad} out of range for {len(fpn_strides)} pyramid levels")
+        self.det_strides = [fpn_strides[i] for i in self.det_levels]
+
+        # COCO weights only attend to one level; when several are fed, the stride-16
+        # level is the one that inherits the pretrained attention (others start muted).
+        p4_index = self.det_strides.index(16) if 16 in self.det_strides else 0
+
+        self.det_head = RFDETRHead(
+            n_classes=n_classes, hidden_dim=fpn_dim, num_queries=num_queries,
+            group_detr=group_detr, dec_layers=dec_layers,
+            num_feature_levels=len(self.det_levels), dec_n_points=dec_n_points,
+        )
+        if coco_ckpt:
+            self.det_head.load_coco_pretrained(coco_ckpt, p4_index=p4_index)
+        self.criterion = build_rfdetr_criterion(
+            n_classes=n_classes, group_detr=group_detr, dec_layers=dec_layers)
+        self.postprocess = build_rfdetr_postprocessor(num_select=num_select)
+
+    def _ordered_inputs(self, sample: dict) -> List[torch.Tensor]:
+        missing = [m for m in self.modals if m not in sample]
+        if missing:
+            raise KeyError(f"sample missing modalities {missing}; have {list(sample.keys())}")
+        return [sample[m] for m in self.modals]
+
+    def extract_fpn_features(self, sample: dict) -> List[torch.Tensor]:
+        batched_input = self._ordered_inputs(sample)
+        backbone_trains = self.training and not self.freeze_backbone
+        grad_ctx = torch.enable_grad() if backbone_trains else torch.no_grad()
+        with grad_ctx:
+            pyramid = self.seg_model.extract_det_pyramid(batched_input)
+        return [pyramid[i] for i in self.det_levels]
+
+    @staticmethod
+    def _targets_to_rfdetr(gt_bboxes, gt_labels, h: int, w: int) -> List[dict]:
+        """Dataset gives xyxy in model-input px; the criterion wants normalised cxcywh."""
+        out = []
+        for boxes, labels in zip(gt_bboxes, gt_labels):
+            if boxes.numel() == 0:
+                out.append({'boxes': boxes.new_zeros((0, 4)), 'labels': labels.long()})
+                continue
+            cx = (boxes[:, 0] + boxes[:, 2]) / 2 / w
+            cy = (boxes[:, 1] + boxes[:, 3]) / 2 / h
+            bw = (boxes[:, 2] - boxes[:, 0]) / w
+            bh = (boxes[:, 3] - boxes[:, 1]) / h
+            out.append({'boxes': torch.stack([cx, cy, bw, bh], dim=-1).clamp(0, 1),
+                        'labels': labels.long()})
+        return out
+
+    def forward(
+        self,
+        sample: dict,
+        gt_bboxes: Optional[List[torch.Tensor]] = None,
+        gt_labels: Optional[List[torch.Tensor]] = None,
+    ) -> dict:
+        h, w = sample[self.modals[0]].shape[-2:]
+        feats = self.extract_fpn_features(sample)
+        out = self.det_head(feats)
+
+        if self.training and gt_bboxes is not None:
+            targets = self._targets_to_rfdetr(gt_bboxes, gt_labels, h, w)
+            ld = self.criterion(out, targets)
+            wd = self.criterion.weight_dict
+            total = sum(ld[k] * wd[k] for k in ld if k in wd)
+            # Re-expose under the train loop's key names. There is no centerness in a
+            # set-prediction head; loss_ctr stays 0 so the shared logging path works.
+            cls_keys = [k for k in ld if k in wd and k.startswith('loss_ce')]
+            reg_keys = [k for k in ld if k in wd and (k.startswith('loss_bbox') or k.startswith('loss_giou'))]
+            return {
+                'loss_total': total,
+                'loss_cls': sum(ld[k] * wd[k] for k in cls_keys),
+                'loss_reg': sum(ld[k] * wd[k] for k in reg_keys),
+                'loss_ctr': total.new_zeros(()),
+                'n_pos': int(sum(t['boxes'].shape[0] for t in targets)),
+            }
+
+        # Eval: top-k over (query x class). No NMS — that is the point of this head.
+        sizes = torch.as_tensor([[h, w]] * out['pred_logits'].shape[0], device=out['pred_logits'].device)
+        res = self.postprocess(out, sizes)
+        dets = []
+        for r in res:
+            # The head carries n_classes+1 slots to mirror the COCO checkpoint's layout;
+            # the extra slot has no GT and never trains, but an untrained head can still
+            # rank it into the top-k. Drop it — downstream COCO mapping has no id for it.
+            keep = r['labels'] < self.n_classes
+            dets.append({'boxes': r['boxes'][keep], 'scores': r['scores'][keep],
+                         'class_ids': r['labels'][keep]})
+        return {'detections': dets}
+
+    def get_trainable_params(self) -> List[nn.Parameter]:
+        return [p for p in self.parameters() if p.requires_grad]
+
+    def pretrained_head_params(self) -> List[nn.Parameter]:
+        """Head params carrying COCO weights, so the train loop can give them a lower
+        LR. Class heads are excluded: they were re-initialised for our label space and
+        have no prior worth protecting."""
+        skip_ids = {id(p) for p in self.det_head.class_embed.parameters()}
+        enc_cls = getattr(self.det_head.transformer, 'enc_out_class_embed', None)
+        if enc_cls is not None:
+            skip_ids |= {id(p) for p in enc_cls.parameters()}
+        return [p for p in self.det_head.parameters()
+                if p.requires_grad and id(p) not in skip_ids]
+
+    def detector_state_dict(self) -> dict:
+        return {'det_head': self.det_head.state_dict()}
+
+    def load_detector_state_dict(self, state: dict):
+        self.det_head.load_state_dict(state['det_head'])
