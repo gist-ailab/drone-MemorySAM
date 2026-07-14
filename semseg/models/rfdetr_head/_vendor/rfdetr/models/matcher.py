@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, cast, Tuple
 
 import numpy as np
 import torch
@@ -37,7 +37,9 @@ from rfdetr.utilities.logger import get_logger
 logger = get_logger()
 _SANITIZED_COST_MARGIN = 1.0
 _FOCAL_LOSS_GAMMA = 2.0
-_LinearSumAssignment = Callable[[Any], tuple[NDArray[np.int64], NDArray[np.int64]]]
+# Vendored: bengio runs py3.8 + an older numpy where NDArray[...] is not
+# subscriptable at runtime. This alias is a hint only; erase its parameters.
+_LinearSumAssignment = Any
 linear_sum_assignment = cast(_LinearSumAssignment, _linear_sum_assignment)
 
 

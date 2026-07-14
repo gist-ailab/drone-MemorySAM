@@ -8,6 +8,7 @@
 # DETR (Facebook), Deformable DETR (SenseTime)
 # ------------------------------------------------------------------------
 """Post-processing module for converting model outputs to COCO API format."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 import torch
 import torch.nn.functional as F  # noqa: N812

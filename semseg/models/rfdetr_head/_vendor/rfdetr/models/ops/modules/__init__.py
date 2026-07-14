@@ -10,6 +10,7 @@
 # Modified from https://github.com/chengdazhi/Deformable-Convolution-V2-PyTorch/tree/pytorch_1.0.0
 # ------------------------------------------------------------------------
 
+from __future__ import annotations  # vendored: bengio env is py3.8
 from rfdetr.models.ops.modules.ms_deform_attn import MSDeformAttn
 
 __all__ = [

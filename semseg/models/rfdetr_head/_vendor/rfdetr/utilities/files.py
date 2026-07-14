@@ -4,6 +4,7 @@
 # Licensed under the Apache License, Version 2.0 [see LICENSE for details]
 # ------------------------------------------------------------------------
 """File download and MD5 validation helpers."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 import hashlib
 import os

@@ -4,6 +4,7 @@
 # Licensed under the Apache License, Version 2.0 [see LICENSE for details]
 # ------------------------------------------------------------------------
 """Checkpoint and state-dict helpers."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 import os
 import tempfile

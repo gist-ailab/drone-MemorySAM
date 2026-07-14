@@ -11,6 +11,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 # ------------------------------------------------------------------------
 """Tensor utilities: NestedTensor, collate_fn, and helpers."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 from collections.abc import Callable
 from functools import partial

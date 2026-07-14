@@ -11,6 +11,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 # ------------------------------------------------------------------------
 """Distributed-training helpers (world-size, rank, all_gather, reduce_dict)."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 import pickle
 from typing import Any

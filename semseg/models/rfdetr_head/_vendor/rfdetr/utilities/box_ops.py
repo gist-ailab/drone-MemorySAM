@@ -15,6 +15,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 # ------------------------------------------------------------------------
 """Utilities for bounding box manipulation and GIoU."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 import torch
 import torch.nn.functional as F  # noqa: N812

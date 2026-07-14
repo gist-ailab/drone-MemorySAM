@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Dict
 
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -29,7 +29,7 @@ from rfdetr.models.math import accuracy
 from rfdetr.utilities import box_ops
 from rfdetr.utilities.distributed import get_world_size, is_dist_avail_and_initialized
 
-_LossFunction = Callable[..., dict[str, Tensor]]
+_LossFunction = Any
 
 
 def sigmoid_focal_loss(

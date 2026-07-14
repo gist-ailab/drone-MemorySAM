@@ -8,6 +8,7 @@
 # DETR (Facebook), Deformable DETR (SenseTime)
 # ------------------------------------------------------------------------
 """Mathematical building blocks: MLP, inverse_sigmoid, accuracy, interpolate."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 import torch
 import torch.nn.functional as F  # noqa: N812

@@ -8,6 +8,7 @@
 Replaces the previous shim in ``_args.py`` that called the deprecated ``populate_args()`` function from ``main.py``.
 This module has zero dependency on ``main.py`` and can survive its deletion.
 """
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 import dataclasses
 import types

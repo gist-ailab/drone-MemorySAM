@@ -4,6 +4,7 @@
 # Licensed under the Apache License, Version 2.0 [see LICENSE for details]
 # ------------------------------------------------------------------------
 """Utility functions and helpers."""
+from __future__ import annotations  # vendored: bengio env is py3.8
 
 from rfdetr.utilities import box_ops
 from rfdetr.utilities.distributed import (
