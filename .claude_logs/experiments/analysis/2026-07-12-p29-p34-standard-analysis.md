@@ -87,6 +87,16 @@ tools: tools/seg_analysis_pipeline.py 스위트 (develop aecba1d)
 - FUSED eff.rank 6.75→**10.18** — 융합 표현이 수렴하며 더 풍부해짐.
 - 모듈 A/B: ep140에서도 bias/cons ≈0.00, gate/veto/calib ±0.3 — **no-op 판정 유지** (모듈 아닌 백본 우위 결론 불변).
 
+## 백본 계보 비교 — SAM3 < SAM2 < DINOv3의 수치 근거 (2026-07-13 종합)
+
+**SAM3 < SAM2**: SAM3-RBMA(DELIVER 25cls) conv-head val **8.49**(4클래스만 생존=class-collapse) → decoder repurpose로 ep22 val **16.27**/test 15.12(상승 중 중단) vs SAM2 P28/P29 val 57.9~63.2 — **3~4× 격차**. 기록된 원인: ① **ViT single-scale**(stride-16 단일 출력; Hiera는 4/8/16 계층 — 소클래스 Pedestrian/Pole/Sign/Water가 SAM3에서 하드-0 유지) ② class-collapse는 decoder cross-attn으로 2배 회복됐으나 구조 한계 잔존. 단서: SAM3는 완주 비교가 아님(ep22 중단, 튜닝 투자도 소량) — 궤적 격차가 커서 결론은 유지되나 '동일 조건 완주' 증거는 아님.
+
+**SAM2 < DINOv3 — 3층위 증거**:
+1. **통제 비교(A-1 frozen linear probe, 모듈 개입 0)**: img test **40.51 vs 28.90(+11.6)**, depth **35.48 vs 25.34(+10.1)**, TrafficLight **32.2 vs 8.27(3.9×)** — 백본 피쳐의 선형 분리성 자체가 압승 (vault `2026-07-12_A1probe_M0a_backbone_benchmark_verdict.md`).
+2. **엔드투엔드**: P34 Test **57.60**/Val **68.19** vs SAM2 최고 P32 55.01/64.12 (**+2.6/+4.1**); 동일 프로토콜 5-cond mean 55.65 vs 52.82; P28~P33의 val~60 천장 돌파; Water 0→12(ep40)·TrafficLight →36.6 부활.
+3. **피쳐 기전(왜)**: effective rank — SAM2 fused **1.26**(32ch 중) vs P34 fused **10.18**(256ch 중): rank~1 피쳐는 25-class 판별에 정보 부족. cross-modal CKA — SAM2 **0.02~0.16**(모달 간 비정렬 → 융합이 이질 표현을 억지 결합) vs DINOv3 **0.80~0.91**(공통 의미 공간 → cross-attn 융합 용이). reliability — SAM2 계열은 geometry 모달 anti-calibrated(P29 [.84,.63,.26,.38]; P31이 cal-loss로 수리하되 img .43 희생) vs P34 [.85,.78,.87,.70] **자연 균형 + 수렴 후 유지**.
+   해석: SAM2-Hiera 사전학습 = promptable **mask/객체성** 중심(semantic 구분·비RGB 전이 약함), DINOv3 = self-supervised **dense semantic** 표현(모달을 이미지로 렌더한 입력에도 의미 정렬). 공통 한계: Wall/Bridge/Water는 DINOv3 probe에서도 0 = 데이터셋 고유(M0-a에서 공식 CMNeXt도 동일).
+
 ## 산출물 맵 (후속 분석용)
 
 - NAS `/drone_nas/drone/analysis_logs/` (HDD2 ISSUE-023 재발로 대체 canonical):
