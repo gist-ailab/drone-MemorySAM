@@ -115,6 +115,20 @@ class ReliaDINO(nn.Module):
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
 
+        # [P36-Det] Router→detection seam. The seg path adds routed_logits to the
+        # head logits, which the detection path (extract_det_pyramid) never sees —
+        # so without this the router is dead weight for det. Project routed_logits
+        # (num_classes ch) to fpn_dim and add as a zero-init alpha residual to every
+        # pyramid level ⇒ at init identical to router-off, comparable to P35-Det.
+        if router_enable:
+            self.det_router_proj = nn.Conv2d(num_classes, fpn_dim, 1)
+            nn.init.zeros_(self.det_router_proj.weight)
+            nn.init.zeros_(self.det_router_proj.bias)
+            self.det_router_alpha = nn.Parameter(torch.zeros(1))
+        else:
+            self.det_router_proj = None
+            self.det_router_alpha = None
+
         # M2 seam (asymmetric modality dropout) — default OFF: it helped nothing
         # at mid-run so far (P33 empirical constraint 4); seam kept for P34.2.
         self.modal_dropout = modal_dropout
@@ -181,10 +195,25 @@ class ReliaDINO(nn.Module):
           [stride4, stride8, stride16, stride32], each (B, fpn_dim, h, w).
         Fusion is internal (already cross-modal), so the detector needs no extra
         modality fusion. No modal-dropout / no seg head (det-only path).
+
+        [P36] If the per-class router is on, its `routed_logits` would otherwise be
+        dead here (the seg path adds them to the *head logits*, which detection never
+        sees). We inject them into the pyramid instead, mirroring P36's collapse-safe
+        design: 1x1 proj to fpn_dim + zero-init alpha residual per level, so at init
+        the pyramid is bit-identical to router-off (P35-Det) and any gain is learned.
         """
         feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
-        fused, _ = self.fusion(feats, None)
-        return self.fpn(fused)
+        fused, aux = self.fusion(feats, None)
+        pyramid = self.fpn(fused)
+        routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
+        if routed is not None and getattr(self, 'det_router_proj', None) is not None:
+            r = self.det_router_proj(routed)                    # (B, fpn_dim, h, w)
+            pyramid = [
+                p + self.det_router_alpha * F.interpolate(
+                    r, size=p.shape[-2:], mode='bilinear', align_corners=False)
+                for p in pyramid
+            ]
+        return pyramid
 
 
 def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
