@@ -123,7 +123,7 @@ TRAIN:
   # 건드리지 않고 폭주만 차단하는 loose cap).
   LORA_NORM_CAP : 20.0
   IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens; 24GB fits w/ ckpt+BS1
-  BATCH_SIZE    : 1
+  BATCH_SIZE    : 2               # yeon 실측 VRAM 6GB@bs1 → bs2 안전(eff16 동일, wall-clock ½)
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 2
@@ -150,7 +150,7 @@ SCHEDULER:
 EVAL:
   MODEL_PATH    : ''
   IMAGE_SIZE    : [768, 768]
-  BATCH_SIZE    : 1
+  BATCH_SIZE    : 2               # yeon 실측 VRAM 6GB@bs1 → bs2 안전(eff16 동일, wall-clock ½)
   EVAL_DAY      : false
   MSF:
     ENABLE      : false
