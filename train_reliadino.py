@@ -164,6 +164,8 @@ def main(cfg, gpu, save_dir, logger):
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)
     lambda_aux_ce = (model_cfg.get('FUSION', {}) or {}).get('AUX_CE_WEIGHT', 0.5)
+    # [P37b] class-token aux CE weight (only produced when CLASS_TOKEN.ENABLE)
+    lambda_ctd = (model_cfg.get('CLASS_TOKEN', {}) or {}).get('AUX_CE_W', 0.4)
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     # [P35/T1 seam] LoRA up-projection(b_q/b_v) Frobenius norm cap — ep140 진단에서
     # blocks.1 depth-q ‖dW‖ 606(ep40 대비 36×) 폭주 관찰(리뷰 리스크). 기본 0=off.
@@ -260,6 +262,7 @@ def main(cfg, gpu, save_dir, logger):
         if ddp_enable:
             sampler.set_epoch(epoch)
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
+        ctd_accum = 0.0
         auroc_rows, gate_rows, router_rows = [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
@@ -276,8 +279,10 @@ def main(cfg, gpu, save_dir, logger):
                 aux_ce = aux.get('aux_ce', _zero)
                 gate_ent = aux.get('gate_entropy', _zero)
                 router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
+                ctd_ce = aux.get('ctd_ce', _zero)           # [P37b] class-token aux CE
                 total = (loss_seg + lambda_cal * cal_loss
-                         + lambda_aux_ce * aux_ce + gate_ent + router_reg)
+                         + lambda_aux_ce * aux_ce + gate_ent + router_reg
+                         + lambda_ctd * ctd_ce)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -298,6 +303,7 @@ def main(cfg, gpu, save_dir, logger):
             aux_accum += float(aux_ce)
             gate_ent_accum += float(gate_ent)
             router_accum += float(router_reg)
+            ctd_accum += float(ctd_ce)
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
@@ -344,6 +350,15 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P36] router w̄ " +
                             " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, rbar)) +
                             f" alpha:{alpha:.4f}")
+            if getattr(_core, 'classtoken', None) is not None:
+                # [P37b] class-token residual scale beta (zero-init) + aux CE
+                ctl_beta = float(_core.classtoken.beta.detach())
+                writer.add_scalar('p37/ctl_beta', ctl_beta, epoch)
+                writer.add_scalar('train/ctd_ce', ctd_accum / (it + 1), epoch)
+                log_extra['p37/ctl_beta'] = ctl_beta
+                log_extra['train/ctd_ce'] = ctd_accum / (it + 1)
+                logger.info(f"[P37] ctl beta:{ctl_beta:.4f} "
+                            f"ctd_ce:{ctd_accum / (it + 1):.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),
