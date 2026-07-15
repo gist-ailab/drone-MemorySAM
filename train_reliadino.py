@@ -260,7 +260,8 @@ def main(cfg, gpu, save_dir, logger):
         if ddp_enable:
             sampler.set_epoch(epoch)
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
-        auroc_rows, gate_rows, router_rows = [], [], []
+        cefr_accum = 0.0
+        auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
                     desc=f"Epoch [{epoch+1}/{epochs}]", disable=not is_rank0)
@@ -276,8 +277,10 @@ def main(cfg, gpu, save_dir, logger):
                 aux_ce = aux.get('aux_ce', _zero)
                 gate_ent = aux.get('gate_entropy', _zero)
                 router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
+                cefr_reg = aux.get('cefr_reg', _zero)       # [P37a] pre-scaled (decisive+hinge)
                 total = (loss_seg + lambda_cal * cal_loss
-                         + lambda_aux_ce * aux_ce + gate_ent + router_reg)
+                         + lambda_aux_ce * aux_ce + gate_ent + router_reg
+                         + cefr_reg)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -298,12 +301,16 @@ def main(cfg, gpu, save_dir, logger):
             aux_accum += float(aux_ce)
             gate_ent_accum += float(gate_ent)
             router_accum += float(router_reg)
+            cefr_accum += float(cefr_reg)
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
                 gate_rows.append(_core.fusion._last_gate_mean.cpu().tolist())
             if getattr(_core.fusion, '_last_router_mean', None) is not None:
                 router_rows.append(_core.fusion._last_router_mean.tolist())
+            _cefr = getattr(_core.fusion, 'cefr', None)     # [P37a]
+            if _cefr is not None and _cefr._last_w_mean is not None:
+                cefr_rows.append(_cefr._last_w_mean.tolist())
             if is_rank0:
                 pbar.set_description(
                     f"Epoch [{epoch+1}/{epochs}] Loss {train_loss/(it+1):.4f} "
@@ -344,6 +351,18 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P36] router w̄ " +
                             " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, rbar)) +
                             f" alpha:{alpha:.4f}")
+            if cefr_rows:                                   # [P37a] CEFR monitoring
+                cbar = np.array(cefr_rows, dtype=np.float64).mean(axis=0)
+                sigma_a = float(getattr(_core.fusion.cefr, '_last_sigma_a', 0.0) or 0.0)
+                for i, name in enumerate(modals[:len(cbar)]):
+                    writer.add_scalar(f'p37/cefr_w_{name}', cbar[i], epoch)
+                    log_extra[f'p37/cefr_w_{name}'] = float(cbar[i])
+                writer.add_scalar('p37/cefr_sigma_a', sigma_a, epoch)
+                log_extra['p37/cefr_sigma_a'] = sigma_a
+                log_extra['train/cefr_reg'] = cefr_accum / (it + 1)
+                logger.info(f"[P37] cefr w̄ " +
+                            " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, cbar)) +
+                            f" sigma_a:{sigma_a:.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),

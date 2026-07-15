@@ -2411,3 +2411,22 @@ Phase 5: Detection Head (신규)
 | Detection Head | 없음 (seg only) | FCOS 또는 DETR |
 
 ### 상태: 설계 완료 (구현 대기)
+
+---
+
+## P37a — ReliaDINO + CEFR-Head + CA2-NoText anchor (2026-07-16, 구현 완료·학습 대기)
+
+**베이스**: P36 (ReliaDINO 공정 레시피: GATE·VETO·CALIB on / ATTN_BIAS·CONSISTENCY off / PerClassRouter residual). `MODEL.CEFR.ENABLE=false`(기본) → P36과 byte-identical.
+
+**동기**: 스칼라 competence gate·pre-fusion router 모두 POST-attention 표현을 못 본다 → 융합 후 토큰 위에서 class-조건부로 모달리티를 재배합하는 2-pass 라우팅.
+
+**Forward (CEFR on)**:
+1. Pass 1 = 기존 P36 경로 그대로(no_grad): gate_fused → 공유 FPN+head(+router residual) → logits1 → `q_k(s)=softmax_k(logits1).detach()` s16 평균풀.
+2. Per-modality routing head(zero-init 1×1 conv, 입력=**POST-attention fused_tokens_i**) + CA2 anchor `A_{i,k}(s)=λ1·rel_cal_i(s)+λ2(t)·log p̂_i(k|s)` (p̂=calibrated aux posterior, detach, log clamp ≥−14; λ1 learnable scalar; λ2 linear warmup 0→target @WARMUP_EP, epoch은 modal_dropout과 동일한 `model._current_epoch` 사용 — trainer 무변경).
+3. `w_{i,k}=softmax_over_modalities(head_i+A_{i,k})` → class-expected collapse `w̄_i=Σ_k q_k·w_{i,k}` → `fused'=Σ_i w̄_i·fused_i`.
+4. Feature-level blend `fused_final=(1−σ(a))·gate_fused+σ(a)·fused'` (a init −4 → σ≈0.018, P36-near start) → 공유 FPN+head 2회째 pass = 최종 logits(+router residual 유지).
+5. Anti-collapse: zero-init heads / detached q / decisive-entropy reg(w̄) / **AECF hinge floor**(batch-marginal 혼합 entropy < ENTROPY_FLOOR일 때만 벌점) → `aux['cefr_reg']`로 trainer total loss에 가산.
+
+**코드**: `semseg/models/reliadino/fusion.py`(`CEFRHead`, fusion이 `aux['cefr_ctx']` export), `semseg/models/reliadino/model.py`(`_decode` 공유 2-pass, blend), `train_reliadino.py`(cefr_reg 항 + `p37/cefr_w_*`, `p37/cefr_sigma_a` 로깅). Configs: `configs/bengio-deliver_rgbdel_P37a_cefr.yaml`(본 실험, 768² BS1 grad-ckpt, DGFUSION_AUG, LORA_NORM_CAP 20.0), `configs/yeon-smoke_P37a_cefr.yaml`(2ep smoke, DATASET.ROOT placeholder).
+
+**검증(CPU smoke, vit_small 224² 4모달)**: (a) CEFR off = P36 수동경로와 완전 동일(max|Δ|=0), aux keys 불변 (b) on @init max|Δ|=0.00139(σ(a)=0.01799), q detach 확인 (c) heads/a/λ1 grad + aux 유한(hinge 발화 확인) (d) λ2 warmup ep0=0→ep10=0.5 (e) 3 step 후 σ(a)·w̄ 변화. 전부 PASS.
