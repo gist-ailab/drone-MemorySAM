@@ -97,6 +97,18 @@ tools: tools/seg_analysis_pipeline.py 스위트 (develop aecba1d)
 3. **피쳐 기전(왜)**: effective rank — SAM2 fused **1.26**(32ch 중) vs P34 fused **10.18**(256ch 중): rank~1 피쳐는 25-class 판별에 정보 부족. cross-modal CKA — SAM2 **0.02~0.16**(모달 간 비정렬 → 융합이 이질 표현을 억지 결합) vs DINOv3 **0.80~0.91**(공통 의미 공간 → cross-attn 융합 용이). reliability — SAM2 계열은 geometry 모달 anti-calibrated(P29 [.84,.63,.26,.38]; P31이 cal-loss로 수리하되 img .43 희생) vs P34 [.85,.78,.87,.70] **자연 균형 + 수렴 후 유지**.
    해석: SAM2-Hiera 사전학습 = promptable **mask/객체성** 중심(semantic 구분·비RGB 전이 약함), DINOv3 = self-supervised **dense semantic** 표현(모달을 이미지로 렌더한 입력에도 의미 정렬). 공통 한계: Wall/Bridge/Water는 DINOv3 probe에서도 0 = 데이터셋 고유(M0-a에서 공식 CMNeXt도 동일).
 
+## P35·P36 표준분석 + "P36 < P34" 원인 분해 (2026-07-16)
+
+> ckpt: P35 test_ep90(56.14) · P36 test_ep58(57.14), 동일 프로토콜. canonical = `compare_P34_P35_P36_20260716.md`.
+
+**원인 분해 (5-cond mean)**: P34ep140 **55.65** → P35 **54.53**(−1.12) → P36 **55.29**(+0.76). 즉 **P36은 아키텍처 회귀가 아니다** — 하락의 전부는 P35 단계(레시피 동결: **PHYSAUG 제거** + bias/cons 제거, DGFusion 공정성 목적)에서 발생했고, **P36의 per-class router가 그 하락의 2/3를 회복**했다.
+- physaug 제거의 피해 클래스: **Static 39.1→25.3(−13.8)**, Pole 48.6→43.6 — P34 우위의 실체는 physaug였음.
+- router의 회복 클래스: **Wall 6.0→13.3★, Water 5.3→9.5★, RailTrack 56.1→62.5★** — P31 router의 thin/rare-class 기여가 DINOv3 계보에서 재현. rain에서는 P36 56.61 > P34 56.31 역전.
+- **P36 router = 지배 모듈**: p36_router_off Δ = **+38~+42** (전 조건) — residual routing이 사실상 주 결정 경로. 그 외 토글은 ≈0 유지.
+- 야간 잔여 갭: night P36 53.42 vs P34 54.56 — router가 night에서 가장 덜 회복.
+
+**검증 실험 (P36+physaug, B200 마감일 bounded run ep64 중단)**: physaug를 되돌리자 **Day-Val 68.76@ep44 = 계보 최고**(P34 68.19 초과, +0.57) — "P36<P34는 레시피 차이"라는 분해를 실험으로 확정. test는 조기중단으로 55.60@ep56(미성숙, P36 원판 test-best도 ep58이었음 — 완주 시 SOTA 도전 유력). ckpt 구조 완료: lecun `/SSDb/jemo_maeng/ckpt/P36phys/`.
+
 ## 산출물 맵 (후속 분석용)
 
 - NAS `/drone_nas/drone/analysis_logs/` (HDD2 ISSUE-023 재발로 대체 canonical):
