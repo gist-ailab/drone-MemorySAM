@@ -1,0 +1,159 @@
+# ═══ P37b — ClassToken-lite-Learned: P36-router 공정 레시피 + 학습형 클래스토큰 head ═══
+# Base recipe = b200-deliver_rgbdel_P36_router.yaml (G0c 동결: GATE·VETO·CALIB on /
+# ATTN_BIAS·CONSISTENCY off / PHYSAUG off / DGFUSION_AUG on — DGFusion 공정선) +
+# ROUTER on (P36 residual과 공존). 연산 envelope = hinton 24GB 스타일 (768², BS1,
+# grad checkpointing).
+# 추가 = MODEL.CLASS_TOKEN (P37b):
+#   25 LEARNED class tokens (K=클래스, 고정 할당 token k ↔ class k — Hungarian
+#   매칭 없음(P30 collapse 교훈), CLIP/text init 없음) → gated fused stride-16 map
+#   위 3-layer masked cross-attn (Mask2Former-lite; layer1 plain, layer2-3 masked)
+#   → mask-embedding · FPN stride-4 feat dot-product = token_logits.
+#   final = conv_head_logits + β·token_logits + router_alpha·up(routed),
+#   β zero-init scalar → 시작 시 P36과 완전 동일 (collapse-safe).
+#   Aux: 학습 전용 CE on token_logits @1/4 res (aux 'ctd_ce', weight AUX_CE_W).
+#   Monitor: p37/ctl_beta, train/ctd_ce.
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/bengio_deliver_rgbdel_P37b_classtoken'
+
+# Trainer = train_reliadino.py (NOT train_sam2_lora_paper.py).
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    # G0c 동결: attn-bias off (효과≈0 판정, P35/T1)
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : true
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : true
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : true
+    LAMBDA : 0.1
+
+  # [P36] per-class reliability-anchored router — P37b는 router 위에 얹는다
+  # (두 residual 공존: β·token_logits + alpha·routed).
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  # [P37b] ClassToken-lite-Learned (semseg/models/reliadino/classtoken.py)
+  CLASS_TOKEN:
+    ENABLE     : true
+    NUM_LAYERS : 3
+    DIM        : 256                        # token dim_t (Linear(dim→256) on the map)
+    NUM_HEADS  : 8
+    MLP_RATIO  : 2.0                        # lite FFN (params ≈2.9M @ ViT-L)
+    AUX_CE_W   : 0.4                        # trainer weight on aux 'ctd_ce'
+    BETA_INIT  : 0.0                        # zero-init residual scale (do not change)
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/SSDe/jemo_maeng/dset/DELIVER'   # bengio DELIVER path (bengio_deliver_rgbdel_sam.yaml lineage)
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0            # b_q/b_v Frobenius cap (P35/T1 seam; ep140 ‖dW‖606 폭주 대응)
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens; 24GB envelope (hinton-style)
+  BATCH_SIZE    : 1
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : true
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDe/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false

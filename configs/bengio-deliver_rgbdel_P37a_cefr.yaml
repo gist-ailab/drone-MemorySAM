@@ -91,7 +91,7 @@ MODEL:
 
 DATASET:
   NAME          : DELIVER
-  ROOT          : '/ailab_mat2/dataset/DELIVER'
+  ROOT          : '/SSDe/jemo_maeng/dset/DELIVER'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'depth', 'event', 'lidar']
   RGB_SUBROOT   : null
@@ -163,6 +163,6 @@ WANDB:
 
 TEST:
   MODEL_PATH    : ''
-  FILE          : '/ailab_mat2/dataset/DELIVER'
+  FILE          : '/SSDe/jemo_maeng/dset/DELIVER'
   IMAGE_SIZE    : [768, 768]
   OVERLAY       : false

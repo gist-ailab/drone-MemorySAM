@@ -22,6 +22,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion
 
@@ -95,6 +96,12 @@ class ReliaDINO(nn.Module):
                  cefr_reg_lambda: float = 0.01,
                  cefr_entropy_floor: float = 0.5,
                  cefr_hinge_reg: float = 1.0,
+                 class_token_enable: bool = False,
+                 class_token_layers: int = 3,
+                 class_token_dim: int = 256,
+                 class_token_heads: int = 8,
+                 class_token_mlp_ratio: float = 2.0,
+                 class_token_beta_init: float = 0.0,
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
@@ -132,6 +139,17 @@ class ReliaDINO(nn.Module):
             cefr_hinge_reg=cefr_hinge_reg)
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
+
+        # [P37b] ClassToken-lite-Learned auxiliary head (config-gated, default
+        # OFF -> byte-identical to P36). Learned class tokens over the gated
+        # fused stride-16 map; residual scale beta is zero-init (collapse-safe).
+        self.classtoken = None
+        if class_token_enable:
+            self.classtoken = ClassTokenLiteHead(
+                dim=dim, fpn_dim=fpn_dim, num_classes=num_classes,
+                num_layers=class_token_layers, dim_t=class_token_dim,
+                num_heads=class_token_heads, mlp_ratio=class_token_mlp_ratio,
+                beta_init=class_token_beta_init)
 
         # M2 seam (asymmetric modality dropout) — default OFF: it helped nothing
         # at mid-run so far (P33 empirical constraint 4); seam kept for P34.2.
@@ -209,9 +227,26 @@ class ReliaDINO(nn.Module):
             if self.training and cefr_reg is not None:
                 aux['cefr_reg'] = cefr_reg          # trainer adds to total loss
         logits, m_feat = self._decode(fused, routed)
+        token_logits = None
+        if self.classtoken is not None:
+            # [P37b] class-token residual: mask-embedding dot-product logits at
+            # stride 4, added to the head output scaled by the ZERO-INIT beta →
+            # exactly equal to the classtoken-off path at init (collapse-safe).
+            # CEFR와 합성 시 classtoken은 blend된 fused_final을 본다(의도된 결합).
+            token_logits = self.classtoken(fused, m_feat)   # (B, K, H/4, W/4)
+            logits = logits + self.classtoken.beta * token_logits
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
+            if token_logits is not None and gt_mask is not None:
+                # [P37b] training-only aux CE on token_logits at 1/4 label res
+                # (same downsampling convention as the fusion aux CE). Trainer
+                # weights it by MODEL.CLASS_TOKEN.AUX_CE_W (default 0.4).
+                gt_ds = F.interpolate(gt_mask.unsqueeze(1).float(),
+                                      size=token_logits.shape[-2:],
+                                      mode='nearest').squeeze(1).long()
+                aux['ctd_ce'] = F.cross_entropy(token_logits.float(), gt_ds,
+                                                ignore_index=255)
             return logits, m_feat, aux
         return logits, m_feat
 
@@ -227,6 +262,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     cons = mc.get('CONSISTENCY', {}) or {}
     router = mc.get('ROUTER', {}) or {}
     cefr = mc.get('CEFR', {}) or {}
+    ctok = mc.get('CLASS_TOKEN', {}) or {}
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -275,6 +311,12 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         cefr_reg_lambda=cefr.get('REG_LAMBDA', 0.01),
         cefr_entropy_floor=cefr.get('ENTROPY_FLOOR', 0.5),
         cefr_hinge_reg=cefr.get('HINGE_REG', 1.0),
+        class_token_enable=ctok.get('ENABLE', False),
+        class_token_layers=ctok.get('NUM_LAYERS', 3),
+        class_token_dim=ctok.get('DIM', 256),
+        class_token_heads=ctok.get('NUM_HEADS', 8),
+        class_token_mlp_ratio=ctok.get('MLP_RATIO', 2.0),
+        class_token_beta_init=ctok.get('BETA_INIT', 0.0),
         modal_dropout=mdrop.get('ENABLE', False),
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),
