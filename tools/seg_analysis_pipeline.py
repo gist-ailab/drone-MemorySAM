@@ -103,7 +103,7 @@ def main():
     ap.add_argument('--gpu', default='0')
     ap.add_argument('--stages', default='D1,D2,D2N,D3,D3B,D4,D5')
     ap.add_argument('--ablation-toggles',
-                    default='rbma_off,router_off,ctd_off,sdc_off,temp_off,cons_off,amf_uniform,p34_bias_off,p34_cons_off,p34_gate_off,p34_veto_off,p34_calib_off')
+                    default='rbma_off,router_off,ctd_off,sdc_off,temp_off,cons_off,amf_uniform,p34_bias_off,p34_cons_off,p34_gate_off,p34_veto_off,p34_calib_off,p36_router_off')
     ap.add_argument('--conditions', default='cloud,fog,night,rain,sun')
     ap.add_argument('--max-imgs', type=int, default=120)
     ap.add_argument('--viz-case', default='sun')

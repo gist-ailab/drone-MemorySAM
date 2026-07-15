@@ -97,6 +97,7 @@ def make_toggles(core):
         fus_toggle('p34_gate_off', 'gate_enable', False)               # reliability gate
         fus_toggle('p34_veto_off', 'veto_floor', False)                # veto floor
         fus_toggle('p34_calib_off', 'calibrate', False)                # temperature 보정
+        fus_toggle('p36_router_off', 'router_alpha', 0.0, is_param=True)  # [P36] router residual 제거
     return T
 
 
