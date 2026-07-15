@@ -1,4 +1,5 @@
 from .deliver import DELIVER
+from .muses import MUSES
 from .kitti360 import KITTI360
 from .nyu import NYU
 from .mfnet import MFNet
@@ -8,6 +9,7 @@ from .multiaqua import MULTIAQUA
 
 __all__ = [
     'DELIVER',
+    'MUSES',
     'KITTI360',
     'NYU',
     'MFNet',
