@@ -144,6 +144,10 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 
 ---
 
+## 2.9 ⚠️ P36 비판적 노벨티 판정 (2026-07-16, 실측 기반 — 필독)
+
+**[decisions/2026-07-16-p36-novelty-critical-review.md](../decisions/2026-07-16-p36-novelty-critical-review.md)** — legal 수치로 P34 test −0.09/val −0.60 = SOTA 미달, **RBMA bias 계열 4세대·2백본 전부 Δ≈0(사망, negative finding으로 전환)**, 유일 생존 모듈 = per-class reliability-anchored router(+0.76, 이중 백본 재현, thin-class 부활 Wall/Water/RailTrack). 포지셔닝 권고 = A(백본 지배변수 실증연구) / B(MUSES modality-efficient robustness) / C(P36+physaug 완주 or TTA 후 on-par). "RBMA" 성능 브랜딩과 val 68.76 헤드라인은 내려놓을 것.
+
 ## 3. 노벨티 판정 (deep-research verdict, 리뷰 방어용)
 
 - **헤드라인 = 기구(B)**: "reliability를 **SAM memory-attention pre-softmax logit에 additive bias**로". feature-multiply / output-scale / loss-level 일색인 선행연구에 **logit-additive bias 전례 0건**. + MemorySAM 핵심 메커니즘 개조 서사.
