@@ -65,3 +65,12 @@ created: 2026-07-08
 
 - 시작: `CLAUDE.md` → `.claude_logs/00_INDEX.md` → `status/current.md` → 작업 폴더 `00_MOC.md` (CLAUDE.md 지침 준수).
 - 의미 있는 작업 완료 시: `status/current.md` 덮어쓰기 + `status/history-<현재반기>.md` 최상단 append (CLAUDE.md §3 자동 업데이트 규칙).
+
+## 7. 🔴 모델 위임 규칙 (user 지정 2026-07-16)
+
+**이 리포에서 작업하는 모든 세션·서브에이전트 공통.** 상세는 `CLAUDE.md` §1.6.
+
+- **sonnet**: 학습 기동(`remote_exp.sh run`/torchrun) · **tmux 제어** · 상태 조회(`nvidia-smi`/`ps`/로그) · kill · rsync 회수 · **git**(pull/push/fetch/commit) · 기계적 파일 정리
+- **해당 세션의 opus 또는 fable**: **코드를 만지는 일**(패치·config 설계·스크립트) · **에러 검증/진단** · 로그 판독 · 수치 판정
+- 위임은 `Agent` tool `model: "sonnet"`. **sonnet은 집행, 판정은 상위 모델.**
+- 위임 금지: cherry-pick 선별 · 충돌 해결 · 브랜치 전략 · 실패 원인 규명 · 실험 판정이 담긴 커밋 메시지

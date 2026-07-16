@@ -40,6 +40,24 @@
 - **리서치 콘텐츠(논문 노트·소스·아이디어·볼트 실험노트 `P<N>_<이름>/`)의 원본 = NAS Obsidian 볼트** `/nas_jm/Research/26_MultimodalSeg`. repo의 `.claude_logs/research/vault/`는 **동기화 사본(손편집 금지)** — 갱신은 `bash scripts/sync_research_vault.sh`. 볼트 배치 규약·에이전트 규칙 = `/nas_jm/Research/00_AGENT_PROTOCOL_HERMES.md` + `research/vault/README.md`.
 - 볼트에 `architecture/ experiments/ issues/ synthesis/` 등 repo-로그 미러 폴더를 만들지 말 것 (위 사고 잔재 폴더는 격리됨). 위치가 애매하면 사용자에게 묻는다.
 
+### 1.6 🔴 모델 위임 규칙 (모든 세션·에이전트 공통 — user 지정 2026-07-16)
+
+**이 리포에서 작업하는 모든 세션과 서브에이전트에 동일하게 적용한다.**
+
+| 작업 | 어느 모델로 |
+|------|------------|
+| **학습 기동** (`remote_exp.sh run` / torchrun), **tmux 제어**, 상태 조회(`nvidia-smi`/`ps`/로그 tail·grep), 프로세스 kill, rsync 회수 | **sonnet** |
+| **git** (pull/push/fetch/commit), 기계적 파일 이동·동기화·정리 | **sonnet** |
+| **코드를 만지는 일** — 패치·config 설계·스크립트 작성 | **해당 세션의 opus 또는 fable** |
+| **에러 검증/진단**, 로그 판독, 수치 해석·판정 | **해당 세션의 opus 또는 fable** |
+
+- 위임은 `Agent` tool에 **`model: "sonnet"`** 을 명시해서 한다.
+- **sonnet은 데이터를 물어오고 명령을 집행하되, 판정은 상위 모델이 한다.** "이게 붕괴인가 노이즈인가", "왜 죽었나"는 위임하지 마라.
+- **위임 금지(판단이 섞인 것)**: cherry-pick 대상 선별, 충돌 해결, 브랜치 전략, 커밋 메시지에 실험 판정을 담는 경우, 실패 원인 규명.
+- ⚠️ **기동 "검증"의 기준은 상위 모델이 정의**해 주고 결과를 검토한다. 판정 기준 = **iteration이 실제 전진하는가**(예: `73/187` → 25초 뒤 `92/187`) · **rank0 GPU util > 0인가**(0%면 collective 이탈=데드락) · **메모리가 가중치 수준(3~4GiB)이 아니라 실제 활성화 수준인가** · **첫 eval 통과**. 2026-07-16에 "기동됨"만 보고 살아났다고 오보했다가 실제론 NCCL 데드락(`0/187`에서 13분 정지)이었던 사고가 있다.
+
+**Why**: 반복 잡무·기계적 원격 조작에 상위 모델을 쓰는 건 비용 낭비. 상위 모델은 **판단·진단·코드**에만 쓴다.
+
 ### 2. 실험 및 코드 변경 시 (Execution)
 
 - 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `models/arch-evolution.md` 또는 `experiments/log.md`를 업데이트하여 기록을 남겨라 (새 실험 launch/상태 변화는 `experiments/registry.md` 행도 갱신).
