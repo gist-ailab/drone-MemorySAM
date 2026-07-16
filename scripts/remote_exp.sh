@@ -109,6 +109,11 @@ case "$ENV" in
       ACT="source '$ENV/bin/activate'"
       CUDNN_LIB="$("$ENV/bin/python" -c 'import nvidia.cudnn,os;print(os.path.join(os.path.dirname(nvidia.cudnn.__file__),"lib"))' 2>/dev/null || true)"
       [ -n "$CUDNN_LIB" ] && ACT="$ACT && export LD_LIBRARY_PATH='$CUDNN_LIB':\$LD_LIBRARY_PATH"
+      # wandb telemetry (sentry) can be unreachable on egress-restricted boxes (e.g. the
+      # hpca100 K8s pod). rank0 then blocks in a futex on wandb's network thread while
+      # ranks 1..N-1 spin forever in an all-reduce -> silent NCCL deadlock at 0/187 iters,
+      # GPUs pinned at 100% with only weights resident. Disable telemetry on venv servers.
+      ACT="$ACT && export WANDB_MODE=disabled"
       ;;
   *)  ACT="conda activate '$ENV'" ;;
 esac
