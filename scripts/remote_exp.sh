@@ -95,9 +95,15 @@ cfg_name="$(basename "$CFG" .yaml)"
 if [ "$ENTRY" = "auto" ]; then
   case "$cfg_name" in
     *SAM3*|*sam3*|*RBMA*|*rbma*) ENTRY="train_sam3_rbma.py" ;;
+    *reliadino*|*ReliaDINO*|*P34*|*P35*|*P36*) ENTRY="train_reliadino.py" ;;
     *) ENTRY="train_sam2_lora_paper.py" ;;
   esac
 fi
+# activation: absolute path => venv (e.g. hpca100), bare name => conda env (all existing servers)
+case "$ENV" in
+  /*) ACT="source '$ENV/bin/activate'" ;;
+  *)  ACT="conda activate '$ENV'" ;;
+esac
 PRE=""
 case "$ENTRY" in
   *sam3*) PRE="export HF_HUB_OFFLINE=1 PYTHONPATH=semseg/models/sam3:\$PYTHONPATH &&" ;;
@@ -108,7 +114,7 @@ IDX="$(tmux new-window -P -F '#{window_index}' -t jemo -n "$WIN")"
 PORT=$((21600 + RANDOM % 300))
 TS="$(date +%Y%m%d_%H%M%S)"
 LOG="logs/${cfg_name}/${cfg_name}_${TS}.log"
-RUN="cd '$REPO' && mkdir -p 'logs/${cfg_name}' && conda activate '$ENV' && $PRE export CUDA_VISIBLE_DEVICES='$GPUS' OMP_NUM_THREADS=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && echo '[remote_exp] PORT=$PORT NPROC=$NPROC ENTRY=$ENTRY' && torchrun --nproc_per_node=$NPROC --master_port=$PORT $ENTRY --cfg '$CFG' 2>&1 | tee '$LOG'"
+RUN="cd '$REPO' && mkdir -p 'logs/${cfg_name}' && $ACT && $PRE export CUDA_VISIBLE_DEVICES='$GPUS' OMP_NUM_THREADS=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_DISABLE_XET=1 && echo '[remote_exp] PORT=$PORT NPROC=$NPROC ENTRY=$ENTRY' && torchrun --nproc_per_node=$NPROC --master_port=$PORT $ENTRY --cfg '$CFG' 2>&1 | tee '$LOG'"
 tmux send-keys -t "jemo:$IDX" "$RUN" C-m
 echo "LAUNCHED session=jemo window=$WIN(idx $IDX) port=$PORT"
 echo "LOG=$REPO/$LOG"
