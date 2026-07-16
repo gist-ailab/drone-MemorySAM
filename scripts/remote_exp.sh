@@ -101,7 +101,15 @@ if [ "$ENTRY" = "auto" ]; then
 fi
 # activation: absolute path => venv (e.g. hpca100), bare name => conda env (all existing servers)
 case "$ENV" in
-  /*) ACT="source '$ENV/bin/activate'" ;;
+  /*) # venv: torch bundles its own cuDNN, but a login shell's LD_LIBRARY_PATH can
+      # shadow it with an older system cuDNN. libcudnn_cnn_train.so.8 is dlopen'd
+      # lazily on the FIRST CONV BACKWARD, so a mismatch passes forward and then
+      # dies with "GET was unable to find an engine to execute this computation".
+      # Prepend the venv's cuDNN so it wins. (hpca100: system 8.9.0 vs torch 8.9.2)
+      ACT="source '$ENV/bin/activate'"
+      CUDNN_LIB="$("$ENV/bin/python" -c 'import nvidia.cudnn,os;print(os.path.join(os.path.dirname(nvidia.cudnn.__file__),"lib"))' 2>/dev/null || true)"
+      [ -n "$CUDNN_LIB" ] && ACT="$ACT && export LD_LIBRARY_PATH='$CUDNN_LIB':\$LD_LIBRARY_PATH"
+      ;;
   *)  ACT="conda activate '$ENV'" ;;
 esac
 PRE=""
