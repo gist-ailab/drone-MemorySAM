@@ -254,7 +254,7 @@ def train_one_epoch(
     total_ctr = 0.0
     n_iters = 0
     nan_skips = 0
-    grad_clip = 10.0  # max grad-norm; guards against loss spikes → divergence (BATCH_SIZE=1 noisy grads)
+    grad_clip = float(os.environ.get('DET_GRAD_CLIP', '10.0'))  # env-overridable; DETR heads want ~0.1 (P37a sets it)
 
     optimizer.zero_grad()
     n_batches = len(dataloader)
@@ -589,7 +589,18 @@ def main():
             model.load_state_dict(ckpt['model_state_dict'], strict=False)
         else:
             model.load_detector_state_dict(ckpt['detector_state_dict'])
+        # config가 의도한 LR을 resume이 덮어쓰기 전에 보관
+        _want_lrs = [g['lr'] for g in optimizer.param_groups]
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        # ── resume LR override (2026-07-16) ────────────────────────────────
+        # load_state_dict는 구 런의 param_groups를 복원하고, 거기엔 이전
+        # LambdaLR이 심은 'initial_lr'(구 LR)이 남아 있다. 새 LambdaLR은
+        # group.setdefault('initial_lr', group['lr']) 이라 **기존 키를 덮어쓰지
+        # 않으므로** scheduler.base_lrs가 구 LR로 고정되고 TRAIN.LR이 조용히
+        # 무시된다. 에러가 안 나서 로그로도 안 보인다. -> config LR을 명시 재적용.
+        for _g, _lr in zip(optimizer.param_groups, _want_lrs):
+            _g['lr'] = _lr
+            _g.pop('initial_lr', None)   # 새 scheduler가 config LR로 재시드하게
         start_epoch = ckpt['epoch'] + 1
         best_ap = ckpt.get('best_ap', 0.0)
         if is_main:
@@ -657,6 +668,11 @@ def main():
 
     # Training loop
     for epoch in range(start_epoch, epochs):
+        # [P37a] CEFR's two-pass blend reads seg_model._current_epoch
+        # (lambda2 warmup). No-op for non-CEFR models.
+        _sm = getattr(unwrap(model), 'seg_model', None)
+        if _sm is not None and hasattr(_sm, '_current_epoch'):
+            _sm._current_epoch = epoch
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
 
