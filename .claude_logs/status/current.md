@@ -29,6 +29,8 @@ moved: 2026-07-08
 
 **📝 2026-07-15 RA-L 논문 트랙 개시**: NAS 볼트 `_paper_submission/`에 ReliaDINO(=P34/P36 계보) RA-L 초안 v1 전 섹션 작성+컴파일 완료(9p, `ReliaDINO_RAL_latest.pdf`). 타 세션이 채울 실험 슬롯 8개 = [research/ral-paper-plan.md](../research/ral-paper-plan.md). ⚠️ legal 최선 = P34 val 68.19/test 56.62(test-SOTA −0.09, "57.60"은 test-best라 철회) → P34 재중심화 리라이트 예정.
 
+**📝 2026-07-17 P38 MaskQueryLite 구현 완료 (학습 대기)**: P36 공정 레시피(GATE·VETO·CALIB·ROUTER on / ATTN_BIAS·CONSISTENCY·PHYSAUG off / DGFUSION_AUG on) 동결 위에 Mask2Former-lite query head(100 query, 6-layer masked cross-attn, 공유 cls/mask-embed head, β-zero-init로 시작 시 P36 byte-identical) 추가한 1-변수 비교. mask-classification 구조로 전환해 `panoptic_inference()` 경로 확보 = MUSES **PQ** 산출이 처음으로 가능해짐(기존 per-pixel head는 구조적으로 PQ 불가 — DGFusion/CAFuser는 OneFormer 스택이라 PQ가 주표). 커밋 3bb2c41(develop 병합 tip 6d922bd). 합성 스모크 PASS(β-zero 등가성 exact, panoptic 경로 동작), 실데이터 스모크는 **yeon 8-GPU 전부 점유**로 보류 — 서버 확보 시 본학습 직전 2ep 스모크 선행 조건. 상세 [models/arch-evolution.md](../models/arch-evolution.md) P38 / 대기열 [experiments/plan.md](../experiments/plan.md). 🔴 **bengio 여전히 SSH 불통**(GPU5 HW 고장 추정, 재부팅 후 미복귀) — seg-P37a/b 생존 미확인 유지, P38 launch 우선순위는 P37 지속 다음.
+
 **⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
 
 | 트랙 | 상태 | 수치 / 다음 액션 |

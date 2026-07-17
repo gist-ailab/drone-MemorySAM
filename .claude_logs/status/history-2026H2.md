@@ -9,6 +9,22 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-17 — P38 MaskQueryLite 구현 완료 (학습 대기)
+
+**배경**: P36 공정 레시피(GATE·VETO·CALIB·ROUTER on / ATTN_BIAS·CONSISTENCY off / PHYSAUG off / DGFUSION_AUG on)를 동결한 채 **Mask2Former-lite query head** 하나만 추가해, head confound를 제거한 1-변수 비교를 구성. 동기 3가지: ① DGFusion/CAFuser는 OneFormer(mask-classification) 스택이라 MUSES 주표가 PQ인데 우리 per-pixel head는 구조적으로 PQ 산출 불가였음 → mask-cls 전환으로 해소 ② mask-cls는 문헌상 thin/희소 클래스(Wall/Water/RailTrack)에서 +1~3 mIoU 우세 ③ head를 통제 변수로 고정해 남는 성능차 = 신뢰도 라우팅 융합의 몫으로 귀속 가능.
+
+**구현**: 100 learned query, 6-layer masked cross-attn(gated fused stride-16 map 위, P37b `_TokenDecoderLayer` 재사용) + 공유 cls(K+1)/mask-embed head + deep supervision. attn mask = 이전 layer의 공유-head mask 예측을 stride4→16 리사이즈(Mask2Former 관행). 손실 = Hungarian(scipy) 매칭 + CE(no-obj weight 0.1) + point-sampled BCE/dice(가중 2/5/5, 12544 pts), 모델 내부에서 계산해 `aux['m2f_loss']`로 노출(trainer LOSS_W 0.5). 최종 출력 = `conv_head + β·sem_query + router_alpha·routed`(β zero-init) → 시작 시 P36과 **byte-identical**(합성 스모크 |on−off|max=0.0로 검증). 파라미터 ~5.2M. `panoptic_inference()`(표준 M2F 후처리) 포함 — MUSES PQ 산출용.
+
+**파일**: `semseg/models/reliadino/m2f_head.py`(신규), `model.py`/`train_reliadino.py`(배선), `configs/bengio-deliver_rgbdel_P38_m2f.yaml`(200ep, 768², bs2, 8-GPU 상정), `configs/yeon-deliver_rgbdel_P38_m2f_smoke.yaml`(2ep). 커밋 **3bb2c41**(develop 병합 tip 6d922bd).
+
+**검증**: 로컬 합성 스모크 **PASS**(fwd/bwd 유한, query/cls grad 흐름 확인, β-zero 등가성 exact, panoptic 경로 동작). **실데이터 스모크는 미실행** — yeon 8-GPU 전부 다른 실험(det_P37 등)에 점유되어 있어 유휴 GPU 확보 전까지 보류. 대기열 등재 = [experiments/plan.md](../experiments/plan.md) 대기열 #7. 상세 아키텍처 = [models/arch-evolution.md](../models/arch-evolution.md) P38.
+
+**발견 이슈(신규 등재, ISSUE-024)**: P37b `classtoken.py`의 `mask_proj`(attn-mask 예측기)가 threshold 비교(비미분)로만 쓰여 gradient를 전혀 받지 않음 → 영구 random init, masked attention이 사실상 random 마스킹으로 동작(NaN guard + layer1 unmasked 덕에 치명적이진 않음). P38 `m2f_head.py`는 공유-head 예측 리사이즈 방식으로 처음부터 올바르게 구현. P37b가 kill-gate 생존 시 동일 방식으로 후속 수정 필요 — 상세 [issues/issues-and-fixes.md](../issues/issues-and-fixes.md) ISSUE-024.
+
+**미해결**: bengio 여전히 SSH 불통(GPU5 HW 고장 추정) — seg-P37a/b 생존 미확인 유지, P38 launch 우선순위는 P37 지속 다음.
+
+---
+
 ### 2026-07-15 — RA-L 논문 트랙 개시 (세션 "MMSAM | *Paper")
 - NAS 볼트 `_paper_submission/` 생성, RA-L 템플릿(ieeeconf.cls/IEEEtran.bst) 적용, 멀티에이전트 워크플로우(10 agents)로 abstract~conclusion 전 섹션 + references.bib + TikZ 그림 3종 + figure_plan 작성, pdflatex 컴파일 통과 (초안 v1, 9p).
 - PDF 열람 = `_paper_submission/ReliaDINO_RAL_latest.pdf` (스텝마다 갱신). 타 세션 실험 슬롯 8개 = [research/ral-paper-plan.md](../research/ral-paper-plan.md).

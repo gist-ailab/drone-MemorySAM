@@ -1,6 +1,6 @@
 ---
 created: 2026-07-16
-updated: 2026-07-17 18:00
+updated: 2026-07-17 (seg-P38 대기열 등록)
 ---
 
 # 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
@@ -87,6 +87,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **4** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
 | **5** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
 | **6** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
+| **7** | **seg-P38 (MaskQueryLite)** | 4~8 GPU (bs2, eff-batch16 기준 accumulation 자동) | **P37a/b 다음** — bengio 복구 시 P37 지속이 우선, P38은 그 외 첫 빈 서버 | 구현 완료(2026-07-17, 커밋 3bb2c41). P36 공정 레시피(GATE·VETO·CALIB·ROUTER on / ATTN_BIAS·CONSISTENCY·PHYSAUG off / DGFUSION_AUG on) 동결 위에 Mask2Former-lite query head(100 query, 6-layer masked cross-attn, β-zero-init로 P36 byte-identical 시작) 추가한 1-변수 비교. config `configs/bengio-deliver_rgbdel_P38_m2f.yaml`(200ep). **선행조건**: ①실데이터 2ep 스모크(`configs/yeon-deliver_rgbdel_P38_m2f_smoke.yaml` 참조, 합성 스모크만 PASS·실데이터 미검증) ②서버별 `DATASET.ROOT` 조정(bengio `/SSDe/jemo_maeng/dset/DELIVER`, yeon `/SSDb/jemo_maeng/dset/DELIVER`, hpca100은 DELIVER 스테이징 여부 미확인) ③python env에 `scipy` 필수(Hungarian matching). 판정 게이트 = P36 fair(val 67.74/test 55.62) 대비 + thin-class(Wall/Water/RailTrack) IoU |
 
 ## ✅ 완료·판정 (재실행 금지)
 

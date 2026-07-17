@@ -24,7 +24,7 @@
 |------|------|-----------|
 | [status/](status/00_MOC.md) | **현재 상태 + 진행 이력** (구 01 분할) | [current.md](status/current.md) = 스냅샷 단일 출처 · history-2026H2/H1 |
 | [models/](models/00_MOC.md) | 모델 아키텍처 | [arch-evolution.md](models/arch-evolution.md)(canonical) · figures-ascii · explain/(버전별 노트) |
-| [experiments/](experiments/00_MOC.md) | 실험 기록 | [registry.md](experiments/registry.md)(허브) · [log.md](experiments/log.md)(canonical) · monitor-log · analysis/ |
+| [experiments/](experiments/00_MOC.md) | 실험 기록 | [registry.md](experiments/registry.md)(허브) · [log.md](experiments/log.md)(canonical) · monitor-log · analysis/ · [benchmark_roadmap.md](experiments/benchmark_roadmap.md)(벤치마크·모달리티 확장 로드맵) |
 | [det/](det/00_MOC.md) | Detection 트랙 진단 | [diagnosis-plan.md](det/diagnosis-plan.md)(det 작업 전 필독) · p29det-data-fix |
 | [datasets/](datasets/00_MOC.md) | 데이터셋 구축/수리 | [lidar-egofill.md](datasets/lidar-egofill.md) |
 | [research/](research/00_MOC.md) | 관련연구·노벨티 | [novelty-and-related-work.md](research/novelty-and-related-work.md)(canonical) · vault-digest · vault/ · related-work-raw |

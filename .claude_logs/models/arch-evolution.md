@@ -6,7 +6,30 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-07-06
+> 최종 업데이트: 2026-07-17
+
+## P38 — MaskQueryLite: Mask2Former-lite Query Head (2026-07-17)
+
+**상태**: **구현 완료 (학습 대기)**. 계보: P36 공정 레시피(`GATE`·`VETO`·`CALIB`·`ROUTER` on / `ATTN_BIAS`·`CONSISTENCY` off / `PHYSAUG` off / `DGFUSION_AUG` on) **동결** + Mask2Former-lite query head 추가. P37a(CEFR-Head)·P37b(ClassToken-lite-Learned)는 **off** — 깨끗한 1-변수 비교(P36 대비 변경점 = M2F head 단 하나)로 설계. config `configs/bengio-deliver_rgbdel_P38_m2f.yaml`(200ep, 768², bs2, 8-GPU 상정) / 스모크 `configs/yeon-deliver_rgbdel_P38_m2f_smoke.yaml`(2ep). 파일: `semseg/models/reliadino/m2f_head.py`(신규), `model.py`·`train_reliadino.py`(배선). 커밋 3bb2c41(develop 병합 tip 6d922bd).
+
+**동기 (3가지)**:
+1. **PQ 서사 정합**: DGFusion/CAFuser는 OneFormer(mask-classification) 스택이라 MUSES 주표가 **PQ** — 우리 기존 per-pixel head는 구조적으로 PQ 산출이 불가능했음. mask-classification 헤드로 전환해야 동일 잣대 비교가 성립.
+2. **thin/희소 클래스 우세(문헌)**: mask-classification은 Wall/Water/RailTrack류 thin/희소 클래스에서 per-pixel 대비 +1~3 mIoU 우세로 보고됨.
+3. **head confound 제거**: P36 위에 head 하나만 추가해 고정하면, 남는 성능차는 신뢰도 라우팅 융합(RBMA 계보의 핵심 노벨티)의 몫으로 귀속할 수 있음 — 모듈 기여 분리를 위한 통제.
+
+**구조**: 100개 learned query가 gated fused stride-16 feature map 위에서 6-layer masked cross-attention(P37b `_TokenDecoderLayer` 재사용)을 수행. 공유 cls(K+1)/mask-embed head를 매 layer에 적용해 deep supervision. **attn mask**는 이전 layer의 공유-head mask 예측을 stride4→16으로 리사이즈해 다음 layer의 cross-attn을 제한(Mask2Former 표준 관행) — P37b의 `mask_proj`처럼 threshold-only 비미분 경로가 아니라, 예측을 직접 리사이즈해 사용하므로 gradient가 흐른다 (`_attn_bias`, 아래 ISSUE-024 참조).
+
+**손실**: Hungarian matching(scipy) + CE(no-object weight 0.1) + point-sampled BCE/Dice(가중 2/5/5, 12544 pts/query). 매칭·손실 계산은 모델 내부(`m2f_head.py`)에서 수행되고 `aux['m2f_loss']`로 노출 — trainer는 `LOSS_W: 0.5`로 가중합만 수행.
+
+**Collapse-safe 병합**: 최종 세그멘테이션 출력 = `conv_head + β·sem_query + router_alpha·routed`, `β`는 **zero-init**. 따라서 학습 시작 시점에는 M2F 쿼리 브랜치가 출력에 아무 기여도 하지 않아 **P36과 byte-identical** — 합성 스모크에서 on/off 출력차 `|Δ|max = 0.0`으로 검증됨. `β`가 학습되면서 점진적으로 mask-classification 신호가 섞여 들어가는 구조라, 초기화 실패로 인한 성능 열화 리스크가 없다.
+
+**panoptic_inference()**: 표준 Mask2Former 후처리(클래스 확률 × 마스크 확률 → per-pixel argmax + overlap/threshold 필터)를 구현·포함. MUSES **PQ** 산출의 전제 조건 — 기존 per-pixel head에는 이 경로 자체가 없었음.
+
+**검증**: 로컬 합성 스모크 PASS — fwd/bwd 유한, query/cls 양쪽 grad 흐름 확인, β-zero 등가성 exact, panoptic 경로 동작. **실데이터 스모크 미실행**(yeon 8-GPU 전부 점유) — 서버 확보 시 본학습 직전 2ep 스모크가 선행 조건. 파라미터 ~5.2M.
+
+**판정 게이트**: P36 fair(val 67.74/test 55.62) 대비 mIoU + thin-class(Wall/Water/RailTrack) IoU.
+
+---
 
 ## P32 — CoRB: Corroboration-Biased Memory Attention (2026-07-06)
 

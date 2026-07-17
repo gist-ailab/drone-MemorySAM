@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-06-24
+> 최종 업데이트: 2026-07-17
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -17,6 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-024** | 🟡 **OPEN (조건부 — P37b kill-gate 생존 시 수정)** | P37b `classtoken.py`의 `mask_proj`(attn-mask 예측기)가 threshold 비교(비미분)로만 쓰여 gradient 미도달 → 영구 random init, masked attention이 사실상 random 마스킹. P38 `m2f_head.py`가 올바른 수정 패턴(`_attn_bias`) 보유. 상세: 하단 ISSUE-024 |
 | **ISSUE-023** | ✅ **완화 완료(2026-07-08)** / 🟡 근본해결 대기 | **/mnt/HDD2 ENOSPC = NTFS MFT 레코드 고갈** — 아카이브 27k+파일을 drone NAS로 전량 소산해 레코드 해방, **쓰기 정상화 검증 완료(2,000파일 연속 생성 OK)**. 단 대량 파일 쓰기(수만 개)는 재마운트/Windows 검증 전까지 자제. 상세: 하단 ISSUE-023 |
 | **ISSUE-022** | ✅ **해결(2026-07-03)** | **P27.forward가 `_fuse_outputs` 훅 미호출 → P30 learned router 200ep 내내 미실행** (P31.2 훅 호출로 수정; P30 결과 = router 미참여로 재해석) |
 | ISSUE-021 | ✅ 해결 | SAM3-RBMA sem_head BatchNorm→GroupNorm (train/eval 불일치) |
@@ -43,6 +44,20 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-024: P37b `classtoken.py`의 `mask_proj`가 gradient를 받지 못함 (random attn mask) [OPEN, 조건부, 2026-07-17]
+
+**발견 경위**: P38 MaskQueryLite(`m2f_head.py`) masked cross-attention 구현 중, P37b `classtoken.py`의 attn-mask 생성 경로를 재사용하려다 발견.
+
+**메커니즘**: P37b `ClassToken-lite-Learned`의 `mask_proj`는 다음 layer의 cross-attn 마스크를 만들기 위한 예측기이지만, 실제로는 그 출력을 **threshold 비교**(`mask_proj(x) > 0` 류의 비미분 연산)로만 소비해 boolean mask를 만든다. threshold 비교는 미분 불가능하므로 `mask_proj`의 파라미터로 역전파되는 gradient가 전혀 없다 → **`mask_proj`가 영구 random init 상태로 남고, 결과적으로 masked attention이 사실상 random 마스킹**으로 동작한다. layer1이 unmasked(첫 레이어는 마스크 없이 attend)이고 NaN guard가 있어 학습이 발산하지는 않지만(치명적이지 않음), 의도한 "이전 예측 기반 점진적 마스크 정제"라는 Mask2Former 관행이 실질적으로 작동하지 않는다.
+
+**P38 수정 패턴 (참고용, 이미 적용됨)**: `semseg/models/reliadino/m2f_head.py`의 attn mask 생성은 **공유 cls/mask-embed head의 예측을 직접 stride4→16으로 리사이즈**해 사용(`_attn_bias`) — threshold-only 비미분 지름길을 거치지 않으므로 head 예측에 gradient가 정상적으로 흐른다. P38은 처음부터 이 방식으로 구현되어 동일 문제가 없다.
+
+**영향 범위**: P37b 단독(kill-gate 결과 대기 중, bengio 생존 미확인). ClassToken 헤드 자체의 다른 경로(class-token cross-attn 본체)는 정상 학습되므로 P37b 결과가 완전히 무효는 아니나, masked attention이 설계 의도대로 기여하지 못하고 있어 P37b 수치를 "ClassToken 어블레이션"으로 해석할 때 이 결함을 감안해야 한다.
+
+**조치 필요**: P37b가 kill-gate에서 생존해 후속 실험 대상이 되면, `m2f_head.py`의 `_attn_bias` 패턴(공유-head 예측 리사이즈)으로 `mask_proj` 경로를 동일하게 수정할 것.
 
 ---
 
