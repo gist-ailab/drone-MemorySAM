@@ -1,0 +1,110 @@
+# P37a-Det = CEFR (P37a) segmentation backbone + RF-DETR NMS-free head.
+#
+# Replaces the collapsed P37-Det (which was P34-backbone + RF-DETR head). The
+# segmentation methodology is now P37a-CEFR, faithfully mirrored here: the fusion
+# recipe is copied verbatim from configs/bengio-deliver_rgbdel_P37a_cefr.yaml
+#   G0c frozen: GATE + VETO + CALIBRATION on / ATTN_BIAS + CONSISTENCY off
+#   ROUTER on (P36) + CEFR on (P37a two-pass feature blend)
+# and only the head changes: seg head -> RF-DETR two-stage decoder (COCO-init).
+# extract_det_pyramid runs the same CEFR blend as forward() before the FPN, so the
+# det head sees CEFR-refined fused tokens.
+#
+# CRITICAL: GRAD_CHECKPOINT must be false. encoder.py's active_modality state is not
+# preserved across checkpoint recomputation (confirmed 07-17), so grad-ckpt trains
+# all-but-last modality on noise. Detection has 3 modalities (img/lidar/thermal), so
+# this bug would corrupt 2 of 3.
+OUTPUT_DIR: outputs/det_final_P37a_cefr_yeon
+
+DATASET:
+  ROOT: /SSDb/jemo_maeng/dset/poongsan_v2
+  ANNOTATION_TRAIN: /SSDb/jemo_maeng/dset/poongsan_v2/_final_ann/instances_train_egofill.json
+  ANNOTATION_VAL:   /SSDb/jemo_maeng/dset/poongsan_v2/_final_ann/instances_test_common.json
+  MODALITY_KEYS:
+    img:     rgb
+    lidar:   depth_map_lidar
+    thermal: thermal_aligned
+  MODALS: ['img', 'lidar', 'thermal']
+  REQUIRE_ALL_MODALITIES: true
+  IMG_SIZE: [768, 768]
+  MIN_AREA: 16.0
+
+MODEL:
+  SEG_MODEL: ReliaDINO
+  DET_MODEL: ReliaDINORFDETRDetector
+  N_CLASSES: null
+  # ---- ReliaDINO backbone (identical arch to P34/P37) ----
+  BACKBONE_TIMM: vit_large_patch16_dinov3
+  BACKBONE_FALLBACK: vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE: true
+  SEG_CHECKPOINT: ''
+  LORA_R: 8
+  LORA_ALPHA: null
+  FPN_DIM: 256
+  FPN_STRIDES: [4, 8, 16, 32]
+  # ---- P37a-CEFR fusion recipe (verbatim from the seg config) ----
+  FUSION:
+    NUM_LAYERS: 2
+    NUM_HEADS: 8
+    MLP_RATIO: 4.0
+    AUX_HIDDEN: 256
+    ATTN_BIAS: { ENABLE: false, LAMBDA1_INIT: 1.0 }   # G0c: bias OFF
+  CONSISTENCY: { ENABLE: false, LAMBDA2_INIT: 0.5 }   # G0c: consistency OFF
+  GATE:
+    ENABLE: true
+    TAU: 0.25
+    ENTROPY_REG: 0.0
+    ENTROPY_FLOOR: 0.5
+    VETO_FLOOR: { ENABLE: true, THRESH: 0.10, CAP: 0.05 }
+  CALIBRATION: { ENABLE: true, LAMBDA: 0.1 }
+  ROUTER:                                             # [P36] per-class router
+    ENABLE: true
+    ANCHOR_LAMBDA: 1.0
+    REG_MODE: decisive
+    REG_LAMBDA: 0.01
+    ALPHA_INIT: 0.0
+    HIDDEN: 64
+  CEFR:                                               # [P37a] two-pass CEFR head
+    ENABLE: true
+    MORPH_INIT: -4.0
+    ANCHOR_POSTERIOR: true
+    LAMBDA1: 1.0
+    LAMBDA2_TARGET: 0.5
+    LAMBDA2_WARMUP_EP: 10
+    ENTROPY_FLOOR: 0.5
+    HIDDEN: 64
+  MODAL_DROPOUT: { ENABLE: false }
+  # ---- RF-DETR head (same as P37-Det) ----
+  DET_LEVELS: [2]
+  NUM_QUERIES: 300
+  GROUP_DETR: 13
+  DEC_LAYERS: 4
+  DEC_N_POINTS: 2
+  NUM_SELECT: 300
+  COCO_CKPT: /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM/weights/rf-detr-large-2026.pth
+  FREEZE_BACKBONE: false
+  GRAD_CHECKPOINT: false        # REQUIRED — see header (active_modality bug)
+
+TRAIN:
+  IMAGE_SIZE: [768, 768]
+  EPOCHS: 50
+  BATCH_SIZE: 1                 # ckpt off + CEFR 2-pass -> BS1 for VRAM headroom (probe-confirmed)
+  VAL_BATCH_SIZE: 1
+  GRAD_ACCUM_STEPS: 4           # 8 GPU x BS1 x accum4 = effective 32
+  LR: 0.0001                    # 1e-4 (지수표기 금지: PyYAML이 str로 파싱)
+  WEIGHT_DECAY: 0.0001
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 1              # eval+ckpt every epoch (catch collapse early)
+  NUM_WORKERS: 4
+  AMP: true
+  GRAD_CLIP: 0.1                # DETR-head stability: the P37 collapse ran unclipped-ish; clip hard
+  PRETRAINED_HEAD_LR_MULT: 0.1  # COCO decoder 1e-5 / new class head 1e-4
+
+WANDB:
+  ENABLE: false
+  PROJECT: p37a-det
+  ENTITY: null
+  VIZ_COUNT: 8
+  VIZ_SCORE_THRESH: 0.3
+
+EVAL:
+  SCORE_THRESH: 0.05
