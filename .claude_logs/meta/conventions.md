@@ -74,3 +74,13 @@ created: 2026-07-08
 - **해당 세션의 opus 또는 fable**: **코드를 만지는 일**(패치·config 설계·스크립트) · **에러 검증/진단** · 로그 판독 · 수치 판정
 - 위임은 `Agent` tool `model: "sonnet"`. **sonnet은 집행, 판정은 상위 모델.**
 - 위임 금지: cherry-pick 선별 · 충돌 해결 · 브랜치 전략 · 실패 원인 규명 · 실험 판정이 담긴 커밋 메시지
+
+## 8. 🔴 코드 단일출처 규칙 (user 지정 2026-07-17)
+
+**모든 코드(모델·config·스크립트)는 서버에서 운용하기 전에:**
+1. **`develop` 브랜치에 병합** — feature 브랜치/worktree/서버 로컬 전용 코드로 학습 금지.
+2. **로컬 허브(`jemo@172.27.183.150`, 이 박스)에서 접근 가능** — 원격 서버는 GitHub 아닌 **이 허브를 `local` remote로 pull**한다. develop push + 허브 pull 최신화가 있어야 다른 세션·서버가 받는다.
+
+절차: 작성 → `git push origin HEAD:develop`(PR 없음) → 로컬 허브 pull → 서버 `git fetch local && merge develop`. **config도 코드** — 서버 전용 튜닝도 develop 커밋(미커밋 config는 서버 사망 시 소실, 2026-07-16 bengio 사례).
+
+**왜**: 세션 A 모델을 세션 B가 모르면 재구현. develop+허브 = 유일한 공유 지점. 상세는 CLAUDE.md §1.7.

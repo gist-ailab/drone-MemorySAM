@@ -58,6 +58,21 @@
 
 **Why**: 반복 잡무·기계적 원격 조작에 상위 모델을 쓰는 건 비용 낭비. 상위 모델은 **판단·진단·코드**에만 쓴다.
 
+### 1.7 🔴 코드 단일출처 규칙 (모든 세션·에이전트 공통 — user 지정 2026-07-17)
+
+**멀티 세션이 중복 구현하지 않도록, 모든 코드는 운용(학습/평가 기동) 전에 반드시:**
+
+1. **`develop` 브랜치에 병합**돼 있어야 한다. feature 브랜치·worktree·서버 로컬에만 있는 코드로 학습을 돌리지 마라. (모델 코드·config·스크립트 전부.)
+2. **로컬 허브(`jemo@172.27.183.150` = 이 박스, `.../drone-MemorySAM`)에서 접근 가능**해야 한다. 원격 서버들은 GitHub이 아니라 **이 허브를 `local` remote로 pull**한다(jarvis 등 확인됨). 즉 `develop`에 push + 허브가 그 커밋을 보유해야 다른 세션·서버가 받을 수 있다.
+
+**절차 (새 모델/코드를 서버에서 돌리기 전)**:
+- 코드 작성 → **`develop`에 직접 병합**(`git push origin HEAD:develop`, PR 없음 — [[git-direct-merge-develop]]) → **로컬 허브 pull로 최신화** → 서버가 `git fetch local && git checkout/merge develop`.
+- config도 코드다. 서버 전용 튜닝(경로·GPU·batch)이라도 **develop에 커밋**해 다른 세션이 볼 수 있게 하라. 서버 로컬에만 둔 미커밋 config는 그 세션이 죽으면 소실된다(2026-07-16 bengio HW 사망으로 P37 미커밋 config가 서버에 갇힌 사례).
+
+**왜**: 세션 A가 만든 모델을 세션 B가 모르면 재구현한다. develop+허브가 유일한 "다른 세션이 볼 수 있는 곳"이다. 서버 로컬 브랜치·worktree는 **그 세션만의 것**이다.
+
+⚠️ **P37 병합 대기 (2026-07-17, user 결정)**: P37a-CEFR/P37b-ClassToken 코드는 `worktree-p33-impl`(9c5e2cc)에만 있고 develop엔 없다. **통짜 머지 금지** — develop은 이미 P34~P36 + 분석훅(P36 router-off 토글 등, p33-impl엔 없음)을 갖고 있어 reliadino/*.py가 양쪽 독립 진화(충돌). P37 순증분(classtoken.py +135 / fusion.py CEFRHead +153 / model.py CEFR +129 / train_reliadino +66 / P37 configs / ColorAugSSD)만 얹어야 함. **jarvis P37a 완주·검증 후 opus가 수동 이식+재검증하여 병합 예정.** 그 전엔 인계 시 `worktree-p33-impl` 브랜치를 직접 참조. 성급히 머지하지 말 것.
+
 ### 2. 실험 및 코드 변경 시 (Execution)
 
 - 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `models/arch-evolution.md` 또는 `experiments/log.md`를 업데이트하여 기록을 남겨라 (새 실험 launch/상태 변화는 `experiments/registry.md` 행도 갱신).
