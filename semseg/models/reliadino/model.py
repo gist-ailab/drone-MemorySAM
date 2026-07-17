@@ -164,6 +164,19 @@ class ReliaDINO(nn.Module):
                 num_heads=class_token_heads, mlp_ratio=class_token_mlp_ratio,
                 beta_init=class_token_beta_init)
 
+        # [P37b-Det] ClassToken->detection seam (mirror of the P36 router seam). The
+        # seg path adds token_logits to the head logits, which detection never sees.
+        # Project token_logits (num_classes ch) to fpn_dim + zero-init alpha residual
+        # on every pyramid level => at init identical to class-token-off (= P36-Det).
+        if class_token_enable:
+            self.det_classtoken_proj = nn.Conv2d(num_classes, fpn_dim, 1)
+            nn.init.zeros_(self.det_classtoken_proj.weight)
+            nn.init.zeros_(self.det_classtoken_proj.bias)
+            self.det_classtoken_alpha = nn.Parameter(torch.zeros(1))
+        else:
+            self.det_classtoken_proj = None
+            self.det_classtoken_alpha = None
+
         # M2 seam (asymmetric modality dropout) — default OFF: it helped nothing
         # at mid-run so far (P33 empirical constraint 4); seam kept for P34.2.
         self.modal_dropout = modal_dropout
@@ -298,6 +311,19 @@ class ReliaDINO(nn.Module):
             pyramid = [
                 p + self.det_router_alpha * F.interpolate(
                     r, size=p.shape[-2:], mode='bilinear', align_corners=False)
+                for p in pyramid
+            ]
+        if self.classtoken is not None and getattr(self, 'det_classtoken_proj', None) is not None:
+            # [P37b-Det] class-token per-class logits -> pyramid (zero-init residual).
+            # feat_s4 = the seg head's stride-4 feature (from _decode), detached: det
+            # loss must not train the seg head, but the class tokens + proj do train.
+            with torch.no_grad():
+                _, feat_s4 = self._decode(fused, routed)
+            token_logits = self.classtoken(fused, feat_s4)      # (B, num_classes, H/4, W/4)
+            t = self.det_classtoken_proj(token_logits)          # (B, fpn_dim, H/4, W/4)
+            pyramid = [
+                p + self.det_classtoken_alpha * F.interpolate(
+                    t, size=p.shape[-2:], mode='bilinear', align_corners=False)
                 for p in pyramid
             ]
         return pyramid
