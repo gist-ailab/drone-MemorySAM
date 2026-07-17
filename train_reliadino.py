@@ -262,7 +262,7 @@ def main(cfg, gpu, save_dir, logger):
         if ddp_enable:
             sampler.set_epoch(epoch)
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
-        cefr_accum = ctd_accum = 0.0
+        cefr_accum = ctd_accum = m2f_accum = 0.0
         auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
@@ -281,9 +281,10 @@ def main(cfg, gpu, save_dir, logger):
                 router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
                 cefr_reg = aux.get('cefr_reg', _zero)       # [P37a] pre-scaled (decisive+hinge)
                 ctd_ce = aux.get('ctd_ce', _zero)           # [P37b] class-token aux CE
+                m2f_loss = aux.get('m2f_loss', _zero)       # [P38] pre-scaled (LOSS_W in model)
                 total = (loss_seg + lambda_cal * cal_loss
                          + lambda_aux_ce * aux_ce + gate_ent + router_reg
-                         + cefr_reg + lambda_ctd * ctd_ce)
+                         + cefr_reg + lambda_ctd * ctd_ce + m2f_loss)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -306,6 +307,7 @@ def main(cfg, gpu, save_dir, logger):
             router_accum += float(router_reg)
             cefr_accum += float(cefr_reg)
             ctd_accum += float(ctd_ce)
+            m2f_accum += float(m2f_loss)
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
@@ -376,6 +378,15 @@ def main(cfg, gpu, save_dir, logger):
                 log_extra['train/ctd_ce'] = ctd_accum / (it + 1)
                 logger.info(f"[P37] ctl beta:{ctl_beta:.4f} "
                             f"ctd_ce:{ctd_accum / (it + 1):.4f}")
+            if getattr(_core, 'm2f', None) is not None:
+                # [P38] query-branch residual scale beta (zero-init) + mask-cls loss
+                m2f_beta = float(_core.m2f.beta.detach())
+                writer.add_scalar('p38/m2f_beta', m2f_beta, epoch)
+                writer.add_scalar('train/m2f_loss', m2f_accum / (it + 1), epoch)
+                log_extra['p38/m2f_beta'] = m2f_beta
+                log_extra['train/m2f_loss'] = m2f_accum / (it + 1)
+                logger.info(f"[P38] m2f beta:{m2f_beta:.4f} "
+                            f"m2f_loss:{m2f_accum / (it + 1):.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),

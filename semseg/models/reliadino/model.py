@@ -25,6 +25,7 @@ import torch.nn.functional as F
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion
+from .m2f_head import MaskQueryLiteHead
 
 
 class FPNSegHead(nn.Module):
@@ -102,6 +103,20 @@ class ReliaDINO(nn.Module):
                  class_token_heads: int = 8,
                  class_token_mlp_ratio: float = 2.0,
                  class_token_beta_init: float = 0.0,
+                 m2f_enable: bool = False,
+                 m2f_num_queries: int = 100,
+                 m2f_num_layers: int = 6,
+                 m2f_dim: int = 256,
+                 m2f_num_heads: int = 8,
+                 m2f_mlp_ratio: float = 2.0,
+                 m2f_beta_init: float = 0.0,
+                 m2f_w_cls: float = 2.0,
+                 m2f_w_bce: float = 5.0,
+                 m2f_w_dice: float = 5.0,
+                 m2f_no_obj_w: float = 0.1,
+                 m2f_points: int = 12544,
+                 m2f_deep_supervision: bool = True,
+                 m2f_loss_w: float = 0.5,
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
@@ -150,6 +165,22 @@ class ReliaDINO(nn.Module):
                 num_layers=class_token_layers, dim_t=class_token_dim,
                 num_heads=class_token_heads, mlp_ratio=class_token_mlp_ratio,
                 beta_init=class_token_beta_init)
+
+        # [P38] Mask2Former-lite query head (config-gated, default OFF ->
+        # byte-identical to P36). Learned queries + Hungarian mask-cls losses
+        # give a panoptic-capable branch (MUSES PQ); its semantic scores are
+        # merged collapse-safe via the ZERO-INIT beta residual.
+        self.m2f = None
+        self.m2f_loss_w = float(m2f_loss_w)
+        if m2f_enable:
+            self.m2f = MaskQueryLiteHead(
+                dim=dim, fpn_dim=fpn_dim, num_classes=num_classes,
+                num_queries=m2f_num_queries, num_layers=m2f_num_layers,
+                dim_t=m2f_dim, num_heads=m2f_num_heads,
+                mlp_ratio=m2f_mlp_ratio, beta_init=m2f_beta_init,
+                w_cls=m2f_w_cls, w_bce=m2f_w_bce, w_dice=m2f_w_dice,
+                no_obj_w=m2f_no_obj_w, num_points=m2f_points,
+                deep_supervision=m2f_deep_supervision)
 
         # M2 seam (asymmetric modality dropout) — default OFF: it helped nothing
         # at mid-run so far (P33 empirical constraint 4); seam kept for P34.2.
@@ -235,6 +266,17 @@ class ReliaDINO(nn.Module):
             # CEFR와 합성 시 classtoken은 blend된 fused_final을 본다(의도된 결합).
             token_logits = self.classtoken(fused, m_feat)   # (B, K, H/4, W/4)
             logits = logits + self.classtoken.beta * token_logits
+        if self.m2f is not None:
+            # [P38] query branch: assembled semantic scores merged through the
+            # zero-init beta (start = m2f-off dense path); Hungarian mask-cls
+            # losses train the branch regardless of beta. Loss is computed
+            # here (gt available) and returned pre-scaled as aux['m2f_loss'].
+            m2f_out = self.m2f(fused, m_feat)
+            sem_q = self.m2f.semantic_scores(m2f_out)       # (B, K, H/4, W/4)
+            logits = logits + self.m2f.beta * sem_q
+            if self.training and gt_mask is not None:
+                aux['m2f_loss'] = self.m2f_loss_w * self.m2f.losses(
+                    m2f_out, m_feat, gt_mask)
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
@@ -263,6 +305,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     router = mc.get('ROUTER', {}) or {}
     cefr = mc.get('CEFR', {}) or {}
     ctok = mc.get('CLASS_TOKEN', {}) or {}
+    m2f = mc.get('M2F', {}) or {}
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -317,6 +360,20 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         class_token_heads=ctok.get('NUM_HEADS', 8),
         class_token_mlp_ratio=ctok.get('MLP_RATIO', 2.0),
         class_token_beta_init=ctok.get('BETA_INIT', 0.0),
+        m2f_enable=m2f.get('ENABLE', False),
+        m2f_num_queries=m2f.get('NUM_QUERIES', 100),
+        m2f_num_layers=m2f.get('NUM_LAYERS', 6),
+        m2f_dim=m2f.get('DIM', 256),
+        m2f_num_heads=m2f.get('NUM_HEADS', 8),
+        m2f_mlp_ratio=m2f.get('MLP_RATIO', 2.0),
+        m2f_beta_init=m2f.get('BETA_INIT', 0.0),
+        m2f_w_cls=m2f.get('W_CLS', 2.0),
+        m2f_w_bce=m2f.get('W_BCE', 5.0),
+        m2f_w_dice=m2f.get('W_DICE', 5.0),
+        m2f_no_obj_w=m2f.get('NO_OBJ_W', 0.1),
+        m2f_points=m2f.get('POINTS', 12544),
+        m2f_deep_supervision=m2f.get('DEEP_SUPERVISION', True),
+        m2f_loss_w=m2f.get('LOSS_W', 0.5),
         modal_dropout=mdrop.get('ENABLE', False),
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),
