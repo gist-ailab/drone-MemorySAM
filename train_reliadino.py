@@ -164,7 +164,14 @@ def main(cfg, gpu, save_dir, logger):
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)
     lambda_aux_ce = (model_cfg.get('FUSION', {}) or {}).get('AUX_CE_WEIGHT', 0.5)
+    # [P37b] class-token aux CE weight (only produced when CLASS_TOKEN.ENABLE)
+    lambda_ctd = (model_cfg.get('CLASS_TOKEN', {}) or {}).get('AUX_CE_W', 0.4)
     optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
+    # [P35/T1 seam] LoRA up-projection(b_q/b_v) Frobenius norm cap — ep140 진단에서
+    # blocks.1 depth-q ‖dW‖ 606(ep40 대비 36×) 폭주 관찰(리뷰 리스크). 기본 0=off.
+    lora_norm_cap = float(train_cfg.get('LORA_NORM_CAP', 0) or 0)
+    _lora_up_params = [p for n, p in model.named_parameters()
+                       if n.endswith(('.b_q', '.b_v'))] if lora_norm_cap > 0 else []
     scheduler = get_scheduler(sched_cfg['NAME'], optimizer,
                               int((epochs + 1) * updates_per_epoch), sched_cfg['POWER'],
                               updates_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
@@ -254,8 +261,9 @@ def main(cfg, gpu, save_dir, logger):
         _core._current_epoch = epoch
         if ddp_enable:
             sampler.set_epoch(epoch)
-        train_loss = cal_accum = aux_accum = gate_ent_accum = 0.0
-        auroc_rows, gate_rows = [], []
+        train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
+        cefr_accum = ctd_accum = 0.0
+        auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
                     desc=f"Epoch [{epoch+1}/{epochs}]", disable=not is_rank0)
@@ -270,8 +278,12 @@ def main(cfg, gpu, save_dir, logger):
                 cal_loss = aux.get('rbma_cal_loss', _zero)
                 aux_ce = aux.get('aux_ce', _zero)
                 gate_ent = aux.get('gate_entropy', _zero)
+                router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
+                cefr_reg = aux.get('cefr_reg', _zero)       # [P37a] pre-scaled (decisive+hinge)
+                ctd_ce = aux.get('ctd_ce', _zero)           # [P37b] class-token aux CE
                 total = (loss_seg + lambda_cal * cal_loss
-                         + lambda_aux_ce * aux_ce + gate_ent)
+                         + lambda_aux_ce * aux_ce + gate_ent + router_reg
+                         + cefr_reg + lambda_ctd * ctd_ce)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -279,15 +291,30 @@ def main(cfg, gpu, save_dir, logger):
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
                 scheduler.step()
+                if lora_norm_cap > 0:
+                    # per-modality slice별 cap (b[m] (attn_dim,r)) — 방향 보존 renorm
+                    with torch.no_grad():
+                        for p in _lora_up_params:
+                            nrm = p.flatten(1).norm(dim=1, keepdim=True).clamp(min=1e-12)
+                            factor = (lora_norm_cap / nrm).clamp(max=1.0)
+                            p.mul_(factor.view(-1, *([1] * (p.dim() - 1))))
 
             train_loss += total.item()
             cal_accum += float(cal_loss)
             aux_accum += float(aux_ce)
             gate_ent_accum += float(gate_ent)
+            router_accum += float(router_reg)
+            cefr_accum += float(cefr_reg)
+            ctd_accum += float(ctd_ce)
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
                 gate_rows.append(_core.fusion._last_gate_mean.cpu().tolist())
+            if getattr(_core.fusion, '_last_router_mean', None) is not None:
+                router_rows.append(_core.fusion._last_router_mean.tolist())
+            _cefr = getattr(_core.fusion, 'cefr', None)     # [P37a]
+            if _cefr is not None and _cefr._last_w_mean is not None:
+                cefr_rows.append(_cefr._last_w_mean.tolist())
             if is_rank0:
                 pbar.set_description(
                     f"Epoch [{epoch+1}/{epochs}] Loss {train_loss/(it+1):.4f} "
@@ -317,11 +344,44 @@ def main(cfg, gpu, save_dir, logger):
                     log_extra[f'p34/gate_w_{name}'] = float(gbar[i])
                 logger.info(f"[P34] gate w̄ " +
                             " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, gbar)))
+            if router_rows:
+                rbar = np.array(router_rows, dtype=np.float64).mean(axis=0)
+                alpha = float(_core.fusion.router_alpha.detach())
+                for i, name in enumerate(modals[:len(rbar)]):
+                    writer.add_scalar(f'p36/router_w_{name}', rbar[i], epoch)
+                    log_extra[f'p36/router_w_{name}'] = float(rbar[i])
+                writer.add_scalar('p36/router_alpha', alpha, epoch)
+                log_extra['p36/router_alpha'] = alpha
+                logger.info(f"[P36] router w̄ " +
+                            " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, rbar)) +
+                            f" alpha:{alpha:.4f}")
+            if cefr_rows:                                   # [P37a] CEFR monitoring
+                cbar = np.array(cefr_rows, dtype=np.float64).mean(axis=0)
+                sigma_a = float(getattr(_core.fusion.cefr, '_last_sigma_a', 0.0) or 0.0)
+                for i, name in enumerate(modals[:len(cbar)]):
+                    writer.add_scalar(f'p37/cefr_w_{name}', cbar[i], epoch)
+                    log_extra[f'p37/cefr_w_{name}'] = float(cbar[i])
+                writer.add_scalar('p37/cefr_sigma_a', sigma_a, epoch)
+                log_extra['p37/cefr_sigma_a'] = sigma_a
+                log_extra['train/cefr_reg'] = cefr_accum / (it + 1)
+                logger.info(f"[P37] cefr w̄ " +
+                            " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, cbar)) +
+                            f" sigma_a:{sigma_a:.4f}")
+            if getattr(_core, 'classtoken', None) is not None:
+                # [P37b] class-token residual scale beta (zero-init) + aux CE
+                ctl_beta = float(_core.classtoken.beta.detach())
+                writer.add_scalar('p37/ctl_beta', ctl_beta, epoch)
+                writer.add_scalar('train/ctd_ce', ctd_accum / (it + 1), epoch)
+                log_extra['p37/ctl_beta'] = ctl_beta
+                log_extra['train/ctd_ce'] = ctd_accum / (it + 1)
+                logger.info(f"[P37] ctl beta:{ctl_beta:.4f} "
+                            f"ctd_ce:{ctd_accum / (it + 1):.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),
                            'train/aux_ce': aux_accum / (it + 1),
                            'train/gate_entropy': gate_ent_accum / (it + 1),
+                           'train/router_reg': router_accum / (it + 1),
                            'train/lr': avg_lr, **log_extra}, step=epoch)
 
             # last checkpoint every epoch (same dict format as SAM2 trainer)

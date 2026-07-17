@@ -112,6 +112,105 @@ class PerClassRouter(nn.Module):
         return w, reward
 
 
+class CEFRHead(nn.Module):
+    """[P37a] CEFR-Head + CA2-NoText anchor — class-expected fusion routing
+    over POST-attention fused tokens (NOT the pre-fusion feats PerClassRouter
+    uses), producing a second fused map that is blended with the P36
+    gate_fused at feature level (the cheap equivalent of a second head pass):
+
+        A_{i,k}(s)  = λ1·rel_cal_i(s) + λ2(t)·log p̂_i(k|s)     (CA2, no CLIP)
+        w_{i,k}(s)  = softmax_over_modalities( head_i(fused_i)_k(s) + A_{i,k}(s) )
+        w̄_i(s)     = Σ_k q_k(s)·w_{i,k}(s)                    (class-expected)
+        fused'(s)   = Σ_i w̄_i(s)·fused_i(s)
+        fused_final = (1−σ(a))·gate_fused + σ(a)·fused'        (a init −4)
+
+    q = pass-1 posterior softmax(logits1), DETACHED and avg-pooled to the
+    stride-16 grid (the model computes it — fusion never sees the seg head).
+    p̂_i = calibrated per-modal aux posterior (detached, log clamped ≥ −14).
+    λ2(t) warms up linearly 0→lambda2_target over lambda2_warmup_ep epochs;
+    the epoch arrives via model._current_epoch — the exact mechanism the
+    trainer already uses for modal_dropout (train_reliadino.py sets
+    `_core._current_epoch = epoch` every epoch, no trainer change needed).
+
+    Anti-collapse (all mandatory, P10–P27 'gate 상수수렴' lineage):
+      - zero-init head last conv → anchor-driven routing at start
+      - q detached → no gradient into pass-1 logits
+      - decisive-entropy reg on w̄ (P31 form, negated reward)
+      - AECF-style hinge floor on the BATCH-MARGINAL mixing entropy of w̄
+        (penalize only when it drops below entropy_floor — never push uniform)
+      - σ(a init −4) ≈ 0.018 → byte-near P36 output at start
+    λ1 is a learnable scalar (grads via the softmax); λ2 is scheduled, not
+    learned. Stashes `_last_w_mean` ((m,) cpu) and `_last_sigma_a` for the
+    trainer's p37/cefr_w_* / p37/cefr_sigma_a logging."""
+
+    def __init__(self, dim: int, num_classes: int, num_modalities: int,
+                 hidden: int = 64, morph_init: float = -4.0,
+                 anchor_posterior: bool = True, lambda1: float = 1.0,
+                 lambda2_target: float = 0.5, lambda2_warmup_ep: int = 10,
+                 reg_lambda: float = 0.01, entropy_floor: float = 0.5,
+                 hinge_reg: float = 1.0):
+        super().__init__()
+        self.m = num_modalities
+        self.num_classes = num_classes
+        self.anchor_posterior = anchor_posterior
+        self.lambda2_target = float(lambda2_target)
+        self.lambda2_warmup_ep = int(lambda2_warmup_ep)
+        self.reg_lambda = reg_lambda
+        self.entropy_floor = entropy_floor
+        self.hinge_reg = hinge_reg
+        self.heads = nn.ModuleList([
+            nn.Sequential(nn.Conv2d(dim, hidden, 1), nn.ReLU(inplace=True),
+                          nn.Conv2d(hidden, num_classes, 1))
+            for _ in range(num_modalities)])
+        for h in self.heads:            # zero-init last conv → anchor-driven start
+            nn.init.zeros_(h[-1].weight)
+            nn.init.zeros_(h[-1].bias)
+        self.lam1 = nn.Parameter(torch.tensor(float(lambda1)))
+        self.a = nn.Parameter(torch.tensor(float(morph_init)))   # blend morph scalar
+        self._last_w_mean = None
+        self._last_sigma_a = None
+
+    def lambda2(self, epoch: int) -> float:
+        """λ2(t): linear warmup 0→target over warmup_ep epochs (modal_dropout
+        pattern: p * min(1, epoch/warmup_ep))."""
+        if not self.anchor_posterior:
+            return 0.0
+        if self.lambda2_warmup_ep > 0:
+            return self.lambda2_target * min(
+                1.0, float(epoch) / self.lambda2_warmup_ep)
+        return self.lambda2_target
+
+    def forward(self, fused_tokens: List[torch.Tensor], rel_cal: torch.Tensor,
+                log_post: Optional[torch.Tensor], q: torch.Tensor, epoch: int):
+        """fused_tokens: m x (B, dim, h, w) POST-attention maps;
+        rel_cal: (m,B,1,h,w) DETACHED calibrated reliability;
+        log_post: (m,B,K,h,w) DETACHED clamped log p̂_i (None if anchor off);
+        q: (B,K,h,w) DETACHED pass-1 posterior at stride 16.
+        Returns (fused_p (B,dim,h,w), w_bar (m,B,1,h,w), reg loss or None)."""
+        m = self.m
+        z = torch.stack([self.heads[i](fused_tokens[i]).float()
+                         for i in range(m)], dim=0)          # (m,B,K,h,w)
+        A = self.lam1 * rel_cal                              # broadcast over K
+        lam2 = self.lambda2(epoch)
+        if log_post is not None and lam2 > 0:
+            A = A + lam2 * log_post
+        w = F.softmax(z + A, dim=0)                          # over modalities
+        w_bar = (w * q.unsqueeze(0)).sum(dim=2, keepdim=True)  # (m,B,1,h,w)
+        fused_p = sum(w_bar[i] * fused_tokens[i] for i in range(m))
+        self._last_w_mean = w_bar.detach().float().mean(dim=(1, 2, 3, 4)).cpu()
+        self._last_sigma_a = float(torch.sigmoid(self.a.detach()))
+        reg = None
+        if self.training:
+            ent_pix = -(w_bar * (w_bar + 1e-8).log()).sum(dim=0).mean()
+            marg = w_bar.mean(dim=(1, 2, 3, 4))              # (m,) batch marginal
+            ent_bar = -(marg * (marg + 1e-8).log()).sum()
+            # decisive (P31): reward = ent_bar − ent_pix → negate into a loss
+            reg = self.reg_lambda * (ent_pix - ent_bar)
+            # AECF hinge floor: penalize ONLY below-floor batch-marginal entropy
+            reg = reg + self.hinge_reg * F.relu(self.entropy_floor - ent_bar)
+        return fused_p, w_bar, reg
+
+
 class CrossModalAttentionLayer(nn.Module):
     """One pre-norm cross-attention + MLP block. Weights are shared across
     modalities (like SAM2 memory attention across frames); modality identity
@@ -201,7 +300,21 @@ class ReliabilityGatedFusion(nn.Module):
                  router_reg_mode: str = 'decisive',
                  router_reg_lambda: float = 0.01,
                  router_alpha_init: float = 0.0,
-                 router_hidden: int = 64):
+                 router_hidden: int = 64,
+                 # [P37a] CEFR-Head + CA2-NoText anchor. Fusion only HOSTS the
+                 # module and exports aux['cefr_ctx']; the model drives the
+                 # two-pass flow (pass-1 q → cefr → σ(a) blend → pass 2).
+                 # Default OFF → byte-identical P36.
+                 cefr_enable: bool = False,
+                 cefr_hidden: int = 64,
+                 cefr_morph_init: float = -4.0,
+                 cefr_anchor_posterior: bool = True,
+                 cefr_lambda1: float = 1.0,
+                 cefr_lambda2_target: float = 0.5,
+                 cefr_lambda2_warmup_ep: int = 10,
+                 cefr_reg_lambda: float = 0.01,
+                 cefr_entropy_floor: float = 0.5,
+                 cefr_hinge_reg: float = 1.0):
         super().__init__()
         self.num_modalities = num_modalities
         self.num_classes = num_classes
@@ -234,6 +347,16 @@ class ReliabilityGatedFusion(nn.Module):
                 anchor_lambda=router_anchor_lambda, hidden=router_hidden,
                 reg_mode=router_reg_mode)
             self.router_alpha = nn.Parameter(torch.tensor(float(router_alpha_init)))
+        self.cefr_enable = cefr_enable
+        if cefr_enable:
+            self.cefr = CEFRHead(
+                dim, num_classes, num_modalities, hidden=cefr_hidden,
+                morph_init=cefr_morph_init,
+                anchor_posterior=cefr_anchor_posterior,
+                lambda1=cefr_lambda1, lambda2_target=cefr_lambda2_target,
+                lambda2_warmup_ep=cefr_lambda2_warmup_ep,
+                reg_lambda=cefr_reg_lambda, entropy_floor=cefr_entropy_floor,
+                hinge_reg=cefr_hinge_reg)
 
         self._last_rel_auroc = None
         self._last_rel_stats = None
@@ -425,6 +548,25 @@ class ReliabilityGatedFusion(nn.Module):
             if self.training and self.router_reg_lambda > 0:
                 # 'decisive' returns a REWARD → negate into an added loss
                 aux['router_reg'] = self.router_reg_lambda * (-route_reward)
+
+        # 4c) [P37a] CEFR context export — the model (which owns FPN+head) runs
+        #     pass 1 on `fused` to get q = softmax(logits1).detach() at stride
+        #     16, then calls self.cefr and blends via σ(a). All anchor signals
+        #     are DETACHED here (training-free, P31 convention); the calibrated
+        #     per-modal posterior reuses the aux decoders + temperatures T_i.
+        if self.cefr_enable and m >= 2:
+            log_post = None
+            if self.cefr.anchor_posterior:
+                with torch.no_grad():
+                    T = self._temps(grad_ok=False)
+                    log_post = torch.stack([
+                        F.log_softmax(
+                            aux_logits[i].float().detach()
+                            / (T[i] if T is not None else 1.0), dim=1)
+                        for i in range(m)], dim=0).clamp_(min=-14.0)
+            aux['cefr_ctx'] = {'fused_tokens': fused_tokens,
+                               'rel_cal': rel_cal.detach(),
+                               'log_post': log_post}
 
         # 5) training losses
         if self.training and gt_mask is not None:

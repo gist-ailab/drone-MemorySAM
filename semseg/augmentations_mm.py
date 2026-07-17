@@ -75,6 +75,42 @@ class RandomColorJitter:
         return sample
 
 
+class ColorAugSSD:
+    """DGFusion(Detectron2 ColorAugSSDTransform) 정합 photometric aug — RGB 전용.
+
+    각 서브증강 독립 p=0.5 (SSD 표준): brightness 가산 ±32/255 · contrast ×U(0.5,1.5)
+    · saturation ×U(0.5,1.5) · hue ±36°(=0.1 cycle; OpenCV hue_delta=18 등가).
+    공정성: DGFusion DELIVER 학습 파이프라인과 동일 강도 — PhysAug의 합법 대체.
+    (deliver_semantic_dataset_mapper: 비-camera 모달에는 identity — 여기서도 img만.)
+    """
+    def __init__(self, brightness_delta: float = 32.0 / 255.0,
+                 contrast: Tuple[float, float] = (0.5, 1.5),
+                 saturation: Tuple[float, float] = (0.5, 1.5),
+                 hue_delta: float = 0.1) -> None:
+        self.bd = brightness_delta
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hd = hue_delta
+
+    def __call__(self, sample: list) -> list:
+        img = sample['img']
+        if random.random() < 0.5:
+            img = (img + random.uniform(-self.bd, self.bd)).clamp(0.0, 1.0) \
+                if torch.is_tensor(img) else TF.adjust_brightness(img, 1.0 + random.uniform(-self.bd, self.bd))
+        # SSD는 contrast를 (sat/hue) 앞 또는 뒤 랜덤 순서로 적용
+        contrast_first = random.random() < 0.5
+        if contrast_first and random.random() < 0.5:
+            img = TF.adjust_contrast(img, random.uniform(*self.contrast))
+        if random.random() < 0.5:
+            img = TF.adjust_saturation(img, random.uniform(*self.saturation))
+        if random.random() < 0.5:
+            img = TF.adjust_hue(img, random.uniform(-self.hd, self.hd))
+        if (not contrast_first) and random.random() < 0.5:
+            img = TF.adjust_contrast(img, random.uniform(*self.contrast))
+        sample['img'] = img
+        return sample
+
+
 class RandomRGBNightSimulation:
     """
     RGB만 야간/저조도로 시뮬레이션. thermal, lidar는 유지 → 모델이 보조 모달리티에 집중하도록 유도.
@@ -953,7 +989,12 @@ def get_train_augmentation(
     transforms = []
     if _use_multiaqua_resize_pad(dataset_cfg):
         transforms.append(ResizeWidthPadToSquare(t_size, seg_fill=seg_fill))
-    transforms.append(RandomColorJitter(p=0.2))
+    _dgf_aug = bool((dataset_cfg or {}).get('DGFUSION_AUG', False))
+    if _dgf_aug:
+        # DGFusion 정합 레시피: SSD photometric (PhysAug 대체, 공정선 내)
+        transforms.append(ColorAugSSD())
+    else:
+        transforms.append(RandomColorJitter(p=0.2))
 
     # MULTIAQUA 전용: RGB 야간 시뮬레이션 augmentation (thermal/lidar는 유지)
     night_cfg = _get_night_aug_config(dataset_cfg)
@@ -1023,10 +1064,12 @@ def get_train_augmentation(
         if night_cfg.get('ZERO_P', 0) > 0:
             transforms.append(RandomRGBZeroOut(p=night_cfg.get('ZERO_P', 0.15)))
 
+    transforms.append(RandomHorizontalFlip(p=0.5))
+    if not _dgf_aug:
+        # DGFusion 파이프라인에는 blur 없음 — 정합 모드에서는 제외
+        transforms.append(RandomGaussianBlur((3, 3), p=0.2))
     transforms.extend([
-        RandomHorizontalFlip(p=0.5),
-        RandomGaussianBlur((3, 3), p=0.2),
-        RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill),
+        RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill),   # = DGFusion multi-scale 0.5-2.0 + crop
         Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
     ])
     return Compose(transforms)
