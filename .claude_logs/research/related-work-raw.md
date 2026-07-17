@@ -443,3 +443,25 @@ tgt2 = self.cross_attn_image(
 2. **(B) bias** = `TransformerEncoderLayer.cross_attn_image`의 `memory_mask`에 per-modality reliability 가산 (이미 인자 존재, 모달 memory 블록 컬럼에 broadcast). modality-as-frame은 tracker에 각 모달을 frame으로 투입.
 3. **(C) 불확실성 신호** = decoder를 semantic multi-class로 개조해 softmax entropy 복원(권장) 또는 ious/object_score surrogate.
 - 확인 잔여: `cross_attn_image` 구체 클래스가 `nn.MultiheadAttention`인지(float attn_mask 가산 의미 확정), tracker의 memory 토큰 컬럼↔모달리티 매핑 순서.
+
+## 2026-07-17 — 경쟁 논문 Modality Ablation 조사 (radar 재맥락화)
+
+우리 MUSES-P34 radar 결과(val −0.09/test −0.72)를 경쟁 논문 ablation과 대조. 근거 원문 표 인용.
+
+**문헌 modality ablation 실태:**
+| 논문 | ablation 방식 | metric | 수치 |
+|---|---|---|---|
+| CAFuser (2410.10791 v2) Table IX | 누적 RGB→+L→+R→+E | **PQ** (test) | 55.7 → +L **+3.0** → +R **+0.6** → +E +0.4 |
+| MUSES 원논문 (2401.12761 v4) Table 3 | 카메라 대비 개별 | **PQ** (test) | +E +2.6 / **+R +4.4** / +L +5.8. night: cam 39.4→+R 44.8(**+5.4**), snow 42.2→46.1(**+3.9**) |
+| CMNeXt (2303.01480) | 누적 | **mIoU** | RGB 57.20→+D **+6.38**→+E +0.86→+L +1.86 (DELIVER, radar 없음) |
+| DGFusion (2509.09828 v3) | **per-sensor ablation 부재** | — | 아키텍처/loss만(Table IV/V). DELIVER CLE 51.6→CLDE(+depth) **+5.1 mIoU** |
+
+**핵심 판정:**
+1. **radar 기여는 "lidar 유무"에 조건부.** 카메라 대비 radar 단독 = +4.4 PQ(강함)이나, **lidar 위에 얹은 radar = CAFuser +0.6 PQ(≈0)** — radar/lidar가 range 계열로 중복. **우리 P34는 lidar 사용 → 기대 천장 ≈0.** 우리 val −0.09는 이 문헌 잉여성과 정합. **"우리 융합의 radar 실패"로 단정 불가.**
+2. **radar는 lidar-열화 조건(night/snow)에서 대체재로 이득**(MUSES night +5.4/snow +3.9 PQ). **aggregate(−0.72)가 조건별 이득을 가릴 수 있음** → per-condition 재검토 필요.
+3. **mIoU 기준 modality ablation은 문헌 전무**(MUSES/CAFuser=PQ only, DGFusion=per-sensor 부재, CMNeXt=mIoU지만 DELIVER radar 없음). **우리가 mIoU radar ablation을 내면 문헌 공백을 메움 = 기여.**
+
+**논문 포지셔닝(RBMA 노벨티 방어):** "radar는 MUSES에서 lidar와 중복이라 SOTA(CAFuser)조차 lidar 위 radar는 +0.6 PQ — 우리 −0.72는 radar 무능이 아니라 잉여성. 단 우리 신뢰도 라우팅은 radar를 'lidar 보조'가 아니라 **lidar-degraded 조건의 대체 range 신호**로 라우팅할 수 있다." → 이 주장은 **누적 ablation(RGB→+L→+L+R→+L+R+E, mIoU) + per-condition 수치**로만 방어됨(실험계획 규약 = experiments/plan.md).
+
+**확인 불가**: DGFusion per-sensor(radar) 수치 없음. CMNeXt/CAFuser 원표 PDF는 CVF 403 → arXiv HTML+abstract 교차확인.
+출처: DGFusion 2509.09828 v3 / CAFuser 2410.10791 v2 Table IX / MUSES 2401.12761 v4 Table 3 / CMNeXt 2303.01480.

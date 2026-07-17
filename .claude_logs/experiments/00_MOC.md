@@ -4,6 +4,7 @@
 
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
+| [plan.md](plan.md) | **🗓 실험 계획·큐 (미래)** — 대기열/우선순위/**GPU 예약 현황**/완주 ETA. **GPU 잡기 전 필독, 띄우면 여기 갱신.** registry=과거·현재, plan=미래 (신설 2026-07-16) | — (신규) |
 | [registry.md](registry.md) | **실험 레지스트리 허브** — 핵심 실험 ID/config/서버/ckpt/상태/수치 한눈표 (신설 2026-07-08) | — (신규) |
 | [log.md](log.md) | 전체 결과 M-score 표 + 버전별 상세 + 진단 — **실험 canonical** | 03 |
 | [monitor-log.md](monitor-log.md) | 진행 중 학습 실시간 모니터 로그 (RUN-N 단위, `/loop` 세션이 append) | 15 |

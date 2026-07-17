@@ -27,6 +27,8 @@ moved: 2026-07-08
 
 **챌린지 최선 (MULTIAQUA, 고정)**: **P9 ep131 & P22 ep120 공동 1위, M-score 82.10** (Val 93.3 / Test 70.9). P10~P27의 adaptive fusion은 모두 gate 상수수렴 병목으로 P9 미돌파 → 이 진단이 RBMA 동기.
 
+**📝 2026-07-15 RA-L 논문 트랙 개시**: NAS 볼트 `_paper_submission/`에 ReliaDINO(=P34/P36 계보) RA-L 초안 v1 전 섹션 작성+컴파일 완료(9p, `ReliaDINO_RAL_latest.pdf`). 타 세션이 채울 실험 슬롯 8개 = [research/ral-paper-plan.md](../research/ral-paper-plan.md). ⚠️ legal 최선 = P34 val 68.19/test 56.62(test-SOTA −0.09, "57.60"은 test-best라 철회) → P34 재중심화 리라이트 예정.
+
 **⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
 
 | 트랙 | 상태 | 수치 / 다음 액션 |
@@ -36,11 +38,33 @@ moved: 2026-07-08
 | **Det (국책과제)** | 🎯 **목표 달성** | egofill 데이터(2.01×)만으로 **mAP50 0.8501**@ep9 (official v2 test). 남은 서사 = 저조도 robustness delta. 상세 doc 19 E2.5 |
 | **옵시디언↔repo 동기화** | ✅ 규약 제정 | NAS 볼트 canonical, `scripts/sync_research_vault.sh`(NAS→repo pull), 실험폴더 패턴 `P<N>_<이름>/`. `research/vault/README.md` §🔄 |
 
+**⚡ 2026-07-15 15:50 갱신 — seg 현재 트랙 (최신). B200 학습 전부 완주, 도는 프로세스 0.**
+
+> 🔴 **보고 기준 정정(07-15)**: 트레이너는 `epochNN_<val>_topK`(val-best)와 `test_epochNN_<test>_topK`(**test-best**) 두 계열을 저장한다. **test-best 인용 = test셋 훔쳐보기라 논문 불가.** 소유자가 P35 config에 이미 명시: *"ckpt 선정: val-best만 보고(합법)"*. 07-12~14의 "P34 test-SOTA 57.60 돌파" 등 보고는 **전부 test-best 기반이라 철회**. 아래는 **legal(val-best) 실측**.
+
+| 모델 | val-best | 그 에폭 test | vs val-SOTA 68.6 | vs test-SOTA 56.71 | 목표(66.51/56.71) |
+|---|---|---|---|---|---|
+| **P34 ReliaDINO (최선)** | **68.19** @ep120 | **56.62** | **−0.41** | **−0.09** | val ✅ / test ✗ |
+| P35 paper | 67.61 @ep78 | 55.52 | −0.99 | −1.19 | val ✅ / test ✗ |
+| P36 router | 67.74 @ep52 | 55.62 | −0.86 | −1.09 | val ✅ / test ✗ |
+
+> 🔴 **어떤 모델도 test-SOTA 미돌파.** 최선 = **P34: val 68.19 / test 56.62 (test −0.09로 아깝게 미달)**.
+
+**모델 구성(config diff 실측)**: `P35 = P34 − ATTN_BIAS(RBMA) − CONSISTENCY − PhysAug`(DGFusion 공정 레시피) · `P36 = P35 + Per-Class Reliability-Anchored Router`(P31 포트).
+- **P34 vs P36 직접 비교는 부당**(P34만 PhysAug on). **정당한 짝 = P35 vs P36 → 라우터 val +0.13 / test +0.10 근소 우위**(노이즈 수준). 지난 "라우터 이식 실패" 판정 철회.
+- **노벨티**: 새 메커니즘은 **P36 > P34**(router는 P36만 보유). P34가 더 가진 ATTN_BIAS·CONSISTENCY는 소유자 G0c ablation에서 **효과 ≈0**(baseline 68.20/56.64 vs strip-full 68.45/56.38; **gate/calib만 test +0.26 실기여**). → **간판 노벨티 RBMA attn-bias가 DINOv3 계보에선 무력**, P34 수치 우위는 대체로 PhysAug(증강) 덕. 논문 서사 재정비 필요.
+
+| 트랙 | 상태 | 비고 |
+|---|---|---|
+| **P36_router** | 🏁 **완주**(ep200/200, 07-15 11:14 KST) | best ep52/58 이후 148/142ep 미갱신, val 끝까지 61.45 열화. per-class 붕괴: Bridge 0.06·Other 4.35·Ground 4.83·Wall 5.67·Dynamic 6.31·Water 10.10 (주력 Road/Sky/Cars/Bus/Truck은 90+ 정상). ckpt 백업 완료. |
+| **MUSES × P34-ReliaDINO** | 🏁 **완주 + 공식 재평가 완료** | **공식 val mIoU 80.86**@ep276(내부 81.02 −0.16, thin class 집중). 프로토콜=CAFuser `MUSESSemSegEvaluator`(=stock detectron2, argmax 전 native 업샘플·GT 무리사이즈) 소스 확정. **DAY 83.56 / NIGHT 82.03(−1.53만) — 악조건 robustness 강함**(공통 11클래스 통제; naive는 조건별 클래스수 상이로 오해 유발). 🔴 **SOTA 주장 불가**: **79.72=DGFusion val(CAFuser 아님; CAFuser 78.71/CAA 79.04)**, **MUSES는 test로 랭킹**(DGFusion test 79.49)인데 우리는 test 없음 + 백본 10×(ViT-L 300M vs Swin-T 28M) + val-selected ckpt. **결론 = Codabench 14005 test 제출**(hinton 가능, 계정 필요); *방법* 주장하려면 Swin-T 동급 재학습. 회수 `/nas_jm/drone_ckpts/MUSES_P34_20260715/`(ckpt 1.7G + official_eval/ raw confusion 포함). loader+config develop 병합(b4d69c1). |
+| **🔴 B200 마감** | **2026-07-15 23:59 KST** (잔여 ~8h) | 학습 전부 완주·회수 완료. 백업: `B200_backup_20260715/`(8.7G) + `P34_final_20260713/` + `MUSES_P34_20260715/`(1.7G). 구세대 가중치 ~400GB는 의도적 미백업(로그·config만). |
+
 **진행 중 트랙 (2026-07-02 시점 기록 — 위 표가 최신)**
 
 | 트랙 | 상태 | 최신 수치 / 다음 액션 |
 |------|------|----------------------|
-| **SAM2 RBMA seg (P33.1, B200 DELIVER)** | 🟢 **학습 중**(07-09~ ep0, competence-fusion+RBMA calib+modal-cond MoE) — 이전 **P32 🏁완주**(ep200, 최선 seg): **val 64.12@ep98 / test 55.01@ep158**(P31 63.20/54.85 양지표 완전추월; SOTA대비 val −2.39/test −1.70). P33.1이 P32 상회 여부 관건. 모니터 RUN-16(P33.1)/RUN-13(P32).
+| **seg: P34 ReliaDINO (B200 DELIVER)** | 🏁🏆 **완주**(07-13 15:34, DINOv3 ViT-L/16 frozen+RBMA) — 최종 **Val 68.19@ep120 / Test 57.60@ep140**. **Test-SOTA(DGFusion 56.71) +0.89 돌파**(경쟁 지표 승리, 계보 최초) / Val 목표 66.51 달성(val-SOTA 68.6엔 −0.41). **P34=확정 최선 seg.** best ckpt NAS 회수·검증 완료(/nas_jm/drone_ckpts/P34_final_20260713). 모니터 RUN-20. |
 | **SAM2 RBMA seg (P29, B200)** | ⏹ **종료**(ep150, 2026-06-30 11:03; P30 띄우려 수동 중단) | 최종 best **Val 63.20@ep100 / Test 54.34@ep146**(ckpt 보존). val 70 미달·ep34부터 60~63 정체. 모니터 RUN-2 |
 | **SAM2 RBMA seg (P28, B200)** | 🔴 사망(ep16, 2026-06-24) → **P29로 대체됨** | best Val 57.87@ep12 / Test 50.61@ep12. `last_checkpoint.pth` 보존. 모니터 RUN-1 |
 | **Det 객체검출** | 🎯 **best=bengio det_P29_egofill mAP50 0.8501** / event ablation 완주·final_full 진행 | **egofill(RUN-11) 🏁완주**: best **mAP50 0.8501@ep9**(공식 v2 test) — **목표 0.85 달성**(lidar egofill+2×데이터). **det_P29_event(RUN-14) 🏁완주**(07-07): best mAP50 **0.8427@ep14** → event≈egofill-lidar(−0.008, 모달 ablation 유의미). **det_P29_final_full(RUN-15) 🟢학습중**(07-08~): P29+egofill을 최종 annotation(_final_ann/instances_train_egofill.json)으로 재학습, EPOCHS50 ep0. det_P31_v3clip(RUN-10) 완료: mAP50 0.4724(v3clip=비공식). P30-Det 0.256. 모니터 RUN-10/11/14/15 |

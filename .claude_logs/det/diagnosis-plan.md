@@ -113,3 +113,62 @@ moved: 2026-07-08
 
 - **event ablation(E2.6) 완료**: best AP50 0.8427 (COCO AP peak 0.5174, ep14) — lidar egofill(0.850)과 동등. **3번째 모달 lidar≈event 확정**.
 - Y1 all-test 0.907(v2/v3 0.866보다 높음): final test 클립 구성이 RGB에 유리한 면. 핵심은 저조도-정상 delta.
+
+---
+
+## ★★ 최종 저조도 통합표 (2026-07-14 갱신) — canonical
+
+> 구 경로 `19_det_diagnosis_plan.md` 스텁에 append돼 있던 내용을 여기로 이관·병합함(스텁 지시대로).
+> final split, best 체크포인트. 저조도=동일 1,768프레임 / 정상=1,471프레임 (clip 혼재 주의).
+
+| 모델 | 백본 | 입력 | 저조도 AP50 | 정상 AP50 |
+|---|---|---|---|---|
+| Y1 YOLOv5m (외부) | CSP (COCO-pretrained) | RGB | 0.865 | **0.935** |
+| M1 P29 | SAM2 | RGB | 0.817 | 0.735 |
+| **M2 P29** | SAM2 | **RGB+Thermal** | **0.870** | 0.740 |
+| M3 P29 | SAM2 | RGB+Thermal+LiDAR(egofill) | 0.853 | 0.746 |
+| P34-Det | ReliaDINO(DINOv3) | RGB+Thermal+LiDAR | 0.861 | 0.742 |
+| P35-Det (paper-freeze) | ReliaDINO(DINOv3) | RGB+Thermal+LiDAR | 0.8466 | 0.7440 |
+
+**확정 결론:**
+1. **RGB+Thermal(M2) > YOLO on 저조도 (0.870 vs 0.865)** — "악조건에선 멀티모달>RGB" 성립. 논문 핵심 주장.
+2. **Thermal이 저조도 주역**: RGB→+Thermal **+0.053**(최대 점프). LiDAR(egofill)는 **−0.017 순손해** → fusion 스토리는 thermal 중심, lidar 제외 권장.
+3. **P34 vs P35 (2026-07-14 확정)**: attn_bias+consistency를 끈 paper-freeze(P35)가 저조도 **−0.014** (0.861→0.8466), 정상은 동률(0.742/0.744).
+   → **RBMA attn_bias + consistency는 검출 저조도에 기여**. seg에서의 freeze 결정이 det에는 그대로 적용되지 않음.
+4. **정상 조명은 여전히 YOLO 압도(0.935 vs 우리 ~0.74)**. 백본(SAM2↔DINOv3)·fusion·router 어느 것도 이 격차를 못 줄임
+   (M1 0.735 / M3 0.746 / P34 0.742 / P35 0.744 — 전부 ~0.74에 수렴).
+   → **격차의 원인은 백본이 아니라 head 성숙도**로 좁혀짐. 이것이 §10의 근거.
+
+## 10. P37-Det — RF-DETR NMS-free head 이식 (2026-07-14~)
+
+**가설**: §9 결론 4번. 우리 모델 클러스터가 백본·fusion과 무관하게 정상 0.74에 수렴하는 것은
+**from-scratch FCOS head**의 한계이며, COCO-pretrained head를 빌리면 격차가 줄어든다.
+(진단서 B1 "det 확장을 잘하는 대신 **빌린다**"의 실행)
+
+**설계**: seg 방법론 불변 — frozen DINOv3 + per-modality LoRA + ReliabilityGatedFusion(RBMA·gate·calibration)
++ SimpleFPN 그대로. **head만** FCOS+NMS → RF-DETR 디코더(COCO-init, one-to-one Hungarian) 교체.
+P34 config를 그대로 복사했으므로 **P37 vs P34 = head 단일 변인**.
+
+**구현 사실 (실측)**:
+- 벤더링: roboflow/rf-detr(Apache-2.0) 디코더 서브셋만. **backbone 제외 → transformers/timm 의존성 0**. `semseg/models/rfdetr_head/_vendor/`
+- **deformable-attn CUDA 컴파일 불필요** (순수 PyTorch `ms_deform_attn_core_pytorch`)
+- **hidden_dim 256 일치** → projector 불필요, 우리 SimpleFPN 출력 직결
+- **single-scale stride 16** (`DET_LEVELS: [2]`): RF-DETR 네이티브 기하 + COCO 가중치 250/250 대응
+  + 디코더의 `wh prior = 0.05·2^lvl`이 COCO값과 정확히 일치. 4레벨 전부 넣으면 two-stage 토큰이 2,304→**48,960(25×)**.
+- COCO 로드: transformer 224/250 (나머지 26 = enc_out_class_embed, 91→11 리사이즈 별도 적용)
+- LR 분리: `PRETRAINED_HEAD_LR_MULT: 0.1` → COCO 디코더 2e-5 / 신규 class head 2e-4
+
+**검증 (측정)**:
+- overfit: GT 박스 정확 복원(`[15.0,15.0,35.1,35.0]` vs GT `[15,15,35,35]`, score 0.993),
+  **3번째 예측 score 0.036** → 중복 억제 = NMS-free set prediction 동작 확인. `loss_ce_enc` 410→0.228 수렴.
+- 통합: 768px 12.3GB, head·백본 양쪽 grad 정상.
+
+**함정 기록** (재발 방지):
+- `loss_ce_enc` 초기 폭증은 **버그 아님** — two-stage가 클래스 점수 top-k로 토큰을 뽑아서, 랜덤 입력에선
+  최고 발화 토큰만 선택되는 **선택 편향**. 실데이터/학습에서 정상 수렴.
+- 헤드는 COCO 레이아웃 미러링으로 **n_classes+1 슬롯**을 가짐. 더미 슬롯이 top-k에 들면 COCO id 매핑에서
+  **KeyError** → eval에서 `labels < n_classes` 필터 필수.
+- bengio openmmlab = **py3.8.13**. RF-DETR은 3.9+ 문법 → 벤더 파일 19개에 `from __future__ import annotations`,
+  그리고 import 시점에 평가되는 module-level alias 2개(`collections.abc.Callable[...]`, py3.9+만 subscript 가능)는 제거.
+
+**상태**: bengio GPU7(1장) 학습 착수(2026-07-14). 1 GPU라 ~3h/epoch → P36 완주 후 7장 확장 필요.
