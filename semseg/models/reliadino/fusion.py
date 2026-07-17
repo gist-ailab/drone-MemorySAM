@@ -169,6 +169,9 @@ class CEFRHead(nn.Module):
         self.a = nn.Parameter(torch.tensor(float(morph_init)))   # blend morph scalar
         self._last_w_mean = None
         self._last_sigma_a = None
+        # [analysis] eval 전용: per-class 라우팅 원본 w (m,B,K,h,w) — 분화 분석용
+        self._last_cefr_w = None
+        self._last_cefr_wbar = None
 
     def lambda2(self, epoch: int) -> float:
         """λ2(t): linear warmup 0→target over warmup_ep epochs (modal_dropout
@@ -196,6 +199,9 @@ class CEFRHead(nn.Module):
             A = A + lam2 * log_post
         w = F.softmax(z + A, dim=0)                          # over modalities
         w_bar = (w * q.unsqueeze(0)).sum(dim=2, keepdim=True)  # (m,B,1,h,w)
+        if not self.training:
+            self._last_cefr_w = w.detach()
+            self._last_cefr_wbar = w_bar.detach()
         fused_p = sum(w_bar[i] * fused_tokens[i] for i in range(m))
         self._last_w_mean = w_bar.detach().float().mean(dim=(1, 2, 3, 4)).cpu()
         self._last_sigma_a = float(torch.sigmoid(self.a.detach()))

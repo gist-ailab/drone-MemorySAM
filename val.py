@@ -222,6 +222,12 @@ def create_dataset(dataset_cfg, split, transform, mode, macvi=False, eval_day=Fa
             eval_day=eval_day,
         )
         has_gt = require_annotation
+    elif name == 'MUSES':
+        from semseg.datasets.muses import MUSES
+        dataset = MUSES(dataset_cfg['ROOT'], split=split, transform=transform,
+                        modals=modals)
+        has_gt = split != 'test'
+        return dataset, has_gt
     elif name == 'DELIVER':
         case = dataset_cfg.get('CASE', None)
         dataset = DELIVER(

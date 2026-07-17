@@ -98,6 +98,18 @@ def make_toggles(core):
         fus_toggle('p34_veto_off', 'veto_floor', False)                # veto floor
         fus_toggle('p34_calib_off', 'calibrate', False)                # temperature 보정
         fus_toggle('p36_router_off', 'router_alpha', 0.0, is_param=True)  # [P36] router residual 제거
+        cefr = getattr(fus, 'cefr', None)
+        if cefr is not None and hasattr(cefr, 'a'):
+            def _cefr_apply():
+                old = cefr.a
+                saved = old.detach().clone()
+                with torch.no_grad():
+                    old.fill_(-20.0)          # σ(a)→0 = CEFR blend 차단
+                def restore():
+                    with torch.no_grad():
+                        old.copy_(saved)
+                return restore
+            T['p37_cefr_off'] = _cefr_apply
     return T
 
 
@@ -113,6 +125,7 @@ def main():
     ap.add_argument('--model_path', required=True)
     ap.add_argument('--dataset-root', default=None)
     ap.add_argument('--conditions', default='night')
+    ap.add_argument('--split', default='test', help="MUSES는 GT 있는 'val' 사용")
     ap.add_argument('--max-imgs', type=int, default=40)
     ap.add_argument('--toggles', default='rbma_off,router_off,ctd_off,sdc_off,temp_off,cons_off,amf_uniform')
     ap.add_argument('--gpu', default='0')
@@ -150,7 +163,7 @@ def main():
 
     for cond in [c.strip() for c in args.conditions.split(',') if c.strip()]:
         ds_cfg['CASE'] = cond
-        dataset, _ = V.create_dataset(ds_cfg, 'test', transform, 'test', macvi=False, eval_day=False)
+        dataset, _ = V.create_dataset(ds_cfg, args.split, transform, args.split, macvi=False, eval_day=False)
         C = len(dataset.CLASSES); CLASSES = list(dataset.CLASSES)
         ign = getattr(dataset, 'ignore_label', 255)
         n = min(args.max_imgs, len(dataset))
@@ -159,7 +172,8 @@ def main():
         feat_rel = {k: 0.0 for k in avail}
         agree = {k: 0.0 for k in avail}
         for idx in range(n):
-            images, label, _ = dataset[idx]
+            _s = dataset[idx]
+            images, label = _s[0], _s[1]
             imgs = [im.unsqueeze(0).to(device) for im in images]
             gt = rs_nn(torch.as_tensor(np.asarray(label)).to(device), WR).cpu().numpy()
             valid = gt != ign
