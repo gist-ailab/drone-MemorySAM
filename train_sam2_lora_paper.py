@@ -37,6 +37,7 @@ from val_mm_sam import evaluate
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+from semseg.models.sam2.sam2.lora_sam import get_model
 # torch.autograd.set_detect_anomaly(True)
 
 
@@ -566,7 +567,7 @@ def main(cfg, gpu, save_dir):
     lora_layer = model_cfg.get('LORA_LAYER', None)
     
     # Dynamically load LoRA model class
-    lora_model_class = eval(lora_model_name)
+    lora_model_class = get_model(lora_model_name)  # registry lookup (구 eval() 대체)
     
     # Build model with config parameters
     model_kwargs = {
@@ -1480,7 +1481,7 @@ def main(cfg, gpu, save_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='configs/deliver_rgbdel.yaml', help='Configuration file to use')
+    parser.add_argument('--cfg', type=str, default='configs/deliver/deliver_rgbdel_sam.yaml', help='Configuration file to use')
     args = parser.parse_args()
 
     with open(args.cfg) as f:

@@ -12,7 +12,7 @@
 #   scripts/remote_exp.sh servers
 #
 # Examples:
-#   scripts/remote_exp.sh run bengio configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
+#   scripts/remote_exp.sh run bengio configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
 #   scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 #   scripts/remote_exp.sh status bengio
 #
@@ -95,9 +95,28 @@ cfg_name="$(basename "$CFG" .yaml)"
 if [ "$ENTRY" = "auto" ]; then
   case "$cfg_name" in
     *SAM3*|*sam3*|*RBMA*|*rbma*) ENTRY="train_sam3_rbma.py" ;;
+    *reliadino*|*ReliaDINO*|*P34*|*P35*|*P36*) ENTRY="train_reliadino.py" ;;
     *) ENTRY="train_sam2_lora_paper.py" ;;
   esac
 fi
+# activation: absolute path => venv (e.g. hpca100), bare name => conda env (all existing servers)
+case "$ENV" in
+  /*) # venv: torch bundles its own cuDNN, but a login shell's LD_LIBRARY_PATH can
+      # shadow it with an older system cuDNN. libcudnn_cnn_train.so.8 is dlopen'd
+      # lazily on the FIRST CONV BACKWARD, so a mismatch passes forward and then
+      # dies with "GET was unable to find an engine to execute this computation".
+      # Prepend the venv's cuDNN so it wins. (hpca100: system 8.9.0 vs torch 8.9.2)
+      ACT="source '$ENV/bin/activate'"
+      CUDNN_LIB="$("$ENV/bin/python" -c 'import nvidia.cudnn,os;print(os.path.join(os.path.dirname(nvidia.cudnn.__file__),"lib"))' 2>/dev/null || true)"
+      [ -n "$CUDNN_LIB" ] && ACT="$ACT && export LD_LIBRARY_PATH='$CUDNN_LIB':\$LD_LIBRARY_PATH"
+      # wandb telemetry (sentry) can be unreachable on egress-restricted boxes (e.g. the
+      # hpca100 K8s pod). rank0 then blocks in a futex on wandb's network thread while
+      # ranks 1..N-1 spin forever in an all-reduce -> silent NCCL deadlock at 0/187 iters,
+      # GPUs pinned at 100% with only weights resident. Disable telemetry on venv servers.
+      ACT="$ACT && export WANDB_MODE=disabled"
+      ;;
+  *)  ACT="conda activate '$ENV'" ;;
+esac
 PRE=""
 case "$ENTRY" in
   *sam3*) PRE="export HF_HUB_OFFLINE=1 PYTHONPATH=semseg/models/sam3:\$PYTHONPATH &&" ;;
@@ -108,7 +127,7 @@ IDX="$(tmux new-window -P -F '#{window_index}' -t jemo -n "$WIN")"
 PORT=$((21600 + RANDOM % 300))
 TS="$(date +%Y%m%d_%H%M%S)"
 LOG="logs/${cfg_name}/${cfg_name}_${TS}.log"
-RUN="cd '$REPO' && mkdir -p 'logs/${cfg_name}' && conda activate '$ENV' && $PRE export CUDA_VISIBLE_DEVICES='$GPUS' OMP_NUM_THREADS=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && echo '[remote_exp] PORT=$PORT NPROC=$NPROC ENTRY=$ENTRY' && torchrun --nproc_per_node=$NPROC --master_port=$PORT $ENTRY --cfg '$CFG' 2>&1 | tee '$LOG'"
+RUN="cd '$REPO' && mkdir -p 'logs/${cfg_name}' && $ACT && $PRE export CUDA_VISIBLE_DEVICES='$GPUS' OMP_NUM_THREADS=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_DISABLE_XET=1 && echo '[remote_exp] PORT=$PORT NPROC=$NPROC ENTRY=$ENTRY' && torchrun --nproc_per_node=$NPROC --master_port=$PORT $ENTRY --cfg '$CFG' 2>&1 | tee '$LOG'"
 tmux send-keys -t "jemo:$IDX" "$RUN" C-m
 echo "LAUNCHED session=jemo window=$WIN(idx $IDX) port=$PORT"
 echo "LOG=$REPO/$LOG"

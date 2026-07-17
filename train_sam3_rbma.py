@@ -7,7 +7,7 @@ augmentation / loss / scheduler / metric utilities but has a clean loop using th
 model's own forward + compute_losses (main semantic CE + per-modality aux CE).
 
 Run (single GPU):
-  PYTHONPATH=semseg/models/sam3 python train_sam3_rbma.py --cfg configs/b200-multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug.yaml
+  PYTHONPATH=semseg/models/sam3 python train_sam3_rbma.py --cfg configs/multiaqua/b200-multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug.yaml
 Run (DDP):
   PYTHONPATH=semseg/models/sam3 torchrun --nproc_per_node=8 train_sam3_rbma.py --cfg <cfg>
 

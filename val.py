@@ -5,7 +5,7 @@ Supports MULTIAQUA, DELIVER, and future datasets via config DATASET.NAME.
 
 Usage:
   # Basic validation (seg/ + seg_viz/ + uamm_amf_moe_log.json)
-  python val.py --cfg configs/eval_config/xxx.yaml --mode val --model_path xxx.pth
+  python val.py --cfg configs/eval/xxx.yaml --mode val --model_path xxx.pth
 
   # Detailed mode: per-token MoE routing analysis + extended viz + detailed_log.json
   python val.py --cfg ... --mode val --model_path ... --detailed
@@ -48,6 +48,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+from semseg.models.sam2.sam2.lora_sam import get_model
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
 
 
@@ -58,6 +59,24 @@ from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
 def load_model(cfg, model_path, device):
     model_cfg = cfg['MODEL']
     dataset_cfg = cfg['DATASET']
+
+    # [P34] ReliaDINO family — timm ViT 백본 + 전용 빌더 (SAM2 경로 불필요).
+    # ckpt가 백본 포함 전체 state라 PRETRAINED_BACKBONE을 꺼서 다운로드 의존 제거.
+    if str(model_cfg.get('NAME', '')).strip() == 'ReliaDINO':
+        from semseg.models.reliadino import build_reliadino
+        _ds_default = {'DELIVER': 25, 'MULTIAQUA': 4}.get(
+            str(dataset_cfg.get('NAME', '')).upper(), 25)
+        n_cls = model_cfg.get('LORA_NUM_CLASSES', dataset_cfg.get('NUM_CLASSES', _ds_default))
+        import copy as _copy
+        _cfg = _copy.deepcopy(cfg)
+        _cfg['MODEL']['PRETRAINED_BACKBONE'] = False
+        model = build_reliadino(_cfg, n_cls)
+        ckpt = torch.load(model_path, map_location='cpu', weights_only=False)
+        state = ckpt.get('model_state_dict', ckpt)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(f"[val] ReliaDINO loaded: missing={len(missing)} unexpected={len(unexpected)}"
+              + (" ⚠️ (많으면 백본 변형 불일치 — BACKBONE_TIMM 확인)" if len(missing) > 20 else ""))
+        return model.to(device)
 
     checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"
     sam2_config_file = "sam2_hiera_b+.yaml"
@@ -80,7 +99,7 @@ def load_model(cfg, model_path, device):
     lora_top_k = model_cfg.get('LORA_TOP_K')
     lora_layer = model_cfg.get('LORA_LAYER')
 
-    lora_model_class = eval(lora_model_name)
+    lora_model_class = get_model(lora_model_name)  # registry lookup (구 eval() 대체)
     model_kwargs = {'sam_model': sam2, 'r': lora_r, 'lora_layer': lora_layer}
     sig = inspect.signature(lora_model_class.__init__)
     if 'num_experts' in sig.parameters:
@@ -88,7 +107,13 @@ def load_model(cfg, model_path, device):
     if 'top_k' in sig.parameters:
         model_kwargs['top_k'] = lora_top_k
     if 'num_classes' in sig.parameters:
-        model_kwargs['num_classes'] = model_cfg.get('LORA_NUM_CLASSES', dataset_cfg.get('NUM_CLASSES', 4))
+        # 학습 시(trainer)는 trainset.n_classes로 빌드됨 — eval도 같은 값이어야 P30+ 계열
+        # (class_decoder/router가 num_classes로 파라미터화)의 state_dict가 맞는다.
+        # 마지막 fallback 4는 MULTIAQUA 레거시 → 데이터셋 이름으로 기본값 결정.
+        _ds_default = {'DELIVER': 25, 'MULTIAQUA': 4}.get(
+            str(dataset_cfg.get('NAME', '')).upper(), 4)
+        model_kwargs['num_classes'] = model_cfg.get(
+            'LORA_NUM_CLASSES', dataset_cfg.get('NUM_CLASSES', _ds_default))
     if 'num_modalities' in sig.parameters:
         model_kwargs['num_modalities'] = num_modalities
     if 'use_entropy_fusion' in sig.parameters:

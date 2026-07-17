@@ -13,7 +13,7 @@ MaCVi 리더보드 제출 시:
   예: python val_multiaqua.py ... --macvi
 
 사용:
-  python val_multiaqua.py --cfg configs/lecun_multiaqua_rgbtl_P8.yaml --mode val --model_path outputs/.../epoch15_93.95_checkpoint.pth
+  python val_multiaqua.py --cfg configs/multiaqua/lecun_multiaqua_rgbtl_P8.yaml --mode val --model_path outputs/.../epoch15_93.95_checkpoint.pth
   python val_multiaqua.py --cfg ... --mode val --model_path ... --save_dir outputs/.../val_pred
   python val_multiaqua.py --cfg ... --mode test --model_path ... --save_dir outputs/.../test_pred
 """
@@ -42,6 +42,7 @@ from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
 from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
+from semseg.models.sam2.sam2.lora_sam import get_model
 
 
 def load_model(cfg, model_path, device):
@@ -72,7 +73,7 @@ def load_model(cfg, model_path, device):
     lora_top_k = model_cfg.get('LORA_TOP_K')
     lora_layer = model_cfg.get('LORA_LAYER')
 
-    lora_model_class = eval(lora_model_name)
+    lora_model_class = get_model(lora_model_name)  # registry lookup (구 eval() 대체)
     model_kwargs = {
         'sam_model': sam2,
         'r': lora_r,
@@ -590,7 +591,7 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='configs/lecun_multiaqua_rgbtl_P8.yaml')
+    parser.add_argument('--cfg', type=str, default='configs/multiaqua/lecun_multiaqua_rgbtl_P8.yaml')
     parser.add_argument('--mode', type=str, choices=['val', 'test'], default='val')
     parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--save_dir', type=str, default=None)

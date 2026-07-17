@@ -1,0 +1,133 @@
+---
+created: 2026-07-16
+updated: 2026-07-17 18:00
+---
+
+# 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
+
+> **역할**: **앞으로 뭘 돌릴지**의 단일 출처. 모든 세션·에이전트가 **여기를 먼저 읽고, 여기에 갱신한다.**
+> 구분: [registry.md](registry.md)=이미 launch된 실험 한눈표(과거·현재) · [monitor-log.md](monitor-log.md)=실시간 진행 · **이 문서=미래(큐·우선순위·GPU 예약)**.
+
+## 🅿️ GPU 홀드 런 (placeholder) — **user 허락/요청 시에만**
+
+> **왜**: 연구실 GPU는 비우는 순간 뺏긴다(lecun 7장 실증 상실). 다음 실험이 확정되기 전 **공백 구간에 GPU를 유지**하기 위한 장치.
+> **🔴 자동 실행 금지 — user가 허락하거나 요청했을 때만 띄운다.** 세션이 임의로 올리지 마라.
+
+**무엇을 돌리나**: **실제 P34 학습**을 돌린다(가짜 연산 아님). 산출물만 tmp 디렉터리에 **계속 덮어써서** 디스크를 안 먹게 한다.
+
+**이름 규칙**: **"dummy/더미"로 명명하지 마라.** 실제로 도는 것이 P34이므로 **그대로 `P34_hold`**로 쓴다 — 이름이 곧 내용이라 허위가 없고, 로그·`ps`에서 무엇인지 바로 읽힌다.
+
+```bash
+# 예시: bengio에서 8장 홀드
+cd /SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7      # 필요한 장수만큼
+export PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34:$PYTHONPATH
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+# config: P34 레시피 그대로, SAVE_DIR만 tmp(덮어쓰기), EPOCHS 크게(어차피 중간에 죽임)
+setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
+  --standalone --nproc_per_node=8 --master_port=29900 \
+  train_reliadino.py --cfg configs/muses_P34_hold.yaml \
+  > logs/P34_hold_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+```
+- `configs/muses_P34_hold.yaml` = 현행 P34 config 복사 + **`SAVE_DIR: './outputs/_tmp_hold'`**(매번 덮어씀) + ckpt 보관 최소화.
+- **장수는 필요에 맞춰**: 8장 잡을 거면 `nproc_per_node=8`, 4장이면 4.
+
+**해제 규칙 (중요)**:
+1. **진짜 실험이 준비되면 즉시 죽이고 양보.** 홀드는 대기열보다 항상 후순위다.
+2. **팀 내 다른 에이전트/세션이 그 GPU를 실제로 필요로 하면 즉시 양보.** (2026-07-16 실사례: 8배치 대기 잡을 위해 Arm A 종료.)
+3. 홀드 런의 **산출물은 쓰지 않는다** — 성능 수치로 인용 금지. 이건 자리 유지용이지 실험이 아니다.
+4. 홀드를 띄웠으면 **"실행 중" 표에 `P34_hold`로 명시**해 다른 세션이 오해하지 않게 한다.
+
+## 📌 사용 규약 (모든 세션 필독)
+
+1. **GPU를 잡기 전 이 문서의 "GPU 예약 현황"을 확인**하라. 남의 예약을 덮어쓰지 마라.
+2. **실험을 띄우면** → "실행 중" 표에 행 추가(서버/GPU/PID/config/로그/**완주 ETA**/우선순위) + 이 문서 `updated` 갱신.
+3. **끝나거나 죽이면** → "실행 중"에서 제거하고 "완료·판정" 표에 1행(결론 포함). 상세는 monitor-log.md.
+4. **새 실험 제안** → "대기열"에 우선순위와 함께 추가. 근거 1줄 필수.
+5. **🔴 EPOCHS를 반드시 명시하라.** 진단용 런에 300ep을 두면 며칠간 GPU를 막는다(2026-07-16 실사고, 아래 참조).
+6. **우선순위 수정 자유** — 단 바꾼 이유를 1줄 남긴다.
+
+## 🔴 GPU 점유 원칙 (user 지정 2026-07-16)
+
+**연구실 서버 부족 → 비우면 즉시 뺏긴다. 진행에 치명적.**
+- 학습 사이 **유휴 구간을 만들지 마라.** 다음 실험 미정이면 **기존 학습이라도 재기동**해 점유 유지.
+- **프로세스명은 실제 실험명으로.** "더미" 표시 금지.
+- **끝나기 전에 다음 잡을 준비**해 둔다. "끝나면 그때 생각"은 곧 상실.
+- 실증: 2026-07-16 새벽 lecun 분석 완주 후 7장을 비우자 **즉시 타인(openvla)이 24GB×7 전부 점유** → TTA 실측 무기한 보류.
+- ⚠️ **단 타인 GPU에 얹지 마라** — CLAUDE.md "빈 GPU(≤2000MiB, util≤10%)" 규칙 유지. 이 원칙은 *우리 것을 놓치지 말라*는 뜻.
+
+## 🖥 GPU 예약 현황 (2026-07-17 13:10)
+
+| 서버 | GPU | 상태 | ETA |
+|---|---|---|---|
+| **hpca100** | 0-3 (A100×4) | 🟢 MUSES 4모달 P34 완주 임박 best 80.76@ep182(내부) | **07-17 13:48** |
+| **jarvis** | 2,3,4,5,6 (4090×5) | 🟢 P37a-CEFR(ckpt=false, eff20) 학습 중 best val 62.56@ep24 → 완주 시 P37b 자동 | P37a **07-18 02:06** → P37b 이어서 |
+| **yeon** | 3,5,6,7 (3090×4) | 🔴 det_P37 재붕괴(ep17 절벽), best ep11 0.8367. 완주/중단 user 판단 대기 | ~07-18 06:08 |
+| **bengio** | — | 🔴 **노드 CUDA 전체 장애(GPU5 HW 고장) → 재부팅 후 SSH 미복귀. 물리 개입 필요** | 불명 |
+| **lecun** | — | 🔴 타인(openvla) 점유 | — |
+| ~~B200~~ | — | 🔴 상실(07-15 마감) | — |
+
+## 🔬 실행 중
+
+| 실험 | 서버/GPU | EPOCHS | ETA | 우선순위 | 목적 |
+|---|---|---|---|---|---|
+| **diag_C (dup_lidar)** | bengio 4-7 | ep6까지만 | ~1h | **P0** | radar *콘텐츠* vs *4모달 구조* 판정. ep2=49.08 ≈ ArmB 48.37 → 구조 의심 |
+| **det_P37 (yeon)** | yeon 3,6,7 | 50 | 07-17 19:00 | **P1** | 붕괴 처방 검증(eff 18+LR 2e-4 유지). ep5까지 warmup 완주, AP50 0.827~0.846 안정 |
+| **seg-P37a (CEFR+CA2)** | bengio 0-3 | **200** | ~07-18 | **P0** | 후보 1위 self-derived per-class 라우팅, 공정 레시피(DGFUSION_AUG). config `bengio-deliver_rgbdel_P37a_cefr.yaml`, snapshot `/SSDb/jemo_maeng/src/p37_train` (9c5e2cc), log `logs/segP37a_20260716_045303.log` |
+| **seg-P37b (ClassToken)** | bengio 4-7 | **200** | ~07-18 | **P0** | 후보 3위 head-capacity 패리티. config `bengio-deliver_rgbdel_P37b_classtoken.yaml`, log `logs/segP37b_20260716_045303.log` |
+| **seg-P37a/b 스모크** | yeon 1 | **2** | ~1h 후 자연종료·반납 | P2 | bengio 선진입(user 지시)으로 역할 축소 — 완주 시 2ep 수치만 참고 |
+
+## 📋 대기열 (우선순위 순)
+
+| # | 실험 | 필요 자원 | 언제 | 근거 |
+|---|---|---|---|---|
+| **1** | **4모달 구조 버그 수정 + 재도전** | 4~8 GPU | diag_C 판정 직후 | diag_C가 "구조" 판정 시. **DGFusion CLRE 센서 패리티 = 공정 비교 필수 조건.** 수정되면 Arm A의 검증된 투영을 얹어 공짜 이득 |
+| **2** | **동일 박스 대조군** (3모달+기존투영, bengio) | 4 GPU | GPU 여유 시 | 현 대조군은 **B200 수치**인데 Arm A는 bengio → **cross-box 교란**. 같은 박스 대조군이 있어야 "DGF 투영=중립" 판정이 단단해짐 |
+| **3** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
+| **4** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
+| **5** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
+| **6** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
+
+## ✅ 완료·판정 (재실행 금지)
+
+| 실험 | 결론 |
+|---|---|
+| **A/B 격리 (Arm A/B)** | **radar(또는 4모달 구조)가 범인. lidar 재투영·event dilation·eff batch 전부 무죄.** Arm A ep24 best 73.85@ep18 — 대조군(ep10 74.24)에 앞서지 않음 → **DGF 투영 = 중립** |
+| **TTA 판정** | **경쟁자 3종 전부 미사용** → 헤드라인 사용 불가. CMNeXt 논문 명시(*"single-scale test strategy"*). 우리 MSF는 **dead config**라 과거 수치 무오염 |
+| **투영 정합** | DGFusion 파라미터 재현 완료(공개 PIXEL_MEAN 오라클로 −0.1% 적중). **실제 차이는 lidar뿐**(radar·event 30ms는 이미 동일). **성능 이득 0, 공정성만 확보** |
+| **module ablation** | **제안 모듈 전부 ≈0**(ATTN_BIAS=RBMA 간판 포함). gate+calib만 test +0.26. **성능 출처 = DINOv3 백본 + per-modal LoRA** |
+| **det 붕괴 진단** | 원인 = **BS1의 gradient 노이즈**(n_pos 1~3), LR 아님. 처방 = 배치↑ + **LR 유지**. warmup 5ep 완주로 검증 |
+
+## ⚠️ 사고 기록 (반복 금지)
+
+- **2026-07-16 14:3x — bengio SSH 접속 불가 (port 400 Connection refused ×3)**: seg-P37a/b launch(~13:53) 약 30분 후 발생. 게이트웨이(210.125.85.207)는 정상(yeon 포트 600 OK) → bengio sshd 또는 호스트 자체 다운. 내부망 확인 일부 시도(미확정). **학습 생존 여부 불명** — (a) 호스트 다운이면 seg-P37a/b 사망(ep1~2라 손실 미미, 재기동 필요), (b) sshd만 죽었으면 학습 생존. **콘솔/관리자 확인 필요.** 복구 시: `pgrep -f "P37a_cefr|P37b_classtoken"` → 생존이면 지속, 사망이면 `/SSDb/jemo_maeng/src/p37_train`에서 재launch(스냅샷·데이터 무손실). 교훈: 서버 단일점 의존 — **ckpt 주기 NAS 백업**(B200 상실 전례) 체계화 필요.
+
+- **2026-07-16 04:30 — 진단 런에 EPOCHS=300 방치**: Arm A(3모달+DGF)는 **진단 목적**이었는데 EPOCHS를 300(≈36h)으로 둔 채 방치 → **8배치 대기 잡을 36시간 막을 뻔함.** 진단은 ep14에 이미 끝났음(lidar 무죄). **교훈: 진단 런은 EPOCHS를 판정에 필요한 만큼만(예: 10~16) 설정하고, 계획에 ETA를 명시할 것.** 04:40 종료해 0-3 해제.
+- **2026-07-15 lecun 상실**: 위 GPU 점유 원칙 참조.
+
+## 🔗 관련
+
+- [registry.md](registry.md) 실험 한눈표 · [monitor-log.md](monitor-log.md) 실시간 · [log.md](log.md) 결과 canonical · [../status/current.md](../status/current.md) 현재 스냅샷
+- 회수 산출물: `/nas_jm/drone_ckpts/` · 분석: `/nas_jm/analysis_logs/`
+
+
+## 🔬 Modality Ablation 실험설계 규약 (user 지정 2026-07-17)
+
+**모달 추가/제거 실험은 경쟁 논문 ablation과 대조해 설계·해석한다.** 문헌 조사 결과(2026-07-17):
+
+**문헌 modality ablation 실태:**
+| 논문 | ablation | metric | 핵심 수치 |
+|---|---|---|---|
+| **CAFuser** (MUSES) Table IX | 누적(RGB→+L→+R→+E) | **PQ** | RGB 55.7 → +L **+3.0** → +R **+0.6** → +E +0.4 |
+| **MUSES** 원논문 Table 3 | 카메라 대비 개별 | **PQ** | +E +2.6 / **+R +4.4** / +L +5.8 (단독). **night +5.4, snow +3.9(lidar 열화조건 radar 대체)** |
+| **CMNeXt** (DELIVER) | 누적 | **mIoU** | RGB 57.20 → +D **+6.38** → +E +0.86 → +L +1.86 (radar 없음) |
+| **DGFusion** | **per-sensor ablation 부재** | — | 아키텍처/loss ablation만(Table IV/V). DELIVER는 CLE 51.6 → CLDE(+depth) **+5.1 mIoU** |
+
+**🔴 규약 (모달 실험 설계·해석 시 필수):**
+1. **비교 기준선을 정확히**: radar는 **"카메라 대비"(+4.4)가 아니라 "lidar 위에 추가"(CAFuser +0.6≈0)**로 봐야 함. 우리 P34는 lidar 있으므로 radar 기대 천장 ≈0. **우리 MUSES radar val −0.09/test −0.72는 이 잉여성과 정합 — "우리 실패"로 단정 금지.**
+2. **누적 ablation 필수**: 한 점(4종 vs 3종)이 아니라 **RGB→+L→+L+R→+L+R+E 누적을 우리 metric(mIoU)으로**. CAFuser Table IX 미러링. 우리 +R이 ≈0이면 "정상(잉여)", 크게 음수면 "우리 융합 문제".
+3. **per-condition breakdown 필수**: radar는 **night/snow(lidar 열화조건)에서 대체재**로 이득(MUSES night +5.4/snow +3.9). **aggregate가 조건별 이득을 가릴 수 있음** → 조건별로 3모달 vs 4모달 대조.
+4. **DGFusion 대조**: DGFusion은 per-sensor ablation이 **아예 없다** → **mIoU 기준 modality ablation은 문헌 전무**(전부 PQ). 우리가 내면 문헌 공백 메우는 기여. 우리 노벨티(신뢰도 라우팅) = "radar를 lidar 보조가 아니라 lidar-degraded 조건 대체 range 신호로 라우팅"이 살 자리.
+5. **PQ vs mIoU 구분**: 문헌 modality ablation은 전부 **PQ**(우리는 semantic-only=mIoU). PQ↔mIoU 직접 비교 금지. panoptic head 없이 PQ 산출 불가([[seg-report-sota-gap]]).
+
+**적용 예**: MUSES/DELIVER 모달 실험을 짤 때 위 표를 baseline으로 붙이고, 누적 ablation + per-condition을 기본 산출로. 근거 = 조사보고(2026-07-17, DGFusion 2509.09828 v3 / CAFuser 2410.10791 v2 Table IX / MUSES 2401.12761 v4 Table 3 / CMNeXt 2303.01480).

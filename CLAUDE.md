@@ -10,36 +10,83 @@
 새로운 대화나 작업 지시를 받으면, 코드 수정을 시작하기 전에 **반드시** 아래 순서대로 `.claude_logs` 폴더 내의 파일들을 읽어라:
 
 #### Step 0 — 역할 판별 (최우선)
-- **가장 먼저** `09_bot_roles_guide.md`를 읽어라.
+- **가장 먼저** `meta/bot-roles.md`를 읽어라.
 - 사용자의 첫 메시지에 역할 키워드("코드분석봇", "코딩봇", "실험분석봇", "그림봇")가 포함되어 있으면, 해당 역할의 지침을 이번 세션 전체에 적용한다.
 - 역할이 지정되지 않으면 기본 모드(AI 연구 보조 및 엔지니어)로 동작한다.
 
 #### Step 1 — 프로젝트 상태 파악
-- **`00_INDEX.md`를 먼저 읽어라** — 폴더 전체를 6개 카테고리(프로젝트·아키텍처·Related Works·실험·환경/인프라·이슈)로 묶은 front door. 어떤 문서를 볼지 여기서 결정한다.
-- `01_project_status.md`: **상단 "📌 현재 상태 스냅샷"이 현재 상태의 단일 출처** (하단은 역시간순 history). 전체 진행 상황·현재 최선 모델·남은 과제.
-- `02_model_arch.md`: P8~P28 + SAM3-RBMA 모델 아키텍처 상세, 변천 과정, 각 버전의 한계점
-- `03_experiment_log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과
-- `04_issues_and_fixes.md`: 알려진 이슈, 해결 기록, 코딩 시 주의사항 — **상단 "이슈 상태 인덱스 표" 먼저** (**코드 작성 전 반드시 확인**)
-- `12_novelty_and_related_work.md`: **RBMA 노벨티 & 관련연구(canonical)** — 우리 모델 한눈에, 선행연구 vs RBMA 구조 차별표, 리뷰 방어 포인트, lit-check TODO. **연구 방향·논문 포지셔닝 논의 전 반드시 확인.** (원시 deep-research 로그는 `10_related_work.md`)
-- `13_servers_and_launch.md`: **서버 레지스트리 & 원격 실험 자동 실행** — "X 실험을 <서버>에서 돌려줘" 류 지시를 받으면 **반드시 먼저 읽어라.** 서버 메타데이터 단일 출처는 `scripts/servers.conf`, 실행/추적은 `scripts/remote_exp.sh`.
-- `14_environment_and_infra.md`: 실행 환경/명령, 데이터·가중치 경로, 체크포인트 포맷, DDP, B200 파이프라인 튜닝.
+- **`00_INDEX.md`를 먼저 읽어라** — 주제 폴더 구조(status/models/experiments/det/datasets/research/decisions/infra/issues/meta/archive)의 front door + 구번호("doc N")→새경로 매핑표. 어떤 문서를 볼지 여기서 결정한다. 각 폴더의 `00_MOC.md`가 폴더 내 문서를 안내한다.
+- `status/current.md`: **현재 상태 스냅샷 — 현재 상태의 단일 출처**. 전체 진행 상황·현재 최선 모델·남은 과제. (진행 이력은 `status/history-2026H2.md`·`history-2026H1.md`)
+- `models/arch-evolution.md`: P8~P31 + SAM3-RBMA 모델 아키텍처 상세, 변천 과정, 각 버전의 한계점
+- `experiments/log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과 (한눈표는 `experiments/registry.md`, 실시간 모니터는 `experiments/monitor-log.md`)
+- `issues/issues-and-fixes.md`: 알려진 이슈, 해결 기록, 코딩 시 주의사항 — **상단 "이슈 상태 인덱스 표" 먼저** (**코드 작성 전 반드시 확인**)
+- `research/novelty-and-related-work.md`: **RBMA 노벨티 & 관련연구(canonical)** — 우리 모델 한눈에, 선행연구 vs RBMA 구조 차별표, 리뷰 방어 포인트, lit-check TODO. **연구 방향·논문 포지셔닝 논의 전 반드시 확인.** (원시 deep-research 로그는 `research/related-work-raw.md`)
+- `infra/servers-and-launch.md`: **서버 레지스트리 & 원격 실험 자동 실행** — "X 실험을 <서버>에서 돌려줘" 류 지시를 받으면 **반드시 먼저 읽어라.** 서버 메타데이터 단일 출처는 `scripts/servers.conf`, 실행/추적은 `scripts/remote_exp.sh`.
+- `infra/environment.md`: 실행 환경/명령, 데이터·가중치 경로, 체크포인트 포맷, DDP, B200 파이프라인 튜닝.
 
-> `.claude_logs` 인덱스: **00 인덱스(front door)** · 01 상태(상단 스냅샷) · 02 모델상세 · 03 실험 · 04 이슈(상단 상태표) · 10 관련연구(raw) · 11 SAM3 plan · **12 노벨티&관련연구(canonical)** · **13 서버&원격실행** · 14 환경·인프라. **먼저 00**, 관련연구/노벨티는 **12**, 원격 학습 지시는 **13**을 읽어라. (05~07·P13_design_guide = 🗄 ARCHIVED)
+> `.claude_logs` 진입 순서: **00_INDEX(front door)** → `status/current.md`(현재 스냅샷) → 작업 폴더 `00_MOC.md`. 관련연구/노벨티는 **research/novelty-and-related-work.md**, 원격 학습 지시는 **infra/servers-and-launch.md**, det 작업은 **det/diagnosis-plan.md**, 세션 태스크는 **meta/taskboard.md**를 읽어라. (archive/ = 🗄 동결 문서)
+
+### 1.5 구조 유지 규칙 (Conventions — 파일 생성·코드 추가·브랜치 생성 전 필수)
+
+**`.claude_logs/meta/conventions.md`가 리포 구조 유지의 단일 출처다.** 핵심만 요약하면:
+- **Git**: 모든 브랜치는 **`develop` 기준**으로 분기하고, 병합도 PR 없이 `git push origin HEAD:develop` 직접 병합. `main` 금지. 병합 후 로컬 허브 체크아웃 pull 유지. **진행 중 학습이 있는 원격 서버는 pull 금지.**
+- **문서**: 새 문서는 `.claude_logs/` 주제 폴더에 kebab-case로 생성하고 해당 폴더 `00_MOC.md`에 등록. 번호 프리픽스 신규 부여 금지.
+- **코드**: 새 모델 버전은 `lora_sam/pNN.py` + `MODEL_REGISTRY` 등록 (메가파일·shim에 클래스 추가 금지), 공통 모듈은 `modules/`에, 신규 코드는 shim 경유 import 금지.
+- **Configs**: `<dataset>_<modal>_<version>_<aug>.yaml` (서버접두어 금지), 학습=`configs/<dataset>/`, 평가=`configs/eval/`, 신규 실험은 `experiments/registry.md`에 행 추가.
+
+#### ⚠️ 프로젝트 로그 vs 리서치 콘텐츠 — 원본 위치 규칙 (2026-07-09 정합화)
+
+- **프로젝트 로그(상태·아키 evolution·실험 로그/분석·이슈·결정·인프라)의 원본 = repo `.claude_logs/` 주제 폴더** (git 추적). NAS로 이관하거나 심링크로 대체하지 말 것 — 2026-07-08 심링크 이관 시도는 sshfs `.fuse_hidden` 파손 사고 + 원격 서버(NAS 미마운트) dangling으로 **철회**됐다 (구경로들은 리다이렉트 스텁).
+- **리서치 콘텐츠(논문 노트·소스·아이디어·볼트 실험노트 `P<N>_<이름>/`)의 원본 = NAS Obsidian 볼트** `/nas_jm/Research/26_MultimodalSeg`. repo의 `.claude_logs/research/vault/`는 **동기화 사본(손편집 금지)** — 갱신은 `bash scripts/sync_research_vault.sh`. 볼트 배치 규약·에이전트 규칙 = `/nas_jm/Research/00_AGENT_PROTOCOL_HERMES.md` + `research/vault/README.md`.
+- 볼트에 `architecture/ experiments/ issues/ synthesis/` 등 repo-로그 미러 폴더를 만들지 말 것 (위 사고 잔재 폴더는 격리됨). 위치가 애매하면 사용자에게 묻는다.
+
+### 1.6 🔴 모델 위임 규칙 (모든 세션·에이전트 공통 — user 지정 2026-07-16)
+
+**이 리포에서 작업하는 모든 세션과 서브에이전트에 동일하게 적용한다.**
+
+| 작업 | 어느 모델로 |
+|------|------------|
+| **학습 기동** (`remote_exp.sh run` / torchrun), **tmux 제어**, 상태 조회(`nvidia-smi`/`ps`/로그 tail·grep), 프로세스 kill, rsync 회수 | **sonnet** |
+| **git** (pull/push/fetch/commit), 기계적 파일 이동·동기화·정리 | **sonnet** |
+| **코드를 만지는 일** — 패치·config 설계·스크립트 작성 | **해당 세션의 opus 또는 fable** |
+| **에러 검증/진단**, 로그 판독, 수치 해석·판정 | **해당 세션의 opus 또는 fable** |
+
+- 위임은 `Agent` tool에 **`model: "sonnet"`** 을 명시해서 한다.
+- **sonnet은 데이터를 물어오고 명령을 집행하되, 판정은 상위 모델이 한다.** "이게 붕괴인가 노이즈인가", "왜 죽었나"는 위임하지 마라.
+- **위임 금지(판단이 섞인 것)**: cherry-pick 대상 선별, 충돌 해결, 브랜치 전략, 커밋 메시지에 실험 판정을 담는 경우, 실패 원인 규명.
+- ⚠️ **기동 "검증"의 기준은 상위 모델이 정의**해 주고 결과를 검토한다. 판정 기준 = **iteration이 실제 전진하는가**(예: `73/187` → 25초 뒤 `92/187`) · **rank0 GPU util > 0인가**(0%면 collective 이탈=데드락) · **메모리가 가중치 수준(3~4GiB)이 아니라 실제 활성화 수준인가** · **첫 eval 통과**. 2026-07-16에 "기동됨"만 보고 살아났다고 오보했다가 실제론 NCCL 데드락(`0/187`에서 13분 정지)이었던 사고가 있다.
+
+**Why**: 반복 잡무·기계적 원격 조작에 상위 모델을 쓰는 건 비용 낭비. 상위 모델은 **판단·진단·코드**에만 쓴다.
+
+### 1.7 🔴 코드 단일출처 규칙 (모든 세션·에이전트 공통 — user 지정 2026-07-17)
+
+**멀티 세션이 중복 구현하지 않도록, 모든 코드는 운용(학습/평가 기동) 전에 반드시:**
+
+1. **`develop` 브랜치에 병합**돼 있어야 한다. feature 브랜치·worktree·서버 로컬에만 있는 코드로 학습을 돌리지 마라. (모델 코드·config·스크립트 전부.)
+2. **로컬 허브(`jemo@172.27.183.150` = 이 박스, `.../drone-MemorySAM`)에서 접근 가능**해야 한다. 원격 서버들은 GitHub이 아니라 **이 허브를 `local` remote로 pull**한다(jarvis 등 확인됨). 즉 `develop`에 push + 허브가 그 커밋을 보유해야 다른 세션·서버가 받을 수 있다.
+
+**절차 (새 모델/코드를 서버에서 돌리기 전)**:
+- 코드 작성 → **`develop`에 직접 병합**(`git push origin HEAD:develop`, PR 없음 — [[git-direct-merge-develop]]) → **로컬 허브 pull로 최신화** → 서버가 `git fetch local && git checkout/merge develop`.
+- config도 코드다. 서버 전용 튜닝(경로·GPU·batch)이라도 **develop에 커밋**해 다른 세션이 볼 수 있게 하라. 서버 로컬에만 둔 미커밋 config는 그 세션이 죽으면 소실된다(2026-07-16 bengio HW 사망으로 P37 미커밋 config가 서버에 갇힌 사례).
+
+**왜**: 세션 A가 만든 모델을 세션 B가 모르면 재구현한다. develop+허브가 유일한 "다른 세션이 볼 수 있는 곳"이다. 서버 로컬 브랜치·worktree는 **그 세션만의 것**이다.
+
+⚠️ **P37 병합 대기 (2026-07-17, user 결정)**: P37a-CEFR/P37b-ClassToken 코드는 `worktree-p33-impl`(9c5e2cc)에만 있고 develop엔 없다. **통짜 머지 금지** — develop은 이미 P34~P36 + 분석훅(P36 router-off 토글 등, p33-impl엔 없음)을 갖고 있어 reliadino/*.py가 양쪽 독립 진화(충돌). P37 순증분(classtoken.py +135 / fusion.py CEFRHead +153 / model.py CEFR +129 / train_reliadino +66 / P37 configs / ColorAugSSD)만 얹어야 함. **jarvis P37a 완주·검증 후 opus가 수동 이식+재검증하여 병합 예정.** 그 전엔 인계 시 `worktree-p33-impl` 브랜치를 직접 참조. 성급히 머지하지 말 것.
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
-- 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `02_model_arch.md` 또는 `03_experiment_log.md`를 업데이트하여 기록을 남겨라.
+- 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `models/arch-evolution.md` 또는 `experiments/log.md`를 업데이트하여 기록을 남겨라 (새 실험 launch/상태 변화는 `experiments/registry.md` 행도 갱신).
 - 버전(P8, P9, P10 등)을 명시하고, 왜 변경했는지(이전 실험 결과 기반) 타당한 이유를 적어라.
 - 실험 결과 파일 경로는 프로젝트 기준 상대 경로로 기록해라.
-- 새 선행연구를 조사했거나 RBMA 노벨티/차별점 논의가 갱신되면 `12_novelty_and_related_work.md`(canonical 비교표·판정)를 업데이트하고, 원시 조사 로그는 `10_related_work.md`에 추가해라.
+- 새 선행연구를 조사했거나 RBMA 노벨티/차별점 논의가 갱신되면 `research/novelty-and-related-work.md`(canonical 비교표·판정)를 업데이트하고, 원시 조사 로그는 `research/related-work-raw.md`에 추가해라.
 
 ### 3. 구현/작업 완료 시 자동 업데이트 (Auto-update)
 
-- 새 모델 버전 구현, config 생성, 학습/평가 스크립트 수정 등 **의미 있는 작업이 완료되면** 사용자 요청 없이도 자동으로 `.claude_logs/01_project_status.md`를 업데이트해라.
+- 새 모델 버전 구현, config 생성, 학습/평가 스크립트 수정 등 **의미 있는 작업이 완료되면** 사용자 요청 없이도 자동으로 `.claude_logs/status/current.md`(스냅샷 덮어쓰기)를 업데이트하고, 진행 이력은 `.claude_logs/status/history-2026H2.md` 최상단에 append해라.
   - 상태 변경 (예: "설계 완료 (구현 대기)" → "구현 완료 (학습 대기)")
   - 변경 파일 목록 및 핵심 내용 기록
   - 디자인 가이드 대비 의도적 차이가 있으면 사유 기록
-- 모델 아키텍처 변경이 있었으면 `02_model_arch.md`도 함께 업데이트해라.
+- 모델 아키텍처 변경이 있었으면 `models/arch-evolution.md`도 함께 업데이트해라.
 
 ### 4. 세션 종료 시 (Wrap-up)
 
@@ -74,19 +121,19 @@ conda activate MMSS_SAM
 python train_sam2_lora_paper.py --cfg configs/<config>.yaml
 
 # 평가 (val)
-python val_multiaqua.py --cfg configs/eval_config/<config>.yaml --mode val --model_path <checkpoint_path>
+python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode val --model_path <checkpoint_path>
 
 # 평가 (test + challenge 제출)
-python val_multiaqua.py --cfg configs/eval_config/<config>.yaml --mode test --model_path <checkpoint_path> --macvi
+python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode test --model_path <checkpoint_path> --macvi
 
 # P9 전용 시각화 평가 (MoE routing 분석 포함)
-python val_multiaqua_P9.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode val
-python val_multiaqua_P9.py --cfg configs/eval_config/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode test
+python val_multiaqua_P9.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode val
+python val_multiaqua_P9.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode test
 ```
 
 ### 원격 서버에서 실험 실행 (tmux 세션 `jemo`)
 
-"X 실험을 <서버>에서 돌려줘" → 아래 런처 사용. 상세는 `.claude_logs/13_servers_and_launch.md`, 서버 목록은 `scripts/servers.conf`.
+"X 실험을 <서버>에서 돌려줘" → 아래 런처 사용. 상세는 `.claude_logs/infra/servers-and-launch.md`, 서버 목록은 `scripts/servers.conf`.
 
 ```bash
 # 서버 레지스트리 확인 (repo_path / env / default_gpus)
@@ -94,7 +141,7 @@ bash scripts/remote_exp.sh servers
 # 서버 상태(빈 GPU + jemo 세션 창)
 bash scripts/remote_exp.sh status bengio
 # 실행: ssh -> tmux 세션 'jemo' 새 window -> torchrun -> logs/<cfg>/<cfg>_<ts>.log
-bash scripts/remote_exp.sh run bengio configs/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
+bash scripts/remote_exp.sh run bengio configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml 0,1,2,3
 # 진행 로그 추적
 bash scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 ```
@@ -113,17 +160,21 @@ bash scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 ```
 drone-MemorySAM/
 ├── CLAUDE.md                          # 이 파일
-├── .claude_logs/                      # AI 세션 로그
-│   ├── 01_project_status.md
-│   ├── 02_model_arch.md
-│   └── 03_experiment_log.md
+├── .claude_logs/                      # AI 세션 로그 (front door = 00_INDEX.md)
+│   ├── 00_INDEX.md                    # 폴더 구조 안내 + 구번호→새경로 매핑표
+│   ├── status/                        # current.md(현재 스냅샷) + history-2026H1/H2
+│   ├── models/                        # arch-evolution.md, figures-ascii.md, explain/
+│   ├── experiments/                   # registry.md, log.md, monitor-log.md, analysis/
+│   ├── det/  datasets/  research/     # det 진단 · 데이터셋 · 관련연구(vault 포함)
+│   ├── decisions/  infra/  issues/    # 설계 제안 · 서버/환경 · 이슈
+│   └── meta/  archive/                # 봇 역할·태스크보드 · 동결 문서
 ├── train_sam2_lora_paper.py           # 메인 학습 스크립트
 ├── val_multiaqua.py                   # 범용 평가 스크립트 (P8~P12)
 ├── val_multiaqua_P9.py                # P9 전용 시각화 + MoE routing 분석
 ├── diagnose_moe_gate.py               # MoE gate 진단 스크립트
 ├── configs/
-│   ├── levine-multiaqua_rgbtl_P{8-12}_hardaug{2-4}.yaml  # 학습 configs
-│   └── eval_config/                   # 평가 configs (MODEL_PATH 포함)
+│   ├── deliver/ · multiaqua/ · det/   # 학습 configs (분류 기준: configs/README.md)
+│   └── eval/                          # 평가 configs (MODEL_PATH 포함, 구 eval_config/)
 ├── semseg/
 │   └── models/sam2/sam2/
 │       ├── sam_lora_image_encoder_seg.py  # LoRA_Sam_P8~P12 모델 정의

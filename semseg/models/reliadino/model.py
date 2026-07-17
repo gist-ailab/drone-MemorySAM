@@ -190,6 +190,10 @@ class ReliaDINO(nn.Module):
         self.modal_dropout_warmup_ep = int(modal_dropout_warmup_ep)
         self._current_epoch = 0          # trainer sets this each epoch
         self._last_dropped_modality = None
+        # [analysis] SAM2 표준 훅 미러링 (seg_analysis 도구 무수정 동작; 학습 영향 0)
+        self._last_per_modal_feats = None
+        self._last_per_modal_outputs = None
+        self._last_uamm_spatial = None
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -236,7 +240,16 @@ class ReliaDINO(nn.Module):
         x = self._maybe_drop_modality(batched_input)
         H, W = x[0].shape[-2:]
         feats = [self.encoder(x[i], i) for i in range(self.num_modalities)]
+        if not self.training:
+            self._last_per_modal_feats = [f.detach() for f in feats]
         fused, aux = self.fusion(feats, gt_mask if self.training else None)
+        if not self.training:
+            al = getattr(self.fusion, '_last_aux_logits', None)
+            self._last_per_modal_outputs = list(al) if al is not None else None
+            gs = getattr(self.fusion, '_last_gate_spatial', None)
+            self._last_uamm_spatial = (
+                [gs[i].float().cpu().numpy() for i in range(gs.shape[0])]
+                if gs is not None else None)
         routed = aux.pop('routed_logits', None)     # [P36] consumed here, not by trainer
         cefr_ctx = aux.pop('cefr_ctx', None)        # [P37a] consumed here, not by trainer
         if cefr_ctx is not None:

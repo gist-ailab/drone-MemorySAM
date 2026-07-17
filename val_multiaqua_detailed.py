@@ -18,7 +18,7 @@ Per-token entropy, argmax fraction, spatial routing map을 시각화.
   save_dir/detailed_log.json : 전체 블록 per-token MoE 통계 + fusion + prediction 분석
 
 사용:
-  python val_multiaqua_detailed.py --cfg configs/levine-multiaqua_rgbtl_P9_hardaug4.yaml \\
+  python val_multiaqua_detailed.py --cfg configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml \\
       --mode val --model_path outputs/MMSamP9/.../epoch47_94.18.pth
 
   # TTA (horizontal flip, 2 passes/image):
@@ -50,10 +50,7 @@ from semseg.augmentations_mm import get_val_augmentation
 from semseg.metrics import Metrics
 from semseg.utils.utils import setup_cudnn
 from semseg.models.sam2.sam2.build_sam import build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import (
-    LoRA_Sam_P9, LoRA_Sam_P10, LoRA_Sam_P11, LoRA_Sam_P12, LoRA_Sam_P13, LoRA_Sam_P14, LoRA_Sam_P15, LoRA_Sam_P16, LoRA_Sam_P17, LoRA_Sam_P18, LoRA_Sam_P19, LoRA_Sam_P20, LoRA_Sam_P21, LoRA_Sam_P22, LoRA_Sam_P23, LoRA_Sam_P24, LoRA_Sam_P25, LoRA_Sam_P26, LoRA_Sam_P27
-)
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
+from semseg.models.sam2.sam2.lora_sam import get_model
 from semseg.models.sam2.sam2.sam_lola_utils import SoftMoE_LoRA_Layer
 
 
@@ -116,32 +113,8 @@ def load_model(cfg, model_path, device):
     lora_top_k = model_cfg.get('LORA_TOP_K')
     lora_layer = model_cfg.get('LORA_LAYER')
 
-    _model_map = {
-        'LoRA_Sam': LoRA_Sam,
-        'LoRA_Sam_P9': LoRA_Sam_P9,
-        'LoRA_Sam_P10': LoRA_Sam_P10,
-        'LoRA_Sam_P11': LoRA_Sam_P11,
-        'LoRA_Sam_P12': LoRA_Sam_P12,
-        'LoRA_Sam_P13': LoRA_Sam_P13,
-        'LoRA_Sam_P14': LoRA_Sam_P14,
-        'LoRA_Sam_P15': LoRA_Sam_P15,
-        'LoRA_Sam_P16': LoRA_Sam_P16,
-        'LoRA_Sam_P17': LoRA_Sam_P17,
-        'LoRA_Sam_P18': LoRA_Sam_P18,
-        'LoRA_Sam_P19': LoRA_Sam_P19,
-        'LoRA_Sam_P20': LoRA_Sam_P20,
-        'LoRA_Sam_P21': LoRA_Sam_P21,
-        'LoRA_Sam_P22': LoRA_Sam_P22,
-        'LoRA_Sam_P23': LoRA_Sam_P23,
-        'LoRA_Sam_P24': LoRA_Sam_P24,
-        'LoRA_Sam_P25': LoRA_Sam_P25,
-        'LoRA_Sam_P26': LoRA_Sam_P26,
-        'LoRA_Sam_P27': LoRA_Sam_P27,
-        'LoRA_Sam_P28': LoRA_Sam_P28,
-    }
-    lora_model_class = _model_map.get(lora_model_name)
-    if lora_model_class is None:
-        raise ValueError(f"Unknown LORA_MODEL: {lora_model_name}. Supported: {list(_model_map.keys())}")
+    # registry lookup (구 수동 _model_map 대체 — P28 미import NameError도 함께 해소)
+    lora_model_class = get_model(lora_model_name)
 
     model_kwargs = {'sam_model': sam2, 'r': lora_r, 'lora_layer': lora_layer}
     sig = inspect.signature(lora_model_class.__init__)
