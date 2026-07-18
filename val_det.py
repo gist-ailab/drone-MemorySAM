@@ -100,7 +100,17 @@ def main():
     seg_model = build_seg_model(cfg, device, n_classes)
 
     det_name = cfg['MODEL'].get('DET_MODEL', 'MemorySAMDetector')
-    if det_name == 'ReliaDINORFDETRDetector':
+    if det_name == 'ReliaDINOM2FDetector':
+        # P38: M2F query head IS the detector (no RF-DETR / extract_det_pyramid).
+        from objdet.models.det_model import ReliaDINOM2FDetector
+        model = ReliaDINOM2FDetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            num_select=cfg['MODEL'].get('NUM_SELECT', 100),
+            freeze_backbone=True,
+        ).to(device)
+    elif det_name == 'ReliaDINORFDETRDetector':
         from objdet.models.det_model import ReliaDINORFDETRDetector
         model = ReliaDINORFDETRDetector(
             seg_model=seg_model,

@@ -56,6 +56,29 @@ def _dice_loss(pred_logits: torch.Tensor, tgt: torch.Tensor) -> torch.Tensor:
     return (1.0 - (num + 1.0) / (den + 1.0)).mean()
 
 
+# ── [P38-Det] box helpers (cxcywh<->xyxy, GIoU) — self-contained ──────────────
+def _cxcywh_to_xyxy(b):
+    cx, cy, w, h = b.unbind(-1)
+    return torch.stack([cx - 0.5 * w, cy - 0.5 * h, cx + 0.5 * w, cy + 0.5 * h], dim=-1)
+
+
+def _generalized_box_iou(b1, b2):
+    """b1 (N,4), b2 (M,4) in xyxy. Returns (N,M) GIoU. Assumes valid boxes."""
+    a1 = (b1[:, 2] - b1[:, 0]).clamp(min=0) * (b1[:, 3] - b1[:, 1]).clamp(min=0)
+    a2 = (b2[:, 2] - b2[:, 0]).clamp(min=0) * (b2[:, 3] - b2[:, 1]).clamp(min=0)
+    lt = torch.max(b1[:, None, :2], b2[None, :, :2])
+    rb = torch.min(b1[:, None, 2:], b2[None, :, 2:])
+    wh = (rb - lt).clamp(min=0)
+    inter = wh[..., 0] * wh[..., 1]
+    union = a1[:, None] + a2[None, :] - inter
+    iou = inter / union.clamp(min=1e-7)
+    lti = torch.min(b1[:, None, :2], b2[None, :, :2])
+    rbi = torch.max(b1[:, None, 2:], b2[None, :, 2:])
+    whi = (rbi - lti).clamp(min=0)
+    area_c = whi[..., 0] * whi[..., 1]
+    return iou - (area_c - union) / area_c.clamp(min=1e-7)
+
+
 class MaskQueryLiteHead(nn.Module):
     """[P38] forward(fused, feat_s4) -> dict(cls, membed, masks, aux_states).
 
@@ -94,6 +117,15 @@ class MaskQueryLiteHead(nn.Module):
         # start; the query branch still trains at full strength through its
         # own Hungarian losses (unlike beta, they don't route through here).
         self.beta = nn.Parameter(torch.tensor(float(beta_init)))
+        # [P38-Det] per-query box head (cxcywh in [0,1]); zero-init last layer ->
+        # every query starts at the (0.5,0.5,0.5,0.5) prior, then learns.
+        self.box_head = nn.Sequential(
+            nn.Linear(dim_t, dim_t), nn.ReLU(inplace=True),
+            nn.Linear(dim_t, dim_t), nn.ReLU(inplace=True),
+            nn.Linear(dim_t, 4))
+        nn.init.zeros_(self.box_head[-1].weight)
+        nn.init.zeros_(self.box_head[-1].bias)
+        self.det_w_l1, self.det_w_giou = 5.0, 2.0
         ew = torch.ones(num_classes + 1)
         ew[num_classes] = no_obj_w
         self.register_buffer('empty_weight', ew)
@@ -133,6 +165,7 @@ class MaskQueryLiteHead(nn.Module):
         membed = self.mask_mlp(qn)                             # (B,Q,fpn_dim)
         return {
             'cls': self.cls_head(qn),                          # (B,Q,K+1)
+            'boxes': self.box_head(qn).sigmoid(),             # (B,Q,4) cxcywh
             'membed': membed,
             'masks': torch.einsum('bqc,bchw->bqhw', membed, feat_s4),
             'state': q,                                        # pre-norm final
@@ -225,6 +258,74 @@ class MaskQueryLiteHead(nn.Module):
         for state in states:
             total = total + self._layer_loss(state, feat_pts, tgt_cls, tgt_pts)
         return total / len(states)
+
+    # ── [P38-Det] detection path: box head + DETR-style set loss / decode ──────
+    @torch.no_grad()
+    def _match_det(self, cls_logits, boxes, tgt_cls, tgt_boxes):
+        """Per-image Hungarian on cls (softmax) + L1 + GIoU. Boxes cxcywh in [0,1]."""
+        prob = F.softmax(cls_logits, dim=-1)                    # (Q,K+1)
+        cost_cls = -prob[:, tgt_cls]                            # (Q,T)
+        cost_l1 = torch.cdist(boxes, tgt_boxes, p=1)            # (Q,T)
+        cost_giou = -_generalized_box_iou(_cxcywh_to_xyxy(boxes), _cxcywh_to_xyxy(tgt_boxes))
+        C = (self.w_cls * cost_cls + self.det_w_l1 * cost_l1
+             + self.det_w_giou * cost_giou).cpu().numpy()
+        qi, ti = linear_sum_assignment(C)
+        return (torch.as_tensor(qi, device=cls_logits.device, dtype=torch.long),
+                torch.as_tensor(ti, device=cls_logits.device, dtype=torch.long))
+
+    def _det_layer_loss(self, cls_logits, boxes, targets):
+        """cls_logits (B,Q,K+1) fp32, boxes (B,Q,4) fp32. targets: list of dicts
+        {'labels':(T,), 'boxes':(T,4) cxcywh in [0,1]}."""
+        B, Q = cls_logits.shape[:2]
+        ce_tgt = cls_logits.new_full((B, Q), self.num_classes, dtype=torch.long)
+        l1 = giou = boxes.sum() * 0.0
+        npos = 0
+        for b in range(B):
+            tc, tbox = targets[b]['labels'], targets[b]['boxes']
+            if tc.numel() == 0:
+                continue
+            qi, ti = self._match_det(cls_logits[b], boxes[b], tc, tbox)
+            ce_tgt[b, qi] = tc[ti]
+            pb, gb = boxes[b][qi], tbox[ti]
+            l1 = l1 + F.l1_loss(pb, gb, reduction='sum')
+            giou = giou + (1.0 - torch.diag(
+                _generalized_box_iou(_cxcywh_to_xyxy(pb), _cxcywh_to_xyxy(gb)))).sum()
+            npos += ti.numel()
+        ce = F.cross_entropy(cls_logits.transpose(1, 2), ce_tgt, weight=self.empty_weight)
+        denom = max(npos, 1)
+        total = self.w_cls * ce + self.det_w_l1 * (l1 / denom) + self.det_w_giou * (giou / denom)
+        return {'total': total, 'cls': ce.detach(),
+                'l1': (l1 / denom).detach(), 'giou': (giou / denom).detach(), 'n_pos': npos}
+
+    def det_losses(self, out, targets):
+        """Deep-supervised DETR set loss over the final + aux query states."""
+        states = list(out.get('aux_states', [])) + [out['state']]
+        total = 0.0
+        last = None
+        for st in states:
+            qn = self.norm_out(st)
+            l = self._det_layer_loss(self.cls_head(qn).float(),
+                                     self.box_head(qn).sigmoid().float(), targets)
+            total = total + l['total']
+            last = l
+        total = total / len(states)
+        return {'total': total, 'cls': last['cls'], 'l1': last['l1'],
+                'giou': last['giou'], 'n_pos': last['n_pos']}
+
+    @torch.no_grad()
+    def det_decode(self, out, num_select: int = 100):
+        """Top-k over (query x class), no-object dropped. NMS-free. Boxes cxcywh."""
+        prob = F.softmax(out['cls'].float(), dim=-1)[..., :self.num_classes]  # (B,Q,K)
+        boxes = out['boxes']                                                  # (B,Q,4)
+        results = []
+        B, Q, K = prob.shape
+        for b in range(B):
+            flat = prob[b].flatten()
+            k = min(num_select, flat.numel())
+            scores, idx = flat.topk(k)
+            qidx = torch.div(idx, K, rounding_mode='floor')
+            results.append({'boxes': boxes[b][qidx], 'scores': scores, 'labels': idx % K})
+        return results
 
     # ── MUSES panoptic post-processing (unused on DELIVER) ──────────────────
     @torch.no_grad()

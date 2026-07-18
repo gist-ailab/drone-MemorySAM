@@ -839,3 +839,90 @@ class ReliaDINORFDETRDetector(nn.Module):
 
     def load_detector_state_dict(self, state: dict):
         self.det_head.load_state_dict(state['det_head'])
+
+
+class ReliaDINOM2FDetector(nn.Module):
+    """ReliaDINO backbone + M2F (Mask2Former-lite) query head AS the detector (P38-Det).
+
+    Unlike ReliaDINORFDETRDetector, this does NOT use extract_det_pyramid + an RF-DETR
+    head — the M2F head is *itself* a query-based, one-to-one (Hungarian), NMS-free
+    detector. We read its per-query cls (softmax K+1, incl no-object) and per-query box
+    (the added box head), and apply a DETR-style set loss (train) / top-k decode (eval).
+    The seg mask branch is untouched; detection uses cls + box only.
+    """
+
+    def __init__(self, seg_model, modals, n_classes=10, num_select=100,
+                 freeze_backbone=False, **_ignored):
+        super().__init__()
+        if not hasattr(seg_model, 'extract_m2f_output') or getattr(seg_model, 'm2f', None) is None:
+            raise TypeError(
+                f"{type(seg_model).__name__} has no M2F head; set MODEL.M2F.ENABLE "
+                "and use a reconciled ReliaDINO for ReliaDINOM2FDetector.")
+        self.seg_model = seg_model
+        self.modals = list(modals)
+        self.n_classes = n_classes
+        self.num_select = num_select
+        self.freeze_backbone = freeze_backbone
+        if freeze_backbone:
+            for p in self.seg_model.parameters():
+                p.requires_grad = False
+
+    def _ordered_inputs(self, sample):
+        missing = [m for m in self.modals if m not in sample]
+        if missing:
+            raise KeyError(f"sample missing modalities {missing}; have {list(sample.keys())}")
+        return [sample[m] for m in self.modals]
+
+    @staticmethod
+    def _targets_to_cxcywh(gt_bboxes, gt_labels, h, w):
+        """Dataset gives xyxy in model-input px; M2F wants normalised cxcywh."""
+        out = []
+        for boxes, labels in zip(gt_bboxes, gt_labels):
+            if boxes.numel() == 0:
+                out.append({'boxes': boxes.new_zeros((0, 4)), 'labels': labels.long()})
+                continue
+            cx = (boxes[:, 0] + boxes[:, 2]) / 2 / w
+            cy = (boxes[:, 1] + boxes[:, 3]) / 2 / h
+            bw = (boxes[:, 2] - boxes[:, 0]) / w
+            bh = (boxes[:, 3] - boxes[:, 1]) / h
+            out.append({'boxes': torch.stack([cx, cy, bw, bh], -1).clamp(0, 1),
+                        'labels': labels.long()})
+        return out
+
+    def forward(self, sample, gt_bboxes=None, gt_labels=None):
+        h, w = sample[self.modals[0]].shape[-2:]
+        inputs = self._ordered_inputs(sample)
+        backbone_trains = self.training and not self.freeze_backbone
+        ctx = torch.enable_grad() if backbone_trains else torch.no_grad()
+        with ctx:
+            out = self.seg_model.extract_m2f_output(inputs)
+
+        if self.training and gt_bboxes is not None:
+            targets = self._targets_to_cxcywh(gt_bboxes, gt_labels, h, w)
+            ld = self.seg_model.m2f.det_losses(out, targets)
+            return {
+                'loss_total': ld['total'],
+                'loss_cls': ld['cls'],
+                'loss_reg': (ld['l1'] + ld['giou']).detach(),
+                'loss_ctr': ld['total'].new_zeros(()),
+                'n_pos': int(ld['n_pos']),
+            }
+
+        # eval: top-k queries, cxcywh[0,1] -> xyxy model-input px (no NMS).
+        res = self.seg_model.m2f.det_decode(out, num_select=self.num_select)
+        dets = []
+        for r in res:
+            b = r['boxes']
+            xyxy = torch.stack([(b[:, 0] - b[:, 2] / 2) * w, (b[:, 1] - b[:, 3] / 2) * h,
+                                (b[:, 0] + b[:, 2] / 2) * w, (b[:, 1] + b[:, 3] / 2) * h], -1)
+            dets.append({'boxes': xyxy, 'scores': r['scores'], 'class_ids': r['labels']})
+        return {'detections': dets}
+
+    def get_trainable_params(self):
+        return [p for p in self.parameters() if p.requires_grad]
+
+    def detector_state_dict(self):
+        return {'m2f': self.seg_model.m2f.state_dict()}
+
+    def load_detector_state_dict(self, state):
+        self.seg_model.m2f.load_state_dict(state['m2f'])

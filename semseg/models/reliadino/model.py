@@ -395,6 +395,20 @@ class ReliaDINO(nn.Module):
         return pyramid
 
 
+    def extract_m2f_output(self, batched_input):
+        """[P38-Det] Run the M2F query head for detection: encoder -> fusion ->
+        M2F queries (cls + box per query). feat_s4 (the seg head stride-4 feature)
+        is taken under no_grad so det loss never trains the seg head; the M2F
+        decoder, in_proj, query, cls_head and box_head train through cls+box loss.
+        """
+        feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
+        fused, aux = self.fusion(feats, None)
+        routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
+        with torch.no_grad():
+            _, feat_s4 = self._decode(fused, routed)
+        return self.m2f(fused, feat_s4)
+
+
 def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     """Map a training-config dict (configs/*_P34_reliadino.yaml) to ReliaDINO."""
     mc = cfg['MODEL']

@@ -474,7 +474,17 @@ def main():
         atss_topk=cfg['MODEL'].get('ATSS_TOPK', 9),
         atss_scale=cfg['MODEL'].get('ATSS_SCALE', 8.0),
     )
-    if det_name == 'ReliaDINORFDETRDetector':
+    if det_name == 'ReliaDINOM2FDetector':
+        # P38: M2F query head IS the detector (no RF-DETR / extract_det_pyramid).
+        from objdet.models.det_model import ReliaDINOM2FDetector
+        model = ReliaDINOM2FDetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            num_select=cfg['MODEL'].get('NUM_SELECT', 100),
+            freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', False),
+        ).to(device)
+    elif det_name == 'ReliaDINORFDETRDetector':
         # P37: same ReliaDINO backbone, RF-DETR NMS-free head (COCO-initialised).
         from objdet.models.det_model import ReliaDINORFDETRDetector
         model = ReliaDINORFDETRDetector(
