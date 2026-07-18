@@ -110,6 +110,21 @@ def make_toggles(core):
                         old.copy_(saved)
                 return restore
             T['p37_cefr_off'] = _cefr_apply
+
+    # [P38] MaskQueryLite semantic 잔차 차단 (logits += beta·sem_q → beta=0)
+    m2f = getattr(core, 'm2f', None)
+    if m2f is not None and hasattr(m2f, 'beta'):
+        def _m2f_apply():
+            old = m2f.beta
+            saved = old.detach().clone()
+            with torch.no_grad():
+                old.fill_(0.0)
+            def restore():
+                with torch.no_grad():
+                    old.copy_(saved)
+                return None
+            return restore
+        T['p38_m2f_off'] = _m2f_apply
     return T
 
 
