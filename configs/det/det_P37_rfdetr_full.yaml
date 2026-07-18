@@ -60,7 +60,7 @@ MODEL:
   DEC_LAYERS: 4                    # rf-detr-large-2026 has 4 decoder layers
   DEC_N_POINTS: 2
   NUM_SELECT: 300
-  COCO_CKPT: /SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM-p29det-egofill/weights/rf-detr-large-2026.pth
+  COCO_CKPT: weights/rf-detr-large-2026.pth
   FREEZE_BACKBONE: false
   GRAD_CHECKPOINT: true
 
