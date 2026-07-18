@@ -16,7 +16,7 @@
 
 | # | 항목 | 채울 곳 | 우선순위 |
 |---|------|---------|----------|
-| 1 | P36 최종 수치 재확인 + B200 ckpt/로그 회수 검증 (`/nas_jm/drone_ckpts/B200_backup_20260715`) | Tab-ablation | 🔴 완료 여부 확인 |
+| 1 | P36 최종 수치 재확인 + B200 ckpt/로그 회수 검증 (`/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/B200_backup_20260715`) | Tab-ablation | 🔴 완료 여부 확인 |
 | 2 | **T1: PhysAug-off + val-selection no-router 재학습** (headline 공정화; B200 소멸 → hinton/jarvis) | Tab-main headline | 🔴 |
 | 3 | MUSES 공식 프로토콜 학습+test 제출 (내부 letterbox val 74.24는 비교 불가) | Tab-MUSES | 🟠 |
 | 4 | MULTIAQUA ReliaDINO 학습 | Sec. IV 확장 | 🟠 |

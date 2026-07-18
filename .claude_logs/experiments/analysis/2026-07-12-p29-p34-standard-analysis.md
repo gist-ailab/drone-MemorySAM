@@ -1,7 +1,7 @@
 ---
 created: 2026-07-12
 scope: P29/P31/P32/P34 표준 분석항목 1-4 (동일 프로토콜)
-artifacts: /drone_nas/drone/analysis_logs/ (HDD2 ISSUE-023 재발로 NAS 대체)
+artifacts: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/ (HDD2 ISSUE-023 재발로 NAS 대체)
 tools: tools/seg_analysis_pipeline.py 스위트 (develop aecba1d)
 ---
 
@@ -111,7 +111,7 @@ tools: tools/seg_analysis_pipeline.py 스위트 (develop aecba1d)
 
 ## 산출물 맵 (후속 분석용)
 
-- NAS `/drone_nas/drone/analysis_logs/` (HDD2 ISSUE-023 재발로 대체 canonical):
+- NAS `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/` (HDD2 ISSUE-023 재발로 대체 canonical):
   - `backbone_report_20260713/` — **발표용 백본 계보 리포트** (backbone_lineage_report.md + figs/fig1~5.png: 계보 진화·probe 통제비교·rank/CKA·AUROC·클래스 부활)
   - `P34_eval_20260713/` — **최신 ep140 풀 산출물** (동일 구성 + A/B 패널)
   - `{P29,P31,P32,P34}_eval_20260712/` — report.md, capability.json, per_domain/(5 cond 로그), per_domain_analysis.md, adapter_health.json, modal_adaptation.{json,md}, feature_stats.{json,md,_pca.png}, module_ablation.{json,md}, **module_diag.json(P29/P31/P32/P34 전부)**, viz/(패널 png, P34는 5 cond), `module_ablation_viz_viz/`(P31 router·P34 gate 전후 패널)

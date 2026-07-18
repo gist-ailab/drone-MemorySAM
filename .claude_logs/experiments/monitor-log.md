@@ -536,7 +536,7 @@ moved: 2026-07-08
 | 2026-07-13 06:20 | 130 | **68.19@ep120 신기록** (vs 68.6 SOTA −0.41; 목표 66.51 달성) | **57.06@ep116 🏆 test-SOTA 돌파**(vs 56.71 **+0.35**) | val ep120 / test ep116 | G2,3,4,5 100%, 39 proc | **🏆🏆 test SOTA 돌파(진짜)**. **Test 57.06@ep116 > DGFusion test-SOTA 56.71**(+0.35) = 경쟁 지표(test)서 계보 최초 SOTA 초과! Val 68.19@ep120(CAFuser 68.6엔 아직 −0.41). test 56대 진동하나 best 57.06 확보. **P34 = test-SOTA 모델.** ep130/200, val-SOTA도 도전 지속. |
 | 2026-07-13 08:20 | 146 | 65.99 (best **68.19@ep120**; vs 68.6 SOTA −0.41; 목표 달성) | **57.60@ep140 🏆 신기록**(vs 56.71 **+0.89**) | val ep120 / test ep140 | G2,3,4,5 100%, 55 proc | **🏆 test-SOTA 리드 확대**. Test 57.06→**57.60@ep140**(DGFusion 56.71 **+0.89**). Val 68.19@ep120 유지(26에폭 미갱신, CAFuser 68.6 −0.41 = val plateau 조짐). test는 계속 새 고점. ep146/200(~15:xx 완주). B200 마감 07-15 대비 완주 후 즉시 회수 예정. |
 | 2026-07-13 14:20 | 190 (완주 임박) | best **68.19@ep120** (vs 68.6 −0.41; 목표 달성) | best **57.60@ep140** (vs 56.71 **+0.89** SOTA돌파) | val ep120 / test ep140 | G2,3,4,5 98%, 39 proc | **완주 임박(~15:00)·회수 착수**. ep190/200, ~10ep 남음. 신기록 없음(val/test plateau). **⚠️ HDD2 회수 불가(ISSUE-023 재발: NTFS MFT 고갈, df 14T여유나 mkdir 실패)** → **/nas_jm(3.9T)로 대체 회수 시작**(best val/test ckpt+train.log 백그라운드 rsync). B200 마감 07-15, best는 B200에도 안전. |
-| 2026-07-13 16:20 | 🏁 **완주**(200ep, 15:34) | 최종 best **Day-Val 68.19@ep120** (vs 68.6 SOTA −0.41; **목표 66.51 달성**) | 최종 best **Test 57.60@ep140** (vs 56.71 SOTA **+0.89 돌파**) | val ep120 / test ep140 | proc 0→bengio det_P34로 GPU 회수 | **🏁🏆 완주·test-SOTA 달성**. 'Best Val 68.19(ep120)/Best Test 57.60(ep140)'. **P34=계보 최선 seg, test-SOTA(DGFusion 56.71) +0.89 돌파**(경쟁 지표 승리), val은 목표 달성이나 val-SOTA(CAFuser 68.6) −0.41. best ckpt val/test **NAS 회수 완료·검증**(/nas_jm/drone_ckpts/P34_final_20260713). DINOv3 피벗 대성공. |
+| 2026-07-13 16:20 | 🏁 **완주**(200ep, 15:34) | 최종 best **Day-Val 68.19@ep120** (vs 68.6 SOTA −0.41; **목표 66.51 달성**) | 최종 best **Test 57.60@ep140** (vs 56.71 SOTA **+0.89 돌파**) | val ep120 / test ep140 | proc 0→bengio det_P34로 GPU 회수 | **🏁🏆 완주·test-SOTA 달성**. 'Best Val 68.19(ep120)/Best Test 57.60(ep140)'. **P34=계보 최선 seg, test-SOTA(DGFusion 56.71) +0.89 돌파**(경쟁 지표 승리), val은 목표 달성이나 val-SOTA(CAFuser 68.6) −0.41. best ckpt val/test **NAS 회수 완료·검증**(/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/P34_final_20260713). DINOv3 피벗 대성공. |
 
 ## RUN-21 · bengio **det_P34_final_full** (P34/DINOv3 backbone det, 최종 annotation 3모달) — 신규
 
@@ -586,11 +586,11 @@ moved: 2026-07-08
 ### 📦 B200 백업 (마감 2026-07-15 23:59 대비, 2026-07-14 22:3x 착수)
 
 - **B200 outputs 총 503GB** → 전량 백업 비현실적. **가치 기준 선별 백업**으로 결정.
-- **회수처**: `/nas_jm/drone_ckpts/B200_backup_20260715/` (HDD2는 ISSUE-023 NTFS MFT 고갈로 쓰기 불가 — df 14T 여유여도 mkdir 실패).
+- **회수처**: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/B200_backup_20260715/` (HDD2는 ISSUE-023 NTFS MFT 고갈로 쓰기 불가 — df 14T 여유여도 mkdir 실패).
 - **백업 대상**:
   - `logs/outputs/**/train.log` (15개, 전 실험 eval 이력) + `logs/stdout/` (런치·크래시 로그 525MB) + `configs/` (696K, 전 config)
   - `ckpt/`: **P36** test_epoch58_57.14_top1 · epoch52_67.74_top1 / **P35** test_epoch90_56.14_top1 · epoch78_67.61_top1 / **P32**(이전 최선 SAM2) test_epoch158_55.01_top1 · epoch98_64.12_top1
-  - **P34 best는 이미 별도 회수·검증 완료** → `/nas_jm/drone_ckpts/P34_final_20260713/` (epoch120_68.19_top1, test_epoch140_57.6_top1, train.log)
+  - **P34 best는 이미 별도 회수·검증 완료** → `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/P34_final_20260713/` (epoch120_68.19_top1, test_epoch140_57.6_top1, train.log)
 - **미백업(의도적)**: MMSamP27~P33·MMSam3RBMA 등 구세대 outputs ~400GB — P34/P36에 전부 열등, train.log·config만 보존하고 가중치는 포기.
 - **P36 완주 후 최종 best 재동기화 필요**(현재 best는 진행 중 스냅샷).
 
@@ -651,7 +651,7 @@ ckpt: 07-14 백업분(`epoch52_67.74_top1`, `test_epoch58_57.14_top1`)이 **결�
 
 #### RUN-24 MUSES × P34-ReliaDINO 🏁 완주 (ep300/300, 07:15:05, 종료 07-15 08:05 KST)
 **Best Val mIoU 81.02@ep276** (test는 GT 비공개로 N/A). 예측 종료시각(~08:05)과 정확히 일치.
-회수 완료 → **`/nas_jm/drone_ckpts/MUSES_P34_20260715/`** (1.7G: `epoch276_81.02_top1_checkpoint.pth` 1656M + train.log + stdout log + config + muses.py).
+회수 완료 → **`/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/MUSES_P34_20260715/`** (1.7G: `epoch276_81.02_top1_checkpoint.pth` 1656M + train.log + stdout log + config + muses.py).
 > ⚠️ **81.02를 MUSES SOTA 79.72와 비교 금지** — letterbox 1024²(내용 1080→576px) **내부 지표**. 공식 프로토콜(원해상도 1080×1920) 재평가 진행 중(에이전트, 마감 전 완료 목표). 해상도를 낮추면 보통 mIoU가 **떨어지는데도** 81.02가 나온 점은 주목할 만하나, 재평가 전엔 **어떤 주장도 불가**.
 
 #### 🔴 중대 정정 — 그동안의 "test-SOTA 돌파" 보고는 무효 (내 오류)
@@ -701,7 +701,7 @@ config diff 결과 **P35 = P34 − ATTN_BIAS(RBMA) − CONSISTENCY − PhysAug**
 > **정직한 진술**: 동일 val 프로토콜에서 **val 80.86 = DGFusion 보고 val 79.72 대비 +1.14** — 단 **10× 백본 + val-selected ckpt + test 수치 부재**. 유망한 val 결과이나 **벤치마크 비교는 test 제출 없이는 불가**.
 > **결론 내는 법**: test 750장 추론 → **Codabench 14005 제출**(PNG 1920×1080 trainID, `{sequence}_frame_{frame:0>6}.png`). B200 시간 의도적 미사용(ckpt가 NAS에 있어 hinton에서 후속 가능, 제출은 사용자 계정 필요). *방법* 주장하려면 **Swin-T 동급 백본 재학습**이 별도 필요.
 
-**회수**: `/nas_jm/drone_ckpts/MUSES_P34_20260715/official_eval/` (808K) — `REPORT.md`, `report.json`, **raw confusion `hist_full.npy`/`hist_1024.npy`/`hist_per_condition.npz`(GPU 없이 어떤 집계든 재산출 가능)**, `eval_muses_official.py`, `make_overlays.py`, `aggregate_conditions.py`, `viz/`(native-res 패널 6장). ckpt는 `../ckpt/`. **B200에 잔류물 없음.**
+**회수**: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/MUSES_P34_20260715/official_eval/` (808K) — `REPORT.md`, `report.json`, **raw confusion `hist_full.npy`/`hist_1024.npy`/`hist_per_condition.npz`(GPU 없이 어떤 집계든 재산출 가능)**, `eval_muses_official.py`, `make_overlays.py`, `aggregate_conditions.py`, `viz/`(native-res 패널 6장). ckpt는 `../ckpt/`. **B200에 잔류물 없음.**
 
 
 ### 🔬 2026-07-15 17:40 — DELIVER ckpt 선정 관행 코드 검증 (사용자 제기: "DGFusion도 best epoch 골랐을 것 아니냐")
@@ -721,7 +721,7 @@ config diff 결과 **P35 = P34 − ATTN_BIAS(RBMA) − CONSISTENCY − PhysAug**
 
 ### 🚀 2026-07-15 17:45 — MUSES test 제출 zip 생성 착수 (B200, 마감 ~6h 전)
 사용자 지시 = "hinton 웨이트로 MUSES 제출 해보고 판단". **B200으로 변경 실행** — B200이 학습 0으로 비었고 MUSES 23G·코드·pylibs_p34·ckpt가 전부 검증된 상태로 있는 반면 hinton엔 데이터가 없어 23G 복사+셋업에 남은 6h를 소모하기 때문(산출물은 어차피 NAS 공유). hinton은 폴백.
-ckpt = **`epoch276_81.02_top1`(val-best, 정당 선정)**. 기하는 검증된 `official_eval/eval_muses_official.py` 재사용(letterbox→crop→argmax 전 native 업샘플). 산출 → `/nas_jm/drone_ckpts/MUSES_P34_20260715/test_submission/`. **제출은 사용자 계정 필요 + 횟수 제한 가능성 → 에이전트가 하지 않음.**
+ckpt = **`epoch276_81.02_top1`(val-best, 정당 선정)**. 기하는 검증된 `official_eval/eval_muses_official.py` 재사용(letterbox→crop→argmax 전 native 업샘플). 산출 → `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/MUSES_P34_20260715/test_submission/`. **제출은 사용자 계정 필요 + 횟수 제한 가능성 → 에이전트가 하지 않음.**
 
 
 ### 🔄 2026-07-15 20:40 — 서버 재배치 + 🔴 SOTA 기준 재정정 + det_P37 붕괴
@@ -753,12 +753,12 @@ epoch 3: 0.2182 / 0.4098   epoch 4: 0.2210 / 0.4225
 **best_checkpoint.pth가 5에폭째 epoch-0 타임스탬프(04:38)** 유지. 붕괴 지점이 `WARMUP_EPOCHS:5`가 LR을 2e-4로 올리는 구간과 겹침 + `BATCH_SIZE:1`·`n_pos=1~3`으로 gradient 극도 노이지 → **LR 과다가 COCO-pretrained 디코더 파괴**로 추정.
 > ⚠️ **"vram 맞춰서 batch↑ + LR linear scaling" 지시는 위험**했음 — batch 1→16이면 LR 3.2e-3 = 이미 붕괴시킨 값의 **16배**. **사용자 결정: batch 4(eff 16) + LR 2e-4 유지**(배치 증량이 처방, LR 인상 아님) + **epoch0 best에서 resume**.
 > 🔴 **egofill 체크아웃은 git repo가 아니었음** — P37 코드가 어디에도 미보존. 로컬 허브의 `13010c9`를 찾아 **origin에 push**(`worktree-p34-det` = 13010c91) → yeon은 rsync 없이 fetch 가능.
-> **회수 완료**: `/nas_jm/drone_ckpts/det_P37_rescue_20260715/` (3.3G — best_checkpoint 1.73G + epoch0 + train_p37.log + config, AP50 0.8461 로그 검증).
+> **회수 완료**: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/det_P37_rescue_20260715/` (3.3G — best_checkpoint 1.73G + epoch0 + train_p37.log + config, AP50 0.8461 로그 검증).
 
 #### 서버 재배치 (사용자 지시)
 | 서버 | 변경 | 상태 |
 |---|---|---|
-| **B200** | P36_physaug 8 GPU — **eval 가속 적용 후 ep13 재개** | `EVAL_INTERVAL 2→4`, `EVAL.BATCH_SIZE 4→32`(no-grad라 레시피 무영향) → **4분/ep → ~2.4분/ep**. **BS2/LR 0.0006 유지**(배치 증량은 총 스텝을 15,700→6,450으로 **줄여 역효과** — util 이미 100%라 FLOPs 불변). AUTO_RESUME로 44분 손실 0. 회수 스크립트 15분 주기 가동(`/nas_jm/drone_ckpts/P36_physaug_20260715/`) |
+| **B200** | P36_physaug 8 GPU — **eval 가속 적용 후 ep13 재개** | `EVAL_INTERVAL 2→4`, `EVAL.BATCH_SIZE 4→32`(no-grad라 레시피 무영향) → **4분/ep → ~2.4분/ep**. **BS2/LR 0.0006 유지**(배치 증량은 총 스텝을 15,700→6,450으로 **줄여 역효과** — util 이미 100%라 FLOPs 불변). AUTO_RESUME로 44분 손실 0. 회수 스크립트 15분 주기 가동(`/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/P36_physaug_20260715/`) |
 | **bengio** | det_P37 종료 → **8 GPU 전부 MUSES-P34 4모달+DGF투영**으로 전환 | GPU 7 8154MiB→16MiB, 점유 앱 0 확인. **8×BS2 → accum 1 → eff 16 정확 일치**(lecun 7장은 eff 28이 되어 변수 추가 문제 있었음) |
 | **lecun** | P35/P36 분석(GPU 1,2) + 투영 재생성(CPU, 완료) | 유지 |
 | **yeon** | det_P37 이전 준비 (GPU 1,3,6,7) | 블로커: poongsan_v2 부재(8.7G 전송), **timm 1.0.19 → DINOv3 없음 → `BACKBONE_FALLBACK`로 조용히 DINOv2 학습할 위험**(기동 전 검증 필수), HF 캐시 없음. bengio→yeon 직접 ssh 불가(로컬 경유 30.6MB/s, ~25분) |
@@ -814,7 +814,7 @@ epoch 3: 0.2182 / 0.4098   epoch 4: 0.2210 / 0.4225
 
 ### 🔬 2026-07-16 — P35/P36 표준분석 회수 + module ablation 판독 (D5)
 
-lecun 분석 완주분을 **`/nas_jm/analysis_logs/{P35,P36}_eval_20260715/`** 로 회수(44M/50M: report.md·module_ablation·feature_stats·adapter_health·modal_adaptation·per_domain·viz). **직후 lecun을 타인(`seungyeon_cheon` openvla)이 7장 만적 점유** → 안 챙겼으면 위험했음.
+lecun 분석 완주분을 **`/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/{P35,P36}_eval_20260715/`** 로 회수(44M/50M: report.md·module_ablation·feature_stats·adapter_health·modal_adaptation·per_domain·viz). **직후 lecun을 타인(`seungyeon_cheon` openvla)이 7장 만적 점유** → 안 챙겼으면 위험했음.
 
 **P36 D5 module ablation** (`test_epoch58_57.14_top1`, n=40/도메인, 5/5 도메인 일관):
 
@@ -967,8 +967,8 @@ MUSES-P34 **4모달**(img/lidar/event/radar) best ckpt(epoch182_80.76, 내부지
 > 🔴 **판정: radar 추가는 val에서 도움 안 됨** (−0.09, 사실상 동률/미세 손해). 내부지표(4모달 80.76 < 3모달 81.02)와 공식(80.77 < 80.86) 모두 일치. ckpt 로드 clean(4모달 아키텍처가 진짜 radar 사용, dropped 아님) → "코드가 radar 무시"가 아니라 **진짜 radar 넣고도 무익**.
 > **맥락 일치**: MUSES 1위 GtA=카메라단독 · module ablation 제안모듈 전부≈0 · 이제 radar도≈0 → **"MUSES에서 센서 추가로 안 이긴다"가 세 번째 확인.**
 > per-condition(공식): fog/day 87.16 · snow/day 78.31 · clear/day 77.64 · snow/night 73.26 · fog/night 71.52 · clear/night 69.51 · rain/day 67.90 · rain/night 67.22. 야간·비가 약점(예상).
-> **test zip 생성됨**(제출 안 함, user 계정 필요): `/nas_jm/drone_ckpts/MUSES_P34_4modal_20260717/test_submission/muses_P34_4modal_ep182_submission.zip` (750장 검증통과, Codabench 14005 1일1회). val −0.09라 test도 3모달 78.979 돌파 가능성 낮음.
-> 회수: `/nas_jm/drone_ckpts/MUSES_P34_4modal_20260717/`(ckpt+official_eval report.json+test zip).
+> **test zip 생성됨**(제출 안 함, user 계정 필요): `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/MUSES_P34_4modal_20260717/test_submission/muses_P34_4modal_ep182_submission.zip` (750장 검증통과, Codabench 14005 1일1회). val −0.09라 test도 3모달 78.979 돌파 가능성 낮음.
+> 회수: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/MUSES_P34_4modal_20260717/`(ckpt+official_eval report.json+test zip).
 
 ### 🚀 2026-07-17 15:30 — P37a-CEFR × MUSES 3모달 기동 (A100 유휴 활용)
 radar 무익 판정 반영해 **3모달**(img/lidar/event)로 P37a-CEFR를 MUSES에 적용. hpca100 A100×4(MUSES-P34 완주로 유휴). config `configs/hpca100-muses_rgbel_P37a_cefr.yaml`(opus 생성: P37a CEFR MODEL 블록 + MUSES 3모달 DATASET, 1024²·300ep·ckpt=false). 비교기준 MUSES 3모달 P34 공식 val 80.86 — CEFR head가 개선하는지 검증.
@@ -1020,4 +1020,17 @@ MUSES-P34 **4모달**(img/lidar/event/radar, ep182) test zip을 Codabench 14005�
 > ⚠️ **Fog 조건 희귀클래스 붕괴**: fog에서 train IoU **0.00**(완전사멸) + motorcycle 2.23 + rider 42.65. Night < Day(−4.4). Fog가 최약 날씨(70.88).
 
 > **의의**: "MUSES에서 센서 추가로 안 이긴다"가 val·test 양쪽 지표로 확정 — GtA(카메라단독) 1위 + 제안 융합모듈 ≈0 + radar ≈0, 세 번째 증거. **[[official-research-goals]] MUSES 델타 계산 시 3모달 78.979 사용**(4모달보다 나음).
-> 산출물: `/nas_jm/drone_ckpts/MUSES_P34_4modal_20260717/`(ckpt+official_eval+test zip). NAS 이전 예정(→ /drone_nas/.../drone-MemorySAM/ckpts/).
+> 산출물: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/MUSES_P34_4modal_20260717/`(ckpt+official_eval+test zip). NAS 이전 예정(→ /drone_nas/.../drone-MemorySAM/ckpts/).
+
+### 2026-07-17 (KST) — 3-server 학습 스냅샷 (opus 판정)
+
+| 서버 | 실험 | 진행 | 성적 | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P37a-MUSES seg 3-modal(img,lidar,event) cfg=hpca100-muses_rgbel_P37a_cefr.yaml | ep70/300 | val best 80.30@ep66 (최신 80.12) | vs DGFusion val 79.72 = +0.58 (내부 letterbox, 공식 ~−0.16) | 07-18 10:08 |
+| jarvis | P37a-DELIVER seg 4-modal cfg=jarvis-deliver_rgbdel_P37a_cefr.yaml | ep152/200 | val best 62.56@ep24, 최신 ep152=58.48 / test best 52.99@ep54 | val vs 68.79=−6.23 / test vs 56.71=−3.72 | 07-18 02:09 |
+| yeon | P37a-CEFR det cfg=det/det_P37a_cefr_yeon.yaml | ep5/50 | AP50 0.8456@ep4 / AP 0.5853 / AP75 0.6524 | vs 목표 mAP50 0.85 = −0.004 | 07-19 22:43 |
+
+- ✅ hpca100: GPU 4×89~100% 정상. ep70(23%)에 이미 val 80.30(내부)으로 DGFusion val SOTA 79.72 상회. test 미확정(Codabench 제출). P34 4-modal 내부 80.77과 정합.
+- 🔴 jarvis: **조기 피크 후 열화** — best val이 ep24(62.56)에 박히고 ep152 현재 58.48로 128ep째 하락. P34 DELIVER baseline val 68.19 대비 −5.6pt. 프로세스/GPU(5×100%) 정상이라 死가 아니라 오수렴. 원인 후보=과적합/LR/CEFR head init. 처분(완주 vs 조기중단+진단) 사용자 판단 대기.
+- ✅ yeon: ep0 0.78→ep4 0.8456 매 epoch 갱신, 목표 0.85 사실상 도달. 단 과거 ep7~17 붕괴 이력 있어 그 구간 미통과 — 붕괴 재발 감시(현 grad-clip 재기동이 처방). GPU1 17.3GB 좀비 점유 1건(학습 프로세스 매칭 안 됨).
+- jarvis P37b 미착수(P37a 완주 후 순차).

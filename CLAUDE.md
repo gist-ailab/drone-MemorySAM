@@ -148,8 +148,8 @@ bash scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 
 ### 📊 평가/분석 산출물 저장 위치 (모든 세션 공유)
 
-**eval·분석·시각화 로그와 statistics·리포트는 로컬 박스 `/mnt/HDD2/src/logs/` 에 모은다 (단일 정규 위치).**
-원격(B200/lecun/yeon)에서 돌린 결과는 휘발/분산되므로 `rsync`로 여기에 `<model>_eval_<YYYYMMDD>/`(예: `P29_eval_20260630/` = `report/` + `viz/` + `perdomain/`) 형태로 회수해 **누적**한다. 새 세션은 다음 작업 전략을 세우기 위해 **이 경로를 먼저 확인**한다.
+**🔴 웨이트·로그·분석 산출물의 단일 정규 루트 (2026-07-17 재확정, 모든 세션):**
+`/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/` 하위 — `ckpts/`(웨이트 .pth, `<run>_<YYYYMMDD>/`) · `analysis_logs/`(eval·분석·시각화, `<model>_eval_<YYYYMMDD>/` = report/+viz/+perdomain/) · `train_logs/`(학습 런 로그). **모든 세션(P38 등 신규 포함)은 새 학습/평가/분석 산출을 여기 저장**하고 새 전략 전 이 루트를 먼저 확인한다. 원격(hpca100/jarvis/yeon)은 `rsync`로 회수·누적. 경로 변천: `/mnt/HDD2/src/logs/`(ISSUE-023) → `/drone_nas/drone/analysis_logs/`(flat) → 위 nested(07-17). 단일 출처 = 메모리 `eval-logs-stats-location`.
 - 재사용 도구(repo `tools/`): `eval_per_domain.py`(per-condition 러너) · `analyze_per_domain.py`(per-class 분류) · `viz_features.py`(feature/RBMA 패널) · `module_diagnostics.py`(모듈 정량). 모델 무관(`--cfg`/`--model_path`만 교체).
 - lecun/yeon에서 SAM2 코드 실행 시 `sam2` editable 미설치면 `PYTHONPATH=<repo>/semseg/models/sam2` 지정.
 
