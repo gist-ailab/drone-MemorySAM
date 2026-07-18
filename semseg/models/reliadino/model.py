@@ -154,6 +154,43 @@ class ReliaDINO(nn.Module):
             cefr_hinge_reg=cefr_hinge_reg)
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
+        # [P36-Det] Router->detection seam. The seg path adds routed_logits to the
+        # head logits, which the detection path (extract_det_pyramid) never sees, so
+        # without this the router is dead weight for det. Project routed_logits
+        # (num_classes ch) to fpn_dim + zero-init alpha residual on every pyramid
+        # level => at init identical to router-off, comparable to P35-Det.
+        if router_enable:
+            self.det_router_proj = nn.Conv2d(num_classes, fpn_dim, 1)
+            nn.init.zeros_(self.det_router_proj.weight)
+            nn.init.zeros_(self.det_router_proj.bias)
+            self.det_router_alpha = nn.Parameter(torch.zeros(1))
+        else:
+            self.det_router_proj = None
+            self.det_router_alpha = None
+
+        # [P37b] ClassToken-lite-Learned auxiliary head (config-gated, default
+        # OFF -> byte-identical to P36). Learned class tokens over the gated
+        # fused stride-16 map; residual scale beta is zero-init (collapse-safe).
+        self.classtoken = None
+        if class_token_enable:
+            self.classtoken = ClassTokenLiteHead(
+                dim=dim, fpn_dim=fpn_dim, num_classes=num_classes,
+                num_layers=class_token_layers, dim_t=class_token_dim,
+                num_heads=class_token_heads, mlp_ratio=class_token_mlp_ratio,
+                beta_init=class_token_beta_init)
+
+        # [P37b-Det] ClassToken->detection seam (mirror of the P36 router seam). The
+        # seg path adds token_logits to the head logits, which detection never sees.
+        # Project token_logits (num_classes ch) to fpn_dim + zero-init alpha residual
+        # on every pyramid level => at init identical to class-token-off (= P36-Det).
+        if class_token_enable:
+            self.det_classtoken_proj = nn.Conv2d(num_classes, fpn_dim, 1)
+            nn.init.zeros_(self.det_classtoken_proj.weight)
+            nn.init.zeros_(self.det_classtoken_proj.bias)
+            self.det_classtoken_alpha = nn.Parameter(torch.zeros(1))
+        else:
+            self.det_classtoken_proj = None
+            self.det_classtoken_alpha = None
 
         # [P37b] ClassToken-lite-Learned auxiliary head (config-gated, default
         # OFF -> byte-identical to P36). Learned class tokens over the gated
@@ -304,6 +341,58 @@ class ReliaDINO(nn.Module):
                                                 ignore_index=255)
             return logits, m_feat, aux
         return logits, m_feat
+
+
+    def extract_det_pyramid(self, batched_input: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Multi-scale pyramid for a detection head (RF-DETR / FCOS), CEFR-aware.
+
+        Per-modality frozen-ViT+LoRA encoding -> reliability-gated fusion -> [P37a]
+        the SAME two-pass CEFR feature blend as forward() (so the detection pyramid
+        is built on CEFR-refined fused tokens) -> SimpleFPN. Returns the ViTDet
+        pyramid *before* the seg head: [s4, s8, s16, s32], each (B, fpn_dim, h, w).
+
+        When CEFR is off (cefr_ctx is None) this is byte-identical to the P35/P36-Det
+        path. [P36] router->det residual (zero-init) is applied if the router is on.
+        """
+        feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
+        fused, aux = self.fusion(feats, None)
+        routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
+        cefr_ctx = aux.get('cefr_ctx', None) if isinstance(aux, dict) else None
+        if cefr_ctx is not None:
+            # pass-1 seg decode supplies only the DETACHED posterior q (reliability
+            # signal); pass-2 blends CEFR-routed tokens into fused. a init -4 =>
+            # sigma(a)~0.018 => at start byte-near the non-CEFR pyramid.
+            with torch.no_grad():
+                logits1, _ = self._decode(fused, routed)
+                q = F.softmax(logits1.float(), dim=1)
+                q = F.adaptive_avg_pool2d(q, fused.shape[-2:])
+            fused_p, _, _ = self.fusion.cefr(
+                cefr_ctx['fused_tokens'], cefr_ctx['rel_cal'],
+                cefr_ctx['log_post'], q, self._current_epoch)
+            mix = torch.sigmoid(self.fusion.cefr.a)
+            fused = (1.0 - mix) * fused + mix * fused_p
+        pyramid = self.fpn(fused)
+        if routed is not None and getattr(self, 'det_router_proj', None) is not None:
+            r = self.det_router_proj(routed)
+            pyramid = [
+                p + self.det_router_alpha * F.interpolate(
+                    r, size=p.shape[-2:], mode='bilinear', align_corners=False)
+                for p in pyramid
+            ]
+        if self.classtoken is not None and getattr(self, 'det_classtoken_proj', None) is not None:
+            # [P37b-Det] class-token per-class logits -> pyramid (zero-init residual).
+            # feat_s4 = the seg head's stride-4 feature (from _decode), detached: det
+            # loss must not train the seg head, but the class tokens + proj do train.
+            with torch.no_grad():
+                _, feat_s4 = self._decode(fused, routed)
+            token_logits = self.classtoken(fused, feat_s4)      # (B, num_classes, H/4, W/4)
+            t = self.det_classtoken_proj(token_logits)          # (B, fpn_dim, H/4, W/4)
+            pyramid = [
+                p + self.det_classtoken_alpha * F.interpolate(
+                    t, size=p.shape[-2:], mode='bilinear', align_corners=False)
+                for p in pyramid
+            ]
+        return pyramid
 
 
 def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:

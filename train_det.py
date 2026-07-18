@@ -113,12 +113,11 @@ def draw_boxes_pil(img_np, boxes, scores, cls_ids, class_names=None,
         draw.text((x1 + 1, y1 + 1), f"{name}:{s:.2f}", fill=color)
     return pil
 
-from semseg.models.sam2.sam2.build_sam import build_sam2
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg_bkup import LoRA_Sam
-from semseg.models.sam2.sam2.sam_lora_image_encoder_seg import *
-
+# SAM2 imports are LAZY (moved into build_seg_model's non-ReliaDINO branch) so that
+# P34-Det (ReliaDINO/DINOv3) can run in envs lacking SAM2's dep tree (hydra/iopath/
+# icecream/...). P29/P30 paths import them on demand.
 from objdet.datasets.multimodal_det import MultiModalDetDataset, rescale_boxes_to_orig
-from objdet.models.det_model import MemorySAMDetector, MemorySAMDetectorP30
+from objdet.models.det_model import MemorySAMDetector, MemorySAMDetectorP30, ReliaDINODetector
 from objdet.metrics import evaluate_coco, format_predictions_coco
 
 
@@ -130,11 +129,27 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_seg_model(cfg: dict, device: torch.device) -> torch.nn.Module:
+def build_seg_model(cfg: dict, device: torch.device, n_classes: int = 10) -> torch.nn.Module:
     """Build and load pretrained segmentation model."""
     model_name = cfg['MODEL']['SEG_MODEL']
     checkpoint_path = cfg['MODEL'].get('SEG_CHECKPOINT', None)
     modals = cfg['DATASET']['MODALS']
+
+    # ── P34: ReliaDINO (DINOv3, no SAM2) — separate build path ────────────
+    if model_name == 'ReliaDINO':
+        from semseg.models.reliadino import build_reliadino
+        seg_model = build_reliadino(cfg, n_classes).to(device)
+        if checkpoint_path and os.path.exists(checkpoint_path):
+            ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+            state_dict = ckpt.get('model_state_dict', ckpt)
+            missing, unexpected = seg_model.load_state_dict(state_dict, strict=False)
+            print(f"Loaded ReliaDINO seg checkpoint: {checkpoint_path} "
+                  f"(missing={len(missing)}, unexpected={len(unexpected)})")
+        return seg_model
+
+    # Lazy SAM2 imports (only reached for P29/P30 SAM2 backbones).
+    from semseg.models.sam2.sam2.build_sam import build_sam2
+    import semseg.models.sam2.sam2.sam_lora_image_encoder_seg as _segmod
 
     sam2_checkpoint = cfg['MODEL'].get('SAM2_CHECKPOINT',
         'semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt')
@@ -142,8 +157,8 @@ def build_seg_model(cfg: dict, device: torch.device) -> torch.nn.Module:
 
     sam2_model = build_sam2(model_cfg_path, sam2_checkpoint, device=device)
 
-    # Dynamically get model class
-    model_cls = globals().get(model_name)
+    # Dynamically get model class from the SAM2 seg module.
+    model_cls = getattr(_segmod, model_name, None)
     if model_cls is None:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -239,7 +254,7 @@ def train_one_epoch(
     total_ctr = 0.0
     n_iters = 0
     nan_skips = 0
-    grad_clip = 10.0  # max grad-norm; guards against loss spikes → divergence (BATCH_SIZE=1 noisy grads)
+    grad_clip = float(os.environ.get('DET_GRAD_CLIP', '10.0'))  # env-overridable; DETR heads want ~0.1 (P37a sets it)
 
     optimizer.zero_grad()
     n_batches = len(dataloader)
@@ -442,7 +457,7 @@ def main():
 
     # Build model
     print("Building segmentation backbone...")
-    seg_model = build_seg_model(cfg, device)
+    seg_model = build_seg_model(cfg, device, n_classes)
 
     det_name = cfg['MODEL'].get('DET_MODEL', 'MemorySAMDetector')
     common = dict(
@@ -459,7 +474,41 @@ def main():
         atss_topk=cfg['MODEL'].get('ATSS_TOPK', 9),
         atss_scale=cfg['MODEL'].get('ATSS_SCALE', 8.0),
     )
-    if det_name == 'MemorySAMDetectorP30':
+    if det_name == 'ReliaDINORFDETRDetector':
+        # P37: same ReliaDINO backbone, RF-DETR NMS-free head (COCO-initialised).
+        from objdet.models.det_model import ReliaDINORFDETRDetector
+        model = ReliaDINORFDETRDetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            fpn_dim=cfg['MODEL'].get('FPN_DIM', 256),
+            fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16, 32]),
+            det_levels=cfg['MODEL'].get('DET_LEVELS', [2]),
+            freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', False),
+            num_queries=cfg['MODEL'].get('NUM_QUERIES', 300),
+            group_detr=cfg['MODEL'].get('GROUP_DETR', 13),
+            dec_layers=cfg['MODEL'].get('DEC_LAYERS', 4),
+            dec_n_points=cfg['MODEL'].get('DEC_N_POINTS', 2),
+            coco_ckpt=cfg['MODEL'].get('COCO_CKPT', None),
+            num_select=cfg['MODEL'].get('NUM_SELECT', 300),
+        ).to(device)
+    elif det_name == 'ReliaDINODetector':
+        # P34: ReliaDINO fuses internally + exposes a 256-ch 4-level pyramid;
+        # no per-modality fusion / neck / memory_attention.
+        model = ReliaDINODetector(
+            seg_model=seg_model,
+            modals=cfg['DATASET']['MODALS'],
+            n_classes=n_classes,
+            fpn_dim=cfg['MODEL'].get('FPN_DIM', 256),
+            fpn_strides=cfg['MODEL'].get('FPN_STRIDES', [4, 8, 16, 32]),
+            freeze_backbone=cfg['MODEL'].get('FREEZE_BACKBONE', False),
+            n_convs=cfg['MODEL'].get('N_CONVS', 4),
+            hidden_dim=cfg['MODEL'].get('HIDDEN_DIM', 256),
+            assigner=cfg['MODEL'].get('ASSIGNER', 'fcos'),
+            atss_topk=cfg['MODEL'].get('ATSS_TOPK', 9),
+            atss_scale=cfg['MODEL'].get('ATSS_SCALE', 8.0),
+        ).to(device)
+    elif det_name == 'MemorySAMDetectorP30':
         model = MemorySAMDetectorP30(
             **common,
             img_size=tuple(cfg['DATASET'].get('IMG_SIZE', [1024, 1024]))[0],
@@ -491,9 +540,14 @@ def main():
     # GRAD_ACCUM_STEPS for a larger effective batch.
     if cfg['MODEL'].get('GRAD_CHECKPOINT', False) and not cfg['MODEL'].get('FREEZE_BACKBONE', False):
         try:
-            model.seg_model.sam.image_encoder.trunk.gradient_checkpointing = True
-            if is_main:
-                print("[mem] SAM2 trunk gradient checkpointing: ON")
+            if hasattr(model.seg_model, 'set_grad_checkpointing'):   # P34 ReliaDINO (DINOv3 ViT)
+                model.seg_model.set_grad_checkpointing(True)
+                if is_main:
+                    print("[mem] ReliaDINO ViT gradient checkpointing: ON")
+            else:
+                model.seg_model.sam.image_encoder.trunk.gradient_checkpointing = True
+                if is_main:
+                    print("[mem] SAM2 trunk gradient checkpointing: ON")
         except AttributeError as e:
             if is_main:
                 print(f"[mem][warn] could not enable trunk gradient checkpointing: {e}")
@@ -505,9 +559,24 @@ def main():
         print(f"Total params: {total_params:,} | Trainable: {trainable_params:,}")
 
     # Optimizer over the raw model's trainable params (build before DDP wrap).
+    base_lr = cfg['TRAIN']['LR']
+    pre_mult = cfg['TRAIN'].get('PRETRAINED_HEAD_LR_MULT', None)
+    if pre_mult is not None and hasattr(model, 'pretrained_head_params'):
+        # A COCO-initialised head carries a prior worth keeping: run it at a fraction
+        # of the base LR so the from-scratch parts can move without washing it out.
+        pre_ids = {id(p) for p in model.pretrained_head_params()}
+        pre = [p for p in model.get_trainable_params() if id(p) in pre_ids]
+        rest = [p for p in model.get_trainable_params() if id(p) not in pre_ids]
+        param_groups = [{'params': rest, 'lr': base_lr},
+                        {'params': pre, 'lr': base_lr * pre_mult}]
+        if is_main:
+            print(f"  LR groups: {len(rest)} tensors @ {base_lr:g} | "
+                  f"{len(pre)} pretrained-head tensors @ {base_lr * pre_mult:g}")
+    else:
+        param_groups = model.get_trainable_params()
     optimizer = torch.optim.AdamW(
-        model.get_trainable_params(),
-        lr=cfg['TRAIN']['LR'],
+        param_groups,
+        lr=base_lr,
         weight_decay=cfg['TRAIN'].get('WEIGHT_DECAY', 1e-4),
     )
 
@@ -520,7 +589,18 @@ def main():
             model.load_state_dict(ckpt['model_state_dict'], strict=False)
         else:
             model.load_detector_state_dict(ckpt['detector_state_dict'])
+        # config가 의도한 LR을 resume이 덮어쓰기 전에 보관
+        _want_lrs = [g['lr'] for g in optimizer.param_groups]
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        # ── resume LR override (2026-07-16) ────────────────────────────────
+        # load_state_dict는 구 런의 param_groups를 복원하고, 거기엔 이전
+        # LambdaLR이 심은 'initial_lr'(구 LR)이 남아 있다. 새 LambdaLR은
+        # group.setdefault('initial_lr', group['lr']) 이라 **기존 키를 덮어쓰지
+        # 않으므로** scheduler.base_lrs가 구 LR로 고정되고 TRAIN.LR이 조용히
+        # 무시된다. 에러가 안 나서 로그로도 안 보인다. -> config LR을 명시 재적용.
+        for _g, _lr in zip(optimizer.param_groups, _want_lrs):
+            _g['lr'] = _lr
+            _g.pop('initial_lr', None)   # 새 scheduler가 config LR로 재시드하게
         start_epoch = ckpt['epoch'] + 1
         best_ap = ckpt.get('best_ap', 0.0)
         if is_main:
@@ -588,6 +668,11 @@ def main():
 
     # Training loop
     for epoch in range(start_epoch, epochs):
+        # [P37a] CEFR's two-pass blend reads seg_model._current_epoch
+        # (lambda2 warmup). No-op for non-CEFR models.
+        _sm = getattr(unwrap(model), 'seg_model', None)
+        if _sm is not None and hasattr(_sm, '_current_epoch'):
+            _sm._current_epoch = epoch
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
 
