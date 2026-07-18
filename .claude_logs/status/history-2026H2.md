@@ -9,6 +9,18 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-18 — P38 MaskQueryLite hpca100 본학습 launch + bengio P37a/b 사망 확정 + hpca100 WIP 보존
+
+**seg-P38 본학습 launch**: hpca100 GPU 0-3(A100×4)에서 develop @c3d1184 기준 본학습 기동. EPOCHS 200, config `configs/hpca100-deliver_rgbdel_P38_m2f.yaml`, launch 스크립트 `launch_p38_m2f.sh`, log `logs/hpca100-deliver_rgbdel_P38_m2f/run_20260718_033931.log`(서버시간 03:39:31 ≈ KST 12:39경). ~0.77s/it·497it/ep → **ETA ≈24-26h, 07-19 완주 예상**. 기동 검증 통과(iteration 실제 전진 342→420/497, rank0 포함 4GPU util 83-100%·메모리 25GB, 에러 0, M2F ENABLE 확인, params 355.4M/trainable 52.3M). 판정 게이트 = P36 fair(val 67.74/test 55.62) 대비 + thin-class(Wall/Water/RailTrack) IoU. `~/SSDb/jemo_maeng/dset/DELIVER`(13118MB)가 hpca100에 스테이징 완료(yeon→릴레이, .DONE 검증)돼 이후 세션은 재스테이징 불필요.
+
+**실데이터 2ep 스모크 병행**: yeon GPU0에서 진행 중(log `/SSDb/jemo_maeng/src/p37_test/logs/p38smoke_20260718_121834.log`, 10.2GB@bs1GPU, ETA ~2h) — 본학습 launch 전 선행조건이던 실데이터 미검증을 메우는 용도, 완주 시 GPU0 반납하며 수치는 참고용.
+
+**bengio seg-P37a/b 사망 확정**: GPU5 HW 고장으로 인한 노드 CUDA 전체 장애가 재부팅 후에도 SSH 미복귀로 확정 — bengio분 seg-P37a/b는 ep1~2에서 종료. jarvis에서 재기동된 P37a→P37b 체인이 계보를 승계(남 세션 소관, 수치는 갱신하지 않음).
+
+**hpca100 로컬 WIP 보존**: seg-P38 launch 전 hpca100 체크아웃에 남아있던 타 세션의 미커밋 MUSES 작업을 wip 커밋(3e7fd68)해 브랜치 `hpca100-wip-20260718`로 보존, GitHub에 push(릴레이). hpca100 체크아웃은 develop @c3d1184로 전환 — 원 세션이 회수 가능.
+
+---
+
 ### 2026-07-17 — P38 MaskQueryLite 구현 완료 (학습 대기)
 
 **배경**: P36 공정 레시피(GATE·VETO·CALIB·ROUTER on / ATTN_BIAS·CONSISTENCY off / PHYSAUG off / DGFUSION_AUG on)를 동결한 채 **Mask2Former-lite query head** 하나만 추가해, head confound를 제거한 1-변수 비교를 구성. 동기 3가지: ① DGFusion/CAFuser는 OneFormer(mask-classification) 스택이라 MUSES 주표가 PQ인데 우리 per-pixel head는 구조적으로 PQ 산출 불가였음 → mask-cls 전환으로 해소 ② mask-cls는 문헌상 thin/희소 클래스(Wall/Water/RailTrack)에서 +1~3 mIoU 우세 ③ head를 통제 변수로 고정해 남는 성능차 = 신뢰도 라우팅 융합의 몫으로 귀속 가능.
@@ -32,7 +44,7 @@ period: 2026-07-01 ~ 2026-12-31
 
 ### P29·P31·P32·P34 표준분석 종합 완료 (동일 프로토콜 4모델) — 2026-07-12
 
-lecun GPU0-3에서 표준 분석항목 1-4 풀 파이프라인 실행 완료. **종합 = [experiments/analysis/2026-07-12-p29-p34-standard-analysis.md](../experiments/analysis/2026-07-12-p29-p34-standard-analysis.md)**, 산출물 = NAS `/drone_nas/drone/analysis_logs/` (⚠️ HDD2 ISSUE-023 MFT 고갈 **재발** — 쓰기 불가, NAS 대체). 헤드라인: ① **P34(ep40 스냅샷) 전 도메인 1위**(mean 53.96, +1.75 vs P29) + Water 0→12 부활 = ISSUE-008(frozen backbone ceiling) 실증 ② SAM2 계열 피쳐 **rank-1 붕괴**(depth 1.1, fused 1.3) + 모달 비정렬(CKA~0.1) vs DINOv3 rank 10-20 + 정렬(0.85) ③ additive-bias 3세대 연속 no-op(P32 CoRB·P31 RBMA-eval·P34 λ1/λ2) vs **P31 router +10.7~13.8 유일 대형 기여** ④ P31 calibration loss만 geometry AUROC 수리(lidar .38→.97). 구 P29 per-domain 로그(mean 59.06)는 프로토콜 상이 확정 — 폐기. 발견 버그 수정: val.py num_classes(DELIVER=25), pipeline --label, feature_stats 채널 수 상이. P34 분석 지원(빌더 분기·eval 스태시·mm_lora 패턴·fusion 토글 5종) develop 반영.
+lecun GPU0-3에서 표준 분석항목 1-4 풀 파이프라인 실행 완료. **종합 = [experiments/analysis/2026-07-12-p29-p34-standard-analysis.md](../experiments/analysis/2026-07-12-p29-p34-standard-analysis.md)**, 산출물 = NAS `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/` (⚠️ HDD2 ISSUE-023 MFT 고갈 **재발** — 쓰기 불가, NAS 대체). 헤드라인: ① **P34(ep40 스냅샷) 전 도메인 1위**(mean 53.96, +1.75 vs P29) + Water 0→12 부활 = ISSUE-008(frozen backbone ceiling) 실증 ② SAM2 계열 피쳐 **rank-1 붕괴**(depth 1.1, fused 1.3) + 모달 비정렬(CKA~0.1) vs DINOv3 rank 10-20 + 정렬(0.85) ③ additive-bias 3세대 연속 no-op(P32 CoRB·P31 RBMA-eval·P34 λ1/λ2) vs **P31 router +10.7~13.8 유일 대형 기여** ④ P31 calibration loss만 geometry AUROC 수리(lidar .38→.97). 구 P29 per-domain 로그(mean 59.06)는 프로토콜 상이 확정 — 폐기. 발견 버그 수정: val.py num_classes(DELIVER=25), pipeline --label, feature_stats 채널 수 상이. P34 분석 지원(빌더 분기·eval 스태시·mm_lora 패턴·fusion 토글 5종) develop 반영.
 
 ### 표준 분석항목 1–4 도구 스위트 완성 (모델 분석 전담 체계) — 2026-07-12
 

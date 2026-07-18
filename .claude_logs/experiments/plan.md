@@ -1,6 +1,6 @@
 ---
 created: 2026-07-16
-updated: 2026-07-17 (seg-P38 대기열 등록)
+updated: 2026-07-18 (seg-P38 hpca100 본학습 launch)
 ---
 
 # 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
@@ -56,13 +56,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 - 실증: 2026-07-16 새벽 lecun 분석 완주 후 7장을 비우자 **즉시 타인(openvla)이 24GB×7 전부 점유** → TTA 실측 무기한 보류.
 - ⚠️ **단 타인 GPU에 얹지 마라** — CLAUDE.md "빈 GPU(≤2000MiB, util≤10%)" 규칙 유지. 이 원칙은 *우리 것을 놓치지 말라*는 뜻.
 
-## 🖥 GPU 예약 현황 (2026-07-17 13:10)
+## 🖥 GPU 예약 현황 (2026-07-18 12:40)
 
 | 서버 | GPU | 상태 | ETA |
 |---|---|---|---|
-| **hpca100** | 0-3 (A100×4) | 🟢 MUSES 4모달 P34 완주 임박 best 80.76@ep182(내부) | **07-17 13:48** |
+| **hpca100** | 0-3 (A100×4) | 🔵 seg-P38(MaskQueryLite) 본학습 중(07-18 launch) | **07-19 완주 예상** |
 | **jarvis** | 2,3,4,5,6 (4090×5) | 🟢 P37a-CEFR(ckpt=false, eff20) 학습 중 best val 62.56@ep24 → 완주 시 P37b 자동 | P37a **07-18 02:06** → P37b 이어서 |
-| **yeon** | 3,5,6,7 (3090×4) | 🔴 det_P37 재붕괴(ep17 절벽), best ep11 0.8367. 완주/중단 user 판단 대기 | ~07-18 06:08 |
+| **yeon** | 3,5,6,7 (3090×4) + GPU0(seg-P38 스모크) | 🔴 det_P37 재붕괴(ep17 절벽), best ep11 0.8367. 완주/중단 user 판단 대기 / GPU0=seg-P38 실데이터 2ep 스모크 진행 중 | ~07-18 06:08 (det_P37) / ~07-18 14:00 (스모크) |
 | **bengio** | — | 🔴 **노드 CUDA 전체 장애(GPU5 HW 고장) → 재부팅 후 SSH 미복귀. 물리 개입 필요** | 불명 |
 | **lecun** | — | 🔴 타인(openvla) 점유 | — |
 | ~~B200~~ | — | 🔴 상실(07-15 마감) | — |
@@ -73,9 +73,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 |---|---|---|---|---|---|
 | **diag_C (dup_lidar)** | bengio 4-7 | ep6까지만 | ~1h | **P0** | radar *콘텐츠* vs *4모달 구조* 판정. ep2=49.08 ≈ ArmB 48.37 → 구조 의심 |
 | **det_P37 (yeon)** | yeon 3,6,7 | 50 | 07-17 19:00 | **P1** | 붕괴 처방 검증(eff 18+LR 2e-4 유지). ep5까지 warmup 완주, AP50 0.827~0.846 안정 |
-| **seg-P37a (CEFR+CA2)** | bengio 0-3 | **200** | ~07-18 | **P0** | 후보 1위 self-derived per-class 라우팅, 공정 레시피(DGFUSION_AUG). config `bengio-deliver_rgbdel_P37a_cefr.yaml`, snapshot `/SSDb/jemo_maeng/src/p37_train` (9c5e2cc), log `logs/segP37a_20260716_045303.log` |
-| **seg-P37b (ClassToken)** | bengio 4-7 | **200** | ~07-18 | **P0** | 후보 3위 head-capacity 패리티. config `bengio-deliver_rgbdel_P37b_classtoken.yaml`, log `logs/segP37b_20260716_045303.log` |
-| **seg-P37a/b 스모크** | yeon 1 | **2** | ~1h 후 자연종료·반납 | P2 | bengio 선진입(user 지시)으로 역할 축소 — 완주 시 2ep 수치만 참고 |
+| **seg-P38 (MaskQueryLite) 본학습** | hpca100 0-3 (A100×4) | **200** | **07-19 (~24-26h)** | **P0** | 본학습 launch(07-18 서버시간 03:39:31 ≈ KST 12:39). config `configs/hpca100-deliver_rgbdel_P38_m2f.yaml`, develop @c3d1184, launch 스크립트 `launch_p38_m2f.sh`, log `logs/hpca100-deliver_rgbdel_P38_m2f/run_20260718_033931.log`. ~0.77s/it·497it/ep. 기동 검증 통과(iter 342→420/497 전진, 4GPU 25GB/83-100%, 에러 0, M2F ENABLE 확인, params 355.4M/trainable 52.3M). 판정 게이트 = P36 fair(val 67.74/test 55.62) 대비 + thin-class(Wall/Water/RailTrack) IoU |
+| **seg-P38 스모크** (실데이터 2ep) | yeon GPU0 | **2** | ~07-18 14:00 | P1 | 본학습 선행조건이던 실데이터 미검증 스모크 진행 중(합성 스모크만 PASS였음). log `/SSDb/jemo_maeng/src/p37_test/logs/p38smoke_20260718_121834.log`, 10.2GB@bs1GPU. 완주 시 GPU0 반납, 수치는 참고용(본학습은 이미 hpca100에서 병행 launch됨) |
 
 ## 📋 대기열 (우선순위 순)
 
@@ -87,7 +86,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **4** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
 | **5** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
 | **6** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
-| **7** | **seg-P38 (MaskQueryLite)** | 4~8 GPU (bs2, eff-batch16 기준 accumulation 자동) | **P37a/b 다음** — bengio 복구 시 P37 지속이 우선, P38은 그 외 첫 빈 서버 | 구현 완료(2026-07-17, 커밋 3bb2c41). P36 공정 레시피(GATE·VETO·CALIB·ROUTER on / ATTN_BIAS·CONSISTENCY·PHYSAUG off / DGFUSION_AUG on) 동결 위에 Mask2Former-lite query head(100 query, 6-layer masked cross-attn, β-zero-init로 P36 byte-identical 시작) 추가한 1-변수 비교. config `configs/bengio-deliver_rgbdel_P38_m2f.yaml`(200ep). **선행조건**: ①실데이터 2ep 스모크(`configs/yeon-deliver_rgbdel_P38_m2f_smoke.yaml` 참조, 합성 스모크만 PASS·실데이터 미검증) ②서버별 `DATASET.ROOT` 조정(bengio `/SSDe/jemo_maeng/dset/DELIVER`, yeon `/SSDb/jemo_maeng/dset/DELIVER`, hpca100은 DELIVER 스테이징 여부 미확인) ③python env에 `scipy` 필수(Hungarian matching). 판정 게이트 = P36 fair(val 67.74/test 55.62) 대비 + thin-class(Wall/Water/RailTrack) IoU |
 
 ## ✅ 완료·판정 (재실행 금지)
 
@@ -98,6 +96,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **투영 정합** | DGFusion 파라미터 재현 완료(공개 PIXEL_MEAN 오라클로 −0.1% 적중). **실제 차이는 lidar뿐**(radar·event 30ms는 이미 동일). **성능 이득 0, 공정성만 확보** |
 | **module ablation** | **제안 모듈 전부 ≈0**(ATTN_BIAS=RBMA 간판 포함). gate+calib만 test +0.26. **성능 출처 = DINOv3 백본 + per-modal LoRA** |
 | **det 붕괴 진단** | 원인 = **BS1의 gradient 노이즈**(n_pos 1~3), LR 아님. 처방 = 배치↑ + **LR 유지**. warmup 5ep 완주로 검증 |
+| **seg-P37a/b (bengio분)** | **사망 확정** — bengio 노드 CUDA 전체 장애(GPU5 HW 고장, 재부팅 후 SSH 미복귀)로 ep1~2에서 종료. jarvis 재기동분(P37a→P37b 체인)이 계보 승계 — 남 세션 소관이라 수치 갱신하지 않음 |
 
 ## ⚠️ 사고 기록 (반복 금지)
 
@@ -105,11 +104,12 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 - **2026-07-16 04:30 — 진단 런에 EPOCHS=300 방치**: Arm A(3모달+DGF)는 **진단 목적**이었는데 EPOCHS를 300(≈36h)으로 둔 채 방치 → **8배치 대기 잡을 36시간 막을 뻔함.** 진단은 ep14에 이미 끝났음(lidar 무죄). **교훈: 진단 런은 EPOCHS를 판정에 필요한 만큼만(예: 10~16) 설정하고, 계획에 ETA를 명시할 것.** 04:40 종료해 0-3 해제.
 - **2026-07-15 lecun 상실**: 위 GPU 점유 원칙 참조.
+- **2026-07-18 hpca100 로컬 WIP 보존**: seg-P38 본학습 launch 전, 타 세션이 hpca100에 남겨둔 미커밋 MUSES 작업을 wip 커밋(3e7fd68) 후 브랜치 `hpca100-wip-20260718`로 보존해 GitHub에 push(릴레이). hpca100 체크아웃은 develop @c3d1184로 전환됨 — 원 세션이 회수 가능.
 
 ## 🔗 관련
 
 - [registry.md](registry.md) 실험 한눈표 · [monitor-log.md](monitor-log.md) 실시간 · [log.md](log.md) 결과 canonical · [../status/current.md](../status/current.md) 현재 스냅샷
-- 회수 산출물: `/nas_jm/drone_ckpts/` · 분석: `/nas_jm/analysis_logs/`
+- 회수 산출물: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/` · 분석: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/`
 
 
 ## 🔬 Modality Ablation 실험설계 규약 (user 지정 2026-07-17)
