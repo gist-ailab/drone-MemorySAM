@@ -224,8 +224,12 @@ def create_dataset(dataset_cfg, split, transform, mode, macvi=False, eval_day=Fa
         has_gt = require_annotation
     elif name == 'MUSES':
         from semseg.datasets.muses import MUSES
+        # CASE: weather(clear/fog/rain/snow) 또는 tod(day/night). 'all'/미지정 = 전체.
+        case = dataset_cfg.get('CASE', None)
+        if case in ('', 'all'):
+            case = None
         dataset = MUSES(dataset_cfg['ROOT'], split=split, transform=transform,
-                        modals=modals)
+                        modals=modals, case=case, return_meta=True)
         has_gt = split != 'test'
         return dataset, has_gt
     elif name == 'DELIVER':

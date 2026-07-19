@@ -110,6 +110,7 @@ def main():
     ap.add_argument('--model_path', required=True)
     ap.add_argument('--dataset-root', default=None)
     ap.add_argument('--conditions', default='night,sun')
+    ap.add_argument('--split', default='test', choices=['val', 'test'])
     ap.add_argument('--max-imgs', type=int, default=40)
     ap.add_argument('--gpu', default='0')
     ap.add_argument('--out', required=True)
@@ -145,7 +146,7 @@ def main():
 
     for cond in [c.strip() for c in args.conditions.split(',') if c.strip()]:
         ds_cfg['CASE'] = cond
-        dataset, _ = V.create_dataset(ds_cfg, 'test', transform, 'test', macvi=False, eval_day=False)
+        dataset, _ = V.create_dataset(ds_cfg, args.split, transform, args.split, macvi=False, eval_day=False)
         ign = getattr(dataset, 'ignore_label', 255)
         n = min(args.max_imgs, len(dataset))
         M = None

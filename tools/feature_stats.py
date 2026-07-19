@@ -61,6 +61,7 @@ def main():
     ap.add_argument('--model_path', required=True)
     ap.add_argument('--dataset-root', default=None)
     ap.add_argument('--conditions', default='cloud,fog,night,rain,sun')
+    ap.add_argument('--split', default='test', choices=['val', 'test'])
     ap.add_argument('--max-imgs', type=int, default=-1, help='-1 = full test set')
     ap.add_argument('--samples-per-img', type=int, default=256)
     ap.add_argument('--gpu', default='0')
@@ -93,7 +94,7 @@ def main():
     viz_bank = {}
     for cond in [c.strip() for c in args.conditions.split(',') if c.strip()]:
         ds_cfg['CASE'] = cond
-        dataset, _ = V.create_dataset(ds_cfg, 'test', transform, 'test', macvi=False, eval_day=False)
+        dataset, _ = V.create_dataset(ds_cfg, args.split, transform, args.split, macvi=False, eval_day=False)
         n = len(dataset) if args.max_imgs < 0 else min(args.max_imgs, len(dataset))
         M = None
         Cch = None

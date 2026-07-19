@@ -105,6 +105,8 @@ def main():
     ap.add_argument('--ablation-toggles',
                     default='rbma_off,router_off,ctd_off,sdc_off,temp_off,cons_off,amf_uniform,p34_bias_off,p34_cons_off,p34_gate_off,p34_veto_off,p34_calib_off,p36_router_off,p37_cefr_off,p38_m2f_off')
     ap.add_argument('--conditions', default='cloud,fog,night,rain,sun')
+    ap.add_argument('--split', default='test', choices=['val', 'test'],
+                    help="MUSES는 GT 있는 'val' 사용 (conditions=clear,fog,rain,snow,day,night)")
     ap.add_argument('--max-imgs', type=int, default=120)
     ap.add_argument('--viz-case', default='sun')
     ap.add_argument('--viz-contains', default=None)
@@ -155,6 +157,7 @@ def main():
                 [py, str(TOOLS / 'eval_per_domain.py'), '--cfg', args.cfg,
                  '--ckpt', f'best={args.model_path}',
                  *(['--dataset-root', args.dataset_root] if args.dataset_root else []),
+                 '--conditions', args.conditions, '--split', args.split,
                  '--gpu', args.gpu, '--out-dir', str(ed)],
                 note='5-condition per-class IoU (GT-based, model-agnostic)')
             if results['D1_eval_per_domain']['status'] == 'ok':
@@ -179,6 +182,7 @@ def main():
                  '--model_path', args.model_path,
                  *(['--dataset-root', args.dataset_root] if args.dataset_root else []),
                  '--conditions', args.conditions, '--max-imgs', str(args.max_imgs),
+                 '--split', args.split,
                  '--gpu', args.gpu, '--out', str(out / 'module_diag')],
                 note='B modal-competence, C reliability-AUROC, D UAMM alloc, E drop-dMIoU, F MoE')
 
@@ -194,6 +198,7 @@ def main():
                  '--model_path', args.model_path,
                  *(['--dataset-root', args.dataset_root] if args.dataset_root else []),
                  '--conditions', args.conditions, '--max-imgs', str(args.max_imgs),
+                 '--split', args.split,
                  '--gpu', args.gpu, '--viz', '--out', str(out / 'feature_stats')],
                 note='per-modal norm/dead-ch/eff-rank/CKA + fused stats (full-testset numeric)')
 
@@ -210,6 +215,7 @@ def main():
                  *(['--dataset-root', args.dataset_root] if args.dataset_root else []),
                  '--conditions', args.conditions,
                  '--max-imgs', str(min(args.max_imgs, 40)),
+                 '--split', args.split,
                  '--gpu', args.gpu, '--out', str(out / 'modal_adaptation')],
                 note='adapter on/off per-modal feat/acc delta — non-RGB 적응도')
 
@@ -224,6 +230,7 @@ def main():
                  *(['--dataset-root', args.dataset_root] if args.dataset_root else []),
                  '--conditions', args.conditions,
                  '--max-imgs', str(min(args.max_imgs, 40)),
+                 '--split', args.split,
                  '--toggles', args.ablation_toggles,
                  '--viz-num', str(args.viz_num),
                  '--gpu', args.gpu, '--out', str(out / 'module_ablation')],
@@ -241,7 +248,7 @@ def main():
                 [py, str(TOOLS / 'viz_features.py'), '--cfg', args.cfg,
                  '--model_path', args.model_path,
                  *(['--dataset-root', args.dataset_root] if args.dataset_root else []),
-                 '--case', args.viz_case,
+                 '--case', args.viz_case, '--split', args.split,
                  *(['--contains', args.viz_contains] if args.viz_contains else []),
                  '--num', str(args.viz_num), '--gpu', args.gpu,
                  '--out-dir', str(out / 'viz')],

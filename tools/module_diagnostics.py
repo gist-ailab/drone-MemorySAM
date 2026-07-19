@@ -60,6 +60,7 @@ def main():
     ap.add_argument('--cfg', required=True); ap.add_argument('--model_path', required=True)
     ap.add_argument('--dataset-root', default=None)
     ap.add_argument('--conditions', default='cloud,fog,night,rain,sun')
+    ap.add_argument('--split', default='test', choices=['val', 'test'])
     ap.add_argument('--max-imgs', type=int, default=120, help='cap images/condition for full stats')
     ap.add_argument('--ablate-n', type=int, default=20, help='images/condition for drop-modality')
     ap.add_argument('--gpu', default='0'); ap.add_argument('--out', required=True)
@@ -83,7 +84,7 @@ def main():
     report = {'model': Path(args.model_path).stem, 'conditions': {}}
     for cond in [c.strip() for c in args.conditions.split(',') if c.strip()]:
         ds_cfg['CASE'] = cond
-        dataset, _ = V.create_dataset(ds_cfg, 'test', transform, 'test', macvi=False, eval_day=False)
+        dataset, _ = V.create_dataset(ds_cfg, args.split, transform, args.split, macvi=False, eval_day=False)
         C = len(dataset.CLASSES); CLASSES = list(dataset.CLASSES); ign = getattr(dataset, 'ignore_label', 255)
         n = min(args.max_imgs, len(dataset))
         conf = np.zeros((C, C), np.int64)                    # final pred vs gt
