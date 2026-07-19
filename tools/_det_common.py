@@ -188,8 +188,9 @@ def eval_per_class(ann_path: str, preds: List[dict],
     iou50 = int(np.argmin(np.abs(ev.params.iouThrs - 0.5)))
     rows = []
     for k, c in enumerate(cats):
+        # pycocotools treats imgIds=None as [None] (matches nothing) -> use []
         ann_ids = gt.getAnnIds(catIds=[c['id']],
-                               imgIds=list(img_ids) if img_ids is not None else None)
+                               imgIds=list(img_ids) if img_ids is not None else [])
         p_all = prec[:, :, k, 0, -1]
         p_50 = prec[iou50, :, k, 0, -1]
         rows.append({
@@ -206,6 +207,21 @@ def split_by_clip(id2file: Dict[int, str], clips: Sequence[str]
     """(ids whose file path matches any clip, the rest) — the night/normal split."""
     hit = [i for i, f in id2file.items() if any(c in f for c in clips)]
     rest = [i for i in id2file if i not in set(hit)]
+    return sorted(hit), sorted(rest)
+
+
+def split_ann_by_clip(ann_path: str, clips: Sequence[str]) -> Tuple[List[int], List[int]]:
+    """Night/normal image ids from the ANNOTATION, not from the predictions.
+
+    The denominator must be every GT image (train_det/val_det convention): images the
+    dataset drops for a missing modality are real misses. Splitting on predicted
+    images instead inflates AP and breaks comparability with the training logs.
+    """
+    import json
+    with open(ann_path) as f:
+        imgs = json.load(f)['images']
+    hit = [int(i['id']) for i in imgs if any(c in i['file_name'] for c in clips)]
+    rest = [int(i['id']) for i in imgs if not any(c in i['file_name'] for c in clips)]
     return sorted(hit), sorted(rest)
 
 

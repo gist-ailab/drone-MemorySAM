@@ -20,7 +20,8 @@ import sys
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _det_common import (DEFAULT_LOWLIGHT_CLIPS, build_detector, build_loader,  # noqa: E402
+from _det_common import (DEFAULT_LOWLIGHT_CLIPS, build_detector, build_loader,
+                         split_ann_by_clip,  # noqa: E402
                          eval_overall, eval_per_class, load_cfg, load_det_checkpoint,
                          run_inference, split_by_clip, write_outputs)
 
@@ -72,6 +73,9 @@ def main():
     ap.add_argument('--lowlight-clips', default=','.join(DEFAULT_LOWLIGHT_CLIPS),
                     help='substrings identifying night clips in file_name')
     ap.add_argument('--limit', type=int, default=None, help='cap images (smoke runs)')
+    ap.add_argument('--eval-scope', default='annotation',
+                    choices=['annotation', 'predicted'],
+                    help='annotation = score vs ALL GT images (train_det convention, comparable with the training logs); predicted = only images the dataset kept (inflates AP)')
     ap.add_argument('--stride', type=int, default=1,
                     help='evaluate every Nth image (spans all clips; use for cheap runs)')
     ap.add_argument('--workers', type=int, default=4)
@@ -89,13 +93,20 @@ def main():
     preds, id2file = run_inference(model, ds, loader, cfg, dev, args.score_thresh, args.limit, args.stride)
     ann = cfg['DATASET'][f'ANNOTATION_{args.mode.upper()}']
     clips = [c for c in args.lowlight_clips.split(',') if c]
-    night_ids, normal_ids = split_by_clip(id2file, clips)
+    if args.eval_scope == 'annotation':
+        # score against every GT image, exactly like train_det/val_det, so these
+        # numbers line up with the training logs and the reported history.
+        night_ids, normal_ids = split_ann_by_clip(ann, clips)
+        all_ids = None
+    else:
+        night_ids, normal_ids = split_by_clip(id2file, clips)
+        all_ids = list(id2file)
     print(f"[det-analysis] {len(preds)} preds · night {len(night_ids)} / normal {len(normal_ids)} imgs")
 
-    overall = eval_overall(ann, preds, list(id2file))
+    overall = eval_overall(ann, preds, all_ids)
     night = eval_overall(ann, preds, night_ids) if night_ids else None
     normal = eval_overall(ann, preds, normal_ids) if normal_ids else None
-    per_class = {'all': eval_per_class(ann, preds, list(id2file))}
+    per_class = {'all': eval_per_class(ann, preds, all_ids)}
     if night_ids:
         per_class['night'] = eval_per_class(ann, preds, night_ids)
     if normal_ids:
