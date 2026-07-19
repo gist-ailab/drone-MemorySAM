@@ -54,7 +54,7 @@ def sh(cmd, log_path):
     return p.returncode, tail
 
 
-def probe_capability(cfg_path, model_path, dataset_root, gpu):
+def probe_capability(cfg_path, model_path, dataset_root, gpu, split='test'):
     """Build model, forward 1 image, report family + which _last_* hooks are live."""
     os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu)
     os.environ.setdefault('PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION', 'python')
@@ -79,8 +79,9 @@ def probe_capability(cfg_path, model_path, dataset_root, gpu):
         tf = V.get_val_augmentation(isz, dataset_cfg=ds)
         model = V.load_model(cfg, Path(model_path), device); model.eval()
         core = model.module if hasattr(model, 'module') else model
-        ds['CASE'] = ds.get('CASE', 'sun')
-        dset, _ = V.create_dataset(ds, 'test', tf, 'test', macvi=False, eval_day=False)
+        if str(ds.get('NAME', '')).upper() == 'DELIVER':
+            ds['CASE'] = ds.get('CASE', 'sun')
+        dset, _ = V.create_dataset(ds, split, tf, split, macvi=False, eval_day=False)
         images, _, _ = dset[0]
         imgs = [im.unsqueeze(0).to(device) for im in images]
         with torch.no_grad():
@@ -123,7 +124,8 @@ def main():
 
     # ---- capability probe (drives graceful skip) ----
     print('[pipeline] probing model capability ...')
-    cap = probe_capability(args.cfg, args.model_path, args.dataset_root, args.gpu)
+    cap = probe_capability(args.cfg, args.model_path, args.dataset_root, args.gpu,
+                           split=args.split)
     (out / 'capability.json').write_text(json.dumps(cap, indent=2))
     print(f"[pipeline] family={cap['family']} forward_ok={cap['forward_ok']} "
           f"live_hooks={[h for h, v in cap['hooks'].items() if v]}")
