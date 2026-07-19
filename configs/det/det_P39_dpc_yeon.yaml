@@ -1,0 +1,105 @@
+# P39-Det = Dual-Path Compete backbone + M2F query detector.
+#
+# P39 (DPC) abandons the zero-init residual (4 straight no-ops: P36 router, P37a
+# CEFR, P37b classtoken, P38 m2f) in favour of paths that carry the main loss or
+# compete. Mapping each P39 change onto detection:
+#   V1 trunk rank expansion  -> WIRED into both det entry points (fused += ΣP_m(f_m))
+#   V2 modal-token query attn-> WIRED (extract_m2f_output passes modal_feats)
+#   V3 anchored + free queries-> WIRED into the det set loss (anchor k owns class k,
+#      free queries Hungarian) so rare classes never starve in matching
+#   V4 point-quota sampling  -> seg-only (detection has no mask loss)
+#   V5 dense/query compete   -> seg-only: detection has no dense conv path; the M2F
+#      query path IS the detector and is directly box-supervised, which already
+#      satisfies P39's "no passive residual / no free-riding" rule by construction.
+# Without the V1-V3 wiring a config-only P39-det would build the modules and train
+# without them — the exact no-op trap P39 was designed to escape.
+#
+# CRITICAL: GRAD_CHECKPOINT false (encoder active_modality bug; 3 modalities).
+OUTPUT_DIR: outputs/det_final_P39_dpc_yeon
+
+DATASET:
+  ROOT: /SSDb/jemo_maeng/dset/poongsan_v2
+  ANNOTATION_TRAIN: /SSDb/jemo_maeng/dset/poongsan_v2/_final_ann/instances_train_egofill.json
+  ANNOTATION_VAL:   /SSDb/jemo_maeng/dset/poongsan_v2/_final_ann/instances_test_common.json
+  MODALITY_KEYS: { img: rgb, lidar: depth_map_lidar, thermal: thermal_aligned }
+  MODALS: ['img', 'lidar', 'thermal']
+  REQUIRE_ALL_MODALITIES: true
+  IMG_SIZE: [768, 768]
+  MIN_AREA: 16.0
+
+MODEL:
+  SEG_MODEL: ReliaDINO
+  DET_MODEL: ReliaDINOM2FDetector
+  N_CLASSES: null
+  BACKBONE_TIMM: vit_large_patch16_dinov3
+  BACKBONE_FALLBACK: vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE: true
+  SEG_CHECKPOINT: ''
+  LORA_R: 8
+  LORA_ALPHA: null
+  FPN_DIM: 256
+  FPN_STRIDES: [4, 8, 16, 32]
+  FUSION:
+    NUM_LAYERS: 2
+    NUM_HEADS: 8
+    MLP_RATIO: 4.0
+    AUX_HIDDEN: 256
+    ATTN_BIAS: { ENABLE: false, LAMBDA1_INIT: 1.0 }
+  CONSISTENCY: { ENABLE: false, LAMBDA2_INIT: 0.5 }
+  GATE:
+    ENABLE: true
+    TAU: 0.25
+    ENTROPY_REG: 0.0
+    ENTROPY_FLOOR: 0.5
+    VETO_FLOOR: { ENABLE: true, THRESH: 0.10, CAP: 0.05 }
+  CALIBRATION: { ENABLE: true, LAMBDA: 0.1 }
+  ROUTER: { ENABLE: false }        # inert for M2F-det (only touches seg logits)
+  CEFR: { ENABLE: false }
+  CLASS_TOKEN: { ENABLE: false }
+  M2F:
+    ENABLE: true
+    NUM_QUERIES: 100
+    NUM_LAYERS: 6
+    DIM: 256
+    NUM_HEADS: 8
+    MLP_RATIO: 2.0
+    BETA_INIT: 0.0
+    W_CLS: 2.0
+    W_BCE: 5.0
+    W_DICE: 5.0
+    NO_OBJ_W: 0.1
+    DEEP_SUPERVISION: true
+    SRC: modal                     # [P39-V2] queries attend per-modal tokens
+    ANCHORED: true                 # [P39-V3] K class-anchored + free queries
+    POINT_QUOTA: 0                 # [P39-V4] seg mask loss only — det has none
+  P39:
+    # [P39-V1] OFF for the M2F detector — measured: trunk_exp receives ZERO gradient
+    # here. V2 makes the queries read per-modal tokens instead of fused, and feat_s4
+    # comes from a no_grad decode, so fused has no gradient path to the det loss; the
+    # projections would stay at random init and inject untrained noise through the
+    # no_grad attention bias. This matches the P39 design split: V1 widens the DENSE
+    # trunk, while the query path "bypasses the bottleneck" (V2). Turn it on only for
+    # a pyramid-based det head (extract_det_pyramid), where it does train.
+    TRUNK_EXP: false
+    ARBITER: false                 # [P39-V5] seg-only (no dense path in det)
+  MODAL_DROPOUT: { ENABLE: false }
+  NUM_SELECT: 100
+  FREEZE_BACKBONE: false
+  GRAD_CHECKPOINT: false
+
+TRAIN:
+  IMAGE_SIZE: [768, 768]
+  EPOCHS: 50
+  BATCH_SIZE: 1
+  VAL_BATCH_SIZE: 1
+  GRAD_ACCUM_STEPS: 4
+  LR: 0.0001
+  WEIGHT_DECAY: 0.0001
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 1
+  NUM_WORKERS: 4
+  AMP: true
+  GRAD_CLIP: 0.1
+
+WANDB: { ENABLE: false, PROJECT: p39-det, ENTITY: null, VIZ_COUNT: 8, VIZ_SCORE_THRESH: 0.3 }
+EVAL: { SCORE_THRESH: 0.05 }

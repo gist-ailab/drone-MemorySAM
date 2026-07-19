@@ -420,6 +420,11 @@ class ReliaDINO(nn.Module):
         feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
+        if self.trunk_exp is not None and not self.p39_trunkexp_off:
+            # [P39-V1] same modal-subspace restoration the seg forward applies.
+            # Without this the det path trains on the un-expanded trunk while the
+            # P39 projections sit unused (silent no-op).
+            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
         cefr_ctx = aux.get('cefr_ctx', None) if isinstance(aux, dict) else None
         if cefr_ctx is not None:
             # pass-1 seg decode supplies only the DETACHED posterior q (reliability
@@ -467,9 +472,18 @@ class ReliaDINO(nn.Module):
         feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
+        if self.trunk_exp is not None and not self.p39_trunkexp_off:
+            # [P39-V1] same modal-subspace restoration the seg forward applies.
+            # Without this the det path trains on the un-expanded trunk while the
+            # P39 projections sit unused (silent no-op).
+            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
         with torch.no_grad():
             _, feat_s4 = self._decode(fused, routed)
-        return self.m2f(fused, feat_s4)
+        # [P39-V2] let the queries attend the per-modal token union (bypasses the
+        # fused rank bottleneck). Without modal_feats the head silently falls back
+        # to the fused-only source, i.e. P38 behaviour.
+        return self.m2f(fused, feat_s4,
+                        modal_feats=feats if self.m2f.use_modal_src else None)
 
 
 def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
