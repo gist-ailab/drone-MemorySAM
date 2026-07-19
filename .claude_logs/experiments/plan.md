@@ -1,6 +1,6 @@
 ---
 created: 2026-07-16
-updated: 2026-07-18 (seg-P38 hpca100 본학습 launch)
+updated: 2026-07-20 (seg-P39 구현 완료 → 대기열 등재)
 ---
 
 # 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
@@ -80,12 +80,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | # | 실험 | 필요 자원 | 언제 | 근거 |
 |---|---|---|---|---|
-| **1** | **4모달 구조 버그 수정 + 재도전** | 4~8 GPU | diag_C 판정 직후 | diag_C가 "구조" 판정 시. **DGFusion CLRE 센서 패리티 = 공정 비교 필수 조건.** 수정되면 Arm A의 검증된 투영을 얹어 공짜 이득 |
-| **2** | **동일 박스 대조군** (3모달+기존투영, bengio) | 4 GPU | GPU 여유 시 | 현 대조군은 **B200 수치**인데 Arm A는 bengio → **cross-box 교란**. 같은 박스 대조군이 있어야 "DGF 투영=중립" 판정이 단단해짐 |
-| **3** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
-| **4** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
-| **5** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
-| **6** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
+| **1** | **P39 Dual-Path Compete 본학습** (DELIVER + MUSES) | hpca100 4×A100(DELIVER) / jarvis 4090×N(MUSES) | 선행 = yeon 실데이터 스모크. hpca100은 P38-DELIVER 종료·판정 후 그 슬롯, jarvis는 P38-MUSES 완주 후 이어서 | **구현 완료(develop c31dcd5)**, P38 게이트 미달로 차기 본선. V1 trunk rank expansion + V2 modal-token query attention + V3 anchored+free query + V4 balanced point sampling + V5 per-class Λ 중재+path dropout 경쟁+router 직접 CE. 게이트(사전 등록) = DELIVER: P36 fair val 67.74/test 55.62 + thin-class 복원(Wall≥13/Water≥9.5/RailTrack≥62) · MUSES: P38 val 82.22 이상. **EPOCHS 200.** ep30 조기판정(module_ablation 토글 즉검) 규칙 적용. configs `hpca100-deliver_rgbdel_P39_dpc.yaml`/`jarvis-muses_rgbel_P39_dpc.yaml`/`yeon-deliver_rgbdel_P39_dpc_smoke.yaml`(2ep). 상세 [decisions/2026-07-20-p39-dual-path-compete-proposal.md](../decisions/2026-07-20-p39-dual-path-compete-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P39 |
+| **2** | **4모달 구조 버그 수정 + 재도전** | 4~8 GPU | diag_C 판정 직후 | diag_C가 "구조" 판정 시. **DGFusion CLRE 센서 패리티 = 공정 비교 필수 조건.** 수정되면 Arm A의 검증된 투영을 얹어 공짜 이득 |
+| **3** | **동일 박스 대조군** (3모달+기존투영, bengio) | 4 GPU | GPU 여유 시 | 현 대조군은 **B200 수치**인데 Arm A는 bengio → **cross-box 교란**. 같은 박스 대조군이 있어야 "DGF 투영=중립" 판정이 단단해짐 |
+| **4** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
+| **5** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
+| **6** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
+| **7** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
 
 ## ✅ 완료·판정 (재실행 금지)
 
@@ -132,3 +133,17 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 5. **PQ vs mIoU 구분**: 문헌 modality ablation은 전부 **PQ**(우리는 semantic-only=mIoU). PQ↔mIoU 직접 비교 금지. panoptic head 없이 PQ 산출 불가([[seg-report-sota-gap]]).
 
 **적용 예**: MUSES/DELIVER 모달 실험을 짤 때 위 표를 baseline으로 붙이고, 누적 ablation + per-condition을 기본 산출로. 근거 = 조사보고(2026-07-17, DGFusion 2509.09828 v3 / CAFuser 2410.10791 v2 Table IX / MUSES 2401.12761 v4 Table 3 / CMNeXt 2303.01480).
+
+### [대기 트리거] jarvis P37b-DELIVER 완주 시 → P34 per-class 비교 분석 (등록 2026-07-18)
+
+- **트리거**: jarvis `train_reliadino ... jarvis-deliver_rgbdel_P37b_classtoken` 프로세스 종료(Monitor blf49vkbc 감시 중). ETA 07-19 02:20경, ep200 완주.
+- **할 일**: P37b-best(top-1 val ckpt)와 P34-best를 **동일 프로토콜로 DELIVER val per-class IoU 산출 → 클래스별 Δ(P37b−P34) 테이블**. 실행=sonnet(tools/ 표준 분석 스위트), 비교 판정=opus.
+- **P34 baseline ckpt**: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/P34_final_20260713/`. P34 DELIVER val 68.19.
+- **맥락**: P37b는 P37a(CEFR) 붕괴를 피했으나 val best 62.99로 P34 −5.2pt 미달. per-class로 "어느 클래스에서 classtoken이 P34 대비 이득/손해인지" 규명 = DELIVER analysis 목적(user 지정). P37a는 ep24 고착(실패), P37b는 중립(무해무익) 잠정 판정.
+- 참고 그래프: P37a `jarvis_p37a_valtest.png`, P37b `jarvis_p37b_valtest.png`.
+
+### [대기 트리거] yeon P37b-det 완주 → P38-det 자동 기동 (등록 2026-07-19)
+- **체인**: yeon tmux jemo/p38_chain wrapper가 P37b-det(torchrun PID 3733229) 종료 감시 → 종료 시 P38-det 자동 기동. 세션 독립(서버측 실행).
+- **P38-det**: 워크트리 `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38` (브랜치 worktree-p38-det, f775687, `ReliaDINOM2FDetector`=M2F query head를 detector로). config `configs/det/det_P38_m2f_yeon.yaml`(M2F on, CEFR/CLASS_TOKEN/ROUTER off, grad-ckpt false, GRAD_CLIP 0.1).
+- **기동 설정**: env openmmlab, DET_GRAD_CLIP=0.1, port 29713, **4-GPU 고정**(eff-batch를 P37a/b-det와 일치). ETA 07-20 14:30경.
+- **검증 필요**: P38 기동 후 rank0 util>0·iteration 전진·NaN 없음 확인(opus). yeon P37b-det 완주 run은 DRONE-NAS ckpts/로 회수.

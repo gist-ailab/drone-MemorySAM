@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-07-17
+> 최종 업데이트: 2026-07-20
 
 ## P38 — MaskQueryLite: Mask2Former-lite Query Head (2026-07-17)
 
@@ -28,6 +28,42 @@ moved: 2026-07-08
 **검증**: 로컬 합성 스모크 PASS — fwd/bwd 유한, query/cls 양쪽 grad 흐름 확인, β-zero 등가성 exact, panoptic 경로 동작. **실데이터 스모크 미실행**(yeon 8-GPU 전부 점유) — 서버 확보 시 본학습 직전 2ep 스모크가 선행 조건. 파라미터 ~5.2M.
 
 **판정 게이트**: P36 fair(val 67.74/test 55.62) 대비 mIoU + thin-class(Wall/Water/RailTrack) IoU.
+
+---
+
+## P39 — Dual-Path Compete (DPC) (2026-07-20)
+
+**상태**: **구현 완료 (학습 대기)**. 계보: P38(MaskQueryLite) 위에 5개 변경(전부 토글 가능)을 얹음 — 베이스는 유지(frozen DINOv3-L + per-modal LoRA(r8) + cross-modal fusion + SimpleFPN + FPNSegHead + per-class router). 제안 근거 = [decisions/2026-07-20-p39-dual-path-compete-proposal.md](../decisions/2026-07-20-p39-dual-path-compete-proposal.md)(실패-키 문서 전 키 반영). **단일 아키텍처로 DELIVER·MUSES 모두 커버**(user 지정) — 데이터셋 적응은 학습된 모듈로만.
+
+**동기 (실패-키 → 규칙 변환)**: P30~P38 계보에서 반복된 5개 실패 패턴을 규칙으로 역변환해 설계에 내장.
+
+| 키 | 실패 패턴 | P39 규칙 |
+|---|---|---|
+| 키1 | zero-init 잔차 사장 (4연속 no-op) | 소극 잔차 결선 전면 금지 — 신규 경로는 주 손실을 직접 받거나(V1) 기존 경로와 경쟁(path dropout, V5) |
+| 키2 | router 유일 실적 + co-adaptation | router를 직접 감독(CE)으로 "의존"에서 "기여"로 전환, deep-sup 의존 해소는 유지 |
+| 키3 | FUSED rank 7/256 병목 | 로짓 근처 모듈 추가 금지 — 융합 트렁크 rank를 직접 확장(V1), query 경로는 병목 우회(V2) |
+| 키4 | 문제 위치 상이(클래스축 vs 도메인축) | per-class 학습 중재(V5 Λ)로 데이터셋별 상이한 병목에 같은 기제가 다르게 적응 |
+| 키5 | event 기여 = 데이터셋 속성 | 모달 하드 제거 없음 — query가 모달 토큰을 직접 attend해 데이터셋별로 스스로 배분(V2) |
+| 반증 C1~C6 | — | attn-bias·gate류 신규 없음 · conv head 즉시 대체 없음(P30 재발 방지) · 무감독 게이트 없음 |
+
+**구조 (P38 대비 변경 5개)**:
+- **V1 — Trunk Rank Expansion**(키3): `fused' = fused + Σ_m P_m(f_m)` — 모달별 선형 투영(1024→1024, small-random init, **zero-init 아님**)을 트렁크에 가산 합류. 게이트 뒤 소실된 모달 부분공간을 주 경로에 복원해 rank 상한을 Σ modal rank로 확장, 주 경로 소속이라 첫 스텝부터 CE gradient 수신(키1 충족). +4.2M params.
+- **V2 — Modal-token Query Attention**(키3 우회 + 키5): m2f query의 cross-attn 소스를 fused map(N tokens)에서 **per-modal 토큰 합집합(M·N tokens + modality embedding)**으로 교체. query가 융합 병목(rank 7)을 거치지 않고 인코더 피쳐(rank 20~36)를 직접 보아, 모달 배분이 attention 학습으로 데이터셋별 자동 적응(단일 모델 제약 충족). mask dot-product는 기존대로 FPN stride-4.
+- **V3 — Anchored + Free Queries**(키2 thin-class + P30/P37b 교훈): query 100개 = 앵커 K개(클래스 고정 할당, Hungarian 없음 — P37b 방식이되 마스크 손실 직접 감독) + 자유 (100−K)개(Hungarian, 인스턴스/PQ 담당). 앵커 query가 thin/희소 클래스(Wall/Bridge/Other)의 Hungarian 기아를 구조적으로 제거.
+- **V4 — Balanced Point Sampling**(P38 요인2 직접 수정): mask BCE/dice 포인트 샘플링을 uniform 12,544에서 **GT 영역별 최소 쿼터(클래스당 ≥256pt) + 잔여 uniform**으로 교체. thin 마스크(RoadLine·Wall·RailTrack)가 포인트 예산에서 소멸하는 문제 제거, 추론 불변.
+- **V5 — Compete-and-Arbitrate 결합**(키1 핵심, β 잔차 폐기): dense 경로(conv head+router 잔차)와 query 경로(anchored+free 조립)를 zero-init β 대신 ① **학습: path dropout 경쟁**(p_d=0.25 dense-only CE / p_q=0.25 query-only CE / 나머지 결합 CE — 양쪽 다 주 손실을 단독 감당해 무임승차 불가) ② **추론: per-class 학습 중재** `final_k = dense_k + softplus(Λ_k)·query_k`(Λ init 0 → softplus≈0.69, 죽은 시작 아님) ③ **router 직접 감독** `CE(up(routed_logits), gt)`(w=0.4) 추가로 router를 자립 기여로 전환.
+
+**손실**: `L = CE_compete(final|dense|query) + w_r·CE(routed) + mask-cls(anchored 고정매칭 + free Hungarian, V4 샘플링, 2/5/5, deep-sup) + aux_ce + cal`(기존 유지).
+
+**판정 게이트 (사전 등록)**: DELIVER = P36 fair(val 67.74/test 55.62) + thin-class 복원(**Wall≥13/Water≥9.5/RailTrack≥62**, P36 수준) · MUSES = **P38 val 82.22 이상**(신규 내부 최고). 모듈 판정 = 학습 직후 `module_ablation.py` 토글 즉검(완주 후 발견 금지) — `p39_query_off`/`p39_trunkexp_off`/`p39_anchored_off`/`router_off` 각각 |Δ|>0.5 & agreement<0.99 (no-op 조기 탈락 기준).
+
+**리스크와 방어**: P30 재발(query-only 붕괴) 방지 = p_q=0.25 한정 + V3 앵커 + V4 쿼터가 원인(소물체 기아)을 직접 제거, dense 경로는 추론에 항상 존재. 변경 5개는 다변수(1-변수 5세대는 deadline상 불가 — 결합 문제는 단독 변경으로 안 풀림)라 **전 항목 토글 구현 의무화**(`p39_query_off`/`p39_trunkexp_off` 등 + config off)로 ablation 표에서 분해. physaug는 공정선 유지(헤드라인 off, ablation 행만).
+
+**검증**: 합성 스모크 **PASS** — 5지점 grad 흐름 확인, 토글 전부 유효, det(query-only 등) 폴백 확인, β/Λ 초기화 경로에서 **P38 호환 등가성** 확인. **실데이터 스모크 미실행**(선행조건 — yeon 배치 예정).
+
+**config**: `configs/hpca100-deliver_rgbdel_P39_dpc.yaml`(200ep) · `configs/jarvis-muses_rgbel_P39_dpc.yaml` · `configs/yeon-deliver_rgbdel_P39_dpc_smoke.yaml`(2ep, 실데이터 스모크). 커밋 **c31dcd5**(develop).
+
+**실행 계획**: ① 구현 완료(V1~V5+토글 5종+config 3벌) ② yeon 빈 GPU 2ep 스모크 → hpca100/jarvis 첫 빈 슬롯 투입(DELIVER 우선, MUSES는 jarvis P38 완주 후 이어달리기) ③ ep30 조기판정(module_ablation 즉검 + val 궤적 vs P36/P38 동 epoch, no-op 검출 시 조기 중단 — 2026-07-16 EPOCHS 사고 규칙).
 
 ---
 

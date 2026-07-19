@@ -9,6 +9,20 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-20 — P39 Dual-Path Compete 구현 완료 (학습 대기)
+
+**배경**: P38(MaskQueryLite)이 게이트(P36 fair 대비 + thin-class) 미달로 판정됨에 따라, P30~P38 계보에서 반복된 5개 실패 패턴(키1 zero-init 잔차 4연속 사장 / 키2 router 유일 실적+co-adaptation / 키3 FUSED rank 7/256 병목 / 키4 문제 위치가 클래스축·도메인축으로 상이 / 키5 event 기여가 데이터셋 속성)을 규칙으로 역변환해 P39를 설계. 제안 문서 = [decisions/2026-07-20-p39-dual-path-compete-proposal.md](../decisions/2026-07-20-p39-dual-path-compete-proposal.md)(등재 완료). **user 지정 제약**: 단일 아키텍처로 DELIVER·MUSES를 모두 커버 — 데이터셋 적응은 학습된 모듈로만.
+
+**구조 (P38 대비 변경 5개, 전부 토글)**: **V1** trunk rank expansion(`fused' = fused + Σ_m P_m(f_m)`, small-random init) — 게이트 뒤 소실된 모달 부분공간을 주 경로에 복원. **V2** modal-token query attention — m2f query가 fused map 대신 per-modal 토큰 합집합에 직접 cross-attend해 융합 병목(rank 7)을 우회, det 폴백 유지. **V3** anchored+free query — 100개 중 K개는 클래스 고정 할당(Hungarian 없음, P37b 방식+직접 감독)으로 thin-class Hungarian 기아 제거, 나머지는 자유 Hungarian. **V4** balanced point sampling — mask BCE/dice 샘플링에 클래스당 최소 쿼터 256pt(thin 마스크 소멸 방지). **V5** compete-and-arbitrate — zero-init β 잔차 결선을 폐기하고 **path dropout 경쟁**(dense-only CE 25% / query-only CE 25% / 결합 CE 50%)으로 학습, 추론은 **per-class 학습 중재** `final_k = dense_k + softplus(Λ_k)·query_k` + **router 직접 CE(w=0.4)**로 router를 자립 기여로 전환.
+
+**판정 게이트(사전 등록)**: DELIVER = P36 fair(val 67.74/test 55.62) + thin-class 복원(Wall≥13/Water≥9.5/RailTrack≥62, P36 수준) · MUSES = **P38 val 82.22 이상**(신규 내부 최고). 모듈 판정 = `module_ablation.py` 토글 즉검(`p39_query_off`/`p39_trunkexp_off`/`p39_anchored_off`/`router_off`, 완주 후 발견 금지, |Δ|>0.5 & agreement<0.99 no-op 기준). **ep30 조기판정** 규칙 적용(2026-07-16 EPOCHS 사고 규칙 준용).
+
+**검증**: 합성 스모크 **PASS** — 5지점 grad 흐름, 토글 5종 전부 유효, det(query-only 등) 폴백 확인, β/Λ 초기화 경로에서 P38 호환 등가성 확인. **실데이터 스모크 미실행**(yeon 배치가 본학습 선행조건).
+
+**config 3벌**: `configs/hpca100-deliver_rgbdel_P39_dpc.yaml`(200ep) · `configs/jarvis-muses_rgbel_P39_dpc.yaml` · `configs/yeon-deliver_rgbdel_P39_dpc_smoke.yaml`(2ep). 커밋 **c31dcd5**(develop). 대기열 등재 = [experiments/plan.md](../experiments/plan.md) 대기열 #1(hpca100은 P38-DELIVER 종료·판정 후 그 슬롯, jarvis는 P38-MUSES 완주 후 이어달리기). 상세 아키텍처 = [models/arch-evolution.md](../models/arch-evolution.md) P39.
+
+---
+
 ### 2026-07-18 — P38 MaskQueryLite hpca100 본학습 launch + bengio P37a/b 사망 확정 + hpca100 WIP 보존
 
 **seg-P38 본학습 launch**: hpca100 GPU 0-3(A100×4)에서 develop @c3d1184 기준 본학습 기동. EPOCHS 200, config `configs/hpca100-deliver_rgbdel_P38_m2f.yaml`, launch 스크립트 `launch_p38_m2f.sh`, log `logs/hpca100-deliver_rgbdel_P38_m2f/run_20260718_033931.log`(서버시간 03:39:31 ≈ KST 12:39경). ~0.77s/it·497it/ep → **ETA ≈24-26h, 07-19 완주 예상**. 기동 검증 통과(iteration 실제 전진 342→420/497, rank0 포함 4GPU util 83-100%·메모리 25GB, 에러 0, M2F ENABLE 확인, params 355.4M/trainable 52.3M). 판정 게이트 = P36 fair(val 67.74/test 55.62) 대비 + thin-class(Wall/Water/RailTrack) IoU. `~/SSDb/jemo_maeng/dset/DELIVER`(13118MB)가 hpca100에 스테이징 완료(yeon→릴레이, .DONE 검증)돼 이후 세션은 재스테이징 불필요.
