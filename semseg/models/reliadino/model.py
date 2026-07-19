@@ -117,6 +117,13 @@ class ReliaDINO(nn.Module):
                  m2f_points: int = 12544,
                  m2f_deep_supervision: bool = True,
                  m2f_loss_w: float = 0.5,
+                 m2f_src_modal: bool = False,
+                 m2f_anchored: bool = False,
+                 m2f_point_quota: int = 0,
+                 p39_trunk_exp: bool = False,
+                 p39_arbiter: bool = False,
+                 p39_path_dropout_p: float = 0.25,
+                 p39_router_ce_w: float = 0.4,
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
@@ -217,7 +224,32 @@ class ReliaDINO(nn.Module):
                 mlp_ratio=m2f_mlp_ratio, beta_init=m2f_beta_init,
                 w_cls=m2f_w_cls, w_bce=m2f_w_bce, w_dice=m2f_w_dice,
                 no_obj_w=m2f_no_obj_w, num_points=m2f_points,
-                deep_supervision=m2f_deep_supervision)
+                deep_supervision=m2f_deep_supervision,
+                use_modal_src=m2f_src_modal,
+                num_modalities=self.num_modalities,
+                anchored=m2f_anchored, point_quota=m2f_point_quota)
+
+        # [P39] Dual-Path Compete (실패-키 문서 2026-07-20 반영, 전 항목 토글).
+        # V1 trunk rank expansion: fused' = fused + Σ_m P_m(f_m). small-random
+        # init (NOT zero — 키1: 소극 잔차 금지), 주 경로 소속이라 첫 스텝부터
+        # CE gradient를 받는다. FUSED eff.rank 7/256 병목(키3) 직접 확장.
+        self.trunk_exp = None
+        if p39_trunk_exp:
+            self.trunk_exp = nn.ModuleList(
+                nn.Conv2d(dim, dim, 1) for _ in range(self.num_modalities))
+            for m in self.trunk_exp:
+                nn.init.normal_(m.weight, std=0.01)
+                nn.init.zeros_(m.bias)
+        # V5 compete-and-arbitrate: per-class Λ (softplus(0)=0.69, 죽은 시작
+        # 아님) + 학습 시 path dropout 경쟁(dense-only/query-only/combined) +
+        # router 직접 CE 감독(의존→기여 전환, 키2). β 잔차(반증 완료)는 arbiter
+        # 활성 시 사용하지 않는다.
+        self.arb_lambda = nn.Parameter(torch.zeros(num_classes)) if p39_arbiter else None
+        self.p39_path_dropout_p = float(p39_path_dropout_p)
+        self.p39_router_ce_w = float(p39_router_ce_w)
+        # eval-time ablation flags (tools/module_ablation attr_toggle 호환)
+        self.p39_query_off = False
+        self.p39_trunkexp_off = False
 
         # M2 seam (asymmetric modality dropout) — default OFF: it helped nothing
         # at mid-run so far (P33 empirical constraint 4); seam kept for P34.2.
@@ -307,6 +339,9 @@ class ReliaDINO(nn.Module):
             fused = (1.0 - mix) * fused + mix * fused_p
             if self.training and cefr_reg is not None:
                 aux['cefr_reg'] = cefr_reg          # trainer adds to total loss
+        if self.trunk_exp is not None and not self.p39_trunkexp_off:
+            # [P39-V1] modal subspace restoration on the main trunk.
+            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
         logits, m_feat = self._decode(fused, routed)
         token_logits = None
         if self.classtoken is not None:
@@ -317,16 +352,44 @@ class ReliaDINO(nn.Module):
             token_logits = self.classtoken(fused, m_feat)   # (B, K, H/4, W/4)
             logits = logits + self.classtoken.beta * token_logits
         if self.m2f is not None:
-            # [P38] query branch: assembled semantic scores merged through the
-            # zero-init beta (start = m2f-off dense path); Hungarian mask-cls
-            # losses train the branch regardless of beta. Loss is computed
-            # here (gt available) and returned pre-scaled as aux['m2f_loss'].
-            m2f_out = self.m2f(fused, m_feat)
+            m2f_out = self.m2f(
+                fused, m_feat,
+                modal_feats=feats if self.m2f.use_modal_src else None)  # [P39-V2]
             sem_q = self.m2f.semantic_scores(m2f_out)       # (B, K, H/4, W/4)
-            logits = logits + self.m2f.beta * sem_q
+            if self.arb_lambda is not None:
+                # [P39-V5] compete-and-arbitrate (β 잔차 대체): per-class Λ로
+                # 스케일한 query semantic을 학습 시 path dropout으로 경쟁시킨다
+                # (25% dense-only / 25% query-only / 50% combined) — 어느 경로도
+                # 주 손실 무임승차(no-op 고착, 키1)가 불가능. 추론은 항상 결합.
+                q_scaled = F.softplus(self.arb_lambda).view(1, -1, 1, 1) * sem_q
+                if self.p39_query_off:
+                    q_scaled = q_scaled * 0.0
+                if self.training:
+                    p = self.p39_path_dropout_p
+                    r = float(torch.rand(1).item())
+                    if r < p:
+                        pass                                # dense-only turn
+                    elif r < 2.0 * p:
+                        logits = q_scaled                   # query-only turn
+                    else:
+                        logits = logits + q_scaled
+                else:
+                    logits = logits + q_scaled
+            else:
+                # [P38] legacy zero-init beta residual (반증됨 — arbiter 권장)
+                logits = logits + self.m2f.beta * sem_q
             if self.training and gt_mask is not None:
                 aux['m2f_loss'] = self.m2f_loss_w * self.m2f.losses(
                     m2f_out, m_feat, gt_mask)
+        if (self.arb_lambda is not None and self.training
+                and routed is not None and gt_mask is not None):
+            # [P39-V5] router 직접 감독: 결정경로 의존(co-adaptation)이 아니라
+            # 자립 기여로 학습시킨다 (키2). routed 해상도에서 CE.
+            gt_r = F.interpolate(gt_mask.unsqueeze(1).float(),
+                                 size=routed.shape[-2:],
+                                 mode='nearest').squeeze(1).long()
+            aux['router_ce'] = self.p39_router_ce_w * F.cross_entropy(
+                routed.float(), gt_r, ignore_index=255)
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
@@ -422,6 +485,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     cefr = mc.get('CEFR', {}) or {}
     ctok = mc.get('CLASS_TOKEN', {}) or {}
     m2f = mc.get('M2F', {}) or {}
+    p39 = mc.get('P39', {}) or {}
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -490,6 +554,13 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         m2f_points=m2f.get('POINTS', 12544),
         m2f_deep_supervision=m2f.get('DEEP_SUPERVISION', True),
         m2f_loss_w=m2f.get('LOSS_W', 0.5),
+        m2f_src_modal=(str(m2f.get('SRC', 'fused')).lower() == 'modal'),
+        m2f_anchored=m2f.get('ANCHORED', False),
+        m2f_point_quota=m2f.get('POINT_QUOTA', 0),
+        p39_trunk_exp=p39.get('TRUNK_EXP', False),
+        p39_arbiter=p39.get('ARBITER', False),
+        p39_path_dropout_p=p39.get('PATH_DROPOUT_P', 0.25),
+        p39_router_ce_w=p39.get('ROUTER_CE_W', 0.4),
         modal_dropout=mdrop.get('ENABLE', False),
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),

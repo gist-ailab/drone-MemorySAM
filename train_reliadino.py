@@ -262,7 +262,7 @@ def main(cfg, gpu, save_dir, logger):
         if ddp_enable:
             sampler.set_epoch(epoch)
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
-        cefr_accum = ctd_accum = m2f_accum = 0.0
+        cefr_accum = ctd_accum = m2f_accum = rce_accum = 0.0
         auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
@@ -282,9 +282,10 @@ def main(cfg, gpu, save_dir, logger):
                 cefr_reg = aux.get('cefr_reg', _zero)       # [P37a] pre-scaled (decisive+hinge)
                 ctd_ce = aux.get('ctd_ce', _zero)           # [P37b] class-token aux CE
                 m2f_loss = aux.get('m2f_loss', _zero)       # [P38] pre-scaled (LOSS_W in model)
+                router_ce = aux.get('router_ce', _zero)     # [P39-V5] pre-scaled (ROUTER_CE_W)
                 total = (loss_seg + lambda_cal * cal_loss
                          + lambda_aux_ce * aux_ce + gate_ent + router_reg
-                         + cefr_reg + lambda_ctd * ctd_ce + m2f_loss)
+                         + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -308,6 +309,7 @@ def main(cfg, gpu, save_dir, logger):
             cefr_accum += float(cefr_reg)
             ctd_accum += float(ctd_ce)
             m2f_accum += float(m2f_loss)
+            rce_accum += float(router_ce)
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
@@ -387,6 +389,18 @@ def main(cfg, gpu, save_dir, logger):
                 log_extra['train/m2f_loss'] = m2f_accum / (it + 1)
                 logger.info(f"[P38] m2f beta:{m2f_beta:.4f} "
                             f"m2f_loss:{m2f_accum / (it + 1):.4f}")
+            if getattr(_core, 'arb_lambda', None) is not None:
+                # [P39] per-class arbitration Λ (softplus space) + router CE
+                lam = torch.nn.functional.softplus(_core.arb_lambda.detach())
+                writer.add_scalar('p39/arb_lambda_mean', float(lam.mean()), epoch)
+                writer.add_scalar('p39/arb_lambda_max', float(lam.max()), epoch)
+                writer.add_scalar('train/router_ce', rce_accum / (it + 1), epoch)
+                log_extra['p39/arb_lambda_mean'] = float(lam.mean())
+                log_extra['p39/arb_lambda_max'] = float(lam.max())
+                log_extra['train/router_ce'] = rce_accum / (it + 1)
+                logger.info(f"[P39] arb λ mean:{float(lam.mean()):.3f} "
+                            f"max:{float(lam.max()):.3f} "
+                            f"router_ce:{rce_accum / (it + 1):.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),

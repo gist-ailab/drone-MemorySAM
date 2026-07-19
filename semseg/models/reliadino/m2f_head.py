@@ -91,16 +91,35 @@ class MaskQueryLiteHead(nn.Module):
                  num_heads: int = 8, mlp_ratio: float = 2.0,
                  beta_init: float = 0.0, w_cls: float = 2.0, w_bce: float = 5.0,
                  w_dice: float = 5.0, no_obj_w: float = 0.1,
-                 num_points: int = 12544, deep_supervision: bool = True):
+                 num_points: int = 12544, deep_supervision: bool = True,
+                 use_modal_src: bool = False, num_modalities: int = 4,
+                 anchored: bool = False, point_quota: int = 0):
         super().__init__()
         if not HAS_SCIPY:
             raise ImportError("[P38] MaskQueryLiteHead requires scipy "
                               "(Hungarian matching)")
+        if anchored and num_queries <= num_classes:
+            raise ValueError("[P39] anchored queries require num_queries > num_classes")
         self.num_classes = num_classes
         self.num_queries = num_queries
         self.w_cls, self.w_bce, self.w_dice = w_cls, w_bce, w_dice
         self.num_points = num_points
         self.deep_supervision = deep_supervision
+        # [P39-V2] queries attend the UNION of per-modal token sets (bypassing
+        # the rank-collapsed fused map, 실패-키 3); modality embedding tags each
+        # segment. Falls back to the fused map when modal feats aren't passed
+        # (the det path calls forward(fused, feat_s4) and stays on P38 behavior).
+        self.use_modal_src = use_modal_src
+        if use_modal_src:
+            self.modality_embed = nn.Parameter(torch.empty(num_modalities, dim_t))
+            nn.init.normal_(self.modality_embed, std=0.02)
+        # [P39-V3] first K queries are class-anchored (fixed assignment k<->k,
+        # supervised every step — Hungarian starvation fix for thin classes);
+        # the remaining (Q-K) stay free/Hungarian (instance capacity for PQ).
+        self.anchored = anchored
+        # [P39-V4] per-GT-region minimum point quota in the sampled mask losses
+        # (0 = uniform sampling, P38 behavior).
+        self.point_quota = int(point_quota)
 
         self.query = nn.Parameter(torch.empty(num_queries, dim_t))
         nn.init.normal_(self.query, std=0.02)
@@ -150,14 +169,27 @@ class MaskQueryLiteHead(nn.Module):
         bias = bias.masked_fill(masked, float('-inf'))
         return bias.unsqueeze(1)
 
-    def forward(self, fused: torch.Tensor, feat_s4: torch.Tensor) -> Dict:
+    def forward(self, fused: torch.Tensor, feat_s4: torch.Tensor,
+                modal_feats: Optional[List[torch.Tensor]] = None) -> Dict:
         B = fused.shape[0]
         hw = fused.shape[-2:]
-        src = self.in_proj(fused.flatten(2).transpose(1, 2))   # (B,N,dim_t)
+        if self.use_modal_src and modal_feats is not None:
+            # [P39-V2] src = concat_m(in_proj(f_m) + emb_m): (B, M*N, dim_t),
+            # modality-major order. The attention mask is spatial, so it tiles
+            # M times below.
+            src = torch.cat([
+                self.in_proj(f.flatten(2).transpose(1, 2)) + self.modality_embed[i]
+                for i, f in enumerate(modal_feats)], dim=1)
+            n_rep = len(modal_feats)
+        else:
+            src = self.in_proj(fused.flatten(2).transpose(1, 2))   # (B,N,dim_t)
+            n_rep = 1
         q = self.query.unsqueeze(0).expand(B, -1, -1)
         aux_states: List[torch.Tensor] = []
         for li, layer in enumerate(self.layers):
             bias = self._attn_bias(q, feat_s4, hw) if li > 0 else None
+            if bias is not None and n_rep > 1:
+                bias = bias.repeat(1, 1, 1, n_rep)               # tile per modality
             q = layer(q, src, bias)
             if self.training and self.deep_supervision and li < len(self.layers) - 1:
                 aux_states.append(q)
@@ -212,12 +244,26 @@ class MaskQueryLiteHead(nn.Module):
                                      dtype=torch.long)
         bce = dice = cls_logits.sum() * 0.0
         n_masks = 0
+        K = self.num_classes
         for b in range(B):
             if tgt_cls[b].numel() == 0:
                 continue
             pred_pts = membed[b] @ feat_pts[b]                  # (Q,P)
-            qi, ti = self._match(cls_logits[b].detach(), pred_pts.detach(),
-                                 tgt_cls[b], tgt_pts[b])
+            if self.anchored:
+                # [P39-V3] anchored queries: fixed assignment query k <-> class k
+                # (no matching -> thin classes are supervised EVERY step); free
+                # queries [K:] run Hungarian over the same regions (P38-style
+                # capacity, instance-ready for PQ).
+                qi_a = tgt_cls[b]
+                ti_a = torch.arange(qi_a.numel(), device=qi_a.device)
+                qi_f, ti_f = self._match(cls_logits[b, K:].detach(),
+                                         pred_pts[K:].detach(),
+                                         tgt_cls[b], tgt_pts[b])
+                qi = torch.cat([qi_a, qi_f + K])
+                ti = torch.cat([ti_a, ti_f])
+            else:
+                qi, ti = self._match(cls_logits[b].detach(), pred_pts.detach(),
+                                     tgt_cls[b], tgt_pts[b])
             ce_tgt[b, qi] = tgt_cls[b][ti]
             mp, mt = pred_pts[qi], tgt_pts[b][ti]
             bce = bce + F.binary_cross_entropy_with_logits(mp, mt, reduction='mean') \
@@ -239,7 +285,28 @@ class MaskQueryLiteHead(nn.Module):
                                   mode='nearest').squeeze(1).long()   # (B,h,w)
         N = h * w
         P = min(self.num_points, N)
-        idx = torch.randint(0, N, (B, P), device=feat_s4.device)
+        if self.point_quota > 0:
+            # [P39-V4] balanced sampling: every present class region gets at
+            # least `quota` points (with replacement), remainder uniform —
+            # thin masks no longer starve out of the point budget.
+            gt_flat_pre = gt_s4.flatten(1)
+            idx = torch.empty(B, P, dtype=torch.long, device=feat_s4.device)
+            for b in range(B):
+                cs = torch.unique(gt_flat_pre[b])
+                cs = cs[cs != 255]
+                parts = []
+                if cs.numel() > 0:
+                    quota = min(self.point_quota, P // int(cs.numel()))
+                    for c in cs.tolist():
+                        pix = (gt_flat_pre[b] == c).nonzero(as_tuple=True)[0]
+                        sel = torch.randint(0, pix.numel(), (quota,),
+                                            device=pix.device)
+                        parts.append(pix[sel])
+                fill = P - sum(int(p.numel()) for p in parts)
+                parts.append(torch.randint(0, N, (fill,), device=feat_s4.device))
+                idx[b] = torch.cat(parts)
+        else:
+            idx = torch.randint(0, N, (B, P), device=feat_s4.device)
         feat_flat = feat_s4.flatten(2).float()                  # (B,C,N)
         feat_pts = torch.gather(feat_flat, 2,
                                 idx.unsqueeze(1).expand(-1, C, -1))   # (B,C,P)
