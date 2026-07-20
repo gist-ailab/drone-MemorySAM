@@ -1,7 +1,7 @@
 # P39-DPC 조기판정 (토글 즉검) — MUSES ep66 + DELIVER ep38 (2026-07-20)
 
 **목적**: 제안서(2026-07-20-p39-dual-path-compete-proposal.md) §3의 사전 등록 게이트 — "학습 직후 module_ablation 즉검, no-op 조기 탈락 기준 |Δ|>0.5 & agreement<0.99" 집행.
-**ckpt**: MUSES `epoch66_80.08_top1`(jarvis, ep72/300 진행 중 스냅샷) · DELIVER `epoch38_65.04_top1`(hpca100, ep53/200 진행 중 스냅샷).
+**ckpt**: **MUSES 3모달(img/lidar/event)** `epoch66_80.08_top1`(jarvis, ep72/300 진행 중 스냅샷) · **DELIVER 4모달(img/depth/event/lidar)** `epoch38_65.04_top1`(hpca100, ep53/200 진행 중 스냅샷).
 **실행**: yeon GPU0/1 병렬, n=40/조건. **산출물**: NAS `analysis_logs/P39_earlycheck_20260720/`.
 
 ## 판정: V1·V5·router 전부 생존 — 5세대 만에 처음으로 신규 모듈이 no-op이 아님

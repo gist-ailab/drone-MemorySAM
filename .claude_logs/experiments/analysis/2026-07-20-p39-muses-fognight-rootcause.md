@@ -1,6 +1,6 @@
 # P39-MUSES fog_night 붕괴 원인 규명 + P39.1 스펙 (2026-07-20)
 
-**대조**: P39-DPC ep146(공식 test 78.881) vs P38-m2f ep156(79.025), MUSES val, **조합 셀**(fog_night/clear_night/snow_night/rain_night/fog_day — 조합 CASE 지원 커밋 dee524f로 처음 가능).
+**대조**: **MUSES 3모달(img/lidar/event)** — P39-DPC ep146(공식 test 78.881) vs P38-m2f ep156(79.025), val, **조합 셀**(fog_night/clear_night/snow_night/rain_night/fog_day — 조합 CASE 지원 커밋 dee524f로 처음 가능).
 **산출물**: NAS `analysis_logs/P39_muses_fognight_20260720/`(+`figs/fig1~4`).
 
 ## 한줄 판정

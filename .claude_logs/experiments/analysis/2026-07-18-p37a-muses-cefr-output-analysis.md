@@ -1,6 +1,6 @@
 # P37a-CEFR MUSES 출력 분석 — "구조가 역할했는가, 라우팅이 됐는가" (2026-07-18)
 
-**대상**: P37a-CEFR MUSES val-best `epoch110_81.16_top1_checkpoint.pth` (hpca100 학습, val 81.16 = P34-3modal 80.86 +0.30)
+**대상**: P37a-CEFR **MUSES 3모달(img/lidar/event)** val-best `epoch110_81.16_top1_checkpoint.pth` (hpca100 학습, val 81.16 = P34-3modal 80.86 +0.30)
 **실행**: yeon GPU0, worktree `/SSDb/jemo_maeng/src/dm_analysis` @ develop 2ed3076
 **도구**: `tools/probe_cefr_routing.py` (val 60장) + `tools/module_ablation.py` (val 40장, 토글 4종)
 **산출물**: yeon `/SSDb/jemo_maeng/analysis/P37a_muses_20260718/` → NAS `analysis_logs/P37a_muses_20260718/` 회수

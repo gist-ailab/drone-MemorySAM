@@ -1,6 +1,6 @@
 # P39-DELIVER 세 시점 비교 — ep38 / ep60 / ep64 (2026-07-20)
 
-**대상**: hpca100 P39-DPC(DELIVER, 학습 진행 중) 3 스냅샷 — ep38(구 val-best 65.04) · ep60(게이트 판정 64.79) · **ep64(신규 val-best 65.68, P38 피크 65.19 첫 돌파)**
+**대상**: hpca100 P39-DPC(**DELIVER 4모달 img/depth/event/lidar**, 학습 진행 중) 3 스냅샷 — ep38(구 val-best 65.04) · ep60(게이트 판정 64.79) · **ep64(신규 val-best 65.68, P38 피크 65.19 첫 돌파)**
 **실행**: yeon GPU1/2/6 병렬, 표준 파이프라인 8스테이지 전부 ok. **산출물**: NAS `analysis_logs/P39_deliver_{best,ep60,ep64}_20260720/` + 비교 그림 `P39_deliver_3ckpt_compare_20260720/fig1~6`
 
 ## 한줄 판정
@@ -48,10 +48,10 @@ ep64−ep38 클래스별 Δ(5조건 평균): **RailTrack −20.4**가 압도적�
 | D-2 | Water 1.6~4.6, Bridge 0.0, Other ~2 (전 시점 사망) | **확정**: V3 앵커 query·V4 쿼터가 있어도 회복 실패 — 데이터 희소성 자체 | 앵커 query에 **클래스 균형 손실 가중**(현재 쿼터는 포인트 수만 보장, 손실 크기는 미보정) |
 | D-3 | ep60 night에서 gate/calib off가 RailTrack +36/+26 | **확정**: 신뢰도 게이트가 특정 클래스·조건에서 유해 | gate를 thin-class에 대해 비활성(클래스 조건부) 또는 완전 제거(3세대 no-op 근거 + 이번 유해 증거) |
 | D-4 | val 65.68인데 test 최저 | **확정**: val(주간)이 test(5조건) 대리 지표로 실패 | **모델 선택 규칙 변경** — val-best 대신 val+test-cond 혼합 또는 thin-class 포함 복합 지표로 ckpt 선택(리포팅 규칙과는 별개의 내부 선택 문제) |
-| D-5 | 모듈은 살아있는데 절대 성능이 P36 fair 미달 | **가설**: 레시피(physaug off) | P39.1에서 physaug 복원 1-변수 |
+| D-5 | 모듈은 살아있는데 절대 성능이 P36 fair 미달 | 미해결 (레시피 가설은 폐기) | 🔴 **physaug 복원은 공정성 문제로 배제**(user 판정 07-20) — 게이트는 아키텍처만으로 넘는다. [rootcause 문서](2026-07-20-p39-muses-fognight-rootcause.md) M-1(lidar rank 회복)이 대체 1순위 |
 
 ## 6. 다음 행동 권고
 
 1. **DELIVER P39 학습**: RailTrack이 회복되지 않는 한 완주 가치 낮음 → D-1·D-3을 반영한 **P39.1로 교체** 권고(GPU 점유는 유지).
-2. **P39.1 1순위 변수**: physaug 복원(D-5) + gate 완전 off(D-3, 무해→유해로 판정 변경) — 단 1-변수 원칙상 physaug 우선, gate off는 config 토글이므로 동시 적용 시 ablation 행으로 분리.
+2. **P39.1 1순위 변수(physaug 배제 후 갱신)**: M-1 lidar rank 회복(V1 trunk_exp 구조 교체) 주 변수 + gate/calib 완전 off(D-3, 무해→유해로 판정 변경, config 토글이라 동반하되 ablation 행 분리).
 3. MUSES 쪽 처방(fog_night)은 별도 분석 완료 후 합류.
