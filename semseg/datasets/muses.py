@@ -142,9 +142,19 @@ class MUSES(Dataset):
 
         self.files = sorted(glob.glob(os.path.join(root, 'frame_camera', split, '*', '*', '*.png')))
         if case is not None:
-            assert case in self.WEATHER + self.TIME_OF_DAY, \
-                f"Case must be one of {self.WEATHER + self.TIME_OF_DAY}."
-            self.files = [f for f in self.files if f'{os.sep}{case}{os.sep}' in f]
+            # 단일 축(weather 또는 tod) 또는 조합 'weather_tod' (예: 'fog_night').
+            # 조합은 combo 실패 분석용 — MUSES test 리더보드가 weather×tod 셀로
+            # 채점되므로 같은 셀 단위로 진단할 수 있어야 한다.
+            if '_' in case:
+                w, tod = case.split('_', 1)
+                assert w in self.WEATHER and tod in self.TIME_OF_DAY, \
+                    f"Combo case must be '<{'|'.join(self.WEATHER)}>_<day|night>', got {case}."
+                sub = f'{os.sep}{w}{os.sep}{tod}{os.sep}'
+            else:
+                assert case in self.WEATHER + self.TIME_OF_DAY, \
+                    f"Case must be one of {self.WEATHER + self.TIME_OF_DAY} or '<weather>_<tod>'."
+                sub = f'{os.sep}{case}{os.sep}'
+            self.files = [f for f in self.files if sub in f]
         if not self.files:
             raise FileNotFoundError(
                 f"No images found in {root}/frame_camera/{split}/*/*/*.png")
