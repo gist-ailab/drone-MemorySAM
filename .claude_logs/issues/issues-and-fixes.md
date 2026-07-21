@@ -17,6 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-025** | ✅ **해결(2026-07-21)** | MUSES radar 디코딩 3중 버그 — `_open_radar` 폴스루+디스패치 오배선+`RADAR_RANGE_MAX` 미정의로 100m 클립(실측 유효픽셀 2.76% 포화, 센서 캡=150.0m) + height 채널 0.25 상수 오염. develop에서 수정 완료. **영향은 4모달(radar 포함) 실험만, 3모달 전 계보 무영향.** 상세: 하단 ISSUE-025 |
 | **ISSUE-024** | 🟡 **OPEN (조건부 — P37b kill-gate 생존 시 수정)** | P37b `classtoken.py`의 `mask_proj`(attn-mask 예측기)가 threshold 비교(비미분)로만 쓰여 gradient 미도달 → 영구 random init, masked attention이 사실상 random 마스킹. P38 `m2f_head.py`가 올바른 수정 패턴(`_attn_bias`) 보유. 상세: 하단 ISSUE-024 |
 | **ISSUE-023** | ✅ **완화 완료(2026-07-08)** / 🟡 근본해결 대기 | **/mnt/HDD2 ENOSPC = NTFS MFT 레코드 고갈** — 아카이브 27k+파일을 drone NAS로 전량 소산해 레코드 해방, **쓰기 정상화 검증 완료(2,000파일 연속 생성 OK)**. 단 대량 파일 쓰기(수만 개)는 재마운트/Windows 검증 전까지 자제. 상세: 하단 ISSUE-023 |
 | **ISSUE-022** | ✅ **해결(2026-07-03)** | **P27.forward가 `_fuse_outputs` 훅 미호출 → P30 learned router 200ep 내내 미실행** (P31.2 훅 호출로 수정; P30 결과 = router 미참여로 재해석) |
@@ -44,6 +45,31 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-025: MUSES radar 디코딩 3중 버그 — RADAR_RANGE_MAX 미정의로 100m 클립 + height 채널 오염 [해결, 2026-07-21]
+
+**발견 경위**: jarvis에서 진행 중인 P39 4모달(rgbelr) radar 기여 재검토를 위해 radar 디코더 경로를 실측 검증하던 중 발견. jarvis radar 75파일 실측(2026-07-21)으로 확정.
+
+**메커니즘 (3중)**:
+1. `_open_radar`가 자체 구현 없이 `_open_lidar`로 **폴스루** — radar 전용 처리(range 스케일 등)가 애초에 존재하지 않았음.
+2. 데이터셋 `__getitem__` 디스패치가 radar 모달을 `_open_radar`가 아니라 `_open_lidar`로 **직접 라우팅** — ①의 폴스루 여부와 무관하게 `_open_radar` 자체가 죽은 코드였음.
+3. 결과적으로 radar range가 (lidar 기준) `LIDAR_RANGE_MAX=100m`에 **클립**됨 — 실측 결과 유효 픽셀의 **2.76%가 이 클립에서 포화**. radar 센서 실제 캡은 **정확히 150.0m**로 확인. 추가로 lidar 파이프라인의 height 채널(radar는 전 픽셀 0)이 정규화 후 **0.25 상수 평면**으로 오염되어 3번째 채널이 정보 없이 채워짐.
+
+**수정**: `RADAR_RANGE_MAX=150.0`으로 radar 전용 클립 상수 도입, ch3(height)를 radar에서는 **occupancy 마스크**로 대체, `__getitem__` 디스패치에서 radar를 `_open_radar`로 정상 라우팅. develop에 반영 완료(merge 80d65a0 계보).
+
+**참고**: lecun 세션에서도 동일 시기 미검증 픽스(브랜치 `lecun-wip-20260721`)가 있었으나 방향만 같고 별개로 독립 실측 검증 후 재작성함 — 두 세션이 동일 버그를 독립 발견.
+
+**영향 범위**:
+| 실험 | 영향 |
+|---|---|
+| P34 4모달(rgbelr) MUSES test 78.256 | **오염** — "radar 유해 −0.72" 판정은 broken decoder 상태에서 나온 결론이라 **보류**. 픽스 후 재측정 필요 |
+| diag_D zeroradar 계열 | 오염(radar 포함 조건) |
+| P39 4모달(jarvis 진행 중, rgbelr) | 오염 — 진행 중 "+0.86" 등 수치는 **broken-radar 하한**으로 취급, 픽스 후 상향 여지 있음. 완주는 그대로 시켜 broken-radar 기준선으로 보존 |
+| **3모달 전 계보** (P34-3모달 78.979 / P37a / P38-m2f 79.025 / P39-3모달 78.881 등) | **무영향** — radar 미사용이므로 오염 없음. lidar/event/camera 디코더는 원래 정상이었음 |
+
+**후속**: 픽스 적용 4모달 재실험을 대기열 후보로 등록(`experiments/plan.md`) — ISSUE-025 픽스 후 radar 기여를 재측정해야 P34의 "radar −0.72" 판정을 확정/철회할 수 있음.
 
 ---
 
