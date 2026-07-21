@@ -9,6 +9,12 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-21 — MUSES fog per-scene 감사 완료 → 파국장면 가설 기각, P39.1 투입 GO
+
+P39-DPC ep146 vs P38-m2f ep156 fog(n=58)/night(n=100) per-image mIoU 분포 감사(`tools/p39_fog_scene_audit.py`, jarvis GPU6). worst5도 조밀(fog worst ~51+, skew≈0) — 소수 파국 장면이 평균을 끌어내리는 패턴 없음, **가설 기각**. fog 약점은 장면 품질이 아니라 **희소 클래스의 조건부 전멸**(traffic light/rider/train 0@fog)로 판정, 헤드룸 추정 하향 조정. **P39.1 투입 판단: GO**(rank 수리 근거인 공식 test fog_night −12.05는 per-scene 문제가 아니므로 유효). 상세 = [experiments/analysis/2026-07-21-p39-fog-scene-audit.md](../experiments/analysis/2026-07-21-p39-fog-scene-audit.md), 산출물 NAS `analysis_logs/P39_fog_scene_audit_20260721/`. plan.md #1 선행조건 갱신 = fog 감사 완료·GO, trunk_exp-off 재측정은 무효 판정으로 취소(ep30 rank 게이트가 대체).
+
+---
+
 ### 2026-07-21 — P39.1(rank 수리) + P40(RCA) 구현 완료 (학습 대기)
 
 **배경**: P39-MUSES 표준분석(2026-07-21)이 **lidar effective-rank 4.7 붕괴**(adapter가 압축 주체, feat_cos 0.115)와 **fog_night 62.68 붕괴**(P39 제출 최저, 전 조건 최저)를 지목. 관련연구 딥리서치 3편(rank collapse / modality imbalance / fog 물리)으로 원인을 교차검증해 제안·구현. 제안 문서 = [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md)(등재 완료).
