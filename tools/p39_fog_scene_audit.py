@@ -95,7 +95,18 @@ def main():
             for idx in range(n):
                 sample = dataset[idx]
                 images, gt = sample[0], sample[1]
-                img_id = str(sample[2]) if len(sample) > 2 else f"idx{idx}"
+                meta = sample[2] if len(sample) > 2 else None
+                if isinstance(meta, dict):
+                    img_id = str(meta.get('stem', f"idx{idx}"))
+                    ip = (meta.get('paths', {}) or {}).get('img', '')
+                    for c in ('fog', 'rain', 'snow', 'clear'):
+                        if f"/{c}/" in ip:
+                            for t in ('day', 'night'):
+                                if f"/{t}/" in ip:
+                                    img_id = f"{c}_{t}:{img_id}"
+                            break
+                else:
+                    img_id = str(meta) if meta is not None else f"idx{idx}"
                 imgs = [im.unsqueeze(0).to(device) for im in images]
                 with torch.no_grad():
                     out = model(imgs, multimask_output=True)
