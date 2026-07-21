@@ -76,6 +76,16 @@ def load_model(cfg, model_path, device):
         missing, unexpected = model.load_state_dict(state, strict=False)
         print(f"[val] ReliaDINO loaded: missing={len(missing)} unexpected={len(unexpected)}"
               + (" ⚠️ (많으면 백본 변형 불일치 — BACKBONE_TIMM 확인)" if len(missing) > 20 else ""))
+        if missing:
+            # 감사 2026-07-21: 소수 missing도 조용히 넘어가면 세대 불일치
+            # ckpt(P38↔P39 등)가 random-init 모듈 섞인 키메라로 평가됨.
+            print(f"[val] ⚠️ missing keys: {sorted(missing)[:12]}"
+                  + (" ..." if len(missing) > 12 else ""))
+        # 감사 2026-07-21 (M4): 조기 return이 아래 공용 경로의
+        # _current_epoch=9999 설정을 건너뛰어 P37a-CEFR ckpt가 λ2=0(warmup
+        # 초기 상태)으로 평가되던 버그 — 학습 후반과 동일 그래프로 고정.
+        if hasattr(model, '_current_epoch'):
+            model._current_epoch = 9999
         return model.to(device)
 
     checkpoint = "semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt"

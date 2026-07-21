@@ -85,6 +85,17 @@ def main():
     order = []
     for label, path in ckpts:
         model = V.load_model(cfg, Path(path), device)
+        # 감사 2026-07-21: 단일 cfg에 세대 다른 ckpt를 strict=False로 얹으면
+        # random-init 모듈이 섞인 키메라를 측정한다(P38 행 오염 사고). missing
+        # 키가 있으면 중단 — 세대별로 자기 cfg를 써서 재실행할 것.
+        _sd = torch.load(path, map_location='cpu', weights_only=False)
+        _sd = _sd.get('model_state_dict', _sd)
+        _missing = [k for k in model.state_dict().keys() if k not in _sd]
+        if _missing:
+            raise SystemExit(
+                f"[fog_audit] ckpt '{label}'가 cfg 아키텍처와 불일치 "
+                f"(missing {len(_missing)}: {_missing[:6]}...) — 이 ckpt 세대의 "
+                f"config로 별도 실행하라 (키메라 측정 금지)")
         model.eval()
         for cond in conds:
             ds_cfg['CASE'] = cond

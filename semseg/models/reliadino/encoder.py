@@ -210,6 +210,16 @@ class FrozenViTEncoder(nn.Module):
             w.active_modality = idx
 
     def set_grad_checkpointing(self, enable: bool = True):
+        # ISSUE-027 가드: timm의 non-reentrant checkpoint는 backward 재계산
+        # 시점의 self.active_modality(=마지막 모달)를 읽어, 비최종 모달들의
+        # LoRA gradient를 오염된 활성화로 계산한다(무경고·무에러 — bengio
+        # 실증, jarvis/hpca100 configs의 "절대 true 금지" 주석). 멀티모달
+        # 구성에서는 요청을 거부하고 강제 off한다. 메모리 부족 시 배치를
+        # 줄일 것. (근본 수정 = 모달 인덱스를 checkpoint 함수 인자로 결박)
+        if enable and getattr(self, 'num_modalities', 1) > 1:
+            print("[FrozenViTEncoder] 🔴 GRADIENT_CHECKPOINT=true 거부 → off "
+                  "(ISSUE-027: stale active_modality가 LoRA grad 오염)")
+            enable = False
         if hasattr(self.backbone, 'set_grad_checkpointing'):
             self.backbone.set_grad_checkpointing(enable)
 

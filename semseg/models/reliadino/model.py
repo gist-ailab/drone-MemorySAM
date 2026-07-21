@@ -215,16 +215,9 @@ class ReliaDINO(nn.Module):
             self.det_classtoken_proj = None
             self.det_classtoken_alpha = None
 
-        # [P37b] ClassToken-lite-Learned auxiliary head (config-gated, default
-        # OFF -> byte-identical to P36). Learned class tokens over the gated
-        # fused stride-16 map; residual scale beta is zero-init (collapse-safe).
-        self.classtoken = None
-        if class_token_enable:
-            self.classtoken = ClassTokenLiteHead(
-                dim=dim, fpn_dim=fpn_dim, num_classes=num_classes,
-                num_layers=class_token_layers, dim_t=class_token_dim,
-                num_heads=class_token_heads, mlp_ratio=class_token_mlp_ratio,
-                beta_init=class_token_beta_init)
+        # (중복 ClassTokenLiteHead 생성 블록 제거 — 감사 2026-07-21: 동일
+        # 블록 2회 생성으로 init RNG 스트림이 어긋나 seed 재현 비교를 깨던
+        # merge 잔재. 첫 생성(위)만 유지.)
 
         # [P38] Mask2Former-lite query head (config-gated, default OFF ->
         # byte-identical to P36). Learned queries + Hungarian mask-cls losses
@@ -354,28 +347,45 @@ class ReliaDINO(nn.Module):
     def set_grad_checkpointing(self, enable: bool = True):
         self.encoder.set_grad_checkpointing(enable)
 
+    def _apply_trunk_exp(self, fused: torch.Tensor,
+                         feats: List[torch.Tensor]) -> torch.Tensor:
+        """[P39-V1/P39.1-R1] modal subspace restoration — seg/det 공용 단일
+        경로. (감사 2026-07-21: det seam 2곳이 gated_mlp 모드에서 tanh(γ)
+        게이트를 생략해 seg와 다른 trunk를 만들던 버그의 수정 — 결선을 한
+        곳으로 모아 재발 차단.)"""
+        if self.trunk_exp is None or self.p39_trunkexp_off:
+            return fused
+        if self.trunk_gamma is not None:
+            return fused + sum(
+                torch.tanh(self.trunk_gamma[i]) * self.trunk_exp[i](f)
+                for i, f in enumerate(feats))
+        return fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+
     def _vicreg_loss(self, feats: List[torch.Tensor]) -> torch.Tensor:
         """[P39.1-R2] VICReg var+cov on per-modality tokens (VICRegL-style,
         dense). per-GPU, fp32, token-subsampled — restores collapsed branch
         rank (P39 lidar eff.rank 4.7 vs P38 24.7). Pre-scaled by λ and the
         per-modality weight (lidar emphasized)."""
         total = feats[0].new_zeros((), dtype=torch.float32)
-        for i, f in enumerate(feats):
-            w = self.p391_vicreg_w[i]
-            if w <= 0:
-                continue
-            z = f.flatten(2).transpose(1, 2).reshape(-1, f.shape[1]).float()
-            M = z.shape[0]
-            k = min(self.p391_vicreg_tokens, M)
-            if k < M:
-                z = z[torch.randint(0, M, (k,), device=z.device)]
-            z = z - z.mean(0, keepdim=True)
-            l_var = F.relu(1.0 - torch.sqrt(z.var(0) + 1e-4)).mean()
-            C = (z.T @ z) / max(z.shape[0] - 1, 1)
-            d = C.shape[0]
-            l_cov = (C.pow(2).sum() - C.diagonal().pow(2).sum()) / d
-            total = total + w * (self.p391_vicreg_lvar * l_var
-                                 + self.p391_vicreg_lcov * l_cov)
+        # 감사 2026-07-21: trainer autocast(bf16) 아래에서 covariance 행렬곱이
+        # bf16으로 계산되던 것을 fp32로 강제 (docstring 계약 준수).
+        with torch.autocast(device_type=feats[0].device.type, enabled=False):
+            for i, f in enumerate(feats):
+                w = self.p391_vicreg_w[i]
+                if w <= 0:
+                    continue
+                z = f.flatten(2).transpose(1, 2).reshape(-1, f.shape[1]).float()
+                M = z.shape[0]
+                k = min(self.p391_vicreg_tokens, M)
+                if k < M:
+                    z = z[torch.randint(0, M, (k,), device=z.device)]
+                z = z - z.mean(0, keepdim=True)
+                l_var = F.relu(1.0 - torch.sqrt(z.var(0) + 1e-4)).mean()
+                C = (z.T @ z) / max(z.shape[0] - 1, 1)
+                d = C.shape[0]
+                l_cov = (C.pow(2).sum() - C.diagonal().pow(2).sum()) / d
+                total = total + w * (self.p391_vicreg_lvar * l_var
+                                     + self.p391_vicreg_lcov * l_cov)
         return total
 
     def _decode(self, fused: torch.Tensor, routed: Optional[torch.Tensor]):
@@ -477,15 +487,7 @@ class ReliaDINO(nn.Module):
             fused = (1.0 - mix) * fused + mix * fused_p
             if self.training and cefr_reg is not None:
                 aux['cefr_reg'] = cefr_reg          # trainer adds to total loss
-        if self.trunk_exp is not None and not self.p39_trunkexp_off:
-            # [P39-V1 / P39.1-R1] modal subspace restoration on the main trunk
-            # (gated_mlp mode: nonlinear + tanh(γ) gate, γ zero-init).
-            if self.trunk_gamma is not None:
-                fused = fused + sum(
-                    torch.tanh(self.trunk_gamma[i]) * self.trunk_exp[i](f)
-                    for i, f in enumerate(feats))
-            else:
-                fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+        fused = self._apply_trunk_exp(fused, feats)
         if self.p391_vicreg and self.training:
             aux['vicreg'] = self._vicreg_loss(feats)    # [P39.1-R2] pre-scaled
         logits, m_feat = self._decode(fused, routed)
@@ -566,11 +568,6 @@ class ReliaDINO(nn.Module):
         feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
-        if self.trunk_exp is not None and not self.p39_trunkexp_off:
-            # [P39-V1] same modal-subspace restoration the seg forward applies.
-            # Without this the det path trains on the un-expanded trunk while the
-            # P39 projections sit unused (silent no-op).
-            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
         cefr_ctx = aux.get('cefr_ctx', None) if isinstance(aux, dict) else None
         if cefr_ctx is not None:
             # pass-1 seg decode supplies only the DETACHED posterior q (reliability
@@ -585,6 +582,8 @@ class ReliaDINO(nn.Module):
                 cefr_ctx['log_post'], q, self._current_epoch)
             mix = torch.sigmoid(self.fusion.cefr.a)
             fused = (1.0 - mix) * fused + mix * fused_p
+        # [P39-V1] seg forward와 동일 순서(CEFR blend 이후)·동일 게이트로 적용
+        fused = self._apply_trunk_exp(fused, feats)
         pyramid = self.fpn(fused)
         if routed is not None and getattr(self, 'det_router_proj', None) is not None:
             r = self.det_router_proj(routed)
@@ -618,11 +617,7 @@ class ReliaDINO(nn.Module):
         feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
-        if self.trunk_exp is not None and not self.p39_trunkexp_off:
-            # [P39-V1] same modal-subspace restoration the seg forward applies.
-            # Without this the det path trains on the un-expanded trunk while the
-            # P39 projections sit unused (silent no-op).
-            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+        fused = self._apply_trunk_exp(fused, feats)   # seg와 동일 게이트 경로
         with torch.no_grad():
             _, feat_s4 = self._decode(fused, routed)
         # [P39-V2] let the queries attend the per-modal token union (bypasses the

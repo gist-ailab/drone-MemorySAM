@@ -111,8 +111,16 @@ def make_toggles(core):
             T['p37_cefr_off'] = _cefr_apply
 
     # [P38] MaskQueryLite semantic 잔차 차단 (logits += beta·sem_q → beta=0)
+    # 감사 2026-07-21: P39 arbiter 활성 모델에서는 beta 경로가 미사용이라
+    # 이 토글이 항상 Δ=0 → "m2f 기여 없음"으로 오판됨. beta 경로가 실제
+    # 결선일 때(arb_lambda 부재)만 등록.
     m2f = getattr(core, 'm2f', None)
-    if m2f is not None and hasattr(m2f, 'beta'):
+    if getattr(core, 'arb_lambda', None) is not None:
+        m2f_beta_live = None      # arbiter가 β를 대체 — p38_m2f_off 무의미
+    else:
+        m2f_beta_live = m2f
+    if m2f_beta_live is not None and hasattr(m2f_beta_live, 'beta'):
+        m2f = m2f_beta_live
         def _m2f_apply():
             old = m2f.beta
             saved = old.detach().clone()
@@ -126,8 +134,13 @@ def make_toggles(core):
         T['p38_m2f_off'] = _m2f_apply
 
     # [P39] Dual-Path Compete (det_module_ablation.py와 동일 계약)
-    attr_toggle('p39_query_off', 'p39_query_off', True)
-    attr_toggle('p39_trunkexp_off', 'p39_trunkexp_off', True)
+    # 감사 2026-07-21: 플래그 attr는 전 세대 모델에 존재하므로 attr 존재만으로
+    # 등록하면 P38 이하 ckpt에서 Δ=0 no-op 행이 생겨 "기여 없음"으로 오판됨.
+    # 해당 모듈이 실재할 때만 등록.
+    if getattr(core, 'arb_lambda', None) is not None:
+        attr_toggle('p39_query_off', 'p39_query_off', True)
+    if getattr(core, 'trunk_exp', None) is not None:
+        attr_toggle('p39_trunkexp_off', 'p39_trunkexp_off', True)
     if m2f is not None:
         def m2f_toggle(name, attr, value):
             if not hasattr(m2f, attr) or getattr(m2f, attr) is None:

@@ -95,8 +95,15 @@ class ColorAugSSD:
     def __call__(self, sample: list) -> list:
         img = sample['img']
         if random.random() < 0.5:
-            img = (img + random.uniform(-self.bd, self.bd)).clamp(0.0, 1.0) \
-                if torch.is_tensor(img) else TF.adjust_brightness(img, 1.0 + random.uniform(-self.bd, self.bd))
+            if torch.is_tensor(img):
+                # ISSUE-026: 파이프라인의 img는 Normalize(/255) 이전의 uint8
+                # 0-255 텐서다. 이전 구현은 [0,1] float을 가정하고 clamp(0,1)
+                # 해서 발화 시 이미지 전체가 ≈1.0으로 붕괴(사실상 RGB-dropout
+                # 0.5)했다. SSD 등가는 0-255 스케일에서 ±32 가산이다.
+                delta = random.uniform(-self.bd, self.bd) * 255.0
+                img = (img.float() + delta).clamp(0.0, 255.0).to(torch.uint8)
+            else:
+                img = TF.adjust_brightness(img, 1.0 + random.uniform(-self.bd, self.bd))
         # SSD는 contrast를 (sat/hue) 앞 또는 뒤 랜덤 순서로 적용
         contrast_first = random.random() < 0.5
         if contrast_first and random.random() < 0.5:
