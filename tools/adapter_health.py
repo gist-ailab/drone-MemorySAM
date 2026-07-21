@@ -162,12 +162,17 @@ def main():
     ap.add_argument('--out', default=None, help='write JSON summary here')
     ap.add_argument('--dead-thresh', type=float, default=1e-4,
                     help='||B||_F below this == dead adapter (B is init-0)')
+    ap.add_argument('--modals', default='img,depth,event,lidar',
+                    help="per-modality 라벨 순서 (DATASET.MODALS와 동일하게). "
+                         "MUSES 3모달=img,lidar,event · MUSES 4모달=img,lidar,event,radar. "
+                         "틀리면 dW가 엉뚱한 모달 이름으로 보고된다.")
     args = ap.parse_args()
 
     sd = load_state(args.ckpt)
     plain = collect_plain_lora(sd)
     moe = collect_softmoe(sd)
-    mm = collect_multimodal_lora(sd)
+    modals = tuple(m.strip() for m in args.modals.split(',') if m.strip())
+    mm = collect_multimodal_lora(sd, modals=modals)
     layers = plain + moe + mm
 
     if not layers:
@@ -188,6 +193,7 @@ def main():
         n_dead = sum(1 for L in layers if L['dead'])
         summary = {
             'ckpt': str(args.ckpt),
+            'modals': list(modals),
             'n_sites': len(layers),
             'n_dead': n_dead,
             'dead_frac': n_dead / len(layers),

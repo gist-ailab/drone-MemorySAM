@@ -146,6 +146,7 @@ def main():
     if 'D3' in stages:
         run('D3_adapter_health',
             [py, str(TOOLS / 'adapter_health.py'), '--ckpt', args.model_path,
+             *(['--modals', ','.join(cap['modals'])] if cap.get('modals') else []),
              '--out', str(out / 'adapter_health.json')],
             note='static LoRA dW/dead-adapter — family-agnostic, no forward')
 
