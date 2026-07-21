@@ -125,6 +125,21 @@ def make_toggles(core):
                 return None
             return restore
         T['p38_m2f_off'] = _m2f_apply
+
+    # [P39] Dual-Path Compete (det_module_ablation.py와 동일 계약)
+    attr_toggle('p39_query_off', 'p39_query_off', True)
+    attr_toggle('p39_trunkexp_off', 'p39_trunkexp_off', True)
+    if m2f is not None:
+        def m2f_toggle(name, attr, value):
+            if not hasattr(m2f, attr) or getattr(m2f, attr) is None:
+                return
+            def apply():
+                old = getattr(m2f, attr)
+                setattr(m2f, attr, value)
+                return lambda: setattr(m2f, attr, old)
+            T[name] = apply
+        m2f_toggle('p39_modalsrc_off', 'use_modal_src', False)  # V2 -> fused-only
+        m2f_toggle('p39_anchored_off', 'anchored', False)       # V3 -> free queries only
     return T
 
 
