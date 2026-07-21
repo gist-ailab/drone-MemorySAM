@@ -344,6 +344,9 @@ class MaskQueryLiteHead(nn.Module):
         """cls_logits (B,Q,K+1) fp32, boxes (B,Q,4) fp32. targets: list of dicts
         {'labels':(T,), 'boxes':(T,4) cxcywh in [0,1]}."""
         B, Q = cls_logits.shape[:2]
+        # [P39-V3] first K queries are class-anchored (query k owns class k); the
+        # rest are free. K=0 when anchored is off -> identical to the P38 path.
+        K = self.num_classes if getattr(self, 'anchored', False) else 0
         ce_tgt = cls_logits.new_full((B, Q), self.num_classes, dtype=torch.long)
         l1 = giou = boxes.sum() * 0.0
         npos = 0
@@ -351,13 +354,31 @@ class MaskQueryLiteHead(nn.Module):
             tc, tbox = targets[b]['labels'], targets[b]['boxes']
             if tc.numel() == 0:
                 continue
-            qi, ti = self._match_det(cls_logits[b], boxes[b], tc, tbox)
-            ce_tgt[b, qi] = tc[ti]
-            pb, gb = boxes[b][qi], tbox[ti]
-            l1 = l1 + F.l1_loss(pb, gb, reduction='sum')
-            giou = giou + (1.0 - torch.diag(
-                _generalized_box_iou(_cxcywh_to_xyxy(pb), _cxcywh_to_xyxy(gb)))).sum()
-            npos += ti.numel()
+            if Q - K > 0:
+                # free queries do the instance Hungarian (the detector proper)
+                qi, ti = self._match_det(cls_logits[b, K:], boxes[b, K:], tc, tbox)
+                qi = qi + K
+                ce_tgt[b, qi] = tc[ti]
+                pb, gb = boxes[b][qi], tbox[ti]
+                l1 = l1 + F.l1_loss(pb, gb, reduction='sum')
+                giou = giou + (1.0 - torch.diag(
+                    _generalized_box_iou(_cxcywh_to_xyxy(pb), _cxcywh_to_xyxy(gb)))).sum()
+                npos += ti.numel()
+            for k in tc.unique():
+                # [P39-V3] anchored: query k <- the largest GT of class k whenever
+                # that class is present, so rare classes get gradient every step
+                # instead of starving in the matching (the P38 failure key).
+                ki = int(k)
+                if ki >= K:
+                    continue
+                sel = (tc == k).nonzero(as_tuple=True)[0]
+                gi = sel[int((tbox[sel][:, 2] * tbox[sel][:, 3]).argmax())]
+                ce_tgt[b, ki] = k
+                pb, gb = boxes[b][ki:ki + 1], tbox[gi:gi + 1]
+                l1 = l1 + F.l1_loss(pb, gb, reduction='sum')
+                giou = giou + (1.0 - torch.diag(
+                    _generalized_box_iou(_cxcywh_to_xyxy(pb), _cxcywh_to_xyxy(gb)))).sum()
+                npos += 1
         ce = F.cross_entropy(cls_logits.transpose(1, 2), ce_tgt, weight=self.empty_weight)
         denom = max(npos, 1)
         total = self.w_cls * ce + self.det_w_l1 * (l1 / denom) + self.det_w_giou * (giou / denom)

@@ -84,3 +84,8 @@ created: 2026-07-08
 절차: 작성 → `git push origin HEAD:develop`(PR 없음) → 로컬 허브 pull → 서버 `git fetch local && merge develop`. **config도 코드** — 서버 전용 튜닝도 develop 커밋(미커밋 config는 서버 사망 시 소실, 2026-07-16 bengio 사례).
 
 **왜**: 세션 A 모델을 세션 B가 모르면 재구현. develop+허브 = 유일한 공유 지점. 상세는 CLAUDE.md §1.7.
+
+
+## 모달 수 표기 (user 지정 2026-07-21)
+
+실험 등재·분석 문서·상태 갱신 시 **항상 3모달/4모달과 모달 구성을 명시**한다. DELIVER 4모달=img/depth/event/lidar, MUSES 3모달=img/lidar/event(P34 4모달 변형은 +radar). 모달 수가 다르면 별개 실험으로 취급하고 수치를 섞지 않는다 (근거: P34 MUSES 3모달 test 78.979 vs 4모달 78.256 — 0.72 차이).

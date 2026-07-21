@@ -104,7 +104,7 @@ def main():
     ap.add_argument('--gpu', default='0')
     ap.add_argument('--stages', default='D1,D2,D2N,D3,D3B,D4,D5')
     ap.add_argument('--ablation-toggles',
-                    default='rbma_off,router_off,ctd_off,sdc_off,temp_off,cons_off,amf_uniform,p34_bias_off,p34_cons_off,p34_gate_off,p34_veto_off,p34_calib_off,p36_router_off,p37_cefr_off,p38_m2f_off')
+                    default='rbma_off,router_off,ctd_off,sdc_off,temp_off,cons_off,amf_uniform,p34_bias_off,p34_cons_off,p34_gate_off,p34_veto_off,p34_calib_off,p36_router_off,p37_cefr_off,p38_m2f_off,p39_query_off,p39_trunkexp_off')
     ap.add_argument('--conditions', default='cloud,fog,night,rain,sun')
     ap.add_argument('--split', default='test', choices=['val', 'test'],
                     help="MUSES는 GT 있는 'val' 사용 (conditions=clear,fog,rain,snow,day,night)")

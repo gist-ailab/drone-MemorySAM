@@ -1,6 +1,6 @@
 # P38-m2f 표준분석 (항목①~④) — test-best ep62, DELIVER 5-cond (2026-07-19)
 
-**대상**: `test_epoch62_55.05_top1_checkpoint.pth` (hpca100 학습 중 스냅샷, ep78+ 진행 중; val-best 65.19@ep28)
+**대상**: P38-m2f **DELIVER 4모달(img/depth/event/lidar)** `test_epoch62_55.05_top1_checkpoint.pth` (hpca100 학습 중 스냅샷, ep78+ 진행 중; val-best 65.19@ep28)
 **실행**: yeon GPU0, worktree dm_analysis @ develop cc68e14, `tools/seg_analysis_pipeline.py` 전 스테이지(D1,D2,D2N,D3,D3B,D4,D5) ok, 82분
 **프로토콜**: P29~P36 분석과 동일 (5-cond, D1 120장/조건, D5 40장/조건, test-best ckpt 계보 비교)
 **산출물**: yeon `/SSDb/jemo_maeng/analysis/P38_eval_20260719/` → NAS `analysis_logs/P38_eval_20260719/`

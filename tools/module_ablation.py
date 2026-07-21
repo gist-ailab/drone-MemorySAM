@@ -72,6 +72,9 @@ def make_toggles(core):
     attr_toggle('temp_off', 'rbma_log_temp', 0.0, is_param=True)
     attr_toggle('cons_off', 'lambda_cons', 0.0, is_param=True)
     attr_toggle('amf_uniform', 'amf_mode', 'uniform')
+    # [P39-DPC] eval-time flags (model.py가 제공; P39 아니면 자동 skip)
+    attr_toggle('p39_query_off', 'p39_query_off', True)        # V5 arbiter query 경로 차단 → dense-only
+    attr_toggle('p39_trunkexp_off', 'p39_trunkexp_off', True)  # V1 trunk rank 확장 차단
 
     # [P34 ReliaDINO] fusion 서브모듈 위 토글 (없으면 자동 skip)
     fus = getattr(core, 'fusion', None)
