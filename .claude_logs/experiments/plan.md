@@ -1,6 +1,6 @@
 ---
 created: 2026-07-16
-updated: 2026-07-20 (seg-P39 구현 완료 → 대기열 등재)
+updated: 2026-07-21 (seg-P39.1/P40 구현 완료 → 대기열 P39 행을 P39.1로 갱신 + P40 행 신설; fog per-scene 감사 완료·GO 판정, trunk_exp-off 재측정 취소)
 ---
 
 # 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
@@ -80,13 +80,14 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | # | 실험 | 필요 자원 | 언제 | 근거 |
 |---|---|---|---|---|
-| **1** | **P39 Dual-Path Compete 본학습** (DELIVER + MUSES) | hpca100 4×A100(DELIVER) / jarvis 4090×N(MUSES) | 선행 = yeon 실데이터 스모크. hpca100은 P38-DELIVER 종료·판정 후 그 슬롯, jarvis는 P38-MUSES 완주 후 이어서 | **구현 완료(develop c31dcd5)**, P38 게이트 미달로 차기 본선. V1 trunk rank expansion + V2 modal-token query attention + V3 anchored+free query + V4 balanced point sampling + V5 per-class Λ 중재+path dropout 경쟁+router 직접 CE. 게이트(사전 등록) = DELIVER: P36 fair val 67.74/test 55.62 + thin-class 복원(Wall≥13/Water≥9.5/RailTrack≥62) · MUSES: P38 val 82.22 이상. **EPOCHS 200.** ep30 조기판정(module_ablation 토글 즉검) 규칙 적용. configs `hpca100-deliver_rgbdel_P39_dpc.yaml`/`jarvis-muses_rgbel_P39_dpc.yaml`/`yeon-deliver_rgbdel_P39_dpc_smoke.yaml`(2ep). 상세 [decisions/2026-07-20-p39-dual-path-compete-proposal.md](../decisions/2026-07-20-p39-dual-path-compete-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P39 |
-| **2** | **4모달 구조 버그 수정 + 재도전** | 4~8 GPU | diag_C 판정 직후 | diag_C가 "구조" 판정 시. **DGFusion CLRE 센서 패리티 = 공정 비교 필수 조건.** 수정되면 Arm A의 검증된 투영을 얹어 공짜 이득 |
-| **3** | **동일 박스 대조군** (3모달+기존투영, bengio) | 4 GPU | GPU 여유 시 | 현 대조군은 **B200 수치**인데 Arm A는 bengio → **cross-box 교란**. 같은 박스 대조군이 있어야 "DGF 투영=중립" 판정이 단단해짐 |
-| **4** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
-| **5** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
-| **6** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
-| **7** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
+| **1** | **P39.1 Rank 수리 본학습** (DELIVER + MUSES) | hpca100 4×A100(DELIVER) / jarvis 4090×N(MUSES) | 선행조건 분석 **완료**: ① MUSES fog val per-scene 감사 완료 → 파국장면 가설 기각·GO 판정([analysis/2026-07-21-p39-fog-scene-audit.md](analysis/2026-07-21-p39-fog-scene-audit.md)) ② P39 ckpt trunk_exp-off 재측정은 **무효 판정으로 취소**(ep30 조기판정 rank 게이트가 이를 대체) + yeon 실데이터 스모크. hpca100/jarvis 첫 빈 슬롯 | **구현 완료(develop ac5c7fe)** — P39-MUSES 표준분석이 지목한 lidar rank 붕괴(4.7) + fog_night 붕괴(62.68)를 즉시 수리. R-1: V1 트렁크 결합을 `fused += tanh(γ)·MLP_m(f_m)`(LN→1×1→GELU→1×1, γ init 0.1 — 0이면 gradient 완전 차단이라 절충, 스모크 실증)로 교체. R-2: VICReg var+cov 정규화(per-modal 토큰, lidar ×1.0/기타 ×0.25, λ_var 0.1/λ_cov 0.01, 2048 서브샘플, fp32). M-2: gate/calib/veto config off(fog_night 유해 실증 반영). eval마다 per-modal effective-rank 로그(`p391/rank_*`) 추가. **판정 게이트(사전 등록, ep30)** = lidar effective-rank ≥15 & fog_night drop-lidar ≥4.0(미달 시 R-3: r8→16 + rsLoRA로 재기동). **EPOCHS 200**(ep30 조기판정 규칙). configs `jarvis-muses_rgbel_P39_1_rank.yaml`/`hpca100-deliver_rgbdel_P39_1_rank.yaml`. 합성 스모크 PASS(γ/MLP grad 흐름, eval 결정론, linear 모드 하위호환). 상세 [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P39.1 |
+| **2** | **P40 RCA-Fusion 본학습** (DELIVER + MUSES) | P39.1과 동일 자원, 완주 후 이어서 | **P39.1 rank 게이트(lidar effective-rank ≥15) 통과 확인 후** 투입 — rank가 죽은 채면 C-3 lidar readout이 헛돎 | **구현 완료(develop ac5c7fe)** — P39.1 위에 Reliability-Conditioned Attenuation 추가. C-1: lidar 리턴 유효성(입력 유도 내부 신호) → 가드/분석. C-2: 자기추정 rel(img) 배치 하위 분위(30%) 샘플의 img feature soft 감쇠(α 0.1~0.5, hard-zero 금지, p_max 0.5, warmup 20ep, 학습 전용). C-3: 감쇠 샘플 한정 lidar readout 보조 CE(w 0.5, gradient 출구). **판정 게이트(사전 등록)** = MUSES test ≥79.025 & fog_night ≥74(P38 복원 우선) · DELIVER = P36 fair + thin-class 유지. configs `jarvis-muses_rgbel_P40_rca.yaml`/`hpca100-deliver_rgbdel_P40_rca.yaml`/`yeon-deliver_rgbdel_P40_rca_smoke.yaml`(스모크). 합성 스모크 PASS(RCA pick 발생, C-1 가드 동작, 손실 유한, grad 흐름). 상세 [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P40 |
+| **3** | **4모달 구조 버그 수정 + 재도전** | 4~8 GPU | diag_C 판정 직후 | diag_C가 "구조" 판정 시. **DGFusion CLRE 센서 패리티 = 공정 비교 필수 조건.** 수정되면 Arm A의 검증된 투영을 얹어 공짜 이득 |
+| **4** | **동일 박스 대조군** (3모달+기존투영, bengio) | 4 GPU | GPU 여유 시 | 현 대조군은 **B200 수치**인데 Arm A는 bengio → **cross-box 교란**. 같은 박스 대조군이 있어야 "DGF 투영=중립" 판정이 단단해짐 |
+| **5** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
+| **6** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
+| **7** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
+| **8** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
 
 ## ✅ 완료·판정 (재실행 금지)
 

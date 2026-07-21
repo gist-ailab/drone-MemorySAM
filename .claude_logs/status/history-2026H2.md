@@ -9,6 +9,30 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-21 — MUSES fog per-scene 감사 완료 → 파국장면 가설 기각, P39.1 투입 GO
+
+P39-DPC ep146 vs P38-m2f ep156 fog(n=58)/night(n=100) per-image mIoU 분포 감사(`tools/p39_fog_scene_audit.py`, jarvis GPU6). worst5도 조밀(fog worst ~51+, skew≈0) — 소수 파국 장면이 평균을 끌어내리는 패턴 없음, **가설 기각**. fog 약점은 장면 품질이 아니라 **희소 클래스의 조건부 전멸**(traffic light/rider/train 0@fog)로 판정, 헤드룸 추정 하향 조정. **P39.1 투입 판단: GO**(rank 수리 근거인 공식 test fog_night −12.05는 per-scene 문제가 아니므로 유효). 상세 = [experiments/analysis/2026-07-21-p39-fog-scene-audit.md](../experiments/analysis/2026-07-21-p39-fog-scene-audit.md), 산출물 NAS `analysis_logs/P39_fog_scene_audit_20260721/`. plan.md #1 선행조건 갱신 = fog 감사 완료·GO, trunk_exp-off 재측정은 무효 판정으로 취소(ep30 rank 게이트가 대체).
+
+---
+
+### 2026-07-21 — P39.1(rank 수리) + P40(RCA) 구현 완료 (학습 대기)
+
+**배경**: P39-MUSES 표준분석(2026-07-21)이 **lidar effective-rank 4.7 붕괴**(adapter가 압축 주체, feat_cos 0.115)와 **fog_night 62.68 붕괴**(P39 제출 최저, 전 조건 최저)를 지목. 관련연구 딥리서치 3편(rank collapse / modality imbalance / fog 물리)으로 원인을 교차검증해 제안·구현. 제안 문서 = [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md)(등재 완료).
+
+**딥리서치 대응 요지**: ① lidar rank 붕괴는 **선형 cascaded 경로(V1 선형 투영 + LoRA BA)의 암묵적 저rank 편향**(deep matrix factorization/DirectCLR, LoRA intruder dimensions 문헌)과 정합 — 단순 r 상향은 rsLoRA 없이는 무효. ② 카메라 편중·fog에서 lidar 대체 실패는 **modality laziness/imbalance** 문헌 전반과 일치하되, frozen backbone이라 gradient-modulation류는 지렛대가 없고 **무조건 드롭아웃은 역효과가 실증**(우리 P33 no-op와 정합) — 조건부 강모달 감쇠 + 약모달 보조손실만 유효. ③ fog에서 가장 죽는 센서는 lidar 자신(물리 상한 존재) — "lidar로 fog를 전부 메운다"는 목표는 비현실적, P38 수준(fog_night 74) 복원이 현실 목표. ④ 조건부 모달리티 드롭아웃 자체는 선행(OPM/SGMA)이 있으나, **자기추정 per-sample 신호 + dense prediction + frozen-VFM 제약** 조합은 미점유.
+
+**P39.1 (즉시 수리, 주 변수 1개)**: P39-DPC 위에서 V2(modal-token attention)·V3(앵커)·V4(쿼터)·router 직접감독·deep-sup은 동결. **R-1(주 변수)**: V1 트렁크 결합 `fused += P_m(f_m)`(선형)을 `fused += tanh(γ_m)·MLP_m(f_m)`(LN→1×1→GELU→1×1 + 모달별 스칼라 γ, **init 0.1**)로 교체 — γ=0(완전 zero-init)이면 tanh(0)=0이라 MLP가 첫 스텝부터 gradient를 못 받아(키1 "zero-init 잔차 사장" 재판) 학습이 시작되지 않음을 스모크로 확인, 0.1로 절충. **R-2**: per-modal 토큰 VICReg var+cov(lidar 가중×1.0/기타×0.25, λ_var 0.1/λ_cov 0.01, 2048 서브샘플, fp32) — lidar rank 붕괴 직접 복원용. **M-2**: gate/calib/veto config off(fog_night ablation에서 유해로 재판정된 것 반영). eval마다 per-modal effective-rank(RankMe) 로그(`p391/rank_*`) 추가. **R-3(조건부 2차, 미구현)**: ep30 게이트 미달 시 r 8→16 + rsLoRA + AdaLoRA 직교항으로 재기동.
+
+**P40 (RCA-Fusion, 신모델·논문 주장 모듈)**: P39.1 위에 조건부 감쇠 추가 — **C-1** lidar 리턴 유효성(입력 유도 내부 신호) → 가드/분석. **C-2** 학습 중 자기추정 rel(img)가 배치 하위 분위(30%)인 샘플의 img feature를 soft 감쇠(α 0.1~0.5, hard-zero 금지, curriculum warmup 20ep). **C-3** 감쇠 샘플 한정 lidar readout 보조 CE(w=0.5, gradient 출구). **C-4** 사전 검증: fog_night rel AUROC(img) ≥0.75 확인(학습 전 게이트, 미달 시 C-1 통계 신호로 대체). 서사: 신뢰도 기계를 5세대(P28→P39) 실패한 "추론-시 재가중"에서 "학습-시 조건화"로 이동 — 외부 신호 0 유지.
+
+**판정 게이트(사전 등록)**: P39.1 ep30 = **lidar effective-rank ≥15** & **fog_night drop-lidar ≥4.0**(미달 시 R-3 재기동, R-1/R-2 모두 무효면 V2를 원인으로 전환). P40 = MUSES **test ≥79.025**(P38-m2f 현 최고) & **fog_night ≥74**(P38 복원) · DELIVER = P36 fair(val 67.74/test 55.62) + thin-class 유지.
+
+**검증**: 합성 스모크 **PASS** — RCA pick 발생, C-1 가드(lidar 부재 샘플 제외) 동작, vicreg/readout 손실 유한, γ/MLP grad 흐름, eval 결정론, linear 모드(구 V1) 하위호환.
+
+**config 5벌**: `configs/jarvis-muses_rgbel_P39_1_rank.yaml` / `configs/hpca100-deliver_rgbdel_P39_1_rank.yaml` / `configs/jarvis-muses_rgbel_P40_rca.yaml` / `configs/hpca100-deliver_rgbdel_P40_rca.yaml` / `configs/yeon-deliver_rgbdel_P40_rca_smoke.yaml`(아키 동일 = 단일 모델 제약). 커밋 **ac5c7fe**(develop). 대기열 갱신 = [experiments/plan.md](../experiments/plan.md) #1(P39.1)/#2(P40) — 선행 = 분석 세션 몫인 fog per-scene 감사 + trunk_exp-off rank 재측정 2건(학습 0). 상세 아키텍처 = [models/arch-evolution.md](../models/arch-evolution.md) P39.1/P40.
+
+---
+
 ### 2026-07-20 — P39 Dual-Path Compete 구현 완료 (학습 대기)
 
 **배경**: P38(MaskQueryLite)이 게이트(P36 fair 대비 + thin-class) 미달로 판정됨에 따라, P30~P38 계보에서 반복된 5개 실패 패턴(키1 zero-init 잔차 4연속 사장 / 키2 router 유일 실적+co-adaptation / 키3 FUSED rank 7/256 병목 / 키4 문제 위치가 클래스축·도메인축으로 상이 / 키5 event 기여가 데이터셋 속성)을 규칙으로 역변환해 P39를 설계. 제안 문서 = [decisions/2026-07-20-p39-dual-path-compete-proposal.md](../decisions/2026-07-20-p39-dual-path-compete-proposal.md)(등재 완료). **user 지정 제약**: 단일 아키텍처로 DELIVER·MUSES를 모두 커버 — 데이터셋 적응은 학습된 모듈로만.

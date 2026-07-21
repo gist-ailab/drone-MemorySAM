@@ -262,7 +262,8 @@ def main(cfg, gpu, save_dir, logger):
         if ddp_enable:
             sampler.set_epoch(epoch)
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
-        cefr_accum = ctd_accum = m2f_accum = rce_accum = 0.0
+        cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
+        rca_picked = rca_seen = 0
         auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
@@ -283,9 +284,12 @@ def main(cfg, gpu, save_dir, logger):
                 ctd_ce = aux.get('ctd_ce', _zero)           # [P37b] class-token aux CE
                 m2f_loss = aux.get('m2f_loss', _zero)       # [P38] pre-scaled (LOSS_W in model)
                 router_ce = aux.get('router_ce', _zero)     # [P39-V5] pre-scaled (ROUTER_CE_W)
+                vicreg = aux.get('vicreg', _zero)           # [P39.1-R2] pre-scaled
+                rca_ce = aux.get('rca_readout', _zero)      # [P40-C3] pre-scaled
                 total = (loss_seg + lambda_cal * cal_loss
                          + lambda_aux_ce * aux_ce + gate_ent + router_reg
-                         + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce)
+                         + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
+                         + vicreg + rca_ce)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -310,6 +314,11 @@ def main(cfg, gpu, save_dir, logger):
             ctd_accum += float(ctd_ce)
             m2f_accum += float(m2f_loss)
             rce_accum += float(router_ce)
+            vic_accum += float(vicreg)
+            rca_accum += float(rca_ce)
+            if getattr(_core, '_rca_pick', None) is not None:
+                rca_picked += int(_core._rca_pick.sum())
+            rca_seen += lbl.shape[0]
             if _core.fusion._last_rel_auroc is not None:
                 auroc_rows.append(_core.fusion._last_rel_auroc)
             if _core.fusion._last_gate_mean is not None:
@@ -401,6 +410,28 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P39] arb λ mean:{float(lam.mean()):.3f} "
                             f"max:{float(lam.max()):.3f} "
                             f"router_ce:{rce_accum / (it + 1):.4f}")
+            if getattr(_core, 'p391_vicreg', False):
+                # [P39.1] VICReg loss + trunk gate γ (gated_mlp mode)
+                writer.add_scalar('train/vicreg', vic_accum / (it + 1), epoch)
+                log_extra['train/vicreg'] = vic_accum / (it + 1)
+                msg = f"[P39.1] vicreg:{vic_accum / (it + 1):.4f}"
+                if getattr(_core, 'trunk_gamma', None) is not None:
+                    g = torch.tanh(_core.trunk_gamma.detach())
+                    for i, name in enumerate(modals[:g.numel()]):
+                        writer.add_scalar(f'p391/trunk_gamma_{name}', float(g[i]), epoch)
+                        log_extra[f'p391/trunk_gamma_{name}'] = float(g[i])
+                    msg += " γ " + " ".join(f"{n}:{float(v):.3f}"
+                                            for n, v in zip(modals, g))
+                logger.info(msg)
+            if getattr(_core, 'rca_enable', False):
+                # [P40] RCA 감쇠 채택률 + readout CE
+                rate = rca_picked / max(rca_seen, 1)
+                writer.add_scalar('p40/rca_pick_rate', rate, epoch)
+                writer.add_scalar('train/rca_readout', rca_accum / (it + 1), epoch)
+                log_extra['p40/rca_pick_rate'] = rate
+                log_extra['train/rca_readout'] = rca_accum / (it + 1)
+                logger.info(f"[P40] rca pick_rate:{rate:.3f} "
+                            f"readout_ce:{rca_accum / (it + 1):.4f}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),
@@ -444,6 +475,24 @@ def main(cfg, gpu, save_dir, logger):
                 _eval_model, valloader, device, dist_sync=ddp_enable)
             if is_rank0:
                 writer.add_scalar('val/mIoU', miou, epoch)
+                # [P39.1] per-modality effective-rank monitor (RankMe) on the
+                # analysis hook's last eval batch — ep30 게이트(lidar rank≥15)를
+                # 학습 로그에서 바로 판정하기 위함. 비용: svdvals 1회/모달.
+                _pm = getattr(_core, '_last_per_modal_feats', None)
+                if _pm:
+                    for _i, _f in enumerate(_pm):
+                        z = _f.flatten(2).transpose(1, 2).reshape(-1, _f.shape[1]).float()
+                        if z.shape[0] > 4096:
+                            z = z[torch.randperm(z.shape[0], device=z.device)[:4096]]
+                        try:
+                            s = torch.linalg.svdvals(z - z.mean(0, keepdim=True))
+                            p = (s / s.sum().clamp(min=1e-12)).clamp(min=1e-12)
+                            erank = float(torch.exp(-(p * p.log()).sum()))
+                            _mn = modals[_i] if _i < len(modals) else str(_i)
+                            writer.add_scalar(f'p391/rank_{_mn}', erank, epoch)
+                            logger.info(f"[P39.1] eff.rank {_mn}: {erank:.1f}")
+                        except Exception:
+                            pass
                 iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, ious))
                 worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
                 if miou > worst_day:

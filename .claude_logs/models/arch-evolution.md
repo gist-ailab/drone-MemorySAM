@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-07-20
+> 최종 업데이트: 2026-07-21
 
 ## P38 — MaskQueryLite: Mask2Former-lite Query Head (2026-07-17)
 
@@ -64,6 +64,53 @@ moved: 2026-07-08
 **config**: `configs/hpca100-deliver_rgbdel_P39_dpc.yaml`(200ep) · `configs/jarvis-muses_rgbel_P39_dpc.yaml` · `configs/yeon-deliver_rgbdel_P39_dpc_smoke.yaml`(2ep, 실데이터 스모크). 커밋 **c31dcd5**(develop).
 
 **실행 계획**: ① 구현 완료(V1~V5+토글 5종+config 3벌) ② yeon 빈 GPU 2ep 스모크 → hpca100/jarvis 첫 빈 슬롯 투입(DELIVER 우선, MUSES는 jarvis P38 완주 후 이어달리기) ③ ep30 조기판정(module_ablation 즉검 + val 궤적 vs P36/P38 동 epoch, no-op 검출 시 조기 중단 — 2026-07-16 EPOCHS 사고 규칙).
+
+---
+
+## P39.1 — Rank 수리 (gated_mlp trunk + VICReg) (2026-07-21)
+
+**상태**: **구현 완료 (학습 대기)**. 계보: P39(DPC) 위에서 V2(modal-token attention)·V3(앵커)·V4(쿼터)·router 직접감독·deep-sup은 **동결**, V1(trunk rank expansion)만 교체 + 신규 정규화 1종 추가. 제안 근거 = P39-MUSES 표준분석(2026-07-21)·fog_night 원인규명(07-20)·관련연구 딥리서치 3편(rank collapse / modality imbalance / fog 물리) 교차검증 = [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md). 커밋 **ac5c7fe**(develop).
+
+**동기**: P39-MUSES 표준분석이 **lidar effective-rank 4.7 붕괴**(adapter가 압축 주체, feat_cos 0.115)와 **fog_night 62.68 붕괴**(전 제출 최저)를 지목. 문헌 대응 — V1의 선형 투영(`P_m`)+LoRA BA가 딱 "선형 cascaded 경로의 암묵적 저rank 편향" 구조(deep matrix factorization/DirectCLR, LoRA intruder dimensions)이고, **rsLoRA 없는 단순 r 상향은 무효**하다는 근거. gate/calib은 fog_night에서 유해로 재판정(3세대 no-op→유해)돼 M-2로 off.
+
+**구성 (P39 대비 변경 2개, R-3는 조건부)**:
+- **R-1 (주 변수)**: V1 `fused += P_m(f_m)`(선형, small-random init)을 **`fused += tanh(γ_m)·MLP_m(f_m)`**로 교체 — MLP = LN→1×1(1024→256)→GELU→1×1(→1024), γ는 **모달별 스칼라, init 0.1**. **γ=0(완전 zero-init)이 아니라 0.1로 잡은 이유**: 0이면 tanh(0)=0이라 MLP 브랜치가 첫 스텝부터 gradient를 전혀 받지 못해(키1 "zero-init 잔차 사장" 재판) 학습 자체가 시작되지 않음 — 스모크로 실증. 0.1은 초기 기여를 작게 유지하면서 gradient 흐름은 보장하는 절충.
+- **R-2**: **VICReg var+cov 정규화**를 per-modal 토큰에 적용(lidar 가중 ×1.0, img/event ×0.25, λ_var 0.1/λ_cov 0.01, 토큰 2048 서브샘플, fp32, per-GPU) — lidar rank 붕괴 직접 복원용(VICRegL·Shuffled-DBN 스펙트럼 복원 문헌 근거).
+- **R-3 (조건부 2차, 미구현 대기)**: ep30 게이트 미달 시 전모달 r 8→16 + rsLoRA(α/√r) + AdaLoRA 직교항 0.1로 재기동.
+- **M-2**: gate/calib/veto config off(fog_night ablation에서 유해 실증 반영, ablation 행으로 분리).
+- **로깅**: eval마다 per-modal effective-rank(RankMe) 계산해 `p391/rank_*`로 노출 — ep30 게이트(lidar rank) 판독용. train 쪽 `train/vicreg` 로깅도 추가.
+
+**판정 게이트 (사전 등록, ep30)**: `feature_stats`로 측정한 **lidar effective-rank ≥15** & **fog_night drop-lidar ≥4.0**(fognight 분석 M-1 게이트 유지). 미달 시 R-3 적용 후 재기동, R-1/R-2 모두 무효로 판정되면 V2(modal-token attention)를 원인으로 전환해 재설계.
+
+**선행 분석 (학습 0, 분석 세션 위임)**: ① MUSES fog val split per-scene 감사(night>clear 역전이 문헌과 반대라 소표본 아티팩트 배제 필요) ② P39 ckpt에서 trunk_exp off 시 lidar rank 재측정(V1 원인 확정). 둘 다 기존 ckpt로 수행, 학습 불필요.
+
+**검증**: 합성 스모크 **PASS** — γ/MLP grad 흐름 확인, eval 결정론, linear 모드(구 V1) 하위호환 확인.
+
+**config**: `configs/jarvis-muses_rgbel_P39_1_rank.yaml` · `configs/hpca100-deliver_rgbdel_P39_1_rank.yaml`.
+
+---
+
+## P40 — RCA-Fusion: Reliability-Conditioned Attenuation (2026-07-21)
+
+**상태**: **구현 완료 (학습 대기, P39.1 rank 게이트 통과 후 투입)**. 계보: P39.1 위에 조건부 감쇠 모듈(C-1~C-3) 추가. 제안 근거 = [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md). 커밋 **ac5c7fe**(develop).
+
+**서사**: 신뢰도 기계가 5세대(P28→P39) 동안 *추론-시 재가중*(attn-bias/gate/CEFR)으로는 반증 완주된 무효 시도였다. P40은 같은 신뢰도 신호를 **학습-시 조건화**로 옮긴다 — "모델 스스로 카메라가 나쁘다고 추정하면, 그 샘플은 카메라 없이도 풀 수 있어야 한다"는 자기-일관성 루프. 외부 라벨/신호 0 유지(내부 신호만).
+
+**구성**:
+- **C-1 (신뢰도 신호 확장)**: 기존 rel_cal에 **lidar 리턴 유효성 통계**(입력에서 유도한 per-region density/zero-return 맵, 내부 신호)를 더함 → RCA 가드 + 분석 스태시로 사용. CAFuser(전역 CLIP condition token)·DGFusion(depth 값 감독)과 구조적으로 구별(per-region·물리 유도·무감독).
+- **C-2 (조건부 감쇠 학습)**: 학습 중 per-sample로 자기추정 rel(img)가 배치 **하위 분위(30%)**면, 해당 샘플의 img feature를 **soft 감쇠**(α∈[0.1,0.5], **hard-zero 금지** — 무조건 드롭아웃의 "missing 지름길" 역효과 문헌 회피). curriculum ramp(ep20까지 0→p_max 0.5).
+- **C-3 (약모달 readout 보조 손실)**: 감쇠된 샘플 한정 **lidar readout 보조 CE**(w=0.5) — 감쇠만으로는 fusion이 "저카메라 모드 암기"로 빠질 수 있어 gradient 출구로 추가.
+- **C-4 (사전 검증 게이트, 학습 전)**: 신뢰도 추정기 자체가 카메라 편중이면 무조건 드롭아웃으로 퇴화 — fog_night rel AUROC(img) ≥0.75 확인(P39 0.70/P38 0.79 실측), 미달 시 C-1 통계 신호를 주 신호로 전환.
+
+**노벨티 포지셔닝**: "reliability-conditioned modality attenuation for condition-robust dense fusion". 최근접 선행 = OPM(T-PAMI'24, 배치레벨·라벨유도·분류)·SGMA(샘플링 빈도 조건화) — 차별 4축(자기추정 per-sample 신뢰도 신호 / 강모달 입력 감쇠의 조건 표적화 / dense prediction / frozen-VFM 제약). 지지 증거 = 자체 P33 무조건 드롭아웃 no-op 재현 + 무조건 드롭아웃 역효과 문헌.
+
+**판정 게이트 (사전 등록)**: MUSES **test ≥79.025**(P38-m2f 현 최고) & **fog_night ≥74**(P38 수준 복원, 이후 fog 전체 66~69 도전은 물리 상한 감안한 2차 목표) · DELIVER = P36 fair(val 67.74/test 55.62) + thin-class 유지.
+
+**검증**: 합성 스모크 **PASS** — RCA pick 발생 확인, C-1 가드(lidar 부재 샘플 제외) 동작, vicreg/readout 손실 유한, grad 흐름 확인, eval 결정론.
+
+**config**: `configs/jarvis-muses_rgbel_P40_rca.yaml` · `configs/hpca100-deliver_rgbdel_P40_rca.yaml` · `configs/yeon-deliver_rgbdel_P40_rca_smoke.yaml`(스모크).
+
+**실행 순서**: ① 분석 선행 2건(P39.1 절 참조) ② P39.1 투입·ep30 rank 게이트 통과 확인 ③ P40 투입(rank가 죽은 채면 C-3 lidar readout이 헛돎 — 순차 필수).
 
 ---
 
