@@ -17,7 +17,12 @@
 - 접속: `ssh hpca100`. **불통이면 MTU 호스트라우트 소실** → `sudo ip route add 210.125.69.5 via 172.27.183.254 dev enp6s0 mtu 1200` (user 상시 위임됨).
 - repo: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM` · venv: `source /home/jovyan/SSDb/jemo_maeng/venv/p34/bin/activate` (🔴 공유 `~/.venv`에 pip install 금지)
 - 필수 env: `WANDB_MODE=disabled`(wandb sentry 도달불가 → rank0 futex 블록 → **NCCL 데드락**), `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
-- cuDNN: 시스템 8.9.0이 torch 번들을 가려 **conv backward 사망** → venv cudnn lib을 `LD_LIBRARY_PATH` 앞에 붙일 것.
+- 🔴 **cuDNN — 최초 기동뿐 아니라 "재기동·resume 때도 반드시"** (2026-07-21 실사고: 이 줄을 알고도 resume 명령에서 빠뜨려 ep112 첫 backward에서 크래시, GPU 장시간 유휴):
+  ```bash
+  export LD_LIBRARY_PATH=/home/jovyan/SSDb/jemo_maeng/venv/p34/lib/python3.11/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+  ```
+  시스템 `/usr/lib/x86_64-linux-gnu/libcudnn_cnn_train.so.8`(8.9.0)이 venv의 8.9.2.26을 가려 `undefined symbol` → `RuntimeError: GET was unable to find an engine to execute this computation`. **`~/.bashrc`가 시스템 cudnn을 앞세우므로 tmux 새 shell마다 재발한다.**
+  **검증법**: 같은 환경에서 `python -c "import torch; print(torch.backends.cudnn.version())"` → **8902**여야 함(8900이면 처방 미적용).
 - 데이터: MUSES 처리본(`dset/MUSES`, projected_to_rgb 포함), DELIVER.
 
 ## jarvis — RTX 24GB × 8

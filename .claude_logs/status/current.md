@@ -41,6 +41,14 @@ moved: 2026-07-08
 - **P39.1 후보(physaug 제외)**: D-1 V5 Λ 배타/온도 선택(query·router 상충 해소) · D-3 gate/calib 완전 off(유해 판정) · D-2 앵커 query 클래스 균형 손실 가중 · MUSES는 전 모달 동시 열화 시 V2 modal-src fallback.
 - 모듈·제안영역 시각 리포트(fig 8장+판정표) = NAS `analysis_logs/module_report_20260720/`, 포인터 [analysis/2026-07-20-module-visual-report.md](../experiments/analysis/2026-07-20-module-visual-report.md). 실패-키 canonical = [analysis/2026-07-20-failure-keys-p38-deliver-p37a-muses.md](../experiments/analysis/2026-07-20-failure-keys-p38-deliver-p37a-muses.md).
 
+**📝 2026-07-21 P39.1(rank 수리) + P40(RCA) 구현 완료 (학습 대기)**: P39-MUSES 표준분석(lidar effective-rank 4.7 붕괴, adapter가 압축 주체)과 fog_night 붕괴(62.68) 원인규명을 관련연구 딥리서치 3편(rank collapse / modality imbalance / fog 물리)과 교차검증해 제안·구현. 근거 = [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md). 커밋 **ac5c7fe**(develop).
+- **P39.1** = P39-DPC 위에 V1 트렁크 결합을 `fused += tanh(γ)·MLP_m(f_m)`(LN→1×1→GELU→1×1, γ init 0.1 — 0이면 gradient 완전 차단이라 절충)로 교체(R-1) + per-modal 토큰 VICReg var+cov(R-2, lidar×1.0/기타×0.25, λ 0.1/0.01, 2048 서브샘플) + M-2(gate/calib/veto config off, fog_night 유해 실증 반영) + eval마다 per-modal effective-rank 로그(`p391/rank_*`) 추가.
+- **P40** = P39.1 위에 RCA(Reliability-Conditioned Attenuation) — C-1 lidar 리턴 유효성 신호(입력 유도) 가드/분석 + C-2 자기추정 rel(img) 배치 하위 분위(30%) 샘플 img feature soft 감쇠(α 0.1~0.5, hard-zero 금지, p_max 0.5, warmup 20ep, 학습 전용) + C-3 감쇠 샘플 한정 lidar readout 보조 CE(w 0.5, gradient 출구).
+- config 5벌: `jarvis-muses_rgbel_{P39_1_rank,P40_rca}.yaml` / `hpca100-deliver_rgbdel_{P39_1_rank,P40_rca}.yaml` / `yeon-deliver_rgbdel_P40_rca_smoke.yaml`(아키 동일 = 단일 모델 제약 유지).
+- 합성 스모크 **PASS**(RCA pick 발생, C-1 가드 동작, 손실 유한, grad 흐름, eval 결정론, linear 모드 하위호환).
+- **판정 게이트(사전 등록)**: P39.1 ep30 = lidar effective-rank ≥15 & fog_night drop-lidar ≥4.0(미달 시 R-3: r16+rsLoRA로 재기동) · P40 = MUSES test ≥79.025 & fog_night ≥74, DELIVER = P36 fair + thin-class.
+- **실행 순서**: 분석 선행 2건(fog val per-scene 감사 + P39 ckpt trunk_exp-off rank 재측정 — **분석 세션 몫, 학습 0**) → P39.1 투입(첫 빈 슬롯) → rank 게이트 통과 후 P40 투입. 대기열 [experiments/plan.md](../experiments/plan.md) #1(P39.1)/#2(P40). 상세 [models/arch-evolution.md](../models/arch-evolution.md) P39.1/P40.
+
 **⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
 
 | 트랙 | 상태 | 수치 / 다음 액션 |

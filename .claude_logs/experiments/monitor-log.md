@@ -1034,3 +1034,312 @@ MUSES-P34 **4모달**(img/lidar/event/radar, ep182) test zip을 Codabench 14005�
 - 🔴 jarvis: **조기 피크 후 열화** — best val이 ep24(62.56)에 박히고 ep152 현재 58.48로 128ep째 하락. P34 DELIVER baseline val 68.19 대비 −5.6pt. 프로세스/GPU(5×100%) 정상이라 死가 아니라 오수렴. 원인 후보=과적합/LR/CEFR head init. 처분(완주 vs 조기중단+진단) 사용자 판단 대기.
 - ✅ yeon: ep0 0.78→ep4 0.8456 매 epoch 갱신, 목표 0.85 사실상 도달. 단 과거 ep7~17 붕괴 이력 있어 그 구간 미통과 — 붕괴 재발 감시(현 grad-clip 재기동이 처방). GPU1 17.3GB 좀비 점유 1건(학습 프로세스 매칭 안 됨).
 - jarvis P37b 미착수(P37a 완주 후 순차).
+
+### 2026-07-20 03:40 — 3-server 모니터링 스냅샷
+
+- **hpca100 P39-DELIVER** (`hpca100-deliver_rgbdel_P39_dpc`, 200ep, A100×4): ep4/200 진행, loss 6.88→2.43, arb λ 0.693→0.703, router_ce 0.207→0.062, 에러/NaN 0. 실측 ~9분/epoch. ep30 게이트 ETA 07:30~08:00 KST, 완주 ETA 07-21 오전. 로그 경로 비표준: `logs/p39_deliver_20260719_180455.log`(flat).
+- **jarvis P38-MUSES**: ep220/300, best val 82.22@ep156 이후 64ep 정체(81.6~82.0 요동), 에러 0. ~3.9분/epoch → 완주 ETA 08:50 KST → `p39_muses_chain` 래퍼가 P39-MUSES 자동 기동 예정(래퍼 생존 확인).
+- **jarvis P37a-CEFR**: 완주 (200ep, best val 62.56@ep24 / best test 52.99@ep54, wandb sync 정상).
+- **인프라 메모**: jarvis 체크아웃 2개 공존 (`/home/jemo_maeng/src/drone-MemorySAM`=P37a용, `/home/jemo_maeng/src/drone-MemorySAM-develop`=P38/P39체인용); `scripts/servers.conf`에 jarvis 항목 부재 → 등록 필요.
+
+### 2026-07-20 04:50 KST — 정기점검 (2h cron)
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER (hpca100-deliver_rgbdel_P39_dpc.yaml, 768²/BS2/200ep) | ep10/200 | val 59.05@ep8 / test 50.22@ep6 | val −9.74 / test −6.49 (ep10/200 극초기) | 완주 07-21 14:50 |
+| jarvis | P38-MUSES (jarvis-muses_rgbel_P38_m2f.yaml) | ep239/300 | val 82.22@ep156 (최신 81.78) | vs DGFusion 79.72 = **+2.50** | 완주 08:43 |
+| yeon | P37b-det (det/det_P37b_classtoken_yeon.yaml) | ep40/50 | mAP50 0.842@ep6 / AP 0.567 / AP75 0.636 (최신 0.817) | vs 목표 0.85 = −0.008 | 완주 16:26 |
+
+- ✅ 3서버 전부 정상 진행. OOM·에러·사망 없음. 체인 2개(jarvis p39_muses_chain, yeon p38_chain) 정상 대기(미발화).
+- hpca100 P39-DELIVER: ep2 47.48 → ep8 59.05 (6ep에 +11.6) 순조로운 상승. 판단 기준점 = P38-DELIVER best val 65.19@ep28. **ep30 게이트 도달 예정 08:26** (토글 즉검 + test thin-class Wall≥13/Water≥9.5/RailTrack≥62). GPU 4/4, 25.5GB/40GB.
+- jarvis P38-MUSES: **ep156 이후 83epoch 무갱신 → 82.22 최종 확정적**(계보 최고, SOTA +2.50). 08:43 완주 시 체인이 P39-MUSES 자동 기동.
+- yeon P37b-det: best ep6(0.842) 이후 34epoch 정체·하락 → **열화 확정**, 완주해도 갱신 없음.
+> ⚠️ **yeon GPU 타인 점유 확대** — GPU1~7 사용 중, 유휴 GPU0 1장뿐. 16:26 체인 발화 시 **빈 GPU 4장 미만이면 P38-det가 적은 GPU로 기동**되는데 det는 GRAD_ACCUM_STEPS 고정이라 **GPU 수가 eff-batch를 바꿔 P37a/b-det와 비교가 깨짐**. 발화 시점 확인 필요.
+
+### 2026-07-20 06:15 KST — 정기점검 (2h cron)
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER | ep20/200 | val 63.44@ep20 / test 53.36@ep18 | val −5.35 / test −3.35 (ep20/200 미완주) | ep30 게이트 08:43 · 완주 07-21 17:09 |
+| jarvis | P38-MUSES | ep272/300 | val 82.22@ep156 (최신 81.65) | vs 79.72 = **+2.50** | 완주 08:28 |
+| yeon | P37b-det | ep42/50 | mAP50 0.8402@ep5 / AP 0.595 / AP75 0.665 (최신 0.8146) | vs 0.85 = −0.008 | 완주 16:42 |
+
+- ✅ 3서버 정상, 체인 2개(p39_muses_chain / p38_chain) 정상 대기(미발화), OOM·사망·에러 0.
+- 🔺 **P39-DELIVER가 P38 궤도를 상회 중**: ep8 59.05 → ep20 63.44 (12ep에 +4.39, ≈0.37/ep). 기준점 = P38-DELIVER best val **65.19@ep28** → 현 추세면 **ep25~28에 통과 전망**. test도 P39가 ep18에 53.36인데 P38은 test best 55.05를 ep62에서야 달성 → **P39가 훨씬 빠른 궤도**. V1~V5가 초기 학습 효율을 실제로 올리는 정황. 단 P38도 ep28 피크 후 하락했으므로 **peak 대 peak** 비교가 정당하며, 확정은 ep30 게이트(thin-class Wall/Water/RailTrack)에서.
+- jarvis P38-MUSES: ep156 이후 **116epoch 무갱신 → 82.22 최종 확정**(계보 최고, SOTA +2.50).
+- yeon P37b-det: ep5 피크 후 37epoch 무갱신 → 열화 확정.
+> ⚠️ **크론 타이밍 공백**: 핵심 이벤트 2건(08:28 P38-MUSES 완주→P39-MUSES 체인 발화, 08:43 P39 ep30 게이트)이 08:13~10:13 크론 사이에 떨어짐. 10:13 크론이 ~1.5h 늦게 잡음. P39-MUSES 기동 실패 시 jarvis 유휴 발생 가능 — 체인 로그(logs/p39_muses_chain_*.log)에 OOM/에러가 남도록 되어 있어 사후 진단은 가능.
+
+### 2026-07-20 08:50 KST — 정기점검 (2h cron) · 이벤트 2건 포착
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER | ep31/200 | val 64.09@ep28 / test 54.30@ep20 | val −4.70 / test −2.41 (미완주) | 07-21 17:00 |
+| jarvis | P38-MUSES **완주** | 300/300 | val 82.22@ep156 (최종 81.69), 18h23m | vs 79.72 = **+2.50** | 완료 |
+| jarvis | **P39-MUSES 기동** (체인 자동, 08:32) | ep1~ | — | — | 산정중 |
+| yeon | P37b-det | ep44/50 | mAP50 0.8402@ep5 (최신 0.817) | vs 0.85 = −0.008 | 16:35 |
+
+- ✅ **체인 자동화 성공**: P38-MUSES 완주 → 08:32 P39-MUSES 자동 기동(4GPU, ~18GB/24.5GB). **우려했던 V2 OOM 미발생**(P38과 동수준). 초기 로그 clean.
+- 🔴 **P39-DELIVER ep30 게이트 = 실질 미달(1/3)**: test per-class Wall **7.90**(≥13 ❌) / Water **5.19**(≥9.5 ❌) / RailTrack **63.88**(≥62 ✅).
+  - 단 **P39 ep30이 이미 P37b 최종값을 3항목 모두 상회**(P37b: Wall 6.36 / Water 1.55 / RailTrack 38.22) → 방향은 맞으나 목표치 미달. 기준값이 *최종* 성능 기준이면 15% 지점 적용은 가혹.
+  - val: P39 **64.09@ep28** vs P38-DELIVER 피크 **65.19@ep28** → **−1.10 열세**.
+  - ⚠️ **직전 회차(06:15) 전망 정정**: "ep25~28에 65.19 통과" 예측했으나 상승 감속으로 미달. 오보였음을 기록.
+  - test 궤도는 여전히 P39 우위(ep20에 54.30 vs P38은 55.05를 ep62에 도달).
+  - **판정: 계속 진행(kill 아님). 재판정 시점 = ep60 전후** — 그때도 val이 65.19 미만 + thin-class 미달이면 중단 권고.
+  - 미실행: 토글 즉검(query_off/trunkexp_off) — 별도 eval 필요, GPU 여유 시.
+- yeon P37b-det: ep5 피크 후 39epoch 무갱신, 16:35 완주 예정 → p38_chain 발화 대기.
+
+### 2026-07-20 10:50 KST — 정기점검 (2h cron)
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER | ep42/200 | val 65.04@ep38 / test 54.30@ep20 | val −3.75 / test −2.41 (미완주) | ep60 14:11 · 완주 07-21 16:16 |
+| jarvis | P39-MUSES | ep38/300 | val 78.44@ep32 (최신 78.42) | vs 79.72 = −1.28 (ep38/300 극초기) | ep156지점 17:55 · 완주 07-21 02:33 |
+| yeon | P37b-det | ep46/50 | mAP50 0.8402@ep5 / AP 0.595 (최신 0.8153) | vs 0.85 = −0.008 | 완주 15:30 |
+
+- ✅ 3서버 정상, 사망·OOM 없음. yeon p38_chain 정상 대기.
+- 🔺 **P39-DELIVER 추격 중**: val best **64.09@ep28 → 65.04@ep38**, P38 피크(65.19@ep28) 대비 **−0.15**. P39의 best 지점이 ep38로 P38(ep28)보다 늦어 상승 여지 있음. **단 ep30 회차의 낙관 전망이 빗나간 전례가 있어 추정 금지 — 판정은 예정대로 ep60(14:11)에.** test는 ep20의 54.30 이후 정체(P38은 test best를 ep62에 달성했으므로 아직 비교 구간 전).
+- P39-MUSES: ep38/300 val 78.44 — 판단 이름. **첫 의미있는 비교 지점 = P38-MUSES best 82.22@ep156 도달 예정 17:55**.
+- yeon P37b-det: ep5 피크 후 39epoch 무갱신, 열화 확정 유지.
+- ✅ **eff-batch 리스크 해소**: yeon 우리 job은 정확히 4장(3,5,6,7) 사용, 유휴 3장(0,1,4), GPU2는 타 유저(jongwon_kim/hoi_transformer). 15:30 완주 시 7장이 비므로 체인이 4장 확보 → P37a/b-det와 동일 eff-batch 보장.
+
+### 2026-07-20 11:50 — P39 ep30 게이트 판정 + jarvis 체인 발화
+
+- **hpca100 P39-DELIVER ep30 게이트: 사전등록 기준 미통과** — test thin-class @ep44: Wall 9.34(기준≥13)✗ · Water 3.85(≥9.5)✗ · RailTrack 59.84(≥62)✗근접. P36 동epoch 대비 val −3.5~−4.8pt(ep28: 64.09 vs 67.79), test −1pt 내외(best 54.39@ep44 vs P36 55.26@ep28). 단 P37b식 붕괴는 아님: val best 65.04@ep38 상승 지속, arb λ 1.34 성장, router_ce 0.030, 에러 0, ep47/200 진행 중, 완주 ETA 07-21 ~17:00 KST. 토글 즉검은 보류(module_ablation P39 토글 패치가 미커밋 — user 결정 대기).
+- **jarvis P38-MUSES 완주**: 300ep, best val 82.22@ep156, 총 18h23m, 클린 종료.
+- **P39-MUSES 체인 자동 발화 성공** (08:31 KST): ff-merge → GPU 2,3,4,5 자동 배정 → torchrun 기동. 기동검증 통과(ep55→56 전진, 4GPU 94-100%, 18GB, 치명에러 0). ~3.6분/epoch, 완주 ETA 07-21 ~02:30 KST. 로그 = `logs/p39_muses_chain_20260720_031641.log` (jarvis `-develop` 체크아웃, HEAD 2fbe07e).
+
+### 2026-07-20 16:52 KST — 정기점검 (2h cron) · P37b-det 완주 + P38-det 체인 발화
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER | ep73/200 | val 65.68@ep64 / test 54.68@ep56 (최신 64.93/53.31) | val −3.11 / test −2.03 | 07-21 17:00 |
+| jarvis | P39-MUSES | ep134/300 | val 81.21@ep108 (최신 80.51) | **+1.49** (vs 79.72) | 07-21 03:30 |
+| yeon | P37b-det **완주** | 50/50 | mAP 0.5950 / mAP50 0.8402 / mAP75 0.6654 @ep5 | mAP50 −0.008 | 완료 15:31 |
+| yeon | **P38-det 기동** (체인 자동 15:35) | 초기 | — | — | 산정중 |
+
+- ✅ **체인 3연속 성공**: P37b-det 완주(15:31) → 15:35 P38-det 자동 기동. **기동 4종 전부 통과** — GPU **4장**(0,3,4,5, eff-batch 정상) / iteration 실전진(30s에 924→984) / loss 유한 NaN 0 / cfg `det_P38_m2f_yeon.yaml` 정확. Traceback·OOM 0건.
+- P37b-det 최종: ep5 피크(AP50 0.8402) 후 하락, 최종 ep49 AP50 0.8153 → **과적합 확정**. best ckpt = `outputs/det_final_P37b_classtoken_yeon/det_P37b_classtoken_yeon/best_checkpoint.pth`.
+- 🔺 **P39-MUSES 동일-epoch 첫 역전**: Δ(P39−P38) ep80 −1.01 → ep100 −0.44 → ep120 −0.73 → **ep130 +0.06**. 
+  ⚠️ 단 조회 에이전트가 보고한 "P38 best 81.72@ep126"은 **조회구간 국소최대**이며 **P38 진짜 best는 82.22@ep156**. P38은 ep130 이후 82.22까지 상승했으므로 **진짜 판가름은 P39의 ep156 도달 시점**(약 1.7h 후).
+- 🔴 **P39-DELIVER test 무갱신 지속**: test-best 54.68@ep56에서 **17epoch째 갱신 없음**(ep58~72 52.66~54.68 진동). val도 63.5~65.7 밴드 진동 — ep64 신기록(65.68)은 밴드 상단 1점이었음이 재확인.
+  - 제안한 판정 규칙(사용자 승인 대기): **ep90(~20:15)까지 돌려 test가 54.68 초과면 완주, 미달이면 중단.** val은 판정 제외(랭킹 지표 아님 + 현재 과적합 축). 중단 시 A100 4장은 P39 토글 ablation(query_off/trunkexp_off)으로 전환 제안.
+
+### 2026-07-20 18:33 — P39-MUSES 분기점 판정 + P39-DELIVER test 신기록
+
+- **jarvis P39-MUSES: P38 도약 구간 통과 실패 (열세 확정 방향)** — P39 best val **81.52@ep146** vs P38 best **82.22@ep156** = **−0.70**. 동epoch 대조: ep146 81.52/81.73(−0.21) · ep148 80.81/81.95(−1.14) · ep150 80.35/81.32(−0.97) · ep156 80.89/82.22(−1.33) · ep158 80.60/80.75(−0.15). ep108→146 구간 상승폭이 +0.31에 불과해 잔여 140ep 역전 근거 약함. 학습 건강(에러 0, arb λ 1.324, router_ce 0.0278, GPU 4장 100%). ep160/300 진행 중.
+- **hpca100 P39-DELIVER: test best 55.50@ep76 유지·재현** — ep80 55.38로 근접(우연 아님 확인), P36 최선 test 55.6에 −0.1. val best 65.68@ep64(ep82 65.42). thin-class 요동 지속: RailTrack 61.54(ep74)→47.32(ep76)→53.44(ep78) = 50~60대 안착 경향이나 게이트 62 미달 · Wall 5.64~8.77(기준 13) · Water 0.87~5.80(기준 9.5) 모두 미달. 에러 0, ep82/200.
+- **판정 요약**: MUSES는 P38 우위, DELIVER는 P39가 test에서 P36에 근접하나 thin-class 목표(Wall/Water)는 미달 — P39의 설계 목표(thin-class 복원)는 RailTrack 부분회복에 그침.
+
+### 2026-07-20 18:55 KST — 정기점검 (2h cron) · 🔺 P39-DELIVER 반전(계보최고) / 🔻 P39-MUSES 열위 확정적
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER | ep83/200 | val 65.68@ep64 / **test 55.50@ep76** (최신 65.42/54.50) | val −3.11 / **test −1.21** | 07-21 16:40 |
+| jarvis | P39-MUSES | ep164/300 | val 81.52@ep146 (최신 81.02) | **+1.80** | 07-21 03:35 |
+| yeon | P38-det | ep3/50 | mAP 0.0492 / mAP50 0.1623 / mAP75 0.0112 @ep2 | 초기(판단 이름) | 07-22 20:00 |
+
+- 🔺 **P39-DELIVER test 갱신 → P38 추월**: test-best 54.68@ep56 → **55.50@ep76**. **P38-DELIVER test-best 55.05@ep62 대비 +0.45**. val도 65.68 vs 65.19 = **+0.49**. → **P39-DELIVER가 val·test 양쪽에서 계보 최고 DELIVER 모델**. 제안했던 판정기준(ep90에 test>54.68)은 **ep76에 이미 충족** → **중단 논의 종결, 완주**.
+  - ⚠️ 판단 이력 정정: 이 런에 대해 opus가 **양방향으로 오판**(ep20 낙관 → ep30~60 비관·중단권고 → ep76 반전). 이후로는 **예측하지 않고 완주 후 best로 판정**.
+  - 단 thin-class 게이트(Wall/Water/RailTrack)는 ep60 기준 0/3으로 여전히 미달 — 헤드라인 지표(val/test)와 thin-class가 **분리된 결과**임에 유의.
+- 🔻 **P39-MUSES는 동일-epoch 전 구간 열위**: ep140~164에서 P39가 P38보다 일관되게 낮음(−0.21~−1.33). ep156(P38 best 82.22 지점)에서 P39는 80.89로 **−1.33**. 앞서 보고한 "ep130 +0.06 역전"은 **단일점 흔들림**이었음. P39 자체 best 81.52@ep146 이후 18epoch 무갱신.
+  - 권고: **완주**(9h 남음) — 동일 길이 완주분이 있어야 깨끗한 ablation, "MUSES=P38 / DELIVER=P39"라는 데이터셋별 상반 결과가 논문 재료.
+- P38-det: ep3/50 정상 상승(AP50 0.0248→0.1623), GPU 4장 유지, loss 유한·에러 0. ep당 62~65분으로 완주까지 ~53h.
+
+### 2026-07-20 — 🏆 MUSES 공식 test 신기록: P38-m2f 3모달 ep156 = **79.025**
+
+Codabench comp 14005 제출 결과(zip = muses_P38_m2f_3modal_ep156_submission.zip, val 82.22@ep156).
+
+| 제출 | 내부 val | **공식 test** | 비고 |
+|---|---|---|---|
+| P34 3모달 ep276 | 81.02 | 78.979 | 기존 최고 |
+| P34 4모달(+radar) ep182 | 80.76 | 78.256 | radar −0.72 |
+| **P38-m2f 3모달 ep156** | **82.22** | **79.025** | **신기록 (+0.046)** |
+
+- **SOTA(GtA, camera-only) 82.39 대비 −3.365** → MUSES "승리" 주장은 아직 불가.
+- 🔴 **핵심 발견 — val 개선이 test로 거의 전이되지 않음**: P38은 P34 대비 val **+1.20**인데 test는 **+0.046**뿐. **val 기준 모델선택/튜닝의 효용이 매우 낮다**는 증거. val→test 낙차는 두 제출 모두 ~3.2pt로 일관(81.02→78.979 / 82.22→79.025).
+- **per-condition**: day **80.253** / night **75.118** → **주 축은 주야 격차 5.14**. 날씨는 평평(clear 78.218 · fog 77.524 · rain 78.096 · snow 78.329, spread 0.8).
+- **최악 셀 snow_day 70.584** — snow_night(74.867)보다 낮은 이례적 패턴(주간 설상 반사/과노출 의심). 그 외 clear_night 71.877 · rain_night 73.510.
+- **약한 클래스**: motorcycle 55.07 · rider 57.68 · pole 61.46 · fence 66.61 · bicycle 66.72 (얇은/소형 객체). **night truck 44.40**(day 76.43 → 야간 붕괴), night bus 80.85(day 96.12).
+- 강한 클래스: road 97.18 · bus 94.24 · car 93.73 · train 93.47 · building 92.97 · vegetation 89.07.
+
+### 2026-07-20 20:45 KST — 정기점검 (2h cron)
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER | ep92/200 | val **65.78@ep90**(신규) / test 55.50@ep76 (최신 65.73/53.53) | val −3.01 / test −1.21 | 07-21 19~20시 |
+| jarvis | P39-MUSES | ep194/300 | val 81.52@ep146 (최신 81.27) | +1.80 (vs 79.72) | 07-21 03:30~04:00 |
+| yeon | P38-det | ep4/50 | mAP50 0.3357@ep3 / AP 0.1232 / AP75 0.0540 | 초기(목표 0.85) | 07-22 20~21시 |
+
+- ✅ 3서버 정상, OOM·NaN·에러 0, yeon GPU 4장 유지.
+- 🔺 **P39-DELIVER val 신기록 65.78@ep90** — P38 피크(65.19) **+0.59** 상회. ckpt `epoch90_65.78_top1_checkpoint.pth` 확인.
+  - 🔴 **그러나 test는 55.50@ep76에서 16epoch 무갱신**(ep84~92: 53.11/53.74/54.52/54.85/53.53). **val↑/test정체** — MUSES에서 확인된 "val→test 전이 실패"와 동일 축.
+  - ※ 조회 에이전트가 "Best 표기 모순" 보고했으나 **오독**이었음(ep84~88은 갱신 전 라인, ep90에서 정상 갱신). opus가 원문 직접 확인.
+- 🔴 **jarvis P39-MUSES 중단 권고**: best가 81.52@ep146에서 **48epoch 무갱신**이고, **그 ckpt의 test 점수를 이미 확보**(78.881, 4제출 중 3위). 남은 ~7h×4GPU=**28 GPU-시간**을 태울 근거 약함. P38도 ep156 피크 후 최종 −0.53 하락. 새 best가 나와도 **val↔test 순위 역전 확인**(P39 val>P34 val인데 test는 반대)으로 test 상회 보장 없음.
+  - **대안 표적**: P39 test 분석 결과 **fog_night 62.675(전 조합 최저, P38 대비 −12.05)**만 P38 수준으로 되돌리면 전체 **+1.2pt → 80.1로 P38 상회**. 가장 값싼 개선점 → P39.1(fog_night fallback) 제안.
+- yeon P38-det: mAP50 0.0248→0.1042→0.1623→**0.3357** epoch마다 배증, 정상. P37b-det는 ep5에 0.8402 → **ep5~6이 분기점**. ep당 64분으로 완주 48h 소요.
+
+### 2026-07-20 15:07~15:15 KST — hpca100 P39-DELIVER: GPU 0,1 반환 시도(user 지시) → cuDNN 라이브러리 충돌로 즉시 크래시, 4GPU로 원복 필요
+
+**사유**: user가 hpca100 GPU 0,1을 다른 용도로 반환 요청 → P39-DELIVER(4GPU)를 GPU 2,3만으로 resume 시도.
+
+**1) 중단 전 상태 기록**:
+- master torchrun PID 105197(부모 bash 105194), 4GPU 전부 사용 중(mem 25.5GB/util 70~100%).
+- train.log 최신: epoch 110 학습 중(15:09:45 로그), **Val best 66.14@ep96**, **Test best 55.50@ep76**.
+- `last_checkpoint.pth` 존재, mtime 07-20 15:09(직전 로그와 일치) → 재개 가능 확인.
+
+**2) 정상 중단**: `kill -TERM 105197` → 5초 내 전 프로세스(자식 포함) 정상 종료 확인(`ps` 0건). `outputs/` 무손상.
+
+**3) GPU 0,1 반환 확인**: `nvidia-smi` 4장 전부 0MiB/0%(0,1뿐 아니라 2,3도 함께 반환됨 — 재기동 전 상태).
+
+**4) GPU 2,3 재기동**: tmux 세션 `jemo` window 4(`p39_deliver_resume_23`) 새로 생성, `CUDA_VISIBLE_DEVICES=2,3 --nproc_per_node=2 --master_port=29722`로 재기동. 로그 `logs/p39_deliver_resume_20260720_151339.log`.
+
+**5) 재개 검증 — 🔴 실패(epoch 자체는 정상 재개, 그러나 즉시 크래시)**:
+1. ✅ **시작 epoch 정상**: AUTO_RESUME 정상 동작(`RESUME_ENABLE=false`+`AUTO_RESUME=true` → `last_checkpoint.pth` 자동 로드), `Epoch [112/200]` 부터 재개 — **epoch 1 재시작 리스크는 발생하지 않음**, 18시간 학습 안전.
+2. eff-batch 확인 불가(크래시로 실측 로그 없음) — 단 코드상 `accumulation_steps = ceil(16/(BATCH_SIZE=2 × world_size=2)) = 4`로 자동 계산되어 기존 4GPU와 동일 eff-batch=16 유지되도록 설계되어 있음(로직상 확인, 실측 미검증).
+3. ❌ **iteration 전진 실패**: epoch 112 첫 배치의 `backward()`에서 즉시 크래시.
+4. ❌ **Traceback 발생**: rank0/rank1 모두 `RuntimeError: GET was unable to find an engine to execute this computation` (cuDNN 엔진 탐색 실패). 선행 경고 다수: `Could not load library libcudnn_cnn_train.so.8. Error: ...undefined symbol ... version libcudnn_cnn_infer.so.8`. torchrun이 `ChildFailedError`로 자체 종료(exitcode 1, elastic agent 재시도 없음).
+5. GPU 2,3만 사용됐던 것 확인(활성 중 한때 24997MiB) — 크래시 후 4장 전부 0MiB/0%로 복귀. **peak 메모리 확인 불가**(크래시가 backward 첫 스텝에서 발생, 안정화 전).
+6. ETA 산출 불가(진행 없음).
+
+**근본 원인 진단**: venv(`p34`)의 pip `nvidia-cudnn-cu12==8.9.2.26`과 시스템 `/usr/lib/x86_64-linux-gnu/libcudnn_cnn_train.so.8`(버전 8.9.0) 간 **버전 불일치**. `~/.bashrc:103`가 `LD_LIBRARY_PATH=/usr/lib/nvidia:/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64:...`로 **시스템 cudnn을 venv보다 우선시**하도록 설정되어 있어, interactive shell(tmux 새 window)에서 이 순서로 로드되면 cnn_infer/cnn_train 버전이 섞여 undefined symbol 발생. 4GPU 원본 런이 왜 15시간 무사했는지는 불명(다른 쉘 상태·캐시된 cudnn algo 차이 추정) — **재현성 있는 버그인지 일회성 flake인지 미확정**.
+
+**현재 상태(2026-07-20 15:15 KST 기준)**:
+- 🔴 **학습 완전 정지 — GPU 0,1,2,3 전부 유휴(0MiB/0%), P39-DELIVER 프로세스 0개**.
+- ✅ `last_checkpoint.pth`(epoch 110/111 시점, mtime 15:09) **무손상 — 손실 없음**.
+- ✅ 기존 최선 기록 보존: val best 66.14@ep96, test best 55.50@ep76(둘 다 P38 대비 계보 최고 유지, 위 07-20 20:45 항목 참조).
+- ⏸ **재기동 보류 중** — cuDNN 충돌 원인 미해결 상태로 재시도 시 동일 크래시 반복 위험. 4GPU 복귀 여부·LD_LIBRARY_PATH 수정 여부는 user 판단 대기.
+
+> 🔴 **GPU 유휴 경고**: 서버 부족 상황(memory `gpu-never-idle`)과 배치되므로 원인 조치 없이 장시간 방치 금지 — 다음 세션이 즉시 재기동 또는 명시적 보류 결정 필요.
+
+### 2026-07-21 00:20~00:32 KST — hpca100 P39-DELIVER: cuDNN 재기동 성공(GPU 2,3), ~9h 유휴 후 정상화
+
+**배경**: 위 07-20 15:07~15:15 항목의 크래시(cuDNN 버전 충돌) 이후 **재기동 보류 상태로 약 9시간 방치**되어 GPU 2,3(및 반환된 0,1도)이 유휴였음. `tmux jemo` window 4(`p39_deliver_resume_23`)에 재기동 시도 흔적이 있었으나 **동일 크래시 재현**(로그 확인: 15:14:59 `RuntimeError: GET was unable to find an engine to execute this computation`, epoch 112 첫 backward) — 이 재시도 명령에 **`LD_LIBRARY_PATH` 처방이 누락**되어 있었던 것이 원인(런북에 있던 처방을 명령 작성 시 빠뜨림).
+
+**처방 적용**: venv cudnn lib 경로를 `LD_LIBRARY_PATH` 맨 앞에 명시.
+```
+export LD_LIBRARY_PATH=/home/jovyan/SSDb/jemo_maeng/venv/p34/lib/python3.11/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+```
+확인된 정확한 경로: `venv/p34/lib/python3.11/site-packages/nvidia/cudnn/lib` (해당 디렉터리에 `libcudnn_cnn_train.so.8` 존재 확인).
+
+**재기동**: tmux `jemo` window 5(`p39_deliver_resume3`) 신규 생성, `CUDA_VISIBLE_DEVICES=2,3 --nproc_per_node=2 --master_port=29724`, 로그 `logs/p39_deliver_resume3_20260720_*.log`.
+
+**검증 결과 — ✅ 전부 통과**:
+1. ✅ **시작 epoch 정상**: `AUTO_RESUME` → `last_checkpoint.pth`(epoch 111 시점) 로드, `Resumed weights ... (epoch 111)` → `Epoch [112/200]`부터 재개. epoch 1 재시작 없음.
+2. ✅ **첫 backward 통과 + 이후 지속 전진**: crash 지점이던 epoch 112 첫 스텝을 통과, 30초 간격 2회 확인 결과 17→29→98→99→135→162→191→251 스텝까지 꾸준히 전진(정지/재크래시 없음).
+3. ✅ **loss 유한, NaN 없음**: Loss 1.08~1.13대 안정(cal 0.41내외, auxCE 0.19~0.22), Traceback/CUDA/OOM/cudnn 에러 0건.
+4. ✅ **GPU 배치 정확**: `nvidia-smi` 확인 결과 GPU 2,3만 사용(각 25,369MiB / util 92~97%), GPU 0,1은 0MiB/0%로 완전 유휴 — user 지시(0,1 반환) 준수.
+5. ✅ **cudnn 버전 검증**: 동일 LD_LIBRARY_PATH 하에서 `torch.backends.cudnn.version()` = **8902**(venv `nvidia-cudnn-cu12==8.9.2.26`) — 시스템 cudnn(8.9.0)이 아닌 venv cudnn이 정상 로드됨을 직접 확인.
+6. **실측 처리량**: 두 구간 측정 모두 **~1.32 it/s**(2GPU) → **~12.5분/epoch**(순수 학습, eval 제외). 참고: 런북 예상치는 22분/epoch였으나 실측은 더 빠름.
+
+**새 ETA**: 잔여 epoch = 200 − 111 = 89. 12.5분/epoch(순수 학습) × 89 ≈ **18.5시간** → 순수 학습 기준 완주 **07-21 19:00시 KST 경** 예상. 단, `EVAL_INTERVAL=2`로 절반의 epoch마다 평가(val 2005장)가 추가되므로 **실제 완주는 이보다 다소 늦어질 수 있음**(eval 소요 시간 미실측 — 다음 정기점검에서 실측 후 갱신 필요). 직전 07-20 20:45 항목의 4GPU 기준 ETA(19~20시)와 유사한 범위로 수렴.
+
+**현재 상태(2026-07-21 00:32 KST 기준)**:
+- ✅ P39-DELIVER 정상 재개 중, GPU 2,3 사용(92~97% util), GPU 0,1 유휴(사용자 반환 요청대로).
+- ✅ 기존 최선 기록 보존: val best 66.14@ep96, test best 55.50@ep76.
+- 🔴 **재발 방지**: 향후 이 서버에서 임의 재기동 시 `LD_LIBRARY_PATH` 처방을 명령에 **반드시 포함**할 것 — `~/.bashrc:103`이 시스템 cudnn을 앞세우므로 이 처방 없이는 100% 재현되는 크래시임.
+
+### 2026-07-21 00:44 KST — 정기점검 (2h cron) · A100 0,1 반납 확인
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER (**GPU 2,3**) | ep112/200 | val 66.14@ep96 / test 55.50@ep76 | val −2.65 / test −1.21 | 오늘 17:30~19:00 |
+| jarvis | P39-MUSES **4모달** | ep16/180 | val 77.61@ep14 | −2.11 (ep16/180, 극초기) | 오늘 13:50~14:00 |
+| yeon | P38-det | ep7/50 | mAP 0.1669 / mAP50 0.4092 / mAP75 0.1081 @ep6 | mAP50 −0.44 (vs 0.85) | 07-23 새벽 |
+
+- ✅ **hpca100 GPU 0,1 반납 유지 확인**: 0MiB/0%, 타인 사용도 없음. GPU 2,3만 우리 학습(`--nproc_per_node=2`). user 지시 이행 완료.
+- ⚠️ **정정**: 직전 보고의 "cuDNN 사고로 GPU 9시간 유휴"는 **오류**. 실제 유휴는 **약 6분**(1차 크래시 00:13:39 KST → 처방 적용 재기동 00:19:37 KST). 조회 에이전트의 UTC/KST 혼동을 opus가 검증 없이 전달한 것.
+- hpca100 P39-DELIVER: **val 66.14@ep96에서 16ep, test 55.50@ep76에서 34ep 무갱신**(양쪽 정체). 그래도 계보 최고 유지(P38 대비 val +0.95 / test +0.45). ep112/200 완주 예정.
+- jarvis 4모달: ep16이라 3모달(81.54@ep212)·P38(82.22@ep156)과 **비교 불가**. 오늘 14시 완주가 첫 판정 시점.
+- 🔴 **yeon P38-det가 P37b-det 대비 크게 뒤짐**: ep6 mAP50 **0.4092** vs P37b-det ep5 **0.8402**(절반 수준).
+  - 단 **불공정 비교**: P38-det는 M2F 쿼리헤드를 detector로 쓰며 **COCO 사전학습 없이 from scratch**, P37a/b-det는 **RF-DETR COCO-init**. 초기 수렴이 느린 게 구조상 당연.
+  - 쟁점 = **50ep 안에 0.84를 따라잡느냐**. 현 궤도로는 낙관 어려움 → **ep15~20에서 재판정**.
+> ⚠️ **yeon 재시작 흔적**: 워커 etime 29분 vs 마스터 9h+ → 체이닝 중 재시작 발생(사망 아님, ckpt resume). ep당 63~111분으로 불규칙. 다음 점검에서 추가 재시작 여부 확인 필요.
+
+### 2026-07-21 04:15 KST — 정기점검 (2h cron) · 🔺 4모달이 동일 epoch에서 3모달 상회(첫 실증)
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| hpca100 | P39-DELIVER (GPU 2,3) | ep118/200 | val 66.14@ep96 / test 55.50@ep76 (최신 65.31/54.12) | val −2.65 / test −1.21 | 07-22 09:30 |
+| jarvis | P39-MUSES **4모달** | ep42/180 | val **80.10@ep40**(신규) | **+0.38** (vs 79.72) | 07-21 14:00 |
+| yeon | P38-det (**8 GPU**) | ep9/50 | mAP 0.2156 / mAP50 0.4917 / mAP75 0.1586 @ep7 | mAP50 −0.358 | 07-22 01:15 |
+
+- 🔺 **동일-epoch(ep40) 3런 대조 — 4모달 우세**:
+  | ep40 | val | vs 4모달 |
+  |---|---|---|
+  | **P39 4모달(rgbelr)** | **80.10** | — |
+  | P39 3모달(rgbel) | 79.41 | −0.69 |
+  | P38 3모달(m2f) | 80.03 | −0.07 |
+  → **같은 P39 아키텍처에서 radar만 추가해 +0.69**. "V2(전 모달 토큰 attention)는 모달 수에 비례해 이득" 가설의 **첫 직접 증거**이며, **P34에서 radar가 해로웠던 것(test −0.72)과 정반대** — 헤드가 바뀌면 radar의 가치도 바뀜.
+  ⚠️ 단 **ep40/180(23%)이라 확정 이름**. P38 대비 +0.07은 동률 수준이고, P34의 radar 판정은 **test 기준**인데 이건 **val**(val→test 전이 깨진 것 이미 확인). **ep60·80·100 대조 축적 + 최종은 test 제출로 판단.**
+- hpca100: val 22ep·test 40ep 무갱신(양쪽 정체). GPU 0,1 반납 유지 확인(0MiB/0%).
+  > ⚠️ **resume 로그 표시 버그**: 재개 후 `Best: 55.50 (ep0)`처럼 **epoch 라벨이 0으로 리셋**됨(값은 유지, 실제 ep76). 원본 로그(`p39_deliver_20260719_180455.log`) 교차확인으로 정정. 이후 로그만 보고 판단 시 주의.
+- yeon P38-det: 8 GPU 재기동 후 **33분/epoch 안정**(4GPU 87분 → **2.6배 가속** 확인, eff-batch 16 유지: 8×BS1×accum2). best mAP50 0.4917@ep7, ep8은 0.4449로 하락 — ep9/50이라 판단 보류. P37b-det(0.8402@ep5) 대비 −0.3485.
+  - GPU0은 **타 세션의 P39-MUSES 표준분석**(seg_analysis_pipeline/eval_per_domain/val.py)과 공존 중 — 외부 침입 아님, 건드리지 말 것.
+
+### 2026-07-21 04:50 KST — 정기점검 (2h cron, 하드측정본) · 🔴 yeon 8-GPU 전환 무효 판명
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| jarvis | P39-MUSES **4모달** | ep66/180 | val **81.14@ep66**(신규) | **+1.42** (vs 79.72) | 07-21 14:30~14:40 |
+| hpca100 | P39-DELIVER (GPU 2,3) | ep124/200 | val 66.14@ep96 / test 55.50@ep76 | val −2.65 / test −1.21 | 07-22 09:30 |
+| yeon | P38-det (8 GPU) | ep10 eval 중 | mAP 0.2926 / mAP50 **0.6099** / mAP75 0.2567 @ep9(신규) | mAP50 −0.230 | 07-23 18:00(경합 시) |
+
+- 🔺 **yeon P38-det 도약**: mAP50 **0.4917@ep7 → 0.6099@ep9**(+0.118). P37b-det(0.8402) 격차 −0.348 → **−0.230**으로 축소. from-scratch 치고 가파른 상승 — 따라잡을 여지 생김.
+- 🔴 **8-GPU 전환이 이득 없었음 — opus 판단 오류 정정**. ckpt mtime·tqdm 하드측정:
+  | 구간 | 4 GPU(경합 전) | 8 GPU(경합 중) |
+  |---|---|---|
+  | train | 33분 | **33분(동일)** |
+  | eval | **29분** | **60분(2배 느림)** |
+  | epoch 총 | **63분** | **92분** |
+  - GPU를 2배로 늘렸는데 train 시간 불변 → **진짜 병목은 GPU 개수가 아니라 GPU0 경합**. 원인 확정: 우리 다른 세션의 P39-MUSES 분석(`seg_analysis_pipeline.py` 2408MiB + `module_ablation.py` 2636MiB=5.3GB)이 GPU0 점유(GPU0 19.5GB vs 나머지 14.2GB). **DDP가 최저속 rank0에 전체가 묶임.**
+  - **처방 제안(사용자 승인 대기)**: P38-det를 **GPU 1,2,3,4(4장)×BS1×accum4=eff 16**(원 config 복원)으로 옮겨 GPU0 회피 → epoch 92→**63분**, 잔여 39ep 60h→**41h**(**약 19시간 절약**). 재시작 비용 ~1.5h.
+- jarvis 4모달 — **radar 효과 확대 중**:
+  | epoch | 4모달 | 3모달 P39 | Δ | P38(3모달) | Δ |
+  |---|---|---|---|---|---|
+  | 40 | 80.10 | 79.41 | **+0.69** | 80.03 | +0.07 |
+  | 60 | 80.85 | 79.39 | **+1.46** | 81.20 | −0.35 |
+  → 같은 P39에서 radar 추가 효과가 **+0.69 → +1.46으로 확대**. "V2는 모달 수에 비례해 이득" 가설 강화. 단 **P38(다른 헤드)에는 여전히 −0.35**. 14:30 완주 시 최종 판정.
+- hpca100: val **28ep**·test **46ep** 무갱신(양쪽 정체 지속). 22.06분/epoch 매우 안정. GPU 0,1 반납 유지(0MiB/0%).
+
+### 2026-07-21 06:45 KST — 정기점검 (2h cron) · ✅ yeon 경합 자동 해소 / 🔺 4모달 P38 추격
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| jarvis | P39-MUSES **4모달** | ep88/180 | val **81.73@ep84**(신규) | **+2.01** (vs 79.72) | 07-21 14:40 |
+| hpca100 | P39-DELIVER (GPU 2,3) | ep129/200 | val 66.14@ep96 / test 55.50@ep76 (최신 64.02/54.61) | val −2.65 / test −1.21 | 07-22 08:44 |
+| yeon | P38-det (8 GPU) | ep12/50 | mAP 0.2926 / mAP50 0.610 / mAP75 0.257 @ep9 | mAP50 −0.230 | 07-22 16:18 |
+
+- ✅ **yeon GPU0 경합 자동 해소** — P39-MUSES 분석 프로세스(seg_analysis_pipeline/module_ablation)가 종료돼 사라짐. ckpt mtime 실측 페이스: ep8→9 **1h48m** / ep9→10 **1h35m** / ep10→11 **53분**(회복). GPU0 메모리도 14417MiB로 나머지(14191)와 정상화.
+  → **ETA 07-23 18시 → 07-22 16:18로 약 26시간 당겨짐.** 직전 회차에 제안했던 "GPU0 회피 이동(재시작)"은 **불필요해져 실행하지 않음**.
+  - ⚠️ 단 mAP50이 ep9 피크(0.610) 후 하락 중(ep10 0.607, ep11 0.586). ep12/50로 아직 초반이라 노이즈인지 조기피크인지 판단 보류.
+- 🔺 **4모달 vs 3모달 vs P38 동일-epoch 대조 (ep80까지 확보)**:
+  | epoch | **4모달** | 3모달 P39 | Δ | P38(3모달) | Δ |
+  |---|---|---|---|---|---|
+  | 40 | 80.10 | 79.41 | **+0.69** | 80.03 | +0.07 |
+  | 60 | 80.85 | 79.39 | **+1.46** | 81.20 | −0.35 |
+  | 80 | **81.25** | 80.36 | **+0.89** | 81.37 | **−0.12** |
+  → **3모달 대비 전 구간 우세**(+0.69~+1.46). **P38과의 격차는 −0.35 → −0.12로 축소**. best 81.73@ep84가 **P38의 ep80(81.37)을 상회**. 최종 승부는 P38 best **82.22@ep156** 지점 — 4모달이 거기서 넘는지가 관건(완주 14:40).
+- hpca100: val **32ep**·test **52ep** 무갱신, 정체 확정적. 계보 최고(P38 대비 val +0.95/test +0.45)는 유지. 22분/epoch 안정, GPU 0,1 반납 유지(0MiB/0%).
+
+### 2026-07-21 08:56 KST — 정기점검 (2h cron) · 🔴 P38-det 조기피크 후 6ep 연속 하락
+
+| 서버 | 실험 | 진행 | best (최신) | SOTA/목표 델타 | ETA(KST) |
+|---|---|---|---|---|---|
+| jarvis | P39-MUSES 4모달 | ep113/180 | val **81.75@ep98** (최신 81.71@ep112) | **+2.03** (vs 79.72) | 07-21 14:49 |
+| hpca100 | P39-DELIVER (GPU 2,3) | ep134/200 | val 66.14@ep96 / test 55.50@ep76 (최신 64.23/54.22) | val −2.65 / test −1.21 | 07-22 08:59 |
+| yeon | P38-det (8 GPU) | ep15/50 | mAP 0.2926 / mAP50 **0.6099** / mAP75 0.2567 @ep9 | mAP50 **−0.240** (목표 0.85) | 07-22 12:43 |
+
+3서버 전부 에러 0, 페이스 일정(22 / 5.25 / 46.5분per-epoch).
+
+> 🔴 **yeon P38-det — ep9 피크 후 6 epoch 연속 하락**: mAP50 ep9 **0.6099** → ep10 0.607 → ep11 0.586 → … → **ep14 0.5635**(피크의 92%).
+> - 대조: **P37b-det는 ep5에 0.8402** — P38-det 피크는 **−0.230** 낮다. det 계보가 조기피크형(P37b ep5)임을 감안하면 "아직 초반"으로 설명 안 됨.
+> - 해석: **M2F 쿼리헤드가 seg에선 계보 최고(MUSES val 82.22)인데 det에선 역효과**로 기울고 있음.
+> - 남은 35ep = **28시간**. 판정 제안: **ep20까지(약 4h) 보고 ep9 피크(0.6099) 미돌파면 중단 → P39-det로 전환.** 완주해도 결론이 같을 가능성이 높음.
+
+> ⚠️ **jarvis 4모달 정체 구간**: best가 81.73@ep84 → **81.75@ep98로 29 epoch간 +0.02**, 최신 ep112 81.71. **P38 최종 best 82.22@ep156**을 넘으려면 잔여 67ep에서 **+0.47** 필요. P38도 ep156 늦은 정점이라 닫힌 승부는 아니나 현 기울기로는 비관적. **14:49 완주 후 best로 판정**(예측 금지 원칙).
+> - 동일-epoch 4모달 val: ep40 80.10 / ep60 80.85 / ep80 81.25 / **ep100 81.50**.
+
+> ⚠️ **hpca100 표시버그(경미)**: resume3 이후 로그에서 test-best 라벨이 `(ep76)` → `(ep0)`으로 리셋. **값 55.50은 불변**이라 트래커는 살아있고 라벨만 문제 — test-best ckpt 덮어쓰기 위험 없음으로 판단. val **38ep**·test **58ep** 무갱신, 정체 확정적.
+
+> 📝 **이력 정정(수집 에이전트 오보)**: ① yeon 02:30 OOM 후 BS1·8GPU 재기동은 "체인 밖 사람"이 아니라 **본 세션이 직접 수행한 조치**. ② jarvis 4모달이 체인 소산이 아닌 별도 창 수동 기동인 것도 **의도된 것**(체인은 3모달 완주 후 역할 종료·idle = 정상). 둘 다 이상징후 아님.
