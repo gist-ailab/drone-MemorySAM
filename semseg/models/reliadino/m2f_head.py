@@ -445,8 +445,12 @@ class MaskQueryLiteHead(nn.Module):
                 orig = (cur_masks[k] >= 0.5)
                 area_orig = int(orig.sum())
                 m = (mask_ids == k) & orig
-                area = int(m.sum())
-                if area == 0 or area_orig == 0 or area / area_orig < overlap_thresh:
+                # 감사 2026-07-21: 표준 M2F의 overlap 분자는 argmax 승리 영역
+                # 전체(mask_ids==k)다 — 교집합(m)을 쓰면 원 프로토콜보다
+                # 엄격해져 얇은/저신뢰 세그먼트가 과탈락(PQ 하향 편향).
+                area_win = int((mask_ids == k).sum())
+                if int(m.sum()) == 0 or area_orig == 0 \
+                        or area_win / area_orig < overlap_thresh:
                     continue
                 isthing = cat in thing_ids
                 if not isthing and cat in stuff_seg:            # merge stuff

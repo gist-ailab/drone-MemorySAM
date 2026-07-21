@@ -114,6 +114,11 @@ MODEL:
       ALPHA_MIN : 0.1
       ALPHA_MAX : 0.5
       READOUT_W : 0.5
+      # [P40-F1] rel(img) 분위 임계값을 뽑는 링버퍼. 배치 내 quantile은
+      # BATCH_SIZE=1에서 조건이 무력화되므로(무조건 dropout 퇴화) 최근
+      # BUF_SIZE개 관측 분포에서 뽑는다. MIN_FILL 미만이면 감쇠 안 함.
+      BUF_SIZE  : 512
+      MIN_FILL  : 128
 
   MODAL_DROPOUT:
     ENABLE    : false

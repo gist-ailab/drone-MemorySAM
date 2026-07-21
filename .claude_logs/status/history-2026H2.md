@@ -9,6 +9,36 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-21 — P37~현재 코드 전수조사 완료: 확정 21건(critical 2·major 6·minor 13), 12건 develop 수정 반영
+
+멀티에이전트 32기로 P37~현재 코드를 전수조사(발견→반증검증 2단계). **확정 21건**(반증 3건 별도), **12건은 이미 develop에 수정 커밋 반영**.
+
+**critical 2건(수정됨)**:
+- **ISSUE-026**: ColorAugSSD brightness가 uint8(0-255) 입력을 [0,1] 클램프 → 발화 샘플(p=0.5)의 RGB가 백색 상수로 붕괴(사실상 RGB-dropout 0.5). **영향은 07-16 커밋 이후 `DGFUSION_AUG:true` DELIVER 학습 전부** — jarvis P37a-DELIVER, bengio P37a/b(사망런), **hpca100 P38-DELIVER 200ep 완주분(=P38 게이트 미달 판정에 쓰인 그 런)**, **hpca100 P39-DPC resume(현재도 오염 상태로 학습 중)**, yeon 스모크들. **MUSES 전 계보는 무영향**(`DGFUSION_AUG` 키 자체가 없음). ⚠️ 재해석: P36 fair 게이트(67.74/55.62)는 07-16 이전 학습이라 정상 RGB — **P37+/P38/P39 DELIVER와 P36의 비교는 불공정했음** → **P38-DELIVER "게이트 미달 −1.63" 판정, P39-DELIVER "−1.63 thin-class 퇴행" 판정 모두 보류**. P39.1부터 픽스 적용 첫 클린 DELIVER 런.
+- **ISSUE-027**: `GRADIENT_CHECKPOINT=true` 시 timm non-reentrant 재계산이 stale `active_modality`(backward 시점엔 마지막 모달로 고정)로 LoRA를 재실행 → 비최종 모달 gradient가 잘못된 파라미터 경로로 오염(무경고). 팀이 bengio에서 실증해 config 주석("절대 true 금지")은 있었으나 코드 가드가 없었고 체크인 configs 9종에 `true` 잔존. 수정 = encoder 강제 off 가드 + configs 9종 `false`. 실피해는 bengio 사망런·yeon 스모크 등에 한정.
+
+**major 6건 요지**: det seam 2곳 tanh(γ) 게이트 생략(P39.1 잠복, 헬퍼로 통일) / val.py CEFR ckpt가 λ2=0으로 평가되던 버그(**P37a-CEFR 분석·판정 재검증 필요 가능성**) / module_ablation cross-generation no-op 토글 오판 가드 / fog audit 키메라 측정 중단 가드 / panoptic overlap 표준 M2F 정정 (나머지 1건 포함, 상세는 각 커밋 참조).
+
+**minor 13건 중 수정분 요지**: epoch 경계 grad 유출, vicreg fp32 강제, tb 로깅 누락 3종, classtoken 중복 생성 가드, eval_per_domain exit code 정정 등.
+
+**미수정 기록**: `last_checkpoint`가 eval 후 미갱신(resume 시 top-k 불일치 가능, minor) — 후속 처리 대상.
+
+**조치**: `experiments/plan.md` 실행 중 표에 hpca100 P39-DPC resume 오염 표기 + 사고 기록 1줄, 대기열 #1(P39.1)에 클린런 표기. `issues/issues-and-fixes.md`에 ISSUE-026/027 등재(인덱스+본문), ISSUE-024에 전수조사 언급 1줄 추가. 상세는 [issues/issues-and-fixes.md](../issues/issues-and-fixes.md) ISSUE-026/ISSUE-027, [experiments/plan.md](../experiments/plan.md).
+
+---
+
+### 2026-07-21 — ISSUE-025: MUSES radar 디코딩 3중 버그 발견 + develop 수정 완료
+
+P39 4모달(rgbelr) radar 기여 재검토 과정에서 radar 디코더 경로 실측 검증 중 발견(jarvis radar 75파일 실측). **3중 버그**: ① `_open_radar`가 자체 구현 없이 `_open_lidar`로 폴스루 ② 데이터셋 디스패치(`__getitem__`)가 radar를 `_open_radar`가 아니라 `_open_lidar`로 직접 라우팅해 `_open_radar` 자체가 죽은 코드 ③ 결과적으로 radar range가 `LIDAR_RANGE_MAX=100m`에 클립(실측 유효픽셀 2.76% 포화 — radar 센서 실제 캡 = 정확히 150.0m 확인) + height 채널(radar는 전 픽셀 0)이 정규화 후 0.25 상수 평면으로 오염.
+
+**수정**(develop, merge 80d65a0 계보): `RADAR_RANGE_MAX=150.0` 클립 상수 도입, ch3(height)를 radar에서는 occupancy 마스크로 대체, 디스패치에서 radar를 `_open_radar`로 정상 라우팅. lecun 세션의 동시기 미검증 픽스(`lecun-wip-20260721`)와 방향은 같으나 독립 실측 검증 후 재작성.
+
+**영향 범위**: **4모달(radar 포함) 실험만 오염** — P34 4모달 test 78.256("radar 유해 −0.72" 판정은 broken decoder 기준이라 보류), diag_D zeroradar 계열, P39 4모달(jarvis 진행 중, "+0.86"은 broken-radar 하한 취급, 완주는 그대로 진행해 기준선 보존). **3모달 전 계보는 무영향**(P34-3모달 78.979 / P37a / P38-m2f 79.025 / P39-3모달 78.881 등 — radar 미사용, lidar/event/camera 디코더는 원래 정상). 제출 수치 중 오염은 P34-4모달 1건뿐.
+
+**후속**: 대기열에 "P39-4모달 radar-fix 재실험"을 P39.1/P40 다음 순위로 등록([experiments/plan.md](../experiments/plan.md) #3) — 픽스 후 radar 기여 재측정으로 P34 판정 확정/철회. 상세 = [issues/issues-and-fixes.md](../issues/issues-and-fixes.md) ISSUE-025.
+
+---
+
 ### 2026-07-21 — MUSES fog per-scene 감사 완료 → 파국장면 가설 기각, P39.1 투입 GO
 
 P39-DPC ep146 vs P38-m2f ep156 fog(n=58)/night(n=100) per-image mIoU 분포 감사(`tools/p39_fog_scene_audit.py`, jarvis GPU6). worst5도 조밀(fog worst ~51+, skew≈0) — 소수 파국 장면이 평균을 끌어내리는 패턴 없음, **가설 기각**. fog 약점은 장면 품질이 아니라 **희소 클래스의 조건부 전멸**(traffic light/rider/train 0@fog)로 판정, 헤드룸 추정 하향 조정. **P39.1 투입 판단: GO**(rank 수리 근거인 공식 test fog_night −12.05는 per-scene 문제가 아니므로 유효). 상세 = [experiments/analysis/2026-07-21-p39-fog-scene-audit.md](../experiments/analysis/2026-07-21-p39-fog-scene-audit.md), 산출물 NAS `analysis_logs/P39_fog_scene_audit_20260721/`. plan.md #1 선행조건 갱신 = fog 감사 완료·GO, trunk_exp-off 재측정은 무효 판정으로 취소(ep30 rank 게이트가 대체).

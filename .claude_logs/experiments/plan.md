@@ -1,6 +1,6 @@
 ---
 created: 2026-07-16
-updated: 2026-07-21 (seg-P39.1/P40 구현 완료 → 대기열 P39 행을 P39.1로 갱신 + P40 행 신설; fog per-scene 감사 완료·GO 판정, trunk_exp-off 재측정 취소)
+updated: 2026-07-21 (ISSUE-025 MUSES radar 디코딩 버그 수정 반영 → 대기열 #3 "P39-4모달 radar-fix 재실험" 신설 + 사고 기록 1줄, 이하 대기열 번호 +1) ; ISSUE-026 ColorAugSSD RGB 붕괴 버그 반영 → hpca100 P39-DPC resume 오염 표기 + 사고 기록 1줄 + 대기열 #1 클린런 표기
 ---
 
 # 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
@@ -75,19 +75,21 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **det_P37 (yeon)** | yeon 3,6,7 | 50 | 07-17 19:00 | **P1** | 붕괴 처방 검증(eff 18+LR 2e-4 유지). ep5까지 warmup 완주, AP50 0.827~0.846 안정 |
 | **seg-P38 (MaskQueryLite) 본학습** | hpca100 0-3 (A100×4) | **200** | **07-19 (~24-26h)** | **P0** | 본학습 launch(07-18 서버시간 03:39:31 ≈ KST 12:39). config `configs/hpca100-deliver_rgbdel_P38_m2f.yaml`, develop @c3d1184, launch 스크립트 `launch_p38_m2f.sh`, log `logs/hpca100-deliver_rgbdel_P38_m2f/run_20260718_033931.log`. ~0.77s/it·497it/ep. 기동 검증 통과(iter 342→420/497 전진, 4GPU 25GB/83-100%, 에러 0, M2F ENABLE 확인, params 355.4M/trainable 52.3M). 판정 게이트 = P36 fair(val 67.74/test 55.62) 대비 + thin-class(Wall/Water/RailTrack) IoU |
 | **seg-P38 스모크** (실데이터 2ep) | yeon GPU0 | **2** | ~07-18 14:00 | P1 | 본학습 선행조건이던 실데이터 미검증 스모크 진행 중(합성 스모크만 PASS였음). log `/SSDb/jemo_maeng/src/p37_test/logs/p38smoke_20260718_121834.log`, 10.2GB@bs1GPU. 완주 시 GPU0 반납, 수치는 참고용(본학습은 이미 hpca100에서 병행 launch됨) |
+| **hpca100 P39-DPC resume** (DELIVER 4모달) | hpca100 GPU 2,3 | 200 | 07-22 09:00 | — | resume 후 val 44ep·test 64ep 무갱신 정체(val 66.14@ep96/test 55.50@ep76, P38 대비 +0.95/+0.45 계보최고 유지). 🔴 **ISSUE-026 오염 상태로 학습 중 — 지속/중단 user 판단 필요**(07-16 이후 DGFUSION_AUG:true 런이라 ColorAugSSD RGB-dropout 오염 해당, 상세 `issues/issues-and-fixes.md` ISSUE-026) |
 
 ## 📋 대기열 (우선순위 순)
 
 | # | 실험 | 필요 자원 | 언제 | 근거 |
 |---|---|---|---|---|
-| **1** | **P39.1 Rank 수리 본학습** (DELIVER + MUSES) | hpca100 4×A100(DELIVER) / jarvis 4090×N(MUSES) | 선행조건 분석 **완료**: ① MUSES fog val per-scene 감사 완료 → 파국장면 가설 기각·GO 판정([analysis/2026-07-21-p39-fog-scene-audit.md](analysis/2026-07-21-p39-fog-scene-audit.md)) ② P39 ckpt trunk_exp-off 재측정은 **무효 판정으로 취소**(ep30 조기판정 rank 게이트가 이를 대체) + yeon 실데이터 스모크. hpca100/jarvis 첫 빈 슬롯 | **구현 완료(develop ac5c7fe)** — P39-MUSES 표준분석이 지목한 lidar rank 붕괴(4.7) + fog_night 붕괴(62.68)를 즉시 수리. R-1: V1 트렁크 결합을 `fused += tanh(γ)·MLP_m(f_m)`(LN→1×1→GELU→1×1, γ init 0.1 — 0이면 gradient 완전 차단이라 절충, 스모크 실증)로 교체. R-2: VICReg var+cov 정규화(per-modal 토큰, lidar ×1.0/기타 ×0.25, λ_var 0.1/λ_cov 0.01, 2048 서브샘플, fp32). M-2: gate/calib/veto config off(fog_night 유해 실증 반영). eval마다 per-modal effective-rank 로그(`p391/rank_*`) 추가. **판정 게이트(사전 등록, ep30)** = lidar effective-rank ≥15 & fog_night drop-lidar ≥4.0(미달 시 R-3: r8→16 + rsLoRA로 재기동). **EPOCHS 200**(ep30 조기판정 규칙). configs `jarvis-muses_rgbel_P39_1_rank.yaml`/`hpca100-deliver_rgbdel_P39_1_rank.yaml`. 합성 스모크 PASS(γ/MLP grad 흐름, eval 결정론, linear 모드 하위호환). 상세 [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P39.1 |
+| **1** | **P39.1 Rank 수리 본학습** (DELIVER + MUSES) | hpca100 4×A100(DELIVER) / jarvis 4090×N(MUSES) | 선행조건 분석 **완료**: ① MUSES fog val per-scene 감사 완료 → 파국장면 가설 기각·GO 판정([analysis/2026-07-21-p39-fog-scene-audit.md](analysis/2026-07-21-p39-fog-scene-audit.md)) ② P39 ckpt trunk_exp-off 재측정은 **무효 판정으로 취소**(ep30 조기판정 rank 게이트가 이를 대체) + yeon 실데이터 스모크. hpca100/jarvis 첫 빈 슬롯 | **구현 완료(develop ac5c7fe)** — P39-MUSES 표준분석이 지목한 lidar rank 붕괴(4.7) + fog_night 붕괴(62.68)를 즉시 수리. R-1: V1 트렁크 결합을 `fused += tanh(γ)·MLP_m(f_m)`(LN→1×1→GELU→1×1, γ init 0.1 — 0이면 gradient 완전 차단이라 절충, 스모크 실증)로 교체. R-2: VICReg var+cov 정규화(per-modal 토큰, lidar ×1.0/기타 ×0.25, λ_var 0.1/λ_cov 0.01, 2048 서브샘플, fp32). M-2: gate/calib/veto config off(fog_night 유해 실증 반영). eval마다 per-modal effective-rank 로그(`p391/rank_*`) 추가. **판정 게이트(사전 등록, ep30)** = lidar effective-rank ≥15 & fog_night drop-lidar ≥4.0(미달 시 R-3: r8→16 + rsLoRA로 재기동). **EPOCHS 200**(ep30 조기판정 규칙). **ISSUE-026(ColorAugSSD RGB 붕괴) 픽스 적용 후 첫 클린 DELIVER 런** — P36/P38/P39-DPC와 달리 오염 없는 상태로 진행됨. configs `jarvis-muses_rgbel_P39_1_rank.yaml`/`hpca100-deliver_rgbdel_P39_1_rank.yaml`. 합성 스모크 PASS(γ/MLP grad 흐름, eval 결정론, linear 모드 하위호환). 상세 [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P39.1 |
 | **2** | **P40 RCA-Fusion 본학습** (DELIVER + MUSES) | P39.1과 동일 자원, 완주 후 이어서 | **P39.1 rank 게이트(lidar effective-rank ≥15) 통과 확인 후** 투입 — rank가 죽은 채면 C-3 lidar readout이 헛돎 | **구현 완료(develop ac5c7fe)** — P39.1 위에 Reliability-Conditioned Attenuation 추가. C-1: lidar 리턴 유효성(입력 유도 내부 신호) → 가드/분석. C-2: 자기추정 rel(img) 배치 하위 분위(30%) 샘플의 img feature soft 감쇠(α 0.1~0.5, hard-zero 금지, p_max 0.5, warmup 20ep, 학습 전용). C-3: 감쇠 샘플 한정 lidar readout 보조 CE(w 0.5, gradient 출구). **판정 게이트(사전 등록)** = MUSES test ≥79.025 & fog_night ≥74(P38 복원 우선) · DELIVER = P36 fair + thin-class 유지. configs `jarvis-muses_rgbel_P40_rca.yaml`/`hpca100-deliver_rgbdel_P40_rca.yaml`/`yeon-deliver_rgbdel_P40_rca_smoke.yaml`(스모크). 합성 스모크 PASS(RCA pick 발생, C-1 가드 동작, 손실 유한, grad 흐름). 상세 [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P40 |
-| **3** | **4모달 구조 버그 수정 + 재도전** | 4~8 GPU | diag_C 판정 직후 | diag_C가 "구조" 판정 시. **DGFusion CLRE 센서 패리티 = 공정 비교 필수 조건.** 수정되면 Arm A의 검증된 투영을 얹어 공짜 이득 |
-| **4** | **동일 박스 대조군** (3모달+기존투영, bengio) | 4 GPU | GPU 여유 시 | 현 대조군은 **B200 수치**인데 Arm A는 bengio → **cross-box 교란**. 같은 박스 대조군이 있어야 "DGF 투영=중립" 판정이 단단해짐 |
-| **5** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
-| **6** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
-| **7** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
-| **8** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
+| **3** | **P39-4모달 radar-fix 재실험** | hpca100/jarvis 4모달 슬롯 | P39.1/P40 완료 후 | ISSUE-025(MUSES radar 디코딩 버그) 픽스 후 radar 기여 재측정 — P34 4모달 test −0.72 판정이 broken-radar 상태 기반이라 보류 중 |
+| **4** | **4모달 구조 버그 수정 + 재도전** | 4~8 GPU | diag_C 판정 직후 | diag_C가 "구조" 판정 시. **DGFusion CLRE 센서 패리티 = 공정 비교 필수 조건.** 수정되면 Arm A의 검증된 투영을 얹어 공짜 이득 |
+| **5** | **동일 박스 대조군** (3모달+기존투영, bengio) | 4 GPU | GPU 여유 시 | 현 대조군은 **B200 수치**인데 Arm A는 bengio → **cross-box 교란**. 같은 박스 대조군이 있어야 "DGF 투영=중립" 판정이 단단해짐 |
+| **6** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
+| **7** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
+| **8** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
+| **9** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
 
 ## ✅ 완료·판정 (재실행 금지)
 
@@ -101,6 +103,10 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **seg-P37a/b (bengio분)** | **사망 확정** — bengio 노드 CUDA 전체 장애(GPU5 HW 고장, 재부팅 후 SSH 미복귀)로 ep1~2에서 종료. jarvis 재기동분(P37a→P37b 체인)이 계보 승계 — 남 세션 소관이라 수치 갱신하지 않음 |
 
 ## ⚠️ 사고 기록 (반복 금지)
+
+- **2026-07-21 ISSUE-026 — ColorAugSSD brightness uint8 클램프 버그**: 07-16 이후 `DGFUSION_AUG:true` DELIVER 학습(jarvis P37a/b, hpca100 P38-DELIVER 완주분·P39-DPC resume 진행중, yeon 스모크) 전부 RGB가 발화 샘플(p=0.5)에서 백색 상수로 붕괴(RGB-dropout 0.5 효과) — MUSES 계보는 무영향. **P38-DELIVER 게이트 미달 판정 및 P39-DELIVER thin-class 퇴행 판정 모두 보류**(교란변수), P39.1부터 픽스 적용 클린 학습(상세: `issues/issues-and-fixes.md` ISSUE-026).
+
+- **2026-07-21 ISSUE-025 — MUSES radar 디코딩 3중 버그**: `_open_radar` 폴스루+디스패치 오배선+`RADAR_RANGE_MAX` 미정의로 100m 클립(포화 2.76%) + height 채널 오염, develop에서 수정 완료 — 3모달 전 계보 무영향, 4모달(P34 등)만 오염(상세: `issues/issues-and-fixes.md` ISSUE-025).
 
 - **2026-07-16 14:3x — bengio SSH 접속 불가 (port 400 Connection refused ×3)**: seg-P37a/b launch(~13:53) 약 30분 후 발생. 게이트웨이(210.125.85.207)는 정상(yeon 포트 600 OK) → bengio sshd 또는 호스트 자체 다운. 내부망 확인 일부 시도(미확정). **학습 생존 여부 불명** — (a) 호스트 다운이면 seg-P37a/b 사망(ep1~2라 손실 미미, 재기동 필요), (b) sshd만 죽었으면 학습 생존. **콘솔/관리자 확인 필요.** 복구 시: `pgrep -f "P37a_cefr|P37b_classtoken"` → 생존이면 지속, 사망이면 `/SSDb/jemo_maeng/src/p37_train`에서 재launch(스냅샷·데이터 무손실). 교훈: 서버 단일점 의존 — **ckpt 주기 NAS 백업**(B200 상실 전례) 체계화 필요.
 

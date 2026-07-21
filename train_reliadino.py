@@ -268,6 +268,9 @@ def main(cfg, gpu, save_dir, logger):
 
         pbar = tqdm(enumerate(trainloader), total=iters_per_epoch,
                     desc=f"Epoch [{epoch+1}/{epochs}]", disable=not is_rank0)
+        # 감사 2026-07-21: epoch 경계의 accumulation 잔여 gradient가 다음
+        # epoch 첫 update로 유출되던 것 차단 (eff-batch 16 계약 준수).
+        optimizer.zero_grad(set_to_none=True)
         it = 0
         for it, (sample, lbl) in pbar:
             sample = [x.to(device, non_blocking=True) for x in sample]
@@ -342,6 +345,11 @@ def main(cfg, gpu, save_dir, logger):
             writer.add_scalar('train/cal_loss', cal_accum / (it + 1), epoch)
             writer.add_scalar('train/aux_ce', aux_accum / (it + 1), epoch)
             writer.add_scalar('train/lr', avg_lr, epoch)
+            # 감사 2026-07-21: wandb 전용이던 항들을 tb에도 (오프라인 서버에서
+            # gate 붕괴/router reg 궤적이 소실되던 문제)
+            writer.add_scalar('train/gate_entropy', gate_ent_accum / (it + 1), epoch)
+            writer.add_scalar('train/router_reg', router_accum / (it + 1), epoch)
+            writer.add_scalar('train/cefr_reg', cefr_accum / (it + 1), epoch)
             log_extra = {}
             if auroc_rows:
                 auroc_ep = np.nanmean(np.array(auroc_rows, dtype=np.float64), axis=0)

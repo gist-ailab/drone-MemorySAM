@@ -140,6 +140,8 @@ class ReliaDINO(nn.Module):
                  rca_alpha_min: float = 0.1,
                  rca_alpha_max: float = 0.5,
                  rca_readout_w: float = 0.5,
+                 rca_buf_size: int = 512,
+                 rca_min_fill: int = 128,
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
@@ -215,16 +217,9 @@ class ReliaDINO(nn.Module):
             self.det_classtoken_proj = None
             self.det_classtoken_alpha = None
 
-        # [P37b] ClassToken-lite-Learned auxiliary head (config-gated, default
-        # OFF -> byte-identical to P36). Learned class tokens over the gated
-        # fused stride-16 map; residual scale beta is zero-init (collapse-safe).
-        self.classtoken = None
-        if class_token_enable:
-            self.classtoken = ClassTokenLiteHead(
-                dim=dim, fpn_dim=fpn_dim, num_classes=num_classes,
-                num_layers=class_token_layers, dim_t=class_token_dim,
-                num_heads=class_token_heads, mlp_ratio=class_token_mlp_ratio,
-                beta_init=class_token_beta_init)
+        # (중복 ClassTokenLiteHead 생성 블록 제거 — 감사 2026-07-21: 동일
+        # 블록 2회 생성으로 init RNG 스트림이 어긋나 seed 재현 비교를 깨던
+        # merge 잔재. 첫 생성(위)만 유지.)
 
         # [P38] Mask2Former-lite query head (config-gated, default OFF ->
         # byte-identical to P36). Learned queries + Hungarian mask-cls losses
@@ -316,6 +311,46 @@ class ReliaDINO(nn.Module):
         self.rca_lidar_idx = self.modalities.index('lidar') if 'lidar' in self.modalities else -1
         self._rca_pick = None            # (B,) bool, 학습 스텝별
         self._last_lidar_validity = None  # (B,) [P40-C1] 리턴 유효 픽셀 비율
+        # [P40-F1] rel(img) 분위 임계값은 "현재 미니배치"가 아니라 최근 관측
+        # 분포에서 뽑는다. per-GPU 배치 quantile은 BATCH_SIZE=1(MUSES)에서
+        # 1원소의 분위수 = 그 값 자신이 되어 `r_img <= thr`가 **항상 참**이 되고,
+        # RCA가 확률 p_t짜리 **무조건** modality dropout으로 퇴화한다 —
+        # P33에서 no-op으로 판정났고 2403.04245가 역효과를 실증한 그 설계다.
+        # BATCH_SIZE=2에서도 하위 30%가 아니라 하위 50%가 뽑힌다.
+        #
+        # 🔴 DDP 의미론 주의: 이 버퍼들은 register_buffer라서 DDP의
+        # broadcast_buffers=True(기본값)가 **매 forward마다 rank0의 값을 전 rank에
+        # 덮어쓴다.** persistent=False는 state_dict에만 영향을 줄 뿐
+        # named_buffers()에는 그대로 나오므로 broadcast 대상이다. 따라서 실효
+        # 동작은 "rank0이 본 최근 buf_size개"의 분위수를 전 rank가 공유하는 것이고,
+        # 윈도는 buf_size×world가 아니라 buf_size다. rank0 스트림도 iid 표본이라
+        # 수치적으로는 무해하며, 오히려 rank 간 임계값이 정확히 일치해 유리하다.
+        # 진짜 rank-로컬을 원하면 DDP(..., broadcast_buffers=False) 또는
+        # _ddp_params_and_buffers_to_ignore 등록이 필요하다.
+        # ⚠️ M2F를 끈 DDP config에서는 이 버퍼가 buffer-broadcast collective를
+        # 새로 켜게 된다(M2F on이면 empty_weight 버퍼로 이미 켜져 있어 증분 0).
+        # train_reliadino.py의 07-12 NCCL desync 이력과 관련 — 그 조합을 새로
+        # 만들 때 주의.
+        self.rca_buf_size = int(rca_buf_size)
+        self.rca_min_fill = int(rca_min_fill)
+        if self.rca_buf_size < 1:
+            raise ValueError(f"RCA.BUF_SIZE must be >= 1, got {self.rca_buf_size}")
+        if self.rca_min_fill > self.rca_buf_size:
+            # 이 조합이면 _rca_threshold가 영원히 None -> RCA가 무음 no-op이 된다.
+            # 조용히 죽는 대신 시끄럽게 보정한다(ISSUE-024류 무음 실패 방지).
+            print(f"[P40][warn] RCA.MIN_FILL({self.rca_min_fill}) > "
+                  f"BUF_SIZE({self.rca_buf_size}) — RCA가 영구 비활성화되므로 "
+                  f"MIN_FILL을 {self.rca_buf_size}로 낮춘다.")
+            self.rca_min_fill = self.rca_buf_size
+        self.register_buffer('_rca_buf', torch.zeros(self.rca_buf_size),
+                             persistent=False)
+        self.register_buffer('_rca_buf_n', torch.zeros((), dtype=torch.long),
+                             persistent=False)
+        self.register_buffer('_rca_buf_ptr', torch.zeros((), dtype=torch.long),
+                             persistent=False)
+        # 진단(pick_rate)은 train_reliadino.py가 self._rca_pick으로 이미 집계하므로
+        # 여기서 별도 필드를 만들지 않는다 — 중복인 데다 micro-step마다
+        # GPU->CPU 동기화를 추가하게 된다.
 
         # M2 seam (asymmetric modality dropout) — default OFF: it helped nothing
         # at mid-run so far (P33 empirical constraint 4); seam kept for P34.2.
@@ -354,29 +389,84 @@ class ReliaDINO(nn.Module):
     def set_grad_checkpointing(self, enable: bool = True):
         self.encoder.set_grad_checkpointing(enable)
 
+    def _apply_trunk_exp(self, fused: torch.Tensor,
+                         feats: List[torch.Tensor]) -> torch.Tensor:
+        """[P39-V1/P39.1-R1] modal subspace restoration — seg/det 공용 단일
+        경로. (감사 2026-07-21: det seam 2곳이 gated_mlp 모드에서 tanh(γ)
+        게이트를 생략해 seg와 다른 trunk를 만들던 버그의 수정 — 결선을 한
+        곳으로 모아 재발 차단.)"""
+        if self.trunk_exp is None or self.p39_trunkexp_off:
+            return fused
+        if self.trunk_gamma is not None:
+            return fused + sum(
+                torch.tanh(self.trunk_gamma[i]) * self.trunk_exp[i](f)
+                for i, f in enumerate(feats))
+        return fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+
     def _vicreg_loss(self, feats: List[torch.Tensor]) -> torch.Tensor:
         """[P39.1-R2] VICReg var+cov on per-modality tokens (VICRegL-style,
         dense). per-GPU, fp32, token-subsampled — restores collapsed branch
         rank (P39 lidar eff.rank 4.7 vs P38 24.7). Pre-scaled by λ and the
         per-modality weight (lidar emphasized)."""
         total = feats[0].new_zeros((), dtype=torch.float32)
-        for i, f in enumerate(feats):
-            w = self.p391_vicreg_w[i]
-            if w <= 0:
-                continue
-            z = f.flatten(2).transpose(1, 2).reshape(-1, f.shape[1]).float()
-            M = z.shape[0]
-            k = min(self.p391_vicreg_tokens, M)
-            if k < M:
-                z = z[torch.randint(0, M, (k,), device=z.device)]
-            z = z - z.mean(0, keepdim=True)
-            l_var = F.relu(1.0 - torch.sqrt(z.var(0) + 1e-4)).mean()
-            C = (z.T @ z) / max(z.shape[0] - 1, 1)
-            d = C.shape[0]
-            l_cov = (C.pow(2).sum() - C.diagonal().pow(2).sum()) / d
-            total = total + w * (self.p391_vicreg_lvar * l_var
-                                 + self.p391_vicreg_lcov * l_cov)
+        # 감사 2026-07-21: trainer autocast(bf16) 아래에서 covariance 행렬곱이
+        # bf16으로 계산되던 것을 fp32로 강제 (docstring 계약 준수).
+        with torch.autocast(device_type=feats[0].device.type, enabled=False):
+            for i, f in enumerate(feats):
+                w = self.p391_vicreg_w[i]
+                if w <= 0:
+                    continue
+                z = f.flatten(2).transpose(1, 2).reshape(-1, f.shape[1]).float()
+                M = z.shape[0]
+                k = min(self.p391_vicreg_tokens, M)
+                if k < M:
+                    z = z[torch.randint(0, M, (k,), device=z.device)]
+                z = z - z.mean(0, keepdim=True)
+                l_var = F.relu(1.0 - torch.sqrt(z.var(0) + 1e-4)).mean()
+                C = (z.T @ z) / max(z.shape[0] - 1, 1)
+                d = C.shape[0]
+                l_cov = (C.pow(2).sum() - C.diagonal().pow(2).sum()) / d
+                total = total + w * (self.p391_vicreg_lvar * l_var
+                                     + self.p391_vicreg_lcov * l_cov)
         return total
+
+    # ── [P40-F1] rel(img) 분포 링버퍼 ────────────────────────────────────
+    @torch.no_grad()
+    def _rca_buf_push(self, v: torch.Tensor) -> None:
+        """최근 관측한 r_img 값을 원형 버퍼에 적재.
+
+        비유한 값은 걸러낸다. NaN이 하나라도 들어가면 torch.quantile이 NaN을
+        반환하고 `r_img <= NaN`이 전부 False가 되어, 그 NaN이 밀려날 때까지
+        (BS1이면 buf_size 스텝) RCA가 **조용히** 꺼진다.
+        """
+        v = v.detach().flatten().to(self._rca_buf.dtype)
+        v = v[torch.isfinite(v)]
+        n = int(v.numel())
+        if n == 0:
+            return
+        size = self.rca_buf_size
+        if n >= size:                      # 한 스텝이 버퍼보다 크면 최신분만
+            self._rca_buf.copy_(v[-size:])
+            self._rca_buf_ptr.fill_(0)
+            self._rca_buf_n.fill_(size)
+            return
+        ptr = int(self._rca_buf_ptr)
+        idx = (torch.arange(n, device=v.device) + ptr) % size
+        self._rca_buf[idx] = v
+        self._rca_buf_ptr.fill_((ptr + n) % size)
+        self._rca_buf_n.fill_(min(int(self._rca_buf_n) + n, size))
+
+    @torch.no_grad()
+    def _rca_threshold(self) -> Optional[torch.Tensor]:
+        """버퍼가 충분히 찼을 때만 경험적 분위수를 반환, 아니면 None.
+
+        버퍼는 원형이지만 가득 차기 전에는 앞에서부터 채워지므로 `[:n]`이
+        정확히 유효 구간이고, 가득 찬 뒤에는 n == size라 전체가 된다.
+        """
+        n = int(self._rca_buf_n)
+        if n < self.rca_min_fill:
+            return None
+        return torch.quantile(self._rca_buf[:n], self.rca_quantile)
 
     def _decode(self, fused: torch.Tensor, routed: Optional[torch.Tensor]):
         """Shared FPN + head (+ [P36] router residual) → (logits@stride4, feat).
@@ -411,9 +501,9 @@ class ReliaDINO(nn.Module):
         if (self.rca_enable and self.training and self.rca_img_idx >= 0
                 and self.num_modalities >= 2):
             # [P40-C2] reliability-conditioned camera attenuation: 자기-추정
-            # rel(img)이 배치 하위 분위인 샘플을 확률 p(t)로 soft 감쇠
-            # (α∈[amin,amax]; per-GPU 배치 기준 quantile — bs가 작으면 사실상
-            # 최저 샘플 선택이 되며 이는 의도된 stochastic 동작).
+            # rel(img)이 **최근 관측 분포의** 하위 분위인 샘플을 확률 p(t)로
+            # soft 감쇠 (α∈[amin,amax]). 임계값 출처는 링버퍼 — 배치 내
+            # quantile을 쓰면 BS1에서 조건이 무력화된다(위 [P40-F1] 주석 참조).
             with torch.no_grad():
                 lg = self.fusion.aux_decoders[self.rca_img_idx](
                     feats[self.rca_img_idx]).float()
@@ -422,8 +512,15 @@ class ReliaDINO(nn.Module):
                 r_img = 1.0 - ent.mean((1, 2))                      # (B,)
                 p_t = self.rca_p_max * min(1.0, float(self._current_epoch)
                                            / max(self.rca_warmup_ep, 1))
-                thr = torch.quantile(r_img, self.rca_quantile)
-                pick = (r_img <= thr) & (torch.rand_like(r_img) < p_t)
+                self._rca_buf_push(r_img)
+                thr = self._rca_threshold()
+                if thr is None:
+                    # 버퍼가 덜 찼다 = 분포 추정 불가 -> 아무것도 감쇠하지 않는다.
+                    # p_t가 유의미해지기 훨씬 전에 버퍼가 찬다(BS1이면 ep0의
+                    # 512 스텝 만에 포화; p_t는 ep0에서만 0이고 이후 선형 증가).
+                    pick = torch.zeros_like(r_img, dtype=torch.bool)
+                else:
+                    pick = (r_img <= thr) & (torch.rand_like(r_img) < p_t)
                 if self.rca_lidar_idx >= 0:
                     # C-1 guard: lidar가 사실상 부재한 샘플은 강제하지 않는다
                     pick = pick & (self._last_lidar_validity > 0.05)
@@ -477,15 +574,7 @@ class ReliaDINO(nn.Module):
             fused = (1.0 - mix) * fused + mix * fused_p
             if self.training and cefr_reg is not None:
                 aux['cefr_reg'] = cefr_reg          # trainer adds to total loss
-        if self.trunk_exp is not None and not self.p39_trunkexp_off:
-            # [P39-V1 / P39.1-R1] modal subspace restoration on the main trunk
-            # (gated_mlp mode: nonlinear + tanh(γ) gate, γ zero-init).
-            if self.trunk_gamma is not None:
-                fused = fused + sum(
-                    torch.tanh(self.trunk_gamma[i]) * self.trunk_exp[i](f)
-                    for i, f in enumerate(feats))
-            else:
-                fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+        fused = self._apply_trunk_exp(fused, feats)
         if self.p391_vicreg and self.training:
             aux['vicreg'] = self._vicreg_loss(feats)    # [P39.1-R2] pre-scaled
         logits, m_feat = self._decode(fused, routed)
@@ -566,11 +655,6 @@ class ReliaDINO(nn.Module):
         feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
-        if self.trunk_exp is not None and not self.p39_trunkexp_off:
-            # [P39-V1] same modal-subspace restoration the seg forward applies.
-            # Without this the det path trains on the un-expanded trunk while the
-            # P39 projections sit unused (silent no-op).
-            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
         cefr_ctx = aux.get('cefr_ctx', None) if isinstance(aux, dict) else None
         if cefr_ctx is not None:
             # pass-1 seg decode supplies only the DETACHED posterior q (reliability
@@ -585,6 +669,8 @@ class ReliaDINO(nn.Module):
                 cefr_ctx['log_post'], q, self._current_epoch)
             mix = torch.sigmoid(self.fusion.cefr.a)
             fused = (1.0 - mix) * fused + mix * fused_p
+        # [P39-V1] seg forward와 동일 순서(CEFR blend 이후)·동일 게이트로 적용
+        fused = self._apply_trunk_exp(fused, feats)
         pyramid = self.fpn(fused)
         if routed is not None and getattr(self, 'det_router_proj', None) is not None:
             r = self.det_router_proj(routed)
@@ -618,11 +704,7 @@ class ReliaDINO(nn.Module):
         feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
-        if self.trunk_exp is not None and not self.p39_trunkexp_off:
-            # [P39-V1] same modal-subspace restoration the seg forward applies.
-            # Without this the det path trains on the un-expanded trunk while the
-            # P39 projections sit unused (silent no-op).
-            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+        fused = self._apply_trunk_exp(fused, feats)   # seg와 동일 게이트 경로
         with torch.no_grad():
             _, feat_s4 = self._decode(fused, routed)
         # [P39-V2] let the queries attend the per-modal token union (bypasses the
@@ -738,6 +820,8 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         rca_alpha_min=rca.get('ALPHA_MIN', 0.1),
         rca_alpha_max=rca.get('ALPHA_MAX', 0.5),
         rca_readout_w=rca.get('READOUT_W', 0.5),
+        rca_buf_size=rca.get('BUF_SIZE', 512),
+        rca_min_fill=rca.get('MIN_FILL', 128),
         modal_dropout=mdrop.get('ENABLE', False),
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),

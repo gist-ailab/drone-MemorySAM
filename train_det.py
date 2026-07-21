@@ -48,6 +48,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
+from collections import defaultdict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
@@ -60,9 +61,10 @@ def setup_ddp():
     when not launched under torchrun.
     """
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
-        # Long timeout: rank0 runs the full val set + checkpoint save alone while
-        # other ranks idle at dist.barrier(); the default 10-min NCCL watchdog would
-        # abort them mid-eval (SIGABRT). 2h covers eval(1891 imgs)+save comfortably.
+        # Long timeout: eval is now sharded across ranks (see gather_predictions),
+        # but rank0 still runs COCOeval + checkpoint save alone while the others
+        # wait at dist.barrier(). The default 10-min NCCL watchdog could abort them
+        # there (SIGABRT); 2h is a generous upper bound on that tail.
         dist.init_process_group(backend='nccl', timeout=timedelta(hours=2))
         local_rank = int(os.environ.get('LOCAL_RANK', 0))
         torch.cuda.set_device(local_rank)
@@ -342,17 +344,23 @@ def evaluate(
     class_names=None,
     viz_score_thresh: float = 0.3,
     resize_mode: str = 'stretch',
+    return_raw: bool = False,
+    progress: bool = True,
 ):
     """Run evaluation; return (COCO metrics, list[(PIL.Image, caption)]).
 
     When viz_count>0, the first viz_count images get a pred(+GT)-box overlay
     (in the 1024 model-input space) for wandb/tensorboard logging.
+
+    With return_raw=True the raw COCO-format prediction list is returned instead
+    of the metrics dict, so a caller can shard the val set across DDP ranks and
+    run COCOeval **once** on the gathered predictions (distributed eval).
     """
     model.eval()
     all_predictions = []
     viz_images = []
 
-    for batch in tqdm(dataloader, desc='Evaluating'):
+    for batch in tqdm(dataloader, desc='Evaluating', disable=not progress):
         modals = [k for k in batch.keys()
                   if isinstance(batch[k], torch.Tensor) and batch[k].dim() == 4]
         sample = {m: batch[m].to(device) for m in modals}
@@ -395,12 +403,59 @@ def evaluate(
             )
             all_predictions.extend(preds)
 
+    if return_raw:
+        # Caller gathers shards across ranks and runs COCOeval once.
+        return all_predictions, viz_images
+
     if not all_predictions:
         print("No predictions — returning zero AP.")
         return {'AP': 0.0, 'AP50': 0.0, 'AP75': 0.0}, viz_images
 
     metrics = evaluate_coco(annotation_path, all_predictions)
     return metrics, viz_images
+
+
+def cap_preds_per_img_cat(preds: list, max_det: int = 100) -> list:
+    """Keep only the top-`max_det` detections per (image_id, category_id).
+
+    AP-neutral by construction: COCOeval sorts detections by score and slices
+    `dt[0:maxDet]` per (image, category) with maxDet=100, so anything past the
+    100th is never scored. Dropping it here bounds the DDP gather payload,
+    which is otherwise unbounded — the FCOS head keeps every box above
+    score_thresh=0.05 with no post-NMS cap, so early epochs (diffuse logits)
+    emit ~1000 boxes/image and the pickled payload reaches 100 MB+ per rank.
+    """
+    buckets = defaultdict(list)
+    for p in preds:
+        buckets[(p['image_id'], p['category_id'])].append(p)
+    out = []
+    for v in buckets.values():
+        if len(v) > max_det:
+            v.sort(key=lambda d: -d['score'])
+            v = v[:max_det]
+        out.extend(v)
+    return out
+
+
+def gather_predictions(local_preds: list, ddp: bool, world_size: int,
+                       max_det: int = 100) -> list:
+    """All-gather per-rank COCO prediction lists into one flat list.
+
+    Shards are built with a strided, non-padded index split (see val_loader
+    below), so every image is owned by exactly one rank — no duplicate
+    image_id can reach COCOeval.
+
+    The payload is capped (see cap_preds_per_img_cat) *before* the collective:
+    NCCL's all_gather_object stages the pickled bytes in a
+    `world_size × max_size` GPU buffer, so an uncapped list can add ~1 GB VRAM
+    per rank on top of the training allocation.
+    """
+    local_preds = cap_preds_per_img_cat(local_preds, max_det)
+    if not ddp or world_size == 1:
+        return local_preds
+    bucket = [None] * world_size
+    dist.all_gather_object(bucket, local_preds)
+    return [p for shard in bucket if shard for p in shard]
 
 
 def main():
@@ -447,7 +502,8 @@ def main():
 
     # Datasets (build first so n_classes can be derived from the COCO categories)
     train_dataset = build_dataset(cfg, 'train')
-    val_dataset = build_dataset(cfg, 'val') if is_main else None
+    # [dist-eval] every rank builds the val set; each evaluates a disjoint shard.
+    val_dataset = build_dataset(cfg, 'val')
 
     n_classes = cfg['MODEL'].get('N_CLASSES', train_dataset.n_classes)
     if n_classes != train_dataset.n_classes:
@@ -637,16 +693,26 @@ def main():
         pin_memory=True,
         drop_last=True,
     )
-    val_loader = None
+    # [dist-eval] Strided, NON-padded shard: rank r owns indices r, r+W, r+2W…
+    # DistributedSampler is deliberately NOT used — it pads the tail by repeating
+    # samples so every rank gets an equal count, which would feed duplicate
+    # image_ids into COCOeval and silently skew AP. A strided split is exactly
+    # disjoint; uneven shard sizes are fine because all_gather_object handles
+    # variable-length lists.
+    val_indices = list(range(len(val_dataset)))[rank::world_size] if ddp \
+        else list(range(len(val_dataset)))
+    val_subset = torch.utils.data.Subset(val_dataset, val_indices)
+    val_loader = DataLoader(
+        val_subset,
+        batch_size=cfg['TRAIN'].get('VAL_BATCH_SIZE', cfg['TRAIN']['BATCH_SIZE']),
+        shuffle=False,
+        num_workers=cfg['TRAIN'].get('NUM_WORKERS', 4),
+        collate_fn=MultiModalDetDataset.collate_fn,
+        pin_memory=True,
+    )
     if is_main:
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=cfg['TRAIN'].get('VAL_BATCH_SIZE', cfg['TRAIN']['BATCH_SIZE']),
-            shuffle=False,
-            num_workers=cfg['TRAIN'].get('NUM_WORKERS', 4),
-            collate_fn=MultiModalDetDataset.collate_fn,
-            pin_memory=True,
-        )
+        print(f"[dist-eval] val {len(val_dataset)} imgs split across {world_size} "
+              f"rank(s); rank0 shard = {len(val_indices)}")
 
     # Scheduler
     epochs = cfg['TRAIN']['EPOCHS']
@@ -665,12 +731,17 @@ def main():
     idx_to_cat_id = {v: k for k, v in train_dataset.cat_id_to_idx.items()}
 
     if args.eval_only:
+        # [dist-eval] every rank evaluates its shard; rank0 scores the union.
+        local_preds, _ = evaluate(
+            unwrap(model), val_loader, device,
+            cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+            resize_mode=cfg['DATASET'].get('RESIZE_MODE', 'stretch'),
+            return_raw=True, progress=is_main,
+        )
+        preds = gather_predictions(local_preds, ddp, world_size)
         if is_main:
-            metrics, _ = evaluate(
-                unwrap(model), val_loader, device,
-                cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
-                resize_mode=cfg['DATASET'].get('RESIZE_MODE', 'stretch'),
-            )
+            metrics = (evaluate_coco(cfg['DATASET']['ANNOTATION_VAL'], preds)
+                       if preds else {'AP': 0.0, 'AP50': 0.0, 'AP75': 0.0})
             print(f"Eval results: AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}")
         if ddp:
             dist.destroy_process_group()
@@ -700,23 +771,30 @@ def main():
                 wandb_run.log({'train/loss': avg_loss,
                                'lr': scheduler.get_last_lr()[0], 'epoch': epoch})
 
-        # Evaluate + checkpoint (rank 0 only; others wait at the barrier)
+        # [dist-eval] all ranks evaluate their shard; rank0 scores + checkpoints.
         save_interval = cfg['TRAIN'].get('SAVE_INTERVAL', 5)
         if (epoch + 1) % save_interval == 0 or epoch == epochs - 1:
+            viz_count = (cfg.get('WANDB', {}).get('VIZ_COUNT', 8)
+                         if (is_main and wandb_run is not None) else 0)
+            local_preds, viz = evaluate(
+                unwrap(model), val_loader, device,
+                cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
+                viz_count=viz_count, class_names=train_dataset.class_names,
+                viz_score_thresh=cfg.get('WANDB', {}).get('VIZ_SCORE_THRESH', 0.3),
+                resize_mode=cfg['DATASET'].get('RESIZE_MODE', 'stretch'),
+                return_raw=True, progress=is_main,
+            )
+            preds = gather_predictions(local_preds, ddp, world_size)
             if is_main:
-                viz_count = cfg.get('WANDB', {}).get('VIZ_COUNT', 8) if wandb_run is not None else 0
-                metrics, viz = evaluate(
-                    unwrap(model), val_loader, device,
-                    cfg['DATASET']['ANNOTATION_VAL'], idx_to_cat_id,
-                    viz_count=viz_count, class_names=train_dataset.class_names,
-                    viz_score_thresh=cfg.get('WANDB', {}).get('VIZ_SCORE_THRESH', 0.3),
-                    resize_mode=cfg['DATASET'].get('RESIZE_MODE', 'stretch'),
-                )
+                metrics = (evaluate_coco(cfg['DATASET']['ANNOTATION_VAL'], preds)
+                           if preds else {'AP': 0.0, 'AP50': 0.0, 'AP75': 0.0})
                 print(f"  Val AP={metrics['AP']:.4f}, AP50={metrics['AP50']:.4f}, AP75={metrics['AP75']:.4f}")
                 writer.add_scalar('val/AP', metrics['AP'], epoch)
                 writer.add_scalar('val/AP50', metrics['AP50'], epoch)
-                # wandb: metrics + the same first-N val images each epoch (val_loader
-                # is shuffle=False, so the example set is fixed across epochs).
+                # wandb: metrics + a fixed val-image sample each epoch. NOTE: with
+                # sharded eval rank0 owns indices 0, W, 2W…, so the panel shows
+                # those (not 0..N-1). Stable across epochs, but changes if
+                # world_size changes — don't compare panels across run widths.
                 if wandb_run is not None:
                     log = {'val/AP': metrics['AP'], 'val/AP50': metrics['AP50'],
                            'val/AP75': metrics['AP75'], 'epoch': epoch}
@@ -741,7 +819,7 @@ def main():
                     torch.save(ckpt, save_dir / 'best_checkpoint.pth')
                     print(f"  New best AP: {best_ap:.4f}")
                 torch.save(ckpt, save_dir / f'epoch{epoch}_checkpoint.pth')
-            # model was set to eval() inside evaluate() on rank0 — restore train mode
+            # every rank ran evaluate() (which calls model.eval()) — restore train mode
             model.train()
             if ddp:
                 dist.barrier()

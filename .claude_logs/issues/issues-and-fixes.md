@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-07-17
+> 최종 업데이트: 2026-07-21
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -17,7 +17,10 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
-| **ISSUE-024** | 🟡 **OPEN (조건부 — P37b kill-gate 생존 시 수정)** | P37b `classtoken.py`의 `mask_proj`(attn-mask 예측기)가 threshold 비교(비미분)로만 쓰여 gradient 미도달 → 영구 random init, masked attention이 사실상 random 마스킹. P38 `m2f_head.py`가 올바른 수정 패턴(`_attn_bias`) 보유. 상세: 하단 ISSUE-024 |
+| **ISSUE-026** | ✅ **수정(2026-07-21)** | ColorAugSSD brightness가 uint8(0-255) 입력을 [0,1] 클램프 → 발화 샘플(p=0.5) RGB가 백색 상수로 붕괴(사실상 RGB-dropout 0.5). **07-16 이후 DGFUSION_AUG:true DELIVER 학습 전부 오염**(jarvis P37a-DELIVER/P37b(사망런), hpca100 P38-DELIVER 완주분·**P39-DPC resume 진행 중**, yeon 스모크). MUSES 전 계보 무영향. **P38-DELIVER/P39-DELIVER 게이트 판정 보류.** 상세: 하단 ISSUE-026 |
+| **ISSUE-027** | ✅ **가드 추가(2026-07-21)** | GRADIENT_CHECKPOINT=true 시 timm non-reentrant 재계산이 stale active_modality로 비최종 모달 LoRA gradient 오염(무경고). encoder 강제 off 가드 + 체크인 configs 9종 false로 수정. 실피해는 bengio 사망런·yeon 스모크 등 한정적. 상세: 하단 ISSUE-027 |
+| **ISSUE-025** | ✅ **해결(2026-07-21)** | MUSES radar 디코딩 3중 버그 — `_open_radar` 폴스루+디스패치 오배선+`RADAR_RANGE_MAX` 미정의로 100m 클립(실측 유효픽셀 2.76% 포화, 센서 캡=150.0m) + height 채널 0.25 상수 오염. develop에서 수정 완료. **영향은 4모달(radar 포함) 실험만, 3모달 전 계보 무영향.** 상세: 하단 ISSUE-025 |
+| **ISSUE-024** | 🟡 **OPEN (조건부 — P37b kill-gate 생존 시 수정)** | P37b `classtoken.py`의 `mask_proj`(attn-mask 예측기)가 threshold 비교(비미분)로만 쓰여 gradient 미도달 → 영구 random init, masked attention이 사실상 random 마스킹. P38 `m2f_head.py`가 올바른 수정 패턴(`_attn_bias`) 보유. 전수조사에서 minor 다수 추가 확정·수정됨(2026-07-21 커밋 참조). 상세: 하단 ISSUE-024 |
 | **ISSUE-023** | ✅ **완화 완료(2026-07-08)** / 🟡 근본해결 대기 | **/mnt/HDD2 ENOSPC = NTFS MFT 레코드 고갈** — 아카이브 27k+파일을 drone NAS로 전량 소산해 레코드 해방, **쓰기 정상화 검증 완료(2,000파일 연속 생성 OK)**. 단 대량 파일 쓰기(수만 개)는 재마운트/Windows 검증 전까지 자제. 상세: 하단 ISSUE-023 |
 | **ISSUE-022** | ✅ **해결(2026-07-03)** | **P27.forward가 `_fuse_outputs` 훅 미호출 → P30 learned router 200ep 내내 미실행** (P31.2 훅 호출로 수정; P30 결과 = router 미참여로 재해석) |
 | ISSUE-021 | ✅ 해결 | SAM3-RBMA sem_head BatchNorm→GroupNorm (train/eval 불일치) |
@@ -44,6 +47,70 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-027: GRADIENT_CHECKPOINT=true 시 timm 재계산이 stale active_modality로 LoRA grad 오염 [가드 추가, 2026-07-21]
+
+**발견 경위**: P37~현재 코드 전수조사(멀티에이전트 32기, 발견→반증검증)에서 발견. 팀이 bengio 학습에서 이미 실증적으로 마주쳐 jarvis/hpca100 configs에 "절대 true 금지" 주석을 달아뒀으나, 코드 자체에는 방지 가드가 없었고 체크인된 configs 9종에 `GRADIENT_CHECKPOINT: true`가 잔존해 있었음.
+
+**메커니즘**: `GRADIENT_CHECKPOINT=true`일 때 timm의 non-reentrant checkpoint 재계산이 backward 시점에 forward를 다시 실행하는데, 이 재계산 시점의 `active_modality`(LoRA가 어느 모달 브랜치를 활성화할지 결정하는 전역/버퍼 상태)가 **forward 당시 값이 아니라 backward 시점에 마지막으로 설정된 값(= 마지막 모달)으로 stale**되어 있음. 그 결과 비최종 모달(예: img, lidar — thermal이 마지막이라면)의 backward 재계산이 실제로는 **마지막 모달의 LoRA 가중치로 재실행**되어, 비최종 모달의 gradient가 잘못된 LoRA 파라미터 경로로 흘러 들어감 — **에러나 경고 없이 조용히 오염**.
+
+**수정**: encoder 안에 `GRADIENT_CHECKPOINT`와 멀티모달 LoRA 활성 조합을 감지해 **강제 off 가드**를 추가하고, 체크인된 configs 9종을 전부 `GRADIENT_CHECKPOINT: false`로 정정.
+
+**영향 범위**: 실피해는 한정적으로 판단됨 — 실제 본학습(hpca100/jarvis)은 이미 `false`였고, 이 값이 `true`인 채 돌았던 것은 bengio 사망런(어차피 노드 HW 고장으로 조기 종료)·yeon 스모크(참고용, 헤드라인 미사용)·hinton P34 config(실사용 여부 미상) 정도. 팀이 이미 주석으로 "금지" 표시해뒀던 덕에 실질 본학습 경로는 회피됨.
+
+**재발 방지**: config 주석만으로 위험 파라미터 조합을 막지 말 것 — 코드 레벨 가드(assert/강제 override)가 원칙.
+
+---
+
+### ISSUE-026: ColorAugSSD brightness가 uint8 입력을 [0,1]로 클램프 → 발화 샘플 RGB가 백색 상수로 붕괴 [수정됨, 2026-07-21]
+
+**발견 경위**: P37~현재 코드 전수조사(멀티에이전트 32기, 발견→반증검증)에서 발견.
+
+**메커니즘**: `ColorAugSSD`(07-16 커밋)의 brightness 조정 로직이 입력을 [0,1] 정규화 float로 가정하고 클램프를 적용하는데, 실제 입력은 **uint8 0-255 스케일**로 들어옴. 이 스케일 불일치 때문에 brightness 증강이 발화(activate)되는 샘플(적용 확률 p=0.5)에서 RGB 값이 사실상 전부 클램프 상한(백색)으로 포화 — **결과적으로 RGB 채널이 의도치 않은 상수(백색)로 붕괴**하며, 이는 확률 0.5로 RGB 정보를 완전히 지워버리는 **사실상의 RGB-dropout 0.5**로 작동한 것과 동일한 효과를 냄.
+
+**영향 범위**: ColorAugSSD 커밋(07-16) 이후 `DGFUSION_AUG: true`가 켜진 **DELIVER 학습 전부**에 해당.
+
+| 실험 | 영향 |
+|---|---|
+| jarvis P37a-DELIVER | 오염 |
+| bengio P37a/b (사망런) | 오염(단 조기 사망이라 영향 미미) |
+| **hpca100 P38-DELIVER 200ep 완주분** | 오염 — **P38 게이트 미달 판정에 사용된 그 런** |
+| **hpca100 P39-DPC resume (진행 중)** | **오염 상태로 현재도 학습 중** |
+| yeon 스모크 | 오염(참고용, 헤드라인 미사용) |
+| **MUSES 전 계보** | **무영향** — `DGFUSION_AUG` 키 자체가 MUSES config에 없음 |
+
+⚠️ **재해석**: P36 fair 게이트(val 67.74/test 55.62)는 07-16 이전 학습이라 정상 RGB로 진행됨 — 즉 **P37+/P38/P39 DELIVER와 P36의 비교는 불공정 비교였음**. 이에 따라 **P38-DELIVER "게이트 미달 −1.63" 판정과 P39-DELIVER "−1.63 thin-class 퇴행" 판정 모두 보류**(RGB 파괴가 교란변수로 개입) — 픽스 후 재검증 전까지 확정 판정으로 인용 금지.
+
+**수정**: brightness 조정 로직에 uint8→float [0,1] 정규화를 정합시켜 클램프 스케일을 맞춤. **P39.1부터는 픽스 적용 클린 학습**(develop 반영, 대기열 [experiments/plan.md](../experiments/plan.md) #1).
+
+**후속**: hpca100 P39-DPC resume(진행 중)은 오염 상태로 계속 학습 중 — 지속/중단은 user 판단 필요([experiments/plan.md](../experiments/plan.md) 실행 중 표 참조). 픽스 후 재검증이 필요한 항목은 P38-DELIVER/P39-DELIVER 게이트 재판정.
+
+---
+
+### ISSUE-025: MUSES radar 디코딩 3중 버그 — RADAR_RANGE_MAX 미정의로 100m 클립 + height 채널 오염 [해결, 2026-07-21]
+
+**발견 경위**: jarvis에서 진행 중인 P39 4모달(rgbelr) radar 기여 재검토를 위해 radar 디코더 경로를 실측 검증하던 중 발견. jarvis radar 75파일 실측(2026-07-21)으로 확정.
+
+**메커니즘 (3중)**:
+1. `_open_radar`가 자체 구현 없이 `_open_lidar`로 **폴스루** — radar 전용 처리(range 스케일 등)가 애초에 존재하지 않았음.
+2. 데이터셋 `__getitem__` 디스패치가 radar 모달을 `_open_radar`가 아니라 `_open_lidar`로 **직접 라우팅** — ①의 폴스루 여부와 무관하게 `_open_radar` 자체가 죽은 코드였음.
+3. 결과적으로 radar range가 (lidar 기준) `LIDAR_RANGE_MAX=100m`에 **클립**됨 — 실측 결과 유효 픽셀의 **2.76%가 이 클립에서 포화**. radar 센서 실제 캡은 **정확히 150.0m**로 확인. 추가로 lidar 파이프라인의 height 채널(radar는 전 픽셀 0)이 정규화 후 **0.25 상수 평면**으로 오염되어 3번째 채널이 정보 없이 채워짐.
+
+**수정**: `RADAR_RANGE_MAX=150.0`으로 radar 전용 클립 상수 도입, ch3(height)를 radar에서는 **occupancy 마스크**로 대체, `__getitem__` 디스패치에서 radar를 `_open_radar`로 정상 라우팅. develop에 반영 완료(merge 80d65a0 계보).
+
+**참고**: lecun 세션에서도 동일 시기 미검증 픽스(브랜치 `lecun-wip-20260721`)가 있었으나 방향만 같고 별개로 독립 실측 검증 후 재작성함 — 두 세션이 동일 버그를 독립 발견.
+
+**영향 범위**:
+| 실험 | 영향 |
+|---|---|
+| P34 4모달(rgbelr) MUSES test 78.256 | **오염** — "radar 유해 −0.72" 판정은 broken decoder 상태에서 나온 결론이라 **보류**. 픽스 후 재측정 필요 |
+| diag_D zeroradar 계열 | 오염(radar 포함 조건) |
+| P39 4모달(jarvis 진행 중, rgbelr) | 오염 — 진행 중 "+0.86" 등 수치는 **broken-radar 하한**으로 취급, 픽스 후 상향 여지 있음. 완주는 그대로 시켜 broken-radar 기준선으로 보존 |
+| **3모달 전 계보** (P34-3모달 78.979 / P37a / P38-m2f 79.025 / P39-3모달 78.881 등) | **무영향** — radar 미사용이므로 오염 없음. lidar/event/camera 디코더는 원래 정상이었음 |
+
+**후속**: 픽스 적용 4모달 재실험을 대기열 후보로 등록(`experiments/plan.md`) — ISSUE-025 픽스 후 radar 기여를 재측정해야 P34의 "radar −0.72" 판정을 확정/철회할 수 있음.
 
 ---
 

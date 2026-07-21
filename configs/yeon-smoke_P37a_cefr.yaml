@@ -132,7 +132,7 @@ TRAIN:
   AMP           : true
   AMP_DTYPE     : bfloat16
   DDP           : true
-  GRADIENT_CHECKPOINT : true
+  GRADIENT_CHECKPOINT : false   # 🔴 ISSUE-027: 멀티모달 LoRA에서 true 금지 (stale active_modality grad 오염)
 
 LOSS:
   NAME          : OhemCrossEntropy

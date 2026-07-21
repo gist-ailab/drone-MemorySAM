@@ -109,6 +109,12 @@ def main():
     for lbl, case, miou, rc in summary:
         print(f"{lbl:24s} {case:8s} mIoU={miou} rc={rc}")
     print(f"\nLogs in {out}.  Analyze with: tools/analyze_per_domain.py --logs-dir {out} ...")
+    # 감사 2026-07-21: 조건별 실패(rc≠0 또는 mIoU 파싱 실패)가 exit 0으로
+    # 삼켜져 파이프라인이 D1을 'ok'로 오기록하던 문제 — 실패 전파.
+    n_fail = sum(1 for _, _, miou, rc in summary if rc != 0 or miou is None)
+    if n_fail:
+        print(f"[eval_per_domain] ⚠️ {n_fail}/{len(summary)} runs failed — exit 1")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

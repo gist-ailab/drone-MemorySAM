@@ -195,9 +195,22 @@ class MUSES(Dataset):
         out = np.stack([rng, inten, hgt], axis=0) * valid[None]   # empty pixels -> 0 in all channels
         return torch.from_numpy(np.ascontiguousarray(out * 255.0))
 
+    # radar 실측 (2026-07-21, train 75파일 전조건): range max = 정확히 150.0m
+    # (센서 캡), 100m 초과 = 유효픽셀 2.76%, ch3(height) = 전 픽셀 정확히 0,
+    # intensity max 160. → lidar 폴스루(구현)는 range 2.76% 포화 + height를
+    # 0.25 상수 평면으로 오염시켰다 (ISSUE-025).
+    RADAR_RANGE_MAX = 150.0
+
     def _open_radar(self, path: str) -> Tensor:
-        # radar uses the same (value+100)*150 codec; channels [range, intensity, height]
-        return self._open_lidar(path)
+        # same (value+100)*150 codec as lidar, but radar-correct channels:
+        # [range/150, intensity/255, occupancy] — height는 구조적으로 0이라
+        # 정보가 없으므로 occupancy(리턴 존재) 마스크로 대체.
+        v = self._read_uint16_proj(path)
+        valid = (v[:, :, 0] > 0).astype(np.float32)
+        rng = np.clip(v[:, :, 0] / self.RADAR_RANGE_MAX, 0.0, 1.0)
+        inten = np.clip(v[:, :, 1] / self.LIDAR_INTENSITY_MAX, 0.0, 1.0)
+        out = np.stack([rng * valid, inten * valid, valid], axis=0)
+        return torch.from_numpy(np.ascontiguousarray(out * 255.0))
 
     def _open_event(self, path: str) -> Tensor:
         raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)           # (H,W,3) uint8 [pos, neg, 0]
@@ -232,7 +245,14 @@ class MUSES(Dataset):
             if m == 'img':
                 continue
             p = self._sibling(rgb, m)
-            x = self._open_event(p) if m == 'event' else self._open_lidar(p)
+            # ISSUE-025: radar가 _open_lidar로 직접 디스패치되어 _open_radar가
+            # 죽은 코드였음 — radar 분기 명시.
+            if m == 'event':
+                x = self._open_event(p)
+            elif m == 'radar':
+                x = self._open_radar(p)
+            else:
+                x = self._open_lidar(p)
             if x.shape[1:] != (H, W):
                 x = TF.resize(x, [H, W], TF.InterpolationMode.NEAREST)
             sample[m] = x
