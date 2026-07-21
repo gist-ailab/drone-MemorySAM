@@ -13,6 +13,12 @@
 
 (수치 = per-image present-class mIoU의 평균 — D1의 조건 aggregate 클래스평균 mIoU와 정의가 다름, 직접 비교 금지)
 
+## ⚠️ 캐비앗 (판독 한계)
+
+- **P38 행은 근사치**: 두 ckpt 모두 P39 config로 로드 → P38 ckpt에 없는 P39 신설 파라미터 8개(trunk_exp·arb_lambda 등)가 random/default init으로 섞임 (missing=8). **분포 형상 판정(파국장면 유무)은 유효하나, P38↔P39 절대 델타(±1.6~1.9)는 오염 — 모델 간 비교 근거로 인용 금지.** 정확한 대조는 P38 전용 config로 재실행 필요(현 목적엔 불요).
+- clear 셀(n=75)도 실행됨: P39 68.09/P38 68.45, skew≈0 — per-image 지표에서 clear<fog인 것은 metric 정의 효과(장면당 present-class 수 차이)로, 조건 우열 판단에 쓰지 말 것.
+- jarvis develop 체크아웃의 muses.py가 구버전이라 조합 CASE(fog_night 등) 미지원 — 학습 종료 후 pull로 해소.
+
 ## 판정
 
 1. **파국 장면 가설 기각**: fog 58장 분포가 조밀(worst ~51+, skew≈0) — "소수 깨진 장면이 평균을 끌어내린다"는 시나리오는 없다. night도 동일.
