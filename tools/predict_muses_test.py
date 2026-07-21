@@ -94,8 +94,10 @@ class MUSESTest(MUSES):
     discarded before the sample is returned.
     """
 
-    def __init__(self, root, transform=None, modals=('img', 'lidar', 'event')):
+    def __init__(self, root, transform=None, modals=('img', 'lidar', 'event'),
+                 legacy_radar=False):
         Dataset.__init__(self)
+        self.legacy_radar = bool(legacy_radar)
         self.root = root
         self.split = 'test'
         self.transform = transform
@@ -109,6 +111,26 @@ class MUSESTest(MUSES):
             raise FileNotFoundError(f"No test images in {root}/frame_camera/test/*/*/*.png")
         print(f"Found {len(self.files)} test images.", flush=True)
 
+    def _open_modal(self, m: str, p: str):
+        """모달별 디코더 디스패치 — semseg/datasets/muses.py와 반드시 일치해야 한다.
+
+        🔴 ISSUE-025 재발 방지: 예전에는 여기서
+            `self._open_event(p) if m == 'event' else self._open_lidar(p)`
+        한 줄로 처리해 **radar가 lidar 디코더로 흘렀다**. 학습 로더가 3d2bb9a로
+        고쳐진 뒤에도 이 파일은 로직을 복제하고 있어 수정이 반영되지 않았고,
+        그대로 두면 radar-fix로 학습한 모델을 **버그 디코더로 추론**하게 되어
+        입력 분포가 어긋난다(= radar 픽스가 무익해 보이는 잘못된 결론).
+
+        `legacy_radar=True`는 **버그 시절에 학습된 체크포인트를 재현할 때만** 쓴다.
+        그 모델들은 오염된 radar를 전제로 학습됐으므로, 올바른 디코더를 쓰면
+        오히려 성능이 떨어진다. 학습 시점과 추론을 일치시키는 것이 원칙이다.
+        """
+        if m == 'event':
+            return self._open_event(p)
+        if m == 'radar':
+            return self._open_lidar(p) if self.legacy_radar else self._open_radar(p)
+        return self._open_lidar(p)
+
     def __getitem__(self, index):
         rgb = str(self.files[index])
 
@@ -119,7 +141,7 @@ class MUSESTest(MUSES):
             if m == 'img':
                 continue
             p = self._sibling(rgb, m)
-            x = self._open_event(p) if m == 'event' else self._open_lidar(p)
+            x = self._open_modal(m, p)
             if x.shape[1:] != (H, W):
                 x = TF.resize(x, [H, W], TF.InterpolationMode.NEAREST)
             sample[m] = x
@@ -152,6 +174,9 @@ def main():
     ap.add_argument('--dataset-root', default=None)
     ap.add_argument('--out', required=True, help='dir for the PNGs')
     ap.add_argument('--limit', type=int, default=None)
+    ap.add_argument('--legacy-radar', action='store_true',
+                    help='radar를 (버그가 있던) lidar 디코더로 읽는다. '
+                         'ISSUE-025 수정 이전에 학습된 ckpt를 재현할 때만 사용.')
     args = ap.parse_args()
 
     pngdir = Path(args.out) / 'pred'
@@ -167,7 +192,12 @@ def main():
     device = torch.device('cuda')
 
     valtransform = get_val_augmentation(ecfg['IMAGE_SIZE'], dataset_cfg=dcfg)
-    ds = MUSESTest(dcfg['ROOT'], valtransform, dcfg['MODALS'])
+    if 'radar' in dcfg['MODALS']:
+        mode = 'LEGACY(lidar 디코더 — 버그 재현)' if args.legacy_radar else 'FIXED(_open_radar)'
+        print(f"[ISSUE-025] radar 디코딩 = {mode}. "
+              f"학습 시점과 반드시 일치해야 한다.", flush=True)
+    ds = MUSESTest(dcfg['ROOT'], valtransform, dcfg['MODALS'],
+                   legacy_radar=args.legacy_radar)
     n_classes, class_names = ds.n_classes, ds.CLASSES
     loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
