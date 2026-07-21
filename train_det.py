@@ -276,7 +276,18 @@ def train_one_epoch(
 
         loss = losses['loss_total']
         # NaN/Inf guard: skip a bad batch so one spike can't corrupt weights permanently.
-        if not torch.isfinite(loss):
+        #
+        # 🔴 The skip decision MUST be collective. If only the affected rank takes
+        # `continue`, it never runs backward, so its DDP reducer never posts the
+        # gradient all-reduce for this step — every other rank blocks in backward
+        # until the NCCL watchdog fires (2h here, see setup_ddp), then the job dies.
+        # all_reduce(MAX) makes every rank see the same verdict and skip together.
+        bad = (~torch.isfinite(loss)).to(dtype=torch.float32)
+        if ddp:
+            dist.all_reduce(bad, op=dist.ReduceOp.MAX)
+        if bool(bad.item()):
+            # Drop whatever this accumulation window had collected: it may already
+            # be polluted, and every rank drops the same thing.
             optimizer.zero_grad(set_to_none=True)
             nan_skips += 1
             if is_main and nan_skips <= 20:
@@ -299,8 +310,24 @@ def train_one_epoch(
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
-                optimizer.step()
+                # No GradScaler here, so nothing else screens the gradients.
+                # clip_grad_norm_ defaults to error_if_nonfinite=False, i.e. it
+                # happily passes NaN/Inf straight through to optimizer.step(),
+                # which poisons the weights permanently — every later batch then
+                # produces a non-finite loss and the run locks into 100% skip
+                # (see det_P30_v2.yaml "ep20 100% skip"). The AMP branch is
+                # covered by scaler.unscale_; this branch was not.
+                # Grads are already all-reduced by DDP at this point, so the
+                # norm — and therefore this verdict — is identical on every rank.
+                gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                                       max_norm=grad_clip)
+                if torch.isfinite(gnorm):
+                    optimizer.step()
+                else:
+                    nan_skips += 1
+                    if is_main and nan_skips <= 20:
+                        print(f'[nan-guard] non-finite grad norm at epoch {epoch} '
+                              f'batch {batch_idx}; step skipped (total {nan_skips})')
             optimizer.zero_grad()
 
         # FCOSLoss may return plain floats (0.0) for reg/ctr when a batch has no
@@ -322,10 +349,27 @@ def train_one_epoch(
                 'n_pos': losses['n_pos'],
             })
 
+    # Skip accounting. Without this a run that NaNs on every batch reports
+    # avg_loss = 0/max(0,1) = 0.0000 and looks perfectly healthy while burning
+    # GPU on nothing — the deadlock the collective guard removed used to at
+    # least kill the job loudly. Surface the rate, and refuse to continue when
+    # an entire epoch produced no update.
+    skip_rate = nan_skips / max(n_batches, 1)
+    if is_main and nan_skips:
+        print(f'[nan-guard] epoch {epoch}: skipped {nan_skips}/{n_batches} '
+              f'batches ({skip_rate:.1%})')
+    if n_iters == 0:
+        raise RuntimeError(
+            f'[nan-guard] epoch {epoch}: every batch was skipped as non-finite '
+            f'({nan_skips}/{n_batches}). Training cannot progress — aborting '
+            f'instead of silently reporting loss=0. Check LR / grad clip '
+            f'(DET_GRAD_CLIP={grad_clip}) / AMP settings.')
+
     avg_loss = total_loss / max(n_iters, 1)
     if writer is not None:
         global_step = epoch * len(dataloader)
         writer.add_scalar('train/loss_total', avg_loss, global_step)
+        writer.add_scalar('train/nan_skip_rate', skip_rate, global_step)
         writer.add_scalar('train/loss_cls', total_cls / max(n_iters, 1), global_step)
         writer.add_scalar('train/loss_reg', total_reg / max(n_iters, 1), global_step)
         writer.add_scalar('train/loss_ctr', total_ctr / max(n_iters, 1), global_step)
