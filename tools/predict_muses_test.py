@@ -26,7 +26,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent
+# 이 파일은 repo root에 있다가 026062d로 tools/ 아래로 옮겨졌는데 경로가
+# 함께 갱신되지 않아 `parent`가 tools/를 가리켰다 -> `import semseg` 실패.
+# 형제 도구 19종은 전부 parents[1](= repo root)을 쓴다.
+REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 if '--gpu' in sys.argv:
@@ -174,9 +177,12 @@ def main():
     ap.add_argument('--dataset-root', default=None)
     ap.add_argument('--out', required=True, help='dir for the PNGs')
     ap.add_argument('--limit', type=int, default=None)
-    ap.add_argument('--legacy-radar', action='store_true',
-                    help='radar를 (버그가 있던) lidar 디코더로 읽는다. '
-                         'ISSUE-025 수정 이전에 학습된 ckpt를 재현할 때만 사용.')
+    ap.add_argument('--radar-decode', choices=('fixed', 'legacy'), default=None,
+                    help="radar 디코더 선택. MODALS에 radar가 있으면 **필수**. "
+                         "fixed=_open_radar(ISSUE-025 수정본), "
+                         "legacy=lidar 디코더(수정 이전 학습 ckpt 재현용). "
+                         "ckpt에 코드 버전이 안 남아 자동 판별이 불가능하므로 "
+                         "조용한 기본값을 두지 않는다.")
     args = ap.parse_args()
 
     pngdir = Path(args.out) / 'pred'
@@ -192,12 +198,22 @@ def main():
     device = torch.device('cuda')
 
     valtransform = get_val_augmentation(ecfg['IMAGE_SIZE'], dataset_cfg=dcfg)
+    radar_decode = args.radar_decode
     if 'radar' in dcfg['MODALS']:
-        mode = 'LEGACY(lidar 디코더 — 버그 재현)' if args.legacy_radar else 'FIXED(_open_radar)'
-        print(f"[ISSUE-025] radar 디코딩 = {mode}. "
-              f"학습 시점과 반드시 일치해야 한다.", flush=True)
+        if radar_decode is None:
+            ap.error(
+                'MODALS에 radar가 있으므로 --radar-decode {fixed,legacy}를 명시해야 한다.\n'
+                '  fixed  : ISSUE-025 수정(3d2bb9a) 이후 학습된 ckpt\n'
+                '  legacy : 그 이전에 학습된 ckpt(P34 ep182, P39 ep122 등)\n'
+                '학습 시점과 어긋나면 입력 분포가 달라져 점수가 부당하게 낮아진다. '
+                'ckpt에는 코드 버전이 기록되지 않아 자동 판별이 불가능하다.')
+        print('=' * 72, flush=True)
+        print(f'[ISSUE-025] radar 디코딩 = {radar_decode.upper()}'
+              f"{'  (lidar 디코더로 읽음 — 버그 재현)' if radar_decode == 'legacy' else ''}",
+              flush=True)
+        print('=' * 72, flush=True)
     ds = MUSESTest(dcfg['ROOT'], valtransform, dcfg['MODALS'],
-                   legacy_radar=args.legacy_radar)
+                   legacy_radar=(radar_decode == 'legacy'))
     n_classes, class_names = ds.n_classes, ds.CLASSES
     loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
@@ -261,6 +277,10 @@ def main():
         'class_pixel_counts': {c: int(v) for c, v in zip(class_names, px_per_class)},
         'classes_never_predicted': [c for c, v in zip(class_names, px_per_class) if v == 0],
         'degenerate_images_le2_classes': degenerate,
+        # ISSUE-025: 어느 radar 디코더로 만든 산출물인지 반드시 남긴다.
+        # stdout 경고는 tqdm 750장에 묻히고, zip은 NAS에 아카이브되어
+        # 몇 달 뒤 비교 대상이 되므로 파일에 박혀 있어야 한다.
+        'radar_decode': (radar_decode if 'radar' in dcfg['MODALS'] else 'n/a (no radar)'),
     }
     with open(Path(args.out) / 'predict_summary.json', 'w') as f:
         json.dump(summary, f, indent=2)
