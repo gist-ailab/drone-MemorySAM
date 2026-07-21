@@ -16,6 +16,7 @@ No SAM2 imports anywhere in this package.
 """
 from __future__ import annotations
 
+import math
 from typing import List, Optional, Sequence
 
 import torch
@@ -121,9 +122,24 @@ class ReliaDINO(nn.Module):
                  m2f_anchored: bool = False,
                  m2f_point_quota: int = 0,
                  p39_trunk_exp: bool = False,
+                 p39_trunk_mode: str = 'linear',
+                 p39_trunk_hidden: int = 256,
                  p39_arbiter: bool = False,
                  p39_path_dropout_p: float = 0.25,
                  p39_router_ce_w: float = 0.4,
+                 p391_vicreg: bool = False,
+                 p391_vicreg_lvar: float = 0.1,
+                 p391_vicreg_lcov: float = 0.01,
+                 p391_vicreg_tokens: int = 2048,
+                 p391_vicreg_lidar_w: float = 1.0,
+                 p391_vicreg_other_w: float = 0.25,
+                 rca_enable: bool = False,
+                 rca_p_max: float = 0.5,
+                 rca_warmup_ep: int = 20,
+                 rca_quantile: float = 0.3,
+                 rca_alpha_min: float = 0.1,
+                 rca_alpha_max: float = 0.5,
+                 rca_readout_w: float = 0.5,
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
@@ -234,12 +250,43 @@ class ReliaDINO(nn.Module):
         # init (NOT zero — 키1: 소극 잔차 금지), 주 경로 소속이라 첫 스텝부터
         # CE gradient를 받는다. FUSED eff.rank 7/256 병목(키3) 직접 확장.
         self.trunk_exp = None
+        self.trunk_gamma = None
+        self.p39_trunk_mode = p39_trunk_mode
         if p39_trunk_exp:
-            self.trunk_exp = nn.ModuleList(
-                nn.Conv2d(dim, dim, 1) for _ in range(self.num_modalities))
-            for m in self.trunk_exp:
-                nn.init.normal_(m.weight, std=0.01)
-                nn.init.zeros_(m.bias)
+            if p39_trunk_mode == 'gated_mlp':
+                # [P39.1-R1] 선형 1×1의 암묵적 저rank 편향(deep matrix
+                # factorization/DirectCLR — P39에서 lidar rank 4.7 붕괴의 유력
+                # 원인)을 제거: LN→1×1→GELU→1×1 비선형 + tanh(γ) 게이트(γ=0
+                # init, ReZero/LLaMA-Adapter) — shortcut이 초기 gradient
+                # highway가 되어 LoRA를 저rank 코드로 조각하는 것을 막는다.
+                # V1의 night +2.50 기여 메커니즘은 보존.
+                h = int(p39_trunk_hidden)
+                self.trunk_exp = nn.ModuleList(
+                    nn.Sequential(LayerNorm2d(dim),
+                                  nn.Conv2d(dim, h, 1), nn.GELU(),
+                                  nn.Conv2d(h, dim, 1))
+                    for _ in range(self.num_modalities))
+                # γ init 0.1 (NOT 0): tanh(0)=0이면 MLP가 gradient를 전혀 못
+                # 받아 키1(수동 zero-결선 사장, 4연속)의 재판이 된다. 0.1이면
+                # 게이트는 사실상 닫혀 있으면서(≈0.0997) 첫 스텝부터 흐른다.
+                self.trunk_gamma = nn.Parameter(
+                    torch.full((self.num_modalities,), 0.1))
+            else:
+                self.trunk_exp = nn.ModuleList(
+                    nn.Conv2d(dim, dim, 1) for _ in range(self.num_modalities))
+                for m in self.trunk_exp:
+                    nn.init.normal_(m.weight, std=0.01)
+                    nn.init.zeros_(m.bias)
+        # [P39.1-R2] VICReg variance+covariance 정규화 (per-modal 토큰,
+        # lidar 가중 강화) — 붕괴 "복원"용. per-GPU 서브샘플, fp32, sync 불요.
+        self.p391_vicreg = p391_vicreg
+        self.p391_vicreg_lvar = float(p391_vicreg_lvar)
+        self.p391_vicreg_lcov = float(p391_vicreg_lcov)
+        self.p391_vicreg_tokens = int(p391_vicreg_tokens)
+        _lidx = self.modalities.index('lidar') if 'lidar' in self.modalities else -1
+        self.p391_vicreg_w = [
+            p391_vicreg_lidar_w if i == _lidx else p391_vicreg_other_w
+            for i in range(self.num_modalities)]
         # V5 compete-and-arbitrate: per-class Λ (softplus(0)=0.69, 죽은 시작
         # 아님) + 학습 시 path dropout 경쟁(dense-only/query-only/combined) +
         # router 직접 CE 감독(의존→기여 전환, 키2). β 잔차(반증 완료)는 arbiter
@@ -250,6 +297,25 @@ class ReliaDINO(nn.Module):
         # eval-time ablation flags (tools/module_ablation attr_toggle 호환)
         self.p39_query_off = False
         self.p39_trunkexp_off = False
+
+        # [P40] RCA — Reliability-Conditioned Attenuation (학습 전용).
+        # 5세대 반증된 "추론-시 신뢰도 재가중" 대신 같은 신호를 "학습-시
+        # 조건화"로 사용: 모델 자신의 rel 추정이 카메라 열화를 가리키는
+        # 샘플(배치 하위 분위)의 img FEATURE를 soft 감쇠(hard-zero 금지,
+        # 2403.04245의 missing-지름길 역효과 회피) + lidar readout 보조 CE로
+        # gradient 출구 제공. 최근접 선행 OPM(T-PAMI'24)/SGMA와의 차별 4축은
+        # decisions/2026-07-21 문서 참조.
+        self.rca_enable = rca_enable
+        self.rca_p_max = float(rca_p_max)
+        self.rca_warmup_ep = int(rca_warmup_ep)
+        self.rca_quantile = float(rca_quantile)
+        self.rca_alpha_min = float(rca_alpha_min)
+        self.rca_alpha_max = float(rca_alpha_max)
+        self.rca_readout_w = float(rca_readout_w)
+        self.rca_img_idx = self.modalities.index('img') if 'img' in self.modalities else -1
+        self.rca_lidar_idx = self.modalities.index('lidar') if 'lidar' in self.modalities else -1
+        self._rca_pick = None            # (B,) bool, 학습 스텝별
+        self._last_lidar_validity = None  # (B,) [P40-C1] 리턴 유효 픽셀 비율
 
         # M2 seam (asymmetric modality dropout) — default OFF: it helped nothing
         # at mid-run so far (P33 empirical constraint 4); seam kept for P34.2.
@@ -288,6 +354,30 @@ class ReliaDINO(nn.Module):
     def set_grad_checkpointing(self, enable: bool = True):
         self.encoder.set_grad_checkpointing(enable)
 
+    def _vicreg_loss(self, feats: List[torch.Tensor]) -> torch.Tensor:
+        """[P39.1-R2] VICReg var+cov on per-modality tokens (VICRegL-style,
+        dense). per-GPU, fp32, token-subsampled — restores collapsed branch
+        rank (P39 lidar eff.rank 4.7 vs P38 24.7). Pre-scaled by λ and the
+        per-modality weight (lidar emphasized)."""
+        total = feats[0].new_zeros((), dtype=torch.float32)
+        for i, f in enumerate(feats):
+            w = self.p391_vicreg_w[i]
+            if w <= 0:
+                continue
+            z = f.flatten(2).transpose(1, 2).reshape(-1, f.shape[1]).float()
+            M = z.shape[0]
+            k = min(self.p391_vicreg_tokens, M)
+            if k < M:
+                z = z[torch.randint(0, M, (k,), device=z.device)]
+            z = z - z.mean(0, keepdim=True)
+            l_var = F.relu(1.0 - torch.sqrt(z.var(0) + 1e-4)).mean()
+            C = (z.T @ z) / max(z.shape[0] - 1, 1)
+            d = C.shape[0]
+            l_cov = (C.pow(2).sum() - C.diagonal().pow(2).sum()) / d
+            total = total + w * (self.p391_vicreg_lvar * l_var
+                                 + self.p391_vicreg_lcov * l_cov)
+        return total
+
     def _decode(self, fused: torch.Tensor, routed: Optional[torch.Tensor]):
         """Shared FPN + head (+ [P36] router residual) → (logits@stride4, feat).
 
@@ -311,7 +401,55 @@ class ReliaDINO(nn.Module):
         feats = [self.encoder(x[i], i) for i in range(self.num_modalities)]
         if not self.training:
             self._last_per_modal_feats = [f.detach() for f in feats]
+        # [P40-C1] lidar 리턴 유효성(입력 유도, 내부 신호) — RCA 가드 + 분석용
+        self._rca_pick = None
+        _rca_scale = None
+        if self.rca_lidar_idx >= 0:
+            with torch.no_grad():
+                self._last_lidar_validity = (
+                    x[self.rca_lidar_idx].abs().sum(1) > 1e-6).float().mean((1, 2))
+        if (self.rca_enable and self.training and self.rca_img_idx >= 0
+                and self.num_modalities >= 2):
+            # [P40-C2] reliability-conditioned camera attenuation: 자기-추정
+            # rel(img)이 배치 하위 분위인 샘플을 확률 p(t)로 soft 감쇠
+            # (α∈[amin,amax]; per-GPU 배치 기준 quantile — bs가 작으면 사실상
+            # 최저 샘플 선택이 되며 이는 의도된 stochastic 동작).
+            with torch.no_grad():
+                lg = self.fusion.aux_decoders[self.rca_img_idx](
+                    feats[self.rca_img_idx]).float()
+                p = F.softmax(lg, dim=1)
+                ent = -(p * (p + 1e-8).log()).sum(1) / math.log(lg.shape[1])
+                r_img = 1.0 - ent.mean((1, 2))                      # (B,)
+                p_t = self.rca_p_max * min(1.0, float(self._current_epoch)
+                                           / max(self.rca_warmup_ep, 1))
+                thr = torch.quantile(r_img, self.rca_quantile)
+                pick = (r_img <= thr) & (torch.rand_like(r_img) < p_t)
+                if self.rca_lidar_idx >= 0:
+                    # C-1 guard: lidar가 사실상 부재한 샘플은 강제하지 않는다
+                    pick = pick & (self._last_lidar_validity > 0.05)
+                if bool(pick.any()):
+                    alpha = torch.empty_like(r_img).uniform_(
+                        self.rca_alpha_min, self.rca_alpha_max)
+                    _rca_scale = torch.where(pick, alpha, torch.ones_like(alpha))
+                    self._rca_pick = pick
+            if _rca_scale is not None:
+                feats = list(feats)
+                feats[self.rca_img_idx] = feats[self.rca_img_idx] \
+                    * _rca_scale.view(-1, 1, 1, 1)
         fused, aux = self.fusion(feats, gt_mask if self.training else None)
+        if (self._rca_pick is not None and self.training
+                and gt_mask is not None and self.rca_lidar_idx >= 0):
+            # [P40-C3] 감쇠 샘플 한정 lidar readout 보조 CE — 감쇠만으로는
+            # fusion이 "저카메라 모드 암기"로 빠질 수 있어 gradient 출구 필요.
+            lg_l = self.fusion.aux_decoders[self.rca_lidar_idx](
+                feats[self.rca_lidar_idx]).float()
+            gt_ds = F.interpolate(gt_mask.unsqueeze(1).float(),
+                                  size=lg_l.shape[-2:],
+                                  mode='nearest').squeeze(1).long()
+            pk = self._rca_pick
+            if bool((gt_ds[pk] != 255).any()):
+                aux['rca_readout'] = self.rca_readout_w * F.cross_entropy(
+                    lg_l[pk], gt_ds[pk], ignore_index=255)
         if not self.training:
             al = getattr(self.fusion, '_last_aux_logits', None)
             self._last_per_modal_outputs = list(al) if al is not None else None
@@ -340,8 +478,16 @@ class ReliaDINO(nn.Module):
             if self.training and cefr_reg is not None:
                 aux['cefr_reg'] = cefr_reg          # trainer adds to total loss
         if self.trunk_exp is not None and not self.p39_trunkexp_off:
-            # [P39-V1] modal subspace restoration on the main trunk.
-            fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+            # [P39-V1 / P39.1-R1] modal subspace restoration on the main trunk
+            # (gated_mlp mode: nonlinear + tanh(γ) gate, γ zero-init).
+            if self.trunk_gamma is not None:
+                fused = fused + sum(
+                    torch.tanh(self.trunk_gamma[i]) * self.trunk_exp[i](f)
+                    for i, f in enumerate(feats))
+            else:
+                fused = fused + sum(proj(f) for proj, f in zip(self.trunk_exp, feats))
+        if self.p391_vicreg and self.training:
+            aux['vicreg'] = self._vicreg_loss(feats)    # [P39.1-R2] pre-scaled
         logits, m_feat = self._decode(fused, routed)
         token_logits = None
         if self.classtoken is not None:
@@ -500,6 +646,8 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     ctok = mc.get('CLASS_TOKEN', {}) or {}
     m2f = mc.get('M2F', {}) or {}
     p39 = mc.get('P39', {}) or {}
+    vic = p39.get('VICREG', {}) or {}
+    rca = (mc.get('P40', {}) or {}).get('RCA', {}) or {}
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -572,9 +720,24 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         m2f_anchored=m2f.get('ANCHORED', False),
         m2f_point_quota=m2f.get('POINT_QUOTA', 0),
         p39_trunk_exp=p39.get('TRUNK_EXP', False),
+        p39_trunk_mode=p39.get('TRUNK_MODE', 'linear'),
+        p39_trunk_hidden=p39.get('TRUNK_HIDDEN', 256),
         p39_arbiter=p39.get('ARBITER', False),
         p39_path_dropout_p=p39.get('PATH_DROPOUT_P', 0.25),
         p39_router_ce_w=p39.get('ROUTER_CE_W', 0.4),
+        p391_vicreg=vic.get('ENABLE', False),
+        p391_vicreg_lvar=vic.get('LVAR', 0.1),
+        p391_vicreg_lcov=vic.get('LCOV', 0.01),
+        p391_vicreg_tokens=vic.get('TOKENS', 2048),
+        p391_vicreg_lidar_w=vic.get('LIDAR_W', 1.0),
+        p391_vicreg_other_w=vic.get('OTHER_W', 0.25),
+        rca_enable=rca.get('ENABLE', False),
+        rca_p_max=rca.get('P_MAX', 0.5),
+        rca_warmup_ep=rca.get('WARMUP_EP', 20),
+        rca_quantile=rca.get('QUANTILE', 0.3),
+        rca_alpha_min=rca.get('ALPHA_MIN', 0.1),
+        rca_alpha_max=rca.get('ALPHA_MAX', 0.5),
+        rca_readout_w=rca.get('READOUT_W', 0.5),
         modal_dropout=mdrop.get('ENABLE', False),
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),
