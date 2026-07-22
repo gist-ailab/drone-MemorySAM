@@ -364,6 +364,10 @@ class ReliaDINO(nn.Module):
         self._last_per_modal_feats = None
         self._last_per_modal_outputs = None
         self._last_uamm_spatial = None
+        # [analysis §0.5] 피쳐 특성화 tap (eval-only, plain attr, detach → 학습 영향 0)
+        self._last_fused_postfusion = None   # T3: fusion 직후 fused (fused-level 모듈 이전)
+        self._last_fused_prehead = None      # T5: _decode 직전 fused (CEFR·trunk_exp 등 fused-level
+                                             #     모듈 이후. router/classtoken/m2f는 이 뒤 logit-level이라 미포함)
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -534,6 +538,8 @@ class ReliaDINO(nn.Module):
                 feats[self.rca_img_idx] = feats[self.rca_img_idx] \
                     * _rca_scale.view(-1, 1, 1, 1)
         fused, aux = self.fusion(feats, gt_mask if self.training else None)
+        if not self.training:
+            self._last_fused_postfusion = fused.detach()   # [analysis §0.5 T3]
         if (self._rca_pick is not None and self.training
                 and gt_mask is not None and self.rca_lidar_idx >= 0):
             # [P40-C3] 감쇠 샘플 한정 lidar readout 보조 CE — 감쇠만으로는
@@ -577,6 +583,8 @@ class ReliaDINO(nn.Module):
         fused = self._apply_trunk_exp(fused, feats)
         if self.p391_vicreg and self.training:
             aux['vicreg'] = self._vicreg_loss(feats)    # [P39.1-R2] pre-scaled
+        if not self.training:
+            self._last_fused_prehead = fused.detach()      # [analysis §0.5 T5]
         logits, m_feat = self._decode(fused, routed)
         token_logits = None
         if self.classtoken is not None:
