@@ -173,7 +173,10 @@ def main():
         for idx in range(n):
             images, label, _ = dataset[idx]
             imgs = [im.unsqueeze(0).to(device) for im in images]
-            if 0 <= args.drop_modality < len(imgs):                          # [P0-A]
+            if args.drop_modality >= 0:                                      # [P0-A]
+                if args.drop_modality >= len(imgs):   # 범위 밖이 조용히 no-op하면 거짓 P0-A 음성
+                    raise SystemExit(f"--drop-modality {args.drop_modality} 범위 밖 "
+                                     f"(모달 {len(imgs)}개, 유효 0~{len(imgs)-1})")
                 imgs[args.drop_modality] = torch.zeros_like(imgs[args.drop_modality])
             with torch.no_grad():
                 m_out = model(imgs, multimask_output=True)
