@@ -5,6 +5,8 @@ description: MemorySAM seg 모델(P29~P39+, DELIVER·MUSES)의 표준 분석을 
 
 # Seg 표준분석 (MemorySAM)
 
+> detection 모델 분석은 **`det-analysis` 스킬**을 쓴다(도구·판정 규약이 다름).
+
 **원칙: 분석 코드를 새로 짜지 않는다.** 필요한 게 없으면 기존 도구를 **확장**하고 이 문서와 `tools/README_seg_analysis.md`를 갱신한다.
 
 ## 0. 표준 분석항목 (user 지정 2026-07-12) — 매번 이 4개를 답한다
@@ -36,6 +38,15 @@ python tools/seg_analysis_pipeline.py --cfg <cfg> --model_path <ckpt> \
 # MUSES 조합 셀(리더보드 채점 단위) — 실패 셀 정밀 진단
 --conditions fog_night,clear_night,snow_night,rain_night,fog_day
 ```
+
+**모달 구성은 config `DATASET.MODALS`가 단일 출처**다. 파이프라인이 그 값을 `adapter_health --modals`로 전달하므로 per-modality dW 라벨이 자동으로 맞는다(직접 호출 시엔 `--modals`를 반드시 줄 것 — 안 주면 DELIVER 순서로 오표기).
+
+| 벤치 | 3모달 | 4모달 |
+|---|---|---|
+| MUSES | `img,lidar,event` | `img,lidar,event,radar` (P34 4모달 test 78.256 = 3모달 78.979 **−0.72**) |
+| DELIVER | — | `img,depth,event,lidar` |
+
+**4모달을 분석할 때 추가로 답할 것**: ① 추가 모달(radar/event)이 D3B Δacc·drop-modality에서 값을 하는가(dead면 제거 근거) ② 3모달 대비 기존 모달의 rank·기여가 깎였는가(모달 추가가 표현을 압축시키는지) ③ CKA로 정보 잉여인가.
 
 소요: 조건당 ~10분, 전체 80~120분. 8스테이지(D3/D1×2/module_diag/D2N/D3B/D5/viz).
 

@@ -66,3 +66,15 @@ normal). Override with `--lowlight-clips a,b` — matching is a substring test o
 The no-op check exists because four consecutive zero-init-residual mechanisms
 (P36 router, P37a CEFR, P37b classtoken, P38 m2f) shipped without contributing.
 A module is only "working" if switching it off moves the predictions.
+
+## 산출물 저장 (필수)
+
+원시 산출물은 NAS 정규 루트로 회수한다 — 서버 로컬에만 두지 않는다:
+
+```
+/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/<model>_det_<YYYYMMDD>/
+```
+
+판정은 repo `.claude_logs/experiments/analysis/<날짜>-<주제>.md`에 쓰고
+`.claude_logs/experiments/registry.md`의 Det 표에 행을 추가/갱신한다.
+보고는 항상 **mAP / mAP50 / mAP75** 3종 + **모달 구성(RGB-only / 3모달 등)**을 명시한다.
