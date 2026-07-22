@@ -92,6 +92,27 @@ def pca_stats(ev, k=5, var_target=0.90):
             'intrinsic_dim': intrinsic}
 
 
+def bcv_ratio(X, y, min_per_class=5, ignore=255):
+    """[Phase0 P0-B] between-class variance ratio = tr(S_b)/tr(S_t) ∈ [0,1] (correlation ratio η²).
+    fused 분산 중 **클래스 분리에 쓰이는 비율**. 높으면(→1) 스펙트럼이 클래스구조에 정렬
+    (저rank가 task-aligned = neural-collapse 양성 압축 시사 → rank 개입 무이득 가능); 낮으면
+    클래스와 무관한 분산이 큼(판별 안 쓰는 용량). S_b의 rank/PR은 무관 피쳐에서도 ~C−1이라
+    판별력을 구분 못 하므로(설계 검증서 확인) rank 대신 '분산 정렬도'를 쓴다. eff_rank 단독
+    KPI의 무정보-차원 오염(2312.04000) 보완."""
+    m = y != ignore
+    X, y = X[m].astype(np.float64), y[m]
+    classes = [c for c in np.unique(y) if int((y == c).sum()) >= min_per_class]
+    if len(classes) < 2:
+        return None
+    mu = X.mean(0)
+    tr_st = float(((X - mu) ** 2).sum())                                  # tr(S_t) 총 분산
+    if tr_st <= 1e-12:
+        return None
+    tr_sb = float(sum(int((y == c).sum()) * ((X[y == c].mean(0) - mu) ** 2).sum()
+                      for c in classes))                                  # tr(S_b) 클래스간
+    return round(tr_sb / tr_st, 4)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--cfg', required=True)
@@ -106,6 +127,10 @@ def main():
     ap.add_argument('--viz', action='store_true')
     ap.add_argument('--no-extra-taps', action='store_true',
                     help='[§0.5] T3(post-fusion)/T5(pre-head) stash 특성화 비활성 (기본=자동 포함)')
+    ap.add_argument('--lda-rank', action='store_true',
+                    help='[Phase0 P0-B] 각 tap의 between-class variance ratio(η²=tr(Sb)/tr(St)) 추가 — GT 라벨 사용')
+    ap.add_argument('--drop-modality', type=int, default=-1,
+                    help='[Phase0 P0-A] 이 인덱스 모달 입력을 0으로 → fused 스펙트럼 변화 측정(EBR 억압 판별). 여러 인덱스는 별도 run으로 비교')
     args = ap.parse_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     os.environ.setdefault('PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION', 'python')
@@ -129,7 +154,9 @@ def main():
     modals = ds_cfg.get('MODALS', [])
     rng = np.random.default_rng(0)
 
-    report = {'model': Path(args.model_path).stem, 'modals': modals, 'conditions': {}}
+    dropped = modals[args.drop_modality] if 0 <= args.drop_modality < len(modals) else None
+    report = {'model': Path(args.model_path).stem, 'modals': modals,
+              'drop_modality': dropped, 'conditions': {}}   # [P0-A] 어느 모달을 0으로 넣었나
     viz_bank = {}
     for cond in [c.strip() for c in args.conditions.split(',') if c.strip()]:
         ds_cfg['CASE'] = cond
@@ -142,9 +169,12 @@ def main():
         chan_absmean = None      # (M+1, C) dataset-wide per-channel mean|act|
         samples = None           # list of per-modal sample banks for rank/CKA
         fused_cos_sum = None     # (M,) cos(m_feat, f_i)
+        lab_samples = []         # [P0-B] samples와 동일 pos·cap로 수집한 GT 라벨(행 정렬)
         for idx in range(n):
             images, label, _ = dataset[idx]
             imgs = [im.unsqueeze(0).to(device) for im in images]
+            if 0 <= args.drop_modality < len(imgs):                          # [P0-A]
+                imgs[args.drop_modality] = torch.zeros_like(imgs[args.drop_modality])
             with torch.no_grad():
                 m_out = model(imgs, multimask_output=True)
             m_feat = m_out[1][0].float()                    # (C, h, w) — decode 피쳐 (기존 'FUSED')
@@ -171,6 +201,10 @@ def main():
                 raise RuntimeError(f"extra-tap count changed {n_extra}->{len(extra)} at img {idx}")
             h, w = feats[0].shape[-2:]
             pos = rng.integers(0, h * w, size=args.samples_per_img)
+            if args.lda_rank and len(lab_samples) * args.samples_per_img < 20000:   # [P0-B] samples와 동일 cap
+                lab_t = label if torch.is_tensor(label) else torch.as_tensor(np.asarray(label))
+                lab_hw = F.interpolate(lab_t[None, None].float(), size=(h, w), mode='nearest')[0, 0].long()
+                lab_samples.append(lab_hw.reshape(-1)[pos].cpu().numpy())   # 동일 pos → banks 행과 정렬
             for i, f in enumerate(feats + extra + [m_feat]):
                 if f.shape[-2:] != (h, w):
                     f = F.interpolate(f[None], size=(h, w), mode='bilinear', align_corners=False)[0]
@@ -186,6 +220,7 @@ def main():
                         fused_cos_sum[i] += F.cosine_similarity(mf, ff, dim=1).mean().item()
         banks = [np.concatenate(sl, 0) if sl else np.zeros((1, len(chan_absmean[i])))
                  for i, sl in enumerate(samples)]
+        lab_bank = np.concatenate(lab_samples) if lab_samples else None   # [P0-B] banks 행과 정렬
         names = ([modals[i] if i < len(modals) else f'mod{i}' for i in range(M)]
                  + extra_names + ['FUSED'])
         per = {}
@@ -204,6 +239,10 @@ def main():
                 'intrinsic_dim90': pcs['intrinsic_dim'],  # [§0.5] 누적분산 90% 성분수
                 'pca_expvar_top5': pcs['expvar_topk'],
             }
+            if lab_bank is not None and len(lab_bank) == len(banks[i]):   # [P0-B] task-alignment
+                bcv = bcv_ratio(banks[i], lab_bank)
+                if bcv is not None:
+                    per[name]['bcv_ratio'] = bcv
             if i < M:
                 per[name]['cos_with_fused'] = round(fused_cos_sum[i] / n, 4)
         cka = {}
@@ -240,7 +279,8 @@ def main():
             f"{k}:rank={v['effective_rank']},dead={v['dead_channels']}" for k, v in per.items()), flush=True)
 
     Path(args.out + '.json').write_text(json.dumps(report, indent=1))
-    lines = [f"# Feature statistics — `{report['model']}` (full-testset per-modal numeric)",
+    _drop = f" [P0-A DROP={report['drop_modality']}]" if report.get('drop_modality') else ""
+    lines = [f"# Feature statistics — `{report['model']}`{_drop} (full-testset per-modal numeric)",
              "- 읽는 법: `eff.rank`↓·`idim90`↓=피쳐 저차원 붕괴, `dead`↑·`sparsity`↑=용량 낭비, "
              "`kurt`↑=포화/스파이크, `cka`↑(→1)=모달 간 중복(상보성 없음), `cos(fused)`=융합 기여 방향.",
              "- tap: per-modal=T0(encoder raw), `FUSED_pf`=T3(fusion 직후), `PREHEAD`=T5(head 직전), `FUSED`=decode 피쳐.",
@@ -256,6 +296,10 @@ def main():
         lines += ["", "cross-modal CKA: " + ', '.join(f"{k}={v}" for k, v in cd['cross_modal_cka'].items())]
         if cd.get('stage_cka'):
             lines += ["stage CKA: " + ', '.join(f"{k}={v}" for k, v in cd['stage_cka'].items())]
+        _bcv = {k: v['bcv_ratio'] for k, v in cd['per_feature'].items() if 'bcv_ratio' in v}
+        if _bcv:
+            lines += ["between-class var ratio(η²=tr(Sb)/tr(St), →1=분산이 클래스분리에 정렬=양성압축): "
+                      + ', '.join(f"{k}={v}" for k, v in _bcv.items())]
         lines += [""]
     Path(args.out + '.md').write_text('\n'.join(lines))
 
