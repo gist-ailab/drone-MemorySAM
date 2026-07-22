@@ -31,6 +31,13 @@ Output: <out>.json + <out>.md [+ <out>_pca.png]
 import argparse, os, sys, json
 from pathlib import Path
 import numpy as np
+# 🔴 CUDA_VISIBLE_DEVICES는 torch import 전에 설정해야 실효(main()의 os.environ 설정은 늦어 무효
+# — --gpu N을 줘도 물리 GPU0에 올라가던 버그). argv에서 --gpu를 먼저 읽어 여기서 export.
+for _i, _a in enumerate(sys.argv):
+    if _a == '--gpu' and _i + 1 < len(sys.argv):
+        os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[_i + 1]
+    elif _a.startswith('--gpu='):
+        os.environ['CUDA_VISIBLE_DEVICES'] = _a.split('=', 1)[1]
 import torch
 import torch.nn.functional as F
 

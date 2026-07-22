@@ -69,3 +69,39 @@ supersedes_direction: P39.1 per-modal rank 작업(무이득) — 이 제안은 *
 **미결/선행**: LDA-rank 도구 확장(§7 확장), P0-A modality-drop 훅 재사용 확인. Phase 0는 학습 0이라 리스크 최소 — 먼저 돌려 방향부터 확정.
 
 **근거 arXiv**: 2511.06450 · 2505.22483 · 2505.06635 · 2105.00470 · 2303.06562 · 2510.14657 · 2306.13292 · 2006.08558 · 2103.03404 · 2402.03991 · 2103.10427 · 2312.04000 · 2210.02885
+
+---
+
+## Phase 0 결과 + 판정 (2026-07-22, hpca100 A100, P38 ckpt, MUSES val clear/fog/night)
+
+원시: NAS `analysis_logs/p41_phase0_20260722/` (full + drop_img/lidar/event).
+
+**P0-B (η² = tr(Sb)/tr(St))**: FUSED_pf η² = **0.32~0.35**(전 조건), FUSED(decode) η² = **0.63**.
+→ 저rank(9)인데 η²가 →1이 **아님** ⇒ **neural-collapse 양성 압축 가설 반증**("rank-9가 task-최적이라 개입 무의미"는 틀림). 단 η²가 조건 불변(night≈clear)인데 성능은 변동 ⇒ **η²도 성능 직접예측 못 함**(rank와 동일 한계) — "fusion 고치면 성능↑"는 여전히 미증명. decode가 η²를 0.35→0.63으로 회복(head가 fusion 미달분 보정).
+
+**P0-A (모달 드롭 시 FUSED_pf eff_rank Δ)**:
+| | full | drop img | drop lidar | drop event |
+|---|---|---|---|---|
+| clear | 9.21 | **14.53** | 10.38 | 7.95 |
+| night | 7.02 | **9.48** | 9.59 | 6.38 |
+| fog | 8.75 | **6.91** | 10.07 | 7.85 |
+→ **🔴 img가 fusion을 과지배·압축**: clear/night에서 img 제거 시 fused rank **상승**(+5.3/+2.5) — 가장 정보 풍부한 모달(rank 29~35)이 joint 표현을 짓누름 = **dominant-modality collapse**(고전 EBR 억압 아님). **단 fog는 반대**(img 제거 시 rank↓) — fog는 lidar가 죽어 img가 진짜 캐리어(키4 fog 최약과 연결 실마리). event 드롭 Δ≈−1(약기여).
+
+**게이트 판정**: 깨끗한 양성(STOP)도 유해(확신 진행)도 아님. **정제된 결론**: 붕괴는 양성 아님(η² 0.35) + **img 과지배**라는 개입점 확보. 성능 링크는 미증명 → **ep30 게이트로 결판**.
+
+**🟢 결정 (2026-07-22, opus): Phase 1 진행(A안).** 근거: (1) "무의미(양성)" 반증됨, (2) img-지배라는 구체 타깃, (3) ep30 falsify가 저비용.
+
+## Phase 1 (확정 설계) — FCR: Fused Class-alignment Regularizer
+
+img-지배로 저-task-정렬된 fused를 **주 손실 레벨**에서 교정(frozen 백본이라 loss-lever만 유효 — 딥리서치 R1). **키1 준수**(aux 손실 = 주손실 경로, zero-init 잔차 아님).
+
+| # | 변경 | 근거 | 형태 |
+|---|---|---|---|
+| **F-1 (주 변수)** | fused(T3)에 **supervised between-class 분산 규제**: `L_fcr = −λ·η²(fused, gt_mask)` 또는 등가 class-center 분리 손실. 측정된 deficit(η² 0.35)를 직접 최적화 ⇒ img-지배 완화·클래스 정렬 | VCReg supervised var-cov(2306.13292), MUSES seg aux 규제 대폭이득 선례(2505.06635) | aux 손실(warmup, λ 소), 토글 `P41.FCR` |
+| F-2 (대안) | in-path decorrelation(ContraNorm 2303.06562)을 fused 뒤 — F-1 무효 시 | attention rank collapse 저지(2103.03404) | in-path 층 |
+
+**구현**: model.forward의 fused(L536~) + gt_mask로 `aux['fcr']` 계산(vicreg/cefr_reg 패턴), trainer 합산. eval 시 Phase-0 도구로 η² 재측정.
+
+**ep30 게이트(사전등록, falsifiable)**: ① `module_ablation` FCR off-Δ 확인 ② **fused η² 상승**(Phase-0 도구) ③ val mIoU ≥ P38 동에폭. **판정**: η²↑ ∧ mIoU↑ ⇒ fusion이 레버 확정 / **η²↑인데 mIoU 불변 ⇒ fusion은 병목 아님 확정 → fog 피벗**(정직한 종결). 공정성: physaug 정합·val-best·radar 미포함.
+
+**실행**: hpca100 A100(Phase-0 종료로 유휴) 첫 슬롯. 코드검수 파이프라인 + ep30 토글 즉검.
