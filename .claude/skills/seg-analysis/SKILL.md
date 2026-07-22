@@ -56,6 +56,11 @@ python tools/seg_analysis_pipeline.py --cfg <cfg> --model_path <ckpt> \
 - off-Δ가 **+20↑ & agreement<0.8** → 기여가 아니라 **co-adaptation 의존**(단일 실패점). "라우터가 +34 기여"로 읽지 말 것.
 - **평균에 속지 말 것**: 조건별·클래스별로 부호가 갈린다(예: V5 query가 주간 +1.0인데 야간 −0.28). 항상 조건 축으로 펼쳐 본다.
 - 라우팅류는 전역 평균이 uniform이어도 per-class로 갈라 재확인 → `probe_cefr_routing.py` 패턴(eval 스태시 훅 + per-class 집계).
+- 🔴 **토글이 목록에 안 뜨는 것과 no-op은 다르다.** `make_toggles()`는 모듈이 **실제로 결선돼 있을 때만** 토글을 등록한다(조건부):
+  - `p38_m2f_off`는 **arbiter(P39 `core.arb_lambda`)가 없을 때만** 등록 — P39 계열에서는 β 경로 자체가 미사용이라 토글이 아예 안 뜬다. 이때 "no-op"이라고 쓰면 오판이다(뜨지 않음 = 그 결선이 존재하지 않음).
+  - `p39_*`도 arbiter 존재 시에만 등록(플래그 attr는 구세대에도 있어 attr 존재만으론 판단 불가).
+  - `p37_cefr_off`는 `fusion.cefr`가 있을 때만.
+  → 실행 로그의 `available=[...] skipped=[...]` 줄을 **반드시 보고**하고, skip 사유를 "모듈 부재"로 적을 것.
 - adapter 판정: Δacc가 크면 adapter는 **살아있다**. 여기에 rank가 낮으면 "죽음"이 아니라 **저rank 압축**이며, 융합이 그걸 쓰는지는 `drop_modality_dmiou`로 따로 본다.
 - ckpt 선택: 논문 수치는 **val-best만**([[seg-report-sota-gap]]). 단 이 계보는 **val↔test 순위 역전**이 관측됐으므로 분석 판정은 test/조건 평균을 함께 본다.
 

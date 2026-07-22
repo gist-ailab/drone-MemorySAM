@@ -21,7 +21,8 @@
 - **산출물 저장 위치는 NAS**: `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/<model>_<bench>_<YYYYMMDD>/` (구 `/mnt/HDD2/src/logs/`는 ISSUE-023로 폐기). 서버에서 실행 후 `rsync`로 회수한다.
 - **MUSES 지원**: `--split val` 필수(test GT 비공개). 조건 축 = 날씨 4 + 주야 2 → `--conditions clear,fog,rain,snow,day,night`. **조합 셀**(리더보드 채점 단위)은 `fog_night` 식으로 지정 가능(`semseg/datasets/muses.py` CASE 조합 지원, dee524f).
 - **모달 수 표기 의무**: 모든 분석 문서·registry 행에 **3모달(MUSES img/lidar/event) / 4모달(DELIVER img/depth/event/lidar)**을 명시(모달 수 다르면 별개 실험).
-- **모듈 토글 등록**(`module_ablation.py::make_toggles`): 현재 등록분 = `p34_bias_off/p34_cons_off/p34_gate_off/p34_veto_off/p34_calib_off` · `p36_router_off` · `p37_cefr_off` · `p38_m2f_off`(m2f.beta→0) · `p39_query_off`/`p39_trunkexp_off`. **새 모델 모듈은 여기 한 줄 등록 + 파이프라인 기본 토글 문자열에 추가**한다(미등록 시 조용히 skip).
+- **모듈 토글 등록**(`module_ablation.py::make_toggles`): 현재 등록분 = `p34_bias_off/p34_cons_off/p34_gate_off/p34_veto_off/p34_calib_off` · `p36_router_off` · `p37_cefr_off` · `p38_m2f_off`(m2f.beta→0) · `p39_query_off`/`p39_trunkexp_off`/**`p39_modalsrc_off`**(V2 fused-only)/**`p39_anchored_off`**(V3 free-only). **새 모델 모듈은 여기 한 줄 등록 + 파이프라인 기본 토글 문자열에 추가**한다.
+- 🔴 **조건부 등록에 주의**: 모듈이 실제로 결선된 경우에만 토글이 등록된다 — `p38_m2f_off`는 arbiter(`core.arb_lambda`) 부재 시에만, `p39_*`는 arbiter 존재 시에만, `p37_cefr_off`는 `fusion.cefr` 존재 시에만. **토글이 목록에 없는 것 = 그 결선이 없다는 뜻이지 no-op이 아니다.** 로그의 `available=[...] skipped=[...]`를 리포트에 남길 것.
 - **판정 규약**: `miou_delta_when_off` **+ = 모듈이 기여**. `|Δ|<0.5 & pred_agreement>0.99` = **no-op**(신규 모듈 조기 탈락 기준). 반대로 off Δ가 **+20 이상 + agreement<0.8**이면 "기여"가 아니라 **co-adaptation 의존**(단일 실패점)으로 읽는다.
 - **전용 프로브**: `probe_cefr_routing.py`(per-class 라우팅 분화 — 전역 평균이 uniform이어도 클래스별로 갈리는지 검사). 새 라우팅류 모듈은 이 패턴(스태시 훅 + per-class 집계)을 복제할 것.
 - **시각화**: 그림은 dataviz 팔레트(#2a78d6/#1baf7a/#eda100/#008300/#4a3aa7) + `Noto Sans CJK JP` 폰트로 생성하고 json에서 직접 파싱하는 스크립트를 NAS 산출물 폴더에 함께 보존한다(재생성 가능).
