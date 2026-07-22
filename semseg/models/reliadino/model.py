@@ -133,6 +133,8 @@ class ReliaDINO(nn.Module):
                  p391_vicreg_tokens: int = 2048,
                  p391_vicreg_lidar_w: float = 1.0,
                  p391_vicreg_other_w: float = 0.25,
+                 p41_fcr: bool = False,
+                 p41_fcr_lambda: float = 0.1,
                  rca_enable: bool = False,
                  rca_p_max: float = 0.5,
                  rca_warmup_ep: int = 20,
@@ -282,6 +284,9 @@ class ReliaDINO(nn.Module):
         self.p391_vicreg_w = [
             p391_vicreg_lidar_w if i == _lidx else p391_vicreg_other_w
             for i in range(self.num_modalities)]
+        # [P41] FCR — fused between-class 분산비 η² 최대화(supervised aux, Phase-0 deficit 교정)
+        self.p41_fcr = bool(p41_fcr)
+        self.p41_fcr_lambda = float(p41_fcr_lambda)
         # V5 compete-and-arbitrate: per-class Λ (softplus(0)=0.69, 죽은 시작
         # 아님) + 학습 시 path dropout 경쟁(dense-only/query-only/combined) +
         # router 직접 CE 감독(의존→기여 전환, 키2). β 잔차(반증 완료)는 arbiter
@@ -434,6 +439,28 @@ class ReliaDINO(nn.Module):
                                      + self.p391_vicreg_lcov * l_cov)
         return total
 
+    def _fcr_loss(self, fused: torch.Tensor, gt_mask: torch.Tensor) -> torch.Tensor:
+        """[P41-F1] Fused Class-alignment Regularizer: fused의 between-class 분산비
+        η²=tr(Sb)/tr(St)를 최대화(손실 = −η²). Phase-0에서 fused η²=0.35(저-task정렬) +
+        img 과지배로 측정된 deficit을 **주손실 레벨**에서 직접 교정(frozen 백본이라 loss-lever만
+        유효). 키1 준수(aux 손실, zero-init 잔차 아님). trainer bf16 autocast 하에서 fp32 강제."""
+        B, D, h, w = fused.shape
+        with torch.autocast(device_type=fused.device.type, enabled=False):
+            f = fused.float().permute(0, 2, 3, 1).reshape(-1, D)          # (B*h*w, D)
+            gt = F.interpolate(gt_mask.unsqueeze(1).float(), size=(h, w),
+                               mode='nearest').squeeze(1).long().reshape(-1)
+            keep = gt != 255
+            f, gt = f[keep], gt[keep]
+            if f.shape[0] < 2:
+                return fused.new_zeros(())
+            mu = f.mean(0, keepdim=True)
+            tr_st = (f - mu).pow(2).sum()
+            tr_sb = fused.new_zeros(())
+            for c in torch.unique(gt):
+                fc = f[gt == c]
+                tr_sb = tr_sb + fc.shape[0] * (fc.mean(0) - mu[0]).pow(2).sum()
+            return -(tr_sb / (tr_st + 1e-6))                              # η² 최대화
+
     # ── [P40-F1] rel(img) 분포 링버퍼 ────────────────────────────────────
     @torch.no_grad()
     def _rca_buf_push(self, v: torch.Tensor) -> None:
@@ -540,6 +567,8 @@ class ReliaDINO(nn.Module):
         fused, aux = self.fusion(feats, gt_mask if self.training else None)
         if not self.training:
             self._last_fused_postfusion = fused.detach()   # [analysis §0.5 T3]
+        if self.p41_fcr and self.training and gt_mask is not None:
+            aux['fcr'] = self.p41_fcr_lambda * self._fcr_loss(fused, gt_mask)   # [P41-F1]
         if (self._rca_pick is not None and self.training
                 and gt_mask is not None and self.rca_lidar_idx >= 0):
             # [P40-C3] 감쇠 샘플 한정 lidar readout 보조 CE — 감쇠만으로는
@@ -738,6 +767,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     p39 = mc.get('P39', {}) or {}
     vic = p39.get('VICREG', {}) or {}
     rca = (mc.get('P40', {}) or {}).get('RCA', {}) or {}
+    fcr = (mc.get('P41', {}) or {}).get('FCR', {}) or {}   # [P41] Fused Class-alignment Regularizer
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -821,6 +851,8 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p391_vicreg_tokens=vic.get('TOKENS', 2048),
         p391_vicreg_lidar_w=vic.get('LIDAR_W', 1.0),
         p391_vicreg_other_w=vic.get('OTHER_W', 0.25),
+        p41_fcr=fcr.get('ENABLE', False),
+        p41_fcr_lambda=fcr.get('LAMBDA', 0.1),
         rca_enable=rca.get('ENABLE', False),
         rca_p_max=rca.get('P_MAX', 0.5),
         rca_warmup_ep=rca.get('WARMUP_EP', 20),

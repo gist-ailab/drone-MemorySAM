@@ -1,0 +1,161 @@
+# ═══ P41-FCR × MUSES 3모달 (hpca100) — P38-M2F + Fused Class-alignment Regularizer ═══
+# P38 레시피 그대로(GATE/VETO/CALIB/ROUTER on, M2F on, CEFR/CLASS_TOKEN/ATTN_BIAS/CONS off) 위에
+# **FCR aux 손실만 추가** = 1-변수 비교(vs 기존 P38 val 82.22). 근거: Phase-0(2026-07-22) fused η²=0.35
+# (저-task정렬) + img 과지배(drop-img시 fused rank +5.3) → fused between-class 분산비 η² 최대화로
+# 주손실 레벨 교정. 설계: decisions/2026-07-22-p41-fusion-spectral-discrimination-proposal.md
+# 🔴 ep30 게이트(falsifiable): Phase-0 도구로 fused η² 상승 AND val mIoU ≥ P38 동에폭.
+#   η²↑인데 mIoU 불변이면 "fusion은 병목 아님" 확정 → fog 피벗. FCR-on/off = P41 vs 기존 P38(재학습 불요).
+# 🔴 GRADIENT_CHECKPOINT: false (encoder active_modality 버그 회피).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_muses_rgbel_P41_fcr'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : true
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : true
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : true
+    LAMBDA : 0.1
+
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }
+  CLASS_TOKEN: { ENABLE: false }
+
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+
+  # [P41] Fused Class-alignment Regularizer — fused(T3) between-class 분산비 η² 최대화(supervised aux)
+  P41:
+    FCR:
+      ENABLE : true
+      LAMBDA : 0.1        # aux['fcr'] = LAMBDA·(−η²). warmup 없이 시작(전 tap 관통, ep30 게이트로 판정)
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : true
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 2                 # hpca100 A100 40GB: BS2@1024² fit. accum=ceil(16/(BS×world))로 eff-batch 16 자동보정.
+  EPOCHS        : 300
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false

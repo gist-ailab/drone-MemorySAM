@@ -102,6 +102,6 @@ img-지배로 저-task-정렬된 fused를 **주 손실 레벨**에서 교정(fro
 
 **구현**: model.forward의 fused(L536~) + gt_mask로 `aux['fcr']` 계산(vicreg/cefr_reg 패턴), trainer 합산. eval 시 Phase-0 도구로 η² 재측정.
 
-**ep30 게이트(사전등록, falsifiable)**: ① `module_ablation` FCR off-Δ 확인 ② **fused η² 상승**(Phase-0 도구) ③ val mIoU ≥ P38 동에폭. **판정**: η²↑ ∧ mIoU↑ ⇒ fusion이 레버 확정 / **η²↑인데 mIoU 불변 ⇒ fusion은 병목 아님 확정 → fog 피벗**(정직한 종결). 공정성: physaug 정합·val-best·radar 미포함.
+**ep30 게이트(사전등록, falsifiable)**: ① **fused η² 상승** — Phase-0 도구(`feature_stats --lda-rank`)로 P41 ep30 ckpt vs P38(η²=0.35) 재측정 (FCR은 **학습-전용 aux**라 eval-time `module_ablation` 토글은 무의미 — 대조는 P41-FCR vs 기존 P38 두 학습) ② val mIoU ≥ P38 동에폭. **판정**: η²↑ ∧ mIoU↑ ⇒ fusion이 레버 확정 / **η²↑인데 mIoU 불변 ⇒ fusion은 병목 아님 확정 → fog 피벗**(정직한 종결). 공정성: physaug 정합·val-best·radar 미포함.
 
 **실행**: hpca100 A100(Phase-0 종료로 유휴) 첫 슬롯. 코드검수 파이프라인 + ep30 토글 즉검.

@@ -263,6 +263,7 @@ def main(cfg, gpu, save_dir, logger):
             sampler.set_epoch(epoch)
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
         cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
+        fcr_accum = 0.0   # [P41-F1]
         rca_picked = rca_seen = 0
         auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
@@ -289,10 +290,11 @@ def main(cfg, gpu, save_dir, logger):
                 router_ce = aux.get('router_ce', _zero)     # [P39-V5] pre-scaled (ROUTER_CE_W)
                 vicreg = aux.get('vicreg', _zero)           # [P39.1-R2] pre-scaled
                 rca_ce = aux.get('rca_readout', _zero)      # [P40-C3] pre-scaled
+                fcr = aux.get('fcr', _zero)                 # [P41-F1] pre-scaled (λ in model)
                 total = (loss_seg + lambda_cal * cal_loss
                          + lambda_aux_ce * aux_ce + gate_ent + router_reg
                          + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
-                         + vicreg + rca_ce)
+                         + vicreg + rca_ce + fcr)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -319,6 +321,7 @@ def main(cfg, gpu, save_dir, logger):
             rce_accum += float(router_ce)
             vic_accum += float(vicreg)
             rca_accum += float(rca_ce)
+            fcr_accum += float(fcr)   # [P41-F1]
             if getattr(_core, '_rca_pick', None) is not None:
                 rca_picked += int(_core._rca_pick.sum())
             rca_seen += lbl.shape[0]
@@ -418,6 +421,9 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P39] arb λ mean:{float(lam.mean()):.3f} "
                             f"max:{float(lam.max()):.3f} "
                             f"router_ce:{rce_accum / (it + 1):.4f}")
+            if getattr(_core, 'p41_fcr', False):
+                writer.add_scalar('train/fcr', fcr_accum / (it + 1), epoch)
+                log_extra['train/fcr'] = fcr_accum / (it + 1)
             if getattr(_core, 'p391_vicreg', False):
                 # [P39.1] VICReg loss + trunk gate γ (gated_mlp mode)
                 writer.add_scalar('train/vicreg', vic_accum / (it + 1), epoch)
