@@ -49,11 +49,21 @@ def linear_cka(X, Y):
     return float(hsic / max(nx * ny, 1e-12))
 
 
-def participation_ratio(X):
-    """Effective rank of (N, D) samples: (Σλ)²/Σλ² of covariance eigvals."""
+def cov_spectrum(X, max_n=8000):
+    """(N,D) 표본 → 공분산 고유값(내림차순, 음수 클립). effective_rank·PCA가 **공용**으로 쓰도록
+    한 번만 계산한다. 표본 행렬 SVD(np.linalg.svd of (N,D))는 N=15000·D=1024에서 feature당
+    수백 초라 못 쓴다 — cov는 D×D 고유분해라 훨씬 싸다. N이 크면 max_n로 subsample
+    (D보다 충분히 크면 스펙트럼 안정; 결정적 seed)."""
+    if X.shape[0] > max_n:
+        idx = np.random.default_rng(0).choice(X.shape[0], max_n, replace=False)
+        X = X[idx]
     Xc = X - X.mean(0, keepdims=True)
     ev = np.linalg.eigvalsh(np.cov(Xc.T) + 1e-12 * np.eye(X.shape[1]))
-    ev = np.clip(ev, 0, None)
+    return np.clip(ev[::-1], 0.0, None)   # 내림차순
+
+
+def participation_ratio(ev):
+    """Effective rank from covariance eigenvalues: (Σλ)²/Σλ²."""
     return float(ev.sum() ** 2 / max((ev ** 2).sum(), 1e-12))
 
 
@@ -68,18 +78,14 @@ def activation_dist(X):
     return round(sparsity, 4), round(kurt, 3)
 
 
-def pca_stats(X, k=5, var_target=0.90):
-    """[§0.5 PCA 정량] X:(N,D) → top-k 설명분산비 + 내재차원(누적분산 var_target 도달 성분수).
-    scatter(viz)와 달리 '정보의 실제 차원'을 스칼라로."""
-    Xc = X - X.mean(0, keepdims=True)
-    try:
-        s = np.linalg.svd(Xc, compute_uv=False)
-    except np.linalg.LinAlgError:
+def pca_stats(ev, k=5, var_target=0.90):
+    """[§0.5 PCA 정량] 공분산 고유값(내림차순) → top-k 설명분산비 + 내재차원(누적 var_target 도달 성분수).
+    cov 고유값 λ_i = SVD 특이값² 비례이므로 설명분산비는 SVD와 동일(단 훨씬 저렴). scatter(viz)와 달리
+    '정보의 실제 차원'을 스칼라로."""
+    tot = float(ev.sum())
+    if tot <= 1e-12:            # 퇴화(all-zero fallback) bank → 내재차원 의미 없음
         return {'expvar_topk': [], 'intrinsic_dim': None}
-    var = s ** 2
-    if var.sum() <= 1e-12:            # 퇴화(all-zero fallback) bank → 내재차원 의미 없음
-        return {'expvar_topk': [], 'intrinsic_dim': None}
-    ratio = var / var.sum()
+    ratio = ev / tot
     cum = np.cumsum(ratio)
     intrinsic = int(np.searchsorted(cum, var_target) + 1)      # var_target 도달에 필요한 성분 수
     return {'expvar_topk': [round(float(r), 4) for r in ratio[:k]],
@@ -186,12 +192,13 @@ def main():
         for i, name in enumerate(names):
             ch = chan_absmean[i] / n
             spars, kurt = activation_dist(banks[i])
-            pcs = pca_stats(banks[i])
+            ev = cov_spectrum(banks[i])          # rank·PCA 공용 스펙트럼(한 번만)
+            pcs = pca_stats(ev)
             per[name] = {
                 'mean_feat_norm': round(norm_sum[i] / n, 4),
                 'dead_channels': int((ch < 0.01 * max(ch.max(), 1e-8)).sum()),
                 'total_channels': int(len(ch)),
-                'effective_rank': round(participation_ratio(banks[i]), 2),
+                'effective_rank': round(participation_ratio(ev), 2),
                 'sparsity': spars,                        # [§0.5] 데이터 스케일 대비 ≈0 비율
                 'kurtosis': kurt,                         # [§0.5] 포화/스파이크(무거운 꼬리)
                 'intrinsic_dim90': pcs['intrinsic_dim'],  # [§0.5] 누적분산 90% 성분수
