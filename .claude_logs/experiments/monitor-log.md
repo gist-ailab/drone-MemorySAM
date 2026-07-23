@@ -2434,3 +2434,32 @@ best(AP) ep3 이후 **34 epoch 무갱신**, loss는 ep0 9.24→ep37 1.10 단조 
 **유휴 GPU 인덱스**: hpca100 2,3 / yeon 3,4,5,6,7(vits 완주로 7 신규 유휴; 0,1,2는 타유저 jongwon_kim 사용중) / jarvis 없음(0,1은 타유저 sangjun_noh·minkyou 점유, 2-7은 our jobs).
 
 **이상징후**: 없음(판정 배제). jarvis P39rf_recovered/vitsp 각 4/2-GPU DDP 정상 진행 중. yeon vitb 단일GPU(GPU2) 진행 중.
+
+### 2026-07-23 16:40 KST (cron) — 3-server 실측 조회 (판정 없음, 조회 전용)
+
+**서버별 현황**
+
+| 서버 | GPU | 실험(--cfg 실측) | 데이터셋 | epoch(현재/총) | best@ep | ETA(KST) | 생존 |
+|---|---|---|---|---|---|---|---|
+| hpca100 | 2,3 (100%/100%, ~30.6GB) | `hpca100-muses_rgbel_P42_maskimg.yaml` (P42 main) | MUSES | 35→36/300 (ep35 완료 07:36:00 UTC=16:36 KST) | val mIoU **78.76@ep32** (ep34=76.32 일시하락) | 잔여~264ep×7.3min≈32.1h → **~07-25 00:50 KST** | alive, iter 전진, util>0 |
+| jarvis | 6,7 (73-78%, ~17.8GB) | `jarvis-muses_rgbel_P42_maskimg_f03.yaml` (P42-f03, FRAC0.3, HEAD e3120dc) | MUSES | 23/300 (26% 진행) | val mIoU **77.54@ep18**(top1, ep22=77.43 근접) | 잔여~277ep×6.8min≈31.4h → **~07-25 00:05 KST** | alive, iter 전진, util>0 |
+| yeon | 2 (100%, ~10.1GB) | `det_D1_vitb_yeon.yaml` (openmmlab env) | poongsan-det | 18/20 (90%) | AP50 0.9090@ep6 (로그 tail 최대치 0.9169 관측, 미확정) | 잔여~2ep×70min≈2.3h → **~19:10 KST** | alive, util>0 |
+| yeon | 0 (공유, 97%, 17912MiB) | `module_diagnostics.py --cfg hpca100-muses_rgbel_P42_maskimg.yaml --gpu 3` (P42 게이트 후속 ablation) | MUSES | 진행 중(16:30 시작, log tail 아직 내용 없음) | - | 미산출 | alive(추정), 산출 대기 |
+
+**유휴 GPU(≤2000MiB & ≤10%util)**:
+- **hpca100 GPU0,1** (0MiB/0%, 타유저 없음, 완전 유휴)
+- **jarvis GPU2,3,4,5** (602/570/538/26MiB, 0%util — 단 GPU2-5엔 타유저 sangjun_noh `eval_ppi.py` D-state 잔재 프로세스 각 506MiB 붙어있음, 9일+ 경과, 우리와 무관)
+- **yeon GPU1,3,4,5,6,7 (6장!)** — GPU3(게이트 평가 완료로 16:30 해제)/GPU4(특성화 완료로 16:32 해제)/GPU5,6,7(아래 🔴)/GPU1(원인 미상, 처음부터 유휴로 추정)
+
+**yeon 3작업 개별 상태 (지시받은 "방금 배치한 MUSES 3작업")**:
+1. **P42 게이트 평가(GPU3 배정)** → **이미 완료**(16:30). `analysis_logs/P42_ep30_gate/eval_per_domain.log` 산출: ep30 mIoU clear=71.22 / fog=60.09 / night=74.82 / fog_night=41.01. 완료 직후 후속 module_diagnostics(ablation) 잡을 자동 기동, 현재 그게 진행 중(단 --gpu 3 지정에도 불구 **실제로는 물리 GPU0에서 실행 중** — 타유저 hoi_transformer와 GPU 공유. 로그 파일(`module_diag_run.log`)은 16:36 이후 내용 없음, 초입 단계로 추정).
+2. **P42 특성화(GPU4 배정)** → **이미 완료**(16:31-16:32). `analysis_logs/P42_characterization/`에 `P42_ep30.{json,md}` + `P38_baseline.{json,md}` 산출물 존재.
+3. **P39.1-MUSES 학습(GPU5-7 배정)** → 🔴 **미발견 — 기동 안 됨(또는 흔적 없이 즉시 종료)**. `ps`에 해당 torchrun/train_reliadino 프로세스 없음, GPU5,6,7 전부 0%util·18MiB(완전 유휴). tmux `jemo` 세션에 새 창 없음(현재 창: bash/p37b_classtoken/p38smoke/p38_chain/p38_8gpu/p38_8gpu_bs1/p38det_6gpu/**p391_deliver**/d1_ann/d1_recovered). 유일하게 이름이 비슷한 `p391_deliver` 창은 **MUSES가 아니라 DELIVER 데이터셋** 학습이었고, **2026-07-22 16:10:18 KST에 SIGTERM으로 이미 죽은 지 24시간+ 지난 구 작업**(epoch 39/200에서 종료, 어제 사건 — 이번 지시와 무관). 새로 배치했다는 P39.1-MUSES 3-GPU 학습은 어떤 흔적도 못 찾음.
+
+**jarvis 이상**: 지시서상 "GPU2-5=P39rf 완주 후 GPU2에서 ViT-S+ cert breakdown eval 진행 중"도 🔴 **미발견**. GPU2는 602MiB/0%util(타유저 잔재뿐), 우리 프로세스 없음. tmux 6개 창(main/p38_muses/p39_muses_chain/p39_muses_4m/fog_audit/det_D1_vitsp) 전부 조회 — p39_muses_4m 창엔 2026-07-21 완료된 구 학습(Best val mIoU 82.01@ep122) 로그만, fog_audit 창엔 이미 종료된(`DONE_EXIT_0`) 감사 스크립트 출력만 남아있음. 현재 GPU2-5 중 오직 실행 중인 우리 프로세스는 전무 — eval이 이미 끝나고 창이 재사용됐는지, 애초 기동 안 됐는지는 로그 부재로 판별 불가.
+
+**이상징후 요약**:
+- 🔴 yeon P39.1-MUSES(GPU5-7 배정) 미기동 — 6개 GPU 중 3개가 이 작업 몫으로 비어 있음.
+- 🔴 jarvis ViT-S+ cert breakdown eval(GPU2 배정) 미발견 — 흔적 전무.
+- ⚠️ yeon module_diagnostics 후속 잡이 지정된 GPU3이 아니라 GPU0(타유저와 공유)에서 실행 중 — device index 불일치.
+- Traceback/OOM/nan 없음(grep 확인), D-state 없음(RLBench 잔재 프로세스 제외), hpca100/jarvis 학습 2건 모두 iteration 정상 전진·util>0 확인.
