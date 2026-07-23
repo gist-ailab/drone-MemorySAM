@@ -416,12 +416,13 @@ class ReliaDINO(nn.Module):
         frac = self.p42_mask_frac
         if self.p42_mask_warmup_ep > 0:
             frac = frac * min(1.0, float(self._current_epoch) / self.p42_mask_warmup_ep)
-        k = int(round(B * frac))
-        if k < 1:
+        if frac <= 0:
             return batched_input
-        idx = torch.randperm(B, device=batched_input[0].device)[:k]   # 균형: k개 샘플
-        mask = torch.zeros(B, device=batched_input[0].device)
-        mask[idx] = 1.0
+        # [발견 A] 확률적 per-sample 마스킹 — round(B·frac) 양자화(B=2에서 계단함수·BS1 무음) 회피,
+        # ramp가 실제 연속(각 샘플 prob=frac). rank별 독립이나 기대비율은 frac 유지.
+        mask = (torch.rand(B, device=batched_input[0].device) < frac).float()
+        if float(mask.sum()) < 1.0:
+            return batched_input           # 이 배치는 우연히 아무것도 안 뽑힘
         self._last_p42_mask = mask
         new_input = list(batched_input)
         img = new_input[self._p42_img_idx]
@@ -599,7 +600,8 @@ class ReliaDINO(nn.Module):
                 feats = list(feats)
                 feats[self.rca_img_idx] = feats[self.rca_img_idx] \
                     * _rca_scale.view(-1, 1, 1, 1)
-        fused, aux = self.fusion(feats, gt_mask if self.training else None)
+        fused, aux = self.fusion(feats, gt_mask if self.training else None,
+                                 img_mask=self._last_p42_mask, img_idx=self._p42_img_idx)  # [P42-M1/C]
         if not self.training:
             self._last_fused_postfusion = fused.detach()   # [analysis §0.5 T3]
         if self.p41_fcr and self.training and gt_mask is not None:

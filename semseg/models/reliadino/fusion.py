@@ -493,7 +493,9 @@ class ReliabilityGatedFusion(nn.Module):
 
     # ── forward ──────────────────────────────────────────────────────────────
     def forward(self, feats: List[torch.Tensor],
-                gt_mask: Optional[torch.Tensor] = None
+                gt_mask: Optional[torch.Tensor] = None,
+                img_mask: Optional[torch.Tensor] = None,   # [P42-M1/발견C] masked img 샘플 (B,)
+                img_idx: int = -1                          # img 모달 인덱스
                 ) -> Tuple[torch.Tensor, dict]:
         m = len(feats)
         assert m == self.num_modalities, f"got {m} modalities, expected {self.num_modalities}"
@@ -579,10 +581,18 @@ class ReliabilityGatedFusion(nn.Module):
             Ht, Wt = max(1, gt_mask.shape[-2] // 4), max(1, gt_mask.shape[-1] // 4)
             gt_ds = F.interpolate(gt_mask.unsqueeze(1).float(), size=(Ht, Wt),
                                   mode='nearest').squeeze(1).long()
-            ce = [F.cross_entropy(
-                F.interpolate(al.float(), size=(Ht, Wt), mode='bilinear',
-                              align_corners=False),
-                gt_ds, ignore_index=255) for al in aux_logits]
+            ce = []
+            for i, al in enumerate(aux_logits):
+                lg = F.interpolate(al.float(), size=(Ht, Wt), mode='bilinear',
+                                   align_corners=False)
+                if img_mask is not None and i == img_idx:
+                    # [발견C] masked img 샘플 제외 — 0-입력에서 GT를 예측하도록 img 브랜치를
+                    # 학습시키는 오염(위치기반 장면 prior 환각) 방지. 비마스킹 샘플만 CE.
+                    keep = (img_mask < 0.5).nonzero(as_tuple=True)[0]
+                    ce.append(F.cross_entropy(lg[keep], gt_ds[keep], ignore_index=255)
+                              if keep.numel() > 0 else lg.new_zeros(()))
+                else:
+                    ce.append(F.cross_entropy(lg, gt_ds, ignore_index=255))
             aux['aux_ce'] = sum(ce) / len(ce)
             if self.calibrate:
                 aux['rbma_cal_loss'] = self._calibration_loss(aux_logits, gt_mask)

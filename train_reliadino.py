@@ -264,6 +264,7 @@ def main(cfg, gpu, save_dir, logger):
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
         cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
         fcr_accum = 0.0   # [P41-F1]
+        p42_mask_sum = 0.0; p42_tot = 0   # [P42-M1/D] 실현 마스킹률
         rca_picked = rca_seen = 0
         auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
@@ -322,6 +323,9 @@ def main(cfg, gpu, save_dir, logger):
             vic_accum += float(vicreg)
             rca_accum += float(rca_ce)
             fcr_accum += float(fcr)   # [P41-F1]
+            _pm = getattr(_core, '_last_p42_mask', None)   # [P42-M1/D]
+            if _pm is not None:
+                p42_mask_sum += float(_pm.sum()); p42_tot += int(_pm.numel())
             if getattr(_core, '_rca_pick', None) is not None:
                 rca_picked += int(_core._rca_pick.sum())
             rca_seen += lbl.shape[0]
@@ -424,6 +428,11 @@ def main(cfg, gpu, save_dir, logger):
             if getattr(_core, 'p41_fcr', False):
                 writer.add_scalar('train/fcr', fcr_accum / (it + 1), epoch)
                 log_extra['train/fcr'] = fcr_accum / (it + 1)
+            if getattr(_core, 'p42_mask_img', False):   # [P42-M1/D] 실현 마스킹률 (k=0 무음 탐지)
+                _mr = p42_mask_sum / max(p42_tot, 1)
+                writer.add_scalar('train/p42_mask_rate', _mr, epoch)
+                log_extra['train/p42_mask_rate'] = _mr
+                print(f"[P42] ep{epoch} mask_rate={_mr:.3f} (target {getattr(_core,'p42_mask_frac',0):.2f})", flush=True)
             if getattr(_core, 'p391_vicreg', False):
                 # [P39.1] VICReg loss + trunk gate γ (gated_mlp mode)
                 writer.add_scalar('train/vicreg', vic_accum / (it + 1), epoch)
