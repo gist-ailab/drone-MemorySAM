@@ -135,6 +135,9 @@ class ReliaDINO(nn.Module):
                  p391_vicreg_other_w: float = 0.25,
                  p41_fcr: bool = False,
                  p41_fcr_lambda: float = 0.1,
+                 p42_mask_img: bool = False,
+                 p42_mask_frac: float = 0.5,
+                 p42_mask_warmup_ep: int = 20,
                  rca_enable: bool = False,
                  rca_p_max: float = 0.5,
                  rca_warmup_ep: int = 20,
@@ -287,6 +290,12 @@ class ReliaDINO(nn.Module):
         # [P41] FCR — fused between-class 분산비 η² 최대화(supervised aux, Phase-0 deficit 교정)
         self.p41_fcr = bool(p41_fcr)
         self.p41_fcr_lambda = float(p41_fcr_lambda)
+        # [P42-M1] 조건부 균형 img 마스킹 — fusion이 lidar/event를 쓰도록 강제(train only)
+        self.p42_mask_img = bool(p42_mask_img)
+        self.p42_mask_frac = float(p42_mask_frac)
+        self.p42_mask_warmup_ep = int(p42_mask_warmup_ep)
+        self._p42_img_idx = self.modalities.index('img') if 'img' in self.modalities else -1
+        self._last_p42_mask = None   # (B,) 진단용(마스킹된 샘플)
         # V5 compete-and-arbitrate: per-class Λ (softplus(0)=0.69, 죽은 시작
         # 아님) + 학습 시 path dropout 경쟁(dense-only/query-only/combined) +
         # router 직접 CE 감독(의존→기여 전환, 키2). β 잔차(반증 완료)는 arbiter
@@ -393,6 +402,31 @@ class ReliaDINO(nn.Module):
         self._last_dropped_modality = j
         new_input = list(batched_input)
         new_input[j] = torch.zeros_like(new_input[j])
+        return new_input
+
+    def _p42_mask_img(self, batched_input):
+        """[P42-M1] 조건부 균형 img 마스킹 (train only). 배치의 일부 샘플에서 img 입력을 0으로 →
+        fusion이 그 샘플을 lidar/event로 풀도록 강제 = 지배 모달 의존 완화(MCRM 2603.17705식).
+        RCA(P40, 추론-시 감쇠·유해)와 다름: **학습 시에만**, 추론은 항상 full-modality.
+        무조건 dropout(P33 실패)과 다름: **균형 분할**(일부만·full 샘플 유지) + 커리큘럼 ramp."""
+        self._last_p42_mask = None
+        if not (self.p42_mask_img and self.training and self._p42_img_idx >= 0):
+            return batched_input
+        B = batched_input[0].shape[0]
+        frac = self.p42_mask_frac
+        if self.p42_mask_warmup_ep > 0:
+            frac = frac * min(1.0, float(self._current_epoch) / self.p42_mask_warmup_ep)
+        k = int(round(B * frac))
+        if k < 1:
+            return batched_input
+        idx = torch.randperm(B, device=batched_input[0].device)[:k]   # 균형: k개 샘플
+        mask = torch.zeros(B, device=batched_input[0].device)
+        mask[idx] = 1.0
+        self._last_p42_mask = mask
+        new_input = list(batched_input)
+        img = new_input[self._p42_img_idx]
+        keep = (1.0 - mask).view(-1, *([1] * (img.dim() - 1)))
+        new_input[self._p42_img_idx] = img * keep   # 마스킹된 샘플의 img → 0
         return new_input
 
     def set_grad_checkpointing(self, enable: bool = True):
@@ -518,6 +552,7 @@ class ReliaDINO(nn.Module):
         # `multimask_output` kept for call-site compatibility with the SAM2 fleet.
         self._last_dropped_modality = None
         x = self._maybe_drop_modality(batched_input)
+        x = self._p42_mask_img(x)                          # [P42-M1] 조건부 img 마스킹
         H, W = x[0].shape[-2:]
         feats = [self.encoder(x[i], i) for i in range(self.num_modalities)]
         if not self.training:
@@ -768,6 +803,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     vic = p39.get('VICREG', {}) or {}
     rca = (mc.get('P40', {}) or {}).get('RCA', {}) or {}
     fcr = (mc.get('P41', {}) or {}).get('FCR', {}) or {}   # [P41] Fused Class-alignment Regularizer
+    p42 = (mc.get('P42', {}) or {}).get('MASK_IMG', {}) or {}   # [P42-M1] 조건부 img 마스킹
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -853,6 +889,9 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p391_vicreg_other_w=vic.get('OTHER_W', 0.25),
         p41_fcr=fcr.get('ENABLE', False),
         p41_fcr_lambda=fcr.get('LAMBDA', 0.1),
+        p42_mask_img=p42.get('ENABLE', False),
+        p42_mask_frac=p42.get('FRAC', 0.5),
+        p42_mask_warmup_ep=p42.get('WARMUP_EP', 20),
         rca_enable=rca.get('ENABLE', False),
         rca_p_max=rca.get('P_MAX', 0.5),
         rca_warmup_ep=rca.get('WARMUP_EP', 20),
