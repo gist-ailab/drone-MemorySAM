@@ -10,6 +10,11 @@ to errors, answering "where & WHY our modules fail":
   A. per-class IoU + top confusion target            (where classes drop, what they become)
   B. per-modal competence  (per-class recall of each modality's standalone prediction)
                                                       ("which modality CAN do a class")
+  B2. per-modal standalone mIoU (full confusion matrix per modality's own argmax vs GT,
+      not just recall) + trivial majority-class-baseline mIoU, for the same condition
+                                                      ("is this modality's own readout
+                                                       above the information floor, or
+                                                       is it near a do-nothing baseline")
   C. reliability informativeness: AUROC(reliability -> per-modal correct), per modality
                                                       (does RBMA's signal actually predict correctness?)
   D. UAMM fusion allocation: mean weight per modality (overall + per class) + MIS-ALLOCATION rate
@@ -55,6 +60,11 @@ def auroc_from_hist(neg, pos):
         below += neg[b]
     return float(auc / (N * P))
 
+def miou_of_conf(cf):
+    # cf: (C,C) confusion matrix (rows=gt, cols=pred) -> mean per-class IoU (0..1)
+    C = cf.shape[0]
+    return float(np.nanmean([cf[c, c] / max(1, cf[c, :].sum() + cf[:, c].sum() - cf[c, c]) for c in range(C)]))
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--cfg', required=True); ap.add_argument('--model_path', required=True)
@@ -89,6 +99,7 @@ def main():
         n = min(args.max_imgs, len(dataset))
         conf = np.zeros((C, C), np.int64)                    # final pred vs gt
         modal_tp = None; gt_cnt = np.zeros(C, np.int64)      # B: per-modal per-class recall
+        modal_conf = None                                     # B2: per-modal standalone confusion (mIoU)
         rel_hist = None                                       # C: [M][NB][2]
         uamm_sum = None; uamm_px = 0                          # D: overall mean weight
         uamm_cls = None; cls_px = np.zeros(C, np.int64)       # D: per-class mean weight
@@ -104,6 +115,7 @@ def main():
             M = len(imgs)
             if Mn is None:
                 Mn = M; modal_tp = np.zeros((M, C), np.int64)
+                modal_conf = [np.zeros((C, C), np.int64) for _ in range(M)]
                 rel_hist = np.zeros((M, NB, 2), np.int64); uamm_sum = np.zeros(M); uamm_cls = np.zeros((M, C))
             gt = rs_nn(torch.as_tensor(np.asarray(label)).to(device), WR).cpu().numpy()
             fp = rs_nn(m_out[0].argmax(0), WR).cpu().numpy()
@@ -123,6 +135,7 @@ def main():
             for i in range(M):
                 corr = (pm_pred[i] == gt) & valid
                 for c in range(C): modal_tp[i, c] += int((corr & (gt == c)).sum())
+                np.add.at(modal_conf[i], (gg, pm_pred[i][valid]), 1)   # B2: standalone confusion
                 rv = np.clip((pm_rel[i][valid] * NB).astype(int), 0, NB - 1)
                 cc = (pm_pred[i][valid] == gg).astype(int)
                 np.add.at(rel_hist[i], (rv, cc), 1)
@@ -146,8 +159,7 @@ def main():
                     misalloc[c] += int((win_wrong & any_right).sum()); misden[c] += int(mask.sum())
         # E: drop-modality dMIoU (subset) — per-modality importance
         na = min(args.ablate_n, n)
-        def miou_of(cf):
-            return float(np.nanmean([cf[c, c] / max(1, cf[c, :].sum() + cf[:, c].sum() - cf[c, c]) for c in range(C)]))
+        miou_of = miou_of_conf
         cf_full = np.zeros((C, C), np.int64); cf_drop = [np.zeros((C, C), np.int64) for _ in range(Mn)]
         for idx in range(na):
             images, label, _ = dataset[idx]
@@ -166,6 +178,13 @@ def main():
         conf_off = conf.copy(); np.fill_diagonal(conf_off, 0)
         top_conf = {CLASSES[c]: (CLASSES[int(conf_off[c].argmax())] if conf_off[c].sum() else '-') for c in range(C)}
         comp = {CLASSES[c]: [round(float(modal_tp[i, c] / max(1, gt_cnt[c])), 3) for i in range(Mn)] for c in range(C)}
+        # B2: per-modal standalone mIoU (full confusion, not just recall) + trivial majority-class baseline
+        modal_miou = [round(miou_of_conf(modal_conf[i]) * 100, 2) for i in range(Mn)]
+        modal_iou_per_class = {CLASSES[c]: [round(float(
+            modal_conf[i][c, c] / max(1, modal_conf[i][c, :].sum() + modal_conf[i][:, c].sum() - modal_conf[i][c, c]) * 100), 2)
+            for i in range(Mn)] for c in range(C)}
+        majority_c = int(np.argmax(gt_cnt)); valid_total = int(gt_cnt.sum())
+        trivial_miou = round(float(gt_cnt[majority_c]) / max(valid_total, 1) / C * 100, 2)
         auroc = [round(auroc_from_hist(rel_hist[i, :, 0], rel_hist[i, :, 1]), 3) for i in range(Mn)]
         umean = [round(float(uamm_sum[i] / max(1, uamm_px)), 3) for i in range(Mn)] if uamm_px else None
         ucls = {CLASSES[c]: [round(float(uamm_cls[i, c] / max(1, cls_px[c])), 3) for i in range(Mn)] for c in range(C)} if uamm_px else None
@@ -175,12 +194,15 @@ def main():
             'n': n, 'M': Mn,
             'iou': {CLASSES[c]: round(float(iou[c] * 100), 2) for c in range(C)},
             'top_confusion': top_conf, 'modal_competence': comp,
+            'modal_standalone_miou': modal_miou, 'modal_standalone_iou_per_class': modal_iou_per_class,
+            'trivial_majority_class': CLASSES[majority_c], 'trivial_miou': trivial_miou,
             'reliability_auroc': auroc, 'uamm_mean': umean, 'uamm_per_class': ucls,
             'misallocation_rate': mis,
             'drop_modality_dmiou': dmiou, 'ablate_miou_full': round(miou_full * 100, 2),
             'moe_gates_shape': (list(np.shape(moe)) if moe is not None else None),
         }
-        print(f"[diag] {cond}: mIoU~{np.nanmean(iou)*100:.1f}  relAUROC={auroc}  uammMean={umean} dropMIoU={dmiou}", flush=True)
+        print(f"[diag] {cond}: mIoU~{np.nanmean(iou)*100:.1f}  modalMIoU(standalone)={modal_miou} "
+              f"trivial={trivial_miou}({CLASSES[majority_c]})  relAUROC={auroc}  uammMean={umean} dropMIoU={dmiou}", flush=True)
 
     Path(args.out + '.json').write_text(json.dumps(report, indent=1))
     print(f"[diag] wrote {args.out}.json")
