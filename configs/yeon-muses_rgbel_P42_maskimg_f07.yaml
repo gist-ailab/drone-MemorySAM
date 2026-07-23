@@ -1,0 +1,171 @@
+# ═══ P42-MaskImg-f07 × MUSES 3모달 (yeon GPU3,4) — FRAC 0.7 변종 (FRAC 스윕 0.3/0.5/0.7 완성용) ═══
+# base = configs/hpca100-muses_rgbel_P42_maskimg.yaml(FRAC 0.5, hpca100 A100). 차이 = FRAC 0.7 +
+#   SAVE_DIR(/SSDe, yeon /SSDb 8G뿐) + DATASET.ROOT/TEST.FILE(yeon 경로) + TRAIN.BATCH_SIZE(3090 24G).
+# 배경: fog 분석(2026-07-23) — 모델이 lidar/event를 안 씀(drop-modality dMIoU≈0), img 과지배 →
+#   img가 fog로 열화 시 폴백 없어 붕괴(fog 62.67). 그런데 lidar엔 정보 있음(AnySeg lidar-only 32.13,
+#   MUSES +5.8 PQ, 리더보드 cam+lidar fog 74.12 1위). = 학습이 lidar를 못 쓰는 것 = 미사용.
+# 처방(fog 딥리서치): M-1 조건부 균형 img 마스킹(MCRM 2603.17705) — 학습 배치 일부에서 img를 0으로 →
+#   fusion이 lidar/event를 쓰도록 강제. M-2(per-modal aux deep-sup)는 P38에 이미 있음(AUX_CE_WEIGHT 0.5).
+#   🔴 RCA(P40 추론감쇠·유해)와 다름(학습시만·추론 full). 무조건 dropout(P33 실패)과 다름(균형·ramp).
+# 게이트(사전등록): ① drop-modality dMIoU(lidar) 상승(미사용→사용) ② fog mIoU 개선 ③ val ≥ P38 82.22. ep30 조기.
+# 설계: decisions/2026-07-23-p42-lidar-forcing-proposal.md · 🔴 GRAD_CHECKPOINT false(active_modality 버그
+#   — yeon에서도 유지, 켜지 말 것). eff-batch는 BATCH_SIZE×world×accum(자동 ceil(16/(BS×world)))로만 조절.
+# 실행 워크어라운드(P39.1-DELIVER 자산 재사용, 2026-07-23): MMSS_SAM env timm 0.4.12로 깨져 DINOv3
+#   못 빌드 → openmmlab env(timm 1.0.20) + PYTHONPATH(vendored sam2) + PYTORCH_CUDA_ALLOC_CONF=
+#   expandable_segments:True(OOM 회피) 사용.
+DEVICE          : cuda
+SAVE_DIR        : '/SSDe/jemo_maeng/outputs/yeon-muses_rgbel_P42_f07'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5            # [M-2] per-modal aux deep-sup (P38부터 존재)
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : true
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : true
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : true
+    LAMBDA : 0.1
+
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }
+  CLASS_TOKEN: { ENABLE: false }
+
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+
+  # [P42-M1] 조건부 균형 img 마스킹 (주 신규 변수) — FRAC 스윕: 0.3(jarvis) / 0.5(hpca100) / 0.7(yeon, 이 config)
+  P42:
+    MASK_IMG:
+      ENABLE    : true
+      FRAC      : 0.7        # 배치의 70%에서 img 입력 0 (균형 분할, 나머지는 full-modality)
+      WARMUP_EP : 20         # frac 0→0.7 커리큘럼 ramp (급격한 강제 회피, base와 동일)
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/SSDb/jemo_maeng/dset/MUSES'   # yeon 경로 (hpca100은 /home/jovyan/SSDb/... )
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : true
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # [yeon] RTX3090 24GB (hpca100 A100 40GB는 BS2) — BS1로 fit,
+                                    # accum=ceil(16/(BS×world))가 eff-batch 자동보정 → BS1×2×accum8=16.
+                                    # GRADIENT_CHECKPOINT는 active_modality 버그라 켜지 않음(BS로만 조절).
+  EPOCHS        : 300
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
