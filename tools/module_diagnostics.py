@@ -33,6 +33,14 @@ Usage:
     --max-imgs 120 --ablate-n 20 --gpu 0 --out <prefix>
 """
 import argparse, os, sys, math, json
+# --gpu MUST be honored before torch initializes CUDA. torch is imported at module
+# load (below), so the os.environ assignment inside main() is too late — it always
+# ran on physical GPU0 regardless of --gpu. Scan argv here and set the mask first.
+# (Same early-scan fix as tools/feature_stats.py.)
+if '--gpu' in sys.argv:
+    _gi = sys.argv.index('--gpu')
+    if _gi + 1 < len(sys.argv):
+        os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[_gi + 1]
 from pathlib import Path
 import numpy as np
 import torch
@@ -75,6 +83,8 @@ def main():
     ap.add_argument('--ablate-n', type=int, default=20, help='images/condition for drop-modality')
     ap.add_argument('--gpu', default='0'); ap.add_argument('--out', required=True)
     args = ap.parse_args()
+    # CUDA_VISIBLE_DEVICES was already set from the early argv scan (top of file),
+    # before torch imported — this is kept only as a harmless idempotent restate.
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     os.environ.setdefault('PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION', 'python')
 
