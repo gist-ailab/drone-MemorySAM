@@ -105,3 +105,22 @@ img-지배로 저-task-정렬된 fused를 **주 손실 레벨**에서 교정(fro
 **ep30 게이트(사전등록, falsifiable)**: ① **fused η² 상승** — Phase-0 도구(`feature_stats --lda-rank`)로 P41 ep30 ckpt vs P38(η²=0.35) 재측정 (FCR은 **학습-전용 aux**라 eval-time `module_ablation` 토글은 무의미 — 대조는 P41-FCR vs 기존 P38 두 학습) ② val mIoU ≥ P38 동에폭. **판정**: η²↑ ∧ mIoU↑ ⇒ fusion이 레버 확정 / **η²↑인데 mIoU 불변 ⇒ fusion은 병목 아님 확정 → fog 피벗**(정직한 종결). 공정성: physaug 정합·val-best·radar 미포함.
 
 **실행**: hpca100 A100(Phase-0 종료로 유휴) 첫 슬롯. 코드검수 파이프라인 + ep30 토글 즉검.
+
+---
+
+## 🔴 Phase 1 결과 = 게이트 부정 (2026-07-23, airtight falsification)
+
+FCR 학습(hpca100 A100, ep90+까지) 후 게이트 두 축 실측:
+
+**① mIoU (vs P38 同에폭)**: P41 ≈ P38, 순평균 근소 열세. 초기(ep8-12) FCR +1.2~+1.5 앞섰으나 중후반 P38이 따라잡음. ep42=79.83 vs P38 79.94, ep50대 80.4~81.2 = P38 수준. **개선 없음.**
+
+**② fused η² 재측정** (P41 ep86, feature_stats --lda-rank, MUSES val): clear **0.9482** / fog **0.9339** / night **0.9381** vs **P38 0.35** → **2.7배 상승**.
+
+**판정**: **η²↑(2.7×) AND mIoU 불변** = 사전등록 falsification 케이스 정확히 실현.
+→ **fusion rank/η²는 MUSES 성능 레버가 아니다 (definitively 기각).** fused를 거의 완전 클래스-정렬(η² 0.94)시켜도 seg 성능 무이득. 기제: decode가 이미 클래스정보를 추출(P38 decode η² 0.63)하므로 fusion 사전정렬은 head와 중복. Phase-0 hedge(야간 rank최저·성능정상 / η²조건불변·성능변동)가 옳았음. → **P41 중단, A100 회수.**
+
+**의의**: framework의 첫 완결 가설검증 — 추측으로 완주 후 실패발견(P39.1/P40)이 아니라 **학습0 Phase-0 판별 → 사전등록 게이트 → 조기 확정**. negative지만 방법론 성공.
+
+## 다음 = fog 병목 (방향 전환 확정)
+
+fog 분석(P38, 2026-07-23) D1 per-domain: **clear 75.85 · fog 62.67 · night 78.05** → **fog −13pt = MUSES 진짜 병목**(키4 재확증, night은 최약 아님). fusion-rank 종결, **fog 원인규명(F-A~F-D) → fog 타깃 제안**으로 이동. 상세 분석 문서 = `experiments/analysis/2026-07-23-fog-*`(진행 중).

@@ -53,6 +53,7 @@
 4. **무감독 threshold mask 게이트** (P37b) — 영구 random.
 5. **m2f semantic 잔차 헤드** (P38) — 추론 no-op + thin-class 퇴행 + 게이트 미달.
 6. **query-decoder로 conv 헤드 즉시 대체** (P30) — 소물체 붕괴.
+7. **fusion rank/η² 개입** (P41 FCR, 2026-07-23) — fused between-class 분산비 η²를 supervised aux로 최대화(0.35→0.94, 2.7×)해도 **mIoU 무이득**(≈P38). 학습0 Phase-0 판별 + 사전등록 게이트로 확정한 **airtight falsification**: 키3의 "fusion rank 붕괴"는 증상이지 성능 병목 아님. decode가 이미 클래스정보 추출(P38 decode η² 0.63)해 fusion 사전정렬은 중복. 상세 = [../../decisions/2026-07-22-p41-fusion-spectral-discrimination-proposal.md]. **→ MUSES 병목은 fusion이 아니라 fog(clear 75.85/fog 62.67/night 78.05, −13pt).**
 
 ## D. 실증된 경로 (유지·조합 대상)
 
