@@ -8,9 +8,10 @@ timm, and the SAM2 fleet must stay importable without it. Import explicitly:
 from .encoder import FrozenViTEncoder, MultiModalLoRAQKV, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion, CrossModalAttentionLayer, AuxDecoder
 from .model import ReliaDINO, FPNSegHead, build_reliadino
+from .panoptic_head import MaskClsHead
 
 __all__ = [
     'FrozenViTEncoder', 'MultiModalLoRAQKV', 'SimpleFPN', 'LayerNorm2d',
     'ReliabilityGatedFusion', 'CrossModalAttentionLayer', 'AuxDecoder',
-    'ReliaDINO', 'FPNSegHead', 'build_reliadino',
+    'ReliaDINO', 'FPNSegHead', 'build_reliadino', 'MaskClsHead',
 ]

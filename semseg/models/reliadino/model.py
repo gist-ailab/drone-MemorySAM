@@ -27,6 +27,7 @@ from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion
 from .m2f_head import MaskQueryLiteHead
+from .panoptic_head import MaskClsHead
 
 
 class FPNSegHead(nn.Module):
@@ -138,6 +139,27 @@ class ReliaDINO(nn.Module):
                  p42_mask_img: bool = False,
                  p42_mask_frac: float = 0.5,
                  p42_mask_warmup_ep: int = 20,
+                 p43_m2f_head: bool = False,
+                 p43_lateral: bool = True,
+                 p43_num_taps: int = 3,
+                 p43_num_queries: int = 100,
+                 p43_dec_layers: int = 6,
+                 p43_dim: int = 256,
+                 p43_num_heads: int = 8,
+                 p43_mlp_ratio: float = 2.0,
+                 p43_w_cls: float = 2.0,
+                 p43_w_bce: float = 5.0,
+                 p43_w_dice: float = 5.0,
+                 p43_no_obj_w: float = 0.1,
+                 p43_num_points: int = 12544,
+                 p43_oversample: float = 3.0,
+                 p43_importance: float = 0.75,
+                 p43_deep_supervision: bool = True,
+                 p43_lambda: float = 1.0,
+                 p43_lambda_warmup_ep: int = 5,
+                 p43_eval_head: bool = False,
+                 p43_sem_source: str = 'pixel',
+                 p43_thing_ids: Optional[Sequence[int]] = None,
                  rca_enable: bool = False,
                  rca_p_max: float = 0.5,
                  rca_warmup_ep: int = 20,
@@ -159,7 +181,8 @@ class ReliaDINO(nn.Module):
         self.encoder = FrozenViTEncoder(
             backbone=backbone, fallback=backbone_fallback, pretrained=pretrained,
             img_size=img_size, num_modalities=self.num_modalities,
-            lora_r=lora_r, lora_alpha=lora_alpha)
+            lora_r=lora_r, lora_alpha=lora_alpha,
+            num_taps=(int(p43_num_taps) if p43_lateral else 0))   # [P43-T2]
         dim = self.encoder.embed_dim
         self.fusion = ReliabilityGatedFusion(
             dim=dim, num_classes=num_classes, num_modalities=self.num_modalities,
@@ -244,6 +267,48 @@ class ReliaDINO(nn.Module):
                 use_modal_src=m2f_src_modal,
                 num_modalities=self.num_modalities,
                 anchored=m2f_anchored, point_quota=m2f_point_quota)
+
+        # ── [P43] PanopticDual ──────────────────────────────────────────────
+        # T-1 mask-classification head as an INDEPENDENT primary loss (no
+        # residual, no gate, no blend into the pixel logits — 실패-키 1) and
+        # T-2 PMT-style multi-depth lateral taps into the shared SimpleFPN.
+        # Both default OFF -> the model is byte-identical to the P39.1 baseline.
+        self.p43 = None
+        self.p43_lambda = float(p43_lambda)
+        self.p43_lambda_warmup_ep = int(p43_lambda_warmup_ep)
+        self.p43_eval_head = bool(p43_eval_head)
+        self.p43_sem_source = str(p43_sem_source).lower()
+        if self.p43_sem_source not in ('pixel', 'query', 'sum'):
+            raise ValueError(f"P43.SEM_SOURCE must be pixel|query|sum, "
+                             f"got {p43_sem_source!r}")
+        self.p43_thing_ids = list(p43_thing_ids) if p43_thing_ids else []
+        if p43_m2f_head:
+            self.p43 = MaskClsHead(
+                fpn_dim=fpn_dim, num_classes=num_classes,
+                num_queries=p43_num_queries, dec_layers=p43_dec_layers,
+                dim_t=p43_dim, num_heads=p43_num_heads,
+                mlp_ratio=p43_mlp_ratio, w_cls=p43_w_cls, w_bce=p43_w_bce,
+                w_dice=p43_w_dice, no_obj_w=p43_no_obj_w,
+                num_points=p43_num_points, oversample=p43_oversample,
+                importance=p43_importance,
+                deep_supervision=p43_deep_supervision)
+        # lateral projections: one per tap, injected at the matching pyramid
+        # level (shallow tap -> highest resolution). NOT zero-init and NOT
+        # gated: they sit on the primary path and must earn gradient from step
+        # one (실패-키 1 — "잔차로 살짝 얹기"는 반증 완료).
+        self.p43_lateral = None
+        self.p43_lateral_levels: List[int] = []
+        n_taps = len(self.encoder.tap_layers)
+        if p43_lateral and n_taps > 0:
+            self.p43_lateral_levels = [min(i, 2) for i in range(n_taps)]
+            self.p43_lateral = nn.ModuleList(
+                nn.Sequential(LayerNorm2d(dim), nn.Conv2d(dim, fpn_dim, 1))
+                for _ in range(n_taps))
+        self._p43_taps = None          # per-forward, modality-averaged taps
+        self._last_p43_out = None      # eval-only, for panoptic_inference
+        # eval-time ablation flags (tools/module_ablation attr_toggle 호환)
+        self.p43_m2f_off = False
+        self.p43_lateral_off = False
 
         # [P39] Dual-Path Compete (실패-키 문서 2026-07-20 반영, 전 항목 토글).
         # V1 trunk rank expansion: fused' = fused + Σ_m P_m(f_m). small-random
@@ -433,6 +498,50 @@ class ReliaDINO(nn.Module):
     def set_grad_checkpointing(self, enable: bool = True):
         self.encoder.set_grad_checkpointing(enable)
 
+    # ── [P43] lateral taps + loss schedule ──────────────────────────────────
+    def _encode_all(self, x: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Per-modality encoding; also collects the [P43-T2] lateral taps.
+
+        The taps are averaged over modalities with FIXED uniform weights — a
+        deterministic reduction, not a learned/inferred modality weighting
+        (which is the reverse-engineered failure path C-2). The projections
+        that follow are trainable, the backbone stays frozen.
+        """
+        collect = (self.p43_lateral is not None and not self.p43_lateral_off)
+        self.encoder.collect_taps = collect     # don't pay for taps we discard
+        feats, acc = [], None
+        for i in range(self.num_modalities):
+            feats.append(self.encoder(x[i], i))
+            # encoder.last_taps is overwritten on every call -> accumulate now
+            # (summing in place avoids materializing a stacked (M,B,C,h,w)).
+            if collect and self.encoder.last_taps:
+                lt = self.encoder.last_taps
+                acc = list(lt) if acc is None else [a + b for a, b in zip(acc, lt)]
+        self._p43_taps = ([t / float(self.num_modalities) for t in acc]
+                          if acc is not None else None)
+        return feats
+
+    def _p43_lambda_now(self) -> float:
+        """lambda(t): 0.1 -> 1.0 over LAMBDA_WARMUP_EP epochs, scaled by LAMBDA."""
+        w = self.p43_lambda_warmup_ep
+        if w <= 0:
+            return self.p43_lambda
+        r = min(1.0, max(0.0, float(self._current_epoch) / float(w)))
+        return self.p43_lambda * (0.1 + 0.9 * r)
+
+    def _apply_p43_lateral(self, pyramid: List[torch.Tensor]) -> List[torch.Tensor]:
+        """[P43-T2] inject the frozen-ViT multi-depth taps into the SimpleFPN."""
+        taps = self._p43_taps
+        if self.p43_lateral is None or self.p43_lateral_off or not taps:
+            return pyramid
+        out = list(pyramid)
+        for j, proj in enumerate(self.p43_lateral):
+            lvl = self.p43_lateral_levels[j]
+            t = proj(taps[j])
+            out[lvl] = out[lvl] + F.interpolate(
+                t, size=out[lvl].shape[-2:], mode='bilinear', align_corners=False)
+        return out
+
     def _apply_trunk_exp(self, fused: torch.Tensor,
                          feats: List[torch.Tensor]) -> torch.Tensor:
         """[P39-V1/P39.1-R1] modal subspace restoration — seg/det 공용 단일
@@ -534,14 +643,21 @@ class ReliaDINO(nn.Module):
             return None
         return torch.quantile(self._rca_buf[:n], self.rca_quantile)
 
-    def _decode(self, fused: torch.Tensor, routed: Optional[torch.Tensor]):
+    def _decode(self, fused: torch.Tensor, routed: Optional[torch.Tensor],
+                pyramid_out: Optional[List[torch.Tensor]] = None):
         """Shared FPN + head (+ [P36] router residual) → (logits@stride4, feat).
 
         [P36] router-refined residual: per-class routed aux logits added to
         the head output. router_alpha is zero-init → identical to the
         router-off path at start (collapse-safe); grads reach alpha, the
-        router heads AND the aux decoders through this decision path."""
-        pyramid = self.fpn(fused)
+        router heads AND the aux decoders through this decision path.
+
+        `pyramid_out`, when given, receives the (P43-lateral-augmented) pyramid
+        so the [P43] mask-cls head can read the SAME trunk levels the pixel
+        head just consumed — the only thing the two heads share."""
+        pyramid = self._apply_p43_lateral(self.fpn(fused))
+        if pyramid_out is not None:
+            pyramid_out.extend(pyramid)
         logits, m_feat = self.head(pyramid)
         if routed is not None:
             logits = logits + self.fusion.router_alpha * F.interpolate(
@@ -555,7 +671,7 @@ class ReliaDINO(nn.Module):
         x = self._maybe_drop_modality(batched_input)
         x = self._p42_mask_img(x)                          # [P42-M1] 조건부 img 마스킹
         H, W = x[0].shape[-2:]
-        feats = [self.encoder(x[i], i) for i in range(self.num_modalities)]
+        feats = self._encode_all(x)                        # [P43-T2] taps here
         if not self.training:
             self._last_per_modal_feats = [f.detach() for f in feats]
         # [P40-C1] lidar 리턴 유효성(입력 유도, 내부 신호) — RCA 가드 + 분석용
@@ -651,7 +767,29 @@ class ReliaDINO(nn.Module):
             aux['vicreg'] = self._vicreg_loss(feats)    # [P39.1-R2] pre-scaled
         if not self.training:
             self._last_fused_prehead = fused.detach()      # [analysis §0.5 T5]
-        logits, m_feat = self._decode(fused, routed)
+        # [P43] the mask-cls head reads the pyramid the pixel head just used.
+        _p43_run = (self.p43 is not None and not self.p43_m2f_off
+                    and (self.training or self.p43_eval_head
+                         or self.p43_sem_source != 'pixel'))
+        _pyr: List[torch.Tensor] = []
+        logits, m_feat = self._decode(fused, routed, _pyr if _p43_run else None)
+        self._last_p43_out = None
+        if _p43_run:
+            # levels COARSE FIRST: {1/32, 1/16, 1/8}; mask features = 1/4.
+            p43_out = self.p43([_pyr[3], _pyr[2], _pyr[1]], _pyr[0])
+            if self.training and gt_mask is not None:
+                # INDEPENDENT primary loss. It is NOT added to `logits` — the
+                # pixel head's CE never sees the query branch (실패-키 1).
+                aux['p43_mask_loss'] = self._p43_lambda_now() * self.p43.losses(
+                    p43_out, gt_mask)
+            elif not self.training:
+                self._last_p43_out = p43_out
+                if self.p43_sem_source != 'pixel':
+                    # EVAL-ONLY analysis path (T-3). Training always decodes the
+                    # pixel head alone, whatever SEM_SOURCE says.
+                    sem_q = self.p43.semantic_scores(p43_out)
+                    logits = sem_q if self.p43_sem_source == 'query' \
+                        else logits + sem_q
         token_logits = None
         if self.classtoken is not None:
             # [P37b] class-token residual: mask-embedding dot-product logits at
@@ -715,6 +853,56 @@ class ReliaDINO(nn.Module):
         return logits, m_feat
 
 
+    # ── [P43-T3] inference paths ────────────────────────────────────────────
+    @torch.no_grad()
+    def _p43_forward_out(self, batched_input: List[torch.Tensor]):
+        """Run one eval forward with the mask-cls head forced on; return its raw
+        output dict. The semantic path is untouched (SEM_SOURCE is unchanged)."""
+        if self.p43 is None:
+            raise RuntimeError("[P43] MODEL.P43.M2F_HEAD is off — no mask-cls head")
+        if self.training:
+            raise RuntimeError("[P43] call model.eval() first")
+        prev = self.p43_eval_head
+        self.p43_eval_head = True
+        try:
+            self.forward(batched_input, True)
+        finally:
+            self.p43_eval_head = prev
+        return self._last_p43_out
+
+    @torch.no_grad()
+    def panoptic_inference(self, batched_input: List[torch.Tensor],
+                           thing_ids: Optional[Sequence[int]] = None,
+                           obj_thresh: float = 0.8, overlap_thresh: float = 0.8,
+                           size: Optional[Sequence[int]] = None):
+        """PQ path: list of (panoptic_seg (h,w) int32, segments_info).
+
+        `thing_ids` defaults to MODEL.P43.THING_IDS (Cityscapes/MUSES trainIds
+        11..18); everything else is treated as stuff and merged per class.
+        `size` = (H,W) to emit at label resolution.
+        """
+        out = self._p43_forward_out(batched_input)
+        ids = self.p43_thing_ids if thing_ids is None else thing_ids
+        return self.p43.panoptic_inference(
+            out, ids, obj_thresh=obj_thresh, overlap_thresh=overlap_thresh,
+            size=(tuple(size) if size is not None else None))
+
+    @torch.no_grad()
+    def semantic_from_queries(self, batched_input: List[torch.Tensor],
+                              size: Optional[Sequence[int]] = None) -> torch.Tensor:
+        """Analysis path: semantic logits assembled from the queries (B,K,H,W).
+
+        NOT the reported semantic output — the pixel head owns mIoU. This
+        exists to measure what the mask branch alone learned (the P30 vs P38 vs
+        P43 3-way ablation in the proposal).
+        """
+        out = self._p43_forward_out(batched_input)
+        sem = self.p43.semantic_scores(out)
+        if size is not None:
+            sem = F.interpolate(sem, size=tuple(size), mode='bilinear',
+                                align_corners=False)
+        return sem
+
     def extract_det_pyramid(self, batched_input: List[torch.Tensor]) -> List[torch.Tensor]:
         """Multi-scale pyramid for a detection head (RF-DETR / FCOS), CEFR-aware.
 
@@ -726,7 +914,7 @@ class ReliaDINO(nn.Module):
         When CEFR is off (cefr_ctx is None) this is byte-identical to the P35/P36-Det
         path. [P36] router->det residual (zero-init) is applied if the router is on.
         """
-        feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
+        feats = self._encode_all(list(batched_input))
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
         cefr_ctx = aux.get('cefr_ctx', None) if isinstance(aux, dict) else None
@@ -745,7 +933,7 @@ class ReliaDINO(nn.Module):
             fused = (1.0 - mix) * fused + mix * fused_p
         # [P39-V1] seg forward와 동일 순서(CEFR blend 이후)·동일 게이트로 적용
         fused = self._apply_trunk_exp(fused, feats)
-        pyramid = self.fpn(fused)
+        pyramid = self._apply_p43_lateral(self.fpn(fused))   # [P43-T2] (no-op if off)
         if routed is not None and getattr(self, 'det_router_proj', None) is not None:
             r = self.det_router_proj(routed)
             pyramid = [
@@ -775,7 +963,7 @@ class ReliaDINO(nn.Module):
         is taken under no_grad so det loss never trains the seg head; the M2F
         decoder, in_proj, query, cls_head and box_head train through cls+box loss.
         """
-        feats = [self.encoder(batched_input[i], i) for i in range(self.num_modalities)]
+        feats = self._encode_all(list(batched_input))
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
         fused = self._apply_trunk_exp(fused, feats)   # seg와 동일 게이트 경로
@@ -806,6 +994,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     rca = (mc.get('P40', {}) or {}).get('RCA', {}) or {}
     fcr = (mc.get('P41', {}) or {}).get('FCR', {}) or {}   # [P41] Fused Class-alignment Regularizer
     p42 = (mc.get('P42', {}) or {}).get('MASK_IMG', {}) or {}   # [P42-M1] 조건부 img 마스킹
+    p43 = mc.get('P43', {}) or {}                               # [P43] PanopticDual
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -894,6 +1083,31 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p42_mask_img=p42.get('ENABLE', False),
         p42_mask_frac=p42.get('FRAC', 0.5),
         p42_mask_warmup_ep=p42.get('WARMUP_EP', 20),
+        p43_m2f_head=p43.get('M2F_HEAD', False),
+        # LATERAL is on by default WHEN P43 is on, and follows M2F_HEAD when
+        # unset, so `P43: {M2F_HEAD: false}` alone means "P43 fully off = the
+        # forward is byte-identical to the lineage baseline". Set LATERAL
+        # explicitly to run either half on its own (lateral-only ablation arm).
+        p43_lateral=p43.get('LATERAL', p43.get('M2F_HEAD', False)),
+        p43_num_taps=p43.get('NUM_TAPS', 3),
+        p43_num_queries=p43.get('NUM_QUERIES', 100),
+        p43_dec_layers=p43.get('DEC_LAYERS', 6),
+        p43_dim=p43.get('DIM', 256),
+        p43_num_heads=p43.get('NUM_HEADS', 8),
+        p43_mlp_ratio=p43.get('MLP_RATIO', 2.0),
+        p43_w_cls=p43.get('W_CLS', 2.0),
+        p43_w_bce=p43.get('W_BCE', 5.0),
+        p43_w_dice=p43.get('W_DICE', 5.0),
+        p43_no_obj_w=p43.get('NO_OBJ_W', 0.1),
+        p43_num_points=p43.get('NUM_POINTS', 12544),
+        p43_oversample=p43.get('OVERSAMPLE', 3.0),
+        p43_importance=p43.get('IMPORTANCE', 0.75),
+        p43_deep_supervision=p43.get('DEEP_SUPERVISION', True),
+        p43_lambda=p43.get('LAMBDA', 1.0),
+        p43_lambda_warmup_ep=p43.get('LAMBDA_WARMUP_EP', 5),
+        p43_eval_head=p43.get('EVAL_HEAD', False),
+        p43_sem_source=p43.get('SEM_SOURCE', 'pixel'),
+        p43_thing_ids=p43.get('THING_IDS', None),
         rca_enable=rca.get('ENABLE', False),
         rca_p_max=rca.get('P_MAX', 0.5),
         rca_warmup_ep=rca.get('WARMUP_EP', 20),

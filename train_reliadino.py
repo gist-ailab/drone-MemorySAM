@@ -264,6 +264,7 @@ def main(cfg, gpu, save_dir, logger):
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
         cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
         fcr_accum = 0.0   # [P41-F1]
+        p43_accum = 0.0   # [P43-T1] mask-cls 주손실
         p42_mask_sum = 0.0; p42_tot = 0   # [P42-M1/D] 실현 마스킹률
         rca_picked = rca_seen = 0
         auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
@@ -292,10 +293,11 @@ def main(cfg, gpu, save_dir, logger):
                 vicreg = aux.get('vicreg', _zero)           # [P39.1-R2] pre-scaled
                 rca_ce = aux.get('rca_readout', _zero)      # [P40-C3] pre-scaled
                 fcr = aux.get('fcr', _zero)                 # [P41-F1] pre-scaled (λ in model)
+                p43_mask = aux.get('p43_mask_loss', _zero)  # [P43-T1] pre-scaled (λ(t) in model)
                 total = (loss_seg + lambda_cal * cal_loss
                          + lambda_aux_ce * aux_ce + gate_ent + router_reg
                          + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
-                         + vicreg + rca_ce + fcr)
+                         + vicreg + rca_ce + fcr + p43_mask)
                 loss = total / accumulation_steps
             scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
@@ -323,6 +325,7 @@ def main(cfg, gpu, save_dir, logger):
             vic_accum += float(vicreg)
             rca_accum += float(rca_ce)
             fcr_accum += float(fcr)   # [P41-F1]
+            p43_accum += float(p43_mask)   # [P43-T1]
             _pm = getattr(_core, '_last_p42_mask', None)   # [P42-M1/D]
             if _pm is not None:
                 p42_mask_sum += float(_pm.sum()); p42_tot += int(_pm.numel())
@@ -428,6 +431,16 @@ def main(cfg, gpu, save_dir, logger):
             if getattr(_core, 'p41_fcr', False):
                 writer.add_scalar('train/fcr', fcr_accum / (it + 1), epoch)
                 log_extra['train/fcr'] = fcr_accum / (it + 1)
+            if getattr(_core, 'p43', None) is not None:
+                # [P43-T1] mask-cls 주손실 + λ(t). λ가 목표치까지 올라갔는데
+                # 손실이 안 내려가면 = 쿼리 분기가 안 배우는 것(ep30 게이트 ③).
+                _p43_lam = _core._p43_lambda_now()
+                writer.add_scalar('train/p43_mask_loss', p43_accum / (it + 1), epoch)
+                writer.add_scalar('p43/lambda', _p43_lam, epoch)
+                log_extra['train/p43_mask_loss'] = p43_accum / (it + 1)
+                log_extra['p43/lambda'] = _p43_lam
+                logger.info(f"[P43] mask_loss:{p43_accum / (it + 1):.4f} "
+                            f"lambda:{_p43_lam:.3f}")
             if getattr(_core, 'p42_mask_img', False):   # [P42-M1/D] 실현 마스킹률 (k=0 무음 탐지)
                 _mr = p42_mask_sum / max(p42_tot, 1)
                 writer.add_scalar('train/p42_mask_rate', _mr, epoch)
