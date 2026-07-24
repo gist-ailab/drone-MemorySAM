@@ -83,7 +83,7 @@ P42(무조건 img 마스킹 FRAC)는 이 계열의 crude 1호기다. P42 결과�
 |---|---|---|---|
 | **B-1 (주)** | **MMPareto gradient 통합** — 기존 per-modal aux CE(deep-sup, 이미 존재)와 주 CE의 gradient를 naive 합산 대신 Pareto 방향(전 목표와 내적≥0)+크기 복원으로 통합. per-modal LoRA gradient에 적용 | MMPareto 2405.17730(**seg 검증 유일**; OGM/AGM/PMR은 재현서 baseline 미달) | optimizer 레벨, 모듈 0, 추론 불변 |
 | **B-2** | **peer 상호증류** — per-modal aux logit 간 대칭 KL(`Σ_{i≠j} KL(p_i‖p_j)`, teacher 없음, λ warmup ep10~) + **관계형 대응**(branch 간 cos-sim map KL — feature copy 아님, CKA 붕괴 방지) | DML(CVPR'18)·EQUISeg 2509.24505·AnySeg CMD 형 | aux 손실(주손실 합산) |
-| **B-3** | **MCRM식 조건부 국소 마스킹** — P42의 전역 img-drop을 **영역 단위**(RGB 국소 corrupt, 해당 영역 lidar 유지)로 승격 + 생존 모달 aux에 hard-pixel 가중(P42 M-3와 동일 방향) | MCRM 2603.17705(frozen-VFM+PEFT 실증) | 학습 전용, 추론 full-modality |
+| **B-3** | **MCRM식 조건부 국소 마스킹** — P42의 전역 img-drop을 **영역 단위**(RGB 국소 corrupt, 해당 영역 lidar 유지)로 승격 + 생존 모달 aux에 hard-pixel 가중(P42 M-3와 동일 방향). **마스킹 영역은 랜덤 사각형이 아니라 실제 커버리지 패턴(FOV 경계·sparse 투영·무반환 지대)을 모사해 샘플링**(§7-b) | MCRM 2603.17705(frozen-VFM+PEFT 실증) | 학습 전용, 추론 full-modality |
 
 ### 노벨티 (정직 — EQUISeg가 최근접 위협)
 
@@ -117,4 +117,16 @@ P42(무조건 img 마스킹 FRAC)는 이 계열의 crude 1호기다. P42 결과�
 
 - 반증 경로 회피: attn-bias ✗ / gate·calib·veto 추론 ✗ / zero-init 잔차 ✗(P43 Head B=독립 Hungarian 주손실, P44=gradient·aux 레벨) / fusion-rank ✗(P41 반증 — P44는 rank가 아니라 **사용률**(dMIoU) 타깃, 지표부터 다름) / 외부신호 ✗(전 안 label-free) / conv head 즉시 대체 ✗(P43 dual-head 유지).
 - 단일 모델: P43/P44/P45 모두 DELIVER·MUSES 동일 아키텍처.
+## 7. 토론 반영 (2026-07-25, user 비판 3건 — 서사·설계 조정)
+
+**(a) per-class 라우팅 서사 축소.** user 지적: "clear에서 RGB 절대 우위인데 클래스별 모달 선호가 성립하려면 비RGB가 이기는 클래스가 있어야" — 타당. 우리 실측이 방어하는 명제는 "클래스별 모달 선호"가 아니라 **"전역 조건 게이트의 클래스별 오배분 방지"**다(night RoadLine: img competence .798/depth .001인데 전역 게이트가 depth .432 배분; gate/calib은 night thin-class에서 끄면 +35.9/+26.0 = 전역 신호 유해 실증). RGB 열화는 클래스별 불균등하므로 조건 단위 단일 결정은 반드시 일부 클래스를 죽인다 — 이것이 per-class의 존재 이유이고, 논문에서도 이 형태로만 주장한다. router 이득이 "클래스-모달 특화" 때문인지 "thin-class 독립 자유도" 때문인지는 미분리 → 학습0 검증 ①로 판별.
+
+**(b) coverage-aware 요구사항 신설 (partial FOV/coverage).** user 지적: MULTIAQUA처럼 비RGB가 RGB FOV를 전부 커버 못 하는 데이터셋에서, 클래스 조건 라우팅이 비가시 영역에 그 모달을 배분할 위험 — 타당하며 일반화된다(MUSES lidar sparse 투영·무반환도 동일 구조 = partial coverage는 예외가 아니라 기본 상태). 취약점의 실체는 "zero-fill 입력에서도 백본이 그럴듯한 feature를 생성해 router가 무효 데이터임을 모른다"(P40 C-1 lidar 유효성 가드와 동일 문제). **처방 = 결정론적 presence 마스킹**: 입력 기하에서 유도되는 validity mask(thermal FOV 경계=캘리브레이션, lidar=투영 리턴 존재)로 router/gate softmax를 유효 모달 위에서 재정규화. 학습 파라미터 0. **반증된 'quality 추정 게이트'와 구분** — 죽은 것은 학습/자기추정 품질 재가중이고, 데이터 부재는 추정이 아님. B-3 마스킹도 커버리지 패턴 모사로 샘플링(학습↔추론 분포 정렬). MULTIAQUA 확장 시 이것이 선행 조건.
+
+**(c) GtA 무시 결정 (user).** 융합 연구로서 비교군 = 융합 방법. 그 경우 **mIoU 융합 1위는 DGFusion(79.49)이 아니라 MM-SAM-Adapter 81.07(RGB+L, frozen-SAM)** — 같은 frozen-VFM 레인의 무조건화 평융합이라 리뷰의 실제 비교 대상. 우리 79.025에서 +2pt라 P44 fog 회복만으로는 빠듯 → PQ 축(P43) 병행 구조는 GtA 제외 후에도 유효(PQ 보드에 MM-SAM-Adapter 부재).
+
+**학습0 검증 2건 (구현 착수와 병행, 분석 세션 위임 가능)**:
+1. **per-class × drop-modality 매트릭스 + router 가중 클래스별 히트맵** (P38/P39 ckpt) — "클래스마다 실제 다른 모달을 골랐나, 전부 RGB에 비율만 다른가" 판별 → (a) 서사 확정.
+2. **커버리지 안/밖 router 가중 대조** (MUSES lidar 유효/무반환 픽셀 분할) — 커버리지 밖에서 lidar 가중이 안 떨어져 있으면 (b) 실패 실재 = validity mask 필수 근거.
+
 - 근거 arXiv (에이전트 검증): 2603.25398(PMT) · 2112.01527 · 2107.06278 · 2211.06220 · 2203.16527 · 2308.03747 · 2405.17730(MMPareto) · 2203.15332 · 2308.07686 · 2211.07089 · 2509.24505(EQUISeg) · 2603.17705(MoBaNet/MCRM) · 2411.17141(AnySeg) · 2508.03060(CHARM) · 2505.12861 · 2204.01587(FIFO) · 2103.02370 · 2212.09068 · 2312.04265(Rein) · 2509.10408(MM-SAM-Adapter) · 2509.09828(DGFusion) · 2410.10791(CAFuser) · 2401.12761(MUSES) · 2508.16408(SAMFusion) · 2410.03010 · 2307.14126 · 2606.16639 · 2604.12319 · 2405.09321 · 2311.10707.
