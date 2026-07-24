@@ -93,6 +93,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **7** | **P36_physaug ep64 이어달리기** | 4~8 GPU | yeon 완주 후(user 지시) | test가 `ep56 55.60` **상승 중 B200 마감으로 잘림**(P34는 ep140까지 상승). **DELIVER test −0.09를 메울 정당한 경로 후보.** `last_checkpoint`(ep64) NAS 보유 |
 | **8** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
 | **9** | **class-transfer 공략** | 미정 | 설계 후 | 분석이 지목한 **지배 원인, 복구 상한 +7.9pt**. 0.09짜리가 아니라 판을 바꾸는 크기 |
+| **10** | **P43 PanopticDual 구현+본학습** (MUSES 우선, DELIVER 후속) | 구현(코드검수 파이프라인) 후 hpca100 4×A100 | **선행(학습0): P38 ckpt로 기존 m2f_head panoptic_inference val PQ 하한 실측**(분석 세션 위임 가능) → 구현 → 스모크 → 첫 빈 슬롯 | **제안 등재(2026-07-24)** — dual-head(per-pixel 유지 + M2F Hungarian 주손실 공동학습, zero-init 잔차 아님) + PMT식 lateral로 **PQ 지표 확보**. Codabench 실측: mIoU 1위=미발표 카메라단독 82.39라 융합에 죽은 축, **PQ 1위 DGFusion 61.03은 사정권 + frozen-VFM 참가자 0**. ep30 게이트 = PQ_thing>0 & thin-class −1pt 이내 & 쿼리 non-empty. 상세 [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md) §2 |
+| **11** | **P44 BMR 본학습** (P42 판정 후) | yeon/jarvis 슬롯 | **P42 FRAC sweep 판정 후**(통과 시 위에 얹기, 미달 시 원리적 재시도) | **제안 등재(2026-07-24)** — B-1 MMPareto gradient 통합(2405.17730, seg 검증 유일) + B-2 peer 상호증류(대칭 KL+관계형 cos-sim) + B-3 MCRM 국소 마스킹(2603.17705). 전부 loss/gradient 레벨(모듈 0, 추론 불변). ep30 게이트 = dMIoU(lidar) >1 & gradient 내적 양수 전환 & CKA≥0.5. 최근접 선행 = EQUISeg 2509.24505(같은 데이터셋, 인용 필수). 상세 동 문서 §3 (P45 FogStyle §4 = P44 위 토글) |
 
 ## ✅ 완료·판정 (재실행 금지)
 

@@ -49,6 +49,8 @@ moved: 2026-07-08
 - **판정 게이트(사전 등록)**: P39.1 ep30 = lidar effective-rank ≥15 & fog_night drop-lidar ≥4.0(미달 시 R-3: r16+rsLoRA로 재기동) · P40 = MUSES test ≥79.025 & fog_night ≥74, DELIVER = P36 fair + thin-class.
 - **실행 순서**: 분석 선행 2건(fog val per-scene 감사 + P39 ckpt trunk_exp-off rank 재측정 — **분석 세션 몫, 학습 0**) → P39.1 투입(첫 빈 슬롯) → rank 게이트 통과 후 P40 투입. 대기열 [experiments/plan.md](../experiments/plan.md) #1(P39.1)/#2(P40). 상세 [models/arch-evolution.md](../models/arch-evolution.md) P39.1/P40.
 
+**📝 2026-07-24 P43~P45 CVPR SOTA 제안 등재 (딥리서치 6축, 학습 대기)**: 멀티에이전트 딥리서치(모달불균형·상호증류·fog·panoptic·condition-adaptive·SOTA지형 6기 병렬) 교차 종합으로 3안 등재 — [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md). **전략 판정(Codabench 실측)**: MUSES mIoU 1위 = 미발표 카메라단독 GtA 82.39, 2위 = frozen-SAM 2모달 81.07 → **mIoU는 융합에 죽은 SOTA 축**; **PQ 1위 DGFusion 61.03은 사정권 + frozen-VFM 참가자 0 = 유일한 현실적 SOTA 축**(우리는 현재 PQ 산출 불가 = 구조적 배제 상태). ① **P43 PanopticDual(헤드라인)** = dual-head 공동학습(per-pixel 유지 + M2F Hungarian 독립 주손실, PMT 2603.25398 레시피 + multi-depth lateral) → PQ 확보, 착륙 지대 58~61, ep30 게이트 = PQ_thing>0 & thin-class −1pt 이내. ② **P44 BMR** = MMPareto gradient 통합 + peer 상호증류 + MCRM 국소 마스킹(전부 loss/gradient 레벨, P42 후계) → fog +2~5pt, ep30 게이트 = dMIoU(lidar)>1. ③ **P45 FogStyle** = FIFO식 fused-feature 스타일 불변(P44 위 토글). 대기열 #10/#11 등재. 선행(학습0) = P38 ckpt 기존 m2f_head로 val PQ 하한 실측.
+
 **⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
 
 | 트랙 | 상태 | 수치 / 다음 액션 |

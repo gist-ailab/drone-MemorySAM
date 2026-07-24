@@ -9,6 +9,12 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-24 — P43~P45 CVPR SOTA 제안 등재 (딥리서치 6축 교차)
+
+- 멀티에이전트 딥리서치 6기 병렬(모달불균형/상호증류/fog/panoptic/condition-adaptive/SOTA지형) → [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md).
+- 핵심 판정: **MUSES mIoU는 융합에 죽은 SOTA 축**(1위 미발표 카메라단독 GtA 82.39, Codabench 실측), **PQ가 유일한 현실적 SOTA 축**(1위 DGFusion 61.03, frozen-VFM 참가자 0, 우리는 PQ 산출 불가 상태).
+- 3안: P43 PanopticDual(dual-head 공동학습, PQ 58~61 착륙 지대) / P44 BMR(MMPareto+peer 증류+MCRM, P42 후계) / P45 FogStyle(FIFO 이식 토글). 대기열 #10/#11. 게이트 전부 사전등록(ep30 조기 kill 포함).
+
 ### 2026-07-21 — P37~현재 코드 전수조사 완료: 확정 21건(critical 2·major 6·minor 13), 12건 develop 수정 반영
 
 멀티에이전트 32기로 P37~현재 코드를 전수조사(발견→반증검증 2단계). **확정 21건**(반증 3건 별도), **12건은 이미 develop에 수정 커밋 반영**.
