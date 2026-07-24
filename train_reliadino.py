@@ -20,6 +20,7 @@ Launch (B200):
       --cfg configs/b200-deliver_rgbdel_P34_reliadino.yaml
 """
 import argparse
+import contextlib
 import math
 import os
 import time
@@ -48,6 +49,7 @@ from semseg.datasets import *                                    # noqa: F401,F4
 from semseg.losses import get_loss
 from semseg.metrics import Metrics
 from semseg.models.reliadino import build_reliadino
+from semseg.models.reliadino.mmpareto import MMPareto
 from semseg.optimizers import get_optimizer
 from semseg.schedulers import get_scheduler
 from semseg.utils.utils import (cleanup_ddp, fix_seeds, get_logger, print_iou,
@@ -255,6 +257,25 @@ def main(cfg, gpu, save_dir, logger):
     modals = dataset_cfg['MODALS']
     _core = model.module if hasattr(model, 'module') else model
 
+    # ── [P44-B1] MMPareto gradient 통합 ─────────────────────────────────────
+    # OFF(기본)면 mmpareto is None → 아래 학습 루프의 optimizer 경로는 기존과
+    # 완전히 동일하다(단일 backward + scaler.step). ON이면 micro-step마다 주
+    # 손실/모달-aux 손실을 따로 미분해 Pareto 결합한다. 설계·DDP/AMP 계약은
+    # semseg/models/reliadino/mmpareto.py 상단 참조.
+    _mmp_cfg = ((model_cfg.get('P44', {}) or {}).get('MMPARETO', {}) or {})
+    mmpareto = None
+    if _mmp_cfg.get('ENABLE', False):
+        mmpareto = MMPareto(_core.named_parameters(), num_modalities=len(modals),
+                            modal_names=modals,
+                            interval=_mmp_cfg.get('INTERVAL', 1),
+                            magnitude=_mmp_cfg.get('MAGNITUDE', 'sum_norm'))
+        if is_rank0:
+            logger.info(f"[P44-B1] MMPareto on — groups="
+                        f"{[g['name'] for g in mmpareto.groups]} "
+                        f"interval={mmpareto.interval} magnitude={mmpareto.magnitude} "
+                        f"params={len(mmpareto.params)}")
+    global_update = 0
+
     # ── train loop ──────────────────────────────────────────────────────────
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -265,6 +286,11 @@ def main(cfg, gpu, save_dir, logger):
         cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
         fcr_accum = 0.0   # [P41-F1]
         p42_mask_sum = 0.0; p42_tot = 0   # [P42-M1/D] 실현 마스킹률
+        # [P44/P45] 손실항 + 실현 마스킹률 + MMPareto 진단
+        mkl_accum = rc_accum = hard_accum = sty_accum = 0.0
+        p44_mask_sum = 0.0; p44_tot = 0
+        pareto_stats = []
+        window_pareto = False
         rca_picked = rca_seen = 0
         auroc_rows, gate_rows, router_rows, cefr_rows = [], [], [], []
 
@@ -277,32 +303,88 @@ def main(cfg, gpu, save_dir, logger):
         for it, (sample, lbl) in pbar:
             sample = [x.to(device, non_blocking=True) for x in sample]
             lbl = lbl.to(device, non_blocking=True)
-            with autocast(enabled=train_cfg['AMP'], dtype=AMP_DTYPE):
-                logits, m_feat, aux = model(sample, True, gt_mask=lbl)
-                loss_seg = loss_fn(logits, lbl)
-                _zero = logits.new_zeros(())
-                cal_loss = aux.get('rbma_cal_loss', _zero)
-                aux_ce = aux.get('aux_ce', _zero)
-                gate_ent = aux.get('gate_entropy', _zero)
-                router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
-                cefr_reg = aux.get('cefr_reg', _zero)       # [P37a] pre-scaled (decisive+hinge)
-                ctd_ce = aux.get('ctd_ce', _zero)           # [P37b] class-token aux CE
-                m2f_loss = aux.get('m2f_loss', _zero)       # [P38] pre-scaled (LOSS_W in model)
-                router_ce = aux.get('router_ce', _zero)     # [P39-V5] pre-scaled (ROUTER_CE_W)
-                vicreg = aux.get('vicreg', _zero)           # [P39.1-R2] pre-scaled
-                rca_ce = aux.get('rca_readout', _zero)      # [P40-C3] pre-scaled
-                fcr = aux.get('fcr', _zero)                 # [P41-F1] pre-scaled (λ in model)
-                total = (loss_seg + lambda_cal * cal_loss
-                         + lambda_aux_ce * aux_ce + gate_ent + router_reg
-                         + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
-                         + vicreg + rca_ce + fcr)
-                loss = total / accumulation_steps
-            scaler.scale(loss).backward()
+            if it % accumulation_steps == 0:
+                # 결정은 optimizer-step 윈도 단위 (윈도 중간에 경로가 바뀌면
+                # 누적된 gradient의 의미가 섞인다).
+                window_pareto = (mmpareto is not None
+                                 and mmpareto.active(global_update))
+            # [P44-B1] DDP: pareto 윈도에서는 autograd.grad가 DDP reducer를
+            # 우회하므로 no_sync로 hook을 무장 해제하고(안 그러면 다음
+            # iteration에서 "Expected to have finished reduction" 사망) 결합
+            # 직전에 직접 all_reduce 한다.
+            _sync_ctx = (model.no_sync() if (window_pareto and ddp_enable)
+                         else contextlib.nullcontext())
+            with _sync_ctx:
+                with autocast(enabled=train_cfg['AMP'], dtype=AMP_DTYPE):
+                    logits, m_feat, aux = model(sample, True, gt_mask=lbl)
+                    loss_seg = loss_fn(logits, lbl)
+                    _zero = logits.new_zeros(())
+                    cal_loss = aux.get('rbma_cal_loss', _zero)
+                    aux_ce = aux.get('aux_ce', _zero)
+                    gate_ent = aux.get('gate_entropy', _zero)
+                    router_reg = aux.get('router_reg', _zero)   # [P36] pre-scaled in fusion
+                    cefr_reg = aux.get('cefr_reg', _zero)       # [P37a] pre-scaled (decisive+hinge)
+                    ctd_ce = aux.get('ctd_ce', _zero)           # [P37b] class-token aux CE
+                    m2f_loss = aux.get('m2f_loss', _zero)       # [P38] pre-scaled (LOSS_W in model)
+                    router_ce = aux.get('router_ce', _zero)     # [P39-V5] pre-scaled (ROUTER_CE_W)
+                    vicreg = aux.get('vicreg', _zero)           # [P39.1-R2] pre-scaled
+                    rca_ce = aux.get('rca_readout', _zero)      # [P40-C3] pre-scaled
+                    fcr = aux.get('fcr', _zero)                 # [P41-F1] pre-scaled (λ in model)
+                    p44_mkl = aux.get('p44_mutual_kl', _zero)   # [P44-B2] pre-scaled (fusion)
+                    p44_rc = aux.get('p44_rel_corr', _zero)     # [P44-B2] pre-scaled (fusion)
+                    p44_hard = aux.get('p44_hard_aux', _zero)   # [P44-M3] pre-scaled (model)
+                    p45_sty = aux.get('p45_fogstyle', _zero)    # [P45-F1] pre-scaled (model)
+                    total = (loss_seg + lambda_cal * cal_loss
+                             + lambda_aux_ce * aux_ce + gate_ent + router_reg
+                             + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
+                             + vicreg + rca_ce + fcr
+                             + p44_mkl + p44_rc + p44_hard + p45_sty)
+                    loss = total / accumulation_steps
+                if window_pareto:
+                    # per-modal 브랜치 목표(deep-sup aux CE + peer 증류 + hard-pixel
+                    # + fog-style)와 주 목표를 분리해 각각 미분한다. 이 분할이
+                    # MMPareto의 "unimodal vs multimodal" 목표쌍에 대응한다.
+                    _l_aux = (lambda_aux_ce * aux_ce + p44_mkl + p44_rc
+                              + p44_hard + p45_sty) / accumulation_steps
+                    _l_main = loss - _l_aux
+                    # ⚠️ aux 항이 전부 상수(_zero)면 grad 그래프가 없다 →
+                    # autograd.grad가 "does not require grad"로 죽는다. 그 경우
+                    # aux gradient는 정의상 0이고 결합은 단순 합으로 환원된다.
+                    _has_aux = bool(_l_aux.requires_grad)
+                    _gm = torch.autograd.grad(scaler.scale(_l_main), mmpareto.params,
+                                              retain_graph=_has_aux,
+                                              allow_unused=True)
+                    _ga = (torch.autograd.grad(scaler.scale(_l_aux), mmpareto.params,
+                                               allow_unused=True)
+                           if _has_aux else [None] * len(mmpareto.params))
+                    mmpareto.accumulate(
+                        _gm, _ga,
+                        inv_scale=(1.0 / scaler.get_scale() if scaler.is_enabled() else 1.0))
+                    del _gm, _ga
+                else:
+                    scaler.scale(loss).backward()
             if (it + 1) % accumulation_steps == 0:
-                scaler.step(optimizer)
-                scaler.update()
+                if window_pareto:
+                    _st = mmpareto.combine()      # allreduce → Pareto 결합 → p.grad
+                    pareto_stats.append(_st)
+                    if scaler.is_enabled():
+                        # fp16: unscale_/step을 안 거쳐 GradScaler의 inf 기록이
+                        # 없다 → 직접 검사하고 new_scale을 명시해야 한다.
+                        _ok = all(bool(torch.isfinite(p.grad).all())
+                                  for p in mmpareto.params)
+                        if _ok:
+                            optimizer.step()
+                        scaler.update(scaler.get_scale() * (
+                            1.0 if _ok else scaler.get_backoff_factor()))
+                    else:
+                        optimizer.step()
+                    mmpareto.reset()
+                else:
+                    scaler.step(optimizer)
+                    scaler.update()
                 optimizer.zero_grad(set_to_none=True)
                 scheduler.step()
+                global_update += 1
                 if lora_norm_cap > 0:
                     # per-modality slice별 cap (b[m] (attn_dim,r)) — 방향 보존 renorm
                     with torch.no_grad():
@@ -323,9 +405,18 @@ def main(cfg, gpu, save_dir, logger):
             vic_accum += float(vicreg)
             rca_accum += float(rca_ce)
             fcr_accum += float(fcr)   # [P41-F1]
+            mkl_accum += float(p44_mkl)     # [P44-B2]
+            rc_accum += float(p44_rc)       # [P44-B2]
+            hard_accum += float(p44_hard)   # [P44-M3]
+            sty_accum += float(p45_sty)     # [P45-F1]
             _pm = getattr(_core, '_last_p42_mask', None)   # [P42-M1/D]
             if _pm is not None:
                 p42_mask_sum += float(_pm.sum()); p42_tot += int(_pm.numel())
+            _p44m = getattr(_core, '_last_p44_mask', None)   # [P44-B3] 실현 픽셀 마스킹률
+            if _p44m is not None:
+                p44_mask_sum += float(_p44m.sum()); p44_tot += int(_p44m.numel())
+            elif getattr(_core, 'p44_local_mask', False):
+                p44_tot += int(lbl.shape[0] * lbl.shape[-1] * lbl.shape[-2])
             if getattr(_core, '_rca_pick', None) is not None:
                 rca_picked += int(_core._rca_pick.sum())
             rca_seen += lbl.shape[0]
@@ -433,6 +524,37 @@ def main(cfg, gpu, save_dir, logger):
                 writer.add_scalar('train/p42_mask_rate', _mr, epoch)
                 log_extra['train/p42_mask_rate'] = _mr
                 print(f"[P42] ep{epoch} mask_rate={_mr:.3f} (target {getattr(_core,'p42_mask_frac',0):.2f})", flush=True)
+            if getattr(_core, 'p44_local_mask', False):   # [P44-B3] 실현 마스킹률
+                _mr44 = p44_mask_sum / max(p44_tot, 1)
+                writer.add_scalar('train/p44_mask_rate', _mr44, epoch)
+                log_extra['train/p44_mask_rate'] = _mr44
+                logger.info(f"[P44] ep{epoch} mask_rate={_mr44:.4f} "
+                            f"(mode={_core.p44_mask_mode}, "
+                            f"target_frac {getattr(_core, 'p44_mask_frac', 0):.2f})")
+            if getattr(_core.fusion, 'p44_mutual_kl', False) or \
+                    getattr(_core.fusion, 'p44_rel_corr', False):
+                writer.add_scalar('train/p44_mutual_kl', mkl_accum / (it + 1), epoch)
+                writer.add_scalar('train/p44_rel_corr', rc_accum / (it + 1), epoch)
+                log_extra['train/p44_mutual_kl'] = mkl_accum / (it + 1)
+                log_extra['train/p44_rel_corr'] = rc_accum / (it + 1)
+                logger.info(f"[P44-B2] mutual_kl:{mkl_accum / (it + 1):.4f} "
+                            f"rel_corr:{rc_accum / (it + 1):.4f}")
+            if getattr(_core, 'p44_hard_pixel_aux', False):
+                writer.add_scalar('train/p44_hard_aux', hard_accum / (it + 1), epoch)
+                log_extra['train/p44_hard_aux'] = hard_accum / (it + 1)
+            if getattr(_core, 'p45_fogstyle', False):
+                writer.add_scalar('train/p45_fogstyle', sty_accum / (it + 1), epoch)
+                log_extra['train/p45_fogstyle'] = sty_accum / (it + 1)
+            if pareto_stats:
+                # [P44-B1] 게이트② 진단: modal-aux gradient와 주 gradient의 내적
+                # 부호. lidar 그룹의 cos가 음수→양수로 전환하는지가 사전등록 지표.
+                _keys = pareto_stats[0].keys()
+                _agg = {k: float(np.mean([s[k] for s in pareto_stats])) for k in _keys}
+                for k, v in _agg.items():
+                    writer.add_scalar(f'p44/{k}', v, epoch)
+                    log_extra[f'p44/{k}'] = v
+                logger.info("[P44-B1] " + " ".join(
+                    f"{k}:{v:+.3f}" for k, v in _agg.items() if k.startswith('cos_')))
             if getattr(_core, 'p391_vicreg', False):
                 # [P39.1] VICReg loss + trunk gate γ (gated_mlp mode)
                 writer.add_scalar('train/vicreg', vic_accum / (it + 1), epoch)

@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from . import p44 as P44
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion
@@ -138,6 +139,33 @@ class ReliaDINO(nn.Module):
                  p42_mask_img: bool = False,
                  p42_mask_frac: float = 0.5,
                  p42_mask_warmup_ep: int = 20,
+                 p44_local_mask: bool = False,
+                 p44_mask_mode: str = 'rect',
+                 p44_mask_frac: float = 0.5,
+                 p44_mask_warmup_ep: int = 20,
+                 p44_area_ratio: Sequence[float] = (0.1, 0.5),
+                 p44_num_regions: Sequence[int] = (1, 3),
+                 p44_coverage_dilate: int = 31,
+                 p44_blob_grid: int = 16,
+                 p44_blob_p: float = 0.5,
+                 p44_hard_pixel_aux: bool = False,
+                 p44_hard_pixel_w: float = 0.5,
+                 p44_validity_renorm: bool = False,
+                 p44_validity_dilate: int = 1,
+                 p44_mutual_kl: bool = False,
+                 p44_mkl_w: float = 0.5,
+                 p44_mkl_t: float = 1.0,
+                 p44_mkl_warmup_ep: int = 10,
+                 p44_rel_corr: bool = False,
+                 p44_rc_w: float = 0.1,
+                 p44_rc_pairs: int = 2048,
+                 p44_rc_mode: str = 'mse',
+                 p44_rc_warmup_ep: int = 10,
+                 p45_fogstyle: bool = False,
+                 p45_prob: float = 0.5,
+                 p45_sigma: float = 0.5,
+                 p45_weight: float = 0.1,
+                 p45_detach_clean: bool = True,
                  rca_enable: bool = False,
                  rca_p_max: float = 0.5,
                  rca_warmup_ep: int = 20,
@@ -181,7 +209,15 @@ class ReliaDINO(nn.Module):
             cefr_lambda2_warmup_ep=cefr_lambda2_warmup_ep,
             cefr_reg_lambda=cefr_reg_lambda,
             cefr_entropy_floor=cefr_entropy_floor,
-            cefr_hinge_reg=cefr_hinge_reg)
+            cefr_hinge_reg=cefr_hinge_reg,
+            # [P44-B2/V-1] peer 상호증류 손실 + presence 재정규화 (전부 default off)
+            p44_mutual_kl=p44_mutual_kl, p44_mkl_w=p44_mkl_w,
+            p44_mkl_t=p44_mkl_t, p44_mkl_warmup_ep=p44_mkl_warmup_ep,
+            p44_rel_corr=p44_rel_corr, p44_rc_w=p44_rc_w,
+            p44_rc_pairs=p44_rc_pairs, p44_rc_mode=p44_rc_mode,
+            p44_rc_warmup_ep=p44_rc_warmup_ep,
+            p44_validity_renorm=p44_validity_renorm,
+            p44_export_train_aux=bool(p44_hard_pixel_aux or p45_fogstyle))
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
         # [P36-Det] Router->detection seam. The seg path adds routed_logits to the
@@ -294,8 +330,35 @@ class ReliaDINO(nn.Module):
         self.p42_mask_img = bool(p42_mask_img)
         self.p42_mask_frac = float(p42_mask_frac)
         self.p42_mask_warmup_ep = int(p42_mask_warmup_ep)
-        self._p42_img_idx = self.modalities.index('img') if 'img' in self.modalities else -1
+        self._img_idx = self.modalities.index('img') if 'img' in self.modalities else -1
+        self._lidar_idx = self.modalities.index('lidar') if 'lidar' in self.modalities else -1
+        self._p42_img_idx = self._img_idx          # P42 시절 이름 (호환 유지)
         self._last_p42_mask = None   # (B,) 진단용(마스킹된 샘플)
+        # [P44-B3] 커버리지 패턴 국소 마스킹 — P42 전역 img-drop의 승격.
+        # P42와 **직교**: p42_mask_img 경로는 손대지 않았고, MODE 'global'이
+        # P42와 같은 의미를 P44 config로 재현한다(ablation 연속성).
+        self.p44_local_mask = bool(p44_local_mask)
+        self.p44_mask_mode = str(p44_mask_mode)
+        self.p44_mask_frac = float(p44_mask_frac)
+        self.p44_mask_warmup_ep = int(p44_mask_warmup_ep)
+        self.p44_area_ratio = tuple(p44_area_ratio)
+        self.p44_num_regions = tuple(int(v) for v in p44_num_regions)
+        self.p44_coverage_dilate = int(p44_coverage_dilate)
+        self.p44_blob_grid = int(p44_blob_grid)
+        self.p44_blob_p = float(p44_blob_p)
+        self._last_p44_mask = None   # (B,1,H,W) 마스킹된 영역 (1 = img 제거)
+        # [P44-M3] hard-pixel aux: 마스킹 영역에서 fused가 틀린 픽셀에 생존 모달 aux 집중
+        self.p44_hard_pixel_aux = bool(p44_hard_pixel_aux)
+        self.p44_hard_pixel_w = float(p44_hard_pixel_w)
+        # [P44-V1] presence 재정규화 (학습 파라미터 0, 추론 경로에도 적용)
+        self.p44_validity_renorm = bool(p44_validity_renorm)
+        self.p44_validity_dilate = int(p44_validity_dilate)
+        # [P45-F1] feature-space fog style 일관성 (기본 off)
+        self.p45_fogstyle = bool(p45_fogstyle)
+        self.p45_prob = float(p45_prob)
+        self.p45_sigma = float(p45_sigma)
+        self.p45_weight = float(p45_weight)
+        self.p45_detach_clean = bool(p45_detach_clean)
         # V5 compete-and-arbitrate: per-class Λ (softplus(0)=0.69, 죽은 시작
         # 아님) + 학습 시 path dropout 경쟁(dense-only/query-only/combined) +
         # router 직접 CE 감독(의존→기여 전환, 키2). β 잔차(반증 완료)는 arbiter
@@ -430,6 +493,37 @@ class ReliaDINO(nn.Module):
         new_input[self._p42_img_idx] = img * keep   # 마스킹된 샘플의 img → 0
         return new_input
 
+    def _p44_local_mask(self, batched_input):
+        """[P44-B3] 커버리지 패턴 **국소** img 마스킹 (train only, 추론은 항상 full).
+
+        P42(M-1)는 뽑힌 샘플의 img를 통째로 0으로 만들었다 — "img가 아예 없는"
+        분포는 추론에 존재하지 않으므로 학습↔추론 정합이 나쁘다. B-3는 img를
+        **영역 단위로** 지우고 그 영역의 다른 모달은 그대로 두어, 실제로 일어나는
+        상황("이 영역의 카메라 정보가 열화/부재, lidar는 살아 있음")을 연습시킨다.
+        MODE 'coverage'는 그 영역을 **같은 샘플의 lidar 리턴 패턴**에서 뽑는다
+        (§7-b: partial coverage는 예외가 아니라 기본 상태).
+        """
+        self._last_p44_mask = None
+        if not (self.p44_local_mask and self.training and self._img_idx >= 0):
+            return batched_input
+        frac = self.p44_mask_frac * P44.ramp(self._current_epoch,
+                                             self.p44_mask_warmup_ep)
+        if frac <= 0:
+            return batched_input
+        lidar = batched_input[self._lidar_idx] if self._lidar_idx >= 0 else None
+        region = P44.sample_region_mask(
+            batched_input[self._img_idx], frac, mode=self.p44_mask_mode,
+            lidar=lidar, area_ratio=self.p44_area_ratio,
+            num_regions=self.p44_num_regions,
+            coverage_dilate=self.p44_coverage_dilate,
+            blob_grid=self.p44_blob_grid, blob_p=self.p44_blob_p)
+        if region is None:
+            return batched_input               # 이 배치는 아무 샘플도 안 뽑힘
+        self._last_p44_mask = region
+        new_input = list(batched_input)
+        new_input[self._img_idx] = new_input[self._img_idx] * (1.0 - region)
+        return new_input
+
     def set_grad_checkpointing(self, enable: bool = True):
         self.encoder.set_grad_checkpointing(enable)
 
@@ -554,6 +648,7 @@ class ReliaDINO(nn.Module):
         self._last_dropped_modality = None
         x = self._maybe_drop_modality(batched_input)
         x = self._p42_mask_img(x)                          # [P42-M1] 조건부 img 마스킹
+        x = self._p44_local_mask(x)                        # [P44-B3] 국소 img 마스킹
         H, W = x[0].shape[-2:]
         feats = [self.encoder(x[i], i) for i in range(self.num_modalities)]
         if not self.training:
@@ -600,8 +695,38 @@ class ReliaDINO(nn.Module):
                 feats = list(feats)
                 feats[self.rca_img_idx] = feats[self.rca_img_idx] \
                     * _rca_scale.view(-1, 1, 1, 1)
+        # [P44-V1] 결정론적 presence 마스크 (학습 파라미터 0). 학습/추론 both —
+        # 이것만이 허용된 추론 경로 변경이고 기본 off다.
+        presence = None
+        if self.p44_validity_renorm:
+            presence = P44.presence_masks(
+                x, size=feats[0].shape[-2:], img_idx=self._img_idx,
+                dilate=self.p44_validity_dilate)
+        # img 마스킹 정보: P44 국소 마스크(B,1,H,W)가 있으면 그것, 없으면 P42(B,)
+        _img_mask = self._last_p44_mask if self._last_p44_mask is not None \
+            else self._last_p42_mask
         fused, aux = self.fusion(feats, gt_mask if self.training else None,
-                                 img_mask=self._last_p42_mask, img_idx=self._p42_img_idx)  # [P42-M1/C]
+                                 img_mask=_img_mask, img_idx=self._img_idx,   # [P42-M1/C][P44-B3]
+                                 presence=presence, epoch=self._current_epoch)
+        if self.p45_fogstyle and self.training:
+            # [P45-F1] img 브랜치 feature의 style을 흔들고 예측 일관성을 요구.
+            # 픽셀 공간을 건드리지 않으므로 physaug 공정성 라인을 넘지 않는다.
+            _al = getattr(self.fusion, '_train_aux_logits', None)
+            if _al is not None and self._img_idx >= 0:
+                _pert, _applied = P44.style_perturb(
+                    feats[self._img_idx], self.p45_prob, self.p45_sigma)
+                if float(_applied.sum()) > 0:
+                    _lgp = self.fusion.aux_decoders[self._img_idx](_pert)
+                    _lgc = _al[self._img_idx]
+                    if self.p45_detach_clean:
+                        _lgc = _lgc.detach()
+                    with torch.autocast(device_type=fused.device.type, enabled=False):
+                        _logp = F.log_softmax(_lgp.float(), dim=1)
+                        _logc = F.log_softmax(_lgc.float(), dim=1)
+                        _kl = (_logc.exp() * (_logc - _logp)).sum(1)      # (B,h,w)
+                        _kl = _kl.mean(dim=(1, 2))                        # (B,)
+                        aux['p45_fogstyle'] = self.p45_weight * (
+                            (_kl * _applied).sum() / _applied.sum().clamp(min=1.0))
         if not self.training:
             self._last_fused_postfusion = fused.detach()   # [analysis §0.5 T3]
         if self.p41_fcr and self.training and gt_mask is not None:
@@ -699,6 +824,34 @@ class ReliaDINO(nn.Module):
                                  mode='nearest').squeeze(1).long()
             aux['router_ce'] = self.p39_router_ce_w * F.cross_entropy(
                 routed.float(), gt_r, ignore_index=255)
+        if (self.p44_hard_pixel_aux and self.training and gt_mask is not None
+                and self._last_p44_mask is not None):
+            # [P44-M3] 마스킹 영역에서 **fused가 지금 틀린 픽셀**에 한해 생존 모달의
+            # aux CE를 집중시킨다(MCRM 2603.17705 hard-pixel). correctness 마스크는
+            # detach — 손실이 "틀림 판정" 자체를 학습하지 않게.
+            _al = getattr(self.fusion, '_train_aux_logits', None)
+            if _al is not None:
+                Hq, Wq = logits.shape[-2:]
+                gt_q = F.interpolate(gt_mask.unsqueeze(1).float(), size=(Hq, Wq),
+                                     mode='nearest').squeeze(1).long()
+                with torch.no_grad():
+                    wrong = (logits.detach().float().argmax(1) != gt_q) & (gt_q != 255)
+                    reg = F.interpolate(self._last_p44_mask, size=(Hq, Wq),
+                                        mode='nearest')[:, 0] > 0.5
+                    sel = (wrong & reg).float()
+                if float(sel.sum()) > 0:
+                    terms = []
+                    for i in range(self.num_modalities):
+                        if i == self._img_idx:
+                            continue                       # 생존 모달만
+                        lg_i = F.interpolate(_al[i].float(), size=(Hq, Wq),
+                                             mode='bilinear', align_corners=False)
+                        ce_i = F.cross_entropy(lg_i, gt_q, ignore_index=255,
+                                               reduction='none')
+                        terms.append((ce_i * sel).sum() / sel.sum().clamp(min=1.0))
+                    if terms:
+                        aux['p44_hard_aux'] = self.p44_hard_pixel_w * (
+                            sum(terms) / len(terms))
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
@@ -806,6 +959,13 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     rca = (mc.get('P40', {}) or {}).get('RCA', {}) or {}
     fcr = (mc.get('P41', {}) or {}).get('FCR', {}) or {}   # [P41] Fused Class-alignment Regularizer
     p42 = (mc.get('P42', {}) or {}).get('MASK_IMG', {}) or {}   # [P42-M1] 조건부 img 마스킹
+    p44 = mc.get('P44', {}) or {}                      # [P44-BMR]
+    p44_lm = p44.get('LOCAL_MASK', {}) or {}           #   B-3 국소 마스킹
+    p44_hp = p44.get('HARD_PIXEL_AUX', {}) or {}       #   M-3 hard-pixel aux
+    p44_vr = p44.get('VALIDITY_RENORM', {}) or {}      #   V-1 presence 재정규화
+    p44_mk = p44.get('MUTUAL_KL', {}) or {}            #   B-2 peer 상호증류
+    p44_rc = p44.get('REL_CORR', {}) or {}             #   B-2 관계형 대응
+    p45_fs = (mc.get('P45', {}) or {}).get('FOGSTYLE', {}) or {}   # [P45-F1]
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -894,6 +1054,33 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p42_mask_img=p42.get('ENABLE', False),
         p42_mask_frac=p42.get('FRAC', 0.5),
         p42_mask_warmup_ep=p42.get('WARMUP_EP', 20),
+        p44_local_mask=p44_lm.get('ENABLE', False),
+        p44_mask_mode=p44_lm.get('MODE', 'rect'),
+        p44_mask_frac=p44_lm.get('FRAC', 0.5),
+        p44_mask_warmup_ep=p44_lm.get('WARMUP_EP', 20),
+        p44_area_ratio=tuple(p44_lm.get('AREA_RATIO', (0.1, 0.5))),
+        p44_num_regions=tuple(p44_lm.get('NUM_REGIONS', (1, 3))),
+        p44_coverage_dilate=p44_lm.get('COVERAGE_DILATE', 31),
+        p44_blob_grid=p44_lm.get('BLOB_GRID', 16),
+        p44_blob_p=p44_lm.get('BLOB_P', 0.5),
+        p44_hard_pixel_aux=p44_hp.get('ENABLE', False),
+        p44_hard_pixel_w=p44_hp.get('WEIGHT', 0.5),
+        p44_validity_renorm=p44_vr.get('ENABLE', False),
+        p44_validity_dilate=p44_vr.get('DILATE', 1),
+        p44_mutual_kl=p44_mk.get('ENABLE', False),
+        p44_mkl_w=p44_mk.get('WEIGHT', 0.5),
+        p44_mkl_t=p44_mk.get('TEMPERATURE', 1.0),
+        p44_mkl_warmup_ep=p44_mk.get('WARMUP_EP', 10),
+        p44_rel_corr=p44_rc.get('ENABLE', False),
+        p44_rc_w=p44_rc.get('WEIGHT', 0.1),
+        p44_rc_pairs=p44_rc.get('PAIRS', 2048),
+        p44_rc_mode=p44_rc.get('MODE', 'mse'),
+        p44_rc_warmup_ep=p44_rc.get('WARMUP_EP', 10),
+        p45_fogstyle=p45_fs.get('ENABLE', False),
+        p45_prob=p45_fs.get('PROB', 0.5),
+        p45_sigma=p45_fs.get('SIGMA', 0.5),
+        p45_weight=p45_fs.get('WEIGHT', 0.1),
+        p45_detach_clean=p45_fs.get('DETACH_CLEAN', True),
         rca_enable=rca.get('ENABLE', False),
         rca_p_max=rca.get('P_MAX', 0.5),
         rca_warmup_ep=rca.get('WARMUP_EP', 20),
