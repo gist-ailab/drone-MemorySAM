@@ -40,6 +40,22 @@ pixel logits에 더하지도, 게이트하지도, 대체하지도 않는다. 스
 
 ---
 
+## P44 — BMR (Balanced Multimodal Reliability) + P45 FogStyle (2026-07-25)
+
+**상태**: **구현 완료 (학습 대기)**. 제안 = [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md) §3(P44)·§4(P45)·§7-b(coverage-aware). P42 후계, P42 코드 경로와 직교(`P44.LOCAL_MASK.MODE: global`이 P42 의미 재현). 구현 기록(상세) = [models/p44-bmr-implementation.md](p44-bmr-implementation.md).
+
+**구성 요소**: B-1 MMPareto gradient 통합(2405.17730, `mmpareto.py` 신규 — 주 CE·per-modal aux CE gradient를 합산이 아니라 Pareto 방향+크기 복원으로 통합, allreduce 이후 결합·`no_sync` 필수) / B-2 peer 상호증류(`p44.py`, aux logit 전 순서쌍 대칭 KL + 토큰쌍 relational correspondence) / B-3 coverage-pattern 국소 img 마스킹(P42 전역 drop의 국소화 승격, lidar 리턴 패턴에서 blob 샘플링) / M-3 hard-pixel aux(기본 off) / V-1 결정론적 presence 재정규화(데이터 부재 픽셀에서 gate/router softmax를 present 모달 위로 재정규화, P44에서 유일한 추론 경로 변경) / P45 FogStyle(feature-space fog style 섭동+일관성, img 브랜치 한정, 기본 off). 전 항목 신규 학습 파라미터·zero-init 잔차·attn-bias·학습형 추론 게이트 0개(전부 손실/gradient/입력 레벨).
+
+**결선**: `mmpareto.py`(신규) + `p44.py`(신규) + `fusion.py`·`model.py`·`train_reliadino.py` 배선. configs `{jarvis-muses,hpca100-deliver}_P44_bmr.yaml` + `yeon-deliver_P44_bmr_smoke.yaml`.
+
+**검증**: `tools/smoke_p44.py`(CPU, 86 assert) 전건 PASS — all-off 시 baseline bitwise 동일, 충돌 목표쌍은 두 목표 모두 하강 방향으로 투영, KL gradient가 전 모달 브랜치 도달, coverage 마스크 ⊆ lidar 발자국, V-1 부재 픽셀 가중 정확히 0, tiny-ViT end-to-end 토글 전부 on에서 aux gradient가 3개 모달 LoRA 그룹 전부 도달·eval 결정론. **실데이터 학습 미기동**.
+
+**병합 후 통합 검증(2026-07-25)**: P43+P44+P45 동시-on forward/backward 유한, eval 결정론, `panoptic_inference()` 동작 PASS(develop 병합 35ddbe0 이후).
+
+**판정 게이트(사전등록)**: ep30 ① dMIoU(lidar) 0 근처→>1 ② CKA(img,lidar) ≥0.5 유지 ③ MUSES val ≥82.22 유지. fog 목표 = +2~5pt(P45 결합 시).
+
+---
+
 ## P38 — MaskQueryLite: Mask2Former-lite Query Head (2026-07-17)
 
 **상태**: **구현 완료 (학습 대기)**. 계보: P36 공정 레시피(`GATE`·`VETO`·`CALIB`·`ROUTER` on / `ATTN_BIAS`·`CONSISTENCY` off / `PHYSAUG` off / `DGFUSION_AUG` on) **동결** + Mask2Former-lite query head 추가. P37a(CEFR-Head)·P37b(ClassToken-lite-Learned)는 **off** — 깨끗한 1-변수 비교(P36 대비 변경점 = M2F head 단 하나)로 설계. config `configs/bengio-deliver_rgbdel_P38_m2f.yaml`(200ep, 768², bs2, 8-GPU 상정) / 스모크 `configs/yeon-deliver_rgbdel_P38_m2f_smoke.yaml`(2ep). 파일: `semseg/models/reliadino/m2f_head.py`(신규), `model.py`·`train_reliadino.py`(배선). 커밋 3bb2c41(develop 병합 tip 6d922bd).

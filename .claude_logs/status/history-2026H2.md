@@ -9,6 +9,15 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-25 — P43 PanopticDual + P44 BMR + P45 FogStyle 구현 완료, develop 병합
+
+- P43/P44/P45 구현 완료, develop 병합 35ddbe0(+config 3e3b54f). 제안 문서 = [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md)(§7 토론 반영 포함).
+- P43: `semseg/models/reliadino/panoptic_head.py`(MaskClsHead) + encoder.py multi-depth lateral(5/11/17) + model.py 배선, 독립 주손실 `L = L_pixel + λ(t)·L_mask`. 합성 스모크(`tools/smoke_p43.py`) 전건 PASS. PQ 실측은 MUSES panoptic GT 부재로 TODO.
+- P44: `mmpareto.py`(gradient 통합) + `p44.py`(mutual KL/coverage 마스킹/presence 재정규화/P45 fogstyle). 스모크(`tools/smoke_p44.py`) 86 assert PASS. 구현 기록 = [models/p44-bmr-implementation.md](../models/p44-bmr-implementation.md).
+- 병합 후 P43+P44+P45 동시-on 통합 검증 PASS. 학습0 검증 2건(`tools/analyze_router_coverage.py`)이 hpca100 GPU2/3에서 실행 중(별도 세션 회수 예정). 배치 = P43-MUSES가 hpca100 GPU2,3 첫 슬롯.
+
+---
+
 ### 2026-07-24 — P43~P45 CVPR SOTA 제안 등재 (딥리서치 6축 교차)
 
 - 멀티에이전트 딥리서치 6기 병렬(모달불균형/상호증류/fog/panoptic/condition-adaptive/SOTA지형) → [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md).
