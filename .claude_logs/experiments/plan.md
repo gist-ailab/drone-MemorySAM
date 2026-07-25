@@ -80,6 +80,15 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **P39.1-rank DELIVER resume** (yeon, RCA 대조군) | yeon GPU 5,6,7 (3090×3, 원 6장에서 축소) | 200 (07-22 16:10 SIGTERM 사망 @ep39 iter198/663, 원인 미상) | ~07-24 오전 (다음 eval ep40 기준, 1327it/ep·~1.5-2s/it 추정) | — | `outputs/ReliaDINO/yeon_deliver_rgbdel_P39_1_rank/DELIVER_ReliaDINO-ViTL16_idel/last_checkpoint.pth`(ep38)에서 AUTO_RESUME. SAVE_DIR을 `/SSDe/jemo_maeng/outputs/yeon-deliver_P39_1_rank_resume`로 이전(원본 20GB 복사, `/SSDb` 8G뿐이라 그대로 못 씀), config `configs/yeon-deliver_rgbdel_P39_1_rank_resume.yaml`(develop @1ba7f87→hub merge 7e655de). 실행 `openmmlab` env(timm 1.0.20) + `PYTHONPATH=<repo>/semseg/models/sam2` + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`(🔴 MMSS_SAM env timm이 0.4.12로 회귀해 DINOv3 못 빌드 — 07-22 07:03 로그는 정상 빌드했었음, 원인 미상 회귀). **기동검증 통과**: Epoch[39/200] 재개 확인(처음부터 아님)·iter 179→192 전진·GPU5,6,7 86-99%util·~20.9GB·에러 0. 🔴 **ep30 rank 게이트 raw 수치는 통과하나(`p391/rank lidar`=532.1≥15) 실제 인과기여(drop-lidar dMIoU, night 대리조건)=−0.78로 여전히 ~0/음** — 판정 보류, 상위 세션 검토 필요 |
 | **P42-MaskImg-f07 (FRAC 0.7)** (yeon, FRAC 스윕 완성) | yeon GPU 3,4 (3090×2 DDP) | 300 (ep30 조기게이트) | ep30 ~07-24 오전 (750it/ep·~1.2-2s/it 추정, 15-25min/ep) | **P0** | FRAC 스윕 0.3(jarvis)/0.5(hpca100)/**0.7(이 런)** 완성. base=`configs/hpca100-muses_rgbel_P42_maskimg.yaml`(FRAC 0.5) 복사 → `configs/yeon-muses_rgbel_P42_maskimg_f07.yaml`(FRAC 0.7, SAVE_DIR `/SSDe/jemo_maeng/outputs/yeon-muses_rgbel_P42_f07`, DATASET.ROOT yeon 경로, BATCH_SIZE 1). develop @bda6341→hub merge 8072101. 실행 = **정식 문서화된 방법**(`experiments/launch-runbook.md`) MMSS_SAM env + `PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34:.`(timm 1.0.24로 우회, sam2 불필요 — `train_reliadino.py`가 sam2 미import) + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. **기동검증 통과**: Epoch[1/300] iter 26→42/750 전진·GPU3,4 88-100%util·~17GB·loss 유한(10.67→9.22)·에러 0·config dump로 FRAC=0.7 확인. `p42_mask_rate` 로그는 EVAL_INTERVAL=2라 첫 eval(ep2) 전까지 미출력(다음 조회 시 확인) |
 
+## ⚡ 2026-07-25 즉시 배치 지시 (모니터링/학습 세션 필독 — P43/P44 준비 중)
+
+**서버 실측 (2026-07-25 recon)**: hpca100 **GPU2,3 유휴**(A100 40GB×2, 우리 프로세스 0) · jarvis = P39.1-MUSES **base 완주(val 82.03@ep224)** + seed2(GPU2-5)/seed5(GPU0-1) 진행 · yeon = P42-f07 진행(ep98, best 79.13@ep96) + P39.1 seed3/4 진행. ⚠️ **P42-f05(hpca100) 완주: best 80.85@ep124 = P38 82.22 −1.37** — 전역 마스킹 val 손실 신호(판정은 상위 세션 몫).
+
+1. **지금(07-25)**: hpca100 GPU2,3은 **학습0 검증 2건이 짧게 점유 중**(router/coverage 검증, ~1h 급, tmux `jemo:v_p38`/`v_p39`). 끝나면 즉시 반납됨.
+2. **검증 종료 후 첫 슬롯 = P43-MUSES** (`configs/hpca100-muses_rgbel_P43_pdual.yaml` — 병합 후 존재 예정, 2×A100이면 BS/accum 조정): 헤드라인(PQ 축) 제안이라 최우선. **P43/P44 코드가 develop에 병합·스모크 PASS 되기 전에는 launch 금지** — 병합 완료는 이 파일 갱신 + develop 커밋으로 공지됨.
+3. P43 병합 전에 GPU가 놀면 [[gpu-never-idle]] 규칙에 따라 **대기열 #1 P39.1-DELIVER(hpca100 분기, 미착수)** 또는 기존 런 재기동으로 점유 유지 가능(단, P43 준비되면 즉시 양보).
+4. P44-BMR은 P42-f07 판정 후 yeon/jarvis 슬롯(대기열 #11).
+
 ## 📋 대기열 (우선순위 순)
 
 | # | 실험 | 필요 자원 | 언제 | 근거 |
