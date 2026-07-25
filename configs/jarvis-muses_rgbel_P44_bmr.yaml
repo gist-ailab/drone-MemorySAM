@@ -137,8 +137,10 @@ MODEL:
     HARD_PIXEL_AUX:                # M-3 (2차 토글) — B-3 무이득 시 켠다
       ENABLE : false
       WEIGHT : 0.5
-    VALIDITY_RENORM:               # V-1 (§7-b) — 유일한 추론 경로 변경, 기본 off
-      ENABLE : false
+    VALIDITY_RENORM:               # V-1 (§7-b) — 검증 07-25로 기본 on 전환: lidar 가중이
+      # 커버리지 밖에서 오히려 높음(안 0.10~0.18 vs 밖 0.25~0.37 = uniform 퇴화) 실증.
+      # ablation은 eval 토글 p44_validity_off로 분리 (analysis/2026-07-25-router-coverage-verification.md)
+      ENABLE : true
       DILATE : 1
 
   P45:
