@@ -25,7 +25,7 @@ CONSOLE="$OUT/console_${TS}.log"
 echo "[run_cert] console + streamed inference -> $CONSOLE" >&2
 # tee the full live stream to a persistent, timestamped console log (in addition to
 # cert_eval's own inference_log.txt / cert_report.json / viz/ under $OUT).
-python -u certification/cert_eval.py \
+"${PYTHON:-python}" -u certification/cert_eval.py \
     --cfg configs/det/det_D1_vitsp_jarvis.yaml \
     --ckpt "$CKPT" --data-root "$DATA_ROOT" \
     --out "$OUT" --gpu "$GPU" "${@:4}" 2>&1 | tee "$CONSOLE"
