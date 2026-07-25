@@ -84,10 +84,10 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 **서버 실측 (2026-07-25 recon)**: hpca100 **GPU2,3 유휴**(A100 40GB×2, 우리 프로세스 0) · jarvis = P39.1-MUSES **base 완주(val 82.03@ep224)** + seed2(GPU2-5)/seed5(GPU0-1) 진행 · yeon = P42-f07 진행(ep98, best 79.13@ep96) + P39.1 seed3/4 진행. ⚠️ **P42-f05(hpca100) 완주: best 80.85@ep124 = P38 82.22 −1.37** — 전역 마스킹 val 손실 신호(판정은 상위 세션 몫).
 
-1. **지금(07-25)**: hpca100 GPU2,3은 **학습0 검증 2건이 짧게 점유 중**(router/coverage 검증, ~1h 급, tmux `jemo:v_p38`/`v_p39`). 끝나면 즉시 반납됨.
-2. **검증 종료 후 첫 슬롯 = P43-MUSES** (`configs/hpca100-muses_rgbel_P43_pdual.yaml` — 병합 후 존재 예정, 2×A100이면 BS/accum 조정): 헤드라인(PQ 축) 제안이라 최우선. **P43/P44 코드가 develop에 병합·스모크 PASS 되기 전에는 launch 금지** — 병합 완료는 이 파일 갱신 + develop 커밋으로 공지됨.
-3. P43 병합 전에 GPU가 놀면 [[gpu-never-idle]] 규칙에 따라 **대기열 #1 P39.1-DELIVER(hpca100 분기, 미착수)** 또는 기존 런 재기동으로 점유 유지 가능(단, P43 준비되면 즉시 양보).
-4. P44-BMR은 P42-f07 판정 후 yeon/jarvis 슬롯(대기열 #11).
+1. 🟢 **P43/P44/P45 develop 병합 완료 = launch GO (07-25, commit 35ddbe0)**: 합성 스모크 P43 전건 PASS + P44 86 assert PASS + **P43+P44 동시-on 상호작용 검사 PASS**(aux 5종 공존·grad 유한·eval 결정론·panoptic_inference 동작). 서버는 `git fetch local && git merge develop`으로 수령.
+2. **첫 슬롯 = P43-MUSES on hpca100 GPU2,3** (`configs/hpca100-muses_rgbel_P43_pdual.yaml`, A100 BS2·accum4=eff16): 검증 2건(tmux `jemo:v_p38`/`v_p39`, ~1h)이 끝나는 즉시. **순서 = ① 실데이터 2ep 스모크를 같은 GPU에서 먼저**(EPOCHS만 2로 오버라이드 또는 로그 초반 2ep 검증으로 갈음 — p43_mask_loss 유한·mask_rate 로그·OOM 없음 확인) **→ ② 본학습 200ep**. 기동검증 기준 = iteration 전진·전 GPU util>0·에러 0·`train/p43_mask_loss` 유한. ep30 게이트(사전등록) = PQ_thing>0 & thin-class −1pt 이내 & 쿼리 non-empty(제안 §2).
+3. **P44-BMR**(`configs/jarvis-muses_rgbel_P44_bmr.yaml`)은 jarvis P39.1 seed 런 종료 슬롯 또는 P42-f07 판정 후. ⚠️ **yeon GPU3,4는 user 예약(2026-07-25, 학습 배치 금지 — [[yeon-gpu34-reserved]], gpu-never-idle보다 우선)** — P42-f07(기존 런)이 쓰는 중이나 신규 배치는 금지.
+4. ⚠️ P43 MUSES **PQ 실측은 panoptic GT 부재로 아직 불가**(gt_semantic만 보유) — 학습은 semantic mask-cls 모드로 진행 가능, PQ는 MUSES 공식 panoptic GT 다운로드 + 로더 후속(TODO, 별도 등재). mIoU 게이트(val ≥82.22 유지)는 기존 도구로 즉시 측정 가능.
 
 ## 📋 대기열 (우선순위 순)
 
