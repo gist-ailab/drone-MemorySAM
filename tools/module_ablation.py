@@ -18,6 +18,9 @@ TOGGLES (attr가 없으면 자동 skip — 어느 P 버전이든 안전):
   temp_off        core.rbma_log_temp ← 0        (P31 보정 temperature 제거)
   cons_off        core.lambda_cons ← 0          (P31 consistency 2차 bias 제거)
   amf_uniform     core.amf_mode ← 'uniform'     (출력 융합 uniform으로)
+  p44_validity_off  fusion.p44_validity_renorm ← False  (P44-V1 presence 재정규화 제거)
+                  ⚠️ P44의 나머지(B-1 gradient·B-2 손실·B-3 마스킹·P45)는 학습 전용이라
+                     eval 토글이 없다 — 그 효과는 학습된 가중치에 이미 들어 있다.
 
 Usage:
   python tools/module_ablation.py --cfg <model.yaml> --model_path <ckpt> \
@@ -97,6 +100,13 @@ def make_toggles(core):
         fus_toggle('p34_veto_off', 'veto_floor', False)                # veto floor
         fus_toggle('p34_calib_off', 'calibrate', False)                # temperature 보정
         fus_toggle('p36_router_off', 'router_alpha', 0.0, is_param=True)  # [P36] router residual 제거
+        if getattr(fus, 'p44_validity_renorm', False):
+            # [P44-V1] presence 재정규화 = P44에서 **추론 경로에 걸리는 유일한**
+            # 항목이라 A/B 토글이 의미를 갖는다. B-1(gradient 통합)·B-2(peer 증류
+            # 손실)·B-3(입력 마스킹)·P45(style 일관성)는 전부 **학습 전용**이라
+            # eval 토글이 정의상 Δ=0 → 등록하지 않는다(07-21 감사: 죽은 토글 행이
+            # "기여 없음" 오판을 만든다).
+            fus_toggle('p44_validity_off', 'p44_validity_renorm', False)
         cefr = getattr(fus, 'cefr', None)
         if cefr is not None and hasattr(cefr, 'a'):
             def _cefr_apply():

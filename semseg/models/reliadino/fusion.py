@@ -33,6 +33,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from . import p44 as P44
+
 EPS = 1e-6
 
 
@@ -93,14 +95,20 @@ class PerClassRouter(nn.Module):
             nn.init.zeros_(h[-1].weight)
             nn.init.zeros_(h[-1].bias)
 
-    def forward(self, feats: List[torch.Tensor], rel_cal: torch.Tensor):
+    def forward(self, feats: List[torch.Tensor], rel_cal: torch.Tensor,
+                presence: Optional[torch.Tensor] = None):
         """feats: m x (B, dim, h, w) PRE-fusion features; rel_cal: (m, B, 1, h, w)
         calibrated self-entropy reliability (detached by the caller).
+        presence: [P44-V1] (m,B,1,h,w) 결정론적 데이터 존재 마스크 (None이면 미적용).
         Returns (w: (m, B, num_classes, h, w), reward: scalar)."""
         logits = torch.stack(
             [self.heads[i](feats[i]).float() for i in range(self.m)], dim=0)
         logits = logits + self.anchor_lambda * rel_cal      # broadcast over classes
         w = F.softmax(logits, dim=0)                        # over modalities
+        if presence is not None:
+            # [P44-V1] 데이터가 없는 모달에는 라우팅 0 — 정규화는 present 모달 위에서.
+            # (학습 파라미터 0. 반증된 '학습형 품질 게이트'와 무관 — 부재는 추정이 아니다.)
+            w = P44.renormalize_over_present(w, presence)
         ent_pix = -(w * (w + 1e-8).log()).sum(dim=0).mean()
         if self.reg_mode == 'decisive':
             w_bar = w.mean(dim=(1, 3, 4))                   # (m, K) marginal
@@ -320,7 +328,22 @@ class ReliabilityGatedFusion(nn.Module):
                  cefr_lambda2_warmup_ep: int = 10,
                  cefr_reg_lambda: float = 0.01,
                  cefr_entropy_floor: float = 0.5,
-                 cefr_hinge_reg: float = 1.0):
+                 cefr_hinge_reg: float = 1.0,
+                 # [P44-B2] peer 상호증류 (per-modal aux logit 대칭 KL + 관계형 대응).
+                 # 손실만 추가 — 모듈/파라미터 0, 추론 경로 불변. Default OFF.
+                 p44_mutual_kl: bool = False,
+                 p44_mkl_w: float = 0.5,
+                 p44_mkl_t: float = 1.0,
+                 p44_mkl_warmup_ep: int = 10,
+                 p44_rel_corr: bool = False,
+                 p44_rc_w: float = 0.1,
+                 p44_rc_pairs: int = 2048,
+                 p44_rc_mode: str = 'mse',
+                 p44_rc_warmup_ep: int = 10,
+                 # [P44-V1] presence 재정규화 (결정론적, 추론에도 적용). Default OFF.
+                 p44_validity_renorm: bool = False,
+                 # [P44-M3/P45] 학습 시 grad-attached aux logit을 model이 재사용
+                 p44_export_train_aux: bool = False):
         super().__init__()
         self.num_modalities = num_modalities
         self.num_classes = num_classes
@@ -363,6 +386,20 @@ class ReliabilityGatedFusion(nn.Module):
                 lambda2_warmup_ep=cefr_lambda2_warmup_ep,
                 reg_lambda=cefr_reg_lambda, entropy_floor=cefr_entropy_floor,
                 hinge_reg=cefr_hinge_reg)
+
+        # [P44-B2/V-1/M-3] 전부 손실·정규화 레벨 (nn.Parameter 0개 추가)
+        self.p44_mutual_kl = bool(p44_mutual_kl)
+        self.p44_mkl_w = float(p44_mkl_w)
+        self.p44_mkl_t = float(p44_mkl_t)
+        self.p44_mkl_warmup_ep = int(p44_mkl_warmup_ep)
+        self.p44_rel_corr = bool(p44_rel_corr)
+        self.p44_rc_w = float(p44_rc_w)
+        self.p44_rc_pairs = int(p44_rc_pairs)
+        self.p44_rc_mode = str(p44_rc_mode)
+        self.p44_rc_warmup_ep = int(p44_rc_warmup_ep)
+        self.p44_validity_renorm = bool(p44_validity_renorm)
+        self.p44_export_train_aux = bool(p44_export_train_aux)
+        self._train_aux_logits = None     # 학습 시 grad-attached aux logits (opt-in)
 
         self._last_rel_auroc = None
         self._last_rel_stats = None
@@ -428,9 +465,15 @@ class ReliabilityGatedFusion(nn.Module):
         return rel_cal, corr_veto, b_cons
 
     # ── gate (P33-v2 M3: soft + hinge-entropy + training-free veto floor) ────
-    def _gate(self, rel_cal: torch.Tensor, corr_veto: torch.Tensor):
+    def _gate(self, rel_cal: torch.Tensor, corr_veto: torch.Tensor,
+              presence: Optional[torch.Tensor] = None):
         m = rel_cal.shape[0]
         w = F.softmax(rel_cal / self.gate_tau, dim=0)          # (m,B,1,h,w)
+        if presence is not None:
+            # [P44-V1] 데이터 부재 픽셀의 가중을 정확히 0으로 만들고 present
+            # 모달 위에서 재정규화 (veto floor보다 먼저 — veto는 학습-무관
+            # '값' 판정이고 이건 '존재' 판정이라 상위 사실이다).
+            w = P44.renormalize_over_present(w, presence)
         if self.veto_floor:
             with torch.no_grad():
                 low = (corr_veto < self.veto_thresh).float()   # extreme-low corr_veto
@@ -494,8 +537,10 @@ class ReliabilityGatedFusion(nn.Module):
     # ── forward ──────────────────────────────────────────────────────────────
     def forward(self, feats: List[torch.Tensor],
                 gt_mask: Optional[torch.Tensor] = None,
-                img_mask: Optional[torch.Tensor] = None,   # [P42-M1/발견C] masked img 샘플 (B,)
-                img_idx: int = -1                          # img 모달 인덱스
+                img_mask: Optional[torch.Tensor] = None,   # [P42-M1/발견C] (B,) 또는 [P44-B3] (B,1,H,W)
+                img_idx: int = -1,                         # img 모달 인덱스
+                presence: Optional[torch.Tensor] = None,   # [P44-V1] (m,B,1,h,w)
+                epoch: int = 0                             # [P44-B2] warmup 게이팅용
                 ) -> Tuple[torch.Tensor, dict]:
         m = len(feats)
         assert m == self.num_modalities, f"got {m} modalities, expected {self.num_modalities}"
@@ -504,6 +549,10 @@ class ReliabilityGatedFusion(nn.Module):
 
         # 1) per-modal aux decode (grad-attached: trains decoders + T)
         aux_logits = [self.aux_decoders[i](feats[i]) for i in range(m)]
+        # [P44-M3/P45] model이 같은 텐서를 재사용하도록 opt-in 스태시 (재계산 방지).
+        self._train_aux_logits = (aux_logits if (self.training
+                                                 and self.p44_export_train_aux)
+                                  else None)
 
         # 2) reliability signals
         rel_cal, corr_veto, b_cons = self._compute_signals(aux_logits)
@@ -535,7 +584,7 @@ class ReliabilityGatedFusion(nn.Module):
 
         # 4) output fusion: competence gate (calibrated self-entropy, veto floor)
         if self.gate_enable and m >= 2:
-            wgt, gate_ent = self._gate(rel_cal, corr_veto)
+            wgt, gate_ent = self._gate(rel_cal, corr_veto, presence)
             fused = sum(wgt[i] * fused_tokens[i] for i in range(m))
             if gate_ent is not None:
                 aux['gate_entropy'] = gate_ent
@@ -549,7 +598,7 @@ class ReliabilityGatedFusion(nn.Module):
         #     PRE-fusion feats; routed logits reweight the per-modal aux logits.
         #     The model adds them to the head output scaled by router_alpha.
         if self.router_enable and m >= 2:
-            w_route, route_reward = self.router(feats, rel_cal.detach())
+            w_route, route_reward = self.router(feats, rel_cal.detach(), presence)
             aux['routed_logits'] = sum(
                 w_route[i] * aux_logits[i].float() for i in range(m))
             self._last_router_mean = self.router._last_w_mean
@@ -563,6 +612,9 @@ class ReliabilityGatedFusion(nn.Module):
         #     are DETACHED here (training-free, P31 convention); the calibrated
         #     per-modal posterior reuses the aux decoders + temperatures T_i.
         if self.cefr_enable and m >= 2:
+            # ⚠️ [P44-V1] presence 재정규화는 gate/router에만 적용된다. CEFR은
+            # P44 config에서 전부 off(반증 계열)이므로 범위 밖 — CEFR을 되살릴
+            # 일이 생기면 cefr.forward의 softmax에도 같은 재정규화가 필요하다.
             log_post = None
             if self.cefr.anchor_posterior:
                 with torch.no_grad():
@@ -585,15 +637,42 @@ class ReliabilityGatedFusion(nn.Module):
             for i, al in enumerate(aux_logits):
                 lg = F.interpolate(al.float(), size=(Ht, Wt), mode='bilinear',
                                    align_corners=False)
-                if img_mask is not None and i == img_idx:
+                if img_mask is not None and i == img_idx and img_mask.dim() == 1:
                     # [발견C] masked img 샘플 제외 — 0-입력에서 GT를 예측하도록 img 브랜치를
                     # 학습시키는 오염(위치기반 장면 prior 환각) 방지. 비마스킹 샘플만 CE.
                     keep = (img_mask < 0.5).nonzero(as_tuple=True)[0]
                     ce.append(F.cross_entropy(lg[keep], gt_ds[keep], ignore_index=255)
                               if keep.numel() > 0 else lg.new_zeros(()))
+                elif img_mask is not None and i == img_idx:
+                    # [P44-B3] 국소 마스킹판 발견C — **지워진 영역의 픽셀만** ignore.
+                    # 같은 샘플의 살아 있는 영역은 정상 학습된다(전역 제외보다 신호 보존).
+                    reg = F.interpolate(img_mask.float(), size=(Ht, Wt),
+                                        mode='nearest')[:, 0] > 0.5
+                    gt_i = torch.where(reg, torch.full_like(gt_ds, 255), gt_ds)
+                    ce.append(F.cross_entropy(lg, gt_i, ignore_index=255)
+                              if bool((gt_i != 255).any()) else lg.new_zeros(()))
                 else:
                     ce.append(F.cross_entropy(lg, gt_ds, ignore_index=255))
             aux['aux_ce'] = sum(ce) / len(ce)
             if self.calibrate:
                 aux['rbma_cal_loss'] = self._calibration_loss(aux_logits, gt_mask)
+            # [P44-B2] peer 상호증류: 강한 브랜치(img)의 사후분포를 약한 브랜치가
+            # 따라가고 **그 역도 성립**(teacher 없음, stop-grad 없음) → 약한 모달로
+            # gradient가 들어간다. GT부터 맞춘 뒤 켜도록 WARMUP_EP 전에는 정확히 0.
+            if self.p44_mutual_kl and m >= 2 and epoch >= self.p44_mkl_warmup_ep:
+                pw = None
+                if img_mask is not None and img_idx >= 0 and img_mask.dim() > 1:
+                    # 지워진 영역의 img 예측은 쓰레기 — 그 픽셀은 쌍에서 제외
+                    reg16 = F.interpolate(img_mask.float(), size=(h, w),
+                                          mode='nearest')
+                    pw = [None] * m
+                    pw[img_idx] = (reg16 < 0.5).float()
+                elif img_mask is not None and img_idx >= 0:
+                    pw = [None] * m
+                    pw[img_idx] = (img_mask < 0.5).float().view(-1, 1, 1, 1)
+                aux['p44_mutual_kl'] = self.p44_mkl_w * P44.mutual_kl(
+                    aux_logits, temperature=self.p44_mkl_t, pixel_weights=pw)
+            if self.p44_rel_corr and m >= 2 and epoch >= self.p44_rc_warmup_ep:
+                aux['p44_rel_corr'] = self.p44_rc_w * P44.relational_correspondence(
+                    feats, num_pairs=self.p44_rc_pairs, mode=self.p44_rc_mode)
         return fused, aux

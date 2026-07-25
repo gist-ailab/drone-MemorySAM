@@ -6,6 +6,7 @@
 |------|----------|-----------|
 | [arch-evolution.md](arch-evolution.md) | P8~P31 + SAM3-RBMA 모델 상세(forward/모듈/한계/결과) — **아키텍처 canonical** | 02 |
 | [figures-ascii.md](figures-ascii.md) | 논문/발표용 ASCII 아키텍처 피규어. ⚠️ P26까지만 (P27+ 미작성) | 08 |
+| [p44-bmr-implementation.md](p44-bmr-implementation.md) | P44-BMR(MMPareto·peer증류·커버리지 마스킹·presence) + P45-FogStyle 구현 기록 — 결선 위치·DDP/AMP 결정·스모크 | — |
 
 ## explain/ — 버전별 설명 노트 (구 `outputs_model_explain/`, 사본)
 

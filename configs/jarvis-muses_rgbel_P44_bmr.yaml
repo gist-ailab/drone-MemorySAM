@@ -1,0 +1,228 @@
+# ═══ P44-BMR (Balanced Modality Rebalance) × MUSES 3모달 (jarvis) ═══
+# 설계: decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md §3 (+§7-b coverage-aware)
+# 진단: drop-modality dMIoU(lidar,event)≈0 = **비RGB 미사용**(img 과지배) → img가 fog로
+#   열화하면 폴백이 없어 붕괴(fog 62.67 vs clear 75.85). lidar엔 정보가 있다(AnySeg
+#   lidar-only 32.13, 리더보드 cam+lidar fog 74.12). = 저정보가 아니라 **미사용**.
+# 처방(전부 loss/gradient/입력 레벨 — 키1 준수, 모듈 추가 0, 추론 경로 불변):
+#   B-1 MMPareto(2405.17730): 주 CE와 per-modal aux CE의 gradient를 단순 합산이 아니라
+#       Pareto 방향(내적≥0) + **크기 복원**으로 통합. seg 검증된 유일 계열(OGM/AGM/PMR은
+#       재현서에서 uniform baseline 미달) — 주 변수.
+#   B-2 peer 상호증류(DML/EQUISeg 2509.24505): per-modal aux logit 간 대칭 KL(teacher·
+#       stop-grad 없음, ep10부터) + 관계형 대응(토큰쌍 cos-sim, feature copy 아님).
+#   B-3 커버리지 국소 마스킹(MCRM 2603.17705 + §7-b): P42의 전역 img-drop을 **영역 단위**로
+#       승격하되 영역을 **같은 샘플의 lidar 리턴 패턴**에서 샘플링 → "img 부재/lidar 존재"
+#       공간 폴백을 실제 커버리지 분포 위에서 연습. 학습 전용, 추론은 항상 full-modality.
+# 베이스 레시피 = jarvis-muses_rgbel_P39_1_rank.yaml(P39.1). 단 **PHYSAUG off**(P44 효과를
+#   레시피 변수와 분리 — 키6: physaug가 아키텍처보다 큰 단일 변수), EPOCHS 200.
+# 게이트(사전등록): ep30 ① dMIoU(lidar) ≈0→>1 ② p44/cos_lora_lidar 음수→양수 전환
+#   ③ CKA(img,lidar) ≥0.5 유지 / 완주 val ≥82.22 & fog ≥68. 미달 시 kill.
+# 🔴 GRADIENT_CHECKPOINT: false (encoder active_modality 버그) · radar 미포함(ISSUE-025).
+#   torchrun --nproc_per_node=<N> train_reliadino.py --cfg <this>
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_muses_rgbel_P44_bmr'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5            # per-modal deep-sup = B-1의 "unimodal" 목표
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # P39.1 레시피 유지 (fog_night 유해 실증 07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false
+    LAMBDA : 0.1
+
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }
+  CLASS_TOKEN: { ENABLE: false }
+
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ── [P44-BMR] 신규 변수 ────────────────────────────────────────────────
+  P44:
+    MMPARETO:                      # B-1 (주 변수) — trainer 레벨
+      ENABLE    : true
+      INTERVAL  : 1                # 매 optimizer step 적용 (탈출 밸브: 2,4…)
+      MAGNITUDE : sum_norm         # 충돌 시 ‖g_main‖+‖g_aux‖로 크기 복원 (논문 규칙)
+    MUTUAL_KL:                     # B-2 peer 상호증류
+      ENABLE      : true
+      WEIGHT      : 0.5            # AUX_CE_WEIGHT와 동급 — GT 항을 넘지 않게
+      TEMPERATURE : 1.0
+      WARMUP_EP   : 10             # 그 전에는 정확히 0 (먼저 GT부터 맞춘다)
+    REL_CORR:                      # B-2 관계형 대응 (CKA 붕괴 방지)
+      ENABLE    : true
+      WEIGHT    : 0.1
+      PAIRS     : 2048
+      MODE      : mse
+      WARMUP_EP : 10
+    LOCAL_MASK:                    # B-3 (P42 승격)
+      ENABLE      : true
+      MODE        : coverage       # global(=P42) | rect | coverage
+      FRAC        : 0.5
+      WARMUP_EP   : 20
+      AREA_RATIO  : [0.1, 0.5]     # rect 모드 / coverage 폴백에서 사용
+      NUM_REGIONS : [1, 3]
+      COVERAGE_DILATE : 31         # sparse lidar 투영점(~6.7%)을 blob으로 팽창
+      BLOB_GRID   : 16
+      BLOB_P      : 0.5
+    HARD_PIXEL_AUX:                # M-3 (2차 토글) — B-3 무이득 시 켠다
+      ENABLE : false
+      WEIGHT : 0.5
+    VALIDITY_RENORM:               # V-1 (§7-b) — 유일한 추론 경로 변경, 기본 off
+      ENABLE : false
+      DILATE : 1
+
+  P45:
+    FOGSTYLE:                      # 보조 토글 (P44 위에 합성)
+      ENABLE       : false
+      PROB         : 0.5
+      SIGMA        : 0.5
+      WEIGHT       : 0.1
+      DETACH_CLEAN : true
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/SSDb/jemo_maeng/dset/MUSES'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : false              # 🔴 P44 효과를 레시피 변수와 분리 (키6)
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # jarvis 4090 24GB. accum=ceil(16/(BS×world)) → eff-batch 16.
+                                    # ⚠️ B-1 on이면 backward가 2회라 스텝 시간 ~1.6~1.8×.
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16          # B-1의 gradient 산술은 fp32 파라미터 위에서 (scaler 불필요)
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
