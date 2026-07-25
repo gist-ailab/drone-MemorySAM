@@ -125,8 +125,8 @@ P42(무조건 img 마스킹 FRAC)는 이 계열의 crude 1호기다. P42 결과�
 
 **(c) GtA 무시 결정 (user).** 융합 연구로서 비교군 = 융합 방법. 그 경우 **mIoU 융합 1위는 DGFusion(79.49)이 아니라 MM-SAM-Adapter 81.07(RGB+L, frozen-SAM)** — 같은 frozen-VFM 레인의 무조건화 평융합이라 리뷰의 실제 비교 대상. 우리 79.025에서 +2pt라 P44 fog 회복만으로는 빠듯 → PQ 축(P43) 병행 구조는 GtA 제외 후에도 유효(PQ 보드에 MM-SAM-Adapter 부재).
 
-**학습0 검증 2건 (구현 착수와 병행, 분석 세션 위임 가능)**:
-1. **per-class × drop-modality 매트릭스 + router 가중 클래스별 히트맵** (P38/P39 ckpt) — "클래스마다 실제 다른 모달을 골랐나, 전부 RGB에 비율만 다른가" 판별 → (a) 서사 확정.
-2. **커버리지 안/밖 router 가중 대조** (MUSES lidar 유효/무반환 픽셀 분할) — 커버리지 밖에서 lidar 가중이 안 떨어져 있으면 (b) 실패 실재 = validity mask 필수 근거.
+**학습0 검증 2건 — ✅ 완료·판정 (2026-07-25, [analysis/2026-07-25-router-coverage-verification.md](../experiments/analysis/2026-07-25-router-coverage-verification.md))**:
+1. **V1**: "클래스별 모달 특화" 강한 해석 **기각**(clear 비RGB 인과 기여 미미) · "전역 오배분 방지+조건 적응" 약한 해석 **실증**(비RGB argmax 클래스 clear 4→fog 13). 🔴 **가중↔인과 괴리 발견**(fog 13클래스 비RGB argmax인데 drop-lidar +0.3) = P44 학습시-강제 전제의 독립 재확인.
+2. **V2**: 🔴 **§7-b 실패 확정 — lidar 가중이 커버리지 밖에서 오히려 높음**(안 0.10~0.18 vs 밖 0.25~0.37 ≈ uniform 퇴화) → **V-1 presence 재정규화를 P44 본학습 config 기본 on으로 전환**(eval 토글로 ablation 분리).
 
 - 근거 arXiv (에이전트 검증): 2603.25398(PMT) · 2112.01527 · 2107.06278 · 2211.06220 · 2203.16527 · 2308.03747 · 2405.17730(MMPareto) · 2203.15332 · 2308.07686 · 2211.07089 · 2509.24505(EQUISeg) · 2603.17705(MoBaNet/MCRM) · 2411.17141(AnySeg) · 2508.03060(CHARM) · 2505.12861 · 2204.01587(FIFO) · 2103.02370 · 2212.09068 · 2312.04265(Rein) · 2509.10408(MM-SAM-Adapter) · 2509.09828(DGFusion) · 2410.10791(CAFuser) · 2401.12761(MUSES) · 2508.16408(SAMFusion) · 2410.03010 · 2307.14126 · 2606.16639 · 2604.12319 · 2405.09321 · 2311.10707.
