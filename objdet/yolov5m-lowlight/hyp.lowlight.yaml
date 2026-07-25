@@ -1,0 +1,39 @@
+# YOLOv5m low-light hyperparameters (based on hyp.scratch-low.yaml)
+# TRAIN-ONLY changes vs stock; the model architecture is untouched (i.MX-safe).
+# Deltas from stock hyp.scratch-low are marked  <-- .
+
+lr0: 0.01            # initial LR (SGD)
+lrf: 0.01            # final OneCycle LR = lr0*lrf
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 3.0
+warmup_momentum: 0.8
+warmup_bias_lr: 0.1
+
+box: 0.05            # box loss gain (EIoU when YOLO_EIOU=1; same gain)
+cls: 0.5             # cls loss gain
+cls_pw: 1.0          # cls BCE positive_weight
+obj: 1.0             # obj loss gain
+obj_pw: 1.0          # obj BCE positive_weight
+iou_t: 0.20          # IoU training threshold
+anchor_t: 4.0        # anchor-multiple threshold
+fl_gamma: 1.5        # <-- focal loss on cls+obj (0.0 stock): hard night examples / imbalance
+
+# --- colour jitter: keep modest; night_aug.py owns the darkening (avoid double) ---
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.3           # <-- reduced from 0.4: dark-tail handled by night-aug
+
+# --- geometry (unchanged) ---
+degrees: 0.0
+translate: 0.1
+scale: 0.5
+shear: 0.0
+perspective: 0.0
+flipud: 0.0
+fliplr: 0.5
+
+# --- mixing: help rare classes (Casualties, Landing Markers) & regularise ---
+mosaic: 1.0
+mixup: 0.1           # <-- 0.0 stock
+copy_paste: 0.1      # <-- 0.0 stock: paste rare-class instances across scenes
