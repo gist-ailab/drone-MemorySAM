@@ -151,7 +151,9 @@ class FrozenViTEncoder(nn.Module):
                  img_size: int = 1024,
                  num_modalities: int = 4,
                  lora_r: int = 8,
-                 lora_alpha: Optional[float] = None):
+                 lora_alpha: Optional[float] = None,
+                 tap_layers: Optional[Sequence[int]] = None,
+                 num_taps: int = 0):
         super().__init__()
         import timm  # local import: keeps semseg.models importable without timm
 
@@ -180,6 +182,33 @@ class FrozenViTEncoder(nn.Module):
         # register so .parameters()/.state_dict() see the adapters exactly once
         # (they already live under backbone.blocks[k].attn.qkv — nothing extra needed;
         # self.lora_layers is a plain python list on purpose).
+
+        # [P43-T2] PMT-style multi-depth lateral taps. Forward HOOKS (not a
+        # re-implemented block loop) so `forward_features` — with its
+        # backbone-specific pos-embed/RoPE/norm handling — stays the single
+        # source of truth and the no-tap path is bit-identical. Hooks are
+        # registered only when taps are requested.
+        self.tap_layers: List[int] = []
+        self.last_taps: Optional[List[torch.Tensor]] = None
+        self.collect_taps = True     # model flips this off when P43.LATERAL is ablated
+        self._tap_buf: dict = {}
+        n = len(self.backbone.blocks)
+        if tap_layers:
+            self.tap_layers = sorted({int(t) % n for t in tap_layers})
+        elif num_taps > 0:
+            # evenly spaced over the depth, excluding the last block (whose
+            # output forward_features already returns): 24 blocks, 3 taps ->
+            # [5, 11, 17].
+            self.tap_layers = sorted({
+                max(0, min(n - 2, round((i + 1) * n / (num_taps + 1)) - 1))
+                for i in range(num_taps)})
+        for j, li in enumerate(self.tap_layers):
+            self.backbone.blocks[li].register_forward_hook(self._tap_hook(j))
+
+    def _tap_hook(self, slot: int):
+        def hook(_module, _inp, out):
+            self._tap_buf[slot] = out[0] if isinstance(out, tuple) else out
+        return hook
 
     @staticmethod
     def _create(timm, name, fallback, pretrained, img_size):
@@ -231,11 +260,24 @@ class FrozenViTEncoder(nn.Module):
         Wp = (W // self.patch) * self.patch
         if (Hp, Wp) != (H, W):  # patch14 fallback: round to patch multiple
             x = F.interpolate(x, size=(Hp, Wp), mode='bilinear', align_corners=False)
+        self.last_taps = None
+        self._tap_buf.clear()
         tokens = self.backbone.forward_features(x)
+        h, w = Hp // self.patch, Wp // self.patch
+        if self.tap_layers and self.collect_taps:
+            self.last_taps = [self._to_map(self._tap_buf[j], h, w)
+                              for j in range(len(self.tap_layers))]
+        self._tap_buf.clear()
         if tokens.dim() == 4:  # some timm models return NHWC maps with dynamic_img_size
             return tokens.permute(0, 3, 1, 2).contiguous()
         tokens = tokens[:, self.num_prefix_tokens:]
-        h, w = Hp // self.patch, Wp // self.patch
         B, N, C = tokens.shape
         assert N == h * w, f"token count {N} != grid {h}x{w}"
         return tokens.transpose(1, 2).reshape(B, C, h, w)
+
+    def _to_map(self, t: torch.Tensor, h: int, w: int) -> torch.Tensor:
+        """Block output (B,N,C) or (B,h,w,C) -> (B,C,h,w), prefix tokens dropped."""
+        if t.dim() == 4:
+            return t.permute(0, 3, 1, 2).contiguous()
+        t = t[:, t.shape[1] - h * w:]      # drops prefix (cls/reg) tokens, if any
+        return t.transpose(1, 2).reshape(t.shape[0], -1, h, w)

@@ -152,6 +152,19 @@ def make_toggles(core):
             T[name] = apply
         m2f_toggle('p39_modalsrc_off', 'use_modal_src', False)  # V2 -> fused-only
         m2f_toggle('p39_anchored_off', 'anchored', False)       # V3 -> free queries only
+
+    # [P43] PanopticDual. LATERAL feeds the shared trunk -> a real semantic Δ.
+    # The mask-cls head, by design, does NOT touch the semantic logits (it is an
+    # independent primary loss), so `p43_m2f_off` can only move mIoU when the
+    # run is configured to decode semantics from the queries. Registering it
+    # unconditionally would print a guaranteed Δ=0 row and be misread as "dead
+    # module" — the exact false positive this tool warns about — so it is
+    # registered only when the head is actually on the eval semantic path.
+    if getattr(core, 'p43_lateral', None) is not None:
+        attr_toggle('p43_lateral_off', 'p43_lateral_off', True)
+    if (getattr(core, 'p43', None) is not None
+            and str(getattr(core, 'p43_sem_source', 'pixel')) != 'pixel'):
+        attr_toggle('p43_m2f_off', 'p43_m2f_off', True)
     return T
 
 

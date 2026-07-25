@@ -6,7 +6,39 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-07-21
+> 최종 업데이트: 2026-07-25
+
+## P43 — PanopticDual: 독립 주손실 mask-classification 헤드 (2026-07-25)
+
+**상태**: **구현 완료 (학습 대기)**. 제안 = [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md) §2. 파일: `semseg/models/reliadino/panoptic_head.py`(신규 `MaskClsHead`), `encoder.py`(블록 tap 훅), `model.py`·`train_reliadino.py`(배선), `tools/module_ablation.py`(토글), `tools/smoke_p43.py`(신규 CPU 스모크). configs: `jarvis-muses_rgbel_P43_pdual.yaml` / `hpca100-deliver_rgbdel_P43_pdual.yaml` / `yeon-deliver_rgbdel_P43_pdual_smoke.yaml`.
+
+**동기**: MUSES mIoU 보드는 융합 방법에게 죽은 축(1위 GtA 82.39 카메라단독, 2위 MM-SAM-Adapter 81.07). **PQ가 유일한 현실적 SOTA 축**인데(DGFusion 61.03 / CAFuser 59.70 / M2F baseline 53.60, frozen-VFM 참가자 0) 우리 per-pixel head는 PQ 산출이 구조적으로 불가.
+
+**P38·P30과 무엇이 다른가 (이 설계의 전부)**:
+
+| | 병합 방식 | 결과 |
+|---|---|---|
+| P30 | query decoder가 conv head를 **대체** | 소물체 붕괴 |
+| P38 | `logits + β·sem_q`, β **zero-init** | 추론 no-op(β 0.13 정체), off Δ +0.04~0.12 (실패-키 1) |
+| **P43** | **잔차 없음** — 두 헤드가 각자 주손실 | `L = L_pixel + λ(t)·L_mask`, 공유는 SimpleFPN 트렁크뿐 |
+
+pixel logits에 더하지도, 게이트하지도, 대체하지도 않는다. 스모크가 이를 assert한다: mask 손실만 backward하면 pixel head(`head.cls`, `head.fuse`) grad = **정확히 0**이고, pixel 손실만 backward하면 query decoder grad = **정확히 0**. 두 손실이 만나는 유일한 지점은 공유 SimpleFPN·fusion·LoRA다.
+
+**Head B 구조** (Mask2Former 2112.01527): N=100 learned query가 SimpleFPN {1/32,1/16,1/8} 레벨을 **round-robin**(layer i ↔ level i%3, coarse first)으로 masked cross-attn. 매 layer 공유 cls(K+1)/mask-embed head 적용 = deep supervision. attn mask는 **현재 layer의 공유-head 예측**에서 생성(P37b `mask_proj` 무-gradient 버그 구조적 배제). mask = mask_embed · `mask_feat_proj(1/4 SimpleFPN 레벨)` — pixel head의 내부 feature가 아니라 **트렁크 레벨을 직접** 읽는다. 손실 = Hungarian + CE(no-obj 0.1) + point-sampled BCE/Dice(2/5/5), **PointRend importance sampling**(uniform 매칭 / oversample 3× → 불확실 75% + uniform 25% 손실). 타깃 = MaskFormer semantic 모드(2107.06278 §3.3, 이미지에 존재하는 클래스마다 이진 마스크 1장) — **지금 있는 semantic GT만으로 학습된다**.
+
+**λ 스케줄**: `λ(t) = LAMBDA·(0.1 + 0.9·min(1, ep/LAMBDA_WARMUP_EP))`, 기본 LAMBDA 1.0 / WARMUP 5ep. 모델이 pre-scale해 `aux['p43_mask_loss']`로 반환, trainer는 합산만. 모니터: `train/p43_mask_loss`, `p43/lambda`.
+
+**T-2 lateral (PMT 2603.25398, 실증 +2.2 PQ)**: frozen DINOv3 중간 블록 3곳(ViT-L 24블록 → **5/11/17**)을 forward hook으로 tap, 모달 간 **고정 균등 평균**(학습·추론 재가중 아님) 후 `LayerNorm2d + 1×1 conv`로 SimpleFPN 레벨 {1/4,1/8,1/16}에 가산. zero-init·게이트 **아님** — 주 경로라 첫 스텝부터 gradient(실패-키 1). 훅 방식이라 `forward_features`(백본별 pos-embed/RoPE 처리)를 건드리지 않아 tap-off 경로는 bit-identical.
+
+**추론**: semantic = **Head A 그대로**(기존 eval 도구 전부 무수정 동작, `EVAL_HEAD: false`면 평가 forward에서 헤드를 아예 실행하지 않아 속도도 baseline과 동일). PQ = `model.panoptic_inference()`(표준 M2F 후처리, `THING_IDS`로 thing/stuff 구분). 분석용 `model.semantic_from_queries()` = 쿼리 분기만의 semantic(P30/P38/P43 3-way ablation 측정용). `SEM_SOURCE`(pixel|query|sum)는 **eval 전용** — 학습은 언제나 pixel head 단독으로 CE를 받는다.
+
+**토글**: `P43.M2F_HEAD`(false ⇒ LATERAL도 따라 꺼져 forward가 baseline과 byte-identical — 스모크 C가 state_dict 키 + `|Δ|max=0`으로 검증) / `P43.LATERAL`(단독 ablation arm 가능) / eval-time `p43_lateral_off`·`p43_m2f_off`(`tools/module_ablation.py`). ⚠️ `p43_m2f_off`는 **SEM_SOURCE≠pixel일 때만 등록**된다 — 설계상 헤드가 semantic 출력을 안 건드리므로 무조건 등록하면 Δ=0 행이 "죽은 모듈"로 오독된다.
+
+**검증**: `tools/smoke_p43.py` (CPU, 실백본 tiny ViT) 전항목 PASS — fwd/bwd 유한, 신규·기존 파라미터 전부 grad 수신, 헤드 독립성(위 표), OFF 등가성, λ 스케줄, panoptic 세그먼트 유효성, bf16 autocast에서 손실 fp32 유지, 토글 동작·복원. **실데이터 스모크 미실행**(GPU 미점유) — 본학습 전 `yeon-deliver_rgbdel_P43_pdual_smoke.yaml` 2ep 선행.
+
+**판정 게이트(사전등록)**: ep30 ① val PQ 상승 & PQ_thing>0(P30 붕괴 시그니처) ② Head A thin-class IoU가 dense-only 대비 −1pt 이내 ③ 쿼리 비어있지 않음. 완주 MUSES val mIoU ≥82.22 유지 & test PQ ≥59.7(CAFuser), 업사이드 61.03(DGFusion). DELIVER = P36 fair(67.74/55.62) + thin-class(Wall≥13/Water≥9.5/RailTrack≥62).
+
+---
 
 ## P38 — MaskQueryLite: Mask2Former-lite Query Head (2026-07-17)
 
