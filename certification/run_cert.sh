@@ -19,7 +19,13 @@ GPU="${3:-0}"
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python   # tensorboard/protobuf guard
 
 cd "$REPO"
-python certification/cert_eval.py \
+OUT="runs/cert_D1"; mkdir -p "$OUT"
+TS="$(date +%Y%m%d_%H%M%S)"
+CONSOLE="$OUT/console_${TS}.log"
+echo "[run_cert] console + streamed inference -> $CONSOLE" >&2
+# tee the full live stream to a persistent, timestamped console log (in addition to
+# cert_eval's own inference_log.txt / cert_report.json / viz/ under $OUT).
+python -u certification/cert_eval.py \
     --cfg configs/det/det_D1_vitsp_jarvis.yaml \
     --ckpt "$CKPT" --data-root "$DATA_ROOT" \
-    --out runs/cert_D1 --gpu "$GPU"
+    --out "$OUT" --gpu "$GPU" "${@:4}" 2>&1 | tee "$CONSOLE"
