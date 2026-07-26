@@ -40,6 +40,10 @@ def build_night_transforms(strength: str = "calibrated"):
     """
     import albumentations as A
 
+    # albumentations 2.x renamed several args and only *warns* on the old ones
+    # (it does not raise), so version-detect explicitly rather than try/except.
+    major = int(A.__version__.split(".")[0])
+
     # gamma_limit / brightness ranges per strength; all DARKENING-biased.
     cfg = {
         "mild":       dict(gamma=(90, 160),  bright=(-0.30, 0.05), pg=0.5, pb=0.5),
@@ -53,7 +57,7 @@ def build_night_transforms(strength: str = "calibrated"):
         try:
             T.append(fn())
         except (TypeError, ValueError):
-            pass  # arg renamed / not supported in this albumentations version
+            pass  # transform not supported in this albumentations version
 
     # 1) dark-tail: gamma darkening (the primary lever)
     _try(lambda: A.RandomGamma(gamma_limit=cfg["gamma"], p=cfg["pg"]))
@@ -62,20 +66,16 @@ def build_night_transforms(strength: str = "calibrated"):
         brightness_limit=cfg["bright"], contrast_limit=(-0.30, 0.15), p=cfg["pb"]))
     # 3) low-light sensor noise (shot+read); ISONoise expects uint8 RGB
     _try(lambda: A.ISONoise(color_shift=(0.01, 0.05), intensity=(0.1, 0.6), p=0.4))
-    # 4) generic additive noise — GaussNoise arg name changed across versions
-    def _gauss():
-        try:
-            return A.GaussNoise(var_limit=(5.0, 50.0), p=0.3)          # <=1.x
-        except TypeError:
-            return A.GaussNoise(std_range=(0.02, 0.14), p=0.3)         # >=2.x
-    _try(_gauss)
+    # 4) generic additive noise — GaussNoise arg name changed at 2.x
+    if major >= 2:
+        _try(lambda: A.GaussNoise(std_range=(0.02, 0.14), p=0.3))    # >=2.x
+    else:
+        _try(lambda: A.GaussNoise(var_limit=(5.0, 50.0), p=0.3))     # <=1.x
     # 5) mild compression artefacts (dark scenes compress poorly)
-    def _jpeg():
-        try:
-            return A.ImageCompression(quality_lower=45, quality_upper=90, p=0.2)  # <=1.x
-        except TypeError:
-            return A.ImageCompression(quality_range=(45, 90), p=0.2)             # >=2.x
-    _try(_jpeg)
+    if major >= 2:
+        _try(lambda: A.ImageCompression(quality_range=(45, 90), p=0.2))          # >=2.x
+    else:
+        _try(lambda: A.ImageCompression(quality_lower=45, quality_upper=90, p=0.2))  # <=1.x
 
     return T
 
@@ -91,7 +91,11 @@ if __name__ == "__main__":
     import numpy as np
     import albumentations as A
 
-    img_path = sys.argv[1] if len(sys.argv) > 1 else None
+    import glob
+    import os
+    import cv2
+
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
     strength = sys.argv[2] if len(sys.argv) > 2 else "calibrated"
 
     T = build_night_transforms(strength)
@@ -99,8 +103,20 @@ if __name__ == "__main__":
     for t in T:
         print(f"    - {t.__class__.__name__}  (p={getattr(t, 'p', '?')})")
 
+    # resolve a REPRESENTATIVE image: if given a directory, sample and pick the
+    # median-luma frame (clip-start frames can be near-black and would make the
+    # darkening test meaningless).
+    img_path = arg
+    if arg and os.path.isdir(arg):
+        import numpy as _np
+        files = sorted(glob.glob(os.path.join(arg, "*.png")) + glob.glob(os.path.join(arg, "*.jpg")))
+        idx = _np.linspace(0, len(files) - 1, min(80, len(files))).astype(int)
+        scored = [(cv2.cvtColor(cv2.imread(files[i]), cv2.COLOR_BGR2GRAY).mean(), files[i]) for i in idx]
+        scored.sort()
+        img_path = scored[len(scored) // 2][1]  # median luma
+        print(f"[night_aug] picked median-luma frame from dir: {os.path.basename(img_path)}")
+
     if img_path:
-        import cv2
         im = cv2.imread(img_path)
         assert im is not None, f"cannot read {img_path}"
         luma0 = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).mean()
