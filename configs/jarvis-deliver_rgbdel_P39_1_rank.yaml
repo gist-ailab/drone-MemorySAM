@@ -149,7 +149,7 @@ DATASET:
 TRAIN:
   LORA_NORM_CAP : 20.0            # b_q/b_v Frobenius cap (P35/T1 seam)
   IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
-  BATCH_SIZE    : 2               # yeon 실측 6GB@bs1(P37) + M2F head ≈소폭 → bs2 안전
+  BATCH_SIZE    : 1               # 4090 24GB: P39.1 풀스택 4모달 BS2 OOM(22GB) → BS1(~12-14GB). accum이 eff-batch 16 유지
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 2

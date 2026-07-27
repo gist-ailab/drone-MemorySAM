@@ -176,8 +176,7 @@ DATASET:
 TRAIN:
   LORA_NORM_CAP : 20.0            # b_q/b_v Frobenius cap (P35/T1 seam) — P39.1 레시피 보존
   IMAGE_SIZE    : [768, 768]
-  BATCH_SIZE    : 2               # ⚠️ B-1 on = backward 2회. A100 40GB에서 BS2 유지 가능
-                                  #   하지만 첫 기동 시 메모리 실측 후 필요하면 1로 내릴 것.
+  BATCH_SIZE    : 1               # 4090 24GB: P39.1 풀스택 4모달 BS2 OOM(22GB) → BS1(~12-14GB). accum이 eff-batch 16 유지
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 2
