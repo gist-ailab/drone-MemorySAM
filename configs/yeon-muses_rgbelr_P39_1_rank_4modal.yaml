@@ -165,7 +165,7 @@ SCHEDULER:
 EVAL:
   MODEL_PATH    : ''
   IMAGE_SIZE    : [1024, 1024]
-  BATCH_SIZE    : 4
+  BATCH_SIZE    : 1                 # 3090 24GB 4모달: eval BS4 OOM(ep2 사망) → BS1
   EVAL_DAY      : false
   MSF:
     ENABLE      : false
