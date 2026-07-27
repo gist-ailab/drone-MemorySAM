@@ -1,6 +1,6 @@
 ---
 created: 2026-07-16
-updated: 2026-07-21 (ISSUE-025 MUSES radar 디코딩 버그 수정 반영 → 대기열 #3 "P39-4모달 radar-fix 재실험" 신설 + 사고 기록 1줄, 이하 대기열 번호 +1) ; ISSUE-026 ColorAugSSD RGB 붕괴 버그 반영 → hpca100 P39-DPC resume 오염 표기 + 사고 기록 1줄 + 대기열 #1 클린런 표기 ; 2026-07-23 대기열 #1 "P39.1 Rank 수리" MUSES-jarvis 분기 착수 → 실행중 표에 행 추가(jarvis 2,3,4,5, 기동검증 통과)
+updated: 2026-07-21 (ISSUE-025 MUSES radar 디코딩 버그 수정 반영 → 대기열 #3 "P39-4모달 radar-fix 재실험" 신설 + 사고 기록 1줄, 이하 대기열 번호 +1) ; ISSUE-026 ColorAugSSD RGB 붕괴 버그 반영 → hpca100 P39-DPC resume 오염 표기 + 사고 기록 1줄 + 대기열 #1 클린런 표기 ; 2026-07-23 대기열 #1 "P39.1 Rank 수리" MUSES-jarvis 분기 착수 → 실행중 표에 행 추가(jarvis 2,3,4,5, 기동검증 통과) ; 2026-07-26 P43-MUSES 완주(val 82.51@ep156, seed2 미돌파) → 대기열 #11 P44-BMR을 hpca100 GPU2,3에 착수(develop 678c493, 기동검증 통과); 2026-07-27 seed4 완주(81.92)→해방 GPU에 첫 4-modal(P39.1+radar) 착수(yeon 0,1,5, 305b030); seed2 분석 완료(trunk+2~7·VICReg lidar rank 78~100 검증)
 ---
 
 # 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
@@ -60,7 +60,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 서버 | GPU | 상태 | ETA |
 |---|---|---|---|
-| **hpca100** | 0-3 (A100×4) | 🔵 seg-P38(MaskQueryLite) 본학습 중(07-18 launch) | **07-19 완주 예상** |
+| **hpca100** | GPU2,3 (A100×2) | 🔵 P44-BMR 본학습 중(07-26 launch) | **~07-29 완주 예상** |
 | **jarvis** | 2,3,4,5,6 (4090×5) | 🟢 P37a-CEFR(ckpt=false, eff20) 학습 중 best val 62.56@ep24 → 완주 시 P37b 자동 | P37a **07-18 02:06** → P37b 이어서 |
 | **yeon** | 3,5,6,7 (3090×4) + GPU0(seg-P38 스모크) | 🔴 det_P37 재붕괴(ep17 절벽), best ep11 0.8367. 완주/중단 user 판단 대기 / GPU0=seg-P38 실데이터 2ep 스모크 진행 중 | ~07-18 06:08 (det_P37) / ~07-18 14:00 (스모크) |
 | **bengio** | — | 🔴 **노드 CUDA 전체 장애(GPU5 HW 고장) → 재부팅 후 SSH 미복귀. 물리 개입 필요** | 불명 |
@@ -79,6 +79,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **P39.1-rank MUSES** (jarvis, 대기열 #1 착수) | jarvis 2,3,4,5 (4090×4) | 300 (ep30 조기게이트) | ep30 게이트 ~07-23 18:35 · 완주(300ep) ~07-24 09:30 (추정, eval 오버헤드 별도) | **P0** | R-1(gated_mlp trunk, γ=0.1 init) + R-2(VICReg var+cov, lidar×1.0/기타×0.25) + M-2(gate/calib/veto off) — P39-MUSES 표준분석이 지목한 lidar effective-rank 붕괴(4.7)·fog_night 붕괴(62.68) 수리. config `configs/jarvis-muses_rgbel_P39_1_rank.yaml`, develop @a06b666(≥ac5c7fe). 07-23 16:5x 기동, tmux `jemo:p39_1_rank`, log `logs/jarvis_muses_rgbel_P39_1_rank_*.log`. **기동검증 통과**: iter 0→160/375(epoch1) 전진 확인·GPU 2,3,4,5 전부 99-100%util·~19GB/24GB(활성화 수준)·에러 0·wandb만 미설정(비치명, no-API-key). **판정 게이트(사전등록, ep30)** = lidar effective-rank ≥15 & fog_night drop-lidar ≥4.0 (미달 시 R-3: r8→16+rsLoRA 재기동) |
 | **P39.1-rank DELIVER resume** (yeon, RCA 대조군) | yeon GPU 5,6,7 (3090×3, 원 6장에서 축소) | 200 (07-22 16:10 SIGTERM 사망 @ep39 iter198/663, 원인 미상) | ~07-24 오전 (다음 eval ep40 기준, 1327it/ep·~1.5-2s/it 추정) | — | `outputs/ReliaDINO/yeon_deliver_rgbdel_P39_1_rank/DELIVER_ReliaDINO-ViTL16_idel/last_checkpoint.pth`(ep38)에서 AUTO_RESUME. SAVE_DIR을 `/SSDe/jemo_maeng/outputs/yeon-deliver_P39_1_rank_resume`로 이전(원본 20GB 복사, `/SSDb` 8G뿐이라 그대로 못 씀), config `configs/yeon-deliver_rgbdel_P39_1_rank_resume.yaml`(develop @1ba7f87→hub merge 7e655de). 실행 `openmmlab` env(timm 1.0.20) + `PYTHONPATH=<repo>/semseg/models/sam2` + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`(🔴 MMSS_SAM env timm이 0.4.12로 회귀해 DINOv3 못 빌드 — 07-22 07:03 로그는 정상 빌드했었음, 원인 미상 회귀). **기동검증 통과**: Epoch[39/200] 재개 확인(처음부터 아님)·iter 179→192 전진·GPU5,6,7 86-99%util·~20.9GB·에러 0. 🔴 **ep30 rank 게이트 raw 수치는 통과하나(`p391/rank lidar`=532.1≥15) 실제 인과기여(drop-lidar dMIoU, night 대리조건)=−0.78로 여전히 ~0/음** — 판정 보류, 상위 세션 검토 필요 |
 | **P42-MaskImg-f07 (FRAC 0.7)** (yeon, FRAC 스윕 완성) | yeon GPU 3,4 (3090×2 DDP) | 300 (ep30 조기게이트) | ep30 ~07-24 오전 (750it/ep·~1.2-2s/it 추정, 15-25min/ep) | **P0** | FRAC 스윕 0.3(jarvis)/0.5(hpca100)/**0.7(이 런)** 완성. base=`configs/hpca100-muses_rgbel_P42_maskimg.yaml`(FRAC 0.5) 복사 → `configs/yeon-muses_rgbel_P42_maskimg_f07.yaml`(FRAC 0.7, SAVE_DIR `/SSDe/jemo_maeng/outputs/yeon-muses_rgbel_P42_f07`, DATASET.ROOT yeon 경로, BATCH_SIZE 1). develop @bda6341→hub merge 8072101. 실행 = **정식 문서화된 방법**(`experiments/launch-runbook.md`) MMSS_SAM env + `PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34:.`(timm 1.0.24로 우회, sam2 불필요 — `train_reliadino.py`가 sam2 미import) + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. **기동검증 통과**: Epoch[1/300] iter 26→42/750 전진·GPU3,4 88-100%util·~17GB·loss 유한(10.67→9.22)·에러 0·config dump로 FRAC=0.7 확인. `p42_mask_rate` 로그는 EVAL_INTERVAL=2라 첫 eval(ep2) 전까지 미출력(다음 조회 시 확인) |
+| **P44-BMR (Balanced Modality Rebalance)** | hpca100 GPU2,3 (A100×2) | 200 (ep30 조기게이트) | ~07-29 완주 추정(첫 ep 후 it/ep로 재확정) | **P0** | drop-modality dMIoU(lidar/event)≈0 = 비RGB 미사용(img 과지배) 공략. B-1 MMPareto gradient 통합 + B-2 peer 상호증류(대칭KL+관계형) + B-3 coverage-aware 국소마스킹. config `configs/hpca100-muses_rgbel_P44_bmr.yaml`(develop @678c493, jarvis판에서 경로·배치만 이식), BS2/GPU accum→eff16, tmux `jemo:p44_bmr`, log `logs/hpca_P44_bmr.log`. **기동검증 PASS**(iter 14→17 전진 ~1.5s/it, GPU2,3 100%/~33GB 활성화수준, 에러0, MMPareto active=388params 4groups, loss 11.38→11.21 유한). **판정 게이트(사전등록, ep30)** = dMIoU(lidar)≈0→>1 & p44/cos_lora_lidar 음→양 전환 & CKA(img,lidar)≥0.5 유지 / 완주 val≥82.22 & fog≥68. 미달 시 kill |
+| **P39.1-rank 4모달(+radar)** | yeon GPU0,1,5(3090×3) | 300(ep30 게이트) | ~07-29/30 완주 추정 | **P0** | **첫 4-modal SOTA 시도**(user 4모달-우선 07-27). base=seed2 아키(P39.1-rank, val 82.62/test 79.788) + radar 추가=1변수. config `configs/yeon-muses_rgbelr_P39_1_rank_4modal.yaml`(develop 305b030), ISSUE-025 radar-fix 후 첫 클린 4모달. tmux `jemo:p39_1_4modal`, log `/SSDe/jemo_maeng/yeon_muses_P39_1_4modal_run.log`. 기동검증 PASS(radar 로드 OK·MODALS=4·iter 343/500·GPU0,1,5 100%/23.5GB·loss 12.95→8.40). 게이트: ep30 val≥80&붕괴없음 / 완주 val≥82.62(3모달 초과) 또는 drop-radar dMIoU>0@fog. seed4 완주(81.92)로 GPU 해방분에 배치 |
 
 ## ⚡ 2026-07-25 즉시 배치 지시 (모니터링/학습 세션 필독 — P43/P44 준비 중)
 
@@ -115,8 +117,12 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **module ablation** | **제안 모듈 전부 ≈0**(ATTN_BIAS=RBMA 간판 포함). gate+calib만 test +0.26. **성능 출처 = DINOv3 백본 + per-modal LoRA** |
 | **det 붕괴 진단** | 원인 = **BS1의 gradient 노이즈**(n_pos 1~3), LR 아님. 처방 = 배치↑ + **LR 유지**. warmup 5ep 완주로 검증 |
 | **seg-P37a/b (bengio분)** | **사망 확정** — bengio 노드 CUDA 전체 장애(GPU5 HW 고장, 재부팅 후 SSH 미복귀)로 ep1~2에서 종료. jarvis 재기동분(P37a→P37b 체인)이 계보 승계 — 남 세션 소관이라 수치 갱신하지 않음 |
+| **P43-PanopticDual (MUSES, hpca100)** | **완주** — best val 82.51@ep156 (seed2 82.62 −0.11 / P38 82.22 +0.29). val로는 seed2 미돌파. PQ 축(설계 헤드라인)은 MUSES panoptic GT 부재로 val PQ 미측정 → PQ 판정 보류. ckpt `outputs/ReliaDINO/hpca100_muses_rgbel_P43_pdual/epoch156_82.51_top1_checkpoint.pth`. test 제출 후보(mIoU 82.5대). Total Training Time 01:37:24는 로깅 아티팩트 |
 
 ## ⚠️ 사고 기록 (반복 금지)
+
+- **2026-07-27 — jarvis SSH 불통 (connection refused)**: 내부 172.27.183.201:22 즉시 거부 — bengio(timeout)와 달리 호스트는 살아있고 sshd 중단/포트 변경 가능성. jarvis 상주 학습·ckpt 생존 여부 미확인 — **jarvis 사용 세션은 접근 복구 확인 후 진행할 것.** (p33-impl 세션 감시 중 감지)
+
 
 - **2026-07-21 ISSUE-026 — ColorAugSSD brightness uint8 클램프 버그**: 07-16 이후 `DGFUSION_AUG:true` DELIVER 학습(jarvis P37a/b, hpca100 P38-DELIVER 완주분·P39-DPC resume 진행중, yeon 스모크) 전부 RGB가 발화 샘플(p=0.5)에서 백색 상수로 붕괴(RGB-dropout 0.5 효과) — MUSES 계보는 무영향. **P38-DELIVER 게이트 미달 판정 및 P39-DELIVER thin-class 퇴행 판정 모두 보류**(교란변수), P39.1부터 픽스 적용 클린 학습(상세: `issues/issues-and-fixes.md` ISSUE-026).
 
