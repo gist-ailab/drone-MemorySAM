@@ -1598,3 +1598,41 @@ python val_multiaqua_tiled.py \
 ### 파일
 - `val_multiaqua_tiled.py` — 별도 추론 스크립트 (기존 val_multiaqua.py 미수정)
 - 저장 경로: `{checkpoint_dir}/eval_macvi_tiled_test/`
+
+
+---
+
+## 2026-07-27 MUSES 공식 test 신기록 — P39.1-seed2 79.788 (새 test-best)
+
+**제출**: `muses_P39_1_seed2_3modal_ep208_submission.zip` (P39.1-seed2, MUSES 3모달 img/lidar/event, val-best 82.62@ep208)
+**공식 test mIoU = 79.788** — 이전 최고 P38-m2f 79.025 대비 **+0.763, 새 MUSES test-best**. SOTA(GtA 82.39, camera-only) 대비 격차 **−3.37 → −2.60**.
+**val→test 낙차**: val 82.62 → test 79.79 = **−2.83**.
+
+### per-condition
+
+| 축 | 값 |
+|---|---|
+| clear | 79.300 |
+| fog | 78.705 |
+| rain | 79.063 |
+| snow | 79.042 |
+| day | 80.246 |
+| night | 76.818 (주야 격차 −3.43) |
+| clear_day | 80.021 |
+| clear_night | 76.059 |
+| fog_day | 76.366 |
+| **fog_night** | **69.610 (전 조합 최악)** |
+| rain_day | 78.743 |
+| rain_night | 74.354 |
+| snow_day | 71.155 |
+| snow_night | 77.413 (**snow 역전** — day<night) |
+
+### 약클래스 (full)
+
+motorcycle 58.07 · rider 59.47 · pole 62.07 · fence 65.70
+
+### 메모
+
+- fog_night 69.61이 전 조건·조합 통틀어 최저치 — 병목으로 남음.
+- snow_day < snow_night 역전, 이번이 **3회째 재현**(P34-4모달, P38-m2f에 이어).
+- 상세 산출·원시 데이터는 `MUSES_TEST_RESULTS_INDEX.md` 및 제출 zip 아카이브(`/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/`) 참조.
