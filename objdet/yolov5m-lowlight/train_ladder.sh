@@ -32,7 +32,7 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 STOCK_HYP="$YOLOV5_DIR/data/hyps/hyp.scratch-low.yaml"
 COMMON=(--data "$DATA_YAML" --weights "$WEIGHTS" --img "$IMG" --batch "$BATCH"
         --epochs "$EPOCHS" --device "$GPU" --workers 8 --seed 0
-        --project "$HERE/runs" --exist-ok)
+        --project "${PROJECT:-$HERE/runs}" --exist-ok)
 
 unset YOLO_NIGHTAUG YOLO_EIOU
 case "$RUNG" in
@@ -53,5 +53,5 @@ python "$HERE/train_lowlight.py" "${COMMON[@]}" --hyp "$HYP" --name "$NAME" "${L
 
 # final test-split eval (mAP50); night/normal breakdown via eval_lowlight.sh
 python "$YOLOV5_DIR/val.py" --data "$DATA_YAML" --img "$IMG" --device "$GPU" \
-  --weights "$HERE/runs/$NAME/weights/best.pt" --task test \
-  --project "$HERE/runs" --name "${NAME}_testeval" --exist-ok
+  --weights "${PROJECT:-$HERE/runs}/$NAME/weights/best.pt" --task test \
+  --project "${PROJECT:-$HERE/runs}" --name "${NAME}_testeval" --exist-ok
