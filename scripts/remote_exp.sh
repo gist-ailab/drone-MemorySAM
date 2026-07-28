@@ -92,12 +92,23 @@ cfg_name="$(basename "$CFG" .yaml)"
 [ -d "$REPO" ] || { echo "REMOTE ERROR: repo not found: $REPO" >&2; exit 1; }
 [ -f "$REPO/$CFG" ] || { echo "REMOTE ERROR: config not found: $REPO/$CFG" >&2; exit 1; }
 # entry auto-detect
+# Decide from the config's CONTENT, not its filename. The old filename globs only
+# matched P34/P35/P36, so every later ReliaDINO config (P37+) and every det config
+# silently fell through to train_sam2_lora_paper.py — the wrong trainer.
+# Order matters: det configs carry DET_MODEL: ReliaDINO*Detector, so DET wins first.
 if [ "$ENTRY" = "auto" ]; then
-  case "$cfg_name" in
-    *SAM3*|*sam3*|*RBMA*|*rbma*) ENTRY="train_sam3_rbma.py" ;;
-    *reliadino*|*ReliaDINO*|*P34*|*P35*|*P36*) ENTRY="train_reliadino.py" ;;
-    *) ENTRY="train_sam2_lora_paper.py" ;;
-  esac
+  if grep -qE '^[[:space:]]*DET_MODEL[[:space:]]*:' "$REPO/$CFG"; then
+    ENTRY="train_det.py"
+  elif grep -qE '^[[:space:]]*NAME[[:space:]]*:[[:space:]]*ReliaDINO[[:space:]]*(#.*)?$' "$REPO/$CFG"; then
+    ENTRY="train_reliadino.py"
+  else
+    case "$cfg_name" in
+      *SAM3*|*sam3*|*RBMA*|*rbma*) ENTRY="train_sam3_rbma.py" ;;
+      *reliadino*|*ReliaDINO*|*P34*|*P35*|*P36*) ENTRY="train_reliadino.py" ;;
+      *) ENTRY="train_sam2_lora_paper.py" ;;
+    esac
+  fi
+  echo "[remote_exp] entry auto-detect -> $ENTRY (cfg=$cfg_name)" >&2
 fi
 # activation: absolute path => venv (e.g. hpca100), bare name => conda env (all existing servers)
 case "$ENV" in
