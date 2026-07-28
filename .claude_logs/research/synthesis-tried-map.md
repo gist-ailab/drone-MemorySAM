@@ -1,8 +1,13 @@
 # SYNTHESIS — 전 지식 종합: 우리가 너무 좁게 보고 있는가?
 
+> 이관: `.claude_logs/SYNTHESIS.md` (브랜치 `worktree-synthesis-orchestrator`, 2026-07-28 통합). 원본 커밋은 태그 `archive/worktree-synthesis-orchestrator` 에 보존.
+
 > 작성: 2026-07-08, 리드 오케스트레이터 세션.
-> 입력: 4개 disjoint 소스 병렬 추출 — (a) relatedworks 로그(doc 10/12/18), (b) 실험/시도 로그(doc 03/05-07/16/17/19/21), (c) Obsidian research_vault(~94노트), (d) 모델구조 문서(doc 02/04/08/11/20).
-> 용도: **이후 설계 확장의 입력**. 즉각 수정 지시 아님. 수치 canonical은 여전히 doc 03.
+> 입력: 4개 disjoint 소스 병렬 추출 — (a) relatedworks 로그(구 doc 10/12/18), (b) 실험/시도 로그(구 doc 03/05-07/16/17/19/21), (c) Obsidian research vault(~94노트, 현 [`research/vault/`](vault/)), (d) 모델구조 문서(구 doc 02/04/08/11/20).
+> 용도: **이후 설계 확장의 입력**. 즉각 수정 지시 아님. 수치 canonical은 여전히 [`experiments/log.md`](../experiments/log.md)(구 doc 03).
+
+> 📎 **구번호 → 현재 경로** (이 문서가 인용한 것만; 전체표는 [00_INDEX.md](../00_INDEX.md#-구번호--새경로-매핑표-기존-doc-n-참조-해석용)):
+> 02=[models/arch-evolution.md](../models/arch-evolution.md) · 03=[experiments/log.md](../experiments/log.md) · 04=[issues/issues-and-fixes.md](../issues/issues-and-fixes.md) · 05/06/07=[archive/result-analysis-p9-p12.md](../archive/result-analysis-p9-p12.md)·[p13](../archive/result-analysis-p13.md)·[p14](../archive/result-analysis-p14.md) · 08=[models/figures-ascii.md](../models/figures-ascii.md) · 10=[research/related-work-raw.md](related-work-raw.md) · 11=[decisions/2026-06-16-sam3-porting-plan.md](../decisions/2026-06-16-sam3-porting-plan.md) · 12=[research/novelty-and-related-work.md](novelty-and-related-work.md) · 16=[experiments/analysis/2026-06-30-p28-p29-failure-analysis.md](../experiments/analysis/2026-06-30-p28-p29-failure-analysis.md) · 17=[det/p29det-data-fix.md](../det/p29det-data-fix.md) · 18=[research/vault-digest.md](vault-digest.md) · 19=[det/diagnosis-plan.md](../det/diagnosis-plan.md) · 20=[decisions/2026-07-02-p31-redesign-proposal.md](../decisions/2026-07-02-p31-redesign-proposal.md) · 21=[datasets/lidar-egofill.md](../datasets/lidar-egofill.md).
 
 ---
 

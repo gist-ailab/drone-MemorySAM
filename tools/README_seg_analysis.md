@@ -77,7 +77,7 @@ python tools/adapter_health.py --ckpt <model.pth> --out health.json
 
 ```bash
 python tools/seg_analysis_pipeline.py \
-  --cfg configs/b200-deliver_rgbdel_P33_1_physaug.yaml \
+  --cfg configs/deliver/b200-deliver_rgbdel_P33_1_physaug.yaml \
   --model_path outputs/MMSamP33/.../best_checkpoint.pth \
   --dataset-root /path/to/DELIVER --out-dir <out> --gpu <free-gpu> \
   [--stages D1,D2,D3,D4] [--conditions cloud,fog,night,rain,sun] \

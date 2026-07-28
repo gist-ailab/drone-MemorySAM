@@ -6,8 +6,9 @@
 #
 # Deltas vs P34/DELIVER:
 #   - DATASET.NAME  DELIVER -> MUSES   (semseg/datasets/muses.py)
-#   - MODALS  [img,depth,event,lidar] -> [img,lidar,event]:  MUSES HAS NO DEPTH.
-#     (a 'radar' modality also exists in projected_to_rgb/ if ever wanted)
+#   - MODALS  [img,depth,event,lidar] -> [img,lidar,event,radar]:  MUSES HAS NO DEPTH,
+#     so depth is replaced by radar (파일명의 'rgbelr' = rgb+event+lidar+radar, 4모달).
+#     radar 디코딩은 semseg/datasets/muses.py::_open_radar (ISSUE-025 픽스 반영).
 #   - classes 25 -> 19 (Cityscapes trainIds; taken from trainset.n_classes, not set here)
 #   - test split has NO public GT -> MUSES('test') raises, train_reliadino.py
 #     catches it and sets testset=None. val (250 imgs) is the only eval stage.
@@ -151,6 +152,6 @@ WANDB:
 
 TEST:
   MODEL_PATH    : ''
-  FILE          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/MUSES'
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'   # b200(사망) 경로였음 → DATASET.ROOT와 일치 (2026-07-28)
   IMAGE_SIZE    : [1024, 1024]
   OVERLAY       : false

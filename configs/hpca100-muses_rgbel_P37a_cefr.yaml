@@ -161,6 +161,6 @@ WANDB:
 
 TEST:
   MODEL_PATH    : ''
-  FILE          : '/NHNHOME/ailab/Workspaces/jemo_maeng/dset/MUSES'
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'   # b200(사망) 경로였음 → DATASET.ROOT와 일치 (2026-07-28)
   IMAGE_SIZE    : [1024, 1024]
   OVERLAY       : false

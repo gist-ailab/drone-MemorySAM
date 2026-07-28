@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-eval_muses_official.py — MUSES val re-evaluation at the OFFICIAL (native) resolution.
+tools/eval_muses_official.py — MUSES val을 **공식(native) 1080x1920 해상도**로 재평가
+(레터박스 1024^2 내부 지표와 동일 forward에서 동시 산출해 사과-대-사과 비교).
 
 Why: train_reliadino.py's evaluate() accumulates the confusion matrix at the
 letterboxed 1024x1024 working resolution (the label is padded to square with
@@ -19,6 +20,16 @@ protocol, hist_full = official) so the two are strictly apples-to-apples: same
 checkpoint, same weights, same forward, differing ONLY in the scoring geometry.
 
 Per-condition (weather x time-of-day) histograms are accumulated too.
+
+Native GT comes from the dataset itself: semseg/datasets/muses.py returns
+meta['orig_label'] / ['orig_h'] / ['orig_w'] when constructed with return_meta=True,
+so this tool never re-reads *_gt_labelTrainIds.png on its own.
+
+Example:
+  python tools/eval_muses_official.py \
+    --cfg configs/hpca100-muses_rgbelr_P34_reliadino.yaml \
+    --ckpt outputs/ReliaDINO/.../epoch276_81.02_top1_checkpoint.pth \
+    --gpu 0 --out ~/muses_official_eval_P34
 """
 import argparse
 import json
@@ -30,8 +41,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+# --gpu must be honored before torch initializes CUDA (torch is imported below),
+# same early-argv-scan convention as tools/module_diagnostics.py / eval_reliadino_ckpt.py.
 if '--gpu' in sys.argv:
-    os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[sys.argv.index('--gpu') + 1]
+    _gi = sys.argv.index('--gpu')
+    if _gi + 1 < len(sys.argv):
+        os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[_gi + 1]
 os.environ.setdefault('PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION', 'python')
 
 import numpy as np                                                  # noqa: E402
@@ -93,8 +108,9 @@ def sanity_check_geometry(orig_h=1080, orig_w=1920, side=1024, ignore=255):
     n_ign_out = (small == ignore).sum().item() - (inside == ignore).sum().item()
     n_ign_tot = (small == ignore).sum().item()
     assert n_ign_out == n_ign_tot, "some padding leaked outside the crop box"
-    return dict(box_1024=(t0, t1, l0, l1), box_full=(t0f, t1f, l0f, l1f),
-                pad_rows_1024=int(side - (t1 - t0)))
+    # keys are side-agnostic: `side` is now taken from EVAL.IMAGE_SIZE, not hardcoded 1024.
+    return dict(net_side=int(side), box_net=(t0, t1, l0, l1), box_full=(t0f, t1f, l0f, l1f),
+                pad_rows_net=int(side - (t1 - t0)))
 
 
 # ---------------------------------------------------------------- metrics
@@ -112,35 +128,49 @@ def iou_from_hist(hist: torch.Tensor):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--cfg', required=True)
-    ap.add_argument('--ckpt', required=True)
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--cfg', required=True, help='training config used for the ckpt (protocol source of truth)')
+    ap.add_argument('--ckpt', required=True, help='*_checkpoint.pth or a raw state_dict')
     ap.add_argument('--gpu', default='0')
-    ap.add_argument('--dataset-root', default=None)
-    ap.add_argument('--out', required=True)
-    ap.add_argument('--limit', type=int, default=None)
+    ap.add_argument('--dataset-root', default=None, help='override DATASET.ROOT only (server-local path)')
+    ap.add_argument('--out', required=True, help='output dir for report.json + hist_*.npy')
+    ap.add_argument('--limit', type=int, default=None, help='stop after N images (smoke test)')
     args = ap.parse_args()
 
     outdir = Path(args.out)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    geo = sanity_check_geometry()
-    print(f"[sanity] letterbox inverse verified: {geo}", flush=True)
-
     cfg = yaml.safe_load(open(args.cfg))
     dcfg, ecfg = cfg['DATASET'], cfg['EVAL']
+    if str(dcfg.get('NAME', '')).strip().upper() != 'MUSES':
+        raise SystemExit(f"--cfg must be a MUSES config (DATASET.NAME={dcfg.get('NAME')!r}); "
+                         "this tool's letterbox geometry is MUSES-specific.")
     if args.dataset_root:
         dcfg['ROOT'] = args.dataset_root
-    device = torch.device('cuda')
+    device = torch.device(cfg.get('DEVICE', 'cuda'))
 
+    # build_reliadino sizes the ViT pos-embed from TRAIN.IMAGE_SIZE (model.py:1163)
+    # while the val transform resizes to EVAL.IMAGE_SIZE — a mismatch silently
+    # evaluates on a geometry the backbone was not interpolated for.
     side = ecfg['IMAGE_SIZE'][0]
+    train_side = cfg.get('TRAIN', {}).get('IMAGE_SIZE', [side])[0]
+    if train_side != side:
+        print(f"[warn] TRAIN.IMAGE_SIZE={train_side} != EVAL.IMAGE_SIZE={side} — "
+              f"backbone pos-embed is built for {train_side}.", flush=True)
+
+    geo = sanity_check_geometry(side=side)
+    print(f"[sanity] letterbox inverse verified @side={side}: {geo}", flush=True)
+
     valtransform = get_val_augmentation(ecfg['IMAGE_SIZE'], dataset_cfg=dcfg)
     ds = MUSES(dcfg['ROOT'], 'val', valtransform, dcfg['MODALS'], return_meta=True)
     n_classes, class_names = ds.n_classes, ds.CLASSES
     loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
     model = build_reliadino(cfg, n_classes)
-    ck = torch.load(args.ckpt, map_location='cpu')
+    # weights_only=False: our ckpts carry optimizer/scaler state, not just tensors
+    # (torch>=2.6 flips this default and would refuse to load them).
+    ck = torch.load(args.ckpt, map_location='cpu', weights_only=False)
     state = ck.get('model_state_dict', ck)
     msg = model.load_state_dict(state, strict=False)
     assert not msg.missing_keys and not msg.unexpected_keys, \
@@ -151,6 +181,7 @@ def main():
     hist_full = torch.zeros(n_classes, n_classes, dtype=torch.double, device=device)
     hist_1024 = torch.zeros(n_classes, n_classes, dtype=torch.double, device=device)
     hist_cond = OrderedDict()
+    n_cond = OrderedDict()          # images actually accumulated per condition
 
     def accum(h, gt, pred):
         keep = (gt != 255) & (gt < n_classes) & (pred < n_classes)
@@ -186,7 +217,9 @@ def main():
             if cond not in hist_cond:
                 hist_cond[cond] = torch.zeros(n_classes, n_classes, dtype=torch.double,
                                               device=device)
+                n_cond[cond] = 0
             accum(hist_cond[cond], gt_full, pred_full)
+            n_cond[cond] += 1
 
             n_done += 1
             if args.limit and n_done >= args.limit:
@@ -218,8 +251,9 @@ def main():
     for cond, h in hist_cond.items():
         iou_c, miou_c_p, miou_c_all, present_c = iou_from_hist(h)
         report['per_condition_official'][cond] = {
-            'n_images': int(sum(1 for i in range(len(ds))
-                                if f"{os.sep}{cond}{os.sep}" in ds.files[i])),
+            # images ACTUALLY accumulated (the old count scanned the whole val list,
+            # which disagreed with the histogram whenever --limit was used).
+            'n_images': int(n_cond[cond]),
             'mIoU_present_classes': round(miou_c_p, 4),
             'n_present_classes': int(present_c.sum()),
             'per_class': {c: (None if np.isnan(v) else round(float(v), 4))

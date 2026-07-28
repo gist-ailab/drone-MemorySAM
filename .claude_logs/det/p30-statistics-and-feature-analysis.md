@@ -1,6 +1,10 @@
 # P30-Det 통계 · 저성능 분석 · 모달리티/모듈 피쳐 분석 (ep39 final)
 
-- test = poongsan_v2 `det_test_v2.json` (캡처 holdout 115206+114808, kept 1772). hinton, `diag_det.py`(통계) + `probe_det_features.py`(피쳐). ROOT=/ailab_mat2.
+> 이관: `.claude_logs/det_eval/p30_feature_probe/P30_STATISTICS_AND_FEATURE_ANALYSIS.md` (브랜치 `det-p29-p30-analysis`, 2026-07-28 통합). 원본 커밋은 태그 `archive/det-p29-p30-analysis` 에 보존.
+>
+> 원본 panel PNG 24장은 git에 포함하지 않음 — 태그 `archive/det-p29-p30-analysis` 의 `.claude_logs/det_eval/p30_feature_probe/` 에서 복원 가능.
+
+- test = poongsan_v2 `det_test_v2.json` (캡처 holdout 115206+114808, kept 1772). hinton, [`objdet/tools/diag_det.py`](../../objdet/tools/diag_det.py)(통계) + [`tools/probe_det_features.py`](../../tools/probe_det_features.py)(피쳐). ROOT=/ailab_mat2.
 - P30-Det = `det_P30_v2` **ep39 (최종 best, 학습완료)**. 비교 = P29-Det ep9 (AP50 0.446).
 - 원본: `p30_feature_probe/`(probe_stats.json + panel_*.png), `P30_ep39_diag_summary.json`. 날짜 2026-07-02.
 
@@ -87,12 +91,15 @@ P5(coarse/mem) 레벨 융합 가중치 (6장 평균): **img 0.879 · lidar 8.7e-
 - per-image 원시 수치: `p30_feature_probe_full/probe_stats.json` → 각 항목 `router_weights.level{0,1,2}` = `[img,lidar,thermal]` (24장).
 - per-image raw 텐서: `p30_feature_probe_full/raw/<image_id>.npz` → `router_level{0,1,2}`, `mem_*`, `rel_*`, `det_*`.
 - 집계 시각화: `p30_feature_probe_full/summary.png` (좌상단 "router P5 weight" boxplot).
-- (canonical) `/mnt/HDD2/src/logs/P29_vs_P30_v2_20260702/` · (git) `.claude_logs/det_eval/p30_feature_probe/` · (hinton) `~/src/dm_eval/out_probe_p30_ep39_full/`.
+- (canonical) `/mnt/HDD2/src/logs/P29_vs_P30_v2_20260702/` · (구 git 경로) `.claude_logs/det_eval/p30_feature_probe/` — **현재 develop에 없음**, 태그 `archive/det-p29-p30-analysis` 에서 복원 · (hinton) `~/src/dm_eval/out_probe_p30_ep39_full/`.
 
 ## 7. 시각화 · raw 산출물
+
+> 원본 panel PNG 24장은 git에 포함하지 않음 — 태그 `archive/det-p29-p30-analysis` 의 `.claude_logs/det_eval/p30_feature_probe/` 에서 복원 가능. (19MB, 미디어 규약상 NAS/태그 보관. per-class 수치 요약만 [`assets/p29-p30-perclass-compare.csv`](assets/p29-p30-perclass-compare.csv) 로 회수됨.)
+
 - **panel 24장** `p30_feature_probe_full/panel_*.png` (검출뷰: **GT=빨강 점선, pred=녹색**).
 - **summary.png**: 24장 aggregate(router/mem-rank/cosine/norm/det수/reliability).
 - **raw/`<id>`.npz** (24개, /mnt/HDD2 + hinton `~/src/dm_eval/out_probe_p30_ep39_full/raw/`, 총 150MB): 다른 에이전트/파이썬 비교분석용 — `mem_{img,lidar,thermal}`(256,64,64 fp16), `fused_p5`, `rel_{...}`, `router_L{0,1,2}`, `det_boxes/scores/labels`, `gt_labels`. 로드: `d=np.load('<id>.npz'); d['mem_img']`.
-- `probe_det_features.py` 동봉(재현). git=panel/summary/stats/script/md(경량), raw는 용량상 /mnt/HDD2·hinton 보관.
+- 재현 스크립트는 develop의 [`tools/probe_det_features.py`](../../tools/probe_det_features.py) (2026-07-28 회수 시 `.claude_logs/det_eval/p30_feature_probe/` → `tools/` 로 이동). raw/panel은 용량상 /mnt/HDD2·hinton·`archive/det-p29-p30-analysis` 태그 보관.
 - `p30_feature_probe/panel_<id>.png` (6장): 행=[입력 3모달+FUSED PCA / fpn0 PCA / mem PCA(RBMA on)+router bar / reliability맵+검출결과]. RBMA |Δmem|=검정(무효과)·router LiDAR=0 시각 확인.
 - `out_p30_ep39/` (hinton): diag_det 검출 bbox 시각화 16장.

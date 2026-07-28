@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """
+tools/project_muses_dgfusion.py — MUSES 센서(lidar/event_camera/radar)를 DGFusion
+파라미터로 RGB 평면에 재투영해 **새 폴더**에 굽는다 (기존 projected_to_rgb/ 불변).
+
 Re-project MUSES sensors (lidar / event_camera / radar) to the RGB plane using the
 *DGFusion* parameter set, into a NEW output folder (never touching the existing
 `projected_to_rgb/`, which is the historical baseline that produced test 78.979).
@@ -42,6 +45,12 @@ one engine per invocation (lidar/radar together, event_camera separately).
 Output encoding matches the devkit / existing data:
     lidar, radar : uint16 PNG, value = (raw + 100) * 150   (background raw 0 -> 15000)
     event        : uint8  PNG, ch0 = +polarity count, ch1 = -polarity count, ch2 = 0
+
+Example (two invocations — one engine per run, see TWO ENGINES above):
+  python tools/project_muses_dgfusion.py --muses_root /ailab_mat2/dataset/MUSES \
+    --output_folder projected_to_rgb_dgf --paramset dgfusion --modalities lidar,radar --workers 24
+  python tools/project_muses_dgfusion.py --muses_root /ailab_mat2/dataset/MUSES \
+    --output_folder projected_to_rgb_dgf --paramset dgfusion --modalities event_camera --workers 24
 """
 import argparse
 import os
@@ -161,7 +170,8 @@ def project_one(args):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--muses_root', default='/ailab_mat2/dataset/MUSES')
     ap.add_argument('--output_folder', default='projected_to_rgb_dgf')
     ap.add_argument('--paramset', default='dgfusion', choices=list(PARAMSETS))

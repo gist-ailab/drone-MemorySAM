@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
-Verify + quantitatively compare two MUSES projection sets (baseline vs DGFusion-param).
+tools/compare_muses_projections.py — 두 MUSES 투영 세트(baseline vs DGFusion 파라미터)를
+파일수/shape/dtype 무결성 + 커버리지 + 채널통계로 정량 비교한다.
 
 Checks per modality: file count, no failures, shape (1080,1920,3), dtype
 (lidar/radar uint16, event uint8); then coverage % (fraction of pixels carrying a real
@@ -13,6 +14,11 @@ Coverage definition (important):
 
 Channel stats are reported in RAW units (lidar/radar: png/150 - 100), over covered
 pixels only, so they are comparable to DGFusion's DATASETS.PIXEL_MEAN.
+
+Example:
+  python tools/compare_muses_projections.py --muses_root /ailab_mat2/dataset/MUSES \
+    --baseline projected_to_rgb --new projected_to_rgb_dgf --sample 60 \
+    --out ~/muses_proj_compare.json
 """
 import argparse
 import json
@@ -71,7 +77,8 @@ def walk(root, sub, suffix):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--muses_root', default='/ailab_mat2/dataset/MUSES')
     ap.add_argument('--baseline', default='projected_to_rgb')
     ap.add_argument('--new', default='projected_to_rgb_dgf')

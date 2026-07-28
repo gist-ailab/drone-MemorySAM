@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""P30-Det feature probe (v2): per-modality encoding features + PCA, RBMA on/off,
-memory-attention before/after, router fusion weights — for MANY images.
+"""tools/probe_det_features.py — P30-Det 계열 per-image feature/RBMA/router 프로브
+(per-modality encoding feature PCA, RBMA on/off, memory-attention before/after,
+router fusion weight) — 여러 장을 한 번에.
 
 Outputs (--out_dir):
   panel_<id>.png       per-image combined visualization
@@ -10,17 +11,29 @@ Outputs (--out_dir):
   probe_stats.json     compact numerical stats per image + aggregate
   summary.png          aggregate plots across all probed images
 
-Usage: python probe_det_features.py --cfg C --det_checkpoint CK --out_dir D
-       [--n 24] [--classes 8,6,7,9] [--no_raw]
+Example:
+  python tools/probe_det_features.py --cfg configs/det/det_P30_v2.yaml \
+    --det_checkpoint outputs/det/.../best_checkpoint.pth \
+    --out_dir ~/p30_feature_probe --n 24 --classes 8,6,7,9
 """
-import os, json, argparse
-import numpy as np
-import torch, torch.nn.functional as F
-import matplotlib; matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import os, sys, json, argparse
+from pathlib import Path
 
-import objdet.tools.diag_det as dd
-from tools.viz_features import pca_rgb, reliability
+# repo root + vendored sam2 on sys.path so `objdet`/`train_det`/`val` import
+# regardless of cwd (same convention as tools/_det_common.py:23 and
+# tools/probe_frozen_backbone.py:38).
+REPO = Path(__file__).resolve().parents[1]
+for _p in (str(REPO), str(REPO / 'semseg' / 'models' / 'sam2')):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import numpy as np                                                  # noqa: E402
+import torch, torch.nn.functional as F                              # noqa: E402
+import matplotlib; matplotlib.use('Agg')                            # noqa: E402
+import matplotlib.pyplot as plt                                     # noqa: E402
+
+import objdet.tools.diag_det as dd                                  # noqa: E402
+from tools.viz_features import pca_rgb, reliability                 # noqa: E402
 
 MODALS = ['img', 'lidar', 'thermal']
 
@@ -44,7 +57,8 @@ def cos(a, b):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--cfg', required=True); ap.add_argument('--det_checkpoint', required=True)
     ap.add_argument('--out_dir', default='out_probe'); ap.add_argument('--n', type=int, default=24)
     ap.add_argument('--classes', default=''); ap.add_argument('--no_raw', action='store_true')

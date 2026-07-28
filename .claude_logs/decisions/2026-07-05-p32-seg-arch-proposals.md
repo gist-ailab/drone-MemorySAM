@@ -1,7 +1,11 @@
 # P32 아키텍처 제안 모음 — 조건 적응형 라우팅 재설계 (Seg)
 
+> 이관: `.claude_logs/23_seg_arch_proposals_P32.md` (브랜치 `jobs/seg-arch-proposals`, 2026-07-28 통합). 원본 커밋은 태그 `archive/jobs-seg-arch-proposals` 에 보존.
+
 > 작성: 2026-07-05 (proposal 상태 — 전부 미구현). 사용자 지시: "P31까지와 아키텍처가 달라도 되니, 논리적으로 말이 되는 여러 컨셉의 모델 구조 proposal".
-> 근거 문서: [16_failure_analysis_P28_P29.md](16_failure_analysis_P28_P29.md)(실패모드), [02_model_arch.md](02_model_arch.md)(P9~P31 상세), [12_novelty_and_related_work.md](12_novelty_and_related_work.md) + `research_vault/relatedworks/{41,47,50,55}`(선행연구 빈칸 검증), [20_p31_design_proposal.md](20_p31_design_proposal.md)(직전 제안).
+> 근거 문서: [analysis/2026-06-30-p28-p29-failure-analysis.md](../experiments/analysis/2026-06-30-p28-p29-failure-analysis.md)(실패모드, 구 16), [models/arch-evolution.md](../models/arch-evolution.md)(P9~P31 상세, 구 02), [research/novelty-and-related-work.md](../research/novelty-and-related-work.md)(구 12) + [`research/vault/relatedworks/`](../research/vault/relatedworks/)`{41,47,50,55}`(선행연구 빈칸 검증), [2026-07-02-p31-redesign-proposal.md](2026-07-02-p31-redesign-proposal.md)(직전 제안, 구 20).
+
+> 📎 **본문의 `NN:줄번호` 인용**(예: `02:1592`, `03:53`, `16 §7`)은 2026-07-08 폴더 재구조화 **이전의 번호 파일**을 가리킨다. 문서 매핑은 [00_INDEX.md 구번호→새경로 표](../00_INDEX.md#-구번호--새경로-매핑표-기존-doc-n-참조-해석용)를 따르되, **줄번호는 재구조화·병합으로 더 이상 유효하지 않다**(섹션 제목으로 찾을 것). 이 문서에서 쓰인 번호: 02=[models/arch-evolution.md](../models/arch-evolution.md) · 03=[experiments/log.md](../experiments/log.md) · 11=[decisions/2026-06-16-sam3-porting-plan.md](2026-06-16-sam3-porting-plan.md) · 16=[experiments/analysis/2026-06-30-p28-p29-failure-analysis.md](../experiments/analysis/2026-06-30-p28-p29-failure-analysis.md) · 19=[det/diagnosis-plan.md](../det/diagnosis-plan.md).
 > 목표 대비: 공식 목표 DELIVER val ≥66.51 / test ≥56.71 (현 P31 63.20/54.75), MUSES SOTA 79.72/79.49, MULTIAQUA(현 M 82.10).
 
 ---
@@ -220,7 +224,7 @@ Phase 3  + P32-A(또는 D) → MULTIAQUA/MUSES의 실제 조건 갭 공략 (DELI
 
 ---
 
-## 8. Lit-check TODO (proposal 채택 전 필수 확인, 12번 문서 §4에 병합할 것)
+## 8. Lit-check TODO (proposal 채택 전 필수 확인, [research/novelty-and-related-work.md](../research/novelty-and-related-work.md)(구 12번 문서) §4에 병합할 것)
 
 1. **(B)** training-free cross-modal agreement/corroboration을 fusion 가중이나 attention에 쓴 선행 — TTA/co-training 계열(pseudo-label agreement)과의 구분 논리 포함. RSGMamba(learned g_c)와 한 문장 차별 필수.
 2. **(C)** reliability/uncertainty 기반 **token pruning**이 멀티모달 fusion에서 쓰인 전례 — 효율 목적 pruning(EViT/ToMe)과 구분. + Gumbel-top-k modality selection 계열(DynamicMoE) 스캔.

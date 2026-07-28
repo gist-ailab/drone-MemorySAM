@@ -1,12 +1,19 @@
 #!/usr/bin/env python
 """
-Quantify what LiDAR motion compensation actually changes, and render baseline-vs-new
-projection overlays on the RGB frame for visual alignment checking.
+tools/muses_motioncomp_analysis.py — MUSES LiDAR motion-compensation의 실제 효과를
+픽셀 변위로 정량화하고, baseline vs 신규 투영을 RGB 위에 겹쳐 정렬을 눈으로 검증한다.
 
 Motion compensation measurement: project the SAME lidar sweep twice (mc off / mc on),
 match points by identity (same input order, same filtering), and report the per-point
 pixel displacement distribution. This isolates the geometric effect from any dilation
 difference (both runs use dilation OFF here).
+
+Requires the vendored MUSES devkit at third_party/MUSES/MUSES (imported below).
+
+Example:
+  python tools/muses_motioncomp_analysis.py --muses_root /ailab_mat2/dataset/MUSES \
+    --baseline projected_to_rgb --new projected_to_rgb_dgf \
+    --outdir ~/muses_motioncomp --n_frames 3 --n_motion 8
 """
 import argparse
 import os
@@ -84,7 +91,8 @@ def overlay(rgb, png, modality, alpha=1.0):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--muses_root', default='/ailab_mat2/dataset/MUSES')
     ap.add_argument('--baseline', default='projected_to_rgb')
     ap.add_argument('--new', default='projected_to_rgb_dgf')

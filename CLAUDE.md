@@ -73,7 +73,9 @@
 
 **왜**: 세션 A가 만든 모델을 세션 B가 모르면 재구현한다. develop+허브가 유일한 "다른 세션이 볼 수 있는 곳"이다. 서버 로컬 브랜치·worktree는 **그 세션만의 것**이다.
 
-⚠️ **P37 병합 대기 (2026-07-17, user 결정)**: P37a-CEFR/P37b-ClassToken 코드는 `worktree-p33-impl`(9c5e2cc)에만 있고 develop엔 없다. **통짜 머지 금지** — develop은 이미 P34~P36 + 분석훅(P36 router-off 토글 등, p33-impl엔 없음)을 갖고 있어 reliadino/*.py가 양쪽 독립 진화(충돌). P37 순증분(classtoken.py +135 / fusion.py CEFRHead +153 / model.py CEFR +129 / train_reliadino +66 / P37 configs / ColorAugSSD)만 얹어야 함. **jarvis P37a 완주·검증 후 opus가 수동 이식+재검증하여 병합 예정.** 그 전엔 인계 시 `worktree-p33-impl` 브랜치를 직접 참조. 성급히 머지하지 말 것.
+✅ **P37 병합 완료 (2026-07-28 확인)**: 위 규칙의 사례였던 "P37a-CEFR/P37b-ClassToken이 `worktree-p33-impl`(9c5e2cc)에만 있다"는 경고는 **해소됐다** — 9c5e2cc가 develop 조상임을 확인했고(`git merge-base --is-ancestor 9c5e2cc develop`), CEFRHead·classtoken·P37 configs 모두 develop에 있다. 해당 worktree/브랜치는 2026-07-28 브랜치 통합 때 정리됐다(원본은 태그 `archive/*` 로 보존).
+
+📦 **브랜치 통합 (2026-07-28)**: worktree 브랜치들을 develop 하나로 정리했다. 삭제된 브랜치의 원본 커밋은 전부 `archive/<브랜치명>` 태그로 남아 있다(`git tag -l 'archive/*'`). 옛 브랜치를 찾는다면 그 태그를 보라. **`26-drone-certificate`는 통합 대상이 아니며 그대로 유지된다.**
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
@@ -118,6 +120,9 @@
 # Conda 환경
 conda activate MMSS_SAM
 # 또는 직접 경로: /home/jemo/anaconda3/envs/MMSS_SAM/bin/python
+
+# 정량 지표 재현 (대표 ckpt로 mIoU/AP 재측정 — 경로·기대수치는 REPRODUCE.md)
+bash scripts/reproduce_eval.sh <deliver|muses|muses-official|multiaqua|det>
 
 # 학습
 python train_sam2_lora_paper.py --cfg configs/<config>.yaml

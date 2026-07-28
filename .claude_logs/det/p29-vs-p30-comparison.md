@@ -1,5 +1,7 @@
 # P29-Det vs P30-Det 비교 (v2 test, hinton eval)
 
+> 이관: `.claude_logs/det_eval/COMPARE_P29_vs_P30.md` (브랜치 `det-p29-p30-analysis`, 2026-07-28 통합). 원본 커밋은 태그 `archive/det-p29-p30-analysis` 에 보존.
+
 - **평가**: hinton GPU0/1, `objdet/tools/diag_det.py` (동일 파이프라인, letterbox, ROOT=/ailab_mat2), test = poongsan_v2 `det_test_v2.json` (캡처 holdout 115206+114808, kept=1772장/모달 3개 필수).
 - **P29-Det** = `det_P29_v2_bundle` best **epoch 9** (AP 0.269, 학습 종료·최종). mean-fusion + FCOS.
 - **P30-Det** = `det_P30_v2` best **epoch 24** (AP 0.108, **학습 진행중 스냅샷**). reliability-router 융합 + object-query decoder + FCOS aux.

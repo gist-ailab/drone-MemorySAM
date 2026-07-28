@@ -1,5 +1,7 @@
 # P32 (CoRB) — Per-Image Test-Set Analysis @ best weight ep108 (2026-07-07)
 
+> 이관: `.claude_logs/experiments/2026-07-07_P32_perimage_analysis.md` (브랜치 `worktree-p32-perimage-viz`, 2026-07-28 통합). 원본 커밋은 태그 `archive/worktree-p32-perimage-viz` 에 보존.
+
 > **Best weight**: `test_epoch108_54.79_top1` (Test mIoU 54.79 / Day-Val best ep98 64.12). P32 학습은 계속 진행 중(ep108 시점 스냅샷). ep108은 **P31(54.75)을 처음으로 추월**, P28(55.27)에 −0.48까지 근접.
 > **범위**: DELIVER test **전체 1897장 per-image** 시각화 + 수치. 모달 순서 `[img, depth, event, lidar]`.
 > **도구**: `tools/viz_features_full.py`(신규) — 이미지별 6행 패널 + per-image CSV, corroboration ON/OFF 효과 측정.
@@ -67,7 +69,7 @@
 | ΔmIoU (ON−OFF) 평균 | **−0.013** (median −0.007) | net 이득 없음(미세 손해) |
 | helped(>+0.1) / hurt(<−0.1) / neutral | 61 / 136 / **1700** | 89.6% 무변화, 손해가 이득의 2배 |
 
-- **결론**: corroboration은 "누가 신뢰되나"를 무학습으로 잘 맞히지만(AUROC 반전, Phase 0/doc 24), **그 신호가 결정에 도달하지 못한다**. soft attention-bias는 (a) 균일 UAMM 출력융합에 눌리고, (b) event/LiDAR feature가 비어 살릴 정보가 없다. → **신호 품질 ≠ 라우팅 이득** (ep40 진단을 best weight·전체 test에서 정량 재확인).
+- **결론**: corroboration은 "누가 신뢰되나"를 무학습으로 잘 맞히지만(AUROC 반전, Phase 0/구 doc 24 — **구 문서, 현재 미존재**), **그 신호가 결정에 도달하지 못한다**. soft attention-bias는 (a) 균일 UAMM 출력융합에 눌리고, (b) event/LiDAR feature가 비어 살릴 정보가 없다. → **신호 품질 ≠ 라우팅 이득** (ep40 진단을 best weight·전체 test에서 정량 재확인).
 
 ## 5. 근본 원인 종합
 1. **비적응 융합(uniform UAMM)** → competence(depth 43.7)·reliability(depth 0.94)를 무시, misalloc 51.6%. **가장 큰 즉효 레버.**
@@ -80,4 +82,5 @@
 - 도구: `tools/viz_features_full.py` (`--split test --num -1` 전체, corroboration ON/OFF diff, per-image CSV). ep108 ckpt는 학습 로테이션 삭제 방지 위해 `/home/gm_huis/p32_best_ep108.pth`로 복사 후 사용.
 - per-image CSV 컬럼: `miou, miou_off, dmiou, iou_<25cls>, smiou_<modal>, rel_<modal>, uamm_<modal>, best_modal, top_uamm_modal, misalloc, corrb_dlogit_mean/rel, corrb_frac_flipped`.
 
-→ 개선 설계는 [`2026-07-07_P33_design.md`](2026-07-07_P33_design.md) 참조. (목차: [`../00_EXPERIMENT_LEDGER.md`](../00_EXPERIMENT_LEDGER.md))
+→ 개선 설계는 [`decisions/2026-07-07-p33-cgmod-design.md`](../../decisions/2026-07-07-p33-cgmod-design.md) 참조.
+(목차: 구 `00_EXPERIMENT_LEDGER.md` — **구 문서, 현재 미존재**. 현재 이 폴더의 목차는 [`experiments/00_MOC.md`](../00_MOC.md).)

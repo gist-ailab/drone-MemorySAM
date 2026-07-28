@@ -80,7 +80,7 @@ MODEL:
   DEC_LAYERS: 4
   DEC_N_POINTS: 2
   NUM_SELECT: 300
-  COCO_CKPT: /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM/weights/rf-detr-large-2026.pth
+  COCO_CKPT: weights/rf-detr-large-2026.pth
   FREEZE_BACKBONE: false
   GRAD_CHECKPOINT: false        # REQUIRED — see header (active_modality bug)
 

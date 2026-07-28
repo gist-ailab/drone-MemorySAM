@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """
+tools/muses_pixelmean_check.py — 재투영한 MUSES PNG의 채널 평균/표준편차를 DGFusion·
+CAFuser가 공표한 DATASETS.PIXEL_MEAN/STD와 대조하는 독립 오라클 검증기.
+
 Independent oracle check: DGFusion publishes DATASETS.PIXEL_MEAN/STD for LIDAR and RADAR
 in its MUSES config. Those are global per-channel statistics over the TRAIN split in RAW
 sensor units (background pixels included as 0).
@@ -11,6 +14,10 @@ parameters end-to-end without needing their code to run.
   lidar/radar PNG -> raw = png/150 - 100  (background 15000 -> 0)
   event PNG is already raw uint8 counts, but DGFusion's event mean is in [0,1] units
   (it divides by 255), so we scale accordingly.
+
+Example:
+  python tools/muses_pixelmean_check.py --muses_root /ailab_mat2/dataset/MUSES \
+    --folders projected_to_rgb,projected_to_rgb_dgf --n 120
 """
 import argparse
 import os
@@ -63,7 +70,8 @@ def collect(root, folder, m, n):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--muses_root', default='/ailab_mat2/dataset/MUSES')
     ap.add_argument('--folders', default='projected_to_rgb,projected_to_rgb_dgf')
     ap.add_argument('--n', type=int, default=120)

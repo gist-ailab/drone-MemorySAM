@@ -9,6 +9,18 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-28 — 브랜치·worktree를 develop 하나로 통합 + 정량 재현 경로(REPRODUCE.md) 신설
+
+- **통합 범위**: worktree 15개 → 3개, 로컬 브랜치 22개 → 5개. 삭제분은 전부 `archive/<브랜치>` 태그 11개로 보존(`git tag -l 'archive/*'`). **`26-drone-certificate`는 사용자 지시로 통합 대상에서 제외**하고 그대로 유지.
+- **사용 중이라 보존한 worktree 2개**: `p34-det`(jarvis P39rf det 학습 모니터링 프로세스 15개 상주), `p30-det`(3개). 다른 세션이 실제로 점유 중이라 제거하지 않았다.
+- **회수한 고유 자산**(폐기 브랜치에만 있던 것): `tools/eval_muses_official.py`(MUSES 공식 native 1080×1920 재채점기 — develop에 대응물이 없던 유일 평가기), `tools/{viz_features_full,probe_det_features,compare_muses_projections,muses_motioncomp_analysis,muses_pixelmean_check,project_muses_dgfusion}.py`, `configs/hpca100-muses_rgbelr_P34_reliadino.yaml`, `configs/det/det_P29_{egofill_bengio,indoor_jarvis_v2,indoor_jarvis_v3}.yaml`, `configs/det/{det_P34_final_full_local.yaml,README_det_training.md}`, 연구 문서 6종(→ decisions/ det/ experiments/analysis/ research/ 로 이관·MOC 등록). det_eval PNG 24장(19MB)은 미디어 규약대로 git에 넣지 않고 태그로만 보존.
+- **이식성 수정**: det config 7개의 `MODEL.COCO_CKPT` 절대경로(`/SSDb/...`) → repo-상대 `weights/rf-detr-large-2026.pth`. hpca100 MUSES config 2개의 `TEST.FILE`이 사망한 b200 경로(`/NHNHOME/...`)를 가리키던 것 → `DATASET.ROOT`와 일치시킴.
+- **재현 경로 신설**: `REPRODUCE.md` + `scripts/reproduce_eval.sh <deliver|muses|muses-official|multiaqua|det>`. 기존 평가 진입점만 호출하고 데이터 경로를 덮어쓴 임시 config를 생성하는 방식(원본 `configs/` 무변경). 기대 수치는 `.claude_logs` 실측값만 기재하고 미확인분은 TODO로 명시.
+- **검증**: 회수 도구 7종 `py_compile`+`--help` 7/7 통과, config 5종 `yaml.safe_load` 통과 및 모델 식별자 실존 확인, 이관 문서·MOC 상대링크 0 broken, `reproduce_eval.sh` `bash -n`·usage·DRY_RUN(4/5 rc=0; multiaqua는 P9 ckpt가 정규 웨이트 루트에 부재해 의도된 에러 종료).
+- **재현 과정에서 잡은 결함 2건**: ① `val_det.py --score_thresh` 기본 0.3이 `train_det.py`(임계값 없음)와 달라 기록된 AP50 0.9321이 재현되지 않음 → 스크립트가 `0.0`을 명시. ② 빈 GPU 자동선택이 `nvidia-smi` 오류 문자열을 그대로 GPU 인덱스로 넘겨 **GPU0(타인 학습)에 얹힐 수 있던 결함** → 숫자 목록이 아니면 중단하도록 방어 추가(현재 이 박스가 NVML mismatch 상태라 실제 발동 확인).
+- **CLAUDE.md §1.7의 "P37 병합 대기" 경고 해소**: 9c5e2cc가 develop 조상임을 확인(CEFRHead·classtoken·P37 configs 모두 develop 보유).
+- 코딩은 labcode(연구실 계정) 워커 2개에 파일 집합을 분리해 병렬 위임했고, 합격 판정·수치 검증은 이 세션에서 직접 수행.
+
 ### 2026-07-25 — P43 PanopticDual + P44 BMR + P45 FogStyle 구현 완료, develop 병합
 
 - P43/P44/P45 구현 완료, develop 병합 35ddbe0(+config 3e3b54f). 제안 문서 = [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md)(§7 토론 반영 포함).

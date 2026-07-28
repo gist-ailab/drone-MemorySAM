@@ -1,7 +1,9 @@
 # P33 설계 — Competence-Gated Hard Fusion + Modality Dropout (CG-MoD)
 
-> 근거: [`2026-07-07_P32_perimage_analysis.md`](2026-07-07_P32_perimage_analysis.md)(ep108 best weight, test 전체 1897장). P32 결론 = **"신호는 맞고 라우팅은 실패"** + **융합이 competence 무시(misalloc 51.6%)** + **event/LiDAR 사망(competence≈16)** + **도메인 전이 붕괴**.
-> 계보: P28(self-entropy RBMA) → P31(calibration+SDC router) → P32(corroboration bias) → **P33(competence-gated hard fusion + modality dropout)**. roadmap `23_seg_arch_proposals_P32.md`의 P32-C(PruneMem)를 흡수·구체화.
+> 이관: `.claude_logs/experiments/2026-07-07_P33_design.md` (브랜치 `worktree-p32-perimage-viz`, 2026-07-28 통합). 원본 커밋은 태그 `archive/worktree-p32-perimage-viz` 에 보존.
+
+> 근거: [`experiments/analysis/2026-07-07-p32-perimage-analysis.md`](../experiments/analysis/2026-07-07-p32-perimage-analysis.md)(ep108 best weight, test 전체 1897장). P32 결론 = **"신호는 맞고 라우팅은 실패"** + **융합이 competence 무시(misalloc 51.6%)** + **event/LiDAR 사망(competence≈16)** + **도메인 전이 붕괴**.
+> 계보: P28(self-entropy RBMA) → P31(calibration+SDC router) → P32(corroboration bias) → **P33(competence-gated hard fusion + modality dropout)**. roadmap [`2026-07-05-p32-seg-arch-proposals.md`](2026-07-05-p32-seg-arch-proposals.md)(구 `23_seg_arch_proposals_P32.md`)의 P32-C(PruneMem)를 흡수·구체화.
 
 ---
 
@@ -79,13 +81,13 @@ P28 순수 ablation 관례 유지(한 번에 한 축). 순서 = **효과/비용 
 - 검증 도구: `tools/viz_features_full.py`(per-image + corrb ON/OFF), `tools/module_diagnostics.py`, `tools/eval_reliability_auroc.py` — 모두 `--cfg/--model_path` 교체로 재사용.
 
 ## 6. 근거 데이터
-[`2026-07-07_P32_perimage_analysis.md`](2026-07-07_P32_perimage_analysis.md) + `/mnt/HDD2/src/logs/P32_perimage_20260707/ep108/`. 핵심 수치: competence depth 43.7≫event 16.9≈lidar 15.3, UAMM 균일 0.27, misalloc 51.6%, corroboration flip 0.046%·ΔmIoU −0.013, dead-on-test/alive-on-val(Wall·Bridge·Water·TrafficLight).
+[`experiments/analysis/2026-07-07-p32-perimage-analysis.md`](../experiments/analysis/2026-07-07-p32-perimage-analysis.md) + `/mnt/HDD2/src/logs/P32_perimage_20260707/ep108/`. 핵심 수치: competence depth 43.7≫event 16.9≈lidar 15.3, UAMM 균일 0.27, misalloc 51.6%, corroboration flip 0.046%·ΔmIoU −0.013, dead-on-test/alive-on-val(Wall·Bridge·Water·TrafficLight).
 
 ---
 
 ## 7. 관련연구 & 노벨티 방어 (2026-07-08, research_vault 마이닝 — 3-agent)
 
-> 방법: `.claude_logs/research_vault/relatedworks/`(97노트) + [12](../12_novelty_and_related_work.md)/[10](../10_related_work.md) 전수. **핵심 함의**: P33은 RBMA 신호를 **attn-logit-bias → 출력-fusion-gate**로 옮기는데, 이 지점은 **선행연구가 더 많이 점유**한 셀이다 → 노벨티는 조합·비대칭·진단주도로만 방어 가능. 아래 vault 노트번호는 `research_vault/relatedworks/`.
+> 방법: [`.claude_logs/research/vault/relatedworks/`](../research/vault/relatedworks/)(97노트) + [12](../research/novelty-and-related-work.md)/[10](../research/related-work-raw.md) 전수. **핵심 함의**: P33은 RBMA 신호를 **attn-logit-bias → 출력-fusion-gate**로 옮기는데, 이 지점은 **선행연구가 더 많이 점유**한 셀이다 → 노벨티는 조합·비대칭·진단주도로만 방어 가능. 아래 vault 노트번호는 `research/vault/relatedworks/`(구 `research_vault/relatedworks/`).
 
 ### C1 (Competence-Gated Fusion) — 근접 선행 & 위협
 | 선행 | 무엇 | 노트 |
@@ -119,7 +121,7 @@ P28 순수 ablation 관례 유지(한 번에 한 축). 순서 = **효과/비용 
 - **⚠️ lit-check 필요**: **correctness-contrastive calibration loss**(entropy가 정답을 예측하도록)는 vault 미커버 — ConfidNet/correctness-ranking/trust-score 계열은 일반 calibration 문헌에 흔함 → **외부 서치 전 노벨티 주장 보류**(점유 가정).
 
 ### C4 (Thin-class) — ⚠️ **타당성 위협 (프로젝트 자체 데이터가 부분 반박)**
-- **(1) night-consistency reg는 DELIVER에 레버-미스매치**: DELIVER per-condition mIoU spread 2.7~3.6뿐 → 갭은 조명이 아니라 class-transfer. [16](../16_failure_analysis_P28_P29.md) §1-B 명시 *"조명 문제 아님 → night-aug류로 해결 안 됨"*. night-consistency는 **MULTIAQUA(day-train/night-test)에서만** 올바른 레버(`64`).
+- **(1) night-consistency reg는 DELIVER에 레버-미스매치**: DELIVER per-condition mIoU spread 2.7~3.6뿐 → 갭은 조명이 아니라 class-transfer. [16](../experiments/analysis/2026-06-30-p28-p29-failure-analysis.md) §1-B 명시 *"조명 문제 아님 → night-aug류로 해결 안 됨"*. night-consistency는 **MULTIAQUA(day-train/night-test)에서만** 올바른 레버(`64`).
 - **(2) focal/class-balanced = imbalance용, transfer용 아님**: P29 reweighting이 **val rare class는 개선했으나 test는 사망 유지, net −1.1, TrafficLight 41.3→9.6 붕괴**([16] §7) → 같은 category 레버는 "val 이득, test 무이득" 재현 예상.
 - **(3) Bridge/Water/Other는 val·test 양쪽 사망(competence [0,0,0,0])= frozen-backbone 용량한계(ISSUE-008)**, transfer 아님. → **C4가 두 기구를 혼동**: Wall(56→0.9=진짜 transfer) vs Bridge/Water(≈0 양쪽=용량). 서로 다른 처방 필요. *(주의: P32 per-image 분석은 이들을 "val-alive"로 적었으나 doc 16의 competence는 양쪽 사망 — **P32 held-out val 실측 per-class IoU로 재확인 필요**.)*
 - **vault 처방**(`16` §5-6, `20`): 양쪽사망=backbone unfreeze / 조건민감(RailTrack·TwoWheeler)=class-targeted aug / rare-class starvation=GOOSE-M2F aux-CE head(`51`, val측 이득) / night-consistency=MULTIAQUA 전용. **focal/class-balanced 문헌은 vault 미커버 → lit-check 필요**.
@@ -130,4 +132,4 @@ P28 순수 ablation 관례 유지(한 번에 한 축). 순서 = **효과/비용 
 - **C3**: 신호 위치 노벨티 주장 **금지**(자기잠식) → ablation 발견으로. calibration-loss lit-check 필수.
 - **C4**: 노벨티보다 **레버-핏 재설계 우선**(night-consistency→DELIVER 부적합, 사망클래스=용량 vs transfer 분리).
 - **필수 cite**: Decouple-Recouple`78`·MLE-SAM`88`·DAMP`50`·EQUISeg`62`·UNO`43`·PRIMED`60`·HyperDUM`44`·MAGIC++`07`·Reducing-Unimodal-Bias`03`·GOOSE-M2F`51`.
-- **lit-check TODO(외부, [12](../12_novelty_and_related_work.md) §4 병합)**: (a) correctness-contrastive/confidence-ranking calibration loss, (b) asymmetric modality-dropout 전례, (c) focal/class-balanced/Lovász seg loss.
+- **lit-check TODO(외부, [12](../research/novelty-and-related-work.md) §4 병합)**: (a) correctness-contrastive/confidence-ranking calibration loss, (b) asymmetric modality-dropout 전례, (c) focal/class-balanced/Lovász seg loss.

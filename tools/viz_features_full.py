@@ -27,7 +27,7 @@ Per-image CSV columns:
   corrb_change_mean, corrb_change_rel  (||fused_on-fused_off|| stats)
 
 Example (full test set on B200 GPU7):
-  python tools/viz_features_full.py --cfg configs/b200-deliver_rgbdel_P32_physaug.yaml \
+  python tools/viz_features_full.py --cfg configs/deliver/b200-deliver_rgbdel_P32_physaug.yaml \
     --model_path outputs/MMSamP32/.../test_epoch74_53.62_top1_checkpoint.pth \
     --split test --gpu 7 --out-dir ~/viz_P32_full --csv ~/viz_P32_full/per_image.csv
 """
@@ -42,8 +42,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO))
-import val as V  # reuse load_model / create_dataset / get_val_augmentation
+# repo root + vendored sam2 on sys.path (val.py -> build_sam2 -> `import sam2`);
+# same convention as tools/probe_frozen_backbone.py:38-40, so the tool runs on
+# boxes where the sam2 package is not pip-installed editable.
+for _p in (str(REPO), str(REPO / 'semseg' / 'models' / 'sam2')):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+import val as V  # noqa: E402  reuse load_model / create_dataset / get_val_augmentation
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]); IMAGENET_STD = np.array([0.229, 0.224, 0.225])
 
