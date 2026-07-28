@@ -177,7 +177,7 @@ dependencies:
     - terminado==0.13.1
     - testpath==0.6.0
     - threadpoolctl==3.1.0
-    - timm==0.4.12
+    - timm>=1.0            # DINOv3 백본 필수 (0.4.12 불가)
     - tornado==6.1
     - tqdm==4.62.3
     - traitlets==5.1.1

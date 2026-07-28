@@ -167,7 +167,7 @@ dependencies:
       - terminado==0.13.1
       - testpath==0.6.0
       - threadpoolctl==3.1.0
-      - timm==0.4.12
+      - timm>=1.0            # DINOv3 백본 필수 (0.4.12 불가)
       - torch==2.9.0+cu128
       - torchaudio==2.9.0+cu128
       - torchvision==0.24.0+cu128

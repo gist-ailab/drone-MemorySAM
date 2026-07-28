@@ -97,7 +97,7 @@ termcolor==1.1.0
 terminado==0.13.1
 testpath==0.6.0
 threadpoolctl==3.1.0
-timm==0.4.12
+timm>=1.0            # 🔴 DINOv3 백본 필수. 0.4.12로 내리면 DINOv2 fallback으로 조용히 떨어진다
 tornado==6.1
 tqdm==4.62.3
 traitlets==5.1.1
@@ -114,4 +114,3 @@ numpy==1.26.0
 pycocotools
 safetensors
 icecream
-timm
