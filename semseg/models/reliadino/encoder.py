@@ -212,8 +212,16 @@ class FrozenViTEncoder(nn.Module):
 
     @staticmethod
     def _create(timm, name, fallback, pretrained, img_size):
+        # [HF-offline workaround 2026-07-28] RELIADINO_LOCAL_BACKBONE env가 있으면
+        # 로컬 weights 파일에서 백본 로드(HF Hub 우회). hpca100 HF가 offline=RANDOM INIT
+        # /online=hang으로 양쪽 깨져 있어, timm pretrained_cfg_overlay(file=)로 정규
+        # 로딩 로직을 로컬 파일에 적용한다. primary backbone에만 적용.
+        import os
+        local_weights = os.environ.get('RELIADINO_LOCAL_BACKBONE') or None
         def _try(n, pre):
             kwargs = dict(pretrained=pre, num_classes=0, img_size=img_size)
+            if pre and local_weights and n == name:
+                kwargs['pretrained_cfg_overlay'] = dict(file=local_weights)
             try:
                 return timm.create_model(n, dynamic_img_size=True, **kwargs)
             except TypeError:
