@@ -1,0 +1,184 @@
+# ═══ P39.1-rank × MUSES 4모달(+radar) — yeon 3090×3 — 4-modal SOTA 시도 (2026-07-27) ═══
+# yeon P39.1+radar 4모달의 seed2, A100×4(BS1). P44+radar가 BMR 과균형으로 실패(thin-class 전멸)해 대체 — 검증 레시피 재배치
+# 목표: user 4-modal-우선 SOTA 지시(2026-07-27, [[official-research-goals]]). 우리 최고 seed2
+#   (P39.1-rank, 3모달, val 82.62/test 79.788, SOTA GtA 82.39 −2.60)에 **radar를 4번째 모달로 추가** =
+#   1-변수 실험("seed2 레시피 + radar가 도움이 되나"). 근거 = P43/seed2 표준분석의 drop-lidar가
+#   fog_night +7.19/+7.39 = 비RGB가 adverse-night에 인과 기여 → lidar도 산란하는 fog에서 radar 상보 기대.
+# 🔴 base = jarvis-muses_rgbel_P39_1_rank.yaml 그대로(trunk gated_mlp+VICReg+router+M2F, 방금 ablation
+#   검증: trunk +2~7 기여·VICReg lidar eff-rank 78~100·router +0.5). **변경은 radar 추가 + yeon 경로뿐.**
+# 🔴 radar 디코딩 = ISSUE-025 픽스(develop, 150m 클립 + occupancy 채널) 후 첫 4모달 클린 런.
+#   과거 P34 4모달 test 78.256(−0.72)는 broken-radar 기반이라 무효 → 이 런이 radar 순효과 재판정.
+# VICReg: lidar ×1.0, 나머지(img/event/radar) ×0.25(OTHER_W). radar도 per-modal LoRA + VICReg 대상.
+# 판정 게이트(사전등록):
+#   ep30 조기: val ≥80(seed2 ep30 수준 궤도) & 붕괴 없음 & radar 정상 디코딩(smoke). 미달 시 kill.
+#   완주: val ≥82.62(3모달 seed2 초과 = radar 순이득) 또는 drop-radar dMIoU>0 @fog(radar 인과기여).
+#   test는 user Codabench 제출로 최종 판정(val↔test 전이율 낮음 유의).
+# PhysAug on = seed2(79.788)와 동일 레시피 유지(1-변수 비교; 헤드라인 공정성은 별도 검토).
+# 🔴 GRADIENT_CHECKPOINT: false (encoder active_modality 버그).
+#   torchrun --nproc_per_node=3 train_reliadino.py --cfg <this>   (yeon GPU 0,1,5)
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_muses_rgbelr_P39_1_rank_4modal_seed2'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2]
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }
+  CLASS_TOKEN: { ENABLE: false }
+
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:
+    TRUNK_EXP       : true                  # ✅ ablation 검증: +2~7 기여 (2026-07-27 seed2 분석)
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:                                 # ✅ ablation 검증: lidar eff-rank 78~100 (VICReg on)
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25                         # img/event/radar 공통
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'   # hpca100 경로
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event', 'radar']   # 🔴 4모달 (radar 추가)
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : true                        # seed2와 동일 레시피
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # yeon 3090 24GB. 4모달은 3모달보다 modal encode 1개 더 → BS1 안전.
+                                    # accum=ceil(16/(BS×world=3))=6 → eff-batch 18(≈16 유지). 기동 후 mem 재프로파일.
+  EPOCHS        : 300
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # 3090 24GB 4모달: eval BS4 OOM(ep2 사망) → BS1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
