@@ -120,7 +120,8 @@ bash certification/run_cert.sh \
 1. **시작 배너** — 모델/백본/헤드, 체크포인트 md5·epoch·load(missing/unexpected), 장치,
    입력 크기, 클래스 10종, 사용 모달리티, 이미지 수(night/normal), 데이터 루트, 출력 경로.
 2. **ENTER 대기** (`--auto`로 생략).
-3. **스트리밍 추론** — 이미지별 `추론 ms / 검출 수(클래스별) / GT 수 / TP·FP·FN`, 오버레이 PNG 저장.
+3. **스트리밍 추론** — 이미지별 `추론 ms / 검출 수(클래스별) / GT 수 / TP·FP·FN`,
+   오버레이 PNG 저장(기본 2단 패널 = 상단 `GT｜Pred`, 하단 입력 3모달 — 5절 참조).
 4. **최종 리포트** — mAP(.50:.95)·mAP75, night/normal mAP50, per-class AP50,
    `►► mAP50 = … | FPS = … ◄◄` 한 줄, VRAM.
 
@@ -134,7 +135,8 @@ bash certification/run_cert.sh \
 | `--score-thresh` | 오버레이/화면 로그 표시 임계 (기본 0.3) |
 | `--eval-thresh` | COCO 채점 임계 (기본 0.05) |
 | `--mode {val,test}` | 사용할 annotation (기본 `val` = `ANNOTATION_VAL` = final test json) |
-| `--show` | `$DISPLAY`가 있으면 cv2 창 표시 |
+| `--show` | `$DISPLAY`가 있으면 cv2 창 표시 (저장되는 것과 같은 이미지) |
+| `--viz-mode {panel,rgb}` | 오버레이 레이아웃 (기본 `panel`). `panel` = 상단 `GT｜Pred` + 하단 입력 3모달(RGB/LiDAR/Thermal) 2단 패널, `rgb` = 기존 단일 768² RGB 오버레이 |
 | `--lowlight-clips` | night 판정 클립 목록 (기본 `capture_20260618_114021,capture_20260618_115624`) |
 | `--data-root` | 이 머신의 poongsan_v2 마운트로 `DATASET.ROOT` + `ANNOTATION_*` 재지정 |
 | `--gpu` | CUDA device index |
@@ -300,7 +302,7 @@ md5sum <best_checkpoint.pth>       # b78f614cba1375bb54dfeacd5e58cef3
 | `runs/cert_D1/console_<YYYYmmdd_HHMMSS>.log` | `run_cert.sh` (tee) | 배너부터 최종 리포트까지 콘솔 전체(스트리밍 라인 포함) |
 | `runs/cert_D1/inference_log.txt` | `cert_eval.py` | 이미지별 TSV — `idx ⇥ file_name ⇥ ms ⇥ det=N ⇥ GT=N ⇥ TP=N ⇥ FP=N ⇥ FN=N` (viz 실패 시 `[viz warn]` 라인) |
 | `runs/cert_D1/cert_report.json` | `cert_eval.py` | `overall` / `night` / `normal` (AP, AP50, AP75 …), `per_class`, `fps`, `mean_latency_ms`, `vram_gb`, `checkpoint`(epoch·load·metrics), `cfg`, `ckpt` |
-| `runs/cert_D1/viz/<NNNN>_<파일stem>.png` | `cert_eval.py` | 오버레이 — 예측=클래스색 박스+score, GT=녹색 얇은 박스 |
+| `runs/cert_D1/viz/<NNNN>_<파일stem>.png` | `cert_eval.py` | 2단 패널 오버레이 (1536×1280, 기본 `--viz-mode panel`) — **상단** `GT`(RGB+GT 녹색 박스+클래스명) \| `Pred`(RGB+예측 클래스색 박스+score), 각 768². **하단** 실제 모델 입력 3모달 `RGB` \| `LiDAR (depth)` \| `Thermal`, 각 512². `--viz-mode rgb`면 기존 단일 768² 오버레이(예측+얇은 GT) |
 
 `check_split.py`의 리포트는 **기본적으로 현재 디렉터리의 `split_check.json`**에 저장된다
 (`runs/cert_D1/` 아래가 아니다). 옮기려면 `SPLIT_CHECK_OUT` 환경변수를 쓴다.

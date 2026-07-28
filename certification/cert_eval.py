@@ -12,7 +12,8 @@ det_eval_breakdown.py / det_fps_bench.py exactly — this only adds the live UX.
       --out  runs/cert_D1
 
 Flags: --auto (skip the ENTER prompt), --limit N (quick run), --show (cv2 window if
-$DISPLAY), --stride N (every Nth image), --score-thresh (viz/log threshold).
+$DISPLAY), --stride N (every Nth image), --score-thresh (viz/log threshold),
+--viz-mode panel|rgb (2-row multimodal panel, default, vs. the legacy single RGB frame).
 """
 from __future__ import annotations
 
@@ -78,6 +79,122 @@ def _tp_fp_fn(pred_boxes, pred_cls, gt_boxes, gt_cls, iou_thr=0.5):
     return tp, len(pred_boxes) - tp, len(gt_boxes) - tp
 
 
+# ---- visualization -----------------------------------------------------------
+# The model is 3-modal (rgb + lidar depth + thermal) but the old overlay only showed
+# RGB, so a night frame looked like a black square with boxes on it — no way to see
+# *why* something was detected. The panel layout below puts GT|Pred on top and the
+# three actual input tensors underneath.
+PANEL_PX = 768                 # top row: GT / Pred, one side each
+STRIP_PX = 512                 # bottom row: one modality tile each
+CANVAS_W = PANEL_PX * 2        # 1536 — exactly 3 * STRIP_PX, so both rows line up
+SEP = (110, 110, 110)          # panel separator lines
+_MODAL_LABEL = {'img': 'RGB', 'rgb': 'RGB', 'lidar': 'LiDAR (depth)', 'thermal': 'Thermal'}
+_MODAL_CMAP = {'lidar': 'COLORMAP_INFERNO', 'thermal': 'COLORMAP_JET'}
+
+
+def _font(size):
+    """Label font. Falls back to PIL's bitmap font so a machine without DejaVu still renders."""
+    from PIL import ImageFont
+    for p in ('DejaVuSans-Bold.ttf', 'DejaVuSans.ttf'):
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _tag(pil, text, size=22):
+    """Top-left panel label on an opaque backing box — the tiles underneath are often
+    near-black (night RGB) or near-white (saturated thermal), so plain text disappears."""
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(pil); f = _font(size)
+    box = d.textbbox((6, 4), text, font=f)
+    d.rectangle([box[0] - 5, box[1] - 3, box[2] + 5, box[3] + 3], fill=(0, 0, 0))
+    d.text((6, 4), text, fill=(255, 255, 255), font=f)
+    return pil
+
+
+def _modal_display(t, modal):
+    """(C,H,W) input tensor -> HxWx3 uint8 for display.
+
+    RGB keeps the overlay's clamp(0,1)*255. lidar/thermal live on completely different
+    value ranges (metres, raw counts), so drawn as-is they come out black; each tile gets
+    its own min-max normalisation instead. This is display-only — it operates on a detached
+    CPU copy and never touches the tensor the model was given.
+    """
+    a = t.detach().cpu().float()
+    if modal in ('img', 'rgb'):
+        return (a.clamp(0, 1).permute(1, 2, 0).numpy() * 255).astype('uint8')
+    g = a.mean(0).numpy() if a.dim() == 3 else a.numpy()      # 3ch depth/thermal -> 1ch
+    g = (g - float(g.min())) / (float(g.max()) - float(g.min()) + 1e-6)
+    g8 = (g * 255).astype('uint8')
+    try:                                                      # cv2 is optional here
+        import cv2
+        cm = _MODAL_CMAP.get(modal)
+        if cm is not None:
+            return cv2.applyColorMap(g8, getattr(cv2, cm))[:, :, ::-1].copy()   # BGR->RGB
+    except Exception:
+        pass
+    return np.repeat(g8[:, :, None], 3, axis=2)               # grayscale fallback
+
+
+def _modality_strip(sample, modals, width=CANVAS_W, tile=STRIP_PX):
+    """Bottom row: the tensors actually fed to the model, side by side (no re-reading files).
+    Missing modality keys are skipped — draw whatever is there, centred, and move on."""
+    from PIL import Image, ImageDraw
+    band = Image.new('RGB', (width, tile), (0, 0, 0))
+    tiles = []
+    for m in modals:
+        t = sample.get(m)
+        if t is None:
+            continue
+        arr = _modal_display(t[0] if t.dim() == 4 else t, m)
+        tiles.append(_tag(Image.fromarray(arr).resize((tile, tile), Image.BILINEAR),
+                          _MODAL_LABEL.get(m, m), 20))
+    if not tiles:
+        return band
+    x0 = max(0, (width - tile * len(tiles)) // 2)   # fewer than 3 modalities -> centre them
+    for i, im in enumerate(tiles):
+        band.paste(im, (x0 + i * tile, 0))
+    d = ImageDraw.Draw(band)
+    for i in range(1, len(tiles)):
+        d.line([(x0 + i * tile, 0), (x0 + i * tile, tile)], fill=SEP, width=2)
+    return band
+
+
+def _gt_panel(img_np, gt_boxes, gt_cls, class_names, sx, sy):
+    """RGB + GT only. One colour for every class (unlike the pred panel) because this
+    panel exists to be eyeballed against the one next to it, not to encode class identity."""
+    from PIL import Image, ImageDraw
+    pil = Image.fromarray(img_np)
+    d = ImageDraw.Draw(pil); f = _font(16)
+    for gb, c in zip(gt_boxes, gt_cls):
+        x1, y1, x2, y2 = gb[0] * sx, gb[1] * sy, gb[2] * sx, gb[3] * sy
+        d.rectangle([x1, y1, x2, y2], outline=(0, 255, 0), width=2)
+        ci = int(c)
+        name = class_names[ci] if 0 <= ci < len(class_names) else str(ci)
+        tb = d.textbbox((x1, y1), name, font=f)
+        d.rectangle([tb[0] - 1, tb[1] - 1, tb[2] + 1, tb[3] + 1], fill=(0, 128, 0))
+        d.text((x1, y1), name, fill=(255, 255, 255), font=f)
+    return pil
+
+
+def _compose_panel(gt_img, pred_img, strip):
+    """GT | Pred (768² each) over the modality strip (512 tall) = 1536x1280."""
+    from PIL import Image, ImageDraw
+    h = PANEL_PX + (strip.height if strip is not None else 0)
+    canvas = Image.new('RGB', (CANVAS_W, h), (0, 0, 0))
+    canvas.paste(gt_img.resize((PANEL_PX, PANEL_PX)), (0, 0))
+    canvas.paste(pred_img.resize((PANEL_PX, PANEL_PX)), (PANEL_PX, 0))
+    if strip is not None:
+        canvas.paste(strip, (0, PANEL_PX))
+    d = ImageDraw.Draw(canvas)
+    d.line([(PANEL_PX, 0), (PANEL_PX, PANEL_PX)], fill=SEP, width=2)
+    if strip is not None:
+        d.line([(0, PANEL_PX), (CANVAS_W, PANEL_PX)], fill=SEP, width=2)
+    return canvas
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--cfg', required=True)
@@ -90,6 +207,9 @@ def main():
     ap.add_argument('--limit', type=int, default=None)
     ap.add_argument('--auto', action='store_true', help='skip the ENTER prompt')
     ap.add_argument('--show', action='store_true', help='cv2 window if $DISPLAY is set')
+    ap.add_argument('--viz-mode', default='panel', choices=['panel', 'rgb'],
+                    help="overlay layout: 'panel' = GT|Pred over the 3 input modalities "
+                         "(1536x1280), 'rgb' = legacy single 768 RGB frame")
     ap.add_argument('--lowlight-clips', default=','.join(DEFAULT_LOWLIGHT_CLIPS))
     ap.add_argument('--data-root', default=None,
                     help='override DATASET.ROOT + ANNOTATION_* for this machine (poongsan_v2 mount)')
@@ -147,6 +267,7 @@ def main():
     cat_id_to_name = {c['id']: c['name'] for c in gt_coco.loadCats(gt_coco.getCatIds())}
     idx_to_cat = {v: k for k, v in ds.cat_id_to_idx.items()}
     resize_mode = cfg['DATASET'].get('RESIZE_MODE', 'stretch')
+    cfg_modals = list(cfg['DATASET'].get('MODALS') or [])   # display order for the viz strip
 
     all_preds = []; lat = []; kept = 0
     tot_tp = tot_fp = tot_fn = 0
@@ -202,21 +323,34 @@ def main():
             print(line)
             logf.write(f"{kept}\t{fname}\t{dt:.1f}\tdet={vb_n}\tGT={len(gts)}\tTP={tp}\tFP={fp}\tFN={fn}\n")
 
-            # save overlay: predictions (per-class colour) + GT (thin, for comparison)
+            # save overlay — outside the t0/dt window on purpose, so rendering never
+            # contaminates the latency/FPS numbers
             try:
                 rgb_key = 'img' if 'img' in sample else modals[0]
                 img_np = (sample[rgb_key][0].detach().cpu().clamp(0, 1).permute(1, 2, 0).numpy() * 255).astype('uint8')
                 pil = draw_detections(img_np, boxes[vk].cpu(), scores[vk].cpu(), cls[vk].cpu(),
                                       ds.class_names, args.score_thresh)
                 from PIL import ImageDraw
-                d = ImageDraw.Draw(pil); sx, sy = img_hw[1] / ow, img_hw[0] / oh
-                for gb in gt_boxes:
-                    d.rectangle([gb[0] * sx, gb[1] * sy, gb[2] * sx, gb[3] * sy], outline=(0, 255, 0), width=1)
+                sx, sy = img_hw[1] / ow, img_hw[0] / oh
+                if args.viz_mode == 'rgb':
+                    # legacy single frame (kept for certification-artifact compatibility):
+                    # predictions in per-class colour + GT as thin green boxes on one image
+                    d = ImageDraw.Draw(pil)
+                    for gb in gt_boxes:
+                        d.rectangle([gb[0] * sx, gb[1] * sy, gb[2] * sx, gb[3] * sy], outline=(0, 255, 0), width=1)
+                    vis = pil
+                else:
+                    order = ([m for m in cfg_modals if m in sample]
+                             + [m for m in modals if m not in cfg_modals])
+                    vis = _compose_panel(
+                        _tag(_gt_panel(img_np, gt_boxes, gt_cls, ds.class_names, sx, sy), 'GT'),
+                        _tag(pil, 'Pred'),
+                        _modality_strip(sample, order))
                 op = os.path.join(viz_dir, f'{kept:04d}_{os.path.splitext(os.path.basename(fname))[0]}.png')
-                pil.save(op)
+                vis.save(op)
                 if args.show and os.environ.get('DISPLAY'):
                     import cv2
-                    cv2.imshow('cert', cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)); cv2.waitKey(1)
+                    cv2.imshow('cert', cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)); cv2.waitKey(1)
             except Exception as e:
                 logf.write(f"  [viz warn] {e}\n")
     logf.close()
