@@ -1,0 +1,65 @@
+# MemorySAM Object Detection — P29-Det (RBMA backbone + FPN/FCOS head)
+# JARVIS variant — DATASET v3 (clean re-label, temporal in-capture split).
+#
+# Why v3: v2(캡처 holdout)와 동일한 깨끗한 라벨셋이지만 split 방식만 다름. 각 캡처 내에서
+#   타임스탬프 정렬 후 앞 80% = train / 뒤 20% = test, 경계에 15프레임 gap 으로 인접
+#   near-duplicate leakage 완화. 8 캡처 모두 train/test 양쪽에 기여 → 장면 분포 일치,
+#   클래스 균형 우수(양쪽 10클래스). 단, 같은 캡처를 공유하므로 v2 보다 낙관적 수치.
+#   사용 시점: v2(캡처 holdout)로 학습이 잘 안 될 때 fallback.
+#
+# 데이터 외 모든 하이퍼파라미터는 det_P29_indoor_jarvis(_v2).yaml 과 동일 (변수 격리).
+
+OUTPUT_DIR: outputs/det
+
+DATASET:
+  ROOT: /SSDd/jemo_maeng/dset/poongsan_v2
+  ANNOTATION_TRAIN: /SSDd/jemo_maeng/dset/poongsan_v2/_det_splits/det_train_v3.json
+  ANNOTATION_VAL:   /SSDd/jemo_maeng/dset/poongsan_v2/_det_splits/det_test_v3.json
+  MODALITY_KEYS:
+    img:     rgb
+    thermal: thermal_aligned
+    lidar:   depth_map_lidar
+  MODALS: ['img', 'lidar', 'thermal']
+  REQUIRE_ALL_MODALITIES: true
+  IMG_SIZE: [1024, 1024]
+  MIN_AREA: 16.0
+
+MODEL:
+  SEG_MODEL: LoRA_Sam_P29_Det
+  SEG_CHECKPOINT: ''
+  SAM2_CHECKPOINT: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt
+  SAM2_CONFIG: sam2_hiera_b+.yaml
+  LORA_R: 4
+  AMF_MODE: uniform
+  N_CLASSES: null                                 # → 10 (poongsan categories)
+  FPN_CHANNELS: [32, 64, 256]
+  FPN_STRIDES: [4, 8, 16]
+  HIDDEN_DIM: 256
+  N_CONVS: 4
+  MODALITY_FUSE: mean
+  FREEZE_BACKBONE: false
+  TRAIN_MEMORY: true
+  GRAD_CHECKPOINT: false
+
+TRAIN:
+  EPOCHS: 50
+  BATCH_SIZE: 1
+  VAL_BATCH_SIZE: 1
+  GRAD_ACCUM_STEPS: 1
+  LR: 0.0002
+  WEIGHT_DECAY: 0.0001
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 5
+  NUM_WORKERS: 4
+  AMP: true
+
+WANDB:
+  ENABLE: true
+  PROJECT: p29-det
+  ENTITY: null
+  VIZ_COUNT: 8
+  VIZ_SCORE_THRESH: 0.3
+
+EVAL:
+  NMS_THRESH: 0.5
+  SCORE_THRESH: 0.05

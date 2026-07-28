@@ -1,12 +1,28 @@
-# ═══ P37a-CEFR × MUSES 3모달 — CEFR-Head를 MUSES(img/lidar/event)에 적용 ═══
-# MODEL 블록 = jarvis-deliver_rgbdel_P37a_cefr.yaml (P36 공정레시피 + CEFR-Head + CA2 anchor).
-# DATASET/TRAIN/EVAL = hpca100-muses_rgbelr_P34_reliadino.yaml.
-#   변경: MODALS 4모달(+radar) → 3모달 [img,lidar,event]. radar는 val −0.09로 무익 판정(2026-07-17).
-#   MUSES 최선 = 3모달 공식 val 80.86. CEFR head가 이 위에서 개선하는지 검증.
-# 🔴 GRADIENT_CHECKPOINT: false 유지(encoder active_modality 버그 회피).
-#   torchrun --nproc_per_node=<N> train_reliadino.py --cfg <this>
+# ═══ MUSES × P34-ReliaDINO — first MUSES baseline on the ReliaDINO lineage ═══
+# Base = configs/b200-deliver_rgbdel_P34_reliadino.yaml (current best seg model:
+# DELIVER Test 57.60@ep140 / Val 68.19@ep120) with ONLY the dataset swapped.
+# Model block is byte-for-byte the P34 recipe so the DELIVER→MUSES transfer is
+# the single variable.
+#
+# Deltas vs P34/DELIVER:
+#   - DATASET.NAME  DELIVER -> MUSES   (semseg/datasets/muses.py)
+#   - MODALS  [img,depth,event,lidar] -> [img,lidar,event,radar]:  MUSES HAS NO DEPTH,
+#     so depth is replaced by radar (파일명의 'rgbelr' = rgb+event+lidar+radar, 4모달).
+#     radar 디코딩은 semseg/datasets/muses.py::_open_radar (ISSUE-025 픽스 반영).
+#   - classes 25 -> 19 (Cityscapes trainIds; taken from trainset.n_classes, not set here)
+#   - test split has NO public GT -> MUSES('test') raises, train_reliadino.py
+#     catches it and sets testset=None. val (250 imgs) is the only eval stage.
+#   - EPOCHS 200 -> 300, WARMUP 10 -> 15: sized from a measured 87 s/epoch against
+#     the 20:00 KST 07-15 hand-back deadline. See the EPOCHS note in TRAIN below.
+#
+# Launch (GPU 0,1,6,7 — 2..5 are P36-router, do not touch):
+#   export PYTHONPATH=/NHNHOME/ailab/Workspaces/jemo_maeng/pylibs_p34:$PYTHONPATH
+#   torchrun --standalone --nproc_per_node=4 train_reliadino.py --cfg <this>
+# PYTHONPATH is MANDATORY: dinov3 lives in timm 1.0.24 there; the MMSS_SAM env's
+# timm 0.4.12 has no dinov3 and the run dies with
+# "could not build backbone 'vit_large_patch16_dinov3'".
 DEVICE          : cuda
-SAVE_DIR        : './outputs/ReliaDINO/hpca100_muses_rgbel_P37a_cefr'
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_muses_rgbelr_P34_reliadino'
 
 MODEL:
   NAME          : ReliaDINO
@@ -27,14 +43,12 @@ MODEL:
     MLP_RATIO   : 4.0
     AUX_HIDDEN  : 256
     AUX_CE_WEIGHT : 0.5
-    # 공정 레시피 (P36/G0c 동결): attention bias OFF
     ATTN_BIAS:
-      ENABLE       : false
+      ENABLE       : true
       LAMBDA1_INIT : 1.0
 
-  # 공정 레시피: consistency 항 OFF
   CONSISTENCY:
-    ENABLE       : false
+    ENABLE       : true
     LAMBDA2_INIT : 0.5
 
   GATE:
@@ -51,40 +65,17 @@ MODEL:
     ENABLE : true
     LAMBDA : 0.1
 
-  # [P36] per-class router 유지 — CEFR은 그 위에 얹힘 (routed residual은
-  # pass-1/최종 logits 양쪽에 동일하게 적용).
-  ROUTER:
-    ENABLE        : true
-    ANCHOR_LAMBDA : 1.0
-    REG_MODE      : decisive
-    REG_LAMBDA    : 0.01
-    ALPHA_INIT    : 0.0
-    HIDDEN        : 64
-
-  # [P37a] CEFR-Head + CA2-NoText anchor (구현: semseg/models/reliadino/fusion.py
-  # CEFRHead + model.py 2-pass flow). ENABLE false → P36과 byte-identical.
-  CEFR:
-    ENABLE           : true
-    MORPH_INIT       : -4.0     # blend scalar a init → σ(a)≈0.018 (P36-near start)
-    ANCHOR_POSTERIOR : true     # λ2·log p̂_i(k|s) 항 사용 (calibrated aux posterior)
-    LAMBDA1          : 1.0      # rel_cal anchor 계수 (learnable scalar init)
-    LAMBDA2_TARGET   : 0.5      # posterior anchor 목표 계수
-    LAMBDA2_WARMUP_EP: 10       # λ2 linear warmup 0→target (epochs)
-    ENTROPY_FLOOR    : 0.5      # AECF hinge: batch-marginal 혼합 entropy floor
-    HIDDEN           : 64       # routing head hidden dim (zero-init last conv)
-
   MODAL_DROPOUT:
     ENABLE    : false
     P         : 0.3
-    TARGETS   : ['img', 'depth']
+    TARGETS   : ['img']          # P34 used ['img','depth']; MUSES has no depth
     WARMUP_EP : 20
-
 
 DATASET:
   NAME          : MUSES
   ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
   IGNORE_LABEL  : 255
-  MODALS        : ['img', 'lidar', 'event']
+  MODALS        : ['img', 'lidar', 'event', 'radar']
   RGB_SUBROOT   : null
   THERMAL_SUBROOT : null
   LIDAR_SUBROOT : null

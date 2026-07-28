@@ -20,6 +20,7 @@ additive bias로 가산 — 를 얹는 멀티모달 인식 연구 코드베이�
 1. **[`CLAUDE.md`](CLAUDE.md)** — 세션 규칙 + 프로젝트 개요 + 명령어 canonical. (에이전트 공통 지침은 [`AGENTS.md`](AGENTS.md))
 2. **[`.claude_logs/00_INDEX.md`](.claude_logs/00_INDEX.md)** — 연구 로그 front door (폴더 구조 + 구번호 매핑표).
 3. **[`.claude_logs/status/current.md`](.claude_logs/status/current.md)** — 현재 상태 스냅샷 (단일 출처).
+4. **[`REPRODUCE.md`](REPRODUCE.md)** — 정량 지표 재현 가이드 (`bash scripts/reproduce_eval.sh <bench>` 한 줄로 mIoU/AP 재측정).
 
 ## 리포 구조 요약
 

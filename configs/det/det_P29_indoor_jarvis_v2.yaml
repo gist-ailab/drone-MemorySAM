@@ -1,0 +1,69 @@
+# MemorySAM Object Detection — P29-Det (RBMA backbone + FPN/FCOS head)
+# JARVIS variant — DATASET v2 (clean re-label, capture-level holdout split).
+#
+# Why v2: 기존 _det_splits(det_train/det_val)는 dense 비디오의 raw 전 프레임을 포함해
+#   52% 가 "어노테이션 0개" 였는데, 실제론 객체가 있는 미레이블 프레임(false negative)
+#   이었음 → batch=1 학습의 절반 스텝이 정탐을 억제 → AP≈0. 새 라벨셋
+#   (/ailab_mat2/Projects/Drone/DATA/260618_poongsan, 8 captures, empty=0%) 으로 교체.
+#   Split = 캡처 단위 holdout: test = capture_115206 + capture_114808 (둘 다 10클래스 포함),
+#   train = 나머지 6 캡처. 연속 비디오 temporal leakage 0.
+#   ROOT(poongsan_v2) 아래 capture_*/{rgb,depth_map_lidar,thermal_aligned} 로 rsync,
+#   COCO modalities 경로에 capture_XXX/ prefix.
+#
+# 데이터 외 모든 하이퍼파라미터는 기존 det_P29_indoor_jarvis.yaml 과 동일 (변수 격리).
+
+OUTPUT_DIR: outputs/det
+
+DATASET:
+  ROOT: /SSDd/jemo_maeng/dset/poongsan_v2
+  ANNOTATION_TRAIN: /SSDd/jemo_maeng/dset/poongsan_v2/_det_splits/det_train_v2.json
+  ANNOTATION_VAL:   /SSDd/jemo_maeng/dset/poongsan_v2/_det_splits/det_test_v2.json
+  MODALITY_KEYS:
+    img:     rgb
+    thermal: thermal_aligned
+    lidar:   depth_map_lidar
+  MODALS: ['img', 'lidar', 'thermal']
+  REQUIRE_ALL_MODALITIES: true
+  IMG_SIZE: [1024, 1024]
+  MIN_AREA: 16.0
+
+MODEL:
+  SEG_MODEL: LoRA_Sam_P29_Det
+  SEG_CHECKPOINT: ''
+  SAM2_CHECKPOINT: semseg/models/sam2/sam2/checkpoints/sam2.1_hiera_base_plus.pt
+  SAM2_CONFIG: sam2_hiera_b+.yaml
+  LORA_R: 4
+  AMF_MODE: uniform
+  N_CLASSES: null                                 # → 10 (poongsan categories)
+  FPN_CHANNELS: [32, 64, 256]
+  FPN_STRIDES: [4, 8, 16]
+  HIDDEN_DIM: 256
+  N_CONVS: 4
+  MODALITY_FUSE: mean
+  FREEZE_BACKBONE: false
+  TRAIN_MEMORY: true
+  GRAD_CHECKPOINT: false                           # DDP 6-GPU: 속도 위해 끔(probe: off+batch1=17.5GB, batch2=OOM)
+
+TRAIN:
+  # 6× RTX 4090 DDP (torchrun --nproc_per_node=6). grad-ckpt off → GPU당 batch 1 (17.5GB).
+  EPOCHS: 50
+  BATCH_SIZE: 1                                    # GPU당 1 (no-ckpt batch2는 24GB OOM)
+  VAL_BATCH_SIZE: 1
+  GRAD_ACCUM_STEPS: 1                              # 유효 배치 = 1 x 6 GPU = 6
+  LR: 0.0002
+  WEIGHT_DECAY: 0.0001
+  WARMUP_EPOCHS: 5
+  SAVE_INTERVAL: 5
+  NUM_WORKERS: 4
+  AMP: true
+
+WANDB:
+  ENABLE: true
+  PROJECT: p29-det
+  ENTITY: null
+  VIZ_COUNT: 8                                    # 매 epoch 동일한 앞 8장 (val shuffle=False → 고정)
+  VIZ_SCORE_THRESH: 0.3
+
+EVAL:
+  NMS_THRESH: 0.5
+  SCORE_THRESH: 0.05
