@@ -113,7 +113,10 @@ ANN_VAL=/my/path/instances_test_common.json DATA_ROOT=/my/poongsan bash scripts/
 
 기대하는 디렉터리 레이아웃(로더 코드 기준):
 
-- **DELIVER** (`semseg/datasets/deliver.py:124`) — `<ROOT>/img/<condition>/<split>/<seq>/*.png`, 나머지 모달은 `img` 를 `depth`/`event`/`lidar` 로 치환
+- **DELIVER** (`semseg/datasets/deliver.py:139-144`) — `<ROOT>/img/<condition>/<split>/<seq>/*_rgb.png`.
+  나머지 모달은 **디렉터리와 파일 접미사를 함께** 치환한다: 🔴 **depth 모달이 읽는 디렉터리는 `depth/`가 아니라 `hha/`**
+  (`/img`→`/hha`, `_rgb`→`_depth`) · lidar = `/lidar` + `_lidar` · event = `/event` + `_event` · GT = `/semantic` + `_semantic`.
+  디스크에 `depth/`도 함께 있지만 로더는 쓰지 않는다 — `hha/`가 없으면 depth 모달 로드가 실패한다.
 - **MUSES** (`semseg/datasets/muses.py:143`) — `<ROOT>/frame_camera/<split>/<weather>/<tod>/*.png`, GT는 `<ROOT>/gt_semantic/...`, 투영 모달은 `<ROOT>/projected_to_rgb/{lidar,event_camera,radar}/...`
 - **MULTIAQUA** — `CLAUDE.md` 프로젝트 개요 절 참조 (`img`/`lidar`/`thermal`)
 - **det** — COCO json의 `file_name` 이 `<ROOT>` 기준 상대경로(`capture_YYYY.../rgb/<ts>.png`), 모달 폴더는 config `MODALITY_KEYS`(`rgb`/`depth_map_lidar`/`thermal_aligned`)
