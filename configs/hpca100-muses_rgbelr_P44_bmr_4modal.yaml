@@ -188,9 +188,7 @@ DATASET:
 
 TRAIN:
   IMAGE_SIZE    : [1024, 1024]
-  BATCH_SIZE    : 2                 # hpca100 A100 40GB, 2-GPU면 trainer accum으로 eff-batch 16 유지
-                                    # ([[batch-sizing-policy]] — 기동 후 재프로파일해 85~90% 채우게 조정).
-                                    # ⚠️ B-1(MMPareto) on이면 backward가 2회라 스텝 시간 ~1.6~1.8×.
+  BATCH_SIZE    : 1                 # 4모달+radar는 A100 40GB서 BS2 OOM(36.4GB) → BS1(~18GB). accum eff-batch 16 유지
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 2
@@ -217,7 +215,7 @@ SCHEDULER:
 EVAL:
   MODEL_PATH    : ''
   IMAGE_SIZE    : [1024, 1024]
-  BATCH_SIZE    : 4
+  BATCH_SIZE    : 2                 # 4모달 eval 스파이크 예방
   EVAL_DAY      : false
   MSF:
     ENABLE      : false
