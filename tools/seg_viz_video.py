@@ -111,7 +111,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--cfg', required=True)
-    ap.add_argument('--model_path', required=True)
+    ap.add_argument('--model_path', default=None,
+                    help="ReliaDINO ckpt; omit if --pred-dir is given")
+    ap.add_argument('--pred-dir', default=None,
+                    help="use precomputed label PNGs <pred-dir>/<stem>.png "
+                         "(e.g. a competitor's dumped predictions) instead of "
+                         "running a model. Stems must match the dataset (same glob).")
     ap.add_argument('--dataset-root', default=None, help="override DATASET.ROOT")
     ap.add_argument('--split', default='val', choices=['val', 'test'])
     ap.add_argument('--case', default=None, help="condition filter (e.g. DELIVER night)")
@@ -152,22 +157,52 @@ def main():
     n_cls = len(dataset.CLASSES)
     ignore = getattr(dataset, 'ignore_label', 255)
 
-    model = V.load_model(cfg, Path(args.model_path), device)
-    model.eval()
+    if not args.pred_dir and not args.model_path:
+        ap.error("provide --model_path (run a model) or --pred-dir (use dumped preds)")
+    model = None
+    if not args.pred_dir:
+        model = V.load_model(cfg, Path(args.model_path), device)
+        model.eval()
 
     n = len(dataset) if args.num <= 0 else min(args.num, len(dataset))
     print(f"[seg-video] split={args.split} case={args.case} frames={n}/{len(dataset)} "
           f"modals={modals} cls={n_cls}", flush=True)
+
+    # --pred-dir lookup key: DELIVER reuses the same basename stem across scene
+    # folders, so stems are NOT unique. Use the path after '/img/' (scene + split
+    # + subdir + stem) with '/'->'__' — identical on both sides since our loader
+    # and the competitor glob the same DELIVER tree. The dump script must key by
+    # the same rule.
+    _files = None
+    if args.pred_dir:
+        _files = getattr(dataset, 'files', None)
+        if _files is None:
+            import glob as _g
+            _files = sorted(_g.glob(os.path.join(ds_cfg['ROOT'], 'img', '*',
+                                                 args.split, '*', '*.png')))
+            if ds_cfg.get('CASE'):
+                _files = [f for f in _files if ds_cfg['CASE'] in f]
+
+    def _pred_key(rgb_path):
+        return os.path.splitext(str(rgb_path).split('/img/')[-1])[0].replace('/', '__')
 
     mp4 = out / f"{args.name}.mp4"
     sink = _VideoSink(mp4, args.fps)                      # streaming: no frame accumulation
     mious = []
     for idx in range(n):
         images, label, meta = dataset[idx]
-        imgs = [im.unsqueeze(0).to(device) for im in images]
-        with torch.no_grad():
-            m_output, _ = model(imgs, multimask_output=True)
-        pred = m_output[0].argmax(0).cpu().numpy().astype(np.uint8)
+        if args.pred_dir:                                 # use dumped competitor preds
+            key = _pred_key(_files[idx])
+            pp = Path(args.pred_dir) / f"{key}.png"
+            if not pp.exists():
+                print(f"[seg-video] WARN missing pred {key}.png; skip", flush=True)
+                continue
+            pred = np.array(Image.open(pp)).astype(np.uint8)
+        else:
+            imgs = [im.unsqueeze(0).to(device) for im in images]
+            with torch.no_grad():
+                m_output, _ = model(imgs, multimask_output=True)
+            pred = m_output[0].argmax(0).cpu().numpy().astype(np.uint8)
         gt = np.asarray(label).astype(np.int32)
         gh, gw = gt.shape
         if pred.shape != (gh, gw):
