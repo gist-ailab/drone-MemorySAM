@@ -58,6 +58,17 @@ def main():
           f"mAP50={p_['AP50']:.4f}  mAP50-95={p_['AP']:.4f}  mAP75={p_['AP75']:.4f}")
     print(f"[no-prediction frames excluded by predicted-scope: {len(kept_ids)-len(with_pred)}]")
 
+    # NIGHT / NORMAL breakdown over the kept 2066 (annotation-scope)
+    import json as _json
+    gt = _json.load(open(ann))
+    keptset = set(kept_ids)
+    night = sorted(im['id'] for im in gt['images'] if im.get('low_light') and im['id'] in keptset)
+    normal = sorted(im['id'] for im in gt['images'] if not im.get('low_light') and im['id'] in keptset)
+    n = eval_overall(ann, preds, img_ids=night)
+    nm = eval_overall(ann, preds, img_ids=normal)
+    print(f"[night  / {len(night)} frames]  mAP50={n['AP50']:.4f}  mAP50-95={n['AP']:.4f}")
+    print(f"[normal / {len(normal)} frames]  mAP50={nm['AP50']:.4f}  mAP50-95={nm['AP']:.4f}")
+
 
 if __name__ == '__main__':
     main()

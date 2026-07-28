@@ -300,3 +300,7 @@ tmp/
 # Restructure C0: repo hygiene additions
 outputs_model_explain/
 .wandb_key
+
+# 학습 산출물 — 절대 커밋 금지 (수백 MB~GB)
+objdet/yolov5m-lowlight/runs/
+objdet/yolov5m-lowlight/runs_*/
