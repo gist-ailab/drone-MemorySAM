@@ -187,8 +187,24 @@ def main():
             if ds_cfg.get('CASE'):
                 _files = [f for f in _files if ds_cfg['CASE'] in f]
 
+    # Pred-key must be UNIQUE per image and identical on both sides (our loader
+    # and the dumped preds). Two dataset layouts:
+    #   DELIVER: same basename stem repeats across scene folders → NOT unique.
+    #            Key = path after '/img/' (scene+split+subdir+stem), '/'->'__'.
+    #   MUSES : '/img/' absent; basename stem is globally unique (verified) →
+    #            plain stem, stripping the '_frame_camera' rgb suffix so it
+    #            matches the competitor's inference-mode naming.
+    _ds_name = type(dataset).__name__
     def _pred_key(rgb_path):
-        return os.path.splitext(str(rgb_path).split('/img/')[-1])[0].replace('/', '__')
+        s = str(rgb_path)
+        if '/img/' in s:                                  # DELIVER-style tree
+            return os.path.splitext(s.split('/img/')[-1])[0].replace('/', '__')
+        stem = os.path.splitext(os.path.basename(s))[0]   # MUSES / flat trees
+        for suf in ('_frame_camera', '_rgb', '_rgb_front'):
+            if stem.endswith(suf):
+                stem = stem[: -len(suf)]
+                break
+        return stem
 
     dump_dir = None
     if args.dump_pred_dir:
