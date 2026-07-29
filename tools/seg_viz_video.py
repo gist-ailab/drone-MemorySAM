@@ -117,6 +117,10 @@ def main():
                     help="use precomputed label PNGs <pred-dir>/<stem>.png "
                          "(e.g. a competitor's dumped predictions) instead of "
                          "running a model. Stems must match the dataset (same glob).")
+    ap.add_argument('--dump-pred-dir', default=None,
+                    help="also save each prediction as <dump-dir>/<key>.png "
+                         "(gt-resolution label map, unique-key naming) — reuse for "
+                         "frame selection / cross-model comparison")
     ap.add_argument('--dataset-root', default=None, help="override DATASET.ROOT")
     ap.add_argument('--split', default='val', choices=['val', 'test'])
     ap.add_argument('--case', default=None, help="condition filter (e.g. DELIVER night)")
@@ -174,7 +178,7 @@ def main():
     # and the competitor glob the same DELIVER tree. The dump script must key by
     # the same rule.
     _files = None
-    if args.pred_dir:
+    if args.pred_dir or args.dump_pred_dir:
         _files = getattr(dataset, 'files', None)
         if _files is None:
             import glob as _g
@@ -185,6 +189,11 @@ def main():
 
     def _pred_key(rgb_path):
         return os.path.splitext(str(rgb_path).split('/img/')[-1])[0].replace('/', '__')
+
+    dump_dir = None
+    if args.dump_pred_dir:
+        dump_dir = Path(args.dump_pred_dir).expanduser()
+        dump_dir.mkdir(parents=True, exist_ok=True)
 
     mp4 = out / f"{args.name}.mp4"
     sink = _VideoSink(mp4, args.fps)                      # streaming: no frame accumulation
@@ -209,6 +218,8 @@ def main():
             pred = np.asarray(torch.nn.functional.interpolate(
                 torch.tensor(pred)[None, None].float(), size=(gh, gw),
                 mode='nearest')[0, 0]).astype(np.uint8)
+        if dump_dir is not None:                          # save pred for later reuse
+            Image.fromarray(pred).save(dump_dir / f"{_pred_key(_files[idx])}.png")
         err = np.zeros((gh, gw, 3), np.uint8)
         wrong = (pred != gt) & (gt != ignore)
         err[wrong] = (220, 40, 40)
