@@ -22,7 +22,7 @@
 #    켜도 forward는 늘지 않는다. 슬롯이 빠듯하면 C2_MCC.MASK_RATIO는 그대로 두고
 #    EPOCHS를 줄이지 말 것 — ep30 게이트가 먼저 걸린다.
 DEVICE          : cuda
-SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr'
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c1c3'  # [FIX 07-30] all-on과 SAVE_DIR 공유 시 AUTO_RESUME이 크래시 ckpt 오염 -- 전용 디렉토리로 분리
 
 # Trainer = train_reliadino.py.
 #   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
