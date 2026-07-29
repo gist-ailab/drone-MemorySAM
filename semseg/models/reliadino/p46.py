@@ -386,7 +386,27 @@ class EMATeacher:
     def __call__(self, inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         self.ema.eval()
         out = self.ema(list(inputs), True)
-        return out[0]
+        logits = out[0]
+        del out
+        self._clear_diag()
+        return logits
+
+    def _clear_diag(self) -> None:
+        """🔴 메모리: teacher의 eval-경로 분석 탭(`_last_*`)을 즉시 해제한다.
+
+        ReliaDINO.forward는 `not self.training` 분기에서 분석용 텐서를 모듈에
+        캐시한다 — `_last_per_modal_feats`(모달 수 × (B,1024,h,w)),
+        `_last_fused_postfusion` / `_last_fused_prehead`, `_last_per_modal_outputs`,
+        `_last_p43_out`(M2F 출력 dict: pred_masks (B,Q,H/4,W/4) 포함). 이 탭들은
+        val_*/tools/viz_* 가 **student**에서 읽는 것이고 teacher에서는 아무도
+        읽지 않는다. 그런데 teacher는 매 스텝 호출되므로, 지워 주지 않으면
+        다음 스텝의 student forward 2회가 peak를 찍는 내내 그 캐시가 살아 있다.
+        (teacher 전용 — student `_core`의 탭은 건드리지 않는다.)
+        """
+        for m in self.ema.modules():
+            for k, v in list(m.__dict__.items()):
+                if k.startswith('_last_') and v is not None:
+                    m.__dict__[k] = None
 
     def set_epoch(self, epoch: int) -> None:
         self.ema._current_epoch = epoch
@@ -473,20 +493,36 @@ class PrototypeBank(nn.Module):
         self._last_cov = 0.0        # 진단: 이번 스텝에 관측된 클래스 수 / K
 
     def _sample(self, feat: torch.Tensor, gt: torch.Tensor):
-        """feat (B,D,h,w) + gt (B,H,W) → 서브샘플된 (N,D) feature / (N,) label."""
-        h, w = feat.shape[-2:]
+        """feat (B,D,h,w) + gt (B,H,W) → 서브샘플된 (P,D) feature / (P,) label.
+
+        🔴 메모리: **인덱싱을 먼저** 하고 fp32 캐스팅은 마지막에 한다.
+        이전 구현은 `feat.float()` → `permute().reshape()` → `f[keep]` 순서라
+        (B,D,h,w) **전체 크기의 fp32 사본을 3장** autograd 그래프에 남긴 뒤
+        `pixels`(4096)행만 썼다 — DELIVER 768²·fpn_dim 256 기준 호출당 ~110MiB,
+        보조 branch까지 스텝당 2회. 아래 gather는 (P,D)만 그래프에 올린다.
+
+        뽑히는 행·난수 소비·수치는 이전과 **완전히 동일**하다:
+          · `keep` 판정과 `torch.randint(0, n, (pixels,))` 호출이 그대로다(같은 n).
+          · flat row r ↔ (b = r//hw, p = r%hw)는 `permute(0,2,3,1).reshape(-1,D)`의
+            행 순서와 정확히 같은 대응이다.
+          · bf16→fp32 캐스팅은 무손실이라 gather 후 캐스팅해도 값이 같다.
+        """
+        B, D, h, w = feat.shape
+        hw = h * w
         g = F.interpolate(gt.unsqueeze(1).float(), size=(h, w),
                           mode='nearest').squeeze(1).long().reshape(-1)
-        f = feat.permute(0, 2, 3, 1).reshape(-1, feat.shape[1])
         keep = (g != self.ignore_label) & (g >= 0) & (g < self.K)
-        if not bool(keep.any()):
+        idx = keep.nonzero(as_tuple=True)[0]
+        n = int(idx.numel())
+        if n == 0:
             return None, None
-        f, g = f[keep], g[keep]
-        n = f.shape[0]
         if self.pixels > 0 and n > self.pixels:
-            sel = torch.randint(0, n, (self.pixels,), device=f.device)
-            f, g = f[sel], g[sel]
-        return f, g
+            sel = torch.randint(0, n, (self.pixels,), device=feat.device)
+            idx = idx[sel]
+        # (B,D,hw) 뷰에 advanced index → 결과 (P,D). 전체 사본이 생기지 않는다.
+        f = feat.reshape(B, D, hw)[idx.div(hw, rounding_mode='floor'),
+                                   :, idx % hw].float()
+        return f, g[idx]
 
     @torch.no_grad()
     def _update(self, f: torch.Tensor, g: torch.Tensor) -> None:
@@ -503,7 +539,8 @@ class PrototypeBank(nn.Module):
                 update: bool = True) -> torch.Tensor:
         """prototype-contrastive CE. bf16 autocast 아래에서도 fp32로 계산한다."""
         with torch.autocast(device_type=feat.device.type, enabled=False):
-            f, g = self._sample(feat.float(), gt)
+            # `.float()`는 _sample이 **서브샘플 후에** 건다 (전체 사본 회피).
+            f, g = self._sample(feat, gt)
             if f is None:
                 return feat.new_zeros(())
             # 아직 한 번도 안 본 클래스는 이번 배치 평균으로 즉시 초기화해야

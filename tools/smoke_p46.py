@@ -14,12 +14,19 @@
                       ClassLossEMA blend가 고-loss 클래스를 추가로 올리는지
   E. DDP            : 보조 branch(2번째 forward)가 있어도 reducer가 살아남고
                       gradient가 정확히 1회 all-reduce 되는지 (--ddp)
+  G. teacher 캐시   : EMATeacher 호출이 eval-경로 분석 탭(`_last_*`)을 남기지 않는지
+  H. proto 등가성   : PrototypeBank._sample(gather 판)이 옛 full-copy 판과 **같은
+                      행·같은 값**을 뽑는지 (메모리 최적화가 수치를 바꾸지 않음)
+  I. 메모리 단조성  : 학습 루프와 **동일 결선**으로 N스텝 돌려 스텝 간 메모리가
+                      단조증가하지 않는지 (2026-07-29 ep6 OOM 회귀 방지)
 """
 from __future__ import annotations
 
 import argparse
+import gc
 import os
 import sys
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -266,6 +273,197 @@ def check_label_scan():
     return ok, [int(v) for v in pix[:6]]
 
 
+# ── G. EMATeacher 진단 캐시 해제 ────────────────────────────────────────────
+def check_teacher_cache(device):
+    """teacher(eval)가 남기는 `_last_*` 분석 탭이 호출마다 해제되는지.
+
+    남겨 두면 아무도 안 읽는 (B,dim,h,w)급 텐서 여러 장 + M2F 출력 dict가 다음
+    스텝의 student forward 2회 내내 살아 있다 (2026-07-29 OOM 조사).
+    """
+    model = build(device, c2=True, c3=True)
+    model.train()
+    model._current_epoch = 10
+    teacher = P46.EMATeacher(model, alpha=0.999)
+    x, _ = make_batch(device)
+    with torch.no_grad():
+        _ = teacher(x)
+    left = [f"{type(m).__name__}.{k}"
+            for m in teacher.ema.modules()
+            for k, v in m.__dict__.items()
+            if k.startswith('_last_') and v is not None]
+    # student(_core) 쪽 탭은 건드리면 안 된다 — val_*/tools/viz_*가 읽는다.
+    model.eval()
+    with torch.no_grad():
+        _ = model(x, True)
+    student_kept = any(k.startswith('_last_') and v is not None
+                       for m in model.modules() for k, v in m.__dict__.items())
+    return (len(left) == 0 and student_kept), left, student_kept
+
+
+# ── H. PrototypeBank._sample 등가성 (gather 판 ≡ 옛 full-copy 판) ────────────
+def _sample_reference(bank, feat, gt):
+    """최적화 **이전**의 구현 그대로 — 비교 기준."""
+    h, w = feat.shape[-2:]
+    feat = feat.float()
+    g = F.interpolate(gt.unsqueeze(1).float(), size=(h, w),
+                      mode='nearest').squeeze(1).long().reshape(-1)
+    f = feat.permute(0, 2, 3, 1).reshape(-1, feat.shape[1])
+    keep = (g != bank.ignore_label) & (g >= 0) & (g < bank.K)
+    if not bool(keep.any()):
+        return None, None
+    f, g = f[keep], g[keep]
+    n = f.shape[0]
+    if bank.pixels > 0 and n > bank.pixels:
+        sel = torch.randint(0, n, (bank.pixels,), device=f.device)
+        f, g = f[sel], g[sel]
+    return f, g
+
+
+def check_proto_sample(device):
+    bank = P46.PrototypeBank(K, dim=32, pixels=512).to(device)
+    feat = torch.randn(BS, 32, 24, 24, device=device)
+    gt = torch.randint(0, K, (BS, 96, 96), device=device)
+    gt[:, :20] = 255                                  # ignore 섞기
+    torch.manual_seed(4242)
+    f_new, g_new = bank._sample(feat, gt)
+    torch.manual_seed(4242)
+    f_ref, g_ref = _sample_reference(bank, feat, gt)
+    same = (f_new.shape == f_ref.shape and torch.equal(g_new, g_ref)
+            and torch.equal(f_new, f_ref))
+    return same, tuple(f_new.shape), float((f_new - f_ref).abs().max())
+
+
+# ── I. 메모리 단조성 (지연성 OOM 회귀 방지) ─────────────────────────────────
+def _live_tensor_bytes():
+    """CPU에서도 쓸 수 있는 대용 지표 — 살아 있는 텐서 총 바이트."""
+    gc.collect()
+    tot = 0
+    for o in gc.get_objects():
+        try:
+            if torch.is_tensor(o):
+                tot += o.numel() * o.element_size()
+        except Exception:                                     # noqa: BLE001
+            continue
+    return tot
+
+
+def _p46_step(model, teacher, opt, device, step, capture=None, probe=None):
+    """train_reliadino.py의 all-on 스텝 결선을 **그대로** 1회 (순서까지 동일).
+
+    `capture`가 dict면 보조 branch 객체들의 weakref를 담는다.
+    `probe`가 callable이면 **이 스텝의 peak 시점**(주 forward + 보조 forward가
+    둘 다 살아 있고 backward 전)에 호출된다 — 직전 스텝 잔재를 재는 지점이다.
+    """
+    x, y = make_batch(device, seed=step)
+    logits, m_feat, aux = model(x, True, gt_mask=y)
+    total = F.cross_entropy(logits, y, ignore_index=255)
+    for k in ('aux_ce', 'm2f_loss', 'router_reg', 'router_ce', 'vicreg', 'p46_proto'):
+        if k in aux:
+            total = total + aux[k]
+    # ── 보조 branch (train_reliadino.py와 동일 순서) ──
+    xb = list(x)
+    xb[0] = P46.style_jitter_normalized(xb[0])
+    mask = P46.patch_mask(BS, SIZE, SIZE, 0.5, 32, device)
+    xb = P46.apply_patch_mask(xb, mask)
+    with torch.no_grad():
+        tl = teacher(x)                       # teacher를 보조 forward **앞에**
+    model._p46_replay_path = True
+    bl, _, baux = model(xb, True, gt_mask=y)
+    model._p46_replay_path = False
+    if capture is not None:
+        for k in ('m2f_loss', 'vicreg', 'aux_ce'):
+            if k in baux:
+                capture[f"_baux[{k}]"] = weakref.ref(baux[k])
+        capture['_blogits'] = weakref.ref(bl)
+        capture['_tlogits'] = weakref.ref(tl)
+    if probe is not None:
+        probe()                               # ← 이 스텝의 peak 지점
+    bproto = baux.get('p46_proto', logits.new_zeros(()))
+    del baux                                  # 미도달 서브그래프 즉시 해제
+    cons, _ = P46.masked_consistency_loss(bl, tl, mask, conf_thresh=0.0)
+    total = total + cons + bproto
+    del bl, tl, bproto, xb, mask, cons
+    opt.zero_grad(set_to_none=True)
+    total.backward()
+    opt.step()
+    teacher.update(step + 1)
+    del logits, m_feat, aux, total
+
+
+def _mem_fixture(device):
+    model = build(device, c1=True, c2=True, c3=True)
+    model.train()
+    model._current_epoch = 10
+    teacher = P46.EMATeacher(model, alpha=0.999)
+    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=1e-4)
+    return model, teacher, opt
+
+
+def check_step_release(device):
+    """[결정적] 직전 스텝의 보조 branch 객체가 **다음 스텝 peak에 살아 있지 않은지**.
+
+    ⚠️ 측정 시점이 핵심이다. 문제는 "영원히 안 죽는다"가 아니라 "**다음 스텝의
+    peak 동안** 살아 있다"이다 — 파이썬 지역변수는 다음 iteration이 재대입할
+    때까지 살아 있으므로, 직전 스텝의 `_blogits`/`_baux`/`_tlogits`는 이번 스텝의
+    주 forward와 보조 forward가 **둘 다** 그래프를 들고 있는 바로 그 순간까지
+    버틴다. 그래서 스텝이 끝난 뒤 재면 아무것도 안 잡힌다(실측 확인).
+    → step0에서 weakref를 잡고, step1의 **peak 지점**에서 생존 여부를 본다.
+
+
+    2026-07-29 jarvis OOM 조사에서 고친 것이 정확히 이 클래스다:
+      (1) `_baux`의 backward **미도달** 서브그래프(m2f_loss/vicreg/aux_ce)는
+          backward가 saved tensor를 풀어 주지 않는다 → `_baux`가 살아 있는 한
+          그래프째 남는다.
+      (2) 파이썬 루프 지역변수는 **다음 iteration이 재대입할 때까지** 살아 있다
+          → 직전 스텝의 `_blogits`/`_tlogits`가 이번 스텝 forward peak 내내
+          메모리를 잡는다.
+
+    🔴 둘 다 "에폭이 갈수록 늘어나는" 누수가 **아니라 상수 오버헤드**다. 실측
+    (CPU tiny, gc live-tensor bytes): 수정 전 86.3MiB / 수정 후 71.2MiB —
+    **둘 다 스텝에 대해 평평**하다. 그래서 기울기 기반 단조성 검사로는 안 잡히고,
+    여기서 weakref로 직접 판정한다(tolerance 없음).
+    """
+    model, teacher, opt = _mem_fixture(device)
+    refs = {}
+    _p46_step(model, teacher, opt, device, 0, capture=refs)
+    alive = []
+
+    def _at_peak():
+        gc.collect()
+        alive.extend(sorted(k for k, r in refs.items() if r() is not None))
+
+    _p46_step(model, teacher, opt, device, 1, probe=_at_peak)
+    return (len(alive) == 0 and len(refs) > 0), alive, sorted(refs)
+
+
+def check_memory_monotonic(device, steps=12, tol=0.05):
+    """[기울기] N스텝 메모리 추이가 단조증가하지 않는지 — 진짜 누수 감시.
+
+    baseline은 step 2(옵티마이저 상태·캐시가 자리잡은 뒤), 판정은 마지막 3스텝
+    평균이 baseline 대비 `tol` 이상 늘지 않을 것.
+    ⚠️ 이 검사는 **상수 오버헤드 회귀는 못 잡는다** — 그건 check_step_release 담당.
+    """
+    cuda = (device.type == 'cuda')
+    model, teacher, opt = _mem_fixture(device)
+    series = []
+    for step in range(steps):
+        _p46_step(model, teacher, opt, device, step)
+        if cuda:
+            torch.cuda.synchronize()
+            series.append(torch.cuda.memory_allocated())
+        else:
+            series.append(_live_tensor_bytes())
+    base = series[2]
+    tail = sum(series[-3:]) / 3.0
+    growth = (tail - base) / max(base, 1)
+    return {
+        'metric': 'cuda.memory_allocated' if cuda else 'live tensor bytes (gc)',
+        'series_mib': [round(v / 2**20, 1) for v in series],
+        'base_mib': base / 2**20, 'tail_mib': tail / 2**20,
+        'growth': growth, 'ok': growth <= tol,
+    }
+
+
 # ── E. DDP 다중-forward ─────────────────────────────────────────────────────
 def _ddp_worker(rank, ws, ret):
     import torch.distributed as dist
@@ -326,6 +524,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--ddp', action='store_true', help='gloo 2-proc DDP 검증 추가')
     ap.add_argument('--device', default='cpu')
+    ap.add_argument('--mem-steps', type=int, default=12,
+                    help='I. 메모리 단조성 검사 스텝 수 (GPU에서는 50 권장)')
+    ap.add_argument('--mem-tol', type=float, default=0.05,
+                    help='I. 허용 증가율 (step2 대비 마지막 3스텝 평균)')
     a = ap.parse_args()
     dev = torch.device(a.device)
 
@@ -362,6 +564,44 @@ def main():
     print(f"    per-class pixel counts[:6] = {lpix} (기대: 240 4개 + 0 2개)   "
           f"{'OK' if lok else 'FAIL'}")
     ok &= lok
+
+    print()
+    print("=" * 96)
+    print("G. EMATeacher 진단 캐시 해제 (teacher만 비우고 student 탭은 보존)")
+    tok, left, skept = check_teacher_cache(dev)
+    print(f"    teacher 잔여 _last_* = {left if left else '없음'} / "
+          f"student 탭 보존 = {skept}   {'OK' if tok else 'FAIL'}")
+    ok &= tok
+
+    print()
+    print("=" * 96)
+    print("H. PrototypeBank._sample 등가성 (gather 판 ≡ 옛 full-copy 판)")
+    pok, pshape, pdiff = check_proto_sample(dev)
+    print(f"    sampled {pshape}  max|diff| = {pdiff:.3e}   {'OK' if pok else 'FAIL'}")
+    ok &= pok
+
+    print()
+    print("=" * 96)
+    print("I-a. 스텝 간 참조 해제 [결정적] — 직전 스텝의 보조 branch 객체가 살아남나")
+    rok, alive, tracked = check_step_release(dev)
+    print(f"    추적 {len(tracked)}개: {tracked}")
+    print(f"    다음 스텝까지 생존 = {alive if alive else '없음'}   "
+          f"{'OK' if rok else 'FAIL'}")
+    ok &= rok
+
+    print()
+    print("=" * 96)
+    print(f"I-b. 메모리 단조성 ({a.mem_steps} step, all-on, 학습 루프와 동일 결선)")
+    m = check_memory_monotonic(dev, steps=a.mem_steps, tol=a.mem_tol)
+    print(f"    metric = {m['metric']}")
+    print(f"    series(MiB) = {m['series_mib']}")
+    print(f"    step2 {m['base_mib']:.1f} -> 마지막3 평균 {m['tail_mib']:.1f}  "
+          f"growth = {m['growth']*100:+.2f}%  (허용 {a.mem_tol*100:.0f}%)   "
+          f"{'OK' if m['ok'] else 'FAIL'}")
+    if dev.type != 'cuda':
+        print("    ⚠️ CPU 실행 — cuda.memory_allocated 대신 gc 기반 live-tensor "
+              "바이트로 대용 판정한다. 실제 VRAM 회귀는 --device cuda 로 볼 것.")
+    ok &= m['ok']
 
     if a.ddp:
         print()

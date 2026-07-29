@@ -197,6 +197,15 @@ TRAIN:
   LORA_NORM_CAP : 20.0
   IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
   BATCH_SIZE    : 1                 # jarvis 4090 24GB: all-on(C1+C2+C3) BS2는 backward에서 OOM 실증(스모크) -> BS1
+                                    # 🔴 ISSUE-028: BS1도 **부족했다**. 2026-07-29 런은 ep6 iter0에서
+                                    # 4-rank 전부 OOM(23.47GiB). 이전의 "BS1 OOM-safe" 기록은 오기록이다 —
+                                    # C2/C3 WARMUP_EP=5 + epoch 0-index라 ep1~5(=epoch 0~4)는 P39.1-base만
+                                    # 돌았고(15.2GB), 보조 branch+EMA teacher+proto가 처음 켜지는 지점이
+                                    # 정확히 ep6(=epoch 5) iter0이다. 즉 P46의 실제 비용은 그 런에서
+                                    # 한 번도 측정되지 않았다. peak에 student 그래프가 2개 동시에 살고
+                                    # (DDP unused-param 계약상 backward 분리 불가), GRADIENT_CHECKPOINT는
+                                    # ISSUE-027로 봉인돼 있다 → 24GB로는 여전히 빠듯하다.
+                                    # 기동 전 `P46_MEM_LOG=1`로 ep5->ep6 계단을 먼저 실측할 것.
   EPOCHS        : 200
   EVAL_START    : 0
   EVAL_INTERVAL : 2

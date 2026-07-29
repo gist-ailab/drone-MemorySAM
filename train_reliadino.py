@@ -373,6 +373,14 @@ def main(cfg, gpu, save_dir, logger):
     p46_branch_warm = min([w for w, on in ((p46_mcc_warm, p46_mcc),
                                            (p46_c3_warm, p46_xview)) if on] or [0])
     p46_ema_interval = int(_c1.get('EMA_INTERVAL', 1))
+    # ── [P46] 메모리 계측 (`P46_MEM_LOG=<N>` = N iteration마다 기록, 0=off) ────
+    # 지연성 OOM 진단용. 두 가지를 **구분**해서 보기 위한 것이다:
+    #   (a) 에폭 **안**에서 alloc이 단조증가 → 스텝 간 미해제(진짜 누수)
+    #   (b) warmup 경계(epoch == WARMUP_EP)에서 peak가 **계단**으로 뛴다 → 누수가
+    #       아니라 보조 branch+teacher가 그 epoch부터 처음 도는 구조적 증가
+    # 2026-07-29 ep6-iter0 OOM은 (b)였다 — C2/C3 WARMUP_EP=5, epoch는 0-index라
+    # 로그상 ep6(=epoch 5) iter0이 보조 branch가 **최초로** 도는 지점이다.
+    p46_mem_log = int(os.environ.get('P46_MEM_LOG', '0'))
 
     # ── [P44-B1] MMPareto gradient 통합 ─────────────────────────────────────
     # OFF(기본)면 mmpareto is None → 아래 학습 루프의 optimizer 경로는 기존과
@@ -401,6 +409,8 @@ def main(cfg, gpu, save_dir, logger):
             sampler.set_epoch(epoch)      # [P46-C1] RCS는 DDP 여부와 무관하게 필요
         if p46_teacher is not None:
             p46_teacher.set_epoch(epoch)
+        if p46_mem_log and torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()   # peak를 epoch 단위로 비교
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
         cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
         fcr_accum = 0.0   # [P41-F1]
@@ -485,24 +495,47 @@ def main(cfg, gpu, save_dir, logger):
                                                  _bx[0].shape[-1], p46_mcc_ratio,
                                                  p46_mcc_patch, _bx[0].device)
                             _bx = P46.apply_patch_mask(_bx, _bm, p46_mcc_modals)
+                            # 🔴 메모리: teacher forward를 보조 student forward
+                            # **앞으로** 옮겼다. teacher는 4×ViT-L 한 벌을 통째로
+                            # 도는데, 뒤에 두면 그 작업메모리가 "주 그래프 + 보조
+                            # 그래프"가 **둘 다 살아 있는** 위에 얹혀 peak를 그만큼
+                            # 더 올린다. 앞에 두면 주 그래프 하나 위에만 얹힌다.
+                            # 값 불변: teacher는 eval+no_grad라 난수를 전혀 쓰지
+                            # 않고(경로 dropout·모달 dropout·마스킹 전부 training
+                            # 게이트), 파라미터 갱신은 optimizer step 뒤에만 있다.
+                            with torch.no_grad():
+                                _tlogits = p46_teacher(sample)
                         _core._p46_replay_path = True
                         try:
                             _blogits, _, _baux = model(_bx, True, gt_mask=lbl)
                         finally:
                             _core._p46_replay_path = False
+                        # 🔴 메모리: 보조 branch의 aux 손실 중 total에 들어가는 건
+                        # p46_proto 하나뿐이다. 나머지(m2f_loss·vicreg·aux_ce·
+                        # router_reg/ce)는 backward가 **도달하지 않는** 서브그래프라
+                        # backward가 saved tensor를 해제해 주지 않는다. `_baux`가
+                        # 살아 있는 한 그 그래프가 통째로 남고, 파이썬 지역변수는
+                        # 다음 iteration이 재대입할 때까지 살아 있으므로 결국
+                        # "직전 스텝의 미해제 M2F/VICReg 그래프 + 이번 스텝의 주
+                        # 그래프 + 이번 스텝의 보조 그래프"가 동시에 존재했다.
+                        # 쓰는 항만 꺼내고 즉시 끊는다.
+                        _bproto = _baux.get('p46_proto', _zero)
+                        del _baux
                         if _do_mcc:
-                            with torch.no_grad():
-                                _tlogits = p46_teacher(sample)
                             p46_cons_raw, p46_mcc_rate = P46.masked_consistency_loss(
                                 _blogits, _tlogits, _bm, conf_thresh=p46_mcc_conf,
                                 mode=p46_mcc_mode)
                             p46_cons = p46_mcc_w * p46_cons_raw
                             mcc_rate_sum += p46_mcc_rate; mcc_rate_n += 1
+                            del p46_cons_raw, _tlogits
                         if _do_xv:
                             # 보조 branch의 prototype 항 = 다른 스타일 view를 **같은**
                             # bank로 당기는 도메인불변 제약 (bank 갱신은 주 forward만).
-                            p46_xv = p46_xview_w * _baux.get('p46_proto', _zero)
+                            p46_xv = p46_xview_w * _bproto
                         total = total + p46_cons + p46_xv
+                        # 손실 텐서가 필요한 그래프를 이미 잡고 있다 → 출력 텐서
+                        # 참조는 여기서 끊는다((B,K,768,768) fp32 ≈ 56MiB/장).
+                        del _blogits, _bproto, _bx, _bm
                     loss = total / accumulation_steps
                 if window_pareto:
                     # per-modal 브랜치 목표(deep-sup aux CE + peer 증류 + hard-pixel
@@ -610,6 +643,21 @@ def main(cfg, gpu, save_dir, logger):
                 pbar.set_description(
                     f"Epoch [{epoch+1}/{epochs}] Loss {train_loss/(it+1):.4f} "
                     f"cal {cal_accum/(it+1):.4f} auxCE {aux_accum/(it+1):.4f}")
+            if (p46_mem_log and is_rank0 and torch.cuda.is_available()
+                    and it % p46_mem_log == 0):
+                logger.info(
+                    f"[P46-MEM] ep{epoch+1} it{it} "
+                    f"alloc={torch.cuda.memory_allocated() / 2**30:.2f}GiB "
+                    f"peak={torch.cuda.max_memory_allocated() / 2**30:.2f}GiB "
+                    f"reserved={torch.cuda.memory_reserved() / 2**30:.2f}GiB "
+                    f"branch={int(bool(_do_mcc or _do_xv))}")
+            # 🔴 [P46] 메모리: 루프 지역변수는 **다음 iteration이 재대입할 때까지**
+            # 살아 있다 → 직전 스텝의 logits/aux/total이 다음 스텝의 forward가
+            # peak를 찍는 내내 메모리를 붙들고 있었다((B,K,768,768) fp32 ≈ 56MiB,
+            # aux dict는 backward가 이미 saved tensor를 푼 그래프 노드들).
+            # 여기서 명시적으로 끊는다 — 아래 통계는 전부 위에서 float로 뽑아 뒀다.
+            del logits, m_feat, aux, total, loss
+            del p46_proto, p46_cons, p46_xv
 
         train_loss /= (it + 1)
         avg_lr = scheduler.get_lr()
@@ -904,6 +952,12 @@ def main(cfg, gpu, save_dir, logger):
                             'test/best_mIoU': best_test_mIoU}
                     wlog.update({f'test_iou/{c}': v for c, v in zip(class_names, t_ious)})
                     wandb.log(wlog, step=epoch)
+            # [P46] eval은 학습과 블록 크기 프로파일이 달라 캐싱 얼로케이터를
+            # 파편화시킨 채 끝난다. 곧바로 돌아가는 학습 스텝이 P46 보조 branch
+            # 때문에 훨씬 큰 연속 블록을 요구하므로, 여기서 한 번 비워 준다.
+            # (프래그멘테이션 완화일 뿐 근본책은 아니다 — eval **전**에도 이미
+            #  empty_cache가 있고, 이건 그 짝이다.)
+            torch.cuda.empty_cache()
         if ddp_enable:
             dist.barrier()
 
