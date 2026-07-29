@@ -121,6 +121,12 @@ def main():
                     help="also save each prediction as <dump-dir>/<key>.png "
                          "(gt-resolution label map, unique-key naming) — reuse for "
                          "frame selection / cross-model comparison")
+    ap.add_argument('--pred-letterbox', action='store_true',
+                    help="external --pred-dir preds are at ORIGINAL (non-square) "
+                         "resolution but our GT is letterboxed to a square then "
+                         "resized (MUSES 16:9). Apply the same symmetric pad "
+                         "(fill=ignore) before resizing so pred aligns with GT. "
+                         "Leave off for square datasets (DELIVER).")
     ap.add_argument('--dataset-root', default=None, help="override DATASET.ROOT")
     ap.add_argument('--split', default='val', choices=['val', 'test'])
     ap.add_argument('--case', default=None, help="condition filter (e.g. DELIVER night)")
@@ -231,6 +237,17 @@ def main():
         gt = np.asarray(label).astype(np.int32)
         gh, gw = gt.shape
         if pred.shape != (gh, gw):
+            if args.pred_letterbox and gh == gw:
+                # GT was symmetric-padded to a square (fill=ignore) then resized;
+                # replay that on pred so geometry matches (else 16:9 pred stretched
+                # onto a square GT mis-aligns → bogus IoU). See MUSES loader
+                # _pad_to_square.
+                ph, pw = pred.shape
+                s = max(ph, pw)
+                pt, pl = (s - ph) // 2, (s - pw) // 2
+                sq = np.full((s, s), ignore, np.uint8)
+                sq[pt:pt + ph, pl:pl + pw] = pred
+                pred = sq
             pred = np.asarray(torch.nn.functional.interpolate(
                 torch.tensor(pred)[None, None].float(), size=(gh, gw),
                 mode='nearest')[0, 0]).astype(np.uint8)
