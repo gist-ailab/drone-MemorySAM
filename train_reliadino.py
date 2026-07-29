@@ -49,6 +49,7 @@ from semseg.datasets import *                                    # noqa: F401,F4
 from semseg.losses import get_loss
 from semseg.metrics import Metrics
 from semseg.models.reliadino import build_reliadino
+from semseg.models.reliadino import p46 as P46
 from semseg.models.reliadino.mmpareto import MMPareto
 from semseg.optimizers import get_optimizer
 from semseg.schedulers import get_scheduler
@@ -178,11 +179,73 @@ def main(cfg, gpu, save_dir, logger):
                               int((epochs + 1) * updates_per_epoch), sched_cfg['POWER'],
                               updates_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
 
+    # ── [P46-CTR] class-transfer recovery: C-1 RCS 샘플러 ────────────────────
+    # 설계 = decisions/2026-07-28-p46-classtransfer-recovery-proposal.md
+    # 진단 대응: rare/thin 클래스(RailTrack·Wall·Water·Bridge…)가 늦게·덜
+    # 학습돼 OOD-test에서 무너진다 → 그 클래스를 담은 이미지를 **주 CE/M2F
+    # 손실이 더 자주 보게** 만든다 (DAFormer 2111.14887 RCS).
+    _p46_cfg = (model_cfg.get('P46', {}) or {})
+    _c1 = (_p46_cfg.get('C1_RCS', {}) or {})
+    _c2 = (_p46_cfg.get('C2_MCC', {}) or {})
+    _c3 = (_p46_cfg.get('C3_PROTO', {}) or {})
+    p46_class_ema = None
+    rcs_sampler = None
+    # C-2 / C-3 2-view는 iteration당 forward를 2회 돈다 → DDP 생성 인자에 영향
+    # (아래 broadcast_buffers 주석 참조). 그래서 DDP wrap **전에** 결정한다.
+    p46_mcc = bool(_c2.get('ENABLE', False))
+    p46_xview = bool(_c3.get('ENABLE', False) and _c3.get('CROSS_VIEW', True))
+    p46_branch = p46_mcc or p46_xview
+    if _c1.get('ENABLE', False):
+        p46_class_ema = P46.ClassLossEMA(num_classes, momentum=_c1.get('EMA_M', 0.99))
+        _cache_dir = _c1.get('CACHE_DIR', '') or str(Path(__file__).resolve().parent / '.cache' / 'p46')
+        # 빈도 스캔은 전 train 라벨을 1회 읽는다 → rank0만 계산하고 나머지는
+        # 캐시가 생길 때까지 barrier에서 대기 (동시 스캔·중복 IO 방지).
+        if (not ddp_enable) or dist.get_rank() == 0:
+            _pix, _cfiles = P46.compute_class_stats(
+                trainset, num_classes, _cache_dir,
+                min_pixels=_c1.get('MIN_PIXELS', 1), num_workers=num_workers)
+        if ddp_enable:
+            dist.barrier()
+            if dist.get_rank() != 0:
+                _pix, _cfiles = P46.compute_class_stats(
+                    trainset, num_classes, _cache_dir,
+                    min_pixels=_c1.get('MIN_PIXELS', 1), num_workers=num_workers,
+                    verbose=False)
+        _base_p = P46.rcs_base_prob(_pix, temperature=_c1.get('TEMP', 0.01),
+                                    mode=str(_c1.get('MODE', 'daformer')).lower())
+        rcs_sampler = P46.RareClassSampler(
+            _cfiles, _base_p, num_samples=len(trainset) // world_size,
+            rank=(dist.get_rank() if ddp_enable else 0), world_size=world_size,
+            seed=_c1.get('SEED', 0), loss_ema=p46_class_ema,
+            blend_w=_c1.get('LOSS_BLEND_W', 1.0), refresh=_c1.get('REFRESH', 32))
+        if is_rank0:
+            _f = _pix / max(_pix.sum(), 1)
+            _order = np.argsort(_f)[:5]
+            logger.info(f"[P46-C1] RCS on — mode={_c1.get('MODE', 'daformer')} "
+                        f"T={_c1.get('TEMP', 0.01)} blend_w={_c1.get('LOSS_BLEND_W', 1.0)} "
+                        f"samples/rank={len(trainset)//world_size}")
+            logger.info("[P46-C1] rarest classes: " + ", ".join(
+                f"{class_names[c]} f={_f[c]:.2e} P={_base_p[c]:.4f} "
+                f"imgs={len(_cfiles[c])}" for c in _order))
+
     if ddp_enable:
-        sampler = DistributedSampler(trainset, dist.get_world_size(), dist.get_rank(), shuffle=True)
-        model = DDP(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
+        sampler = (rcs_sampler if rcs_sampler is not None else
+                   DistributedSampler(trainset, dist.get_world_size(), dist.get_rank(), shuffle=True))
+        # 🔴 [P46] broadcast_buffers: DDP는 **매 forward 시작마다** rank0 버퍼를
+        # 전 rank에 in-place 복사한다. P46 보조 branch가 켜지면 iteration당
+        # forward가 2회라, 2번째 forward의 버퍼 브로드캐스트가 1번째 forward의
+        # 그래프가 저장해 둔 버퍼(M2F empty_weight 등)를 in-place로 갈아엎어
+        # backward가 "variable ... modified by an inplace operation"으로 죽는다
+        # (합성 스모크 tools/smoke_p46.py --ddp 로 실측·재현됨).
+        # → 보조 branch가 있을 때만 끈다. P39.1의 버퍼는 empty_weight(상수)뿐이라
+        #   끄더라도 rank 간 값이 애초에 동일해 의미 변화가 없고, P46 prototype
+        #   bank는 rank-로컬 EMA가 된다(rank마다 타깃이 미세하게 다르나 iid
+        #   표본이라 무해 — DDP가 gradient를 평균한다).
+        model = DDP(model, device_ids=[gpu], output_device=gpu,
+                    find_unused_parameters=True,
+                    broadcast_buffers=not p46_branch)
     else:
-        sampler = RandomSampler(trainset)
+        sampler = rcs_sampler if rcs_sampler is not None else RandomSampler(trainset)
 
     start_epoch = 0
     best_mIoU, best_epoch = 0.0, 0
@@ -199,6 +262,9 @@ def main(cfg, gpu, save_dir, logger):
             optimizer.load_state_dict(resume_checkpoint['optimizer_state_dict'])
         if 'scheduler_state_dict' in resume_checkpoint:
             scheduler.load_state_dict(resume_checkpoint['scheduler_state_dict'])
+        if p46_class_ema is not None:                       # [P46-C1]
+            p46_class_ema.load_state_dict(
+                resume_checkpoint.get('p46_class_loss_ema', None))
 
     _loader_kwargs = {'num_workers': num_workers, 'pin_memory': True}
     if num_workers > 0:
@@ -257,6 +323,57 @@ def main(cfg, gpu, save_dir, logger):
     modals = dataset_cfg['MODALS']
     _core = model.module if hasattr(model, 'module') else model
 
+    # ── [P46-CTR] C-2 (Masked-Context Consistency) + C-3 2-view 보조 branch ──
+    # 보조 branch = 주 forward와 **같은 배치**를 (선택적으로) 스타일 변주 →
+    # 패치 마스킹한 뒤 한 번 더 통과시키는 forward. 여기서
+    #   C-2: 마스킹 영역에서 EMA-teacher(원본 입력) pseudo-label에 consistency
+    #   C-3: 같은 prototype bank로 당김 = "스타일이 달라도 같은 클래스는 같은 prototype"
+    # 을 얻는다. branch를 하나로 합쳐 forward 비용이 토글 수와 무관하게 ≤2×로 묶인다.
+    # (p46_mcc / p46_xview / p46_branch는 DDP wrap 전에 이미 결정돼 있다.)
+    p46_teacher = None
+    if p46_branch:
+        # 🔴 replay 안전성: 보조 branch는 주 forward의 P39 path-dropout 추첨만
+        # 재생한다. 입력을 확률적으로 바꾸는 다른 모듈이 켜져 있으면 두 forward의
+        # 파라미터 사용 집합이 갈려 DDP reducer가 죽는다(model.__init__ 주석).
+        _unsafe = [n for n, on in (
+            ('MODAL_DROPOUT', _core.modal_dropout), ('P42.MASK_IMG', _core.p42_mask_img),
+            ('P44.LOCAL_MASK', _core.p44_local_mask), ('P40.RCA', _core.rca_enable),
+            ('P45.FOGSTYLE', _core.p45_fogstyle)) if on]
+        if _unsafe:
+            raise RuntimeError(
+                f"[P46] C2_MCC/C3.CROSS_VIEW는 확률적 입력 모듈과 함께 쓸 수 없다 "
+                f"(replay 불가 → DDP unused-param 불일치): {_unsafe}. 해당 모듈을 끄거나 "
+                f"C2_MCC/CROSS_VIEW를 꺼라.")
+        _core._p46_replay_path = False
+    if p46_mcc:
+        p46_teacher = P46.EMATeacher(_core, alpha=_c2.get('EMA_ALPHA', 0.999))
+        if is_rank0:
+            logger.info(f"[P46-C2] MIC-style masked consistency on — "
+                        f"ratio={_c2.get('MASK_RATIO', 0.5)} patch={_c2.get('PATCH', 64)} "
+                        f"lambda={_c2.get('LAMBDA', 1.0)} conf={_c2.get('CONF_THRESH', 0.75)} "
+                        f"teacher(EMA {p46_teacher.n_ema} params / shared-frozen "
+                        f"{p46_teacher.n_shared})")
+    if is_rank0 and _c3.get('ENABLE', False):
+        logger.info(f"[P46-C3] prototype consistency on — "
+                    f"lambda={_c3.get('LAMBDA', 0.1)} tau={_c3.get('TEMPERATURE', 0.1)} "
+                    f"ema={_c3.get('EMA', 0.999)} cross_view={p46_xview} "
+                    f"feature={_c3.get('FEATURE', 'mfeat')}")
+    p46_mcc_w = float(_c2.get('LAMBDA', 1.0))
+    p46_mcc_ratio = float(_c2.get('MASK_RATIO', 0.5))
+    p46_mcc_patch = int(_c2.get('PATCH', 64))
+    p46_mcc_conf = float(_c2.get('CONF_THRESH', 0.75))
+    p46_mcc_mode = str(_c2.get('LOSS', 'ce')).lower()
+    p46_mcc_warm = int(_c2.get('WARMUP_EP', 5))
+    p46_mcc_modals = (None if str(_c2.get('MODALS', 'all')).lower() == 'all'
+                      else [modals.index('img')])
+    p46_xview_w = float(_c3.get('CROSS_VIEW_W', 1.0))
+    p46_c3_warm = int(_c3.get('WARMUP_EP', 5))
+    # 보조 branch는 **활성 항이 하나라도 생기는 epoch**부터 돈다 (한 토글의
+    # warmup이 다른 토글을 막지 않도록; 각 항은 아래에서 자기 warmup으로 다시 게이팅).
+    p46_branch_warm = min([w for w, on in ((p46_mcc_warm, p46_mcc),
+                                           (p46_c3_warm, p46_xview)) if on] or [0])
+    p46_ema_interval = int(_c1.get('EMA_INTERVAL', 1))
+
     # ── [P44-B1] MMPareto gradient 통합 ─────────────────────────────────────
     # OFF(기본)면 mmpareto is None → 아래 학습 루프의 optimizer 경로는 기존과
     # 완전히 동일하다(단일 backward + scaler.step). ON이면 micro-step마다 주
@@ -280,8 +397,10 @@ def main(cfg, gpu, save_dir, logger):
     for epoch in range(start_epoch, epochs):
         model.train()
         _core._current_epoch = epoch
-        if ddp_enable:
-            sampler.set_epoch(epoch)
+        if ddp_enable or rcs_sampler is not None:
+            sampler.set_epoch(epoch)      # [P46-C1] RCS는 DDP 여부와 무관하게 필요
+        if p46_teacher is not None:
+            p46_teacher.set_epoch(epoch)
         train_loss = cal_accum = aux_accum = gate_ent_accum = router_accum = 0.0
         cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
         fcr_accum = 0.0   # [P41-F1]
@@ -290,6 +409,9 @@ def main(cfg, gpu, save_dir, logger):
         # [P44/P45] 손실항 + 실현 마스킹률 + MMPareto 진단
         mkl_accum = rc_accum = hard_accum = sty_accum = 0.0
         p44_mask_sum = 0.0; p44_tot = 0
+        # [P46-CTR] C-2 consistency / C-3 prototype 손실 + pseudo-label 통과율
+        mcc_accum = proto_accum = xview_accum = 0.0
+        mcc_rate_sum = 0.0; mcc_rate_n = 0
         pareto_stats = []
         window_pareto = False
         rca_picked = rca_seen = 0
@@ -336,11 +458,51 @@ def main(cfg, gpu, save_dir, logger):
                     p44_rc = aux.get('p44_rel_corr', _zero)     # [P44-B2] pre-scaled (fusion)
                     p44_hard = aux.get('p44_hard_aux', _zero)   # [P44-M3] pre-scaled (model)
                     p45_sty = aux.get('p45_fogstyle', _zero)    # [P45-F1] pre-scaled (model)
+                    p46_proto = aux.get('p46_proto', _zero)     # [P46-C3] pre-scaled (LAMBDA in model)
                     total = (loss_seg + lambda_cal * cal_loss
                              + lambda_aux_ce * aux_ce + gate_ent + router_reg
                              + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
                              + vicreg + rca_ce + fcr + p43_mask
-                             + p44_mkl + p44_rc + p44_hard + p45_sty)
+                             + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto)
+
+                    # ── [P46-C2/C3] 보조 branch (스타일 2-view → 패치 마스킹) ──
+                    # ⚠️ DDP: 같은 iteration의 2번째 forward. 두 forward의
+                    # 파라미터 사용 집합이 같아야 reducer가 살아남으므로
+                    #  (a) gt_mask를 **똑같이** 넘기고(내부 aux 손실 결선 동일 —
+                    #      반환값은 버린다), (b) path-dropout 추첨을 재생한다.
+                    p46_cons = _zero
+                    p46_xv = _zero
+                    _do_mcc = p46_mcc and epoch >= p46_mcc_warm
+                    _do_xv = p46_xview and epoch >= p46_c3_warm
+                    if p46_branch and epoch >= p46_branch_warm and (_do_mcc or _do_xv):
+                        _bx = list(sample)
+                        if _do_xv:
+                            _ii = modals.index('img') if 'img' in modals else 0
+                            _bx[_ii] = P46.style_jitter_normalized(_bx[_ii])
+                        _bm = None
+                        if _do_mcc:
+                            _bm = P46.patch_mask(_bx[0].shape[0], _bx[0].shape[-2],
+                                                 _bx[0].shape[-1], p46_mcc_ratio,
+                                                 p46_mcc_patch, _bx[0].device)
+                            _bx = P46.apply_patch_mask(_bx, _bm, p46_mcc_modals)
+                        _core._p46_replay_path = True
+                        try:
+                            _blogits, _, _baux = model(_bx, True, gt_mask=lbl)
+                        finally:
+                            _core._p46_replay_path = False
+                        if _do_mcc:
+                            with torch.no_grad():
+                                _tlogits = p46_teacher(sample)
+                            p46_cons_raw, p46_mcc_rate = P46.masked_consistency_loss(
+                                _blogits, _tlogits, _bm, conf_thresh=p46_mcc_conf,
+                                mode=p46_mcc_mode)
+                            p46_cons = p46_mcc_w * p46_cons_raw
+                            mcc_rate_sum += p46_mcc_rate; mcc_rate_n += 1
+                        if _do_xv:
+                            # 보조 branch의 prototype 항 = 다른 스타일 view를 **같은**
+                            # bank로 당기는 도메인불변 제약 (bank 갱신은 주 forward만).
+                            p46_xv = p46_xview_w * _baux.get('p46_proto', _zero)
+                        total = total + p46_cons + p46_xv
                     loss = total / accumulation_steps
                 if window_pareto:
                     # per-modal 브랜치 목표(deep-sup aux CE + peer 증류 + hard-pixel
@@ -387,6 +549,10 @@ def main(cfg, gpu, save_dir, logger):
                 optimizer.zero_grad(set_to_none=True)
                 scheduler.step()
                 global_update += 1
+                if p46_teacher is not None:
+                    # [P46-C2] optimizer step 직후에만 갱신 — micro-step마다 돌리면
+                    # 같은 파라미터 상태를 여러 번 평균해 실효 EMA 감쇠가 왜곡된다.
+                    p46_teacher.update(global_update)
                 if lora_norm_cap > 0:
                     # per-modality slice별 cap (b[m] (attn_dim,r)) — 방향 보존 renorm
                     with torch.no_grad():
@@ -412,6 +578,14 @@ def main(cfg, gpu, save_dir, logger):
             rc_accum += float(p44_rc)       # [P44-B2]
             hard_accum += float(p44_hard)   # [P44-M3]
             sty_accum += float(p45_sty)     # [P45-F1]
+            mcc_accum += float(p46_cons)    # [P46-C2] pre-scaled
+            proto_accum += float(p46_proto)  # [P46-C3] pre-scaled (주 view)
+            xview_accum += float(p46_xv)    # [P46-C3] pre-scaled (2-view)
+            if p46_class_ema is not None and (it % p46_ema_interval == 0):
+                # [P46-C1] 런타임 per-class 난이도 = 내부신호. 샘플러가 다음
+                # refresh 때 이 EMA를 읽어 고-loss 클래스를 추가 up-weight 한다.
+                p46_class_ema.update_from_logits(logits, lbl,
+                                                 ignore_label=trainset.ignore_label)
             _pm = getattr(_core, '_last_p42_mask', None)   # [P42-M1/D]
             if _pm is not None:
                 p42_mask_sum += float(_pm.sum()); p42_tot += int(_pm.numel())
@@ -558,6 +732,44 @@ def main(cfg, gpu, save_dir, logger):
             if getattr(_core, 'p45_fogstyle', False):
                 writer.add_scalar('train/p45_fogstyle', sty_accum / (it + 1), epoch)
                 log_extra['train/p45_fogstyle'] = sty_accum / (it + 1)
+            # ── [P46-CTR] 토글별 즉검 지표 (ep30 게이트에서 no-op 조기 검출) ──
+            if p46_class_ema is not None:
+                # 샘플러가 실제로 rare 클래스를 뽑았는지 = C-1이 무음 no-op인지 판정.
+                _hist = rcs_sampler.last_class_hist.astype(np.float64)
+                _hist = _hist / max(_hist.sum(), 1.0)
+                _top = np.argsort(_hist)[::-1][:5]
+                writer.add_scalar('p46/rcs_class_entropy',
+                                  float(-(_hist[_hist > 0] * np.log(_hist[_hist > 0])).sum()), epoch)
+                log_extra['p46/rcs_class_entropy'] = float(
+                    -(_hist[_hist > 0] * np.log(_hist[_hist > 0])).sum())
+                logger.info("[P46-C1] sampled-class top5: " + ", ".join(
+                    f"{class_names[c]}:{_hist[c]:.3f}" for c in _top))
+                logger.info("[P46-C1] class-loss EMA top5: " + ", ".join(
+                    f"{class_names[c]}:{p46_class_ema.val[c]:.3f}"
+                    for c in np.argsort(p46_class_ema.val)[::-1][:5]))
+            if p46_mcc:
+                _rate = mcc_rate_sum / max(mcc_rate_n, 1)
+                writer.add_scalar('train/p46_mcc', mcc_accum / (it + 1), epoch)
+                writer.add_scalar('p46/mcc_pseudo_rate', _rate, epoch)
+                log_extra['train/p46_mcc'] = mcc_accum / (it + 1)
+                log_extra['p46/mcc_pseudo_rate'] = _rate
+                # pseudo_rate가 계속 0이면 teacher가 conf_thresh를 못 넘는 것 =
+                # C-2가 무음 no-op. CONF_THRESH를 낮추거나 WARMUP_EP를 확인하라.
+                logger.info(f"[P46-C2] mcc:{mcc_accum / (it + 1):.4f} "
+                            f"pseudo_rate:{_rate:.3f}")
+            if getattr(_core, 'p46_proto', None) is not None:
+                writer.add_scalar('train/p46_proto', proto_accum / (it + 1), epoch)
+                writer.add_scalar('p46/proto_coverage',
+                                  float(_core.p46_proto._last_cov), epoch)
+                log_extra['train/p46_proto'] = proto_accum / (it + 1)
+                log_extra['p46/proto_coverage'] = float(_core.p46_proto._last_cov)
+                if p46_xview:
+                    writer.add_scalar('train/p46_proto_xview',
+                                      xview_accum / (it + 1), epoch)
+                    log_extra['train/p46_proto_xview'] = xview_accum / (it + 1)
+                logger.info(f"[P46-C3] proto:{proto_accum / (it + 1):.4f} "
+                            f"xview:{xview_accum / (it + 1):.4f} "
+                            f"bank_cov:{float(_core.p46_proto._last_cov):.2f}")
             if pareto_stats:
                 # [P44-B1] 게이트② 진단: modal-aux gradient와 주 gradient의 내적
                 # 부호. lidar 그룹의 cos가 음수→양수로 전환하는지가 사전등록 지표.
@@ -614,6 +826,10 @@ def main(cfg, gpu, save_dir, logger):
                     'top_day_ckpts': top_day_ckpts,
                     'top_test_ckpts': top_test_ckpts,
                 }
+                if p46_class_ema is not None:
+                    # [P46-C1] resume 시 난이도 EMA를 되살린다 (없으면 재개 직후
+                    # 샘플러가 base 분포로 되돌아가 커리큘럼이 끊긴다).
+                    d['p46_class_loss_ema'] = p46_class_ema.state_dict()
                 if extra:
                     d.update(extra)
                 return d
