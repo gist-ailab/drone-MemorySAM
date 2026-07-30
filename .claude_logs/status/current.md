@@ -63,6 +63,14 @@ moved: 2026-07-08
 
 **📝 2026-07-28 P39.1-rank 5-seed variance 완결**: seed3 완주(81.89@ep204, Total 20:47:50)로 5-seed 전원 완주 — seed1 82.03/seed2 82.62/seed3 81.89/seed4 81.92/seed5 81.70(범위 81.70~82.62, 평균 82.03, 논문 variance 보고용).
 
+**📝 2026-07-28 P44-BMR MUSES 표준분석 완료**: val 80.71@ep156 완주분 표준분석 결과 — **BMR이 비RGB(lidar) 사용을 P39.1/seed2 대비 늘리지 못함**(drop-lidar day −0.42, seed2의 day 4.24보다 낮음). val 이득도 없음(80.71 < seed2 82.62, −1.91). 유일한 특징은 lidar 사용의 야간 편중(fog_night 6.71 vs day −0.42) — test(adverse-night 비중 높음) 전이 여부는 남아있음. DELIVER에서도 P44-BMR(66.31)이 P39.1-rank(67.60) 대비 우위 없음(정체 지속). 상세 [experiments/analysis/2026-07-28-p44-bmr-muses-standard-analysis.md](../experiments/analysis/2026-07-28-p44-bmr-muses-standard-analysis.md).
+
+**📝 2026-07-28 P44-BMR MUSES 공식 test — 78.429, BMR 방향 종료**: `muses_P44_bmr_3modal_ep156_submission.zip` 제출 결과 **공식 test 78.429** — seed2(79.788) 대비 **−1.36**, P38(79.025)·P34(78.979)보다도 낮음. SOTA(82.39) 격차 −3.96. 🔴 **fog_night 56.443 = seed2(69.61) 대비 −13.2pt 파국** — "야간편중 lidar 사용이 유리"라는 BMR 가설이 test에서 완전 반증(오히려 야간·fog에서 seed2보다 나쁨). snow_day(68.60)<snow_night(72.07) 역전 재현. **BMR 방향 종료(val·test 모두 P39.1 열세)** — 우리 test 최고는 seed2 79.788 그대로. 상세 [experiments/log.md](../experiments/log.md) §2026-07-28.
+
+**📝 2026-07-28 P43-PanopticDual MUSES 공식 test — 79.351(우리 2위)**: `muses_P43_pdual_3modal_ep156_submission.zip`(val 82.51) 제출 결과 **공식 test 79.351** — seed2(79.788) 대비 −0.44로 **2위**, 단 P38(79.025)·P34(78.979)·P44(78.429)보다는 높음. SOTA(82.39) 격차 −3.04. day 80.81(seed2 80.25보다 우세)·night 75.19(seed2 76.82보다 열세)·fog_night 67.76(seed2 69.61보다 열세) — PQ 헤드 병행학습이라는 다른 기제인데도 P39.1 계열 수준의 성능, MUSES 최고는 여전히 **seed2 79.788**. 상세 [experiments/log.md](../experiments/log.md) §2026-07-28.
+
+**📝 2026-07-30 P46-CTR DELIVER — RailTrack 게이트 통과(C1+C3 ep40, class-transfer 가설 확증)**: c1c3(C1_RCS+C3_PROTO, C2_MCC off) ep40 체크포인트(val 67.36)의 test@768 per-class eval에서 **RailTrack test 4.02(base)→59.10(+55.1)** — 사전등록 primary falsifiable 게이트(≥40) 압도적 통과, DGFusion(64.47)에 근접. Wall/Water/Bridge는 게이트 제외(DGFusion도 test IoU 0~4로 동반붕괴 확인됨, §9) 그대로 저조(10.84/10.96/0.02). Overall test는 52.47→54.92(+2.45)로 개선되었으나 secondary gate(56.62)·DGFusion(56.71) 미달 — **RailTrack 회복이 overall 돌파로 직결되진 않음**(다른 붕괴 클래스가 천장). val에서는 RailTrack 18.53으로 test보다 낮은 역전 현상 관찰(해석 보류). ep40은 중간 체크포인트(학습은 계속 진행 중, ep200 완주 후 재판정 예정) — C1 RCS의 단독 기여를 분리하는 C3-only ablation(jarvis GPU4-7)도 병행 중이며 ep40 도달 시 동일 gate eval 예정. 상세 [experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md](../experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md).
+
 **⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
 
 | 트랙 | 상태 | 수치 / 다음 액션 |
