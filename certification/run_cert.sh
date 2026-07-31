@@ -19,7 +19,9 @@ GPU="${3:-0}"
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python   # tensorboard/protobuf guard
 
 cd "$REPO"
-OUT="runs/cert_D1"; mkdir -p "$OUT"
+# OUT can be overridden (e.g. by run_cert_trials.sh, which needs one dir per trial
+# so repeated runs do not overwrite each other's cert_report.json).
+OUT="${OUT:-runs/cert_D1}"; mkdir -p "$OUT"
 TS="$(date +%Y%m%d_%H%M%S)"
 CONSOLE="$OUT/console_${TS}.log"
 echo "[run_cert] console + streamed inference -> $CONSOLE" >&2
