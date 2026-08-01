@@ -24,6 +24,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from . import p44 as P44
+from . import p46 as P46
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion
@@ -183,6 +184,13 @@ class ReliaDINO(nn.Module):
                  p44_rc_pairs: int = 2048,
                  p44_rc_mode: str = 'mse',
                  p44_rc_warmup_ep: int = 10,
+                 p46_proto: bool = False,
+                 p46_proto_dim_src: str = 'mfeat',
+                 p46_proto_lambda: float = 0.1,
+                 p46_proto_ema: float = 0.999,
+                 p46_proto_temp: float = 0.1,
+                 p46_proto_pixels: int = 4096,
+                 p46_proto_warmup_ep: int = 5,
                  p45_fogstyle: bool = False,
                  p45_prob: float = 0.5,
                  p45_sigma: float = 0.5,
@@ -418,6 +426,31 @@ class ReliaDINO(nn.Module):
         # [P44-V1] presence 재정규화 (학습 파라미터 0, 추론 경로에도 적용)
         self.p44_validity_renorm = bool(p44_validity_renorm)
         self.p44_validity_dilate = int(p44_validity_dilate)
+        # ── [P46-C3] Domain-Invariant Class-Prototype Consistency ────────────
+        # per-class EMA prototype bank + prototype-contrastive CE (학습 전용).
+        # feature source = 픽셀 head의 stride-4 m_feat (fpn_dim) — 최종 분류를
+        # 실제로 담당하는 표현이라 여기서 클래스 표현을 도메인불변으로 묶는 것이
+        # test 전이에 직접 작용한다. 손실은 detach된 prototype을 타깃으로 삼아
+        # gradient가 전부 feature 경로로 흐른다(키1, zero-init 잔차 아님).
+        self.p46_proto_lambda = float(p46_proto_lambda)
+        self.p46_proto_warmup_ep = int(p46_proto_warmup_ep)
+        self.p46_proto_src = str(p46_proto_dim_src).lower()
+        if self.p46_proto_src not in ('mfeat', 'fused'):
+            raise ValueError(f"P46.C3_PROTO.FEATURE must be mfeat|fused, "
+                             f"got {p46_proto_dim_src!r}")
+        self.p46_proto = None
+        if p46_proto:
+            _pdim = fpn_dim if self.p46_proto_src == 'mfeat' else dim
+            self.p46_proto = P46.PrototypeBank(
+                num_classes=num_classes, dim=_pdim, momentum=p46_proto_ema,
+                temperature=p46_proto_temp, pixels=p46_proto_pixels)
+        # [P46-C2/C3] 보조 branch(마스킹/스타일 2-view) forward가 주 forward와
+        # **정확히 같은 파라미터 집합**을 쓰도록 P39 path-dropout 추첨을 재생한다.
+        # 이유(DDP): find_unused_parameters=True는 마지막 forward의 그래프로
+        # unused 집합을 정하는데, 두 forward의 경로가 갈리면 한쪽에서만 쓰인
+        # 파라미터가 "unused로 ready 처리된 뒤 hook이 또 발화" → reducer 사망.
+        self._p46_replay_path = False
+        self._p46_last_path_r = None
         # [P45-F1] feature-space fog style 일관성 (기본 off)
         self.p45_fogstyle = bool(p45_fogstyle)
         self.p45_prob = float(p45_prob)
@@ -938,7 +971,13 @@ class ReliaDINO(nn.Module):
                     q_scaled = q_scaled * 0.0
                 if self.training:
                     p = self.p39_path_dropout_p
-                    r = float(torch.rand(1).item())
+                    # [P46] 보조 branch는 주 forward의 추첨을 그대로 재생한다
+                    # (DDP unused-param 집합 일치 — __init__ 주석 참조).
+                    if self._p46_replay_path and self._p46_last_path_r is not None:
+                        r = self._p46_last_path_r
+                    else:
+                        r = float(torch.rand(1).item())
+                        self._p46_last_path_r = r
                     if r < p:
                         pass                                # dense-only turn
                     elif r < 2.0 * p:
@@ -990,6 +1029,14 @@ class ReliaDINO(nn.Module):
                     if terms:
                         aux['p44_hard_aux'] = self.p44_hard_pixel_w * (
                             sum(terms) / len(terms))
+        if (self.p46_proto is not None and self.training and gt_mask is not None
+                and self._current_epoch >= self.p46_proto_warmup_ep):
+            # [P46-C3] prototype-contrastive CE. bank 갱신은 **주 forward에서만**
+            # — 보조(스타일 2-view/마스킹) branch는 갱신 없이 같은 bank로 당겨야
+            # "두 도메인 view가 하나의 prototype으로 수렴"이라는 제약이 된다.
+            _pf = m_feat if self.p46_proto_src == 'mfeat' else fused
+            aux['p46_proto'] = self.p46_proto_lambda * self.p46_proto(
+                _pf, gt_mask, update=(not self._p46_replay_path))
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
@@ -1155,6 +1202,10 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     p44_mk = p44.get('MUTUAL_KL', {}) or {}            #   B-2 peer 상호증류
     p44_rc = p44.get('REL_CORR', {}) or {}             #   B-2 관계형 대응
     p45_fs = (mc.get('P45', {}) or {}).get('FOGSTYLE', {}) or {}   # [P45-F1]
+    p46 = mc.get('P46', {}) or {}                      # [P46-CTR] class-transfer recovery
+    p46_c3 = p46.get('C3_PROTO', {}) or {}             #   C-3 prototype consistency
+    #   C-1(RCS 샘플러)·C-2(EMA teacher masked consistency)는 모델이 아니라
+    #   학습 루프의 결선이다 → train_reliadino.py가 MODEL.P46.C1_RCS/C2_MCC를 읽는다.
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -1290,6 +1341,13 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p44_rc_pairs=p44_rc.get('PAIRS', 2048),
         p44_rc_mode=p44_rc.get('MODE', 'mse'),
         p44_rc_warmup_ep=p44_rc.get('WARMUP_EP', 10),
+        p46_proto=p46_c3.get('ENABLE', False),
+        p46_proto_dim_src=p46_c3.get('FEATURE', 'mfeat'),
+        p46_proto_lambda=p46_c3.get('LAMBDA', 0.1),
+        p46_proto_ema=p46_c3.get('EMA', 0.999),
+        p46_proto_temp=p46_c3.get('TEMPERATURE', 0.1),
+        p46_proto_pixels=p46_c3.get('PIXELS', 4096),
+        p46_proto_warmup_ep=p46_c3.get('WARMUP_EP', 5),
         p45_fogstyle=p45_fs.get('ENABLE', False),
         p45_prob=p45_fs.get('PROB', 0.5),
         p45_sigma=p45_fs.get('SIGMA', 0.5),

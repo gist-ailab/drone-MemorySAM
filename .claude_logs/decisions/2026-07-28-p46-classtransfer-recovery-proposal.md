@@ -61,3 +61,17 @@ P39.1 base(gated_mlp trunk + VICReg + P36 router + M2F) **유지**. class-transf
 
 ---
 **Sources (WebSearch)**: MIC [2212.01322](https://arxiv.org/abs/2212.01322) · DAFormer/RCS [2111.14887](https://arxiv.org/pdf/2111.14887) · Rein [2312.04265](https://arxiv.org/pdf/2312.04265) · Rein++ [2508.01667](https://arxiv.org/html/2508.01667) · dual-prototypical DG [2309.14282](https://arxiv.org/pdf/2309.14282) · SCSD [2412.12050](https://arxiv.org/abs/2412.12050) · Balancing Logit Variation [2306.02061](https://arxiv.org/pdf/2306.02061)
+
+
+## §9 재타깃 (2026-07-29, R1024+DGFusion montage 근거) — 원안 §3 타깃 수정
+**근거(신규 실측)**: DGFusion(DELIVER test-SOTA) 재현 + P39.1 per-class 대조 + R1024(768→1024) + 정성 montage.
+- Wall/Water/Bridge: **DGFusion도 test IoU 0~4로 동반 붕괴**(우리 8/6/0), montage 확증(둘 다 그 픽셀만 놓침), 해상도 무효(Wall+0.36/Water−1.15) → **복구불가·SOTA도 못 넘음 → 1차 타깃 제외**. 원안 게이트(Wall≥13/Water≥9/Bridge≥20) **폐기**.
+- **RailTrack = 진짜 격차**: 우리 test 4.02(@1024), DGFusion 64.47, 전 조건·해상도 무관. montage: 우리 0.00 / DGFusion ~1.00. MAP_10 test 상단 대영역을 Sky/Static으로 **오분류(class confusion — 픽셀기하 정상, 클래스할당만 틀림)**. val조차 23.92(under-learned).
+- 해상도: 768→1024 test +1.21(thin), native-res eval로 흡수(무료).
+**재설정 게이트**: 🔴 primary falsifiable **RailTrack test 4→≥40**(DGFusion ≥64 실증). overall DELIVER test ≥56.62 + **@1024 병기**. ep30 kill=RailTrack 무변화. ablation=C1/C2/C3 토글.
+## §10 구현 스펙(labcode)
+Base=P39.1-rank(reliadino). 3모듈 전부 config 토글·주손실/aux 직결(키1):
+- **C-1 RCS**(DAFormer): train per-class 픽셀빈도 사전계산 → class prob ∝ freq^{-T}(T~0.01) → step마다 class c 샘플 후 c포함 이미지 샘플, 런타임 per-class EMA loss로 blend. 데이터로더 레벨. RailTrack auto up-weight.
+- **C-2 MCC**(MIC, source-only DG): EMA-teacher. student=패치마스킹(ratio0.5/patch64), teacher=원본, masked영역 consistency(CE/KL, λ2).
+- **C-3 Proto**: per-class prototype bank(25×feat_dim, EMA), 클래스 픽셀feature를 자기proto로 당김+타proto서 밀기, ColorAugSSD 2-view간 동일클래스→동일proto(λ3).
+- 토글 `MODEL.P46.C1_RCS/C2_MCC/C3_PROTO`, EMA-teacher·proto=학습전용(추론불변). 공정성: PhysAug off·ColorAugSSD(ISSUE-026)·val-best·TTA금지. config `configs/<server>-deliver_rgbdel_P46_ctr.yaml`, EPOCHS200(ep30게이트).

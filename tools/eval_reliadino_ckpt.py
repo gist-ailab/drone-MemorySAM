@@ -35,6 +35,25 @@ from semseg.models.reliadino.model import build_reliadino          # noqa: E402
 from train_reliadino import evaluate                               # noqa: E402  동일 metric 경로
 
 
+class _DropModalityDataset(torch.utils.data.Dataset):
+    """Wraps a MODALS-based dataset, zero-filling one modality tensor per item —
+    same semantics as tools/feature_stats.py --drop-modality. Model structure
+    unchanged; only the input at `idx` is replaced with zeros."""
+    def __init__(self, base, idx):
+        self.base, self.idx = base, idx
+        self.n_classes, self.CLASSES = base.n_classes, base.CLASSES
+        self.ignore_label = getattr(base, 'ignore_label', 255)
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, i):
+        imgs, label = self.base[i]
+        imgs = list(imgs)
+        imgs[self.idx] = torch.zeros_like(imgs[self.idx])
+        return imgs, label
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cfg', required=True)
@@ -48,6 +67,10 @@ def main():
     ap.add_argument('--toggles', default='',
                     help='쉼표목록 post-load 모듈 off (module_ablation.py와 동일 시맨틱): '
                          'bias,cons,gate,veto,calib')
+    ap.add_argument('--drop-modality', default='',
+                    help='DATASET.MODALS 중 하나(예: radar)를 zero-fill해 fwd — '
+                         'drop-modality dMIoU 측정용(tools/feature_stats.py --drop-modality와 '
+                         '동일 시맨틱). 모델 구조는 그대로, 입력만 0으로 채운다.')
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(args.cfg))
@@ -84,9 +107,19 @@ def main():
 
     bs = args.batch or eval_cfg['BATCH_SIZE']
     splits = ['val', 'test'] if args.split == 'both' else [args.split]
+    drop_idx = None
+    if args.drop_modality:
+        modals = dataset_cfg['MODALS']
+        assert args.drop_modality in modals, \
+            f"--drop-modality {args.drop_modality} not in DATASET.MODALS {modals}"
+        drop_idx = modals.index(args.drop_modality)
+        print(f"[G0a] drop-modality: {args.drop_modality} (index {drop_idx}, zero-filled)")
+
     for split in splits:
         dset = probe if split == 'val' else eval(ds_name)(
             dataset_cfg['ROOT'], split, valtransform, dataset_cfg['MODALS'])
+        if drop_idx is not None:
+            dset = _DropModalityDataset(dset, drop_idx)
         loader = DataLoader(dset, batch_size=bs, num_workers=4, pin_memory=True)
         with torch.no_grad():
             try:

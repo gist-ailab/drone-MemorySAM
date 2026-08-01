@@ -9,6 +9,17 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-07-29 — P46-CTR jarvis OOM 진단: 누수가 아니라 **warmup 계단** (ISSUE-028), 메모리 회계 5건 수정
+
+- **접수된 증상**: `jarvis-deliver_rgbdel_P46_ctr.yaml`(all-on, BS1) 4090×4에서 ep1~5 정상(15.2GB, ep4 val 59.66) → **ep6 iter0 4-rank 동시 OOM**(23.47GiB). "에폭이 갈수록 서서히 증가하는 누수"로 접수.
+- **판정 = 누수 아님**. C2_MCC/C3_PROTO `WARMUP_EP:5` + `for epoch in range(...)`(0-index) + 로그 `epoch+1` → **로그상 ep6 = epoch 5**가 보조 student branch·EMA teacher forward·주 forward prototype 손실이 **최초로 켜지는** epoch이다. ep1~5는 P39.1-base만 돌았으므로 15.2GB에는 **P46 비용이 0**이고, "ep1~5 대비 증가"라는 비교 자체가 성립하지 않는다. iter0에서 4-rank가 동시에 죽는 것도 스텝 누적이 아닌 구조적 peak 증가의 서명(EVAL_INTERVAL:2 → eval은 ep4에서 끝, ep5는 학습만).
+- **계측**: CPU tiny 모델 gc live-tensor bytes로 12스텝 추이 — 수정 전 86.3MiB / 수정 후 69.5MiB, **둘 다 완전히 평평(단조증가 0%)**. P46에 단조 누수는 없고 아래는 전부 상수 오버헤드였다.
+- **수정 5건(의미·게이팅·warmup 로직 무변경, 메모리 회계만)**: ① 보조 branch `_baux`의 backward **미도달** 서브그래프(m2f/vicreg/aux_ce/router — backward가 해제해 주지 않는다) 즉시 `del` ② 루프 지역변수(`logits`/`aux`/`total`/`_blogits`/`_tlogits`)를 iteration 끝에서 명시 해제 ③ EMA teacher의 eval 분석 탭 `_last_*`(~41MiB, 아무도 안 읽음) 호출마다 해제 — student 탭은 보존 ④ `PrototypeBank._sample` 인덱스-먼저/캐스팅-나중(gather): fp32 전체 사본 3장(108MiB) → 4.0MiB, 호출 2회로 **-208MiB**, 수치 bit-exact ⑤ eval 직후 `empty_cache()`.
+- **근본 비용은 남는다**: peak에 student 그래프 2개가 동시에 산다. backward 분리는 **불가** — `find_unused_parameters=True`가 마지막 forward로 unused를 정하는 DDP 계약 때문에 보조 그래프에서만 grad를 받는 파라미터가 생겨 reducer가 정지한다(07-16 NCCL 데드락 부류). `GRADIENT_CHECKPOINT`는 ISSUE-027로 봉인. → 24GB 4090에서 BS1 all-on은 여전히 빠듯하며, 기동 전 `P46_MEM_LOG=1`로 ep5→ep6 계단 실측이 필요하다.
+- **회귀 방지**: `tools/smoke_p46.py`에 G(teacher 캐시 해제)·H(PrototypeBank 등가성 `max|diff|=0`)·**I-a 스텝 간 참조 해제**(weakref, tolerance 없음 — **step1의 peak 지점**에서 판정해야 잡힌다. 스텝 종료 후에 재면 수정 전에도 다 죽어 있어 무력)·I-b 메모리 단조성 추가. I-a는 수정 전 5/5 생존 → 수정 후 0/5로 검출력 실측 확인. `--ddp` 포함 전항목 PASS.
+- **교훈**: warmup이 걸린 모듈은 **warmup 이후 epoch을 최소 1회 통과해야** 자원 검증이 끝난 것이다. config 주석의 "BS1, OOM-safe per smoke test"가 그 오기록이었고 이번 사고의 실체다.
+- 브랜치 `p46-oom-fix`(develop 기준). 사용자 리뷰 후 develop 병합 예정 — push 안 함.
+
 ### 2026-07-28 — 브랜치·worktree를 develop 하나로 통합 + 정량 재현 경로(REPRODUCE.md) 신설
 
 - **통합 범위**: worktree 15개 → 3개, 로컬 브랜치 22개 → 5개. 삭제분은 전부 `archive/<브랜치>` 태그 11개로 보존(`git tag -l 'archive/*'`). **`26-drone-certificate`는 사용자 지시로 통합 대상에서 제외**하고 그대로 유지.

@@ -17,8 +17,9 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-028** | ✅ **수정(2026-07-29)** | **P46-CTR jarvis OOM은 누수가 아니라 warmup 계단이다.** C2_MCC/C3_PROTO `WARMUP_EP:5` + epoch 0-index → 로그상 **ep6(=epoch 5) iter0이 보조 branch·EMA teacher·proto 손실이 최초로 도는 지점**. ep1~5(=epoch 0~4)는 P39.1-base 그대로라 15.2GB였고 P46 비용은 **한 번도 측정된 적이 없다**. 부수적으로 상수 오버헤드 4건(보조 `_baux` 미도달 서브그래프·루프 지역변수·teacher `_last_*` 캐시·PrototypeBank full-copy)을 수정. **peak 2-그래프 구조 자체는 설계라 그대로** → BS1에서도 24GB로 부족. 상세: 하단 ISSUE-028 |
 | **ISSUE-026** | ✅ **수정(2026-07-21)** | ColorAugSSD brightness가 uint8(0-255) 입력을 [0,1] 클램프 → 발화 샘플(p=0.5) RGB가 백색 상수로 붕괴(사실상 RGB-dropout 0.5). **07-16 이후 DGFUSION_AUG:true DELIVER 학습 전부 오염**(jarvis P37a-DELIVER/P37b(사망런), hpca100 P38-DELIVER 완주분·**P39-DPC resume 진행 중**, yeon 스모크). MUSES 전 계보 무영향. **P38-DELIVER/P39-DELIVER 게이트 판정 보류.** 상세: 하단 ISSUE-026 |
-| **ISSUE-028** | ✅ **해결(2026-07-28)** | hpca100 HF 백본 이중고장 — `HF_HUB_OFFLINE=1`일 때 DINOv3+DINOv2 폴백 둘 다 local cache lookup 실패로 **RANDOM INIT**(경고 없이 조용히 진행됨), offline 미설정 시엔 반대로 HF Hub 온라인 조회 단계에서 **정체(hang)**. 최초 진단(P44-BMR 과균형)은 오진 — 실제 원인은 백본. `RELIADINO_LOCAL_BACKBONE` env로 로컬 safetensors 직접 로드하는 우회 코드로 해결(697a10a). 저조(mIoU 급락) 발생 시 **백본 로드 라인부터 먼저 확인할 것**. 상세: 하단 ISSUE-028 |
+| **ISSUE-029** | ✅ **수정(2026-07-28)** | hpca100 HF 백본 이중고장 — `HF_HUB_OFFLINE=1`일 때 DINOv3+DINOv2 폴백 둘 다 local cache lookup 실패로 **RANDOM INIT**(경고 없이 조용히 진행됨), offline 미설정 시엔 반대로 HF Hub 온라인 조회 단계에서 **정체(hang)**. 최초 진단(P44-BMR 과균형)은 오진 — 실제 원인은 백본. `RELIADINO_LOCAL_BACKBONE` env로 로컬 safetensors 직접 로드하는 우회 코드로 해결(697a10a). 저조(mIoU 급락) 발생 시 **백본 로드 라인부터 먼저 확인할 것**. 상세: 하단 ISSUE-029 |
 | **ISSUE-027** | ✅ **가드 추가(2026-07-21)** | GRADIENT_CHECKPOINT=true 시 timm non-reentrant 재계산이 stale active_modality로 비최종 모달 LoRA gradient 오염(무경고). encoder 강제 off 가드 + 체크인 configs 9종 false로 수정. 실피해는 bengio 사망런·yeon 스모크 등 한정적. 상세: 하단 ISSUE-027 |
 | **ISSUE-025** | ✅ **해결(2026-07-21)** | MUSES radar 디코딩 3중 버그 — `_open_radar` 폴스루+디스패치 오배선+`RADAR_RANGE_MAX` 미정의로 100m 클립(실측 유효픽셀 2.76% 포화, 센서 캡=150.0m) + height 채널 0.25 상수 오염. develop에서 수정 완료. **영향은 4모달(radar 포함) 실험만, 3모달 전 계보 무영향.** 상세: 하단 ISSUE-025 |
 | **ISSUE-024** | 🟡 **OPEN (조건부 — P37b kill-gate 생존 시 수정)** | P37b `classtoken.py`의 `mask_proj`(attn-mask 예측기)가 threshold 비교(비미분)로만 쓰여 gradient 미도달 → 영구 random init, masked attention이 사실상 random 마스킹. P38 `m2f_head.py`가 올바른 수정 패턴(`_attn_bias`) 보유. 전수조사에서 minor 다수 추가 확정·수정됨(2026-07-21 커밋 참조). 상세: 하단 ISSUE-024 |
@@ -51,7 +52,76 @@ moved: 2026-07-08
 
 ---
 
-### ISSUE-028: hpca100 HF 백본 이중고장(offline=RANDOM INIT / online=hang) [해결, 2026-07-28]
+### ISSUE-028: P46-CTR "지연성 OOM"의 정체 = warmup 계단 (누수 아님) [수정, 2026-07-29]
+
+**증상 보고**: `configs/jarvis-deliver_rgbdel_P46_ctr.yaml`(all-on C1+C2+C3, BS1) jarvis 4090×4.
+ep1~5 정상(rank당 ~15.2GB, ep4 val 59.66 확보) → **ep6 iter0에서 4-rank 전부 OOM**
+(23.47GiB 사용 중 20MiB 실패). "에폭이 갈수록 메모리가 서서히 증가하는 누수"로 접수됨.
+
+**실제 원인 = 누수가 아니라 계단.** 근거 3개가 모두 한 지점을 가리킨다:
+
+1. **타이밍이 정확히 warmup 경계다.** config `C2_MCC.WARMUP_EP: 5`, `C3_PROTO.WARMUP_EP: 5`.
+   `train_reliadino.py`의 epoch은 0-index(`for epoch in range(start_epoch, epochs)`)이고
+   로그는 `epoch+1`로 찍는다(`Epoch [{epoch+1}/{epochs}]`). 따라서 **로그상 ep6 = epoch 5**가
+   `epoch >= 5`를 처음 만족하는 epoch이다. 그 iter0에서 **동시에 셋이 처음 켜진다**:
+     - 보조 student branch (`model(_bx, True, gt_mask=lbl)`) — **주 forward 그래프와 동시에 살아 있는** 두 번째 full forward 그래프
+     - EMA teacher forward (4×ViT-L 한 벌, no_grad지만 작업메모리는 실재)
+     - 주 forward의 prototype 손실 (`model.py`: `self._current_epoch >= self.p46_proto_warmup_ep`)
+2. **ep1~5는 P46 비용을 하나도 안 쓴다.** epoch 0~4에서는 위 세 게이트가 전부 False →
+   그 구간의 15.2GB는 **P39.1-base의 수치**이고, P46의 실제 학습 비용은 이 런에서
+   **한 번도 측정된 적이 없다**. "ep1~5 대비 증가"라는 비교 자체가 성립하지 않는다.
+3. **iter0이라는 점.** 누수라면 에폭 중간에 터진다. 정확히 warmup epoch의 **첫 iteration**에서
+   4-rank가 동시에 죽는 것은 스텝 누적이 아니라 구조적 peak 증가의 서명이다.
+   (EVAL_INTERVAL:2라 eval은 ep4에서 끝났고 ep5는 학습만 했다 → eval 직후 파편화도 아니다.)
+
+**계측으로 확인한 것 (CPU tiny 모델, gc live-tensor bytes)**: 수정 전 86.3MiB → 수정 후 69.5MiB로
+**둘 다 스텝에 대해 완전히 평평**(단조증가 0%). 즉 P46에는 **단조 누수가 존재하지 않고**,
+아래 4건은 전부 **상수 오버헤드**였다.
+
+**부수 수정 4건 (상수 오버헤드 — 근본원인 아님, 그래도 실재)**
+- `train_reliadino.py` 보조 branch `_baux`: total에 들어가는 건 `p46_proto` 하나뿐인데
+  나머지(`m2f_loss`/`vicreg`/`aux_ce`/`router_*`)는 **backward가 도달하지 않는** 서브그래프라
+  backward가 saved tensor를 해제하지 않는다 → `_bproto`만 꺼내고 즉시 `del _baux`.
+- 루프 지역변수(`logits`/`m_feat`/`aux`/`total`/`loss`/`_blogits`/`_tlogits`)는 **다음
+  iteration이 재대입할 때까지** 살아 있다 → 직전 스텝 잔재가 이번 스텝의 두 forward가
+  peak를 찍는 내내 상주. iteration 끝에서 명시 `del`. (`_blogits`/`_tlogits` 각 56.2MiB @768²)
+- `p46.EMATeacher.__call__`: teacher는 eval 경로라 `_last_per_modal_feats`/`_last_fused_*`/
+  `_last_p43_out` 등 분석 탭(~41MiB)을 매 스텝 캐시하는데 **아무도 읽지 않는다** → `_clear_diag()`.
+  (student `_core`의 탭은 val_*/tools/viz_*가 읽으므로 **건드리지 않는다**.)
+- `p46.PrototypeBank._sample`: `feat.float()` → `permute().reshape()` → `f[keep]` 순서라
+  (B,256,192,192) **fp32 전체 사본 3장(108MiB)**을 그래프에 올린 뒤 4096행만 썼다 →
+  인덱스 먼저·캐스팅 나중(gather)으로 4.0MiB. 호출 2회 기준 **-208MiB**. 뽑는 행·난수 소비·
+  수치 전부 동일(smoke H가 `max|diff|=0`으로 검증).
+- eval 직후 `torch.cuda.empty_cache()` 추가(eval **전**에 있던 것의 짝 — 파편화 완화).
+
+**🔴 남아 있는 것 = 근본 비용.** peak에 **student 그래프 2개가 동시에 산다**. 이건 설계다 —
+`total = total + p46_cons + p46_xv` 후 backward 1회라는 구조가 DDP 계약에서 나온다:
+`find_unused_parameters=True`는 **마지막 forward**로 unused 집합을 정하므로 두 forward의
+파라미터 사용 집합이 같아야 하고(그래서 보조 branch에도 `gt_mask`를 넘겨 M2F/aux까지 전부
+계산한다), backward를 둘로 쪼개면 보조 그래프에서만 grad를 받는 파라미터가 생겨 **reducer가
+정지**한다(2026-07-16 NCCL 데드락과 같은 부류). **그래서 backward 분리는 하지 않았다.**
+- `GRADIENT_CHECKPOINT: true`는 **쓸 수 없다** — ISSUE-027(멀티모달 강제 off 가드).
+- 즉 24GB 4090에서 BS1 all-on은 여전히 빠듯하다. 실행 전 `P46_MEM_LOG=1`로 ep5→ep6 계단을
+  먼저 실측할 것. 슬롯을 못 맞추면 (a) 더 큰 카드, (b) `IMAGE_SIZE` 축소,
+  (c) C2/C3 중 하나만 켜기(보조 branch는 공유라 forward 수는 같지만 손실 그래프가 준다) 중 택1.
+
+**회귀 방지**: `tools/smoke_p46.py`
+- **I-a 스텝 간 참조 해제**(결정적, tolerance 없음): step0의 `_baux[*]`/`_blogits`/`_tlogits`에
+  weakref를 걸고 **step1의 peak 지점**에서 생존 여부 판정. ⚠️ **측정 시점이 핵심** — 스텝이
+  끝난 뒤 재면 수정 전에도 다 죽어 있어 아무것도 안 잡힌다(실측 확인). 수정 전 5/5 생존,
+  수정 후 0/5로 검출력 확인함.
+- **I-b 메모리 단조성**: N스텝 `cuda.memory_allocated`(CPU면 gc live-tensor bytes) 추이가
+  step2 대비 +5% 이내. 진짜 누수용이며 **상수 오버헤드는 못 잡는다**(그래서 I-a가 따로 있다).
+- **G** teacher `_last_*` 해제 + student 탭 보존, **H** PrototypeBank gather 등가성.
+
+**교훈**: warmup이 걸린 모듈은 **warmup 이후 epoch을 최소 1회 통과**해야 자원 검증이 끝난 것이다.
+`WARMUP_EP: 5`인 config를 스모크/초반 에폭만 보고 "OOM-safe"로 기록한 것이 이번 사고의 실체다
+(config 주석의 "BS1, OOM-safe per smoke test"가 그 오기록). 자원 스모크는 **WARMUP_EP를 0으로
+낮춰** 돌리거나, 최소한 `P46_MEM_LOG`로 계단 지점을 확인하라.
+
+---
+
+### ISSUE-029: hpca100 HF 백본 이중고장(offline=RANDOM INIT / online=hang) [해결, 2026-07-28]
 
 **발견 경위**: hpca100에서 4-modal(+radar) 학습 2건(P44-BMR+radar, P39.1+radar seed2)이 연속으로 ep2 mIoU가 3모달·yeon 동일 레시피(~45~48) 대비 극단적으로 저조(11~22)하게 나와 원인 조사 중 발견. 최초 가설은 "P44-BMR이 radar에 과균형해 실패"였으나, **P44도 P39.1도 동일하게 저조**했던 점에서 재검토 → radar 데이터(md5 검증 완료, 정상) 무죄, 백본 로드 자체가 원인으로 확진.
 

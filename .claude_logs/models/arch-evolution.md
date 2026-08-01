@@ -6,7 +6,37 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-07-25
+> 최종 업데이트: 2026-07-29
+
+## P46 — CTR (Class-Transfer Recovery): RCS + Masked-Context Consistency + Class-Prototype (2026-07-29)
+
+**상태**: **구현 완료 (학습 대기)**. 제안 = [decisions/2026-07-28-p46-classtransfer-recovery-proposal.md](../decisions/2026-07-28-p46-classtransfer-recovery-proposal.md). Base = **P39.1-rank 동결**(gated_mlp trunk + VICReg + P36 router + M2F, 하이퍼 무변경). 파일: `semseg/models/reliadino/p46.py`(신규), `model.py`·`train_reliadino.py`(배선), `tools/smoke_p46.py`(신규 CPU 스모크). config: `configs/hpca100-deliver_rgbdel_P46_ctr.yaml`(DELIVER 4모달 img/depth/event/lidar, EPOCHS 200).
+
+**동기(우리 실측)**: DELIVER val→test 하락의 지배 원인 = **per-class 도메인 전이 붕괴** — Wall 62→2, TrafficLight 81→13, Water 33→0, Bridge 46→0. per-domain spread는 작고(P38 2.58) 모달 융합은 이미 천장(P39.1이 val·test 모두 baseline 미돌파) → 남은 지렛대는 **클래스 표현의 전이**뿐. 하위원인 (a) rare-class under-learning, (b) 도메인 간 class 표현 붕괴.
+
+**3 구성요소 (전부 학습 전용·내부신호만·주손실 직결 = 키1, zero-init 잔차 아님)**:
+
+| | 기제 | 근거 | 결선 위치 |
+|---|---|---|---|
+| **C-1 RCS** | train 라벨 전수 1회 스캔 → `P(c) ∝ exp((1−f_c)/T)`(T=0.01) → class 샘플 → 그 class를 담은 이미지 샘플. 런타임 per-class CE **EMA**로 `P(c)·(1+w·ĝ_c)` blend | DAFormer 2111.14887 | 데이터로더(`RareClassSampler`가 DistributedSampler 대체) — **주 CE/M2F 손실이 이 데이터를 본다** |
+| **C-2 MCC** | student = 패치 마스킹(ratio 0.5 / patch 64, 전 모달 동일 위치) 입력, teacher = **EMA 복사본 + 원본** 입력. 마스킹 영역에서만 pseudo-label CE(conf≥0.75 게이트) | MIC 2212.01322 — UDA를 **source-only DG**로 변형(target 도메인 불요) | trainer 보조 branch + `EMATeacher` |
+| **C-3 PROTO** | per-class EMA prototype bank(K×D) + prototype-contrastive CE(`CE(cos(f,P)/τ, y)` = 자기 prototype 당김 + 타 prototype 밀어냄). ColorAugSSD 등가 스타일 2-view를 **같은 bank**로 당겨 도메인불변화 | dual-prototypical 2309.14282 / SCSD 2412.12050 | `PrototypeBank`(model 서브모듈, 학습 파라미터 0·버퍼만) → `aux['p46_proto']` |
+
+**보조 branch 설계(비용 상한)**: C-2와 C-3 2-view는 **하나의 추가 forward를 공유**한다(입력 = 선택적 스타일 변주 → 선택적 패치 마스킹). 토글을 더 켜도 forward는 늘지 않아 스텝 비용이 ≈2.2×(student 2 + teacher 1)로 묶인다.
+
+**🔴 DDP 계약 (스모크가 실측으로 잡아낸 2건)**:
+1. **버퍼 in-place 사망**: DDP는 매 forward 시작마다 rank0 버퍼를 in-place 복사한다. 보조 branch가 켜지면 2번째 forward의 브로드캐스트가 1번째 그래프가 저장한 버퍼(M2F `empty_weight`)를 갈아엎어 backward가 `modified by an inplace operation`으로 죽는다 → 보조 branch가 있을 때만 `broadcast_buffers=False`. P39.1의 버퍼는 상수라 의미 변화 없음(prototype bank는 rank-로컬 EMA가 된다).
+2. **unused-param 집합 불일치**: `find_unused_parameters=True`는 **마지막** forward의 그래프로 unused를 정한다. 두 forward의 경로가 갈리면 한쪽에서만 쓰인 파라미터가 "unused로 ready 처리된 뒤 hook이 또 발화"해 reducer가 죽는다 → 보조 branch는 (a) `gt_mask`를 **똑같이** 넘기고(내부 aux 손실 결선 동일, 반환값은 버림) (b) P39 path-dropout 추첨을 **재생**(`_p46_replay_path`)한다. 그래서 확률적 입력 모듈(MODAL_DROPOUT/P42/P44.LOCAL_MASK/RCA/P45)과는 동시 사용 불가 — trainer가 명시적으로 `RuntimeError`를 던진다.
+
+**추론 불변**: teacher·bank·샘플러는 전부 학습 루프 소속. `model.eval()` 경로는 P39.1과 **완전 동일**하며, 스모크 C가 all-on ↔ all-off eval logits `|Δ|max = 0`으로 검증한다.
+
+**검증**: `tools/smoke_p46.py` (CPU, tiny ViT) 전항목 PASS — ① 6개 토글 조합 1-step fwd+bwd ② 각 aux 손실 **단독 backward** 시 LoRA `b_q`/fusion/FPN/head grad>0(키1) ③ eval 등가성 |Δ|=0 ④ RCS가 희소 클래스를 실제 up-weight + loss-EMA blend 작동 ⑤ 합성 DELIVER 라벨 PNG로 1-25→0-24 디코딩·캐시 왕복 일치 ⑥ `--ddp`(gloo 2-proc) 보조 branch 2-forward에서 rank 간 gradient 완전 일치. **실데이터 학습 미기동**. ⚠️ LoRA `a_q`는 `b`가 zero-init이라 step 0에서 grad가 정의상 0(baseline seg 손실도 동일) → 합격 판정은 `b_q`로 한다.
+
+**판정 게이트(사전등록, 제안서 §4)**: 목표 **test ≥56.71**(DGFusion SOTA 돌파) & **val ≥68**. 🔴 falsifiable 예측 = collapse 클래스 test IoU 회복 Wall 2→≥13 / TrafficLight 13→≥40 / Water 0→≥9 / Bridge 0→≥20 / RailTrack ≥62 유지 — **회복 없으면 class-transfer 가설 반증 → 설계 폐기**. ep30 조기 kill = collapse 클래스 test IoU 합이 P39.1 대비 하락/무변화. ablation = C1/C2/C3 각 토글 분해. 무음 no-op 조기 검출 지표: `p46/rcs_class_entropy`(C-1이 실제로 rare를 뽑나) · `p46/mcc_pseudo_rate`(0이면 teacher가 conf 문턱을 못 넘음) · `p46/proto_coverage`.
+
+**노벨티(정직)**: RCS·MIC·prototype DG **개별 기제는 전부 선행 존재 → 노벨티 아님**. 차별 축은 조합 ① multimodal frozen-VFM(선행은 전부 단일 RGB) ② 내부신호만(CLIP-text·GT-depth·조건라벨 배제) ③ 단일 아키가 DELIVER+MUSES 공용 ④ 진단주도(관측된 per-class val→test 붕괴 표적). "first X" 주장 불가.
+
+---
 
 ## P43 — PanopticDual: 독립 주손실 mask-classification 헤드 (2026-07-25)
 
