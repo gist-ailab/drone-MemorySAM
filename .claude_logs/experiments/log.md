@@ -1636,3 +1636,80 @@ motorcycle 58.07 · rider 59.47 · pole 62.07 · fence 65.70
 - fog_night 69.61이 전 조건·조합 통틀어 최저치 — 병목으로 남음.
 - snow_day < snow_night 역전, 이번이 **3회째 재현**(P34-4모달, P38-m2f에 이어).
 - 상세 산출·원시 데이터는 `MUSES_TEST_RESULTS_INDEX.md` 및 제출 zip 아카이브(`/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/`) 참조.
+
+
+---
+
+## 2026-07-28 P44-BMR MUSES 공식 test — 78.429 (BMR 실패 확정)
+
+**제출**: `muses_P44_bmr_3modal_ep156_submission.zip` (P44-BMR, MUSES 3모달 img/lidar/event, val-best 80.71@ep156)
+**공식 test mIoU = 78.429** — seed2(79.788) 대비 **−1.36**, 심지어 P38-m2f(79.025)·P34(78.979)보다도 낮음 → **BMR 실패 확정**. SOTA(GtA 82.39) 대비 격차 **−3.96**.
+
+### per-condition
+
+| 축 | 값 |
+|---|---|
+| clear | 76.721 |
+| fog | 77.265 |
+| rain | 78.733 |
+| snow | 77.062 |
+| day | 79.433 |
+| night | 73.916 (주야 격차 −5.52) |
+| clear_day | 79.454 |
+| clear_night | 67.244 |
+| fog_day | 77.280 |
+| **fog_night** | **56.443 (파국, seed2 69.61 대비 −13.2)** |
+| rain_day | 78.157 |
+| rain_night | 76.314 |
+| snow_day | 68.597 |
+| snow_night | 72.065 (**snow 역전** — day<night) |
+
+### 약클래스 (full)
+
+motorcycle 54.45 · rider 57.29 · pole 59.61 · night truck 30.60 (붕괴)
+
+### 판정
+
+- 🔴 **fog_night 56.44 = seed2(69.61) 대비 −13.2pt 파국.** BMR의 "야간편중 lidar 사용이 유리하게 작용할 것"이라는 가설이 test에서 **완전 반증** — 오히려 야간·fog 조건에서 seed2보다 훨씬 나쁘다.
+- val(80.71)도 seed2(82.62)보다 낮았고, test도 seed2·P38·P34보다 낮음 → **BMR 방향 val·test 양쪽 모두 열세로 종료.**
+- 우리 test 최고는 여전히 **seed2 79.788** (P44가 못 넘음).
+- 상세 산출·원시 데이터는 `MUSES_TEST_RESULTS_INDEX.md` 및 제출 zip 아카이브(`/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/`) 참조.
+
+
+---
+
+## 2026-07-28 P43-PanopticDual MUSES 공식 test — 79.351 (우리 2위)
+
+**제출**: `muses_P43_pdual_3modal_ep156_submission.zip` (P43-pdual, MUSES 3모달 img/lidar/event, val 82.51)
+**공식 test mIoU = 79.351** — 우리 2번째 최고(seed2 79.788 대비 −0.44), 단 P38(79.025)·P34(78.979)·P44(78.429)보다는 높음. SOTA(GtA 82.39) 대비 격차 **−3.04**.
+
+### per-condition
+
+| 축 | 값 |
+|---|---|
+| clear | 78.906 |
+| fog | 77.841 |
+| rain | 78.668 |
+| snow | 78.351 |
+| day | 80.808 |
+| night | 75.190 (주야 격차 −5.62) |
+| clear_day | 80.862 |
+| clear_night | 74.232 |
+| fog_day | 76.608 |
+| **fog_night** | **67.763** |
+| rain_day | 79.087 |
+| rain_night | 73.470 |
+| snow_day | 71.193 |
+| snow_night | 74.313 (**snow 역전** — day<night) |
+
+### 약클래스 (full)
+
+motorcycle 52.63 · rider 60.10 · pole 62.56 · night truck 41.44
+
+### 판정
+
+- **PanopticDual(다른 기제, PQ 헤드 병행학습)인데 seed2급 성능** — P39.1 계열이 MUSES에서 여전히 최고임을 재확인.
+- seed2 대비: **주간(80.81>80.25)은 P43이 우세**, **야간(75.19<76.82)·fog_night(67.76<69.61)은 P43이 열세** → 순 test −0.44.
+- val→test 낙차 −3.16(82.51→79.35)으로 seed2(−2.83)보다 큼.
+- 우리 test 최고는 여전히 **seed2 79.788** (P43도 못 넘음, 근소 차이 2위).
+- 상세 산출·원시 데이터는 `MUSES_TEST_RESULTS_INDEX.md` 및 제출 zip 아카이브(`/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/`) 참조.

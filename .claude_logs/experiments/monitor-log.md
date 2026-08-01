@@ -4140,3 +4140,723 @@ fog_day      [17.98, -0.26, -0.23]
 **jarvis DELIVER 2런**: P39.1-rank 67.60@ep106에서 19회 연속(ep108~144) 정체, 64.78~66.07 범위 등락(67.74 게이트와 거리 유지). P44-BMR은 ep100 저점(62.46) 이후 65.0~65.7로 회복했으나 66.14@98 재돌파는 못함(6회 연속 미갱신). 둘 다 OOM/Traceback 0건.
 
 이상징후: 🔴 watch-task 중단(재기동 조치함), 🎉 P44-BMR(MUSES) 완주+GPU 완전해방, 4-modal 신기록 지속. 그 외 사망/OOM/preempt 없음.
+
+## 2026-07-28 12:34 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| hpca100 0-3 | 4-modal P44-BMR+radar | MUSES 4모달 | ep12/200 | 21.63@ep12(계속 상승 중) — **ep30 게이트 미도달** | 계속 진행 | ✅ (재-preempt 없음) |
+| yeon 0,1,5 | 4-modal P39.1+radar | MUSES 4모달 | ep78/300 | **80.92@ep78(신기록)** | 계속 진행 | ✅ |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep2 진행중(132/1991) | 첫 eval 아직 | 계속 진행 | ✅ |
+| jarvis 0-3 | P39.1-rank DELIVER | DELIVER 4모달 | ep158/200 | 67.60@ep106(미갱신, 26회 연속 정체) | 계속 진행 | ✅ |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep120/200 | **66.31@ep118(신기록)** | 계속 진행 | ✅ |
+| lecun GPU2 | P44-MUSES 표준분석 | MUSES val | module_diagnostics 스테이지(4/8) | - | - | ✅ |
+| lecun GPU1 | (predict 완료, idle) | - | - | - | - | 종료 |
+| lecun GPU6 | (타분석, 계속) | - | - | - | - | - |
+
+**유휴 GPU**: lecun GPU0,1,3,4,5 idle(predict 완료로 GPU1도 반납됨). 그 외는 전부 점유.
+
+**4-modal 2런 진행**:
+- **hpca100(P44-BMR+radar)**: ep12/200, best 21.63@ep12 — **ep30 게이트 아직 미도달**(현재 상승세: 11.36→15.29→16.43→18.20→19.80→21.63, 매 eval 신기록 지속). OOM 재발 없음(0건), 재-preempt 없음(37프로세스 생존).
+- **yeon(P39.1+radar)**: ep78/300, best 80.92@ep78(신기록). OOM 0건.
+
+**DELIVER 3런 best**:
+- jarvis P39.1-rank: 67.60@ep106에서 **26회 연속(ep108~158) 미갱신** 정체 지속.
+- jarvis P44-BMR: **66.31@ep118(신기록)**.
+- yeon P44-BMR seed2: 아직 첫 eval 전(ep2 진행중, iter132/1991). OOM 0건.
+
+**P44-MUSES 분석(lecun) 스테이지**: `module_diagnostics`(4/8 — D3_adapter_health→D1_eval_per_domain→D1_analyze_per_domain→module_diagnostics 완료 확인). 에러 0건.
+
+이상징후: 없음(전부 정상 진행 또는 신기록, hpca100 4-modal은 아직 게이트 판정 이르지만 상승 추세로 붕괴 징후 없음). 사망/OOM/재-preempt 전무.
+
+## 2026-07-28 14:37 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| hpca100 0-3 | 4-modal P39.1+radar seed2(v7, 백본fix) | MUSES 4모달 | ep6/300 | **71.16@ep6(신기록, 정상궤도 지속: 47.61→63.66→71.16)** | 계속 진행 | ✅(재-preempt 없음) |
+| yeon 0,1,5 | 4-modal P39.1+radar | MUSES 4모달 | **🔴 사망(CUDA OOM, 13:47:18)** | 80.92@ep78(최종, ep82 80.73까지 정상 진행 후 사망) | - | ❌ 사망 |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep2 첫 eval | 50.84@ep2(첫 eval) | 계속 진행 | ✅ |
+| jarvis 0-3 | P39.1-rank DELIVER | DELIVER 4모달 | ep170/200 | 67.60@ep106(미갱신, 32회 연속 정체) | 계속 진행 | ✅ |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep130/200 | 66.31@ep118(미갱신, 6회 연속 정체) | 계속 진행 | ✅ |
+| lecun GPU2 | P44-MUSES 분석 | MUSES val | D5_module_ablation 스테이지(7/8) | - | - | ✅ |
+
+**유휴 GPU**: yeon GPU0,1,5(4-modal 사망으로 idle). 그 외는 전부 점유.
+
+**hpca100 4-modal seed2 정상궤도 지속 여부**: **지속 확인**. ep2 47.61 → ep4 63.66 → ep6 71.16로 3회 연속 신기록. RANDOM INIT/Traceback/OOM **0건**. 재-preempt 없음(53프로세스 생존, GPU0-3 100%util).
+
+🔴 **yeon 4-modal(P39.1+radar) 사망**: `torch.OutOfMemoryError` — GPU0에서 "Tried to allocate 34.00 MiB... 76.31 MiB is free... this process has 12.46 GiB... Process 1977052 has 10.77 GiB memory in use"(타 프로세스와 메모리 경합 정황), 2026-07-28 13:47:18 `ChildFailedError`로 전체 종료. 마지막 정상 eval = ep82(mIoU 80.73, 13:46:33) — 즉 eval 직후 다음 학습 단계에서 크래시. 최종 best = 80.92@ep78(변동 없음). GPU0,1,5 현재 idle.
+
+**P44-MUSES(lecun) 분석 완료 여부**: **미완료**(8단계 중 7단계 D5_module_ablation까지 로그 확인, viz_features 남음). 에러 없음.
+
+**DELIVER 3런**: P39.1-rank DELIVER(jarvis) 67.60@ep106에서 32회 연속(ep108~170) 정체 지속. P44-BMR DELIVER(jarvis) 66.31@ep118에서 6회 연속(ep120~130) 정체. P44-BMR DELIVER(yeon seed2) 이제 막 시작, 첫 eval 50.84@ep2 정상.
+
+이상징후: 🔴 yeon 4-modal 사망(OOM, 재기동 필요 여부 판단 대기). 그 외 사망/RANDOM INIT/preempt 없음. hpca100 seed2는 순항.
+
+## 2026-07-28 16:43 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| hpca100 0-3 | 4-modal P39.1+radar seed2(v7) | MUSES 4모달 | ep28/300 | **78.74@ep28(신기록 지속, 계속 상승)** | 계속 진행 | ✅ |
+| yeon 0,1,5 | 4-modal P39.1+radar 플래그십(재개) | MUSES 4모달 | ep86/300 | **80.98@ep84(신기록, 재개 후 갱신)** | 계속 진행 | ✅(OOM 재발 없음) |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep4/200 | **55.09@ep4(신기록 지속)** | 계속 진행 | ✅ |
+| jarvis 0-3 | P39.1-rank DELIVER | DELIVER 4모달 | ep182/200(미완주) | 67.60@ep106(미갱신, 38회 연속 정체) | 계속 진행 | ✅ |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep140/200 | 66.31@ep118(미갱신, 11회 연속 정체) | 계속 진행 | ✅ |
+| lecun GPU2 | P44-MUSES 분석 | MUSES val | **완료(8/8, 12925s)** | - | - | 종료 |
+
+**유휴 GPU**: 없음(전 GPU 점유, lecun GPU2도 분석 완료로 해방됐을 것이나 미확인).
+
+**hpca100 4-modal seed2**: ep28/300, 78.74로 계속 신기록(71.16@6 이후로도 지속 상승: 74.66→75.02→...→78.74). RANDOM INIT/Traceback/OOM 0건.
+
+**yeon 4-modal 플래그십(재개)**: ep86/300, **80.98@ep84로 신기록**(재개 전 최종 80.92@78을 재돌파). OOM 재발 0건.
+
+**P44-MUSES(lecun) 분석 — 완료, 핵심수치**:
+① **per_domain**: fog 61.73/night 77.06/rain 73.16, spread=15.33. 도메인-민감 다수(traffic light ±75·train ±98·motorcycle/bicycle ±79-80 등).
+② **module_ablation toggle**: `available=[p34_gate_off,p34_veto_off,p34_calib_off,p36_router_off,p39_query_off,p39_trunkexp_off]`. p34계열 Δ=+0.00(불변). p36_router_off는 -0.35~+1.46(조건별 혼재, clear는 음수). **p39_trunkexp_off는 전조건 최대 양수(+3.67~+11.16, night 최대)**. p39_query_off는 대체로 소폭 양수(-0.09~+0.98).
+③ **feature_stats**: lidar eff-rank **46.7~67.55**(전조건), img 27.6~45.65, event 29.7~45.1 — lidar가 3모달 중 가장 높음. CKA(img~lidar 0.78~0.81 / img~event 0.85~0.89 / lidar~event 0.82~0.86, 전부 조건 무관 균일하게 높음). dead ch 전조건 1/1024.
+④ **dropMIoU[img,lidar,event]**: day −0.42/night +3.44/**fog_night +6.71(최대)**/snow_night +5.56/rain_night +5.13 — **lidar drop이 야간·adverse에서 뚜렷한 양수**(day/fog_day는 오히려 음수 -0.42/-0.06).
+⑤ **adapter_health**: dW mean/median 13.23/12.32, per-modal `{img:11.27, lidar:16.39(최대), event:12.05}`.
+⑥ **D3B lidar Δacc**: +0.43~+0.62 전조건(가장 낮은 clear 0.4327, 가장 높은 clear_night 0.6170) — img(+0.20~0.31)·event(+0.34~0.48)보다 전조건 우위.
+
+**DELIVER 2런(jarvis)**: P39.1-rank **미완주**(ep182/200, 38회 연속 정체 지속). P44-BMR도 66.31@118에서 11회 연속(ep120~140) 정체.
+
+이상징후: 없음(사망/OOM/preempt 전무). 두 4-modal(hpca100·yeon) 전부 순항+신기록, P44-MUSES 분석 정상 완료. jarvis DELIVER 2런만 장기 정체 지속.
+
+## 2026-07-28 18:34 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| hpca100 0-3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep50/300 | 79.63@ep36(미갱신, ep38~50는 78.05~79.59 범위 유지) | 계속 진행 | ✅ |
+| yeon 0,1,5 | 4-modal P39.1+radar 플래그십 | MUSES 4모달 | ep94/300 | **81.28@ep90(신기록 지속)** | 계속 진행 | ✅(OOM 재발 없음) |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep8/200 | 61.10@ep6(미갱신, ep8=60.37) | 계속 진행 | ✅ |
+| jarvis 0-3 | P39.1-rank DELIVER | DELIVER 4모달 | ep196/200(미완주, 임박) | 67.60@ep106(미갱신, 45회 연속 정체) | 4ep 남음 | ✅ |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep150/200 | 66.31@ep118(미갱신, 16회 연속 정체) | 계속 진행 | ✅ |
+| lecun GPU2 | (분석 완료로 해방, idle 확인) | - | - | - | - | 종료 |
+
+**유휴 GPU**: lecun GPU2(0%/18MiB, 분석 완료로 해방). 그 외는 전부 점유.
+
+**hpca100 4-modal seed2 진행**: ep50/300, best 79.63@ep36에서 정체(14회 78.05~79.59 범위 유지, 붕괴 아님). RANDOM INIT/Traceback/OOM 0건.
+
+**yeon 4-modal 플래그십**: ep94/300, **81.28@ep90(신기록)**. OOM 재발 0건.
+
+**jarvis P39.1-rank DELIVER 완주 여부**: **아직 미완주**(ep196/200, 200까지 4ep 남음 — 완주 임박). best 67.60@ep106에서 45회 연속(ep108~196) 정체 지속. GPU 미해방.
+
+**jarvis P44-BMR DELIVER**: ep150/200, 66.31@ep118에서 16회 연속(ep120~150) 정체.
+
+이상징후: 없음(사망/OOM/preempt 전무). jarvis P39.1-rank DELIVER 완주 임박, 다음 사이클에 확정 가능.
+
+## 2026-07-28 21:05 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| hpca100 0-3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep76/300 | **81.01@ep66(신기록, 전회 79.63→상승)** | ~24h 후(07-29 21시경) | ✅ |
+| yeon 0,1,5 | 4-modal P39.1+radar 플래그십 | MUSES 4모달 | ep104/300 | 81.28@ep90(미갱신, 82.62 미돌파) | ~2.2일 후(07-31 새벽) | ✅(OOM 재발 없음, Traceback 0건) |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep10/200 | **62.79@ep10(신기록, 전회 61.10→상승)** | 느림(50분/ep 추정, ~6.6일) | ✅ |
+| jarvis 0-3 | P39.1-rank DELIVER | DELIVER 4모달 | **200/200 완주** | **Best Val 67.60@ep106 / Best Test 55.56@ep134, Total 07:19:25** | 완료 | ⏹ 완주·GPU 0-3 해방(0%/유휴 확인) |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep161/200 | 66.31@ep118(미갱신, 장기 정체 지속) | 곧 완주(수시간 내) | ✅ |
+| lecun GPU2 | seg_viz_video 풀추론 2건(P39.1/P44 DELIVER) | DELIVER val 2005장 | 진행 중(모델로드 완료, 프레임 진행 중) | - | 진행중 | ✅ |
+
+**yeon 플래그십 82.62 돌파 여부**: **아직 미돌파** — 81.28@ep90에서 정체, ep104까지 갱신 없음.
+
+**jarvis P39.1-rank DELIVER 완주**: **완주 확인**(200/200, 19:11:26 종료). Best Val mIoU 67.60(ep106) / Best Test mIoU 55.56(ep134) / Total Training Time 07:19:25. GPU 0-3 프로세스 종료, nvidia-smi로 유휴 확인(0%, <100MiB).
+
+**두 4-modal 진행**: hpca100 seed2는 81.01@ep66로 신기록(이전 79.63 대비 +1.38). yeon 플래그십은 81.28@ep90에서 정체 지속이나 붕괴 아님, OOM/Traceback 재발 0건.
+
+**seg_viz_video 영상 작업**(병행): 도구 커밋(92f07ab, MAIN develop push 완료) → lecun dm_analysis worktree checkout --detach origin/develop(92f07ab) 완료 → jarvis에서 top1 ckpt 2종(P39.1-rank epoch106_67.6, P44-BMR epoch118_66.31) 회수(byte-exact 검증) → lecun GPU2 스모크 5프레임 PASS(RANDOM INIT 없음, missing=0 unexpected=0, mean per-frame mIoU=54.25) → 전체 2005프레임 추론 2건(P39.1/P44) lecun GPU2에서 tmux 백그라운드 실행 중(모델 로드 완료, 프레임 처리 진행 중, 완료 시 로그에 `[seg-video] wrote ... mean per-frame mIoU=` 출력 예정). videos 루트 = `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/videos/`(lecun에 /drone_nas 미마운트라 lecun 로컬 `/SSDb/jemo_maeng/videos/`에 생성 후 완료 시 rsync 이관 예정).
+
+이상징후: 없음(사망/OOM/preempt 전무). jarvis P39.1-rank DELIVER 완주로 GPU 0-3 해방(다음 배치 대상), hpca100·yeon P44-DELIVER 신기록 2건.
+
+## 2026-07-28 22:34 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| yeon 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep110/300 | **81.50@ep110(신기록, 전회 81.28→상승)** | ~2.1일 후(07-31 새벽) | ✅(OOM 없음) |
+| hpca100 0-3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep92/300 | 81.03@ep84(전회 81.01→소폭 상승) | ~19h 후(07-29 17시경) | ✅ |
+| jarvis 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep16/300 | 76.32@ep14(램프 중, 46.93→65.39→67.58→74.64→76.32 순항) | ~22.5h 후(07-29 21시경) | ✅(OOM/에러 0) |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep170/200(**미완주**) | 66.31@ep118(미갱신, 26회 연속 정체) | ~6h 후(07-29 새벽) | ✅ |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep12/200 | 62.79@ep10(미갱신, ep12=56.18로 하락) | 매우 느림(~6.5일, 50분/ep) | ✅ |
+| lecun (물리GPU0 공유) | seg_viz_video 풀추론 2건 | DELIVER val 2005장 | P39.1 1825/2005(91%) / P44 1475/2005(74%) | - | P39.1 ~10분 후 / P44 ~35분 후 | ✅(둘 다 아직 미완성) |
+
+**세 4모달 82.62(3모달 seed2 val) 돌파 여부**: **전부 미돌파** — yeon 플래그십 81.50(−1.12), hpca100 seed2 81.03(−1.59), jarvis seed3 76.32(아직 초반 램프, 비교 대상 아님).
+
+**jarvis P44-BMR DELIVER 완주·GPU 해방 여부**: **아직 미완주**(ep170/200, 30ep 남음). GPU4-7 미해방(72-100%util 유지).
+
+**seg 영상 완성 여부**: **아직 미완성** — p39_1_deliver.mp4(91%, 1825/2005프레임), p44_deliver.mp4(74%, 1475/2005프레임). 두 프로세스 모두 물리 GPU0 공유(원래 목표였던 GPU2는 현재 유휴 — 매핑 확인, 문제 아님).
+
+**유휴 GPU**: yeon GPU2(0%/18MiB) 완전 유휴, GPU3(57%/14GB)·GPU4(0%/14GB, 메모리만 점유 — 타 프로세스 잔존 가능성, 조사 안 함) 부분적. hpca100·jarvis는 전 GPU 사용 중(유휴 없음). lecun GPU1,2 유휴(영상 작업은 물리GPU0에서 진행 중).
+
+이상징후: 없음(사망/OOM/preempt 전무). yeon 플래그십 신기록(81.50), 세 4모달 전부 82.62 미돌파, jarvis P44-DELIVER 미완주, seg 영상 2건 진행 중(미완성).
+
+## 2026-07-29 00:34 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| hpca100 2,3 | 4-modal seed2(ep103부터 재개, GPU 2장으로 축소) | MUSES 4모달 | ep108/300 | **81.60@ep104(신기록)** | ~1.5일 후(07-30 정오경) | ✅(GPU2,3 96%/24.7GB) |
+| hpca100 0,1 | — | — | — | — | — | 🔴 **비어있지 않음** — 타 프로세스(PID 4148360, 우리 것 아님)가 GPU0,1 각 ~30.7GB 점유(0%util) |
+| yeon 0,1,5 | 4-modal 플래그십(seed1) | MUSES 4모달 | ep116/300 | **81.55@ep116(신기록, 전회 81.50→상승)** | ~2.1일 후(07-31 새벽) | ✅ |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep14/200 | 62.79@ep10(미갱신, ep14=59.67) | 매우 느림(~6.5일) | ✅ |
+| jarvis 0-3 | 4-modal seed3 | MUSES 4모달 | ep42/300 | **79.37@ep42(신기록, 순항: 74.64→76.32→79.37)** | ~20.6h 후(07-29 21시경) | ✅(OOM/에러 0) |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep180/200(**미완주**) | 66.31@ep118(미갱신, 31회 연속 정체) | ~4.1h 후(07-29 새벽) | ✅ |
+| lecun | seg_viz_video 풀추론 2건 | DELIVER val 2005장 | **완료** | mean per-frame mIoU: P39.1=51.68 / P44=51.10 | 완료 | ⏹ 완료 |
+
+**hpca100 GPU0,1 유휴 여부**: **🔴 유휴 아님** — 타 프로세스(PID 4148360, hpca100 공유 pod 특성상 타 유저 추정)가 GPU0,1에 각각 ~30.7GB 점유 중(0% util — idle 또는 로딩 중으로 보임). 우리 프로세스 아님. GPU2,3는 우리 seed2가 정상 점유(96%/99% util, ~24.7GB).
+
+**세 4모달 82.62(3모달 seed2 val) 돌파 여부**: **전부 미돌파** — yeon 플래그십 81.55(−1.07), hpca100 seed2 81.60(−1.02, 격차 최소), jarvis seed3 79.37(아직 램프 중).
+
+**jarvis P44-BMR DELIVER 완주 여부**: **아직 미완주**(ep180/200, 20ep 남음). best 66.31@ep118에서 31회 연속(ep120~180) 정체 지속. GPU 미해방.
+
+**seg 영상 완성**: **완료됨(둘 다)**.
+- `p39_1_deliver.mp4` — `/SSDb/jemo_maeng/videos/inference_deliver_p39_1/p39_1_deliver.mp4`, 187,019,562 bytes(~178.3MB), 2005 frames·6fps, mean per-frame mIoU=51.68
+- `p44_deliver.mp4` — `/SSDb/jemo_maeng/videos/inference_deliver_p44/p44_deliver.mp4`, 188,091,963 bytes(~179.4MB), 2005 frames·6fps, mean per-frame mIoU=51.10
+- lecun `/drone_nas` 미마운트라 아직 로컬(`/SSDb/jemo_maeng/videos/`)에만 존재 — 정본 videos/ 루트로 rsync 이관 아직 안 됨(별도 지시 대기).
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 점유(우리 요청과 배치되는 상태, 사용자 확인 필요). 그 외 사망/OOM/preempt 없음. yeon·hpca100·jarvis 4-modal 3건 전부 신기록 갱신, jarvis P44-DELIVER 미완주, seg 영상 2건 완료.
+
+## 2026-07-29 02:34 KST 정기점검
+
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| hpca100 2,3 | 4-modal seed2 | MUSES 4모달 | ep118/300 | 81.60@ep104(미갱신, 최근 4회 81.12~81.52 유지) | ~1.4일 후(07-30 정오경) | ✅(100%/24.6-24.8GB) |
+| hpca100 0,1 | — | — | — | — | — | 🔴 타 프로세스 계속 점유(100%util/~31.5GB, 우리 것 아님) |
+| yeon 0,1,5 | 4-modal 플래그십(seed1) | MUSES 4모달 | ep122/300 | 81.55@ep116(미갱신, 최근 3회 81.23~81.31) | ~2.2일 후(07-31 아침) | ✅ |
+| yeon 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep16/200 | 62.79@ep10(미갱신, ep16=59.91) | 매우 느림(~6.4일) | ✅ |
+| jarvis 0-3 | 4-modal seed3 | MUSES 4모달 | ep66/300 | **80.73@ep66(신기록, ep60이후 4연속 갱신: 80.23→80.42→80.49→80.73)** | ~18.7h 후(07-29 21시경) | ✅(OOM/에러 0) |
+| jarvis 4-7 | P44-BMR DELIVER | DELIVER 4모달 | ep190/200(**미완주**) | 66.31@ep118(미갱신, 36회 연속 정체) | ~2h 후(07-29 새벽) | ✅ |
+| lecun | DGFusion(경쟁모델) 격리 env 구축 | — | env 빌드 단계(detectron2 setup 진행 중) | - | - | ✅(조회만, 방해 없음) |
+
+**jarvis P44-BMR DELIVER 완주·해방 여부**: **아직 미완주**(ep190/200, 10ep만 남음 — 완주 임박, ~2h 이내). best 66.31@ep118에서 36회 연속(ep120~190) 정체 지속. GPU 미해방.
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파** — yeon 플래그십 81.55(−1.07), hpca100 seed2 81.60(−1.02), **jarvis seed3 80.73(−1.89이나 최근 4연속 갱신 중인 급상승 구간)**.
+
+**DGFusion 셋업 단계**: 격리 워크스페이스(`/SSDb/jemo_maeng/dgfusion_eval/`) + repo clone 완료, conda env `dgfusion`(python 3.9.18) 생성 + pytorch 2.3.1/torchvision 0.18.1/cuda11.8 설치 완료(torch.cuda.is_available()=True 확인) + opencv-python 설치 완료 + detectron2 setup 스크립트 실행 중(fvcore/iopath/omegaconf/hydra-core 등 종속성 설치 진행). 가중치 3종(MUSES Swin-T/DELIVER CLDE/DELIVER CLE) 다운로드 이미 완료. MMSS_SAM env 무영향 확인. lecun 유휴 GPU2(0%/18MiB)·GPU5(0%/16MiB) — DGFusion 작업은 아직 GPU 미사용(env 빌드 단계라 CPU만).
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 계속 점유(이전 사이클과 동일 상태 유지). jarvis P44-BMR DELIVER 완주 임박(10ep 남음). jarvis 4-modal seed3 급상승 구간 진입(4연속 신기록). 그 외 사망/OOM/preempt 없음.
+
+## 2026-07-29 04:34 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | ETA(KST) | alive | 유휴GPU |
+|---|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep130/300 | **81.85@ep130(신기록, 전회 81.60→상승)** | ~1.3일 후 | ✅(99%/96%, ~24.6-24.7GB) | 없음 |
+| 0,1 | (타 프로세스) | — | — | — | — | 🔴 타 PID 113515(우리 것 아님, 이전 PID 4148360과 다름 — 교체됨) 계속 점유(100%/~31.4-31.5GB) | — |
+
+**백본 로드 확인**(RANDOM INIT 여부): 로그에 `Loading pretrained weights from file (.../model.safetensors)` + `Loaded from checkpoint`만 있고 **RANDOM INIT 문자열 0건** — 로컬 파일 정상 로드 확인.
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep128/300 | 81.55@ep116(미갱신, 최근 4회 81.28→81.14→80.96→81.10) | ~2.3일 후 | ✅(100%×3) |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep20/200 | **62.96@ep20(신기록, 전회 62.79@10→상승)** | 매우 느림(~6일+) | ✅ |
+| 2,3,4 | (기타 GPU) | — | — | — | — | GPU3,4 유휴(0%/~14.3-14.8GB, 메모리만 잔존 — 실프로세스 없음 가능성) |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep90/300 | **81.30@ep84(신기록, 전회 80.73(ep66)→상승, 82.62까지 −1.32)** | ~1일 후 | ✅(98-100%/~22.3GB, 에러 0) |
+| 4-7 | P44-BMR DELIVER | DELIVER 4모달 | **ep200/200 (Val 완료, Test/최종요약 대기 중 — 미종료)** | 66.31@ep118(미갱신, 41회 연속 정체) | 수분~수십분 내 완전종료 예상 | ✅(100%/~4.2-4.4GB, 프로세스 53개 여전히 존재) |
+
+**DGFusion 덤프(stage 2) 완료**: `bvrm4ib0y` 백그라운드 대기 완료 — 재실행 결과 **PNG 2005개(정확히 일치)**, 샘플 파일명 `cloud__val__MAP_4_point12__157550_rgb_front.png` 등(유일-키 방식으로 충돌 해소 확인), CLDE val mIoU=**66.5104**(변동 없음, evaluator 자체는 이전과 동일 계산이므로 예상대로 불변).
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 계속 점유(PID 바뀜, 여전히 우리 것 아님). jarvis P44-BMR DELIVER는 ep200 도달했으나 완전종료 미확인(수분 내 예상). 그 외 사망/D-state/데드락 없음. 신기록 3건(hpca100 seed2 81.85, yeon P44-DELIVER seed2 62.96, jarvis seed3 81.30).
+
+## 2026-07-29 06:34 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | ETA(KST) | alive | 유휴GPU |
+|---|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep140/300 | **81.99@ep136(신기록, 전회 81.85→상승)** | ~1.1일 후 | ✅(100%/~24.6-24.7GB) | 없음 |
+| 0,1 | (타 프로세스, PID 113515 동일) | — | — | — | — | 🔴 계속 점유(100%/~31.4-31.5GB, 변동 없음) | — |
+
+RANDOM INIT: 0건(로그 전체).
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep132/300 | **81.81@ep130(신기록, 전회 81.55→상승)** | ~2.0일 후 | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep22/200 | 62.96@ep20(미갱신, ep22=62.62) | 매우 느림 | ✅ |
+
+RANDOM INIT(플래그십): 0건.
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | ETA(KST) | alive |
+|---|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep116/300 | **81.41@ep102(신기록, 전회 81.30→상승)** | ~0.9일 후 | ✅ |
+| 4-7 | P44-BMR DELIVER | DELIVER 4모달 | **200/200 완주·완전종료 확인** | **Best Val 66.31@ep118 / Best Test 55.05@ep94, Total Training Time 16:43:52** | 완료 | ⏹ 종료(프로세스 0개), **GPU 4-7 유휴 확인(0%/idle)** — 회수 가능 슬롯 |
+
+RANDOM INIT(seed3): 0건.
+
+**세 4모달 82.62(3모달 seed2 val 내부최고) 돌파 여부**: **전부 미돌파, 격차 좁혀짐** — hpca100 seed2 81.99(−0.63, 가장 근접), yeon 플래그십 81.81(−0.81), jarvis seed3 81.41(−1.21).
+
+**DGFusion 영상(stage 3) 완료**:
+- **[G] 성공** — `tools/seg_viz_video.py`에 `--pred-dir` 옵션 병합, develop에 커밋(34bb753) + push 완료. 격리 worktree(/tmp/segviz-wt) 정상 제거.
+- **[V] 완료** — `dgfusion_deliver_clde.mp4`(2005프레임, 4fps, 192,470,384 bytes ≈ 183.5MB, lecun `/SSDb/jemo_maeng/videos/inference_deliver_dgfusion/`) 생성. **mean per-frame mIoU = 51.84**, missing-pred 0건(2005/2005 키 매칭 성공).
+- **[P] 확인** — `p39_1_deliver.mp4`(정본 NAS `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/videos/inference_deliver_p39_1/`) ffprobe 확인: **정확히 2005프레임**, 6fps, 334.17초, 178.4MB.
+- **[D] 확인** — DGFusion `register_deliver_semantic.py` CLASSES와 우리 `semseg/datasets/deliver.py` CLASSES가 25개 인덱스 전부 완전 일치(Building~Truck 동일 순서).
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 계속 점유(불변). jarvis P44-BMR DELIVER **완주 확정**(GPU4-7 회수 가능). 그 외 사망/D-state/데드락 없음. 세 4모달 전부 신기록(hpca100 81.99/yeon 81.81/jarvis 81.41), 82.62 격차 계속 좁혀짐.
+
+## 2026-07-29 08:34 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep152/300 | 81.99@ep136(미갱신, 최근 4회 81.67~81.76 범위) | ✅(100%/100%, 이번 조회 순간 mem 5.2GB로 낮게 관측 — train/eval 스텝 사이 변동으로 추정) | 없음 |
+| 0,1 | 타 프로세스(불변) | — | — | 🔴 계속 점유(100%/~31.4-31.5GB) | — |
+
+RANDOM INIT: 0건.
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal 플래그십(seed1) | MUSES 4모달 | ep138/300 | 81.81@ep130(미갱신, 최근 4회 81.30~81.57) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep24/200 | 62.96@ep20(미갱신, ep24=62.58) | ✅ |
+| 2,3,4 | — | — | — | — | 완전 유휴(0%/18-19MiB, 이전 잔존 메모리 해제됨) |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep140/300 | **81.81@ep128(신기록, 전회 81.41→상승, yeon과 동률로 근접)** | ✅ |
+| 4-7 | — | — | — | **여전히 유휴(0%/21MiB×4, 새 작업 없음) — 회수 가능 슬롯 유지** |
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파** — hpca100 seed2 81.99(−0.63), yeon 플래그십 81.81(−0.81), jarvis seed3 81.81(−0.81, yeon과 동률로 근접). 아직 돌파 없음.
+
+**T1 DELIVER test 덤프+영상**: 덤프 완료 — PNG **1897개**(test set 크기와 정확히 일치), CLDE test mIoU=**56.7293**(DGFusion README의 CLDE test 56.71과 거의 정확히 일치). 영상 생성 착수함(lecun GPU1, `dgfusion_deliver_test_clde.mp4`, `--split test --pred-dir deliver_test_clde`) — 진행 중, 완료 시 mean per-frame mIoU 별도 보고 예정.
+
+**M0 MUSES 정찰 결과**: DGFusion MUSES Swin-T 가중치 `/SSDb/jemo_maeng/dgfusion_eval/weights/muses_swin_t.pth` 존재 확인. MUSES config `configs/muses/swin/dgfusion_swin_tiny_bs8_180k_muses_clre.yaml` 존재. DGFusion 쪽 MUSES 데이터셋 등록은 `register_muses_panoptic.py`(semantic 전용 등록 파일은 없음 — panoptic evaluator에 포함된 구조). MUSES **test GT는 로컬에 없음**(`/ailab_mat2/dataset/MUSES/gt_semantic/test/` 자체가 없음 — 서버 비공개 확정, 로컬 eval 불가). MUSES **val GT는 750개 존재**(val eval 가능). 우리 쪽: `semseg/datasets/muses.py` 존재, `configs/`에 MUSES 학습설정 다수(예: `jarvis-muses_rgbel_P39_1_rank.yaml`) 있어 seg_viz_video용 DATASET/팔레트 확보 가능(`configs/eval/`엔 MUSES 전용 eval cfg는 없음 — 학습cfg 그대로 사용 가능할 것으로 보임). **파일스템 유일성**: MUSES `frame_camera` 전체 2500장의 basename이 **전부 유일**(DELIVER 같은 충돌 없음, 별도 scene-key 불필요).
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 점유 지속. 그 외 사망/데드락 없음. jarvis seed3 신기록, 3seed 전부 82.62 미돌파(격차 −0.63~−0.81로 좁음), jarvis GPU4-7 유휴 유지(회수 가능).
+
+## 2026-07-29 10:37 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep162/300 | **82.03@ep162(신기록, 전회 81.99→상승, 82.62까지 −0.59로 최근접)** | ✅(100%/~24.6GB) | 없음 |
+| 0,1 | 타 프로세스(불변) | — | — | 🔴 계속 점유(100%/~31.4-31.5GB) | — |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal 플래그십(seed1) | MUSES 4모달 | ep148/300 | 81.81@ep130(미갱신, 최근 4회 81.03~81.57) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep26/200 | **63.98@ep26(신기록, 전회 62.96→상승)** | ✅ |
+| 3 | (예약, 유휴 확인) | — | — | 완전 유휴(0%/19MiB) — 예약 준수 확인 |
+| 2,4 | (타유저 jongwon_kim, hoi_transformer 학습) | — | — | 🔵 우리 프로세스 아님(PID 3228693/3228695, `sam3d-objects` env) — 참고용, 우리 위반 아님 |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep166/300 | **81.90@ep144(신기록, 전회 81.81→상승)** | ✅ |
+| 4-7 | — | — | — | **여전히 유휴(0%/21MiB×4) — 회수 가능 슬롯 유지** |
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파** — hpca100 seed2 **82.03(−0.59, 최근접)**, jarvis seed3 81.90(−0.72), yeon 플래그십 81.81(−0.81, 8회 연속 정체 조짐).
+
+**P46-CTR A1 진행상황**: 우리 P39.1-rank DELIVER ckpt 위치 확인 = lecun `/SSDb/jemo_maeng/tmp_ckpt/epoch106_67.6_top1_checkpoint.pth`(val-best, 학습완주 시 Best Val 67.60@ep106/Best Test 55.56@ep134). **val split 25클래스 eval 완료**(val.py 직접 호출, GPU1) — 결과 mIoU **65.03**(⚠️ 학습 중 보고된 67.60과 차이 — 원인 미조사, 판정 보류). Test split eval은 진행 중(1897장, ETA~25분).
+
+**T1(DELIVER test DGFusion) 최종 완료**: 영상 `dgfusion_deliver_test_clde.mp4`(1897프레임, 4fps, 250MB, lecun `/SSDb/jemo_maeng/videos/inference_deliver_test_dgfusion/`) — mean per-frame mIoU=48.60.
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 지속. yeon GPU4(예약)에 타유저 작업 있음(우리 아님, 참고용). jarvis GPU4-7 유휴 유지. 그 외 사망/데드락 없음. 세 4모달 전부 신기록, hpca100 82.62 최근접(−0.59).
+
+## 2026-07-29 12:35 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep172/300 | 82.03@ep162(**미갱신, 10회 연속 정체** — plateau 조짐 강화) | ✅ | 없음 |
+| 0,1 | 타 프로세스(불변 + 새 작업 1건 추가 관측: `train_pi05_line5k.log`) | — | — | 🔴 계속 점유(100%/~31.4-31.5GB) | — |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal 플래그십(seed1) | MUSES 4모달 | ep154/300 | 81.81@ep130(**미갱신, 12회 연속 정체**) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep28/200 | **64.32@ep28(신기록, 전회 63.98→상승)** | ✅ |
+| 2,3,4 | (타유저 jongwon_kim) | — | — | 🔴 **GPU3(예약)에도 새로 점유 발생**(이전엔 GPU4만) — 현재 GPU2,3,4 전부 jongwon_kim 작업 3건(hoi_transformer, PID 3272885-887). 우리 프로세스 아님, 우리 위반 아님이나 예약 GPU 2곳 다 타유저 점유 상태 |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep190/300 | 81.91@ep168(미갱신 최근, 전회 81.90→소폭 상승 후 정체) | ✅ |
+| 4-7 | — | — | — | **여전히 유휴(0%/21MiB×4) — 회수 가능 슬롯 유지** |
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파, plateau 조짐 뚜렷** — hpca100 82.03(10회 연속 정체), yeon 81.81(12회 연속 정체), jarvis 81.91(정체 시작). 세 seed 전부 81.8~82.0 부근에 수렴하는 모습.
+
+**R1024 재-eval 진행상황**: test 762/949(80%, ETA~12분 당시), val 724/1003(72%, ETA~17분 당시) — 아직 진행 중, 완료 시 per-class 변화표 이어서 보고.
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 지속(+신규 작업 관측). 🔴 yeon 예약 GPU 2곳(3,4) 모두 타유저 점유(우리 위반 아님, 참고용). jarvis GPU4-7 유휴 유지. 그 외 사망/데드락 없음. 세 4모달 전부 정체 국면(82.62 미돌파, ~82.0 부근 수렴 조짐).
+
+## 2026-07-29 14:35 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep184/300 | **82.16@ep178(신기록, plateau 돌파, 전회 82.03→상승)** | ✅ | 없음 |
+| 0,1 | 타 프로세스(불변) | — | — | 🔴 계속 점유(100%/~31.4-31.5GB) | — |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal 플래그십(seed1) | MUSES 4모달 | ep160/300 | 81.81@ep130(**미갱신, 15회 연속 정체 — plateau 확정적**) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep32/200 | **64.76@ep32(신기록, 전회 64.32→상승)** | ✅ |
+| 2,3,4 | (타유저 jongwon_kim, 불변) | — | — | 🔴 예약 GPU 2곳 계속 점유(직전과 동일) |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep216/300 | **82.05@ep198(신기록, plateau 돌파, 전회 81.91→상승)** | ✅ |
+| 4-7 | — | — | — | **여전히 유휴(0%/21MiB×4) — 회수 가능 슬롯 유지, 완주까지 84ep 남아 아직 임박 아님** |
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파**이나 hpca100(82.16, −0.46)·jarvis(82.05, −0.57) 둘 다 이번 사이클에 plateau를 깨고 신기록. yeon만 15회 연속 정체(81.81, −0.81) 지속.
+
+**R1024 재-eval 최종 완료**: ours val 65.03→**66.72**(+1.69), test 52.47→**53.68**(+1.21). Thin 클래스 중 RailTrack(4.50→4.02, 무반응)·Wall(7.88→8.24)·Water(6.27→5.12, 악화)·Bridge(0.00→0.01)는 **해상도로 설명 안 되는 진짜 class-transfer 실패**로 확인. Pole/Fence/TrafficSign/GroundRail은 +2.3~3.0 개선(해상도 효과 존재). val 65.03 vs 학습로그 67.60 격차(2.57) 중 1.69가 해상도 효과로 설명됨(잔여 0.88).
+
+**M1 montage 완료**: `montage_railtrack.png`(RailTrack 상위 6장, DGFusion만 맞추는 사례) · `montage_wall_water.png`(Wall/Water 둘 다 놓치는 최악 4장) — 둘 다 `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/videos/compare_deliver_test_dgfusion_vs_p39_1/`에 저장 완료.
+
+이상징후: 🔴 hpca100 GPU0,1 타 프로세스 지속. 🔴 yeon 예약 GPU 2곳 타유저 점유 지속. jarvis GPU4-7 유휴 유지(완주까지 여유 있음). 그 외 사망/데드락 없음. hpca100·jarvis 신기록 2건, yeon 강한 plateau 지속.
+
+## 2026-07-29 16:35 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep194/300 | 82.16@ep178(미갱신, 최근 4회 81.35~82.06) | ✅(100%/100%, 이번 조회 순간 mem 5.1GB로 낮게 관측 — 동일 PID 유지, 재시작 아님) | 없음(2,3은 우리) |
+| 0,1 | — | — | — | — | ⏹ **타 프로세스 완전히 사라짐(0%/0MiB) — 새로 유휴 확보(A100×2)** | **✅ GPU0,1 유휴** |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep166/300 | **81.82@ep162(신기록, 15회 정체 끝, 전회 81.81→상승)** | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep34/200 | 64.76@ep32(미갱신, ep34=63.05로 하락) | ✅ |
+| 2,3,4 | (타유저 jongwon_kim, 불변) | — | — | 🔴 예약 GPU 계속 점유(직전과 동일 상태로 추정) |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep240/300(**미완주**, 60ep 남음) | 82.05@ep198(미갱신, 최근 4회 81.43~81.78) | ✅ |
+| 4 | 타유저(seungyeon_cheon, 새 작업으로 전환: `run_libero_eval_base_language.py`) | — | — | 🔴 점유 중(이전 유일 유휴 GPU) |
+| 5,6,7 | — | — | — | **✅ 유휴로 전환(0%/21-22MiB, 이전 타유저 3작업 종료됨)** |
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파** — hpca100 82.16(−0.46), jarvis 82.05(−0.57), yeon 81.82(−0.80, plateau 갱신). **jarvis seed3는 미완주**(ep240/300, 프로세스 37개 생존 확인, 60ep 남음 — drop-radar ablation은 아직 불가).
+
+**MUSES 덤프(#4) 진행상황**: val 완료(250장, DGFusion Swin-T val mIoU=**79.7183**, PQ=58.8817). test는 진행 중(431/750, ETA~13분 당시) — inference-only 모드, GT 없음 확인(정상), 완료되는 대로 개수 이어서 보고.
+
+**[DOC]**: P46-CTR 제안문서 §9(재타깃: Wall/Water/Bridge 제외, RailTrack 진짜격차)·§10(RCS/MCC/Proto 구현스펙) 추가, develop에 커밋 f838747 push 완료.
+**[BR]**: 구현용 워크트리 `/mnt/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/.claude/worktrees/p46-impl`(브랜치 `p46-ctr-impl`, eef2108 기준) 생성 완료.
+
+이상징후: hpca100 GPU0,1 타테넌트 사라짐(신규 유휴 A100×2 확보). jarvis GPU4는 여전히 타유저(작업 전환), GPU5-7은 새로 유휴. yeon 예약 GPU 상태 불변. 그 외 사망/데드락 없음. yeon 플래그십 15회 정체 끝 신기록.
+
+## 2026-07-29 19:28 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep210/300 | **82.22@ep198(신기록, 전회 82.16→상승)** | ✅(97%/93%, ~24.7GB) | 없음 |
+| 0,1 | 🔴 타 프로세스 재점유(PID 1376035/1376036, 이전과 다른 PID) | — | — | 73%/62%util, ~28.2GB×2 | 🔴 **유휴 아님 — 직전 사이클에 비었다가 다시 채워짐(P46용으로 못 씀)** |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep174/300 | 81.82@ep162(미갱신, 최근 4회 81.42~81.78) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep38/200 | **65.68@ep36(신기록, 전회 64.76→상승, ep38=63.21로 하락)** | ✅ |
+| 2,3,4 | (타유저, 추정 불변) | — | — | 재확인 안 함(이번 사이클 미조회) |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep276/300(**미완주**, 24ep 남음) | 82.05@ep198(미갱신, 장기 정체 지속 — 78회+ 연속) | ✅(76-94%util, ~22.3GB×4) |
+| 4,5,6,7 | — | — | — | **✅ 전부 유휴(0%/21MiB×4) — P46용 즉시 가용** |
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파** — hpca100 82.22(−0.40, 최근접)·jarvis 82.05(−0.57, 장기정체)·yeon 81.82(−0.80). **jarvis seed3 미완주**(ep276/300, 24ep 남음 — drop-radar ablation 아직 불가).
+
+**🔴 유휴 회수슬롯 재확인(P46용)**: **hpca100 GPU0,1 = 유휴 아님**(재점유됨, 직전 보고와 반대) / **jarvis GPU4,5,6,7 = 전부 유휴**(4090×4, 즉시 가용).
+
+**MUSES 덤프(#4) 완료**: **val 250장 + test 750장** 전부 완료. val mIoU=79.7183(PQ 58.8817). 파일경로 구조: 우리(`{root}/frame_camera/{split}/{weather}/{tod}/{stem}_frame_camera.png`, `/img/` 없음) vs DGFusion 등록(`muses/frame_camera` 동일 트리, split key `muses_panoptic_{train,val,test}`). seg_viz_video `_pred_key`(`/img/` split 기반)는 MUSES에 **그대로 안 맞음**(경로에 `/img/` 부재 → 전체 절대경로가 밑줄치환돼버림) — 제 MUSES 덤프는 별도 plain-stem patch(`basename.replace('_frame_camera','')`, DGFusion 자체 inference-only 네이밍과 동일)로 처리함. 클래스 리스트(19개, Cityscapes 순서: road,sidewalk,building,wall,fence,pole,traffic light,traffic sign,vegetation,terrain,sky,person,rider,car,truck,bus,train,motorcycle,bicycle) — 우리 `muses.py`와 DGFusion `CITYSCAPES_CATEGORIES` **인덱스 완전 일치**.
+
+이상징후: 🔴 hpca100 GPU0,1 재점유(P46 슬롯 후보에서 제외 필요). jarvis GPU4-7 전부 유휴 확보. jarvis seed3 장기 정체(78회+) 지속, 완주 임박(24ep). 그 외 사망/데드락 없음.
+
+## 2026-07-29 20:34 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep216/300 | 82.22@ep198(미갱신, 최근 4회 81.64~82.07) | ✅ | 없음 |
+| 0,1 | 타 프로세스(불변, joonhui_been) | — | — | 100%/0%util 혼재, ~28.2GB×2 | 유휴 아님 |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep178/300 | 81.82@ep162(미갱신, 최근 4회 81.39~81.78) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep38/200(변동없음, 다음 eval 미도래) | 65.68@ep36(미갱신) | ✅ |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | ep290/300(**미완주**, 10ep 남음 — 임박) | 82.05@ep198(미갱신, 장기 정체 지속) | ✅ |
+| 4-7 | (P46 스모크는 이미 종료됨 — 아래 참조) | — | — | **✅ 전부 유휴(0%/21MiB×4)** |
+
+**세 4모달 82.62 돌파 여부**: **전부 미돌파** — hpca100 82.22(−0.40)·jarvis 82.05(−0.57, 장기정체)·yeon 81.82(−0.80). **jarvis seed3 미완주**(ep290/300, 10ep 남음 — 완주 임박, drop-radar ablation 곧 가능).
+
+**🔴 P46 스모크 결과(jarvis GPU4-7) — 이미 크래시로 종료됨**:
+1. 백본 로드: DINOv3 온라인 정상 로드, **RANDOM INIT 0건**.
+2. C-1 라벨스캔: `[P46-C1] class-stat scan` 진행 확인(512→1024/3983, DELIVER train ~4000장 매칭), 스캔 자체는 barrier 타임아웃(30분) 없이 완료.
+3. 기동 3줄 전부 확인: `[P46-C1] RCS on`, `[P46-C2] MIC-style masked consistency on`(ratio=0.5 patch=64 lambda=1.0 conf=0.75, teacher EMA 403 params), `[P46-C3] prototype consistency on`(lambda=0.1 tau=0.1 ema=0.999 cross_view=True feature=mfeat).
+4. iteration: **Epoch[1/200] iter 0에서 4-rank 전부 `torch.OutOfMemoryError`** — forward는 통과, `scaler.scale(loss).backward()`에서 OOM(114MiB 할당 시도 실패, 각 rank 23.4~23.5GiB 사용 중). iteration 전진 없음(0/497에서 즉시 사망), 데드락은 아님(명확한 OOM 에러).
+5. 메모리: **all-on(C1+C2+C3, student+teacher 2-forward) BS=2가 4090 24GB에서 즉시 OOM** — BS/accum 조정 필요.
+6. ep1 val: 도달 못 함(iter 0에서 죽음).
+- 로그: `jarvis:/home/jemo_maeng/p46_smoke_run.log`
+- 사후 확인: 크래시한 프로세스가 한동안 GPU 메모리(~24GB×4)를 들고 있다가 자연 종료됨(kill 시도 시 "No such process" — 이미 스스로 종료된 상태였음), 현재 GPU4-7 전부 유휴(0%/21MiB) 확인.
+
+**MUSES-VID 결과**: `muses_val_dgfusion.mp4`(250프레임, 4fps, 20,156,930 bytes, lecun `/SSDb/jemo_maeng/videos/inference_muses_val_dgfusion/`) — **mean per-frame mIoU = 18.12**(DGFusion 공식 val mIoU 79.72와 큰 괴리). missing-pred 0건(250/250 키 전부 매칭됨 — 키 매칭 실패는 아님). 추가 원인 조사 안 함(판정 요청 없었음).
+
+이상징후: 🔴 P46 스모크 OOM(all-on 3토글 BS2가 4090 24GB 초과) — GPU4-7은 현재 유휴로 복귀. 🔴 MUSES 영상 mIoU 18.12로 79.72 대비 큰 괴리(원인 미조사). jarvis seed3 완주 임박(10ep). hpca100 GPU0,1 여전히 타테넌트. 그 외 사망/데드락 없음.
+
+## 2026-07-29 22:35 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep228/300 | **82.33@ep218(신기록, 전회 82.22→상승, 82.62까지 −0.29로 최근접)** | ✅ | 없음 |
+| 0,1 | 타 프로세스(불변) | — | — | 61-65%util, ~28.2GB×2 | 유휴 아님 |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep184/300 | 81.82@ep162(미갱신, 최근 4회 81.25~81.78) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep42/200 | 65.68@ep36(미갱신, 최근 3회 62.28~64.85) | ✅ |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0-3 | 4-modal P39.1+radar seed3 | MUSES 4모달 | **300/300 완주** | **Best Val 82.05@ep198 / Best Test N/A(MUSES test GT 로컬 부재, 정상) / Total Training Time 00:06:39(누적 재개 로깅 아티팩트로 추정)** | ⏹ 완주·종료, **GPU0-3 유휴 확인(0%/21-46MiB)** |
+| 4-7 | 🔴 P46-CTR(DELIVER all-on, BS1) | DELIVER 4모달 | **크래시 종료**(ep4 eval까지 정상 완료 후 Epoch[6/200] 진입 시 4-rank 전부 OOM) | ep4 val mIoU **59.66**(Best, 1회차 eval만 확보) | ⏹ 크래시, **GPU4-7 유휴 확인(0%/21MiB×)** |
+
+**세 4모달 82.62 돌파 여부**: hpca100 82.33(−0.29, 최근접)·yeon 81.82(−0.80, 장기정체) **미돌파**. **jarvis seed3는 완주**(82.05@198, 82.62 미돌파로 종료) — MUSES test GT 로컬 부재라 test 수치 없음, GPU0-3 회수 가능.
+
+**🔴 P46-CTR 크래시 상세**: ep1~ep4 학습+eval 정상 진행(ep4 val mIoU 59.66) 후 **Epoch[6/200] 시작 직후(iter 0) 4-rank 전부 `torch.OutOfMemoryError`**(20MiB 할당 실패, 각 rank 23.47GiB 사용 중) — 스모크(BS1, iter 47까지 확인, ~15.2GB)와 달리 **여러 에폭 진행 후 뒤늦게 발생한 지연성 OOM**(즉시 OOM 아님). GPU4-7 현재 유휴.
+
+**MU-FIX(letterbox 수정 MUSES 영상) 결과**: `muses_val_dgfusion_lb.mp4`(250프레임, 4fps, 15,692,656 bytes, lecun `/SSDb/jemo_maeng/videos/inference_muses_val_dgfusion/`) — **mean per-frame mIoU = 49.55**(직전 letterbox 미적용판 18.12 대비 대폭 상승). missing-pred **0건**.
+
+이상징후: 🔴 jarvis P46-CTR 지연성 OOM으로 크래시(ep4까지는 정상). jarvis seed3 완주(GPU0-3 회수 가능, drop-radar ablation 가능). hpca100 seed2 82.62 최근접(−0.29). hpca100 GPU0,1 여전히 타테넌트. 그 외 사망/데드락 없음.
+
+## 2026-07-30 00:34 KST 정기점검
+
+### hpca100
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 2,3 | 4-modal P39.1+radar seed2 | MUSES 4모달 | ep238/300 | 82.33@ep218(미갱신, 최근 4회 81.90~82.14) | ✅(100%/100%, ~24.6GB) | 없음 |
+| 0,1 | 타 프로세스(불변) | — | — | 0%util(측정순간), ~30.7GB×2 | 유휴 아님 |
+
+### yeon
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive |
+|---|---|---|---|---|---|
+| 0,1,5 | 4-modal P39.1+radar 플래그십(seed1) | MUSES 4모달 | ep190/300 | 81.82@ep162(미갱신, 최근 4회 81.25~81.61, 장기정체 지속) | ✅ |
+| 6,7 | P44-BMR DELIVER(seed2) | DELIVER 4모달 | ep44/200 | 65.68@ep36(미갱신, 최근 3회 62.28~65.59) | ✅ |
+
+### jarvis
+
+| GPU | 실험 | 데이터셋 | ep/total | best@ep | alive | 유휴 |
+|---|---|---|---|---|---|---|
+| 0-3 | (seed3 완주 후 그대로 유지) | — | — | — | ⏹ 완주 종료 | ✅ 유휴(0%/21-85MiB×4) |
+| 4-7 | (P46-CTR 크래시 후 그대로 유지, 재기동 안 함) | — | — | — | ⏹ 크래시 종료 | ✅ 유휴(0%/21MiB×4) |
+
+**🔴 jarvis 유휴 GPU 개수: 8장 전부 유휴**(0-7 전부, 타유저 미점유 확인) — P46 재기동 슬롯으로 8장 전부 가용.
+
+**세 4모달 82.62 돌파 여부**: hpca100 82.33(−0.29)·yeon 81.82(−0.80, 장기정체) **미돌파**. jarvis seed3는 이미 완주 종료(82.05@198) 상태 유지.
+
+**P46-CTR jarvis**: 지시대로 **재기동 안 함**(크래시 상태 그대로, OOM 수정 대기 중). GPU4-7 유휴 유지.
+
+이상징후: 없음(신규 사망/데드락 없음). jarvis 8장 전부 유휴 확보(P46 재기동 시 8장 활용 가능). hpca100 GPU0,1 여전히 타테넌트. hpca100·yeon 4-modal 둘 다 정체 지속(hpca100은 최근접 유지, yeon은 장기정체).
+
+---
+
+### 2026-07-30 02:41 KST — 2시간 정기점검 (직전 00:34 이후)
+
+**jarvis (GPU0-3=P46-C1C3, GPU4-7=유휴)**:
+- 🔴 **P46-C1C3-DELIVER**(`configs/jarvis-deliver_rgbdel_P46_ctr_c1c3.yaml`, DELIVER 4모달): Epoch[11/200] iter 451/995(45%), loss 2.173 유한. GPU0-3 15.6-15.9GB/rank·62-100%util(학습 페이즈).
+  - val 궤적: ep2=50.83 → ep4=58.93 → ep6=59.80(신기록 갱신 중) → **ep8=44.95(dip)** → **ep10=61.08(회복, 신기록)**. Best 61.08@ep10.
+  - loss 전 구간 유한, GPU 메모리 안정(~15.6-15.9GB, MEMPROBE 안전권 유지, 크리핑 없음).
+  - ep30 게이트까지 19 epoch 남음, ETA(ep30) ≈ 05:10 KST(+2.5h). 완주(ep200) ETA ≈ 07-31 03:15 KST(조기kill 없을 시).
+- GPU4-7: 완전 유휴(P39.1 seed3 완주 이후 미배치 상태 유지).
+- (참고: P39.1 4모달 seed3는 이미 완주 종료 — 82.05@ep198, Best Test N/A.)
+
+**hpca100 (GPU2,3=seed2, GPU0,1=타테넌트)**:
+- P39.1-rank 4모달 **seed2**(`hpca100-muses_rgbelr_P39_1_rank_4modal_seed2.yaml`): Epoch 252/300, GPU2,3 24.6-24.7GB/70-76%util.
+  - val 최근: 242=82.27 / 244=82.06 / 246=82.30 / 248=82.11 / 250=82.11. **Best 82.33@ep218 정체 지속(38 epoch 무갱신), 82.62 미돌파.**
+  - 남은 48epoch, rate 1.30it/s(750it/ep) → ETA 완주 ≈ 07-30 10:22 KST.
+- GPU0,1: **30.7GB used / 0%util** — 타테넌트 점유 확인(컴퓨트앱 PID 조회가 컨테이너 권한으로 차단돼 소유자 특정 불가, 단 메모리 점유로 보아 유휴 아님). **P46 all-on(A100 대기 중)이 즉시 들어갈 여유 없음** — util 0%인데 메모리는 이미 30.7GB 차 있어 "비어있음"으로 볼 수 없음. 판정 필요.
+
+**yeon (GPU0,1,5=seed1, GPU2,3,4=타테넌트, GPU6,7=P44 seed2)**:
+- P39.1-rank 4모달 **seed1**(`yeon-muses_rgbelr_P39_1_rank_4modal.yaml`): 최근 완료 eval epoch:194=81.10, **Best 81.82@ep162 그대로(32epoch 무갱신, 장기정체 지속), 82.62 미돌파.** 현재 eval 진행 중(GPU0,1,5 4GB대/0%util은 eval 페이즈 스냅샷).
+- P44-BMR DELIVER **seed2**(`yeon-deliver_rgbdel_P44_bmr.yaml`): Epoch 47/200, loss 1.671 유한, GPU6,7 15.5GB/100%,100%util.
+  - val 최근: 42=62.28 / 44=65.59 / 46=63.73. **Best 65.68@ep36 정체(오실레이션, 갱신 없음).**
+  - 남은 153epoch, rate ~0.92it/s(1991it/ep≈36min/ep) → ETA 완주 ≈ 08-02 22:30 KST(장기).
+- 🆕 **GPU2,3,4는 우리 프로세스 아님** — PID 3272885-7 소유자 `jongwon_kim`(`hoi_transformer` 학습, 별도 사용자). 기존 "yeon GPU3,4 예약" 메모리 규칙과 정합(타 사용자 점유가 예약 사유였음을 확인). **우리가 위반한 것 아님.**
+
+**요약**:
+- 세 4모달 82.62 돌파: hpca100 82.33(정체 지속, −0.29) · yeon 81.82(정체 지속, −0.80) — **여전히 미돌파.**
+- P46-C1C3: ep8 dip 이후 ep10에 회복+신기록(61.08). 크래시/OOM 징후 없음. 궤적 자체가 아직 변동성 큼(ep6→ep8 -14.85 낙폭) — 추세 판정은 코디네이터 몫.
+- 유휴 GPU: **jarvis GPU4-7 (4090×4, 완전 유휴)**만 즉시 배치 가능. hpca100 GPU0,1은 메모리 점유로 "비어있다"고 보기 어려움(판정 필요).
+- 이상징후: 신규 사망/데드락 없음.
+
+---
+
+### 2026-07-30 04:34 KST — 2시간 정기점검 (직전 02:35 이후)
+
+**jarvis (GPU0-3=P46-C1C3, GPU4-7=유휴)**:
+- 🔴 **P46-C1C3-DELIVER**: Epoch[23/200] iter 128/995(13%), loss 1.673 유한. GPU0-3 15.8-15.9GB/rank·85-100%util.
+  - val 궤적(신규분): ep20=66.19(신기록) → ep22=66.02(소폭 하락, best 불변).
+  - **ep30 게이트 아직 미도달**(현재 ep23, 7epoch 남음). ETA(ep30) ≈ 05:35 KST(+1h).
+- GPU4-7: 완전 유휴 그대로.
+
+**hpca100 (GPU2,3=seed2, GPU0,1=타테넌트)**:
+- P39.1-rank 4모달 seed2: Epoch 262/300, GPU2,3 24.6-24.7GB/72-75%util. **완주 아직 안 됨**(38epoch 남음, ETA≈10:38 KST).
+  - val 최근: 252=82.11 / 254=82.10 / 256=82.02 / 258=82.09 / **260=82.35(신기록, ep218 이후 첫 갱신)**. 82.62 여전히 미돌파.
+- GPU0,1: **37.8GB/100%util**(직전 점검 30.7GB/0%util에서 변화 — 타테넌트가 활성 연산 중으로 전환. 여전히 우리 프로세스 아님).
+
+**yeon (GPU0,1,5=seed1, GPU2,3,4=타테넌트, GPU6,7=P44 seed2)**:
+- P39.1-rank 4모달 seed1: Epoch 200 완료, val 81.75, **Best 81.82@ep162 그대로(38epoch 무갱신, 장기정체 지속)**. GPU0,1,5 지금은 22.1-22.4GB/100%util(학습 페이즈 확인, 직전 점검 시 eval 스냅샷 4GB대였음).
+- P44-BMR DELIVER seed2: Epoch 50/200 진행중(814/1991,41%), loss 1.650 유한. val 최근: 44=65.59/46=63.73/**48=65.34**. **Best 65.68@ep36 그대로(오실레이션 지속, 갱신 없음)**. GPU6,7 15.5-15.6GB/51-73%util.
+- GPU2,3,4: 타테넌트(jongwon_kim) 계속 점유, 우리 것 아님(재확인).
+
+**요약**: P46-C1C3 ep30 게이트 미도달(ep23, ETA+1h) — RailTrack 게이트 판정은 다음 점검 또는 도달 시점에. hpca100 seed2 미완주(ep262/300, 38epoch·ETA+6h 남음) — **drop-radar ablation은 아직 착수 불가**(GPU2,3 아직 점유 중). hpca100 82.35 소폭 신기록(ep218→ep260, +0.02) 발생했으나 82.62 미돌파. yeon seed1 장기정체 지속(81.82@ep162, 38epoch 무갱신). 유휴 GPU: jarvis GPU4-7뿐. 이상징후 없음.
+
+---
+
+### 2026-07-30 08:34 KST — 2시간 정기점검 (직전 03:50 대비, API 529로 지연 재개)
+
+**jarvis (GPU0-3=P46-C1C3, GPU4-7=P46-C3only)**:
+- 🔴 **P46-C1C3-DELIVER**: Epoch[48/200] iter 618/995(62%), loss 1.388 유한. GPU0-3 15.8-15.9GB/rank·74-88%util.
+  - val 궤적(신규분): ep26=66.80(신기록) → ep28=65.14 → ep30=65.68 → ep36=66.55 → ep38=66.57 → **ep40=67.36(신기록)** → ep42=65.85 → ep44=66.25 → ep46=66.80. **Best 67.36@ep40.**
+  - **ep30 이미 통과(현재 ep48, 18epoch 지남)**. 단 🔴 이 로그엔 RailTrack per-class/test 분리 지표가 없음(train_reliadino.py 학습로그는 val 전체 mIoU만 기록, test는 데이터셋 카운트만 등장) — **게이트 판정(RailTrack test 4→변화 여부)은 별도 per-class eval 스크립트 실행 필요**, 현재 raw로는 판정 불가.
+- 🔴 **P46-C3only-DELIVER**: Epoch[25/200] iter 667/995(67%), loss 1.452 유한. GPU4-7 15.6-15.8GB/rank·84-100%util.
+  - val 궤적: ep2=51.07 → ep4=58.63 → ep6=60.23 → ep8=58.29(dip) → ep10=61.16 → ep12=64.30 → ep14=64.40 → ep16=65.53 → ep18=64.38 → ep20=65.49 → ep22=65.07 → ep24=65.12. **Best 65.53@ep16.**
+  - c1c3(67.36@ep40) vs c3only(65.53@ep16, 아직 도달 epoch 적음) — 직접비교는 동일 epoch 시점 필요, 판정은 코디네이터.
+
+**hpca100 (GPU2,3=seed2, GPU0,1=타테넌트)**:
+- P39.1-rank 4모달 seed2: Epoch 284/300, GPU2,3 24.6GB/68-98%util. **아직 미완주(16epoch 남음, ETA≈11:08 KST)**.
+  - val 최근: 268=82.07/270=82.05/272=81.99/274=81.98/276=81.99/278=81.88/280=81.95/282=81.96. **Best 82.35@ep260 그대로, 82.62 미돌파, 최근값은 오히려 82.35 밑으로 소폭 하락한 채 정체.**
+- GPU0,1: 37.8GB/100%util 유지(타테넌트 활성 지속).
+
+**yeon (GPU0,1,5=seed1, GPU2,3,4=타테넌트, GPU6,7=P44 seed2)**:
+- P39.1-rank 4모달 seed1: 최근 val epoch:210=81.57, **Best 81.82@ep162 그대로(48epoch 무갱신, 장기정체 지속)**. GPU0,1,5 3.6-4.0GB/0%util(eval 스냅샷).
+- P44-BMR DELIVER seed2: 최근 val epoch:54=63.86, **Best 65.68@ep36 그대로(18epoch 무갱신)**. GPU6,7 4.1-4.2GB/100%util(eval 진행 중).
+- GPU2,3,4: 타테넌트(jongwon_kim) 계속 점유, 우리 것 아님.
+
+**요약**: P46-C1C3 ep30 통과(현재ep48, best 67.36@40) — RailTrack 게이트는 별도 eval 필요(raw 미확보). P46-C3only는 ep24까지 진행(best 65.53@16), 두 실험 병행 무간섭. hpca100 seed2 미완주(ep284/300, ETA+2.6h) — drop-radar 아직 미착수. 두 4-modal 레이스(hpca100 82.35/yeon 81.82) 모두 82.62 미돌파, 장기정체. 유휴 GPU 없음(jarvis 8장 전부 P46 2종에 배치, hpca100/yeon 전 GPU 점유). 이상징후 없음.
+
+---
+
+### 2026-07-30 10:34 KST — 2시간 정기점검 (직전 05:35 대비)
+
+**jarvis (GPU0-3=P46-C1C3, GPU4-7=P46-C3only)**:
+- 🔴 **P46-C1C3**: Epoch 58 최근 val(eval 진행중, iter 238/502). GPU0-3 3.8GB/rank·99-100%util(eval 페이즈).
+  - val 궤적(신규분): 48=66.58 → 50=66.08 → 52=66.71 → 54=66.72 → 56=66.84 → 58=66.41. **Best 67.36@ep40 그대로(18epoch 무갱신, 소폭 정체).**
+- 🔴 **P46-C3only**: Epoch[38/200] iter 416/995(42%), loss 1.346 유한. GPU4-7 15.8GB/rank·89-95%util.
+  - val 궤적: 22=65.07 → 24=65.12 → 26=65.26 → 28=61.60(dip) → **30=66.41(신기록)** → 32=66.09 → 34=66.07 → **36=67.05(신기록)**. **Best 67.05@ep36.**
+  - 🔴 **ep40 아직 미도달**(현재 ep38 진행 중, 다음 eval이 ep38 또는 ep40 — 약 20-40분 내 도달 예상). 도달 시 알림 예정.
+
+**hpca100 (GPU2,3=seed2, GPU0,1=타테넌트)**:
+- P39.1-rank 4모달 seed2: Epoch 295/300, GPU2,3 24.6GB/89-91%util. **아직 미완주(5epoch 남음, ETA≈11:22 KST)**.
+  - val 최근: 288=81.94/290=81.88/292=81.99/294=81.96. **Best 82.35@ep260 그대로, 완전 정체.**
+- GPU0,1: 37.8GB/100%util 유지(타테넌트).
+
+**yeon (GPU0,1,5=seed1, GPU2,3,4=타테넌트, GPU6,7=P44 seed2)**:
+- P39.1-rank 4모달 seed1: 최근 val epoch:216=81.36. **Best 81.82@ep162 그대로(54epoch 무갱신).**
+- P44-BMR DELIVER seed2: 최근 val epoch:56=64.25. **Best 65.68@ep36 그대로(20epoch 무갱신).**
+- GPU2,3,4: 타테넌트 계속.
+
+**lecun (P46-C1C3 ep40 gate eval, 별도 프로세스)**:
+- @768 eval: **완료**(val 67.37 / test 54.92, RailTrack test 59.10 — 게이트 통과 확정, 문서화 완료).
+- @1024 eval: val **완료**(mIoU 69.16, RailTrack val 19.37), test 진행 중(1573/1897, 83%, ETA ~10분 이내).
+
+**요약**: P46-C1C3 best 67.36@40 그대로 정체(58ep까지), 게이트(RailTrack)는 이미 통과 확정. P46-C3only는 신기록 갱신 중(67.05@36, C1C3의 ep36 근접치보다 근소 우위 — 직접비교는 코디네이터 판단), ep40 임박(미도달). hpca100 seed2 미완주(ETA+48분), 82.35 정체 지속. 4-modal 레이스 둘 다 장기정체. 유휴 GPU 없음. 이상징후 없음.
+
+---
+
+### 2026-07-30 12:33 KST — 2시간 정기점검 (직전 07:35 대비, C1C3 kill 이후)
+
+**jarvis (GPU0=user 전용/비움, GPU1-3=유휴 대기, GPU4-7=C3-only)**:
+- 🔴 **GPU0**: 1752MiB/0%util — 완전 0은 아니나 우리 프로세스 없음(P46 계열 프로세스 전부 GPU0-3에 미존재 확인). user 용도로 남겨둔 대로 유지.
+- **GPU1-3**: 24/24/88 MiB, 0%util — 사실상 완전 유휴, 다음 지시 대기 유지.
+- 🔴 **P46-C3only**: eval 진행 중(266/502, 53%), GPU4-7 3.3-3.4GB/99-100%util(eval 페이즈).
+  - val 궤적(누적): 34=66.07 → **36=67.05(신기록)** → 38=66.36 → 40=66.98 → 42=66.80 → 44=65.00 → 46=63.44 → 48=66.04. **Best 67.05@ep36 그대로(12epoch 무갱신).**
+
+**hpca100 (GPU2,3=seed2, GPU0,1=타테넌트)**:
+- 🔴 **P39.1-rank 4모달 seed2: 완주 확인!** Epoch 300/300 완료. **Best Val mIoU 82.35@ep260**, Best Test N/A(로컬 GT 없음), Total Training Time 12:12:38.
+- **GPU2,3 완전 유휴(0MiB/0%util)** — **drop-radar ablation 착수 가능** 상태.
+- GPU0,1: 37.8GB/100%util 타테넌트 계속.
+
+**yeon (GPU0,1,5=seed1, GPU2,3,4=타유저, GPU6,7=P44 seed2)**:
+- P39.1-rank 4모달 seed1: 최근 val epoch:222=81.33. **Best 81.82@ep162 그대로(60epoch 무갱신, 장기정체 지속).**
+- P44-BMR DELIVER seed2: 최근 val epoch:58=65.58. **Best 65.68@ep36 그대로(22epoch 무갱신)** — 격차 −0.10으로 근접했으나 갱신은 아직.
+- GPU2,3,4(타유저): 14.0/14.6/14.6GB, 0%util(유휴 상태로 관측, 그들 작업 리듬).
+
+**lecun (C3-only ep40 @1024 test eval)**:
+- 진행 중: 682/1897(36%), rate 1.79s/it, ETA 약 36분 후.
+
+**요약**: 🎯 **hpca100 seed2 완주(82.35@260) — GPU2,3 확보, drop-radar 착수 가능**(코디네이터 판단 대기). jarvis GPU0 user용 유지(우리 프로세스 없음 확인), GPU1-3 유휴 대기 유지. C3-only 정체 국면 지속(67.05@36, 12ep 무갱신). yeon 두 실험 모두 정체(P44는 −0.10까지 근접). lecun @1024 test 36% 진행. 이상징후 없음.
+
+---
+
+### 2026-07-30 (drop-radar ablation, hpca100 GPU2,3) — raw 결과
+
+**seed2 4모달(best ep260, val 82.35) drop-radar ablation** (`tools/eval_reliadino_ckpt.py --drop-modality radar`, commit 66b67b8):
+- (a) 4모달 그대로: val mIoU **82.35**(학습 로그 재현 정확히 일치)
+- (b) radar zero-fill 3모달: val mIoU **82.22**
+- **dMIoU = 82.35 − 82.22 = 0.13** — radar 기여 미미(거의 무익 수준, 완전 0은 아님)
+- per-class Δ(4모달−3모달, +면 radar 도움): rider **+1.34**(최대), wall +0.61, traffic sign +0.41, terrain +0.31, truck +0.22, bus +0.15, building +0.16 / bicycle **−0.42**, motorcycle −0.35, traffic light −0.26(radar 있으면 오히려 하락) / 나머지(road·sidewalk·pole·vegetation·sky·person·car·train) ±0.1 이내 사실상 무영향.
+- 방법: 체크포인트 로드 missing=0/unexpected=0(양쪽), zero-fill 방식(모델구조 불변, radar 텐서만 0으로 대체), hpca100 GPU2,3(물리) 병행, 타테넌트(GPU0,1) 무간섭 확인. ⚠️ 1차 시도에서 `--gpu` 인자가 CUDA_VISIBLE_DEVICES를 덮어쓰는 걸 몰라 실수로 물리GPU0(타테넌트)에 잠깐 얹었으나 즉시 OOM으로 자체 실패(64MiB 요청 실패, 타테넌트 피해 없음 확인) → `--gpu 2`/`--gpu 3` 직접 지정으로 재실행해 정상 완료.
+- 판정(radar 최종 무익/유익)은 코디네이터 몫.
+
+---
+
+### 2026-07-30 14:33 KST — 2시간 정기점검 (직전 09:35 대비, P46 4실험)
+
+**jarvis (GPU0=user 예약, GPU1-3=C3-only seed2, GPU4-7=C3-only 본실험)**:
+- 🔴 **C3-only 본실험**(GPU4-7): Epoch[63/200] iter 54/995(5%), loss 1.239 유한. GPU4-7 15.8-15.9GB/rank·61-100%util.
+  - val 궤적(신규): 48=66.04→50=66.47→52=66.44→54=66.50→56=65.27→58=66.88→60=66.56→**62=67.22(신기록, 26epoch만의 갱신)**. Best 67.22@ep62.
+  - **ep200 완주 근접 아님** — 현재 ep63(31.5%), 137epoch 남음, ETA≈+18h(약 07-31 09:00 KST).
+- 🔴 **C3-only seed2**(GPU1-3): Epoch[7/200] iter 161/1327(12%). GPU1-3 15.7-15.9GB/rank·68-100%util.
+  - val 궤적: 2=49.69→4=55.13→**6=58.15(신기록)**. Best 58.15@ep6 — 초기 궤적이 원본 C3-only(ep2=51.07→ep6=60.23)보다 다소 낮은 편이나 아직 극초반.
+- **GPU0(user 예약)**: 4062MiB/100%util — user가 활발히 사용 중(우리 프로세스 아님, 무간섭).
+
+**hpca100 (GPU2,3=C2+C3, GPU0,1=타테넌트)**:
+- 🔴 **C2+C3**: Epoch[4/200] iter 929/1991(47%), loss 2.256 유한. GPU2,3 16.8GB/rank·65-80%util — **40GB 중 여유 충분(4090 OOM 회피 재확인, 크리핑 없음)**.
+  - val 궤적: ep2=51.14(유일, 아직 ep4 eval 전). Best 51.14@ep2.
+- GPU0,1: 37.8GB/100%util 타테넌트 그대로.
+
+**yeon (GPU0,1,5=seed1, GPU2,3,4=타유저, GPU6,7=P44 seed2)**:
+- P39.1-rank 4모달 seed1: 최근 val epoch:228=81.34. **Best 81.82@ep162 그대로(66epoch 무갱신, 초장기 정체).**
+- P44-BMR DELIVER seed2: 최근 val epoch:60=64.28. **Best 65.68@ep36 그대로(24epoch 무갱신)** — ep58의 65.58 근접 이후 다시 하락.
+- GPU2,3,4(타유저): 14.0-14.6GB, 0-1%util(유휴 관측).
+
+**요약**: P46 4실험 전부 학습 중, 사망 없음. **C3-only 본실험 신기록(67.22@62, 26ep만의 갱신)** — 게이트eval(56.82@1024 ep40)은 중간ckpt였고 학습은 계속 전진 중. C3-only seed2는 극초반(ep7)이라 재현성 판단 이름. C2C3는 ep4, 메모리 안전권 재확인. ep200 완주는 4실험 모두 아직 한참 남음(C3-only 본실험이 가장 앞서 31.5%). yeon 두 실험 모두 장기정체 지속. 유휴 GPU: yeon 타유저 구간(우리 것 아님) 외 없음. 이상징후 없음.

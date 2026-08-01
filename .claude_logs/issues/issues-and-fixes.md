@@ -18,6 +18,7 @@ moved: 2026-07-08
 | ID | 상태 | 한 줄 |
 |----|------|-------|
 | **ISSUE-026** | ✅ **수정(2026-07-21)** | ColorAugSSD brightness가 uint8(0-255) 입력을 [0,1] 클램프 → 발화 샘플(p=0.5) RGB가 백색 상수로 붕괴(사실상 RGB-dropout 0.5). **07-16 이후 DGFUSION_AUG:true DELIVER 학습 전부 오염**(jarvis P37a-DELIVER/P37b(사망런), hpca100 P38-DELIVER 완주분·**P39-DPC resume 진행 중**, yeon 스모크). MUSES 전 계보 무영향. **P38-DELIVER/P39-DELIVER 게이트 판정 보류.** 상세: 하단 ISSUE-026 |
+| **ISSUE-028** | ✅ **해결(2026-07-28)** | hpca100 HF 백본 이중고장 — `HF_HUB_OFFLINE=1`일 때 DINOv3+DINOv2 폴백 둘 다 local cache lookup 실패로 **RANDOM INIT**(경고 없이 조용히 진행됨), offline 미설정 시엔 반대로 HF Hub 온라인 조회 단계에서 **정체(hang)**. 최초 진단(P44-BMR 과균형)은 오진 — 실제 원인은 백본. `RELIADINO_LOCAL_BACKBONE` env로 로컬 safetensors 직접 로드하는 우회 코드로 해결(697a10a). 저조(mIoU 급락) 발생 시 **백본 로드 라인부터 먼저 확인할 것**. 상세: 하단 ISSUE-028 |
 | **ISSUE-027** | ✅ **가드 추가(2026-07-21)** | GRADIENT_CHECKPOINT=true 시 timm non-reentrant 재계산이 stale active_modality로 비최종 모달 LoRA gradient 오염(무경고). encoder 강제 off 가드 + 체크인 configs 9종 false로 수정. 실피해는 bengio 사망런·yeon 스모크 등 한정적. 상세: 하단 ISSUE-027 |
 | **ISSUE-025** | ✅ **해결(2026-07-21)** | MUSES radar 디코딩 3중 버그 — `_open_radar` 폴스루+디스패치 오배선+`RADAR_RANGE_MAX` 미정의로 100m 클립(실측 유효픽셀 2.76% 포화, 센서 캡=150.0m) + height 채널 0.25 상수 오염. develop에서 수정 완료. **영향은 4모달(radar 포함) 실험만, 3모달 전 계보 무영향.** 상세: 하단 ISSUE-025 |
 | **ISSUE-024** | 🟡 **OPEN (조건부 — P37b kill-gate 생존 시 수정)** | P37b `classtoken.py`의 `mask_proj`(attn-mask 예측기)가 threshold 비교(비미분)로만 쓰여 gradient 미도달 → 영구 random init, masked attention이 사실상 random 마스킹. P38 `m2f_head.py`가 올바른 수정 패턴(`_attn_bias`) 보유. 전수조사에서 minor 다수 추가 확정·수정됨(2026-07-21 커밋 참조). 상세: 하단 ISSUE-024 |
@@ -47,6 +48,20 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-028: hpca100 HF 백본 이중고장(offline=RANDOM INIT / online=hang) [해결, 2026-07-28]
+
+**발견 경위**: hpca100에서 4-modal(+radar) 학습 2건(P44-BMR+radar, P39.1+radar seed2)이 연속으로 ep2 mIoU가 3모달·yeon 동일 레시피(~45~48) 대비 극단적으로 저조(11~22)하게 나와 원인 조사 중 발견. 최초 가설은 "P44-BMR이 radar에 과균형해 실패"였으나, **P44도 P39.1도 동일하게 저조**했던 점에서 재검토 → radar 데이터(md5 검증 완료, 정상) 무죄, 백본 로드 자체가 원인으로 확진.
+
+**메커니즘**: 학습 시 `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`을 걸었더니 timm이 DINOv3(`vit_large_patch16_dinov3.lvd1689m`)와 폴백 DINOv2(`vit_large_patch14_reg4_dinov2`) 둘 다 `LocalEntryNotFoundError`로 로드 실패 → encoder.py의 `_create`가 **경고만 남기고 RANDOM INIT으로 조용히 진행**("Do NOT train a real run like this" 경고는 있으나 학습은 계속 진행됨). 반대로 offline 플래그를 빼고 온라인으로 돌리면 HTTP HEAD 요청(302 Found)까지는 성공하나 이후 12분 이상 정체(hang)해 학습이 진행되지 않음. 캐시 자체(blob 1,212,347,640 bytes, md5 hpca100=yeon 완전 일치)는 정상이었고 config.json 부재도 원인이 아니었음(yeon도 동일 캐시 구조지만 always-online이라 문제가 드러나지 않았을 뿐) — 실제로는 timm의 HF offline 조회 로직이 `pytorch_model.bin`을 우선 HEAD 조회하다 오프라인에 막혀 로컬 `model.safetensors`로 폴백을 못 하는 것으로 관찰됨.
+
+**수정**: `semseg/models/reliadino/encoder.py`의 `_create`에 `RELIADINO_LOCAL_BACKBONE` env가 설정되면 `timm.create_model(..., pretrained_cfg_overlay=dict(file=<local safetensors path>))`로 HF Hub 조회를 완전히 우회하고 로컬 파일에서 직접 로드하도록 수정(develop 697a10a). 격리 테스트(`LOAD_OK 303079424`)로 검증 후 배포. hpca100 P39.1+radar seed2 재기동 결과 RANDOM INIT 없이 ep2 mIoU 47.61로 정상 궤도 복귀 확인.
+
+**영향 범위**: hpca100에서 `HF_HUB_OFFLINE=1`로 돌았던 4-modal 런 2건(P44-BMR+radar, P39.1+radar seed2 최초 시도)이 RANDOM INIT 상태로 학습됨 — 두 런의 ckpt/수치는 전부 무효(성능 인용 금지, 오염 ckpt는 `_contaminated_randominit/`로 격리). 3모달 hpca100 학습(P44-BMR MUSES 등)은 항상 온라인으로 돌아 무영향.
+
+**재발 방지**: 저조(mIoU 급락, 특히 다수 클래스 IoU=0 패턴)가 나오면 **가장 먼저 백본 로드 라인**(`grep -iE 'dinov3|RANDOM INIT|falling back|Loading weights using safetensors'`)을 확인할 것. hpca100처럼 churn 노드에서 재기동 시 `RELIADINO_LOCAL_BACKBONE` env 누락하지 말 것 — AUTO_RESUME이 이전 오염 ckpt를 이어받지 않는지도 함께 확인.
 
 ---
 
