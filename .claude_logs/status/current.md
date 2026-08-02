@@ -71,6 +71,8 @@ moved: 2026-07-08
 
 **📝 2026-07-30 P46-CTR DELIVER — RailTrack 게이트 통과(C1+C3 ep40, class-transfer 가설 확증)**: c1c3(C1_RCS+C3_PROTO, C2_MCC off) ep40 체크포인트(val 67.36)의 test@768 per-class eval에서 **RailTrack test 4.02(base)→59.10(+55.1)** — 사전등록 primary falsifiable 게이트(≥40) 압도적 통과, DGFusion(64.47)에 근접. Wall/Water/Bridge는 게이트 제외(DGFusion도 test IoU 0~4로 동반붕괴 확인됨, §9) 그대로 저조(10.84/10.96/0.02). Overall test는 52.47→54.92(+2.45)로 개선되었으나 secondary gate(56.62)·DGFusion(56.71) 미달 — **RailTrack 회복이 overall 돌파로 직결되진 않음**(다른 붕괴 클래스가 천장). val에서는 RailTrack 18.53으로 test보다 낮은 역전 현상 관찰(해석 보류). ep40은 중간 체크포인트(학습은 계속 진행 중, ep200 완주 후 재판정 예정) — C1 RCS의 단독 기여를 분리하는 C3-only ablation(jarvis GPU4-7)도 병행 중이며 ep40 도달 시 동일 gate eval 예정. 상세 [experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md](../experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md).
 
+**🏆 2026-08-03 P46 C3-only λ0.2 DELIVER 완주 — test SOTA 돌파 확정**: jarvis GPU4-7, 200/200 완주(Total 07:58:28) — **test 57.05@ep108**(DGFusion SOTA 56.71 대비 **+0.34**, 내부최고 P34 56.62 대비 **+0.43**), val 67.47@ep118. **@768 동일 프로토콜**이라 해상도 mismatch 없는 깨끗한 비교. λ 스윕(0.05/0.1/0.15/0.2) 중 λ0.2가 test 최적, val은 λ0.05가 최고(68.57) — **val·test가 서로 다른 λ를 선호**. 미해결: RailTrack val<test 역전, DGFusion final-iter 프로토콜 차이. 상세 [experiments/analysis/2026-08-03-p46-c3only-lambda-sweep-deliver-sota.md](../experiments/analysis/2026-08-03-p46-c3only-lambda-sweep-deliver-sota.md).
+
 **⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
 
 | 트랙 | 상태 | 수치 / 다음 액션 |
