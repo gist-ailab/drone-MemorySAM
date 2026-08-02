@@ -1,0 +1,221 @@
+# ═══ P46-CTR C3-only(λ=0.2) — hpca100 MUSES 3모달(img/lidar/event): P39.1-rank 동결 + C3 prototype만 ═══
+# Base = jarvis-muses_rgbel_P39_1_rank.yaml (P39-DPC + R-1(gated_mlp trunk) + R-2(VICReg) + M-2 off,
+#   ROUTER on, M2F on, CEFR/CLASS_TOKEN/ATTN_BIAS off) — seed2 3모달 recipe 보고치 val 82.62/test 79.788.
+# 이식원 = DELIVER P46 C3-only λ0.2 (commit 9e33b59, configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam02.yaml).
+#   C1_RCS off · C2_MCC off · C3_PROTO만 on — CROSS_VIEW off라 보조 forward 없음(순수 1-forward + aux 손실).
+#
+# 배경: DELIVER에서 C3-only가 test 57.05로 DGFusion SOTA(56.71) 돌파. MUSES도 동일 class-transfer
+#   붕괴 패턴 보유(night truck 44.40 vs day 76.43, motorcycle 58, rider 59) — C3 타깃과 정합, 동일 기제 이식.
+#
+# num_classes 자동화 확인(2026-08-02): train_reliadino.py L135 `num_classes = trainset.n_classes`
+#   -> build_reliadino(cfg, num_classes) -> P46.PrototypeBank(num_classes=num_classes, ...).
+#   하드코딩 없음 — MUSES 19클래스가 데이터셋에서 자동으로 흘러간다. config에 NUM_CLASSES 지정 불요.
+#
+# 🔴 hpca100 A100 40GB, 진단(2026-08-02) 시점 GPU당 ghost 11.86GB 점유(타 테넌트, 소유 불명 컨테이너
+#   격리) -> 실사용 가용 ~28.4GB. base(jarvis 24GB에서 BS1 ~12GB 실측) + C3(CROSS_VIEW off, 저비용) 여유 충분.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>   (develop 브랜치)
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_muses_rgbel_P46_c3only_lam02'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20) — off, ablation 분리
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  # [P36] per-class router 유지 (base와 동일)
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }   # P37a 헤드 off
+  CLASS_TOKEN: { ENABLE: false }   # P37b 헤드 off
+
+  # [P38] MaskQueryLite (Mask2Former-lite) — base와 동일
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  # [P39] Dual-Path Compete — base와 동일 (하이퍼 무변경, class-transfer 토글만 위에 얹음)
+  P39:
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — C3-only(λ=0.2) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false      # [C3-only] RCS 끔 — C3 단독기여 격리
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+
+    C2_MCC:
+      ENABLE        : false      # [C3-only] MCC 끔 — 보조 branch 없음
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+
+    C3_PROTO:
+      ENABLE        : true
+      FEATURE       : mfeat
+      LAMBDA        : 0.2        # DELIVER test 최고값 이식
+      TEMPERATURE   : 0.1
+      EMA           : 0.999
+      PIXELS        : 4096
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'   # hpca100 경로
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : true
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # base recipe와 동일(jarvis 24GB ~12GB 실측). hpca100 28.4GB 가용 —
+                                    # C3(CROSS_VIEW off)는 저비용이라 BS 유지, eff-batch는 accum 자동보정.
+  EPOCHS        : 300
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
