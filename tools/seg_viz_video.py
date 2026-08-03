@@ -136,6 +136,10 @@ def main():
     ap.add_argument('--name', default='seg_infer', help="mp4 basename (no ext)")
     ap.add_argument('--fps', type=int, default=4)
     ap.add_argument('--panel-h', type=int, default=512)
+    ap.add_argument('--all-modals', action='store_true',
+                    help="draw EVERY input modality as its own panel "
+                         "(e.g. RGB|depth|event|lidar|GT|Pred|Error) instead of RGB only. "
+                         "Non-3ch modals are min-max normalized to grayscale.")
     args = ap.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -259,15 +263,16 @@ def main():
         fm = frame_miou(pred, gt, ignore, n_cls)
         mious.append(fm)
 
-        inp = denorm_rgb(images[0])                       # first modal = RGB
+        # input panels: RGB only, or every modality when --all-modals
+        in_panels = ([(denorm_rgb(images[i]), f"in:{m}") for i, m in enumerate(modals)]
+                     if args.all_modals else [(denorm_rgb(images[0]), f"input:{modals[0]}")])
         gt_c = ds_cls.decode_segmap(np.clip(gt, 0, n_cls - 1).astype(np.uint8), palette)
         pr_c = ds_cls.decode_segmap(pred, palette)
         header = (f"{args.name}  |  frame {idx + 1}/{n}"
                   + (f"  case={args.case}" if args.case else "")
                   + (f"  frameMIoU={fm:.1f}" if not math.isnan(fm) else ""))
         sink.write(compose(
-            [(inp, f"input:{modals[0]}"), (gt_c, "GT"), (pr_c, "Pred"),
-             (err, "Error(red=wrong)")],
+            in_panels + [(gt_c, "GT"), (pr_c, "Pred"), (err, "Error(red=wrong)")],
             header, panel_h=args.panel_h))
         if (idx + 1) % 25 == 0:
             print(f"  {idx + 1}/{n}", flush=True)
