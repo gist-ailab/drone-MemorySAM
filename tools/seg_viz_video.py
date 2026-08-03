@@ -89,21 +89,34 @@ def _font(sz):
     return ImageFont.load_default()
 
 
-def compose(panels_titles, header, bar_h=34, sep=4, panel_h=512):
-    """panels_titles: list of (img, title). Returns one (H,W,3) uint8 frame."""
+def compose(panels_titles, header, bar_h=34, sep=4, panel_h=512, cols=0):
+    """panels_titles: list of (img, title). Returns one (H,W,3) uint8 frame.
+
+    cols=0 -> single row (all panels side by side).
+    cols=N -> wrap into a grid N panels wide (e.g. cols=2 gives
+    RGB|depth / event|lidar / GT|Pred ... — far more readable than one long strip).
+    """
     imgs = [resize_h(im, panel_h) for im, _ in panels_titles]
-    tot_w = sum(im.shape[1] for im in imgs) + sep * (len(imgs) - 1)
-    canvas = np.full((panel_h + bar_h + 18, tot_w, 3), 20, np.uint8)
-    x = 0
-    pim = Image.fromarray(canvas)
+    lab_h = 18
+    n = len(imgs)
+    per_row = n if cols <= 0 else cols
+    rows = [imgs[i:i + per_row] for i in range(0, n, per_row)]
+    tt = [[t for _, t in panels_titles][i:i + per_row] for i in range(0, n, per_row)]
+    row_w = [sum(im.shape[1] for im in r) + sep * (len(r) - 1) for r in rows]
+    tot_w = max(row_w)
+    tot_h = bar_h + len(rows) * (panel_h + lab_h) + sep * (len(rows) - 1)
+    pim = Image.fromarray(np.full((tot_h, tot_w, 3), 20, np.uint8))
     dr = ImageDraw.Draw(pim)
-    ft = _font(15)
-    fh = _font(17)
+    ft, fh = _font(15), _font(17)
     dr.text((6, 2), header, fill=(255, 255, 255), font=fh)
-    for (im, (_, title)) in zip(imgs, panels_titles):
-        pim.paste(Image.fromarray(im), (x, bar_h))
-        dr.text((x + 4, bar_h + panel_h + 1), title, fill=(230, 230, 230), font=ft)
-        x += im.shape[1] + sep
+    y = bar_h
+    for r, titles in zip(rows, tt):
+        x = 0
+        for im, title in zip(r, titles):
+            pim.paste(Image.fromarray(im), (x, y))
+            dr.text((x + 4, y + panel_h + 1), title, fill=(230, 230, 230), font=ft)
+            x += im.shape[1] + sep
+        y += panel_h + lab_h + sep
     return np.asarray(pim)
 
 
@@ -136,6 +149,10 @@ def main():
     ap.add_argument('--name', default='seg_infer', help="mp4 basename (no ext)")
     ap.add_argument('--fps', type=int, default=4)
     ap.add_argument('--panel-h', type=int, default=512)
+    ap.add_argument('--cols', type=int, default=0,
+                    help="wrap panels into a grid this many columns wide "
+                         "(0 = one long row). e.g. --cols 2 with --all-modals gives "
+                         "RGB|depth / event|lidar / GT|Pred / Error.")
     ap.add_argument('--all-modals', action='store_true',
                     help="draw EVERY input modality as its own panel "
                          "(e.g. RGB|depth|event|lidar|GT|Pred|Error) instead of RGB only. "
@@ -272,8 +289,8 @@ def main():
                   + (f"  case={args.case}" if args.case else "")
                   + (f"  frameMIoU={fm:.1f}" if not math.isnan(fm) else ""))
         sink.write(compose(
-            in_panels + [(gt_c, "GT"), (pr_c, "Pred"), (err, "Error(red=wrong)")],
-            header, panel_h=args.panel_h))
+            in_panels + [(gt_c, "GT"), (pr_c, "Pred")],
+            header, panel_h=args.panel_h, cols=args.cols))
         if (idx + 1) % 25 == 0:
             print(f"  {idx + 1}/{n}", flush=True)
 
