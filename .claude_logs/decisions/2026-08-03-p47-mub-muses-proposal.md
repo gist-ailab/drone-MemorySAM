@@ -2,7 +2,7 @@
 
 > model-proposal 스킬 산출. **fable 딥리서치 3축**(기제·노벨티·물리/벤치) 병렬 조사 + 기존 분석 자산 교차. 판정·설계 = 이 세션(opus).
 
-> 🔴 **전장 정의 (user 확정 2026-08-03)**: 우리 메인 벤치 구성은 **4모달**이고 3모달은 ablation이다. DELIVER는 이미 4모달(img/depth/event/lidar, 현 SOTA test 57.05도 4모달)이나 **MUSES만 3모달(img/lidar/event)로 굳어져 있었다** — radar 4모달이 3모달보다 낮았기 때문(seed2 4모달 82.35 < 3모달 82.62, drop-radar +0.13). 본 제안은 그 결과를 **"radar 무익"이 아니라 "학습이 추가 모달을 살리지 못함"**으로 재해석하고, **4모달(img/lidar/event/radar)을 기준 구성으로** D-1·D-2를 검증한다. 3모달은 대조군.
+> 🔴 **전장 정의 (user 확정 2026-08-03)**: 우리 메인 벤치 구성은 **4모달**이고 3모달은 ablation이다. DELIVER는 이미 4모달(img/depth/event/lidar, 현 최고 test 55.7(legal, **정정 2026-08-04: 57.05는 test-best로 무효**)도 4모달)이나 **MUSES만 3모달(img/lidar/event)로 굳어져 있었다** — radar 4모달이 3모달보다 낮았기 때문(seed2 4모달 82.35 < 3모달 82.62, drop-radar +0.13). 본 제안은 그 결과를 **"radar 무익"이 아니라 "학습이 추가 모달을 살리지 못함"**으로 재해석하고, **4모달(img/lidar/event/radar)을 기준 구성으로** D-1·D-2를 검증한다. 3모달은 대조군.
 
 ## 0. 선행조건 충족 (§0.5)
 
