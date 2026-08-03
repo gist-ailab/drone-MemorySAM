@@ -43,11 +43,26 @@ IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
 IMAGENET_STD = np.array([0.229, 0.224, 0.225])
 
 
-def denorm_rgb(t):
-    """(C,H,W) normalized tensor -> (H,W,3) uint8. Non-3ch modals -> grayscale."""
+def denorm_rgb(t, modal='img'):
+    """(C,H,W) normalized tensor -> (H,W,3) uint8, undoing the loader's transform.
+
+    augmentations_mm.Normalize treats modalities differently:
+      img      -> /255 then ImageNet mean/std   => undo both
+      depth/lidar/event/... -> /255 only        => undo only the /255
+      thermal  -> z-score on the raw 0-255 scale (mean/std from cfg)
+    Applying the ImageNet un-normalization to a modality that never got it
+    washes it out and tints it (a 0 pixel becomes 0.485/0.456/0.406), which is
+    why non-RGB panels looked wrong. Single-channel tensors fall back to a
+    per-frame min-max stretch so faint data stays visible.
+    """
     a = t.detach().float().cpu().numpy().transpose(1, 2, 0)
     if a.shape[2] == 3:
-        a = a * IMAGENET_STD + IMAGENET_MEAN
+        if modal == 'img':
+            a = a * IMAGENET_STD + IMAGENET_MEAN
+        elif modal == 'thermal':                       # z-scored, unknown stats here
+            lo, hi = np.percentile(a, 1), np.percentile(a, 99)
+            a = (a - lo) / (hi - lo + 1e-8)
+        # else: loader only did /255 -> already in [0,1], show as-is
     else:
         a = a[..., :1]
         a = (a - a.min()) / (a.max() - a.min() + 1e-8)
@@ -281,8 +296,8 @@ def main():
         mious.append(fm)
 
         # input panels: RGB only, or every modality when --all-modals
-        in_panels = ([(denorm_rgb(images[i]), f"in:{m}") for i, m in enumerate(modals)]
-                     if args.all_modals else [(denorm_rgb(images[0]), f"input:{modals[0]}")])
+        in_panels = ([(denorm_rgb(images[i], m), f"in:{m}") for i, m in enumerate(modals)]
+                     if args.all_modals else [(denorm_rgb(images[0], modals[0]), f"input:{modals[0]}")])
         gt_c = ds_cls.decode_segmap(np.clip(gt, 0, n_cls - 1).astype(np.uint8), palette)
         pr_c = ds_cls.decode_segmap(pred, palette)
         header = (f"{args.name}  |  frame {idx + 1}/{n}"
