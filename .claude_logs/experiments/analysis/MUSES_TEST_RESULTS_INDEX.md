@@ -12,6 +12,7 @@ Codabench comp **14005** 제출분 전체. **이 파일이 MUSES test 수치의 
 | 3 | **P38-m2f ep156** | 3모달 CLE | 82.22 | — | **79.025** ★최고 | 07-20 |
 | — | P37a-CEFR ep190 | 3모달 CLE | 81.57 | — | *미제출* | zip 보관 |
 | — | P39-DPC ep146 | 3모달 CLE | 81.52 | — | *미제출* | zip 보관 |
+| 4 | **P46-C3only λ0.2 ep136** | 3모달 CLE | 81.65 | — | **79.023** | 08-03 |
 
 **SOTA**: GtA **82.39**(camera-only) → 우리 최고 79.025와 **−3.365**. 순위: GtA 82.39 > MM-SAM-adapter 81.07 > DGFusion 79.5 > **P38 79.025** > P34 78.979 > CAFuser-CAA 78.5 > CAFuser-CA² 78.2 > CMNeXt 72.1.
 → **비교군은 전원 4모달(CLRE), 우리만 3모달** — CAFuser를 모달 하나 덜 쓰고 상회.
@@ -75,6 +76,7 @@ Codabench comp **14005** 제출분 전체. **이 파일이 MUSES test 수치의 
 | P34 3모달 | `.claude_logs/experiments/analysis/2026-07-15-p34-muses-test-official.md` (75줄, Codabench sub 850776) | **NAS** `ckpts/MUSES_P34_20260715/official_eval/` — `hist_per_condition.npz`·`hist_full.npy`·`hist_1024.npy`·`REPORT.md`·`report.json`·`viz/` ⭐**원시 혼동행렬 있음** |
 | P34 4모달 | `.claude_logs/experiments/monitor-log.md` §2026-07-17 (per-condition·per-class 전문) | **NAS** `ckpts/MUSES_P34_4modal_20260717/official_eval/` — `hist_full.npy`·`hist_1024.npy`·`report.json` |
 | P38-m2f | `.claude_logs/experiments/analysis/2026-07-20-muses-official-test-P38-m2f-ep156.md` (102줄) + ailab_mat2 사본 | *(Codabench가 최종 수치만 반환 — 원시 hist 없음. 필요 시 예측 PNG 750장으로 로컬 재집계 가능)* |
+| P46-C3only λ0.2 | `.claude_logs/experiments/analysis/2026-08-03-muses-official-test-P46-c3only-lam02.md` | *(Codabench 최종 수치만 반환)* |
 
 **제출 zip 아카이브(정본)**: `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/` (zip 5종 + P38 결과문서)
 **제출 절차·규격**: 같은 폴더 `../code/README.md`
