@@ -2,6 +2,8 @@
 
 > model-proposal 스킬 산출. **fable 딥리서치 3축**(기제·노벨티·물리/벤치) 병렬 조사 + 기존 분석 자산 교차. 판정·설계 = 이 세션(opus).
 
+> 🔴 **전장 정의 (user 확정 2026-08-03)**: 우리 메인 벤치 구성은 **4모달**이고 3모달은 ablation이다. DELIVER는 이미 4모달(img/depth/event/lidar, 현 SOTA test 57.05도 4모달)이나 **MUSES만 3모달(img/lidar/event)로 굳어져 있었다** — radar 4모달이 3모달보다 낮았기 때문(seed2 4모달 82.35 < 3모달 82.62, drop-radar +0.13). 본 제안은 그 결과를 **"radar 무익"이 아니라 "학습이 추가 모달을 살리지 못함"**으로 재해석하고, **4모달(img/lidar/event/radar)을 기준 구성으로** D-1·D-2를 검증한다. 3모달은 대조군.
+
 ## 0. 선행조건 충족 (§0.5)
 
 - **분석 존재**: MUSES 표준분석 11종(`experiments/analysis/2026-07-15~2026-07-30`), 실패-키(`2026-07-20-failure-keys-*`), 제출 인덱스(`MUSES_TEST_RESULTS_INDEX.md`), drop-radar ablation(07-30).
@@ -56,7 +58,7 @@ MUSES-C3(λ0.2, val 81.65@ep136 완주)와 base(P39.1-seed2)의 **조건별 차�
 
 ## 3. 제안 — P47-MUB (2 모듈, 전부 학습시·내부신호·추론 불변)
 
-P39.1-rank seed2 base(val 82.62/test 79.788) 동결. **추론 경로 불변 ⇒ DELIVER 훼손 경로가 구조적으로 없다.**
+🔴 **base = P39.1-rank seed2 4모달(val 82.35, hpca100 완주)** — 3모달 seed2(val 82.62/test 79.788)는 대조군으로만 참조. D-1·D-2 모두 **4모달 구성에 적용**한다. **추론 경로 불변 ⇒ DELIVER 훼손 경로가 구조적으로 없다.**
 
 ### D-1 · LiDAR 투영 밀도화 (데이터 레시피, 최우선)
 - `projected_to_rgb`(SDK 기본 (2,2), 유효 6.7%) → **`projected_to_rgb_dgf`**((7,7)+motion compensation, **32.6% = 4.99×**)로 교체 학습.
@@ -70,17 +72,19 @@ P39.1-rank seed2 base(val 82.62/test 79.788) 동결. **추론 경로 불변 ⇒ 
 - 선택 확장(토글): OGM-GE(2203.15332)식 on-the-fly gradient modulation — 모달별 학습속도 불균형 보정.
 - 근거: 리더보드 모달↑=순위↓ 역상관 + 우리 radar/event 무기여 + 이론(2203.12221). **RGB 본류 표현력(clear/day −4.4)을 직접 겨냥.**
 
-## 4. 게이트 사전등록
+## 4. 게이트 사전등록 (🔴 4모달 기준 재설정, 2026-08-03)
 
 | 항목 | 기준 |
 |---|---|
-| **Primary** | MUSES val ≥ **82.62**(seed2 base 초과). 미달 시 실패 |
-| **Secondary(공식)** | Codabench test ≥ **79.788**(우리 최고). 제출 1회 |
-| **D-1 falsifiable** | drop-lidar dMIoU가 **주간에도** 상승(현 day 4.24 → ≥6) = 밀도화가 실제로 lidar 활용을 늘렸는가 |
-| **D-2 falsifiable** | **clear/day mIoU 상승**(val day ≥81.5) — modality laziness 해소 가설의 직접 검증. 야간만 오르면 가설 반증 |
-| **ep30 조기 kill** | val이 base 궤적(seed2 동일 ep 대비) −1.0 이하로 벌어지면 중단 |
-| 🔴 **DELIVER 보존** | 이 제안은 **MUSES 전용 데이터 레시피(D-1) + 학습시 aux(D-2)** — DELIVER 런에는 D-1 무관(데이터셋 다름), D-2는 토글 off로 현 SOTA(test 57.05) 유지. **DELIVER 재학습 불필요.** |
-| ablation | D-1 단독 / D-2 단독 / D-1+D-2 |
+| **Primary(4모달)** | MUSES **4모달** val ≥ **82.62** — 즉 **4모달이 3모달 기록을 넘는 것**이 1차 목표(현재 4모달 82.35 < 3모달 82.62 역전 상태 해소) |
+| **Stretch** | val ≥ 83.0(3모달 대비 명확한 우위) |
+| **Secondary(공식)** | Codabench test ≥ **79.788**(우리 최고, 3모달 기록) — 4모달로 이를 넘으면 "4모달 우선 SOTA" 경로 성립 |
+| **D-1 falsifiable** | 밀도화 lidar에서 drop-lidar dMIoU가 **주간에도** 상승(현 day 4.24 → ≥6) |
+| **D-2 falsifiable(핵심)** | 🔴 **modality balance 적용 시 4모달 > 3모달로 역전**(현재 82.35 < 82.62). 이것이 modality laziness 가설의 직접 검증 — 실패 시 "radar는 실제로 정보가 없다"로 확정하고 3모달 회귀 |
+| **부가** | drop-radar dMIoU가 유의하게 상승(현 +0.13 → ≥+0.5) = radar가 실제로 쓰이기 시작했는가 |
+| ep30 조기 kill | 4모달 base(seed2 4modal 동일 ep) 대비 −1.0 이하 |
+| 🔴 DELIVER 보존 | 변경 없음(추론 불변·MUSES 전용 데이터) |
+| ablation | D-1 단독 / D-2 단독 / D-1+D-2 (전부 4모달, 3모달은 대조군) |
 
 ## 5. 노벨티 포지셔닝 (정직)
 
@@ -99,12 +103,13 @@ P39.1-rank seed2 base(val 82.62/test 79.788) 동결. **추론 경로 불변 ⇒ 
 2. "조건 라벨 제거의 가치가 작다" → CAFuser condition loss 기여가 **+0.4 PQ뿐**이라 역인용됨. head-to-head ablation 필수.
 3. "camera-only GtA 82.39가 1위인데 융합이 왜 필요한가" → ① GtA는 **익명·논문 없음**(fact sheet 공란) → published SOTA는 MM-SAM-Adapter 81.07 ② **fog에서만 융합이 이김**(우리 77.5 = 전체 1위) = 멀티센서 잔존가치의 정량 근거.
 
-## 6. 실행 계획
+## 6. 실행 계획 (🔴 4모달 우선 순서로 재정렬, 2026-08-03)
 
-1. **선행(학습 0)**: `muses.py` 투영 경로 config knob 추가 + `projected_to_rgb_dgf` 무결성 확인(7500장).
-2. **D-1 단독 먼저**(비용 0, 기대값 최고): seed2 config에서 데이터 경로만 교체 → 300ep. ep30 즉검(drop-lidar day ≥6).
-3. **D-2 구현·검수**: conventions 코드검수 파이프라인(fresh-eyes 7렌즈 + 스모크 grad/등가 assert + 추론 등가성 |Δ|=0). labcode 위임.
-4. **D-1+D-2** 합본 → 완주 → val 게이트 → 통과 시 Codabench 제출 1회.
+1. **선행(학습 0, 완료)**: `muses.py` 투영 경로 config knob 추가(commit 2879667) + `projected_to_rgb_dgf` 무결성 확인(7500장).
+2. **D-1 · 4모달 먼저**(비용 0, 기대값 최고): 4모달 seed2 config(val 82.35)에서 데이터 경로만 `projected_to_rgb_dgf`로 교체 → 300ep. ep30 즉검(drop-lidar day ≥6). **게이트 = 4모달 val ≥82.62(3모달 역전).**
+3. **D-1 · 3모달 대조군**: 동일 처치를 3모달 seed2에도 적용해 밀도화 효과가 모달 수와 무관한 공통 이득인지 분리 확인(2번과 병렬 가능, GPU 여유 시).
+4. **D-2 구현·검수**: conventions 코드검수 파이프라인(fresh-eyes 7렌즈 + 스모크 grad/등가 assert + 추론 등가성 |Δ|=0). labcode 위임. **4모달 seed2 base에 우선 적용.**
+5. **D-1+D-2** 4모달 합본 → 완주 → val 게이트(≥82.62, stretch 83.0) → 통과 시 Codabench 제출 1회. 3모달 D-1+D-2는 대조군으로만 참조(제출 대상 아님, 4모달이 역전 실패할 때의 폴백).
 
 ## 7. 제약 준수 체크 (§2)
 
