@@ -168,6 +168,12 @@ def main():
                     help="wrap panels into a grid this many columns wide "
                          "(0 = one long row). e.g. --cols 2 with --all-modals gives "
                          "RGB|depth / event|lidar / GT|Pred / Error.")
+    ap.add_argument('--compare-dir', default=None,
+                    help="second model's dumped label PNGs (same unique-key naming as "
+                         "--pred-dir). Adds 'Pred(B)' and 'Err(B)' panels so two models "
+                         "can be compared frame-by-frame against the same GT.")
+    ap.add_argument('--compare-name', default='B',
+                    help="label for the --compare-dir model in panel titles (e.g. DGFusion).")
     ap.add_argument('--all-modals', action='store_true',
                     help="draw EVERY input modality as its own panel "
                          "(e.g. RGB|depth|event|lidar|GT|Pred|Error) instead of RGB only. "
@@ -220,7 +226,7 @@ def main():
     # and the competitor glob the same DELIVER tree. The dump script must key by
     # the same rule.
     _files = None
-    if args.pred_dir or args.dump_pred_dir:
+    if args.pred_dir or args.dump_pred_dir or args.compare_dir:
         _files = getattr(dataset, 'files', None)
         if _files is None:
             import glob as _g
@@ -300,11 +306,36 @@ def main():
                      if args.all_modals else [(denorm_rgb(images[0], modals[0]), f"input:{modals[0]}")])
         gt_c = ds_cls.decode_segmap(np.clip(gt, 0, n_cls - 1).astype(np.uint8), palette)
         pr_c = ds_cls.decode_segmap(pred, palette)
+        extra_panels = [(gt_c, "GT"), (pr_c, f"Pred:{args.name.split('_')[0]}"),
+                        (err, "Err(ours)")]
+        if args.compare_dir:                              # second model side by side
+            ckey = _pred_key(_files[idx])
+            cpp = Path(args.compare_dir) / f"{ckey}.png"
+            if cpp.exists():
+                cpred = np.array(Image.open(cpp)).astype(np.uint8)
+                if cpred.shape != (gh, gw):
+                    if args.pred_letterbox and gh == gw:
+                        ch_, cw_ = cpred.shape
+                        s_ = max(ch_, cw_)
+                        sq_ = np.full((s_, s_), ignore, np.uint8)
+                        sq_[(s_ - ch_) // 2:(s_ - ch_) // 2 + ch_,
+                            (s_ - cw_) // 2:(s_ - cw_) // 2 + cw_] = cpred
+                        cpred = sq_
+                    cpred = np.asarray(torch.nn.functional.interpolate(
+                        torch.tensor(cpred)[None, None].float(), size=(gh, gw),
+                        mode='nearest')[0, 0]).astype(np.uint8)
+                cerr = np.zeros((gh, gw, 3), np.uint8)
+                cerr[(cpred != gt) & (gt != ignore)] = (220, 40, 40)
+                extra_panels += [(ds_cls.decode_segmap(cpred, palette),
+                                  f"Pred:{args.compare_name}"),
+                                 (cerr, f"Err({args.compare_name})")]
+            else:
+                print(f"[seg-video] WARN no compare pred {ckey}.png", flush=True)
         header = (f"{args.name}  |  frame {idx + 1}/{n}"
                   + (f"  case={args.case}" if args.case else "")
                   + (f"  frameMIoU={fm:.1f}" if not math.isnan(fm) else ""))
         sink.write(compose(
-            in_panels + [(gt_c, "GT"), (pr_c, "Pred")],
+            in_panels + extra_panels,
             header, panel_h=args.panel_h, cols=args.cols))
         if (idx + 1) % 25 == 0:
             print(f"  {idx + 1}/{n}", flush=True)
