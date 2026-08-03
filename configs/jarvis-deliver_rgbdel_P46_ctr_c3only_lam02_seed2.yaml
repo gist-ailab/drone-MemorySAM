@@ -1,0 +1,255 @@
+# ═══ P46-CTR — jarvis DELIVER 4모달(img/depth/event/lidar): P39.1-rank + C1/C2/C3 [본학습, BS1 스모크검증완료] ═══
+# [C1+C3 변형] C2_MCC/C3.CROSS_VIEW off — 4090 24GB 대응(all-on은 A100 대기). P46-MEMPROBE 실측 base 14GiB.
+# [C3-only ablation] C1_RCS off + C2_MCC off — C-3 prototype 단독기여 격리(vs c1c3). 24GB(cross_view off).
+# [lam02 seed2] C3-only λ0.2가 DELIVER test 57.05로 SOTA(DGFusion 56.71) 돌파(단일 run) — 재현성 검증 2nd run.
+#   ⚠️ 코드에 train_reliadino.py 레벨 전역 SEED 키가 없음(grep 확인) — 매 런이 원래 unseeded RNG라
+#   이 SAVE_DIR 분리 자체로 이미 독립 2nd run. C1_RCS.SEED(C1 off라 inert)만 0->1로 병행 변경.
+# 정본 설계 = .claude_logs/decisions/2026-07-28-p46-classtransfer-recovery-proposal.md
+#
+# 진단(우리 실측): DELIVER val→test 하락의 지배 원인 = **per-class 도메인 전이 붕괴**
+#   Wall 62→2 · TrafficLight 81→13 · Water 33→0 · Bridge 46→0 · RailTrack val 23.92(under-learned)
+#   per-domain spread 작음(P38 2.58) = 순수 도메인시프트 아님 / 모달 융합은 이미 천장.
+# 처방 = P39.1 base(gated_mlp trunk + VICReg + P36 router + M2F) **동결** 위에
+#   class-transfer 3종을 얹는다. 전부 학습 전용·내부신호만·주손실 직결(키1).
+#
+#   C-1 RCS   [DAFormer 2111.14887]  희소·고손실 클래스를 담은 이미지를 우선 샘플
+#   C-2 MCC   [MIC 2212.01322]       패치 마스킹 + EMA-teacher consistency (국소외형→context)
+#   C-3 PROTO [2309.14282/2412.12050] per-class EMA prototype + 스타일 2-view 정합
+#
+# 🔴 추론 경로는 P39.1과 **완전히 동일**하다 (teacher·bank·샘플러는 학습 루프에만).
+# 🔴 게이트(사전등록): test ≥56.71(DGFusion) & val ≥68. ep30 조기 kill =
+#    collapse 클래스(Wall/Water/TL) test IoU 합이 P39.1 대비 하락/무변화면 즉시 중단.
+# 🔴 공정성: PHYSAUG off · DGFUSION_AUG(ColorAugSSD, ISSUE-026 픽스본) on · val-best ckpt · TTA 금지.
+#
+# ⚠️ 비용: C2/C3.CROSS_VIEW가 켜지면 스텝당 forward가 student 2회 + teacher 1회다
+#    (≈2.2× baseline step). 두 토글이 **하나의 보조 branch를 공유**하므로 토글을 더
+#    켜도 forward는 늘지 않는다. 슬롯이 빠듯하면 C2_MCC.MASK_RATIO는 그대로 두고
+#    EPOCHS를 줄이지 말 것 — ep30 게이트가 먼저 걸린다.
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c3only_lam02_seed2'  # [lam02 seed2] lam02 원본과 분리, 절대 안 겹침
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — 3토글 (전부 학습 전용) ═══
+  P46:
+    # ── C-1 Adaptive Rare-Class Sampling (데이터로더 레벨) ──────────────────
+    # train 라벨 전수를 1회 스캔해 per-class 픽셀빈도 + 클래스별 보유 이미지
+    # 목록을 CACHE_DIR에 캐시(.npz). 이후 런은 캐시를 재사용한다.
+    C1_RCS:
+      ENABLE        : false      # [C3-only ablation] RCS 끔 — C3 단독기여 격리
+      MODE          : daformer   # P(c) ∝ exp((1−f_c)/T)  — DAFormer 식 4
+                                 # 'power'(P ∝ f^−T)는 T=0.01에서 사실상 균등 = no-op
+      TEMP          : 0.01       # T. 작을수록 희소 클래스로 강하게 쏠린다
+      MIN_PIXELS    : 1          # 클래스 c를 "담았다"고 볼 최소 픽셀 수
+      LOSS_BLEND_W  : 1.0        # P(c) ∝ base(c)·(1 + w·ĝ_c), ĝ = per-class 손실 EMA(평균 1 정규화)
+      EMA_M         : 0.99       # ĝ의 EMA 계수
+      EMA_INTERVAL  : 1          # 몇 스텝마다 ĝ 갱신 (GPU→CPU 동기화 비용 조절)
+      REFRESH       : 32         # 샘플러가 blend 분포를 다시 계산하는 draw 간격
+      SEED          : 1          # [lam02 seed2] C1 off라 inert, 명목상 변경
+      CACHE_DIR     : ''         # '' -> <repo>/.cache/p46
+
+    # ── C-2 Masked-Context Consistency (MIC, source-only DG 변형) ──────────
+    # student = 패치 마스킹 입력, teacher = EMA 복사본 + **원본** 입력.
+    # 마스킹 영역에서만 teacher pseudo-label에 CE. target 도메인 불요.
+    C2_MCC:
+      ENABLE        : false      # [C1+C3 변형] 2-forward 주범 제거 — 24GB 대응
+      MASK_RATIO    : 0.5        # 가려지는 패치 비율
+      PATCH         : 64         # 패치 변 길이(px). 768/64 = 12x12 그리드
+      MODALS        : all        # all = 전 모달 동일 위치 마스킹 (img만 지우면
+                                 # lidar/depth가 메워 context 압력이 사라진다)
+      LAMBDA        : 1.0        # λ2
+      CONF_THRESH   : 0.75       # teacher softmax max가 이 값 미만인 픽셀은 제외
+      LOSS          : ce         # ce | kl
+      EMA_ALPHA     : 0.999      # teacher EMA 상한 (a_t = min(1−1/(t+1), α))
+      WARMUP_EP     : 5          # teacher가 설 때까지 보조 branch 자체를 돌리지 않음
+
+    # ── C-3 Domain-Invariant Class-Prototype Consistency ───────────────────
+    # per-class EMA prototype bank(K×D) + prototype-contrastive CE.
+    # CROSS_VIEW=true면 C-2 보조 branch의 입력에 ColorAugSSD 등가 스타일 변주를
+    # 추가로 걸고, 그 branch feature를 **같은 bank**로 당긴다 = 도메인불변 2-view.
+    C3_PROTO:
+      ENABLE        : true
+      FEATURE       : mfeat      # mfeat(stride-4 head feature, 256) | fused(1/16, 1024)
+      LAMBDA        : 0.2        # λ3
+      TEMPERATURE   : 0.1        # cosine logit 온도 τ
+      EMA           : 0.999      # prototype EMA 계수
+      PIXELS        : 4096       # 손실당 서브샘플 픽셀 수
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false      # [C1+C3 변형] 보조 branch 제거 — prototype은 주 forward aux로만
+      CROSS_VIEW_W  : 1.0        # 2-view 항의 추가 배율 (LAMBDA에 곱해짐)
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/SSDb/jemo_maeng/dset/DELIVER'   # jarvis DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1                 # jarvis 4090 24GB: all-on(C1+C2+C3) BS2는 backward에서 OOM 실증(스모크) -> BS1
+                                    # 🔴 ISSUE-028: BS1도 **부족했다**. 2026-07-29 런은 ep6 iter0에서
+                                    # 4-rank 전부 OOM(23.47GiB). 이전의 "BS1 OOM-safe" 기록은 오기록이다 —
+                                    # C2/C3 WARMUP_EP=5 + epoch 0-index라 ep1~5(=epoch 0~4)는 P39.1-base만
+                                    # 돌았고(15.2GB), 보조 branch+EMA teacher+proto가 처음 켜지는 지점이
+                                    # 정확히 ep6(=epoch 5) iter0이다. 즉 P46의 실제 비용은 그 런에서
+                                    # 한 번도 측정되지 않았다. peak에 student 그래프가 2개 동시에 살고
+                                    # (DDP unused-param 계약상 backward 분리 불가), GRADIENT_CHECKPOINT는
+                                    # ISSUE-027로 봉인돼 있다 → 24GB로는 여전히 빠듯하다.
+                                    # 기동 전 `P46_MEM_LOG=1`로 ep5->ep6 계단을 먼저 실측할 것.
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 1                 # BS1 일관(TRAIN과 동일 이유)
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false
