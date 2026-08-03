@@ -50,6 +50,7 @@ from semseg.losses import get_loss
 from semseg.metrics import Metrics
 from semseg.models.reliadino import build_reliadino
 from semseg.models.reliadino import p46 as P46
+from semseg.models.reliadino import p47 as P47
 from semseg.models.reliadino.mmpareto import MMPareto
 from semseg.optimizers import get_optimizer
 from semseg.schedulers import get_scheduler
@@ -390,6 +391,40 @@ def main(cfg, gpu, save_dir, logger):
     # 로그상 ep6(=epoch 5) iter0이 보조 branch가 **최초로** 도는 지점이다.
     p46_mem_log = int(os.environ.get('P46_MEM_LOG', '0'))
 
+    # ── [P47-2] Uni-modal Balance (구 D-2) ──────────────────────────────────
+    # 손실(per-modal uni-modal CE)은 model이 만들어 aux['p47_2_uni']로 내려보낸다
+    # (pre-scaled). 여기서는 **로깅**과, 선택 토글인 **OGM-GE gradient 변조**만
+    # 결선한다 — 후자는 optimizer step 결선이라 모델 안에 있을 수 없다.
+    _p47_2 = (model_cfg.get('P47_2', {}) or {})
+    _ogm_cfg = (_p47_2.get('OGM_GE', {}) or {})
+    p47_2_on = bool(_p47_2.get('ENABLE', False))
+    p47_2_ogm = None
+    if p47_2_on and is_rank0:
+        _act = [modals[i] for i in _core.p47_2.active]
+        logger.info(f"[P47-2] uni-modal balance on — lambda_u={_core.p47_2.lambda_u} "
+                    f"modals={_act} head={_p47_2.get('HEAD', 'linear')} "
+                    f"reduce={_core.p47_2.reduce} gt_div={_core.p47_2.gt_div} "
+                    f"warmup_ep={_core.p47_2.warmup_ep} "
+                    f"params={sum(p.numel() for p in _core.p47_2.parameters())/1e3:.1f}K")
+    if _ogm_cfg.get('ENABLE', False):
+        if not p47_2_on:
+            raise RuntimeError("[P47-2] OGM_GE는 P47_2.ENABLE 없이는 쓸 수 없다 "
+                               "(per-modal 점수의 출처가 uni-modal aux head다)")
+        if ((model_cfg.get('P44', {}) or {}).get('MMPARETO', {}) or {}).get('ENABLE', False):
+            # 둘 다 optimizer step 직전에 p.grad를 재작성한다 → 결합 의미가 미정의.
+            raise RuntimeError("[P47-2] OGM_GE와 P44.MMPARETO는 동시에 켤 수 없다 "
+                               "(둘 다 gradient를 재작성한다).")
+        p47_2_ogm = P47.OGMGE(_core, num_modalities=len(modals),
+                              alpha=float(_ogm_cfg.get('ALPHA', 0.5)),
+                              ema=float(_ogm_cfg.get('EMA', 0.9)),
+                              min_k=float(_ogm_cfg.get('MIN_K', 0.1)),
+                              ge_noise=float(_ogm_cfg.get('GE_NOISE', 0.0)))
+        if is_rank0:
+            logger.info(f"[P47-2] OGM-GE on — alpha={p47_2_ogm.alpha} "
+                        f"ema={p47_2_ogm.ema} min_k={p47_2_ogm.min_k} "
+                        f"ge_noise={p47_2_ogm.ge_noise} "
+                        f"modulated LoRA tensors={len(p47_2_ogm.params)}")
+
     # ── [P44-B1] MMPareto gradient 통합 ─────────────────────────────────────
     # OFF(기본)면 mmpareto is None → 아래 학습 루프의 optimizer 경로는 기존과
     # 완전히 동일하다(단일 backward + scaler.step). ON이면 micro-step마다 주
@@ -430,6 +465,11 @@ def main(cfg, gpu, save_dir, logger):
         # [P46-CTR] C-2 consistency / C-3 prototype 손실 + pseudo-label 통과율
         mcc_accum = proto_accum = xview_accum = 0.0
         mcc_rate_sum = 0.0; mcc_rate_n = 0
+        # [P47-2] uni-modal balance: 손실 + 모달별 CE/정확도 + OGM 계수
+        uni_accum = 0.0
+        uni_ce_sum = np.zeros(len(modals)); uni_acc_sum = np.zeros(len(modals))
+        uni_n = np.zeros(len(modals))
+        ogm_k = None
         pareto_stats = []
         window_pareto = False
         rca_picked = rca_seen = 0
@@ -477,11 +517,13 @@ def main(cfg, gpu, save_dir, logger):
                     p44_hard = aux.get('p44_hard_aux', _zero)   # [P44-M3] pre-scaled (model)
                     p45_sty = aux.get('p45_fogstyle', _zero)    # [P45-F1] pre-scaled (model)
                     p46_proto = aux.get('p46_proto', _zero)     # [P46-C3] pre-scaled (LAMBDA in model)
+                    p47_uni = aux.get('p47_2_uni', _zero)       # [P47-2] pre-scaled (LAMBDA_U in model)
                     total = (loss_seg + lambda_cal * cal_loss
                              + lambda_aux_ce * aux_ce + gate_ent + router_reg
                              + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
                              + vicreg + rca_ce + fcr + p43_mask
-                             + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto)
+                             + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto
+                             + p47_uni)
 
                     # ── [P46-C2/C3] 보조 branch (스타일 2-view → 패치 마스킹) ──
                     # ⚠️ DDP: 같은 iteration의 2번째 forward. 두 forward의
@@ -568,7 +610,16 @@ def main(cfg, gpu, save_dir, logger):
                     del _gm, _ga
                 else:
                     scaler.scale(loss).backward()
+            if p47_2_ogm is not None:
+                # [P47-2] micro-step마다 per-modal uni-modal 정확도를 적재
+                # (BS1에서 스텝별 값이 요동치므로 step 경계에서 평균 + EMA한다).
+                p47_2_ogm.observe(_core.p47_2.last_acc)
             if (it + 1) % accumulation_steps == 0:
+                if p47_2_ogm is not None:
+                    # 🔴 순서: backward가 끝나(=DDP all-reduce 완료) p.grad가 확정된
+                    # **뒤**, optimizer.step() **전**. AMP GradScaler의 스케일은
+                    # 상수배와 교환 가능하므로 unscale_ 없이 안전하다.
+                    ogm_k = p47_2_ogm.apply_()
                 if window_pareto:
                     _st = mmpareto.combine()      # allreduce → Pareto 결합 → p.grad
                     pareto_stats.append(_st)
@@ -622,6 +673,13 @@ def main(cfg, gpu, save_dir, logger):
             mcc_accum += float(p46_cons)    # [P46-C2] pre-scaled
             proto_accum += float(p46_proto)  # [P46-C3] pre-scaled (주 view)
             xview_accum += float(p46_xv)    # [P46-C3] pre-scaled (2-view)
+            uni_accum += float(p47_uni)     # [P47-2] pre-scaled (LAMBDA_U in model)
+            if p47_2_on:
+                for _mi, (_c, _a) in enumerate(zip(_core.p47_2.last_ce,
+                                                   _core.p47_2.last_acc)):
+                    if _c is None:
+                        continue
+                    uni_ce_sum[_mi] += _c; uni_acc_sum[_mi] += _a; uni_n[_mi] += 1
             if p46_class_ema is not None and (it % p46_ema_interval == 0):
                 # [P46-C1] 런타임 per-class 난이도 = 내부신호. 샘플러가 다음
                 # refresh 때 이 EMA를 읽어 고-loss 클래스를 추가 up-weight 한다.
@@ -665,7 +723,7 @@ def main(cfg, gpu, save_dir, logger):
             # aux dict는 backward가 이미 saved tensor를 푼 그래프 노드들).
             # 여기서 명시적으로 끊는다 — 아래 통계는 전부 위에서 float로 뽑아 뒀다.
             del logits, m_feat, aux, total, loss
-            del p46_proto, p46_cons, p46_xv
+            del p46_proto, p46_cons, p46_xv, p47_uni
 
         train_loss /= (it + 1)
         avg_lr = scheduler.get_lr()
@@ -826,6 +884,36 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P46-C3] proto:{proto_accum / (it + 1):.4f} "
                             f"xview:{xview_accum / (it + 1):.4f} "
                             f"bank_cov:{float(_core.p46_proto._last_cov):.2f}")
+            if p47_2_on:
+                # [P47-2] 게이트 진단: per-modal acc가 **모달별로 갈라지는지**.
+                # 전부 붙어 있으면 uni-modal 압력이 안 걸린 것(λ_u 상향 검토),
+                # img만 홀로 치솟으면 여전히 RGB 지배(=modality laziness 잔존).
+                _uni = uni_accum / (it + 1)
+                writer.add_scalar('train/p47_2_uni', _uni, epoch)
+                log_extra['train/p47_2_uni'] = _uni
+                _n = np.maximum(uni_n, 1.0)
+                _ce = uni_ce_sum / _n
+                _acc = uni_acc_sum / _n
+                for i, name in enumerate(modals):
+                    if uni_n[i] == 0:
+                        continue
+                    writer.add_scalar(f'p47/uni_ce_{name}', _ce[i], epoch)
+                    writer.add_scalar(f'p47/uni_acc_{name}', _acc[i], epoch)
+                    log_extra[f'p47/uni_ce_{name}'] = float(_ce[i])
+                    log_extra[f'p47/uni_acc_{name}'] = float(_acc[i])
+                _seen = [i for i in range(len(modals)) if uni_n[i] > 0]
+                logger.info(
+                    f"[P47-2] uni_aux:{_uni:.4f} per-modal ce:" +
+                    " ".join(f"{modals[i]}:{_ce[i]:.3f}" for i in _seen) +
+                    " acc:" +
+                    " ".join(f"{modals[i]}:{_acc[i]:.3f}" for i in _seen) +
+                    (" | ogm k:" + " ".join(f"{modals[i]}:{ogm_k[i]:.3f}"
+                                            for i in range(len(modals)))
+                     if ogm_k is not None else ""))
+                if ogm_k is not None:
+                    for i, name in enumerate(modals):
+                        writer.add_scalar(f'p47/ogm_k_{name}', ogm_k[i], epoch)
+                        log_extra[f'p47/ogm_k_{name}'] = float(ogm_k[i])
             if pareto_stats:
                 # [P44-B1] 게이트② 진단: modal-aux gradient와 주 gradient의 내적
                 # 부호. lidar 그룹의 cos가 음수→양수로 전환하는지가 사전등록 지표.

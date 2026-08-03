@@ -6,7 +6,44 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-07-29
+> 최종 업데이트: 2026-08-04
+
+## P47-2 — UniBal (Uni-modal Balance): 모달별 독립 aux head + uni-modal CE (2026-08-04)
+
+**상태**: **구현 완료 (학습 대기)**. 제안 = [decisions/2026-08-03-p47-mub-muses-proposal.md](../decisions/2026-08-03-p47-mub-muses-proposal.md) §3 **D-2**(문서 표기; 네이밍 규칙 변경으로 코드·config는 `P47_2`/`p47_2`). Base = **P39.1-rank 4모달 seed2 동결**(val 82.35 완주분 — gated_mlp trunk + VICReg + P36 router + M2F, 하이퍼 무변경). 파일: `semseg/models/reliadino/p47.py`(신규), `model.py`·`train_reliadino.py`(배선), `tools/smoke_p47.py`(신규 CPU 스모크). config: `configs/hpca100-muses_rgbelr_P47_2_unibal_4modal.yaml`(MUSES **4모달** img/lidar/event/radar, EPOCHS 300).
+
+**동기(리더보드 + 우리 실측)**: MUSES는 **모달을 더할수록 순위가 내려간다** — Codabench camera-only 82.39 > cam+lidar 81.07 > 4모달 79.49, 우리도 4모달 82.35 < 3모달 82.62(drop-radar +0.13). 문헌 기제 = **modality laziness / greedy joint learning**(융합 손실만으로 학습하면 지배 모달의 uni-modal feature가 under-optimize; 2305.01233 UMT · 1905.12681 Gradient-Blending · 2202.05306 · 2203.12221 이론증명). 자체 확증 = P46-C3(MUSES)의 손해가 **clear/day(RGB 주도 조건)에 집중**(val Δclear −1.72 / Δday −1.29, fog +0.16 / rain +0.21; 공식 test도 day −1.15, fog −0.07) → RGB 본류 표현력이 병목이라는 직접 증거. SOTA 격차의 실체도 clear −5.85 / day −4.37(night는 −2.69로 최소, fog는 +4.86 전체 1위).
+
+**기제 (학습 전용·내부신호만·주손실 직결 = 키1, zero-init 잔차 아님)**: 각 모달의 encoder(frozen ViT + per-modal LoRA) 출력 `feats[i]`(stride-16)에 **모달마다 독립인** 경량 head(GroupNorm → 1×1 conv → K)를 달고 **동일 GT로 CE**. `aux['p47_2_uni']`로 λ_u pre-scale 후 반환 → trainer가 주 손실에 그대로 합산.
+
+**🔴 기존 `FUSION.AUX_CE_WEIGHT`(aux_ce)와 무엇이 다른가** — base P39.1에 이미 per-modal aux CE가 **있다**(`fusion.aux_decoders[i](feats[i])`의 CE를 모달 평균해 0.5 가중). 그럼에도 P47-2가 no-op이 아닌 이유 3가지:
+
+| | 기존 `aux_ce` | **P47-2** |
+|---|---|---|
+| head의 목적 | 다목적 — 그 logit이 `rel_cal`/corroboration/consistency bias·router anchor·`rbma_cal_loss`·P44 mutual-KL의 **신호원**이다. "정확해져라"와 "잘 보정된 신뢰도 추정기가 돼라"의 타협점으로 최적화됨 | **uni-modal 정확도만** 목표. 어떤 신뢰도/게이트 경로에도 연결되지 않음 |
+| 모달별 가중 | 모달 평균 고정 → 4모달이면 모달당 실효 0.5/4=0.125, "RGB에만 더 걸어라" 표현 불가 | `MODALS`(all/`['img']`/인덱스) × `LAMBDA_U` — §1 진단이 지목하는 **RGB 본류**에 직접 레버 |
+| OGM-GE | per-modal 성능 추정치를 노출하지 않아 결선 불가 | `last_acc[m]`을 내보내 gradient 변조 가능 |
+
+**선택 토글 `OGM_GE` (기본 off, 2203.15332)**: per-modal uni-modal 정확도 s_m으로 ρ_m = s_m / mean_{j≠m} s_j, k_m = clamp(1 − tanh(α·relu(ρ_m−1)), MIN_K, 1)을 만들어 **앞서 가는 모달의 자기 LoRA 슬라이스 gradient만** 감쇠(ρ≤1이면 k=1 = 무개입). 이 리포는 모달별 LoRA를 하나의 텐서 0번 축에 쌓으므로(`MultiModalLoRAQKV.a_q/b_q/a_v/b_v` = (M,…)) `p.grad[m] *= k_m`이 정확히 "모달 m의 인코더 gradient"다. 공유·후단 파라미터(fusion/FPN/head/trunk_exp)는 건드리지 않는다. `GE_NOISE>0`이면 원논문의 gradient Gaussian noise도 적용(기본 0).
+
+**🔴 DDP 계약**:
+1. **추가 forward 없음** — 같은 forward의 `feats[i]`를 재사용하므로 P46-C2/C3에서 문제였던 iteration당 2-forward(broadcast_buffers in-place 사망 / unused-param 집합 불일치, ISSUE-028)가 **구조적으로 발생하지 않는다**. `broadcast_buffers` 변경 불필요.
+2. **warmup 구간의 head는 unused parameter**가 된다 → trainer가 항상 켜는 `find_unused_parameters=True`가 처리(스모크 G가 `WARMUP_EP=5`로 실제 재현·통과).
+3. **OGM-GE는 collective 1회 추가**. gradient는 backward 시점에 이미 all-reduce되므로, rank마다 자기 배치로 잰 s_m으로 다른 k를 곱하면 **rank 간 파라미터가 갈라진다**. 그래서 k 계산 전에 s를 all_reduce(mean)한다 — optimizer step마다 **전 rank가 대칭으로** 1회(크기 M). 2026-07-16 NCCL 데드락은 rank0 단독 collective가 원인이라 해당 없음. AMP는 상수배와 교환 가능해 `unscale_` 불요. P44 MMPareto와는 동시 사용 금지(둘 다 step 직전 `p.grad` 재작성) — trainer가 `RuntimeError`.
+
+**추론 불변**: head는 `self.training and gt_mask is not None`에서만 호출되고 logit에 아무것도 더하지 않는다 → `model.eval()` 출력은 P39.1과 **완전 동일**. 스모크 C가 all-on/img-only 두 경우 모두 `|Δ|max = 0`으로 검증(+ 신규 state_dict 키가 `p47_2.*`뿐임도 확인). **DELIVER 무영향**: DELIVER config에 `MODEL.P47_2` 키가 없어 `ENABLE=False` → `self.p47_2 is None` → 학습 forward의 다른 손실 항까지 전부 불변(스모크 E). 모듈 생성은 `__init__` **최말단**이라 off일 때 init RNG 스트림도 안 건드린다(seed 재현 보존).
+
+**메모리(실측, autograd saved-tensor 계측; dim 1024·1024²·4모달·BS1·bf16)**: HEAD=linear/GT_DIV=4 → **+51.7 MiB/스텝** + params 336 KiB(+AdamW state 1.0 MiB). GT_DIV=16이면 +33.4 MiB, HEAD=conv1x1이면 +69.6 MiB. A100 40GB BS1 기준 0.13% — BS 조정 불필요. ⚠️ head 앞 정규화에 `encoder.LayerNorm2d`(파이썬으로 편 elementwise 체인)를 쓰면 모달당 full-size 중간텐서 3장이 그래프에 남아 증분이 2배가 된다 → `nn.GroupNorm`(융합 op, 리포의 AuxDecoder/FPNSegHead 관례) 사용.
+
+**검증**: `tools/smoke_p47.py` (CPU, tiny ViT, 4모달) 전항목 PASS — ① off / on(all) / on(img only) 3케이스 1-step fwd+bwd ② **키1**: uni-aux 손실 **단독 backward** 시 per-modal LoRA `b_q/b_v` **모달 슬라이스별** grad — all이면 4모달 전부 >0, img-only면 img만 >0이고 나머지 **정확히 0**(모달별 독립의 실증) ③ eval 등가성 |Δ|=0 + 신규 키 전부 `p47_2.*` ④ head 파라미터 공유 없음 ⑤ 부수효과 없음(다른 aux 손실 값 불변 + `encoder.forward` 호출 4회로 동일 = 추가 forward 없음) ⑥ OGM-GE가 앞선 모달만 k<1로 감쇠하고 실제 grad 비율이 k와 일치 ⑦ `--ddp`(gloo 2-proc) warmup 미달 스텝 포함 rank 간 gradient·OGM k 완전 일치. **실데이터 학습 미기동**. ⚠️ LoRA `a_q`는 `b`가 zero-init이라 step 0 grad가 정의상 0 → 판정은 `b_q/b_v`로(smoke_p46과 동일 규약).
+
+**판정 게이트(사전등록, 제안서 §4 — 4모달 기준)**: Primary **MUSES 4모달 val ≥ 82.62**(= 4모달이 3모달 기록을 넘는 것). Stretch val ≥ 83.0. Secondary Codabench test ≥ 79.788. 🔴 falsifiable = **modality balance 적용 시 4모달 > 3모달로 역전** — 실패 시 "radar는 실제로 정보가 없다"로 확정하고 3모달 회귀. 부가 = drop-radar dMIoU +0.13 → ≥+0.5. ep30 조기 kill = 4모달 base 동일 ep 대비 −1.0 이하. ep30 즉검(무음 no-op 검출) = 로그 `[P47-2] per-modal acc`가 **모달별로 갈라지는가**(전부 붙어 있으면 압력 미형성 → λ_u 상향), `img`만 홀로 치솟으면 RGB 지배 잔존.
+
+**⚠️ D-1과 분리**: 이 config는 `DATASET.PROJ_DIR`을 **넣지 않는다**(= SDK 기본 `projected_to_rgb`). D-1(LiDAR 투영 밀도화 `projected_to_rgb_dgf`)은 별도 단독 실험이고, 합본(D-1+D-2)은 두 단독 결과가 나온 뒤 별도 config로 만든다.
+
+**노벨티(정직)**: uni-modal aux loss(UMT/Gradient-Blending)·OGM-GE 모두 **선행 존재 → 기법 단위 노벨티 아님**. 차별 축은 조합 ① frozen-VFM + per-modal LoRA 위에서의 modality balance(선행은 end-to-end fine-tune 전제) ② 내부신호만(조건 라벨·CLIP text·GT-depth 배제) ③ 진단주도(리더보드 모달수↔순위 역상관 + 우리 clear/day 손실 집중을 직접 표적). "first X" 주장 불가.
+
+---
 
 ## P46 — CTR (Class-Transfer Recovery): RCS + Masked-Context Consistency + Class-Prototype (2026-07-29)
 

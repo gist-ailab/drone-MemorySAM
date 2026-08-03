@@ -25,6 +25,7 @@ import torch.nn.functional as F
 
 from . import p44 as P44
 from . import p46 as P46
+from . import p47 as P47
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion
@@ -191,6 +192,14 @@ class ReliaDINO(nn.Module):
                  p46_proto_temp: float = 0.1,
                  p46_proto_pixels: int = 4096,
                  p46_proto_warmup_ep: int = 5,
+                 p47_2_unibal: bool = False,
+                 p47_2_lambda_u: float = 0.4,
+                 p47_2_modals='all',
+                 p47_2_head: str = 'linear',
+                 p47_2_hidden: int = 256,
+                 p47_2_warmup_ep: int = 0,
+                 p47_2_gt_div: int = 4,
+                 p47_2_reduce: str = 'mean',
                  p45_fogstyle: bool = False,
                  p45_prob: float = 0.5,
                  p45_sigma: float = 0.5,
@@ -543,6 +552,24 @@ class ReliaDINO(nn.Module):
         self._last_fused_postfusion = None   # T3: fusion 직후 fused (fused-level 모듈 이전)
         self._last_fused_prehead = None      # T5: _decode 직전 fused (CEFR·trunk_exp 등 fused-level
                                              #     모듈 이후. router/classtoken/m2f는 이 뒤 logit-level이라 미포함)
+
+        # ── [P47-2] Uni-modal Balance (구 D-2) ───────────────────────────────
+        # 모달별 **독립** 경량 head + uni-modal CE (학습 전용, 추론 경로 불변).
+        # 진단 = modality laziness: 융합 손실만으로 학습하면 지배 모달(RGB)의
+        # uni-modal feature가 under-optimize 된다 (2305.01233 / 1905.12681 /
+        # 2203.12221). 손실은 주 손실에 직접 합산된다(키1 — zero-init 잔차 아님).
+        # 🔴 **가장 마지막에 생성**한다: off일 때 이 블록이 init RNG 스트림을
+        #    전혀 건드리지 않아야 P39.1 baseline과 seed 재현이 일치한다(2026-07-21
+        #    ClassTokenLiteHead 중복 생성으로 스트림이 어긋났던 사고의 교훈).
+        self.p47_2 = None
+        if p47_2_unibal:
+            self.p47_2 = P47.UniModalBalance(
+                dim=dim, num_classes=num_classes,
+                num_modalities=self.num_modalities,
+                active=P47.resolve_modals(p47_2_modals, self.modalities),
+                head=p47_2_head, hidden=p47_2_hidden, lambda_u=p47_2_lambda_u,
+                warmup_ep=p47_2_warmup_ep, gt_div=p47_2_gt_div,
+                reduce=p47_2_reduce)
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -1037,6 +1064,15 @@ class ReliaDINO(nn.Module):
             _pf = m_feat if self.p46_proto_src == 'mfeat' else fused
             aux['p46_proto'] = self.p46_proto_lambda * self.p46_proto(
                 _pf, gt_mask, update=(not self._p46_replay_path))
+        if self.p47_2 is not None and self.training and gt_mask is not None:
+            # [P47-2] uni-modal balance. **추가 forward 없음** — 이 forward가 이미
+            # 만든 per-modal feats를 그대로 쓴다(ISSUE-028의 2-forward 문제 무관).
+            # img 마스킹(P42/P44)이 걸린 픽셀은 fusion aux_ce와 같은 규약으로
+            # ignore 처리한다(발견C: 0-입력에서 GT를 맞히는 장면 prior 환각 방지).
+            _u = self.p47_2(feats, gt_mask, epoch=self._current_epoch,
+                            img_mask=_img_mask, img_idx=self._img_idx)
+            if _u is not None:
+                aux['p47_2_uni'] = _u                  # pre-scaled (LAMBDA_U in module)
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
@@ -1206,6 +1242,9 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     p46_c3 = p46.get('C3_PROTO', {}) or {}             #   C-3 prototype consistency
     #   C-1(RCS 샘플러)·C-2(EMA teacher masked consistency)는 모델이 아니라
     #   학습 루프의 결선이다 → train_reliadino.py가 MODEL.P46.C1_RCS/C2_MCC를 읽는다.
+    p47_2 = mc.get('P47_2', {}) or {}                  # [P47-2] Uni-modal Balance (구 D-2)
+    #   OGM_GE(gradient 변조)는 optimizer step 결선이라 train_reliadino.py가
+    #   MODEL.P47_2.OGM_GE를 직접 읽는다 (여기서는 head/손실만 만든다).
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -1348,6 +1387,14 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p46_proto_temp=p46_c3.get('TEMPERATURE', 0.1),
         p46_proto_pixels=p46_c3.get('PIXELS', 4096),
         p46_proto_warmup_ep=p46_c3.get('WARMUP_EP', 5),
+        p47_2_unibal=p47_2.get('ENABLE', False),
+        p47_2_lambda_u=p47_2.get('LAMBDA_U', 0.4),
+        p47_2_modals=p47_2.get('MODALS', 'all'),
+        p47_2_head=p47_2.get('HEAD', 'linear'),
+        p47_2_hidden=p47_2.get('HIDDEN', 256),
+        p47_2_warmup_ep=p47_2.get('WARMUP_EP', 0),
+        p47_2_gt_div=p47_2.get('GT_DIV', 4),
+        p47_2_reduce=p47_2.get('REDUCE', 'mean'),
         p45_fogstyle=p45_fs.get('ENABLE', False),
         p45_prob=p45_fs.get('PROB', 0.5),
         p45_sigma=p45_fs.get('SIGMA', 0.5),

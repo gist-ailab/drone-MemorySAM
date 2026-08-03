@@ -10,7 +10,7 @@ moved: 2026-07-08
 
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-07-08
+> 최종 업데이트: 2026-08-04
 
 **⚠️ 리포 재구조화 (2026-07-08, develop 병합)**: `.claude_logs` 폴더 택소노미·`lora_sam/` 패키지(MODEL_REGISTRY)·configs 재편. 구번호 매핑 = [00_INDEX.md](../00_INDEX.md), 규칙 = [meta/conventions.md](../meta/conventions.md). **원격 서버는 진행 중 학습 종료 전까지 pull 금지.**
 
@@ -72,6 +72,8 @@ moved: 2026-07-08
 **📝 2026-07-30 P46-CTR DELIVER — RailTrack 게이트 통과(C1+C3 ep40, class-transfer 가설 확증)**: c1c3(C1_RCS+C3_PROTO, C2_MCC off) ep40 체크포인트(val 67.36)의 test@768 per-class eval에서 **RailTrack test 4.02(base)→59.10(+55.1)** — 사전등록 primary falsifiable 게이트(≥40) 압도적 통과, DGFusion(64.47)에 근접. Wall/Water/Bridge는 게이트 제외(DGFusion도 test IoU 0~4로 동반붕괴 확인됨, §9) 그대로 저조(10.84/10.96/0.02). Overall test는 52.47→54.92(+2.45)로 개선되었으나 secondary gate(56.62)·DGFusion(56.71) 미달 — **RailTrack 회복이 overall 돌파로 직결되진 않음**(다른 붕괴 클래스가 천장). val에서는 RailTrack 18.53으로 test보다 낮은 역전 현상 관찰(해석 보류). ep40은 중간 체크포인트(학습은 계속 진행 중, ep200 완주 후 재판정 예정) — C1 RCS의 단독 기여를 분리하는 C3-only ablation(jarvis GPU4-7)도 병행 중이며 ep40 도달 시 동일 gate eval 예정. 상세 [experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md](../experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md).
 
 **🏆 2026-08-03 P46 C3-only λ0.2 DELIVER 완주 — test SOTA 돌파 확정**: jarvis GPU4-7, 200/200 완주(Total 07:58:28) — **test 57.05@ep108**(DGFusion SOTA 56.71 대비 **+0.34**, 내부최고 P34 56.62 대비 **+0.43**), val 67.47@ep118. **@768 동일 프로토콜**이라 해상도 mismatch 없는 깨끗한 비교. λ 스윕(0.05/0.1/0.15/0.2) 중 λ0.2가 test 최적, val은 λ0.05가 최고(68.57) — **val·test가 서로 다른 λ를 선호**. 미해결: RailTrack val<test 역전, DGFusion final-iter 프로토콜 차이. 상세 [experiments/analysis/2026-08-03-p46-c3only-lambda-sweep-deliver-sota.md](../experiments/analysis/2026-08-03-p46-c3only-lambda-sweep-deliver-sota.md).
+
+**🛠 2026-08-04 P47-2 UniBal(Uni-modal Balance, 구 D-2) 구현 완료 — 학습 대기**: 제안 [decisions/2026-08-03-p47-mub-muses-proposal.md](../decisions/2026-08-03-p47-mub-muses-proposal.md) §3 D-2의 코드화. Base = **P39.1-rank MUSES 4모달 seed2 동결**(val 82.35). 각 모달 encoder(frozen ViT+LoRA) 출력에 **모달별 독립** 경량 head(GroupNorm→1×1)를 달고 동일 GT CE를 주손실에 직접 합산(키1) — 진단은 modality laziness(리더보드 모달↑=순위↓, 우리 4모달 82.35 < 3모달 82.62; P46-C3 손해가 clear/day 집중 = RGB 본류 병목). 신규 `semseg/models/reliadino/p47.py` + `tools/smoke_p47.py` + `configs/hpca100-muses_rgbelr_P47_2_unibal_4modal.yaml`. **추론 불변**(eval |Δ|max=0)·**추가 forward 없음**(feats 재사용)·**DELIVER 무영향**(P47_2 키 부재 시 완전 동일, test 57.05 경로 무변경). 메모리 실측 +51.7 MiB/스텝(BS1·4모달·1024²·bf16). 스모크 `--ddp` 포함 전항목 PASS, **실데이터 미기동**. ⚠️ 구현 중 확인: base에 이미 per-modal aux CE(`FUSION.AUX_CE_WEIGHT`)가 있어 P47-2는 그것과 **head 목적 분리 + 모달별 가중 + OGM-GE 결선**으로 차별화했다 — 이 판단의 1차 확인점이 **ep30 즉검(`[P47-2] per-modal acc`의 모달별 분화)**이다. 선택 토글 OGM-GE(2203.15332)는 구현·검증했으나 기본 off. **D-1(투영 밀도화)은 미포함**(단독 변수). 다음 = fresh-eyes 검수 → develop 병합 → A100급 4장 확보 시 기동. 상세 [models/arch-evolution.md](../models/arch-evolution.md) §P47-2.
 
 **⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
 

@@ -11,6 +11,7 @@ from .model import ReliaDINO, FPNSegHead, build_reliadino
 from .panoptic_head import MaskClsHead
 from .p46 import (ClassLossEMA, EMATeacher, PrototypeBank, RareClassSampler,
                   compute_class_stats, rcs_base_prob)
+from .p47 import OGMGE, UniModalBalance, UniModalHead, resolve_modals
 
 __all__ = [
     'FrozenViTEncoder', 'MultiModalLoRAQKV', 'SimpleFPN', 'LayerNorm2d',
@@ -19,4 +20,6 @@ __all__ = [
     # [P46-CTR] class-transfer recovery (학습 전용 3토글)
     'ClassLossEMA', 'EMATeacher', 'PrototypeBank', 'RareClassSampler',
     'compute_class_stats', 'rcs_base_prob',
+    # [P47-2] Uni-modal Balance (구 D-2, 학습 전용)
+    'UniModalBalance', 'UniModalHead', 'OGMGE', 'resolve_modals',
 ]
