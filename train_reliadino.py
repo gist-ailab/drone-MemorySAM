@@ -123,12 +123,20 @@ def main(cfg, gpu, save_dir, logger):
     traintransform = get_train_augmentation(
         train_cfg['IMAGE_SIZE'], seg_fill=dataset_cfg['IGNORE_LABEL'], dataset_cfg=dataset_cfg)
     valtransform = get_val_augmentation(eval_cfg['IMAGE_SIZE'], dataset_cfg=dataset_cfg)
-    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'])
-    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'])
+    # MUSES-only knob (P47-MUB D-1): swap the 'projected_to_rgb' subdir for a
+    # densified-projection variant (e.g. 'projected_to_rgb_dgf'). Other dataset
+    # classes (DELIVER, MULTIAQUA) don't accept this kwarg, so only pass it
+    # when NAME == 'MUSES' — DELIVER's __init__ has no proj_dir param and
+    # would TypeError on an unexpected kwarg.
+    ds_kwargs = {}
+    if dataset_cfg.get('NAME') == 'MUSES':
+        ds_kwargs['proj_dir'] = dataset_cfg.get('PROJ_DIR', 'projected_to_rgb')
+    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
+    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
     testset = None
     if dataset_cfg.get('NAME') != 'MULTIAQUA':
         try:
-            testset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'test', valtransform, dataset_cfg['MODALS'])
+            testset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'test', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
         except Exception as e:
             print(f"[INFO] Test set not available: {e}")
     class_names = trainset.CLASSES

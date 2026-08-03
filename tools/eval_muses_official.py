@@ -163,7 +163,8 @@ def main():
     print(f"[sanity] letterbox inverse verified @side={side}: {geo}", flush=True)
 
     valtransform = get_val_augmentation(ecfg['IMAGE_SIZE'], dataset_cfg=dcfg)
-    ds = MUSES(dcfg['ROOT'], 'val', valtransform, dcfg['MODALS'], return_meta=True)
+    ds = MUSES(dcfg['ROOT'], 'val', valtransform, dcfg['MODALS'], return_meta=True,
+               proj_dir=dcfg.get('PROJ_DIR', 'projected_to_rgb'))
     n_classes, class_names = ds.n_classes, ds.CLASSES
     loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 

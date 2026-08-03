@@ -239,7 +239,8 @@ def create_dataset(dataset_cfg, split, transform, mode, macvi=False, eval_day=Fa
         if case in ('', 'all'):
             case = None
         dataset = MUSES(dataset_cfg['ROOT'], split=split, transform=transform,
-                        modals=modals, case=case, return_meta=True)
+                        modals=modals, case=case, return_meta=True,
+                        proj_dir=dataset_cfg.get('PROJ_DIR', 'projected_to_rgb'))
         has_gt = split != 'test'
         return dataset, has_gt
     elif name == 'DELIVER':

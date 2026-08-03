@@ -27,6 +27,9 @@ class MUSES(Dataset):
       {root}/projected_to_rgb/event_camera/{split}/{weather}/{tod}/{stem}_event_camera.png   uint8 PNG
       {root}/projected_to_rgb/radar/{split}/{weather}/{tod}/{stem}_radar.png     uint16 PNG
     weather in {clear, fog, rain, snow}, tod in {day, night}.
+    The `projected_to_rgb` subdir name is itself swappable via the `proj_dir`
+    kwarg (e.g. 'projected_to_rgb_dgf' for a densified-projection variant,
+    P47-MUB D-1) — layout under that subdir is unchanged.
     Splits: train 1500 / val 250 / test 750 (test GT is WITHHELD by the benchmark -> unusable here).
 
     NOTE (uint16 lidar/radar): the MUSES SDK stores the float projection as
@@ -117,7 +120,8 @@ class MUSES(Dataset):
         return out
 
     def __init__(self, root: str = 'data/MUSES', split: str = 'train', transform=None,
-                 modals=['img', 'lidar', 'event'], case=None, return_meta: bool = False) -> None:
+                 modals=['img', 'lidar', 'event'], case=None, return_meta: bool = False,
+                 proj_dir: str = 'projected_to_rgb') -> None:
         super().__init__()
         assert split in ['train', 'val', 'test']
         if split == 'test':
@@ -134,6 +138,7 @@ class MUSES(Dataset):
         self.ignore_label = 255
         self.modals = modals
         self.return_meta = return_meta
+        self.proj_dir = proj_dir
 
         unknown = [m for m in modals if m != 'img' and m not in self._PROJ]
         if unknown:
@@ -172,7 +177,7 @@ class MUSES(Dataset):
         if kind == 'mask':
             return os.path.join(self.root, 'gt_semantic', cond_dir, stem + '_gt_labelTrainIds.png')
         sub, suffix = self._PROJ[kind]
-        return os.path.join(self.root, 'projected_to_rgb', sub, cond_dir, stem + suffix + '.png')
+        return os.path.join(self.root, self.proj_dir, sub, cond_dir, stem + suffix + '.png')
 
     # ---- readers: every modality is returned as float/uint8 on a 0-255 scale, so
     #      that augmentations_mm.Normalize's `/= 255` lands it in [0, 1] (the same
