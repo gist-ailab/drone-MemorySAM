@@ -26,6 +26,24 @@
 
 **기제 판정**: **modality laziness / greedy joint learning** — 융합 학습이 RGB uni-modal feature를 under-optimize시킨다. 이론 증명(2203.12221), 실증(1905.12681·2202.05306·2305.01233), 리더보드 역상관, 우리 radar/event 무기여가 모두 한 방향.
 
+### 1.5 🔴 자체 실측 확증 — C3 실패의 조건별 분해 (2026-08-03)
+
+MUSES-C3(λ0.2, val 81.65@ep136 완주)와 base(P39.1-seed2)의 **조건별 차이**가 §1 진단을 직접 뒷받침한다. Δ = C3 − seed2:
+
+| 조건 | Δ | | 조건 | Δ |
+|---|---|---|---|---|
+| **clear** | **−1.72** 🔴 | | fog | **+0.16** ✅ |
+| **day** | **−1.29** 🔴 | | rain | **+0.21** ✅ |
+| snow | −1.06 | | rain_night | **+1.03** ✅ |
+| snow_night | −3.98 | | fog_day | **+0.52** ✅ |
+| night | −0.62 | | clear_night | −1.29 |
+
+**판정**: C3의 손해가 **clear/day(RGB 주도 조건)에 집중**되고 악조건(fog/rain)에선 오히려 이득이다. 즉 MUSES에서 C3가 base를 못 넘은 원인은 "prototype 기제가 무효"가 아니라 **RGB 본류 표현력을 깎았기 때문**이며, 이는 §1의 modality laziness 진단(clear/day −4.4~−5.9가 SOTA 격차의 실체)과 **동일 지점을 가리킨다**. → **D-2(uni-modal balance)의 표적이 문헌뿐 아니라 우리 실측으로도 확인됨.**
+
+- 원시: `analysis_logs/P46_c3_muses_eval_20260803/val_eval_summary.md`(14조건 + 19클래스 + seed2 대조).
+- C3 재-eval overall 81.20(학습로그 81.65 대비 −0.45, 프로토콜 차이).
+- 부수: C3 zip `muses_P46_c3only_lam02_3modal_ep136_submission.zip`(검증 통과 750장) 보관, **미제출**(base 미달이라 제출 슬롯 보존).
+
 ## 2. 진단 ↔ 문헌 대응
 
 | 우리 실측 | 문헌 기제 | arXiv | 함의 |
