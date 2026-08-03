@@ -98,7 +98,7 @@ class MUSESTest(MUSES):
     """
 
     def __init__(self, root, transform=None, modals=('img', 'lidar', 'event'),
-                 legacy_radar=False):
+                 legacy_radar=False, proj_dir='projected_to_rgb'):
         Dataset.__init__(self)
         self.legacy_radar = bool(legacy_radar)
         self.root = root
@@ -108,6 +108,11 @@ class MUSESTest(MUSES):
         self.ignore_label = 255
         self.modals = list(modals)
         self.return_meta = True
+        # 2879667 added MUSES.__init__(proj_dir=...) (default 'projected_to_rgb') used
+        # by _sibling(). MUSESTest bypasses MUSES.__init__ (calls Dataset.__init__
+        # directly, see class docstring), so it must set this itself or _sibling()
+        # raises AttributeError for every non-img modal.
+        self.proj_dir = proj_dir
         self.files = sorted(glob.glob(os.path.join(root, 'frame_camera', 'test',
                                                    '*', '*', '*.png')))
         if not self.files:
@@ -213,7 +218,8 @@ def main():
               flush=True)
         print('=' * 72, flush=True)
     ds = MUSESTest(dcfg['ROOT'], valtransform, dcfg['MODALS'],
-                   legacy_radar=(radar_decode == 'legacy'))
+                   legacy_radar=(radar_decode == 'legacy'),
+                   proj_dir=dcfg.get('PROJ_DIR', 'projected_to_rgb'))
     n_classes, class_names = ds.n_classes, ds.CLASSES
     loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
