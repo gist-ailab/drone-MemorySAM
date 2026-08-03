@@ -72,6 +72,28 @@ MUSES-C3(λ0.2, val 81.65@ep136 완주)와 base(P39.1-seed2)의 **조건별 차�
 - 선택 확장(토글): OGM-GE(2203.15332)식 on-the-fly gradient modulation — 모달별 학습속도 불균형 보정.
 - 근거: 리더보드 모달↑=순위↓ 역상관 + 우리 radar/event 무기여 + 이론(2203.12221). **RGB 본류 표현력(clear/day −4.4)을 직접 겨냥.**
 
+### 3.1 🔴 구현 중 발견 — base에 이미 per-modal aux CE가 있다 (2026-08-04, 코드검수)
+
+**발견**: `FUSION.AUX_CE_WEIGHT`(4모달 seed2 config에서 **0.5**)로 이미 모달별 aux decoder + CE가 돌고 있다 (`fusion.py:363` `self.aux_decoders`, `:551` `aux_logits = [self.aux_decoders[i](feats[i]) ...]`, `train_reliadino.py:178`). D-2 원안의 전제("uni-modal 감독이 없다")는 **부분적으로 틀렸다.**
+
+**그럼에도 P47-2가 별도 모듈로 성립하는 이유 — 코드로 확인한 3가지**:
+
+| # | 근거 | 확인 위치 |
+|---|---|---|
+| 1 | 🔴 **기존 aux head는 추론 경로에 있다.** P36 router가 `sum(w_route[i] * aux_logits[i])`를 **예측에 더한다**(주석: "train AND eval — the routed residual is part of the prediction"). 4모달 seed2는 `ROUTER.ENABLE: true`. ⇒ 그 head는 *uni-modal 표현력*이 아니라 *라우팅용 로짓 품질*도 동시에 최적화 중이며, **가중치를 올리면 추론 예측 자체가 바뀐다.** | `fusion.py:600-603` |
+| 2 | 기존 aux logits는 reliability 신호(`rel_cal`/`corr_veto`/`b_cons`)와 calibration loss의 **입력**이기도 하다 ⇒ 목적 3중 결합. | `fusion.py:558, 496, 658` |
+| 3 | 기존은 **모달 평균 고정**(`AUX_CE_WEIGHT/m`) ⇒ 4모달에서 모달당 0.125 균등. **"RGB에만 더 주기"가 표현 불가능**한데, 우리 진단은 정확히 RGB 편중을 요구한다. | `fusion.py` aux 합산부 |
+
+⇒ **P47-2 = 추론 불변(학습 전용) + 목적 단일(uni-modal 정확도만) + 모달별 가중 가능**한 별도 head. "λ만 올린 것"이 아니다.
+
+**대조군 설계 수정**: 당초 "`AUX_CE_WEIGHT` 0.5→1.0만 올린 대조군"을 두려 했으나, #1·#2 때문에 그것은 **깨끗한 대조군이 아니다**(router 잔차·reliability 신호가 함께 변함 = 교란). "순진한 경로가 충분한가"를 보는 값은 남으므로 **우선순위 3(여유 GPU 시)** 으로 격하하고, 해석 시 교란을 명시한다.
+
+**λ 캘리브레이션 주의**: `REDUCE: mean`이라 모달당 실효 가중 = `λ_u/4`. λ_u=0.4 → **0.1/모달**(기존 0.125보다 작다). 즉 `MODALS: all`·λ_u 0.4는 per-modal 압력을 0.125→0.225(**+80%**)로 올리는 **보수적** 설정이다. 진단(RGB 편중)을 **직접** 때리는 설정은 `MODALS: ['img']`이며, 이때 λ_u 전량이 RGB에 실려 0.4 = 기존 대비 **3.2×**.
+
+**실행 arm 우선순위(수정)**: ① `MODALS:['img']` λ_u 0.4 — 진단의 직접 검증(clear/day 게이트와 1:1 대응) ② `MODALS:all` λ_u 0.4 — 문헌 정합(balance) ③ `AUX_CE_WEIGHT` 1.0 대조군(교란 있음, 여유 시).
+
+**검수 결과(2026-08-04, opus)**: conventions 준수(`p47.py` 신규 360줄 + 스모크 365줄, 결선만 model.py/train_reliadino.py) · 추론 게이팅 `self.training and gt_mask is not None`(`model.py:1067`) · **추가 forward 없음**(같은 forward의 feats 재사용 ⇒ ISSUE-028 무관) · off면 `self.p47_2 is None`(DELIVER 무영향) · config 1-변수 확인(base 대비 `SAVE_DIR`+`P47_2` 블록만) · 메모리 +51.7MiB/step. **판정: 병합 가능.** 등가성 `|Δ|max=0`·키1 grad 도달은 labcode 스모크 자체보고 → ep30 즉검의 **per-modal acc 분화**로 재확인한다.
+
 ## 4. 게이트 사전등록 (🔴 4모달 기준 재설정, 2026-08-03)
 
 | 항목 | 기준 |
