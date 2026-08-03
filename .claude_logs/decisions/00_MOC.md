@@ -4,6 +4,7 @@
 
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
+| [2026-08-03-p47-mub-muses-proposal.md](2026-08-03-p47-mub-muses-proposal.md) | **P47-MUB MUSES Uni-modal Balance & 투영 밀도화** — 진단 재정의(병목=clear/day RGB under-optimization, 야간 아님). D-1 lidar projected_to_rgb_dgf 교체(비용0) + D-2 modality-laziness 억제 aux head. 게이트: val≥82.62(seed2 초과) | - |
 | [2026-07-24-p43-p45-cvpr-sota-proposal.md](2026-07-24-p43-p45-cvpr-sota-proposal.md) | **P43 PanopticDual(PQ SOTA 축)·P44 BMR(모달 재균형)·P45 FogStyle** — 딥리서치 6축 교차, MUSES PQ가 유일한 현실적 SOTA 축 판정(Codabench 실측) | - |
 | [2026-07-07-p33-cgmod-design.md](2026-07-07-p33-cgmod-design.md) | **P33 CG-MoD 설계** — competence-gated hard fusion + 비대칭 modality dropout. P32 per-image 진단(misalloc 51.6%, event/LiDAR competence≈16) 1:1 처방 + 관련연구 노벨티 방어(C1~C4). 상태=설계 | — (2026-07-28 회수, 구 `experiments/2026-07-07_P33_design.md`) |
 | [2026-07-05-p32-seg-arch-proposals.md](2026-07-05-p32-seg-arch-proposals.md) | **P32 아키텍처 제안 5종(A~E)** — 조건 적응형 라우팅 재설계. 라우팅 실패 근본원인 R1~R4 분해 + lit-check TODO. 상태=proposal(전부 미구현) | 23 (2026-07-28 회수) |

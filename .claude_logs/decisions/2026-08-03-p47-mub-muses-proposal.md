@@ -1,0 +1,100 @@
+# P47-MUB — MUSES Uni-modal Balance & Projection Density: 제안 (2026-08-03)
+
+> model-proposal 스킬 산출. **fable 딥리서치 3축**(기제·노벨티·물리/벤치) 병렬 조사 + 기존 분석 자산 교차. 판정·설계 = 이 세션(opus).
+
+## 0. 선행조건 충족 (§0.5)
+
+- **분석 존재**: MUSES 표준분석 11종(`experiments/analysis/2026-07-15~2026-07-30`), 실패-키(`2026-07-20-failure-keys-*`), 제출 인덱스(`MUSES_TEST_RESULTS_INDEX.md`), drop-radar ablation(07-30).
+- **수치 유효성**: ISSUE-025(radar 디코딩) 픽스 후 재확정된 drop-radar(+0.13)와 3-seed plateau 사용. ISSUE-026(ColorAugSSD)는 DELIVER 한정으로 MUSES 무영향.
+- **신규 실측**: Codabench 리더보드 API 원본(2026-08-03) — 전 엔트리 per-condition 공개 확인.
+
+## 1. 🔴 진단 재정의 — 병목은 야간이 아니라 clear/day
+
+기존 프레임("주야 격차 5.14가 주 병목")은 **내부 상대비교**였고, SOTA 추월 관점에선 틀렸다. Codabench 원본 대조:
+
+| 조건 | GtA(1위) | 우리 | 격차 |
+|---|---|---|---|
+| **clear** | — | — | **−5.85** 🔴 |
+| **day** | 84.62 | 80.25 | **−4.37** 🔴 |
+| rain | — | — | −3.50 |
+| **night** | 77.81 | 75.12 | **−2.69** (최소) |
+| **fog** | 72.64 | **77.50** | **+4.86 (전체 1위)** ✅ |
+
+- 우리 주야격차 5.14는 **4모달 SOTA 대역 상단**(DGFusion 3.57 / CAFuser 5.12 / camera-only 9.6~11.7) — 이미 좋은 편. 잔여 헤드룸 ~1.6pt(전체 환산 +0.63).
+- **야간 개선은 전체 mIoU에 0.4배만 반영**(day:night=6:4). 격차 전소거해도 상한 +2.06.
+- 🔴 **모달 수 ↑ = 순위 ↓ 역상관 실재**: camera-only 82.39 > C+L 81.07 > 4모달 79.49. 우리 radar 무익(+0.13)과 정합.
+
+**기제 판정**: **modality laziness / greedy joint learning** — 융합 학습이 RGB uni-modal feature를 under-optimize시킨다. 이론 증명(2203.12221), 실증(1905.12681·2202.05306·2305.01233), 리더보드 역상관, 우리 radar/event 무기여가 모두 한 방향.
+
+## 2. 진단 ↔ 문헌 대응
+
+| 우리 실측 | 문헌 기제 | arXiv | 함의 |
+|---|---|---|---|
+| clear/day −4.4~−5.9, 모달↑=순위↓ | **modality laziness**(joint 학습이 uni-modal feature 조기 포화 방치) | **2305.01233**(UMT) · 1905.12681(Grad-Blending) · 2202.05306(greedy) · 2203.12221(경쟁 이론증명) | RGB 본류를 살리는 **학습시** 개입 |
+| lidar 유효 6.7%(SDK 기본 (2,2)) | DGFusion 저자들이 (7,7)+MC로 밀도화 → night·fog·원거리 이득 보고 | 2509.09828 / 2410.10791 | **밀도화 = 비용 0 처방** |
+| night truck 76.43→44.40 | 대면적 저텍스처 암부 소실; **lidar가 대형 연속객체 정보원**(night lidar +8.6 PQ vs event +2.8) | 2401.12761 Table 3/10 · ACDC 2104.13395(night truck 8.3) | truck 복구 경로 = lidar 기하 |
+| drop-event ≈0, event~lidar CKA 0.79~0.92 | lidar 공존 시 event 순증분 문헌 상한 **+0.4~2.8 PQ** | 2410.10791 Table IX · 2401.12761 | **구현 결함 아님** — 설정의 예측된 결과 |
+| val→test 전이율 4% | shift 축 상이(accuracy-on-the-line 이탈) + val 250장 노이즈 + MUSES **지리적 엄격 분리** | 2107.04649 · 2401.12761 | val 최적화 신뢰 금지 |
+
+## 3. 제안 — P47-MUB (2 모듈, 전부 학습시·내부신호·추론 불변)
+
+P39.1-rank seed2 base(val 82.62/test 79.788) 동결. **추론 경로 불변 ⇒ DELIVER 훼손 경로가 구조적으로 없다.**
+
+### D-1 · LiDAR 투영 밀도화 (데이터 레시피, 최우선)
+- `projected_to_rgb`(SDK 기본 (2,2), 유효 6.7%) → **`projected_to_rgb_dgf`**((7,7)+motion compensation, **32.6% = 4.99×**)로 교체 학습.
+- 🎯 **데이터가 이미 존재**: `/ailab_mat2/dataset/MUSES/projected_to_rgb_dgf/`(2026-07-15 생성, 7500 PNG). DGFusion 공개 PIXEL_MEAN 대비 −0.1%/+2.4%/−1.0%로 **오라클 검증 완료**(기존 것은 −81%로 전혀 다른 물건이었음). motion comp 실측 이동 중앙값 7.9px(86.7%가 >1px) — 기존 lidar는 RGB 노출시점과 misregistered였다.
+- ⚠️ `muses.py:165`가 `'projected_to_rgb'` 하드코딩 → **config knob 필요**(구현 항목).
+- 근거: 우리 drop-lidar 야간 1.75×, MUSES night lidar +8.6 PQ, DGFusion 저자 이행. **기대 +0.5~2.0 night(중심 ~+1), 비용 ≈0.**
+
+### D-2 · Uni-modal Balance (UMT-style, 학습시 gradient)
+- **각 모달 인코더 출력에 uni-modal aux head + 자기 손실**을 달아, 융합 손실만으로 학습될 때 생기는 under-optimization을 막는다(2305.01233 UMT / 1905.12681 Gradient-Blending 계열).
+- 구현: per-modal LoRA 출력 → 경량 linear head → CE(주 손실과 별도 가중 λ_u). **추론 시 aux head 미사용**(P46 C3와 동일한 학습전용 계약).
+- 선택 확장(토글): OGM-GE(2203.15332)식 on-the-fly gradient modulation — 모달별 학습속도 불균형 보정.
+- 근거: 리더보드 모달↑=순위↓ 역상관 + 우리 radar/event 무기여 + 이론(2203.12221). **RGB 본류 표현력(clear/day −4.4)을 직접 겨냥.**
+
+## 4. 게이트 사전등록
+
+| 항목 | 기준 |
+|---|---|
+| **Primary** | MUSES val ≥ **82.62**(seed2 base 초과). 미달 시 실패 |
+| **Secondary(공식)** | Codabench test ≥ **79.788**(우리 최고). 제출 1회 |
+| **D-1 falsifiable** | drop-lidar dMIoU가 **주간에도** 상승(현 day 4.24 → ≥6) = 밀도화가 실제로 lidar 활용을 늘렸는가 |
+| **D-2 falsifiable** | **clear/day mIoU 상승**(val day ≥81.5) — modality laziness 해소 가설의 직접 검증. 야간만 오르면 가설 반증 |
+| **ep30 조기 kill** | val이 base 궤적(seed2 동일 ep 대비) −1.0 이하로 벌어지면 중단 |
+| 🔴 **DELIVER 보존** | 이 제안은 **MUSES 전용 데이터 레시피(D-1) + 학습시 aux(D-2)** — DELIVER 런에는 D-1 무관(데이터셋 다름), D-2는 토글 off로 현 SOTA(test 57.05) 유지. **DELIVER 재학습 불필요.** |
+| ablation | D-1 단독 / D-2 단독 / D-1+D-2 |
+
+## 5. 노벨티 포지셔닝 (정직)
+
+🔴 **단일 기법 단위 "first" 전무**:
+- per-modal LoRA on frozen VFM: **MoE-LoRA-SAM(2412.04220)이 DELIVER·MUSES 동일 벤치에서 점유** — **인용 없이 내면 데스크리젝트급**.
+- frozen VFM 멀티모달 adapter: 2509.10408 외 다수. modality balance: 2305.01233 등. 투영 밀도화: DGFusion이 이미 이행.
+- prototype consistency(우리 DELIVER 기제): **MemorySAM SPMM(2503.06700)**과 근접 → 차별화 문장 필수(도메인불변 EMA bank·학습전용).
+
+**미점유 조합 축(견고한 순)**:
+1. **감독 원천** — 조건 인지를 학습·추론 **전 과정 내부신호만**으로. CAFuser/DGFusion은 조건 메타데이터+언어 지도(+depth 지도) 필수. 이 셀은 실측으로 비어 있음.
+2. **frozen 반례**(성능 조건부) — MM-SAM-Adapter가 "frozen은 −1.8, fine-tune 필수"를 자체 ablation으로 주장. frozen DINOv3로 그 수치권 도달 시 직접 반박.
+3. **벤치별 지배 실패요인 이질성**(DELIVER=class 전이붕괴→prototype 유효 / MUSES=RGB under-optimization→동일 기법 무효)을 단일 아키로 실증. 단 content/style 갭 이분법(2103.15467)의 재발견으로 읽힐 수 있어 선제 인용 필요. n=2.
+
+**리뷰어가 깰 지점 3(선제 대응)**:
+1. "MoE-LoRA-SAM의 백본 교체 아닌가" → 라우팅 단위(모달 MoE vs per-class)·reliability·수치 실측으로 방어 + **반드시 인용**.
+2. "조건 라벨 제거의 가치가 작다" → CAFuser condition loss 기여가 **+0.4 PQ뿐**이라 역인용됨. head-to-head ablation 필수.
+3. "camera-only GtA 82.39가 1위인데 융합이 왜 필요한가" → ① GtA는 **익명·논문 없음**(fact sheet 공란) → published SOTA는 MM-SAM-Adapter 81.07 ② **fog에서만 융합이 이김**(우리 77.5 = 전체 1위) = 멀티센서 잔존가치의 정량 근거.
+
+## 6. 실행 계획
+
+1. **선행(학습 0)**: `muses.py` 투영 경로 config knob 추가 + `projected_to_rgb_dgf` 무결성 확인(7500장).
+2. **D-1 단독 먼저**(비용 0, 기대값 최고): seed2 config에서 데이터 경로만 교체 → 300ep. ep30 즉검(drop-lidar day ≥6).
+3. **D-2 구현·검수**: conventions 코드검수 파이프라인(fresh-eyes 7렌즈 + 스모크 grad/등가 assert + 추론 등가성 |Δ|=0). labcode 위임.
+4. **D-1+D-2** 합본 → 완주 → val 게이트 → 통과 시 Codabench 제출 1회.
+
+## 7. 제약 준수 체크 (§2)
+
+- ✅ **반증경로 재시도 없음**: attn-bias·gate/calib/veto·CEFR·fusion rank(P41)·radar·prototype(MUSES)·zero-init 잔차 전부 미포함. IAF-Net/UP-Fuse류 추론 재가중도 **동형이라 배제**.
+- ✅ 키1: D-2는 aux CE로 주손실과 직접 경쟁(zero-init 아님). D-1은 데이터 레시피.
+- ✅ 내부신호만(조건 라벨·CLIP text·GT-depth 무). 단일 아키 유지.
+- ✅ **DELIVER 무영향**(추론 불변 + MUSES 전용 데이터 + 토글).
+- ⚠️ 공정성: D-1은 **데이터 전처리 변경**이라 논문에 명시 필요(DGFusion과 동일 파라미터가 되므로 오히려 비교 공정성 ↑).
+
+---
+**Sources**: modality laziness 2305.01233 · Gradient-Blending 1905.12681 · greedy 2202.05306 · 경쟁이론 2203.12221 · OGM-GE 2203.15332 · MUSES 2401.12761 · DGFusion 2509.09828 · CAFuser 2410.10791 · MM-SAM-Adapter 2509.10408 · MoE-LoRA-SAM 2412.04220 · MemorySAM 2503.06700 · ACDC 2104.13395 · accuracy-on-the-line 2107.04649 · Codabench comp 14005 API(2026-08-03)
