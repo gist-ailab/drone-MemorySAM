@@ -36,13 +36,26 @@ class FeatKD:
         self.kd_w = kd_w
         self.beta = beta
         self.dev = dev
-        # 학습 전용 1x1 adapter (추론 시 사용되지 않음)
-        self.adapter = nn.Conv2d(student_ch, teacher_ch, 1).to(dev)
+        self.teacher_ch = teacher_ch
+        # 학습 전용 1x1 adapter (추론 시 사용되지 않음).
+        # student 채널은 yolov5 버전/스케일마다 달라, 첫 배치에서 실제 채널로 만든다.
+        self.adapter = (nn.Conv2d(student_ch, teacher_ch, 1).to(dev)
+                        if student_ch else None)
+        self.optim = None            # adapter 지연 생성 시 파라미터를 붙일 옵티마이저
         self.cache: dict[str, tuple] = {}
         self.hit = self.miss = 0
 
+    def _ensure_adapter(self, ch: int):
+        if self.adapter is None:
+            self.adapter = nn.Conv2d(ch, self.teacher_ch, 1).to(self.dev)
+            print(f'[KD] adapter 생성: {ch}ch -> {self.teacher_ch}ch (학습 전용)')
+            if self.optim is not None:
+                self.optim.add_param_group({'params': list(self.adapter.parameters()),
+                                            'weight_decay': 0.0})
+                print('[KD] adapter 파라미터를 옵티마이저에 추가')
+
     def params(self):
-        return self.adapter.parameters()
+        return self.adapter.parameters() if self.adapter is not None else []
 
     def _load(self, stem: str):
         if stem in self.cache:
@@ -75,6 +88,7 @@ class FeatKD:
 
         t = torch.stack(feats).to(self.dev, non_blocking=True)          # (b,256,g,g)
         g = torch.stack(gates).to(self.dev, non_blocking=True)          # (b,3,g,g)
+        self._ensure_adapter(student_feat.shape[1])
         s = self.adapter(student_feat[idx].float())
         if s.shape[-2:] != t.shape[-2:]:
             s = F.interpolate(s, size=t.shape[-2:], mode='bilinear', align_corners=False)
@@ -96,14 +110,19 @@ def main():
     ap.add_argument('--kd-w', type=float, default=1.0, help='KD 손실 가중치 (C)')
     ap.add_argument('--modality-beta', type=float, default=2.0,
                     help='모달 인식 가중 강도 (D). 0 이면 순수 feature KD (C only)')
-    ap.add_argument('--kd-layer', type=int, default=17,
-                    help='YOLOv5m neck P4 모듈 인덱스 (기본 17 = stride-16 출력)')
+    ap.add_argument('--kd-grid', type=int, default=40,
+                    help='teacher 특징 격자 = student stride-16 해상도 (640/16=40)')
     known, rest = ap.parse_known_args()
+
+    # parse_known_args 는 구분자 '--' 를 rest 에 리터럴로 남긴다. 그대로 넘기면
+    # yolov5 parse_opt 가 거기서 파싱을 멈춰 모든 인자가 기본값이 된다(=학습 무효).
+    rest = [a for a in rest if a != '--']
 
     y5 = os.environ.get('YOLOV5_DIR', os.path.expanduser('~/yolov5'))
     sys.path.insert(0, y5)
     os.chdir(y5)
     sys.argv = [sys.argv[0]] + rest
+    print(f'[KD] yolov5 args: {" ".join(rest)}')
 
     import train as y5train
     from utils.loss import ComputeLoss
@@ -124,8 +143,12 @@ def main():
                     x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]
                 x = m(x)
                 y.append(x if m.i in self.save else None)
-                if m.i == known.kd_layer and isinstance(x, torch.Tensor):
-                    state['feat'] = x                     # (B,C,h,w) neck P4
+                # teacher 특징 격자(기본 40x40 = stride-16)와 같은 해상도의 neck 출력을
+                # 잡는다. yolov5m 의 레이어 번호는 버전마다 달라(17 은 stride-8 80x80)
+                # 인덱스를 고정하지 않고 해상도로 찾는 편이 안전하다.
+                if (isinstance(x, torch.Tensor) and x.dim() == 4
+                        and x.shape[-1] == known.kd_grid and x.shape[-2] == known.kd_grid):
+                    state['feat'] = x
             return x
         yolo_mod.DetectionModel._forward_once = fwd
 
@@ -145,9 +168,11 @@ def main():
 
     y5train.train = patched_train
 
-    # 3) 데이터로더가 주는 경로를 매 스텝 state 에 넣기 위해 create_dataloader 래핑
-    import utils.dataloaders as dl
-    _orig_loader = dl.create_dataloader
+    # 3) 데이터로더가 주는 경로를 매 스텝 state 에 넣기 위해 create_dataloader 래핑.
+    #    train.py 는 `from utils.dataloaders import create_dataloader` 로 이름을 이미
+    #    바인딩했으므로 모듈(utils.dataloaders) 쪽을 고쳐도 반영되지 않는다 ->
+    #    train 모듈에 붙은 이름을 직접 교체해야 한다.
+    _orig_loader = y5train.create_dataloader
 
     def loader(*a, **k):
         out = _orig_loader(*a, **k)
@@ -160,13 +185,13 @@ def main():
                 yield batch
         ld.__class__.__iter__ = it
         return out
-    dl.create_dataloader = loader
+    y5train.create_dataloader = loader
 
     opt = y5train.parse_opt(True)
     dev = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    ch = {17: 384}.get(known.kd_layer, 384)                # yolov5m P4 neck = 384ch
-    state['kd'] = FeatKD(known.feat_dir, known.kd_w, known.modality_beta, dev, ch)
-    print(f'[KD] feature distillation ON — layer {known.kd_layer} ({ch}ch -> 256ch adapter), '
+    state['kd'] = FeatKD(known.feat_dir, known.kd_w, known.modality_beta, dev, None)
+    print(f'[KD] feature distillation ON — student grid {known.kd_grid}x{known.kd_grid} '
+          f'(adapter 는 첫 배치에서 실제 채널로 생성), '
           f'kd_w={known.kd_w}, modality_beta={known.modality_beta} '
           f'({"C+D" if known.modality_beta > 0 else "C only"})')
 
@@ -176,8 +201,12 @@ def main():
 
     def smart(model, name, lr, momentum, decay):
         o = _orig_opt(model, name, lr, momentum, decay)
-        o.add_param_group({'params': list(state['kd'].params()), 'weight_decay': 0.0})
-        print('[KD] adapter 파라미터를 옵티마이저에 추가 (학습 전용, 추론 경로 없음)')
+        kd = state['kd']
+        kd.optim = o                      # adapter 가 지연 생성되면 그때 붙인다
+        ps = list(kd.params())
+        if ps:
+            o.add_param_group({'params': ps, 'weight_decay': 0.0})
+            print('[KD] adapter 파라미터를 옵티마이저에 추가 (학습 전용, 추론 경로 없음)')
         return o
     tu.smart_optimizer = smart
 
