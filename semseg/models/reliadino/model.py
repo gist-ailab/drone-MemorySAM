@@ -32,6 +32,14 @@ from .fusion import ReliabilityGatedFusion
 from .m2f_head import MaskQueryLiteHead
 from .panoptic_head import MaskClsHead
 
+# [PQ] Cityscapes/MUSES 19-class trainId space. The thing set is not a guess:
+# third_party/MUSES/MUSES/AUPQ/uncertainty_aware_panoptic_quality.py declares
+# THINGS = (24,25,26,27,28,31,32,33) in Cityscapes *labelIds*, which is exactly
+# person/rider/car/truck/bus/train/motorcycle/bicycle = trainIds 11..18, and
+# STUFF = (7,8,11,12,13,17,19,20,21,22,23) = trainIds 0..10.
+CITYSCAPES_TRAINIDS = tuple(range(19))
+CITYSCAPES_THING_TRAINIDS = (11, 12, 13, 14, 15, 16, 17, 18)
+
 
 class FPNSegHead(nn.Module):
     """Light query-free head: upsample every pyramid level to stride 4, sum,
@@ -359,6 +367,11 @@ class ReliaDINO(nn.Module):
                 for _ in range(n_taps))
         self._p43_taps = None          # per-forward, modality-averaged taps
         self._last_p43_out = None      # eval-only, for panoptic_inference
+        # [PQ] same stash for the P38/P39 M2F head. `_m2f_capture` is False
+        # everywhere except inside _m2f_forward_out(), so the training and the
+        # semantic eval paths are untouched (no extra tensor kept alive).
+        self._last_m2f_out = None
+        self._m2f_capture = False
         # eval-time ablation flags (tools/module_ablation attr_toggle 호환)
         self.p43_m2f_off = False
         self.p43_lateral_off = False
@@ -987,6 +1000,8 @@ class ReliaDINO(nn.Module):
             m2f_out = self.m2f(
                 fused, m_feat,
                 modal_feats=feats if self.m2f.use_modal_src else None)  # [P39-V2]
+            if self._m2f_capture:
+                self._last_m2f_out = m2f_out    # [PQ] eval-only stash, read-only
             sem_q = self.m2f.semantic_scores(m2f_out)       # (B, K, H/4, W/4)
             if self.arb_lambda is not None:
                 # [P39-V5] compete-and-arbitrate (β 잔차 대체): per-class Λ로
@@ -1107,21 +1122,93 @@ class ReliaDINO(nn.Module):
         return self._last_p43_out
 
     @torch.no_grad()
+    def _m2f_forward_out(self, batched_input: List[torch.Tensor]):
+        """[PQ] One eval forward with the M2F query output captured; returns the
+        raw head dict {'cls','masks','membed',...}.
+
+        Deliberately routed through `self.forward()` rather than through
+        `extract_m2f_output()`: forward is the only path that applies the CEFR
+        two-pass blend, so a hand-rolled encoder->fusion->head replay would
+        silently score a DIFFERENT feature map than the semantic evaluation on
+        any CEFR-enabled config. Nothing about the semantic output changes —
+        `_m2f_capture` only makes forward keep a reference it already built.
+        """
+        if self.m2f is None:
+            raise RuntimeError("[PQ] MODEL.M2F.ENABLE is off — no query head")
+        if self.training:
+            raise RuntimeError("[PQ] call model.eval() first")
+        prev = self._m2f_capture
+        self._m2f_capture = True
+        try:
+            self.forward(batched_input, True)
+        finally:
+            self._m2f_capture = prev
+        out = self._last_m2f_out
+        self._last_m2f_out = None          # don't pin the tensors after the read
+        if out is None:                    # unreachable unless forward changes
+            raise RuntimeError("[PQ] M2F output was not captured by forward()")
+        return out
+
+    def _resolve_thing_ids(self, thing_ids: Optional[Sequence[int]]) -> List[int]:
+        """Explicit argument > MODEL.P43.THING_IDS > the Cityscapes/MUSES
+        default. There is NO defensible default for a 25-class DELIVER model
+        (DELIVER ships no panoptic protocol), so that case must be explicit."""
+        if thing_ids is not None:
+            return [int(t) for t in thing_ids]
+        if self.p43_thing_ids:
+            return [int(t) for t in self.p43_thing_ids]
+        if self.num_classes == len(CITYSCAPES_TRAINIDS):
+            return list(CITYSCAPES_THING_TRAINIDS)
+        raise ValueError(
+            f"[PQ] no thing_ids: the model has {self.num_classes} classes, which "
+            "is not the 19-class Cityscapes/MUSES trainId space. Pass thing_ids "
+            "explicitly (or set MODEL.P43.THING_IDS).")
+
+    @torch.no_grad()
     def panoptic_inference(self, batched_input: List[torch.Tensor],
                            thing_ids: Optional[Sequence[int]] = None,
                            obj_thresh: float = 0.8, overlap_thresh: float = 0.8,
-                           size: Optional[Sequence[int]] = None):
+                           size: Optional[Sequence[int]] = None,
+                           crop: Optional[Sequence[int]] = None,
+                           crop_size: Optional[Sequence[int]] = None):
         """PQ path: list of (panoptic_seg (h,w) int32, segments_info).
 
-        `thing_ids` defaults to MODEL.P43.THING_IDS (Cityscapes/MUSES trainIds
-        11..18); everything else is treated as stuff and merged per class.
-        `size` = (H,W) to emit at label resolution.
+        Dispatches on the head that is actually built:
+          * MODEL.P43.M2F_HEAD on  -> the P43 MaskClsHead (unchanged behaviour)
+          * else MODEL.M2F.ENABLE  -> the P38/P39 MaskQueryLiteHead — this is
+            what the P39.1-rank production checkpoints carry, so it is the path
+            that makes their PQ measurable at all.
+          * neither                -> RuntimeError (a per-pixel head cannot
+            produce instances; failing loud beats reporting a fabricated PQ).
+
+        `thing_ids` defaults to MODEL.P43.THING_IDS, else Cityscapes/MUSES
+        trainIds 11..18; everything else is stuff and merged per class.
+        `size` = (H,W) to emit at label resolution. `crop`/`crop_size`
+        un-letterbox first (M2F path only — see the head docstring); they are
+        the geometry from tools/eval_muses_official.letterbox_valid_box.
         """
-        out = self._p43_forward_out(batched_input)
-        ids = self.p43_thing_ids if thing_ids is None else thing_ids
-        return self.p43.panoptic_inference(
-            out, ids, obj_thresh=obj_thresh, overlap_thresh=overlap_thresh,
-            size=(tuple(size) if size is not None else None))
+        if self.p43 is not None:
+            if crop is not None or crop_size is not None:
+                raise NotImplementedError(
+                    "[PQ] crop/crop_size (un-letterboxing) is implemented on the "
+                    "M2F path only; the P43 head keeps its 2026-07-25 behaviour.")
+            out = self._p43_forward_out(batched_input)
+            ids = self.p43_thing_ids if thing_ids is None else thing_ids
+            return self.p43.panoptic_inference(
+                out, ids, obj_thresh=obj_thresh, overlap_thresh=overlap_thresh,
+                size=(tuple(size) if size is not None else None))
+        if self.m2f is not None:
+            out = self._m2f_forward_out(batched_input)
+            return self.m2f.panoptic_inference(
+                out, self._resolve_thing_ids(thing_ids),
+                obj_thresh=obj_thresh, overlap_thresh=overlap_thresh,
+                size=(tuple(size) if size is not None else None),
+                crop=(tuple(crop) if crop is not None else None),
+                crop_size=(tuple(crop_size) if crop_size is not None else None))
+        raise RuntimeError(
+            "[PQ] no mask-classification head is active (MODEL.P43.M2F_HEAD and "
+            "MODEL.M2F.ENABLE are both off). This model is per-pixel only and "
+            "cannot produce panoptic segments — PQ is structurally undefined.")
 
     @torch.no_grad()
     def semantic_from_queries(self, batched_input: List[torch.Tensor],

@@ -9,6 +9,16 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-08-04 — PQ 평가 경로 배선 (M2F 라우팅 + tools/eval_pq.py, 학습 무관)
+
+- **범위**: 코드 + 스모크까지. **학습 미기동**(지시), push 없음(리뷰 후 develop 병합). 재학습 불필요 — 기존 ckpt의 query를 그대로 쓴다.
+- **고친 문제**: 우리 최고 계보(P39.1-rank)는 `MODEL.M2F.ENABLE: true`로 `MaskQueryLiteHead`를 쓰는데, `model.panoptic_inference()`가 **`self.p43`으로만 라우팅**돼 있었다. 실전 config는 P43 off / M2F on이므로 **현 코드로는 우리 모델의 PQ를 낼 수 없었다**(P43 계열 ckpt로만 가능).
+- **신규/변경**: `model.py`(활성 헤드 분기 — p43 → 기존 경로 그대로, m2f → 신규 `_m2f_forward_out`+헤드 호출, 둘 다 없으면 RuntimeError; `_resolve_thing_ids`; Cityscapes thing trainId 상수) · `m2f_head.py`(`panoptic_inference`에 `size`/`crop`/`crop_size` 추가) · `tools/pq_format.py`(신규 — AUPQ 포맷 writer + 표준 PQ 스코어러) · `tools/eval_pq.py`(신규 러너) · `tools/smoke_pq.py`(신규, 73 check PASS).
+- **AUPQ 입력 형식(코드에서 확인, 추측 아님)**: COCO-panoptic json 2개 + `rgb2id` RGB PNG 폴더. category_id는 **Cityscapes labelIds**(스크립트 상수 `STUFF=(7,8,11,12,13,17,19,20,21,22,23)` / `THINGS=(24,...,33)` = trainIds 0~10 / 11~18 — **thing_ids 규약의 1차 근거**). AUPQ 전용 추가 입력 = GT `gt_uncertainty` 폴더 + pred `classConfidence`/`instanceConfidence`(pred 폴더 이름이 반드시 `labelIds`여야 문자열 치환이 성립). **confidence를 255로 포화시키면 n² 임계 셀이 전부 동일해져 AUPQ ≡ PQ** — 스모크가 공식 스크립트와 우리 스코어러의 일치를 실측(96.9 == 96.9)한다.
+- **letterbox 정합**: MUSES val은 1080×1920 → 1920² 레터박스(ignore=255) → 1024² 리사이즈인데 **panoptic GT는 native 1080×1920**이다. `--geometry native`(기본)는 `tools/eval_muses_official.letterbox_valid_box`(왕복 증명 있음)로 **마스크 로짓 단계에서** stride4→1024²→패드 crop→1080×1920 순서로 역변환한 뒤 sigmoid/argmax/0.5 임계를 적용한다(이진화 후 리샘플하면 얇은 세그먼트가 부서지고 픽셀 소유 query가 바뀐다). GT와 해상도가 다르면 스코어러가 거부한다.
+- **🔴 남은 블로커(코드 아님, 데이터)**: MUSES **panoptic GT 미보유**(`gt_panoptic`/`gt_uncertainty` 미다운로드 — plan.md #4 그대로). 배선·포맷·기하는 끝났고 실제 PQ 수치는 GT 확보 후 산출된다. GT json이 동봉돼 있으면 그걸 쓰고, 없으면 `--build-gt-json`이 Cityscapes `category*1000+instance` 규약으로 유도하되 **파생 category가 표에 없으면 즉시 중단**(추측 금지). test는 GT 비공개라 `--split test` 자체를 거부.
+- **DELIVER**: 25클래스에는 공식 panoptic 규약이 없어 `thing_ids` 기본값을 **주지 않고** 명시 요구(`--thing-ids`), GT 없으면 예측만 쓰고 채점 안 함.
+
 ### 2026-08-04 — P47-2 UniBal(Uni-modal Balance, 구 D-2) 구현 완료 (학습 대기)
 
 - **범위**: 코드 + config + 합성 스모크까지. **학습 미기동**(지시), push 없음(리뷰 후 develop 병합). 제안 정본 = [decisions/2026-08-03-p47-mub-muses-proposal.md](../decisions/2026-08-03-p47-mub-muses-proposal.md) §3 D-2. 네이밍 규칙 변경 반영해 코드·config는 `P47_2`/`p47_2`(주석에 "구 D-2" 병기).
