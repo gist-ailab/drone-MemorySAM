@@ -7,7 +7,8 @@
 #       = SDK 기본 'projected_to_rgb'. D-1과 D-2를 분리해 각각의 순효과를 본다.
 #       합본(D-1+D-2)은 두 단독 실험이 끝난 뒤 별도 config로.
 #
-# 진단(§1): MUSES는 모달을 더할수록 성능이 떨어진다(리더보드 camera-only 82.39 > C+L 81.07 >
+# 진단(§1): **우리 모델에서** 모달을 더할수록 성능이 떨어진다(4모달 82.35/79.571 <
+#    3모달 82.62/79.788, within-method 실측). ⚠️ 리더보드 역상관(camera-only 82.39 > C+L 81.07 >
 #   4모달 79.49; 우리 4모달 82.35 < 3모달 82.62, drop-radar +0.13). 기제 = modality laziness —
 #   융합 손실만으로 학습하면 지배 모달(RGB)의 uni-modal feature가 under-optimize 된다
 #   (2305.01233 UMT / 1905.12681 Gradient-Blending / 2202.05306 / 2203.12221 이론증명).

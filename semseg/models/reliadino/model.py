@@ -374,8 +374,9 @@ class ReliaDINO(nn.Module):
             if p39_trunk_mode == 'gated_mlp':
                 # [P39.1-R1] 선형 1×1의 암묵적 저rank 편향(deep matrix
                 # factorization/DirectCLR — P39에서 lidar rank 4.7 붕괴의 유력
-                # 원인)을 제거: LN→1×1→GELU→1×1 비선형 + tanh(γ) 게이트(γ=0
-                # init, ReZero/LLaMA-Adapter) — shortcut이 초기 gradient
+                # 원인)을 제거: LN→1×1→GELU→1×1 비선형 + tanh(γ) 게이트(ReZero/
+                # LLaMA-Adapter 계열이나 γ init은 0이 아니라 0.1 — 아래
+                # 참조) — shortcut이 초기 gradient
                 # highway가 되어 LoRA를 저rank 코드로 조각하는 것을 막는다.
                 # V1의 night +2.50 기여 메커니즘은 보존.
                 h = int(p39_trunk_hidden)
