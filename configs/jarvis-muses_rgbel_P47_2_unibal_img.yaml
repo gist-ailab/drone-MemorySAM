@@ -109,7 +109,7 @@ MODEL:
     ARBITER         : true                  # V5: per-class Λ 중재 + path dropout 경쟁 (β 잔차 대체)
     PATH_DROPOUT_P  : 0.25                  # dense-only / query-only 각 25%
     ROUTER_CE_W     : 0.4                   # router 직접 CE 감독 가중
-    TRUNK_MODE      : gated_mlp             # [P39.1-R1] 선형→LN·MLP·tanh(γ) 게이트 (저rank 지름길 제거, γ=0 init)
+    TRUNK_MODE      : gated_mlp             # [P39.1-R1] 선형→LN·MLP·tanh(γ) 게이트 (저rank 지름길 제거, γ=0.1 init — 0이면 gradient가 안 흘러 사장됨)
     TRUNK_HIDDEN    : 256
     VICREG:                                 # [P39.1-R2] var+cov rank 복원 (per-modal 토큰, lidar 강조)
       ENABLE  : true

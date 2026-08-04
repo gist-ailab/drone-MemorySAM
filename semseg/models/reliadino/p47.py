@@ -5,8 +5,12 @@
 `P47_2` / `p47_2`를 쓴다.)
 
 진단
-  MUSES에서 **모달을 추가할수록 성능이 떨어진다** (리더보드 camera-only 82.39 >
-  cam+lidar 81.07 > 4모달 79.49; 우리 4모달 82.35 < 3모달 82.62, drop-radar +0.13).
+  **우리 모델에서** 모달을 추가할수록 성능이 떨어진다 — 4모달 val 82.35 / 공식
+  test 79.571 < 3모달 82.62 / 79.788, drop-radar +0.13 (전부 within-method 실측).
+  🔴 2026-08-04 철회: 초판은 "리더보드 camera-only 82.39 > C+L 81.07 > 4모달
+  79.49"를 근거로 들었으나 이는 **서로 다른 방법론 간 비교라 교란**이다. 통제
+  ablation은 정반대로 단조 증가한다(CAFuser Table IX: RGB 55.7 → +L 58.7 →
+  +R 59.3 → +E 59.7). 즉 이것은 벤치의 법칙이 아니라 **우리 모델의 증상**이다.
   문헌 기제 = **modality laziness / greedy joint learning** — 융합 손실만으로
   학습하면 지배 모달(RGB)의 uni-modal feature가 under-optimize 된다
   (2305.01233 UMT · 1905.12681 Gradient-Blending · 2202.05306 · 2203.12221 이론증명).
