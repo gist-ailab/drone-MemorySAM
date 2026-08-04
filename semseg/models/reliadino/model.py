@@ -489,6 +489,11 @@ class ReliaDINO(nn.Module):
         self.p39_router_ce_w = float(p39_router_ce_w)
         # eval-time ablation flags (tools/module_ablation attr_toggle 호환)
         self.p39_query_off = False
+        # [2026-08-05] p39_query_off의 반대쪽 측정용: dense(FPN head) 기여를 빼고
+        # **query 단독**으로 semantic을 얼마나 하는지 읽는다. 학습의 query-only
+        # turn(아래 path dropout)을 추론에 토글로 노출한 것.
+        # 🔴 추론 전용 — self.training일 때는 절대 참조하지 않는다.
+        self.p39_dense_off = False
         self.p39_trunkexp_off = False
 
         # [P40] RCA — Reliability-Conditioned Attenuation (학습 전용).
@@ -832,6 +837,26 @@ class ReliaDINO(nn.Module):
                 routed, size=logits.shape[-2:], mode='bilinear', align_corners=False)
         return logits, m_feat
 
+    def _check_p39_ablation_flags(self):
+        """추론-시 ablation 플래그 정합성 검사 (조용한 실패 금지).
+
+        p39_query_off는 기존 동작(무해한 no-op 포함)을 그대로 둔다. 새로 추가된
+        p39_dense_off만 (a) query_off와 동시 지정(logits≡0 → 무의미) (b) arbiter/
+        m2f 부재로 플래그가 무시되는 경로에서 에러를 던진다 — 무시된 채 Δ=0이
+        나오면 "dense 없이도 된다"는 정반대 오판을 부른다."""
+        if not self.p39_dense_off:
+            return
+        if self.p39_query_off:
+            raise ValueError(
+                'p39_query_off와 p39_dense_off를 동시에 켤 수 없다 — 두 경로를 모두 '
+                '지우면 logits가 0이 되어 측정이 무의미하다. 하나씩 켜라.')
+        if self.arb_lambda is None or self.m2f is None:
+            raise ValueError(
+                'p39_dense_off는 P39-V5 arbiter(arb_lambda) + m2f 쿼리 헤드가 모두 '
+                '있는 모델에서만 의미가 있다 (legacy β 잔차 경로에는 query-only 턴이 '
+                f'없다). arb_lambda={"O" if self.arb_lambda is not None else "X"}, '
+                f'm2f={"O" if self.m2f is not None else "X"}.')
+
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
                 gt_mask: Optional[torch.Tensor] = None):
         # `multimask_output` kept for call-site compatibility with the SAM2 fleet.
@@ -966,6 +991,7 @@ class ReliaDINO(nn.Module):
             aux['vicreg'] = self._vicreg_loss(feats)    # [P39.1-R2] pre-scaled
         if not self.training:
             self._last_fused_prehead = fused.detach()      # [analysis §0.5 T5]
+            self._check_p39_ablation_flags()   # m2f 부재 경로까지 커버하려 여기서
         # [P43] the mask-cls head reads the pyramid the pixel head just used.
         _p43_run = (self.p43 is not None and not self.p43_m2f_off
                     and (self.training or self.p43_eval_head
@@ -1027,6 +1053,10 @@ class ReliaDINO(nn.Module):
                         logits = q_scaled                   # query-only turn
                     else:
                         logits = logits + q_scaled
+                elif self.p39_dense_off:
+                    # 추론 전용 ablation: 학습의 query-only 턴과 동일한 결선.
+                    # ⚠️ "제거 효과"가 아니라 **쿼리 단독 성능**을 읽는 토글.
+                    logits = q_scaled
                 else:
                     logits = logits + q_scaled
             else:
