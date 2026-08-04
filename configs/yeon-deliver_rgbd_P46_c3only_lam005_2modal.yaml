@@ -199,7 +199,10 @@ DATASET:
 TRAIN:
   LORA_NORM_CAP : 20.0
   IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
-  BATCH_SIZE    : 1                 # 24GB(3090/4090): all-on(C1+C2+C3) BS2는 backward에서 OOM 실증(스모크) -> BS1
+  BATCH_SIZE    : 3                 # 🔴 ISSUE-031 프로파일 반영(2026-08-04): 2모달 BS1 실측 peak 8.26GiB/24.5GB=34%.
+                                    #    accum=ceil(16/(BS×world3))이라 BS 1·2·3 모두 eff-batch 18로 동일(16이 3의 배수가 아님)
+                                    #    -> eff-batch 유지하는 최대값 BS3 채택. 예상 peak ~21GiB(86%, 정책 85~90% 목표권).
+                                    #    C3는 CROSS_VIEW:false라 추가 forward 없음 -> warmup 계단 무시 가능(ISSUE-028은 C2 원인).
                                     # 🔴 ISSUE-028: BS1도 **부족했다**. 2026-07-29 런은 ep6 iter0에서
                                     # 4-rank 전부 OOM(23.47GiB). 이전의 "BS1 OOM-safe" 기록은 오기록이다 —
                                     # C2/C3 WARMUP_EP=5 + epoch 0-index라 ep1~5(=epoch 0~4)는 P39.1-base만
