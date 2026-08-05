@@ -45,5 +45,15 @@
 
 **원인 규명 완료 → ISSUE-032로 등재.** `val.py`의 `evaluate()`(val 모드 함수)에 `@torch.no_grad()`가 누락돼 있었다 — ViT-L 전체 autograd 그래프가 유지된 채 iteration 1에서 100% OOM(ckpt 종류 무관, 통제실험도 동일 재현). `run_test_inference()`(test 모드)는 정상 데코레이션돼 있어 test만 성공했다. 커밋 `c0e413c`로 1줄 수정(develop push 완료). test 수치가 legal 기준(55.6~55.7)보다 낮게 나온 건(53.06~53.67) — final-iter vs val-best 체크포인트 차이 가설이 남아 있음, 재기동 후 같은 런의 두 체크포인트를 나란히 비교해 확인 예정.
 
+## §5 2026-08-06 처리분 (인수 세션이 오늘 집행)
+
+- **P47-MUB D-1**: §2의 "hpca100 상실, 운명 미확인" 기록을 **정정** — 실제로는 **완주 확인됨**(Best Val mIoU 82.58@ep172, Total Training Time 22:15:29, 체크포인트 hpca100 디스크에 온전). val-best ckpt를 jarvis로 rsync(체크포인트+DGF 밀도화 투영 데이터 3.8GB) 후 MUSES test 750장 예측 완료, **제출 zip 스테이징 완료**(`/ailab_mat2/.../submission/muses/muses_P47MUB_D1_4modal_ep172_submission.zip`, 12.49MB, 750/750 PNG·19클래스 전부 예측됨·degenerate 0). 제출 자체는 user 몫.
+- **P47-2 img-only arm**: §2의 "ep82 정체, 원인 미상"을 조사 — 프로세스 사망 확인(ps 미존재), 로그가 Epoch[83/300] iter130/750에서 **트레이스백 없이 그대로 멈춤**(mtime 08-04 18:37, ~2일 정지). 에러/OOM 로그 없음 — 외부 SIGKILL 또는 커널 OOM-killer로 추정. **재기동하지 않음**(user 지시 없었음, 판단 대기).
+- **ISSUE-030 수정 완료**: `train_reliadino.py`에 `_atomic_save()` 헬퍼(tmp+os.replace) 추가, `last_checkpoint.pth`+topK best 저장 양쪽 적용. 스모크 3건(fresh save/overwrite/mid-write 사망 시뮬레이션) 전부 통과. 커밋 `0bc65f5`.
+- **ISSUE-032 발견+수정**: `val.py`의 `evaluate()`에 `@torch.no_grad()` 누락 — val 모드 100% OOM의 단일 원인(§4 참조). 커밋 `c0e413c`.
+- **RGB-L 2모달 기동**: `configs/jarvis-muses_rgbl_P39_1_rank_2modal.yaml`(commit `ce40624`), jarvis GPU1-3, 기동검증 4항 PASS, 진행 중(ep4 기준 val 65.91).
+- **P48 S1 게이트 실행 완료**: `p39_dense_off`/`p39_query_off` 토글로 DELIVER val 5-weather-condition 측정(C3-only 본 val-best ckpt). **쿼리-온리(dense off) 성능은 base 대비 -1.06~-2.77pt로 바닥이 아님**(catastrophic 아님), **query_off(쿼리 제거, dense 유지)는 거의 0(-0.45~+0.43)** — 기존 "쿼리 경로=dense의 무의미한 복제" 진단과 일치. **PQ 게이트(things PQ>30)는 아직 미해금**(gt_panoptic 데이터 미비, §3 참조) → **S1 결과만으로는 P48 착수를 확정 지지하지 않음, PQ 게이트 대기 상태로 보류**.
+- **P46-C3only fair-eval 최종 판정**(양쪽 런 완주): legal 최고 = 본(original) val-best@ep70 @1024 평가 → **val 69.44/test 56.99**. 현행 SOTA(MM SAM-adapter 69.60/57.35) 대비 val -0.16/test -0.36 **미돌파**, 구 DGFusion 기준(66.51/56.71)은 val·test 동시 상회 **no-tradeoff 우위 유지**. seed2 재현성 확인(test -0.59 단일런 편차). 상세 `analysis/2026-08-06-p46-c3only-fair-eval-final.md`.
+
 ---
 *작성: 2026-08-06, 세션 4e9bdc6f. 근거 = develop 커밋(`8bf37ed`/`fc392d8`/`622aca2`/`610bff9`/`943f57d`/`ade4e54`/`c99b9cb`/`04bc430`/`255a1f0`/`52a3c48`) + `.claude_logs/issues/issues-and-fixes.md`(ISSUE-030/031) + `.claude_logs/status/current.md`/`plan.md` + 서버 실측(jarvis/yeon/hpca100).*
