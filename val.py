@@ -1321,6 +1321,18 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
                         row1 = np.concatenate(raw_modals, axis=1)
                         legend_img = _draw_legend(classes, palette, orig_h, orig_w)
                         row2 = np.concatenate([legend_img, colored, overlay], axis=1)
+                        # [2026-08-05] row1 은 모달 수만큼, row2 는 항상 3장 폭이라
+                        # 모달이 3개가 아니면 폭이 어긋나 concatenate 가 죽는다
+                        # (4모달 DELIVER 평가가 항상 크래시했다). 넓은 쪽에 맞춰 패딩한다.
+                        _w = max(row1.shape[1], row2.shape[1])
+
+                        def _pad_w(a, w):
+                            if a.shape[1] >= w:
+                                return a
+                            pad = np.zeros((a.shape[0], w - a.shape[1]) + a.shape[2:], dtype=a.dtype)
+                            return np.concatenate([a, pad], axis=1)
+
+                        row1, row2 = _pad_w(row1, _w), _pad_w(row2, _w)
                         viz = np.concatenate([row1, row2], axis=0)
                         viz_bottom = _get_uamm_amf_moe_viz(model, b, modals, viz.shape[0], viz.shape[1])
                         if viz_bottom is not None:
