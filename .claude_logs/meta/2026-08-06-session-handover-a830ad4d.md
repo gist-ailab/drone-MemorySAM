@@ -43,7 +43,7 @@
 - **test 수치가 낮게 나옴**: 53.06~53.67 (vs legal 기준 55.62~55.69) — 격차 약 -2~-2.6pt.
 - **val 모드는 전부 PARSE_FAIL** — 출력을 못 읽음.
 
-**원인 규명은 [HO-VERIFY]로 별도 진행 중** (아래 참조). 신뢰 전 원인 규명 필수 — 이 수치들을 §1의 legal 기준과 섞어 쓰지 말 것.
+**원인 규명 완료 → ISSUE-032로 등재.** `val.py`의 `evaluate()`(val 모드 함수)에 `@torch.no_grad()`가 누락돼 있었다 — ViT-L 전체 autograd 그래프가 유지된 채 iteration 1에서 100% OOM(ckpt 종류 무관, 통제실험도 동일 재현). `run_test_inference()`(test 모드)는 정상 데코레이션돼 있어 test만 성공했다. 커밋 `c0e413c`로 1줄 수정(develop push 완료). test 수치가 legal 기준(55.6~55.7)보다 낮게 나온 건(53.06~53.67) — final-iter vs val-best 체크포인트 차이 가설이 남아 있음, 재기동 후 같은 런의 두 체크포인트를 나란히 비교해 확인 예정.
 
 ---
 *작성: 2026-08-06, 세션 4e9bdc6f. 근거 = develop 커밋(`8bf37ed`/`fc392d8`/`622aca2`/`610bff9`/`943f57d`/`ade4e54`/`c99b9cb`/`04bc430`/`255a1f0`/`52a3c48`) + `.claude_logs/issues/issues-and-fixes.md`(ISSUE-030/031) + `.claude_logs/status/current.md`/`plan.md` + 서버 실측(jarvis/yeon/hpca100).*

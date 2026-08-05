@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-07-21
+> 최종 업데이트: 2026-08-06
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -17,6 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-032** | ✅ **수정**(2026-08-06) | `val.py` `evaluate()`(val 모드 함수)에 `@torch.no_grad()` 누락 — ViT-L 전체 autograd 그래프 유지로 **iteration 1에서 100% OOM**(ckpt 종류 무관). `run_test_inference()`(test 모드)는 정상 데코레이션돼 있어 test만 성공. 커밋 c0e413c로 1줄 수정. 상세: 하단 ISSUE-032 |
 | **ISSUE-030** | 🔴 **미수정** | `train_reliadino.py:485` `last_checkpoint.pth` 저장이 임시파일+rename 없이 최종 경로에 직접 덮어써 **비원자적** — 저장 도중 사망(preempt/OOM/SIGKILL) 시 파일 손상으로 AUTO_RESUME 실패 위험(hpca100처럼 preempt 전례 있는 공유 pod에서 실제 위험). 완화책은 epoch-태그 안정 checkpoint 사용. 수정안 = `torch.save`→tmp→`os.replace`. 상세: 하단 ISSUE-030 |
 | **ISSUE-031** | 🟡 **프로세스 결함, 재발방지 적용(2026-08-04)** | hpca100 P47-1 `BATCH_SIZE:1`이 A100(40GB) 기준 재프로파일 없이 3090/4090용 값 그대로 사용됨 — 실측 rank당 24.6GB/40GB=60%(정책 목표 85~90% 미달). 이 런은 재기동 위험·1-변수 순수성 이유로 변경 안 함, **이후 A100 신규 기동 전 `torch.cuda.max_memory_allocated()` 프로파일 필수화**로 재발방지. 상세: 하단 ISSUE-031 |
 | **ISSUE-028** | ✅ **수정(2026-07-29)** | **P46-CTR jarvis OOM은 누수가 아니라 warmup 계단이다.** C2_MCC/C3_PROTO `WARMUP_EP:5` + epoch 0-index → 로그상 **ep6(=epoch 5) iter0이 보조 branch·EMA teacher·proto 손실이 최초로 도는 지점**. ep1~5(=epoch 0~4)는 P39.1-base 그대로라 15.2GB였고 P46 비용은 **한 번도 측정된 적이 없다**. 부수적으로 상수 오버헤드 4건(보조 `_baux` 미도달 서브그래프·루프 지역변수·teacher `_last_*` 캐시·PrototypeBank full-copy)을 수정. **peak 2-그래프 구조 자체는 설계라 그대로** → BS1에서도 24GB로 부족. 상세: 하단 ISSUE-028 |
@@ -51,6 +52,20 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-032: `val.py evaluate()`에 `@torch.no_grad()` 누락 — val 모드 100% OOM [수정, 2026-08-06]
+
+**위치**: `val.py:1182` `def evaluate(...)` (val 모드에서 호출되는 함수) — 바로 위(1179)는 무관한 헬퍼 `_pad_rows_to_same_width`의 끝일 뿐, `evaluate()` 자체엔 `@torch.no_grad()`도 `with torch.no_grad():`도 없었다. `model.eval()`은 dropout/BN 동작만 바꿀 뿐 autograd 추적을 끄지 않는다.
+
+**증상**: final-iter(`last_checkpoint.pth`) 11건 재평가 배치(`/tmp/finaliter_batch.sh`, jarvis)에서 **val 모드가 전부 PARSE_FAIL**. 원인은 파싱 실패가 아니라 진짜 크래시 — `CONTROL_valbest_ep62`(검증용 정상 val-best 체크포인트)조차 **iteration 1/2005**에서 `CUDA OutOfMemoryError`. ckpt 종류(final-iter/val-best) 무관하게 100% 재현.
+
+**진단**: ViT-L/16 + LoRA + M2F 전체 forward에서 autograd 그래프가 유지된 채 backward 없이 매 iteration 쌓이므로 즉시 OOM. test 모드는 별도 함수 `run_test_inference()`(`val.py:1466`, 데코레이터 1465에 정상 존재)를 호출해 무사 — val만 죽는 이유가 이걸로 설명된다.
+
+**수정**: `def evaluate` 바로 위에 `@torch.no_grad()` 1줄 추가. 다른 변경 없음. 커밋 `c0e413c`(develop push 완료).
+
+**교훈**: 🔴 **OOM을 GPU 상주메모리·배치크기 문제로 진단하기 전에 `no_grad`/`inference_mode` 여부부터 확인할 것.** 특히 두 개의 유사 평가 경로(val/test) 중 하나만 죽으면, 배치·데이터 차이보다 먼저 두 함수의 grad-context 데코레이션 차이를 대조하라.
 
 ---
 
