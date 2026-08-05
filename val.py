@@ -1179,6 +1179,7 @@ def _pad_rows_to_same_width(row1, row2):
     return _pad(row1), _pad(row2)
 
 
+@torch.no_grad()
 def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modals=None,
              gamma_list=None, detailed=False, tta_flip=False):
     model.eval()
