@@ -34,11 +34,19 @@ class Normalize:
         std: list = (0.229, 0.224, 0.225),
         thermal_mean: Optional[float] = None,
         thermal_std: Optional[float] = None,
+        norm_all_modals: bool = False,
     ):
         self.mean = mean
         self.std = std
         self.thermal_mean = thermal_mean
         self.thermal_std = thermal_std
+        # [2026-08-05] 입력 스케일 정합 토글 (DATASET.NORM_ALL_MODALS).
+        # 기본 False = 기존 동작 그대로(비-RGB 모달은 /255만).
+        # True면 비-RGB 모달도 img와 동일하게 /255 후 ImageNet 정규화한다.
+        # 근거: encoder.py 가 모달별 정규화 없이 같은 frozen ViT 에 투입하는데
+        #       img 는 z-score(≈[-2.1,+2.6]), 비-RGB 는 [0,1](lidar 는 실측 [0,0.38])로
+        #       분포가 어긋난다. 🔴 이는 정합화(버그 수정)이지 노벨티가 아니다.
+        self.norm_all_modals = norm_all_modals
 
     def __call__(self, sample: list) -> list:
         for k, v in sample.items():
@@ -57,6 +65,8 @@ class Normalize:
             else:
                 sample[k] = sample[k].float()
                 sample[k] /= 255
+                if self.norm_all_modals:
+                    sample[k] = TF.normalize(sample[k], self.mean, self.std)
         return sample
 
 
@@ -959,6 +969,15 @@ class RandomResizedCrop:
 
 
 
+def _norm_all_modals(dataset_cfg: Optional[dict]) -> bool:
+    """[2026-08-05] DATASET.NORM_ALL_MODALS — 비-RGB 모달도 ImageNet 정규화할지.
+
+    기본 False = 기존 동작 보존(모든 기존 config·ckpt 무영향)."""
+    if not dataset_cfg:
+        return False
+    return bool(dataset_cfg.get('NORM_ALL_MODALS', False))
+
+
 def _get_thermal_stats(dataset_cfg: Optional[dict]) -> Tuple[Optional[float], Optional[float]]:
     """MULTIAQUA + thermal일 때만 thermal mean/std 반환. 그 외 None."""
     if not dataset_cfg:
@@ -1077,7 +1096,8 @@ def get_train_augmentation(
         transforms.append(RandomGaussianBlur((3, 3), p=0.2))
     transforms.extend([
         RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill),   # = DGFusion multi-scale 0.5-2.0 + crop
-        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts,
+                  norm_all_modals=_norm_all_modals(dataset_cfg))
     ])
     return Compose(transforms)
 
@@ -1093,7 +1113,8 @@ def get_val_augmentation(
         transforms.append(ResizeWidthPadToSquare(t_size, seg_fill=dataset_cfg.get('IGNORE_LABEL', 255) if dataset_cfg else 255))
     transforms.extend([
         Resize(size),
-        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts,
+                  norm_all_modals=_norm_all_modals(dataset_cfg))
     ])
     return Compose(transforms)
 
@@ -1146,7 +1167,8 @@ def get_nightval_augmentation(
 
     transforms.extend([
         Resize(size),
-        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts)
+        Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts,
+                  norm_all_modals=_norm_all_modals(dataset_cfg))
     ])
     return Compose(transforms)
 
