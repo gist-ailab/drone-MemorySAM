@@ -6,7 +6,7 @@
 #   100 learned query가 gated fused stride-16 위 6-layer masked cross-attn(공유 cls/mask head deep-sup).
 #   attn mask = 공유-head 예측 리사이즈(_attn_bias) — P37b mask_proj 버그(ISSUE-024) 없음(supervised).
 #   final = conv_head + β·M2F_logits, β zero-init → 시작 시 P36과 byte-identical.
-# DATASET/TRAIN = MUSES 3모달, jarvis 경로(/SSDb/jemo_maeng/dset/MUSES, 8.14GB 처리본 회수됨 2026-07-19).
+# DATASET/TRAIN = MUSES 3모달, hpca100 경로(/home/jovyan/SSDb/jemo_maeng/dset/MUSES, 8.14GB 처리본 회수됨 2026-07-19).
 #   radar 제외(val −0.09 무익). PhysAug on(P34/P37 MUSES 레시피 보존).
 # 🔴 GRADIENT_CHECKPOINT: false (encoder active_modality 버그 회피).
 #   torchrun --nproc_per_node=<N> train_reliadino.py --cfg <this>   (develop = P38 seg 코드 포함 브랜치에서)
@@ -112,7 +112,7 @@ MODEL:
 
 DATASET:
   NAME          : MUSES
-  ROOT          : '/SSDb/jemo_maeng/dset/MUSES'
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'lidar', 'event']
   NORM_ALL_MODALS : true   # [2026-08-05] 유일 변수 — 비-RGB 모달도 img와 동일하게 /255 후 ImageNet 정규화
@@ -180,6 +180,6 @@ WANDB:
 
 TEST:
   MODEL_PATH    : ''
-  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
   IMAGE_SIZE    : [1024, 1024]
   OVERLAY       : false
