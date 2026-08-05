@@ -86,6 +86,17 @@ def evaluate(model, dataloader, device, dist_sync=False):
     return acc, macc, f1, mf1, ious, miou
 
 
+def _atomic_save(obj, path):
+    """[ISSUE-030 fix] torch.save는 대상 경로에 직접 쓴다 — 저장 도중 사망(preempt/
+    OOM/SIGKILL)하면 파일이 잘린 채 남아 그 이름을 신뢰하는 코드(AUTO_RESUME 등)가
+    깨진다. 같은 디렉터리의 임시 파일에 먼저 쓰고 os.replace로 교체한다(동일
+    파일시스템 내 rename은 원자적 — 중간 상태가 존재하지 않는다)."""
+    path = Path(path)
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
+
+
 def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
                              ckpt_dict, k=5):
     """Same naming/rotation as train_sam2_lora_paper._update_topk_checkpoints."""
@@ -99,7 +110,7 @@ def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
     for rank, (miou, ep) in enumerate(topk_list, 1):
         target = save_dir / f"{prefix}epoch{ep}_{miou}_top{rank}_checkpoint.pth"
         if (miou, ep) == (new_miou, new_epoch):
-            torch.save(ckpt_dict, target)
+            _atomic_save(ckpt_dict, target)
         else:
             for old_f in save_dir.glob(f"{prefix}epoch{ep}_{miou}_top*_checkpoint.pth"):
                 if old_f != target:
@@ -977,7 +988,7 @@ def main(cfg, gpu, save_dir, logger):
                 if extra:
                     d.update(extra)
                 return d
-            torch.save(_ckpt(), save_dir / 'last_checkpoint.pth')
+            _atomic_save(_ckpt(), save_dir / 'last_checkpoint.pth')
 
         # ── eval every EVAL_INTERVAL epochs (val + test, per-class IoU) ──────
         do_eval = (((epoch + 1) % train_cfg['EVAL_INTERVAL'] == 0
