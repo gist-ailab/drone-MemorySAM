@@ -33,7 +33,7 @@
 
 - **P48 S1→S2 게이트**: query-only 성능이 바닥이면 제안 보류 — S1(GT connected-component 통계 + query-only mIoU, `p39_dense_off` 토글로 측정 가능·이미 구현됨) 실행 여부 미확인.
 - **P48 D2 자기반증 게이트**: things PQ가 30을 넘지 못하면 D2 진단 자체가 틀린 것 — 사전등록됐으나 아직 평가 안 됨.
-- **PQ 측정 블로커**: 코드는 완료됐으나 데이터 미비 — MUSES `gt_panoptic`/`gt_uncertainty` 미다운로드. test 스플릿은 GT 비공개로 **구조적으로** 차단(도구가 `--split test` 자체를 거부).
+- **PQ 측정 블로커**: 🔴 **정정(2026-08-06)** — MUSES `gt_panoptic`/`gt_uncertainty`는 **mid-July부터 이미 완전히 존재**함(`/ailab_mat2/dataset/MUSES/`, train 1500/val 250, 파일명·JSON 구조 확인 완료 — 상세 `datasets/muses-dataset.md`). 데이터 미비가 아니라 오기였던 것으로 판명. 남은 블로커가 있다면 평가 코드/파이프라인 쪽(미조사). test 스플릿은 여전히 GT 비공개로 **구조적으로** 차단(도구가 `--split test` 자체를 거부).
 - 🔴 **ISSUE-030 미수정**: `last_checkpoint.pth` 저장이 비원자적(tmp+rename 없음) — 저장 도중 사망(preempt/OOM/SIGKILL) 시 파손, AUTO_RESUME 파손 위험. 특히 preemptible pod(hpca100류)에서 실증된 리스크.
 - **ISSUE-031**(완화됨): hpca100 P47-1이 3090/4090용 BATCH_SIZE:1을 A100에서 재프로파일 없이 사용 → GPU util 60%(24.6/40GB, 목표 85-90% 미달). 해당 run은 유지(재시작 리스크 우려)했으나, 향후 A100 신규 기동 전 `torch.cuda.max_memory_allocated()` 프로파일링이 의무화됨.
 
