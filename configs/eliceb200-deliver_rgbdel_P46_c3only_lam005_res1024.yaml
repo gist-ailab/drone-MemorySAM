@@ -198,7 +198,7 @@ DATASET:
 TRAIN:
   LORA_NORM_CAP : 20.0
   IMAGE_SIZE    : [1024, 1024]      # /16 -> 48x48 tokens
-  BATCH_SIZE    : 9   # [elice-b200] 1 GPU 로 eff-batch 18 유지: 9 x 1 x ceil(16/9)=2 = 18 (기존 3GPU BS1 accum6 과 동일)                 # jarvis 4090 24GB: all-on(C1+C2+C3) BS2는 backward에서 OOM 실증(스모크) -> BS1
+  BATCH_SIZE    : 6   # [elice-b200] GPU3 를 타 프로세스와 공유 → BS6. eff-batch 는 6 x 1 x ceil(16/6)=3 = 18 로 동일 유지
                                     # 🔴 ISSUE-028: BS1도 **부족했다**. 2026-07-29 런은 ep6 iter0에서
                                     # 4-rank 전부 OOM(23.47GiB). 이전의 "BS1 OOM-safe" 기록은 오기록이다 —
                                     # C2/C3 WARMUP_EP=5 + epoch 0-index라 ep1~5(=epoch 0~4)는 P39.1-base만
