@@ -87,6 +87,43 @@ def _tp_fp_fn(pred_boxes, pred_cls, gt_boxes, gt_cls, iou_thr=0.5):
 PANEL_PX = 768                 # top row: GT / Pred, one side each
 STRIP_PX = 512                 # bottom row: one modality tile each
 CANVAS_W = PANEL_PX * 2        # 1536 — exactly 3 * STRIP_PX, so both rows line up
+def _pick_display():
+    """활성 X 디스플레이를 찾아 DISPLAY 를 맞춘다. 데모박스는 :0 이 아니라 :1 인
+    경우가 있어(로그인 세션에 따라) 하드코딩하면 창이 안 뜬다."""
+    import glob, os
+    if os.environ.get('DISPLAY'):
+        return os.environ['DISPLAY']
+    for s in sorted(glob.glob('/tmp/.X11-unix/X*')):
+        d = ':' + os.path.basename(s)[1:]
+        os.environ['DISPLAY'] = d
+        return d
+    return None
+
+
+def _show_window(img, title: str):
+    """GT|Pred 패널을 화면에 띄운다. cv2 가 headless 빌드인 경우가 많아 폴백을 둔다."""
+    try:
+        import cv2 as _cv
+        import numpy as _np
+        _cv.imshow(title, _cv.cvtColor(_np.array(img), _cv.COLOR_RGB2BGR))
+        _cv.waitKey(1)
+        return
+    except Exception:
+        pass
+    try:
+        _pick_display()
+        import matplotlib
+        matplotlib.use('TkAgg', force=True)
+        import matplotlib.pyplot as _plt
+        if not hasattr(_show_window, '_fig'):
+            _show_window._fig = _plt.figure(title, figsize=(16, 9))
+        _plt.figure(_show_window._fig.number); _plt.clf()
+        _plt.imshow(img); _plt.axis('off')
+        _plt.show(block=False); _plt.pause(0.001)
+    except Exception:
+        pass
+
+
 SEP = (110, 110, 110)          # panel separator lines
 _MODAL_LABEL = {'img': 'RGB', 'rgb': 'RGB', 'lidar': 'LiDAR (depth)', 'thermal': 'Thermal'}
 _MODAL_CMAP = {'lidar': 'COLORMAP_INFERNO', 'thermal': 'COLORMAP_JET'}
@@ -350,7 +387,7 @@ def main():
                 vis.save(op)
                 if args.show and os.environ.get('DISPLAY'):
                     import cv2
-                    cv2.imshow('cert', cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)); cv2.waitKey(1)
+                    _show_window(vis, 'Detection  GT | Pred  (+ RGB/LiDAR/Thermal)')
             except Exception as e:
                 logf.write(f"  [viz warn] {e}\n")
     logf.close()

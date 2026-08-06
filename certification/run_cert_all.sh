@@ -20,6 +20,10 @@ GPU="${3:-0}"
 DET_TRIALS="${DET_TRIALS:-5}"        # ①② 표적위치·영상열화 = 5회
 IFF_TRIALS="${IFF_TRIALS:-2}"        # ③ 피아식별 = 2회
 IFF_CROPS="${IFF_CROPS:-$HOME/dset/poongsan_iff_crops}"
+# GT vs 예측 비교를 평가 중 화면에도 띄운다 (원격/헤드리스면 자동으로 꺼짐).
+# 강제로 끄려면 SHOW=0, 켜려면 SHOW=1.
+if [ "${SHOW:-auto}" = "1" ] || { [ "${SHOW:-auto}" = "auto" ] && [ -n "${DISPLAY:-}" ]; }; then
+  SHOW_FLAG="--show"; else SHOW_FLAG=""; fi
 PY="${PYTHON:-python}"
 
 cd "$REPO"
@@ -50,6 +54,12 @@ echo "               + reliability-gated fusion) + RF-DETR NMS-free head"
 echo "               3-modal RGB+LiDAR+Thermal, 768x768"
 echo "   ③  분류  : MobileNetV3-small (ImageNet init) 128x128 크롭, Allies vs Enemies"
 echo ""
+if [ -n "$SHOW_FLAG" ]; then
+  echo "  ${B}GT vs 예측 비교 창${R} : 켜짐 — 검출은 [GT | 예측 + 3모달], 피아식별은 정답 파랑/오답 빨강"
+else
+  echo "  ${B}GT vs 예측 비교${R} : 화면 표시 꺼짐(DISPLAY 없음) — PNG 로만 저장됩니다. 켜려면 SHOW=1"
+fi
+echo ""
 
 # ────────────────────────── ①② 검출: mAP 반복 ──────────────────────────
 echo "${A}▶ [1/2] 표적위치 정확도 + 영상 열화시 표적인식 성공률 — 검출 ${DET_TRIALS}회${R}"
@@ -57,7 +67,7 @@ for i in $(seq 1 "$DET_TRIALS"); do
   echo ""
   echo "${B}──── 검출 시행 $i / $DET_TRIALS ────${R}"
   # 서브셸 환경변수로만 넘긴다 ($OUT 자체를 덮어쓰면 경로가 중첩된다)
-  OUT="$OUT/det_trial$i" bash "$HERE/run_cert.sh" "$CKPT" "$DATA_ROOT" "$GPU" --auto || \
+  OUT="$OUT/det_trial$i" bash "$HERE/run_cert.sh" "$CKPT" "$DATA_ROOT" "$GPU" --auto $SHOW_FLAG || \
     echo "  (검출 시행 $i 실패 — rc=$?)"
 done
 
@@ -79,7 +89,7 @@ if [ ! -f "$IFF_CKPT" ]; then
 fi
 # 인증 시험은 '가중치 고정 + 평가만' 반복 (①② 와 동일한 성격)
 "$PY" "$HERE/iff_eval.py" --mode eval --data "$IFF_CROPS" --trials "$IFF_TRIALS" \
-    --ckpt "$IFF_CKPT" --out "$OUT/iff" --gpu "$GPU"
+    --ckpt "$IFF_CKPT" --out "$OUT/iff" --gpu "$GPU" $SHOW_FLAG
 
 # ────────────────────────── 통합 요약 ──────────────────────────
 "$PY" - "$OUT" "$DET_TRIALS" "$IFF_TRIALS" <<'PY' | tee "$OUT/summary.txt"

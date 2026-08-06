@@ -46,11 +46,47 @@ def build_transforms(crop: int, lowlight_aug: bool):
     return transforms.Compose(train_t), transforms.Compose(test_t)
 
 
+def _pick_display():
+    """활성 X 디스플레이를 찾아 DISPLAY 를 맞춘다. 데모박스는 :0 이 아니라 :1 인
+    경우가 있어(로그인 세션에 따라) 하드코딩하면 창이 안 뜬다."""
+    import glob, os
+    if os.environ.get('DISPLAY'):
+        return os.environ['DISPLAY']
+    for s in sorted(glob.glob('/tmp/.X11-unix/X*')):
+        d = ':' + os.path.basename(s)[1:]
+        os.environ['DISPLAY'] = d
+        return d
+    return None
+
+
+def _display(img, title: str):
+    """GT vs 예측 비교를 화면에 띄운다. cv2 가 headless 빌드면 matplotlib 로 폴백."""
+    try:
+        import cv2
+        import numpy as _np
+        cv2.imshow(title, cv2.cvtColor(_np.array(img), cv2.COLOR_RGB2BGR))
+        cv2.waitKey(1)
+        return
+    except Exception:
+        pass
+    try:
+        _pick_display()
+        import matplotlib
+        matplotlib.use('TkAgg', force=True)
+        import matplotlib.pyplot as plt
+        plt.figure(title, figsize=(16, 9))
+        plt.imshow(img); plt.axis('off'); plt.title(title)
+        plt.show(block=False); plt.pause(0.1)
+    except Exception as e:
+        print(f'  (화면 표시 불가 — PNG 로만 저장됩니다: {type(e).__name__})')
+
+
 OK_BLUE = (54, 140, 245)      # 맞춘 것 = 파랑
 BAD_RED = (232, 72, 60)       # 틀린 것 = 빨강
 
 
-def save_iff_viz(items, viz_dir: str, seed: int, cols: int = 8, rows: int = 6, tile: int = 150):
+def save_iff_viz(items, viz_dir: str, seed: int, cols: int = 8, rows: int = 6,
+                 tile: int = 150, show: bool = False):
     """발표용 피아식별 시각화 — 입력 크롭마다 예측 결과를 색으로 표시.
 
     맞추면 파란 테두리, 틀리면 빨간 테두리. 각 타일에 GT→예측(신뢰도)을 적어
@@ -134,6 +170,8 @@ def save_iff_viz(items, viz_dir: str, seed: int, cols: int = 8, rows: int = 6, t
 
     out = f'{viz_dir}/iff_seed{seed}.png'
     sheet.save(out)
+    if show:
+        _display(sheet, 'IFF  GT vs Pred  (blue=correct, red=wrong)')
     return out
 
 
@@ -215,7 +253,7 @@ def evaluate(args, dev, model, trial: int, viz_dir: str | None = None):
 
     a, (ba, rec) = acc(cm), bal_acc(cm)
     if viz_dir:                       # 발표용: 맞음=파랑 / 틀림=빨강 컨택트시트
-        save_iff_viz(viz_items, viz_dir, trial)
+        save_iff_viz(viz_items, viz_dir, trial, show=getattr(args, 'show', False))
     return {'trial': trial, 'acc': a, 'balanced_acc': ba,
             'recall_allies': rec[0], 'recall_enemies': rec[1],
             'acc_night': acc(cm_night), 'acc_day': acc(cm_day),
@@ -239,6 +277,8 @@ def main():
                     help='저조도 증강 끄기 (train에 야간이 없어 기본 ON)')
     ap.add_argument('--out', default='runs/cert_iff')
     ap.add_argument('--no-viz', action='store_true', help='발표용 시각화(정답 파랑/오답 빨강) 끄기')
+    ap.add_argument('--show', action='store_true',
+                    help='평가 중 GT vs 예측 비교를 화면에 표시 ($DISPLAY 필요)')
     ap.add_argument('--gpu', type=int, default=0)
     args = ap.parse_args()
 
