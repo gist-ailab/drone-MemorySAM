@@ -9,6 +9,14 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 2026-08-05 — P46 C3-only λ0.2 seed2 DELIVER 완주: 재현성 검증 실패, EPOCHS200 과다 발견
+
+- **실험**: `jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2`(DELIVER 4모달 img/depth/event/lidar), jarvis GPU1,2,3. **04:43 완주, 200/200, Total 18:09:40**.
+- **결과(legal)**: val-best **ep62** → val 67.74 / test **55.55**. final-iter **ep200** → val 65.71 / test **55.31**. best test 56.30@ep146은 **test-peeking이라 사용 불가**(참고 기록만).
+- **판정**: **실패**. 두 legal 프로토콜 모두 내부최고 DELIVER test 56.62(P34/P36 fair) 미달(val-best −1.07, final-iter −1.31) — 원본 lam02 런(legal val-best 54.60/final-iter 55.69, 08-03 정정 — `experiments/analysis/2026-08-03-p46-c3only-lambda-sweep.md`)과 같은 미달 대역으로 재현되어 **λ0.2 SOTA 돌파는 재현성 검증에서 최종 반증됨**.
+- **부수 발견**: val이 ep62 67.74 → ep200 65.71로 **−2.03 하락** — 138 epoch 추가 학습이 오히려 val을 악화시킴 → **λ0.2에 EPOCHS 200은 과함**, 후속 λ 실험 EPOCHS 재검토 필요.
+- **DELIVER 최고는 여전히 P34/P36 fair val 67.74/test 56.62, 변동 없음.**
+
 ### 2026-08-04 — PQ 평가 경로 배선 (M2F 라우팅 + tools/eval_pq.py, 학습 무관)
 
 - **범위**: 코드 + 스모크까지. **학습 미기동**(지시), push 없음(리뷰 후 develop 병합). 재학습 불필요 — 기존 ckpt의 query를 그대로 쓴다.
