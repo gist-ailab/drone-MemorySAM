@@ -1,5 +1,7 @@
 # P48 — 쿼리 경로 인스턴스 감독 (Instance Supervision) 제안 (2026-08-05)
 
+> 🔴 **폐기 (2026-08-06)**: 사전등록 자기반증 게이트(things PQ>30) 미달 — MUSES val PQ 첫 측정 결과 things PQ **22.87** (P47-MUB D-1, ep172). 큰 things만 잡고 작고 얇은 인스턴스는 사실상 0 → "쿼리에 잠재된 인스턴스 능력을 감독으로 깨운다"는 전제 불성립(깨울 잠재력 부재). 상세: [../experiments/analysis/2026-08-06-pq-first-measurement-p48-gate.md](../experiments/analysis/2026-08-06-pq-first-measurement-p48-gate.md).
+
 > 판정·설계 = opus 세션. 근거는 전부 실측 또는 arXiv 원문. 게이트는 **사전 등록**이며 학습 시작 후 수정 금지.
 
 ## 0. 한 줄 요약
