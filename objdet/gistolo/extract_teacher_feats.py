@@ -39,6 +39,8 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--grid', type=int, default=40, help='student stride-16 격자 (640/16)')
     ap.add_argument('--level', type=int, default=2, help='pyramid index (0:s4 1:s8 2:s16 3:s32)')
+    ap.add_argument('--multiscale', action='store_true',
+                    help='[2] s8/s16/s32 세 레벨을 함께 저장 (다중 스케일 KD)')
     ap.add_argument('--gpu', type=int, default=0)
     args = ap.parse_args()
 
@@ -99,10 +101,21 @@ def main():
                 w = F.interpolate(w, size=(args.grid, args.grid),
                                   mode='bilinear', align_corners=False)
 
+            # [2] 다중 스케일: teacher 는 DET_LEVELS 상 단일 레벨만 주므로
+            # 그 레벨을 student 의 각 격자(80/40/20)로 리샘플해 저장한다.
+            multi = {}
+            if args.multiscale:
+                base = pyr[args.level] if len(pyr) > args.level else pyr[0]
+                for g in (args.grid * 2, args.grid, args.grid // 2):     # 80,40,20
+                    multi[f'feat{g}'] = F.interpolate(
+                        base, size=(g, g), mode='bilinear', align_corners=False)
+
             for i in range(feat.shape[0]):
                 fn = batch['file_name'][i]
                 stem = os.path.splitext(fn.replace('/rgb/', '_').replace('/', '_'))[0]
                 d = {'feat': feat[i].half().cpu().numpy()}
+                for k2, v2 in multi.items():
+                    d[k2] = v2[i].half().cpu().numpy()
                 if w is not None:
                     d['gate'] = w[i].float().cpu().numpy()    # (m, grid, grid) img,lidar,thermal
                 np.savez_compressed(f'{args.out}/{stem}.npz', **d)

@@ -41,6 +41,7 @@ class FeatKD:
         # student 채널은 yolov5 버전/스케일마다 달라, 첫 배치에서 실제 채널로 만든다.
         self.adapter = (nn.Conv2d(student_ch, teacher_ch, 1).to(dev)
                         if student_ch else None)
+        self.adapters: dict[int, nn.Conv2d] = {}      # [2] 다중 스케일: 격자별 adapter
         self.optim = None            # adapter 지연 생성 시 파라미터를 붙일 옵티마이저
         self.cache: dict[str, tuple] = {}
         self.hit = self.miss = 0
@@ -104,6 +105,55 @@ class FeatKD:
         return self.kd_w * d.mean()
 
 
+    def loss_multi(self, feats_by_grid: dict, paths) -> torch.Tensor:
+        """[2] 다중 스케일 KD — student 의 각 neck 격자(80/40/20)를 teacher 의
+        같은 격자 리샘플본에 각각 정합한다. 단일 stride-16 정합이 실패한 것이
+        '스케일이 하나뿐'이라서인지 확인하기 위한 변형."""
+        total, used = None, 0
+        for g, sf in feats_by_grid.items():
+            ts, gs, idx = [], [], []
+            if sf.shape[0] != len(paths):        # 방어: 배치 불일치면 이 레벨은 건너뛴다
+                continue
+            for i, p in enumerate(paths):
+                stem = os.path.splitext(os.path.basename(p))[0]
+                z = self._load_raw(stem)
+                if z is None or f'feat{g}' not in z:
+                    continue
+                ts.append(torch.from_numpy(z[f'feat{g}'].astype(np.float32)))
+                gs.append(torch.from_numpy(z['gate']) if 'gate' in z else None)
+                idx.append(i)
+            if not ts:
+                continue
+            t = torch.stack(ts).to(self.dev, non_blocking=True)
+            key = (g, int(sf.shape[1]))          # 격자+채널 조합으로 유일하게
+            if key not in self.adapters:
+                self.adapters[key] = nn.Conv2d(sf.shape[1], self.teacher_ch, 1).to(self.dev)
+                print(f'[KD] adapter(grid {g}) 생성: {sf.shape[1]}ch -> {self.teacher_ch}ch')
+                if self.optim is not None:
+                    self.optim.add_param_group(
+                        {'params': list(self.adapters[key].parameters()), 'weight_decay': 0.0})
+            s_ = self.adapters[key](sf[idx].float())
+            d = 1.0 - F.cosine_similarity(s_, t, dim=1)
+            if self.beta > 0 and gs[0] is not None:
+                gt = torch.stack([x for x in gs]).to(self.dev)
+                w_img = F.interpolate(gt, size=d.shape[-2:], mode='bilinear',
+                                      align_corners=False)[:, 0]
+                wt = 1.0 + self.beta * (1.0 - w_img).clamp(0, 1)
+                d = d * wt / wt.mean().clamp(min=1e-6)
+            self.hit += len(idx)
+            total = d.mean() if total is None else total + d.mean()
+            used += 1
+        if total is None:
+            return list(feats_by_grid.values())[0].sum() * 0.0
+        return self.kd_w * total / used
+
+    def _load_raw(self, stem: str):
+        """다중 스케일용 — 캐시하지 않는다. 3 격자 x 7043 장을 전부 메모리에 들면
+        수십 GB 라 프로세스가 죽는다(첫 시도에서 실제로 죽었다). OS 페이지 캐시에 맡긴다."""
+        p = os.path.join(self.dir, stem + '.npz')
+        return dict(np.load(p)) if os.path.exists(p) else None
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument('--feat-dir', required=True, help='extract_teacher_feats.py 출력')
@@ -112,6 +162,8 @@ def main():
                     help='모달 인식 가중 강도 (D). 0 이면 순수 feature KD (C only)')
     ap.add_argument('--kd-grid', type=int, default=40,
                     help='teacher 특징 격자 = student stride-16 해상도 (640/16=40)')
+    ap.add_argument('--multiscale', action='store_true',
+                    help='[2] student 의 80/40/20 격자를 모두 정합 (다중 스케일 KD)')
     known, rest = ap.parse_known_args()
 
     # parse_known_args 는 구분자 '--' 를 rest 에 리터럴로 남긴다. 그대로 넘기면
@@ -137,6 +189,10 @@ def main():
         _orig_fwd = yolo_mod.DetectionModel._forward_once
 
         def fwd(self, x, profile=False, visualize=False):
+            # 이전 forward 의 텐서가 남아 있으면 배치 크기가 달라져 인덱스가 깨진다
+            # (CUDA index-out-of-bounds assert 의 원인). 매 forward 마다 비운다.
+            state['multi'] = {}
+            state['feat'] = None
             y, dt = [], []
             for m in self.model:
                 if m.f != -1:
@@ -146,9 +202,13 @@ def main():
                 # teacher 특징 격자(기본 40x40 = stride-16)와 같은 해상도의 neck 출력을
                 # 잡는다. yolov5m 의 레이어 번호는 버전마다 달라(17 은 stride-8 80x80)
                 # 인덱스를 고정하지 않고 해상도로 찾는 편이 안전하다.
-                if (isinstance(x, torch.Tensor) and x.dim() == 4
-                        and x.shape[-1] == known.kd_grid and x.shape[-2] == known.kd_grid):
-                    state['feat'] = x
+                if isinstance(x, torch.Tensor) and x.dim() == 4:
+                    g = x.shape[-1]
+                    if g == known.kd_grid and x.shape[-2] == g:
+                        state['feat'] = x
+                    if known.multiscale and x.shape[-2] == g and g in (
+                            known.kd_grid * 2, known.kd_grid, known.kd_grid // 2):
+                        state.setdefault('multi', {})[g] = x
             return x
         yolo_mod.DetectionModel._forward_once = fwd
 
@@ -158,8 +218,11 @@ def main():
         def call(self, p, targets):
             loss, items = _orig_call(self, p, targets)
             kd = state['kd']
-            if kd is not None and state['feat'] is not None and state['paths'] is not None:
-                l = kd.loss(state['feat'], state['paths'])
+            if kd is not None and state['paths'] is not None and (
+                    state['feat'] is not None or state.get('multi')):
+                l = (kd.loss_multi(state['multi'], state['paths'])
+                     if known.multiscale and state.get('multi')
+                     else kd.loss(state['feat'], state['paths']))
                 loss = loss + l * state['feat'].shape[0]   # yolov5 loss 는 batch 곱 스케일
             return loss, items
         ComputeLoss.__call__ = call
