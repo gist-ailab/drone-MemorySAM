@@ -137,29 +137,29 @@ def save_iff_viz(items, viz_dir: str, seed: int, cols: int = 8, rows: int = 6, t
     return out
 
 
-def run_trial(args, seed: int, dev, viz_dir: str | None = None):
+def build_model(dev, n_cls: int = 2):
+    """인증 대상 분류기 — MobileNetV3-small (ImageNet init, classifier 2-class)."""
+    m = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
+    m.classifier[3] = nn.Linear(m.classifier[3].in_features, n_cls)
+    return m.to(dev)
+
+
+def train_model(args, dev, seed: int = 0):
+    """[인증 준비] 분류기를 한 번 학습해 체크포인트로 확정한다.
+    인증 시험 때는 이 가중치를 로드해 '평가만' 반복한다(모델 고정)."""
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
-    train_t, test_t = build_transforms(args.crop, not args.no_lowlight_aug)
+    train_t, _ = build_transforms(args.crop, not args.no_lowlight_aug)
     tr = datasets.ImageFolder(f'{args.data}/train', transform=train_t)
-    te = datasets.ImageFolder(f'{args.data}/test', transform=test_t)
-    assert tr.classes == CLASSES == te.classes, f'class mismatch: {tr.classes} vs {te.classes}'
-
-    # 클래스 불균형 보정 (Allies 4753 vs Enemies 3739)
+    assert tr.classes == CLASSES, f'class mismatch: {tr.classes}'
     cnt = np.bincount([y for _, y in tr.samples], minlength=len(CLASSES))
     w = torch.tensor((cnt.sum() / (len(CLASSES) * cnt)), dtype=torch.float32, device=dev)
-
     tl = DataLoader(tr, batch_size=args.batch, shuffle=True, num_workers=6, drop_last=True)
-    vl = DataLoader(te, batch_size=args.batch, shuffle=False, num_workers=6)
 
-    m = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
-    m.classifier[3] = nn.Linear(m.classifier[3].in_features, len(CLASSES))
-    m = m.to(dev)
+    m = build_model(dev)
     opt = torch.optim.AdamW(m.parameters(), lr=args.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     crit = nn.CrossEntropyLoss(weight=w, label_smoothing=0.05)
-
     for ep in range(args.epochs):
         m.train()
         for x, y in tl:
@@ -168,6 +168,21 @@ def run_trial(args, seed: int, dev, viz_dir: str | None = None):
             crit(m(x), y).backward()
             opt.step()
         sched.step()
+    os.makedirs(os.path.dirname(args.ckpt) or '.', exist_ok=True)
+    torch.save({'state_dict': m.state_dict(), 'classes': CLASSES, 'crop': args.crop,
+                'epochs': args.epochs, 'seed': seed,
+                'model': 'MobileNetV3-small (ImageNet-1k init, classifier->2-class)',
+                'lowlight_aug': not args.no_lowlight_aug}, args.ckpt)
+    print(f'[IFF] 학습 완료 -> 체크포인트 저장: {args.ckpt}')
+    return m
+
+
+def evaluate(args, dev, model, trial: int, viz_dir: str | None = None):
+    _, test_t = build_transforms(args.crop, not args.no_lowlight_aug)
+    te = datasets.ImageFolder(f'{args.data}/test', transform=test_t)
+    assert te.classes == CLASSES, f'class mismatch: {te.classes}'
+    vl = DataLoader(te, batch_size=args.batch, shuffle=False, num_workers=6)
+    m = model
 
     # ---- eval: 전체 / 야간 / 주간 + 혼동행렬 (+ 발표용 시각화) ----
     m.eval()
@@ -200,8 +215,8 @@ def run_trial(args, seed: int, dev, viz_dir: str | None = None):
 
     a, (ba, rec) = acc(cm), bal_acc(cm)
     if viz_dir:                       # 발표용: 맞음=파랑 / 틀림=빨강 컨택트시트
-        save_iff_viz(viz_items, viz_dir, seed)
-    return {'seed': seed, 'acc': a, 'balanced_acc': ba,
+        save_iff_viz(viz_items, viz_dir, trial)
+    return {'trial': trial, 'acc': a, 'balanced_acc': ba,
             'recall_allies': rec[0], 'recall_enemies': rec[1],
             'acc_night': acc(cm_night), 'acc_day': acc(cm_day),
             'cm': cm.tolist(), 'cm_night': cm_night.tolist(), 'cm_day': cm_day.tolist(),
@@ -211,7 +226,11 @@ def run_trial(args, seed: int, dev, viz_dir: str | None = None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--data', required=True, help='build_iff_crops.py 출력 디렉터리')
-    ap.add_argument('--trials', type=int, default=5, help='반복 시험 횟수 (인증 (C) = 5회)')
+    ap.add_argument('--mode', choices=['train', 'eval'], default='eval',
+                    help="train=학습해 체크포인트 저장(인증 전 1회), eval=가중치 로드해 평가만 반복")
+    ap.add_argument('--ckpt', default='weights/iff_mobilenetv3.pt',
+                    help='분류기 체크포인트 (모델 고정 — 인증 시 이 가중치로 평가만)')
+    ap.add_argument('--trials', type=int, default=2, help='반복 시험 횟수 (피아식별 = 2회)')
     ap.add_argument('--epochs', type=int, default=12)
     ap.add_argument('--batch', type=int, default=64)
     ap.add_argument('--lr', type=float, default=3e-4)
@@ -231,13 +250,31 @@ def main():
     print(f'  Model      : MobileNetV3-small (ImageNet init), crop {args.crop}px')
     print(f'  Device     : {dev} ({torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"})')
     print(f'  Low-light aug : {"OFF" if args.no_lowlight_aug else "ON (train에 야간 0장이라 필수)"}')
-    print(f'  {BOLD}반복 시험   : {args.trials}회{RST} (seed 0..{args.trials-1}), 각 {args.epochs} epochs\n')
 
-    rows, t0 = [], time.time()
+    t0 = time.time()
+    if args.mode == 'train':
+        print(f'  {BOLD}모드        : 학습 (인증 전 1회, {args.epochs} epochs){RST}\n')
+        train_model(args, dev)
+        print(f'  체크포인트: {args.ckpt}  — 인증 시에는 --mode eval 로 이 가중치를 로드해 평가만 반복\n')
+        return
+
+    # ---- eval 모드: 고정된 가중치를 로드해 '평가만' 반복 (모델 고정) ----
+    if not os.path.exists(args.ckpt):
+        raise SystemExit(f'체크포인트가 없습니다: {args.ckpt}\n'
+                         f'  먼저 학습하세요:  python {os.path.basename(__file__)} '
+                         f'--mode train --data {args.data} --ckpt {args.ckpt}')
+    ck = torch.load(args.ckpt, map_location=dev, weights_only=False)
+    model = build_model(dev)
+    model.load_state_dict(ck['state_dict'])
+    model.eval()
+    print(f'  Checkpoint  : {args.ckpt}  (학습 seed {ck.get("seed")}, {ck.get("epochs")} ep)')
+    print(f'  {BOLD}반복 시험   : {args.trials}회 (모델 고정, 평가만 반복){RST}\n')
+
+    rows = []
     viz_dir = None if args.no_viz else f'{args.out}/viz'
     for s in range(args.trials):
         st = time.time()
-        r = run_trial(args, s, dev, viz_dir)
+        r = evaluate(args, dev, model, s, viz_dir if s == 0 else None)
         rows.append(r)
         print(f'  [trial {s+1}/{args.trials}] acc={r["acc"]:.4f}  bal={r["balanced_acc"]:.4f}  '
               f'night={r["acc_night"]:.4f}  day={r["acc_day"]:.4f}   ({time.time()-st:.0f}s)')
@@ -258,7 +295,7 @@ def main():
     for i, c in enumerate(CLASSES):
         print(f'    true:{c:9s} {cm[i,0]:10.1f} {cm[i,1]:12.1f}')
     mu, sd = ms('acc')
-    print(f'\n  ►►  피아식별 정확도 = {mu:.4f} ± {sd:.4f}  ({args.trials}회)  ◄◄')
+    print(f'\n  ►►  피아식별 정확도 = {mu:.4f} ± {sd:.4f}  ({args.trials}회, 모델 고정)  ◄◄')
     print(f'{BOLD}╚════════════════════════════════════════════╝{RST}')
 
     out = {'model': 'MobileNetV3-small (torchvision, ImageNet-1k init, classifier→2-class)',
@@ -267,6 +304,7 @@ def main():
            'std': {k: ms(k)[1] for k in
            ('acc', 'balanced_acc', 'recall_allies', 'recall_enemies', 'acc_night', 'acc_day')},
            'n_trials': args.trials, 'epochs': args.epochs, 'crop': args.crop,
+           'ckpt': args.ckpt, 'eval_only': True,
            'optimizer': f'AdamW lr={args.lr} wd=1e-4, cosine, batch={args.batch}',
            'lowlight_aug': not args.no_lowlight_aug, 'elapsed_s': time.time() - t0}
     p = f'{args.out}/iff_report.json'

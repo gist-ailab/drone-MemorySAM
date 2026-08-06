@@ -2,9 +2,9 @@
 # ═══════════════════════════════════════════════════════════════════════════
 #  공인인증 정량목표 통합 러너 — 3개 항목을 반복 횟수대로 실행하고 한눈에 요약
 #
-#   ① 표적위치 정확도            mAP50            반복 2회   [D1 ViT-S+ 검출]
-#   ② 영상 열화시 표적인식 성공률  mAP50 (야간)      반복 2회   [①과 동일 실행에서 분해]
-#   ③ 피아식별 정확도            분류 accuracy     반복 5회   [MobileNetV3-small 크롭분류]
+#   ① 표적위치 정확도            mAP50            반복 5회   [D1 ViT-S+ 검출]
+#   ② 영상 열화시 표적인식 성공률  mAP50 (야간)      반복 5회   [①과 동일 실행에서 분해]
+#   ③ 피아식별 정확도            분류 accuracy     반복 2회   [MobileNetV3-small 크롭분류, 가중치 고정]
 #
 #   bash certification/run_cert_all.sh <best_checkpoint.pth> [DATA_ROOT] [GPU]
 #
@@ -17,8 +17,8 @@ REPO="$(dirname "$HERE")"
 CKPT="${1:?usage: run_cert_all.sh <best_checkpoint.pth> [DATA_ROOT] [GPU]}"
 DATA_ROOT="${2:-$HOME/poongsan_v2}"
 GPU="${3:-0}"
-DET_TRIALS="${DET_TRIALS:-2}"        # ①②
-IFF_TRIALS="${IFF_TRIALS:-5}"        # ③
+DET_TRIALS="${DET_TRIALS:-5}"        # ①② 표적위치·영상열화 = 5회
+IFF_TRIALS="${IFF_TRIALS:-2}"        # ③ 피아식별 = 2회
 IFF_CROPS="${IFF_CROPS:-$HOME/dset/poongsan_iff_crops}"
 PY="${PYTHON:-python}"
 
@@ -71,8 +71,15 @@ if [ ! -d "$IFF_CROPS/test" ]; then
       --train-ann "$HOME/poongsan_v2_train3modal/_final_ann/instances_train_egofill.json" \
       --test-root "$DATA_ROOT" --out "$IFF_CROPS"
 fi
-"$PY" "$HERE/iff_eval.py" --data "$IFF_CROPS" --trials "$IFF_TRIALS" \
-    --epochs "${IFF_EPOCHS:-12}" --out "$OUT/iff" --gpu "$GPU"
+IFF_CKPT="${IFF_CKPT:-$REPO/weights/iff_mobilenetv3.pt}"
+if [ ! -f "$IFF_CKPT" ]; then
+  echo "  피아식별 분류기 체크포인트가 없어 1회 학습합니다 -> $IFF_CKPT"
+  "$PY" "$HERE/iff_eval.py" --mode train --data "$IFF_CROPS" \
+      --epochs "${IFF_EPOCHS:-12}" --ckpt "$IFF_CKPT" --gpu "$GPU"
+fi
+# 인증 시험은 '가중치 고정 + 평가만' 반복 (①② 와 동일한 성격)
+"$PY" "$HERE/iff_eval.py" --mode eval --data "$IFF_CROPS" --trials "$IFF_TRIALS" \
+    --ckpt "$IFF_CKPT" --out "$OUT/iff" --gpu "$GPU"
 
 # ────────────────────────── 통합 요약 ──────────────────────────
 "$PY" - "$OUT" "$DET_TRIALS" "$IFF_TRIALS" <<'PY' | tee "$OUT/summary.txt"
