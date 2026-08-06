@@ -106,6 +106,25 @@ def build_dataset(name, cfg, split, root_override):
     return DELIVER(dcfg['ROOT'], split, tf, dcfg['MODALS'], return_meta=True), dcfg
 
 
+def _match_folder(gt_json, gt_folder):
+    """json의 file_name 이 기준으로 삼는 base 디렉터리를 고른다.
+
+    MUSES 배포 val.json 은 split 접두("val/clear/...")가 붙은 경로를
+    gt_panoptic/ 기준으로 담고 있는데, gt_folder 는 이미 gt_panoptic/val 을
+    가리킬 수 있어 그대로 조인하면 split 이 중복된다("val/val/...").
+    어느 규약인지 가정하지 말고 **실제 항목 하나로 검증**한다.
+    """
+    anns = gt_json.get('annotations') or []
+    if not anns:
+        return gt_folder
+    name = anns[0].get('file_name', '')
+    if (gt_folder / name).exists():
+        return gt_folder
+    if (gt_folder.parent / name).exists():
+        return gt_folder.parent
+    return gt_folder
+
+
 def resolve_gt(args, root, split, keys):
     """Return (gt_json, gt_folder) or (None, None).
 
@@ -132,7 +151,8 @@ def resolve_gt(args, root, split, keys):
                  Path(root) / f'gt_panoptic_{split}.json'):
         if cand.is_file():
             with open(cand) as f:
-                return json.load(f), gt_folder
+                gt_json = json.load(f)
+            return gt_json, _match_folder(gt_json, gt_folder)
     if not args.build_gt_json:
         return None, gt_folder
     pngs = sorted(p for p in gt_folder.rglob('*.png'))
