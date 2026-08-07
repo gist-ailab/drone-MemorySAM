@@ -143,6 +143,11 @@ def main(cfg, gpu, save_dir, logger):
     ds_kwargs = {}
     if dataset_cfg.get('NAME') == 'MUSES':
         ds_kwargs['proj_dir'] = dataset_cfg.get('PROJ_DIR', 'projected_to_rgb')
+        # MUSES-only knob (조건-전문가 oracle 프로브): train/val 을 하나의 조건
+        # 셀로 제한한다. 'fog_night' 같은 조합 또는 'fog'/'night' 단일 축.
+        # 미지정(기본)이면 기존과 완전히 동일 — 전 조건 학습.
+        if dataset_cfg.get('CASE'):
+            ds_kwargs['case'] = dataset_cfg['CASE']
     trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
     valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
     testset = None
@@ -175,8 +180,20 @@ def main(cfg, gpu, save_dir, logger):
     resume_path = model_cfg.get('RESUME_PATH', '')
     if model_cfg.get('RESUME_ENABLE', False) and resume_path and os.path.isfile(resume_path):
         resume_checkpoint = torch.load(resume_path, map_location='cpu')
-        model.load_state_dict(resume_checkpoint['model_state_dict'], strict=False)
-        print(f"Resumed weights from {resume_path} (epoch {resume_checkpoint.get('epoch', 0)})")
+        _ld = model.load_state_dict(resume_checkpoint['model_state_dict'], strict=False)
+        print(f"Resumed weights from {resume_path} (epoch {resume_checkpoint.get('epoch', 0)}) "
+              f"missing={len(_ld.missing_keys)} unexpected={len(_ld.unexpected_keys)}")
+        if _ld.missing_keys:
+            print(f"  missing[:8]={_ld.missing_keys[:8]}")
+        if _ld.unexpected_keys:
+            print(f"  unexpected[:8]={_ld.unexpected_keys[:8]}")
+        # FINETUNE_INIT: 가중치만 가져오고 optimizer/scheduler/epoch 카운터는 초기화한다.
+        # 수렴한 ckpt에서 짧게 미세조정할 때(조건-전문가 프로브) 필요 — 그냥 RESUME 하면
+        # start_epoch 과 거의 소진된 LR 스케줄까지 복원돼 전문화가 일어나지 않는다.
+        # ⚠️ AUTO_RESUME 과 같이 켜지 말 것 (크래시 후 epoch 0 으로 되돌아가 무한 재시작).
+        if model_cfg.get('FINETUNE_INIT', False):
+            resume_checkpoint = None
+            print("[FINETUNE_INIT] weights only — optimizer/scheduler/epoch reset to fresh")
 
     # ── optim / sched / loaders / amp ───────────────────────────────────────
     purposed_batch_size = 16
@@ -1096,6 +1113,12 @@ if __name__ == '__main__':
     modals = ''.join(m[0] for m in cfg['DATASET']['MODALS'])
     exp_name = '_'.join([cfg['DATASET']['NAME'], cfg['MODEL']['BACKBONE'], modals])
     save_dir = Path(cfg['SAVE_DIR'], exp_name)
+
+    # FINETUNE_INIT 는 epoch 카운터를 0 으로 되돌리므로 AUTO_RESUME 과 같이 켜면
+    # 크래시 때마다 처음부터 다시 시작하는 무한 루프가 된다. 기동 전에 막는다.
+    if cfg['MODEL'].get('FINETUNE_INIT', False) and cfg['MODEL'].get('AUTO_RESUME', False):
+        raise ValueError("MODEL.FINETUNE_INIT 과 MODEL.AUTO_RESUME 은 동시에 켤 수 없다 "
+                         "(FINETUNE_INIT 이 epoch 을 0 으로 되돌려 무한 재시작).")
 
     # AUTO_RESUME: same semantics as train_sam2_lora_paper.py
     if cfg['MODEL'].get('AUTO_RESUME', False) and not (
