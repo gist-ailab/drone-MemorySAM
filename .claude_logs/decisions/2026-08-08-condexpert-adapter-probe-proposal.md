@@ -1,8 +1,42 @@
 ---
 created: 2026-08-08
 author: fable (MMSAM discussion 세션)
-status: 제안 — 프로브 게이트 대기 (학습 미기동)
+status: 프로브 **기동됨** (2026-08-08 06:38 KST, jarvis GPU1/6/7) — 결과 대기
 ---
+
+> 🔴 **기동 시 발견 — 게이트 적용 전 반드시 읽을 것 (2026-08-08, opus 세션)**
+>
+> **1. 로그 mIoU 를 그대로 G-P1 에 넣지 마라. 조건 서브셋에서는 희석된다.**
+> 평가기는 등장하지 않는 클래스도 0.00 으로 19 로 나눈다. fog_night val 은 **25장뿐**이라
+> 19 클래스 중 **8개가 아예 등장하지 않는다**(traffic light·person·rider·truck·bus·train·
+> motorcycle·bicycle). 실측: 존재 11클래스 평균 76.93 → 로그 mIoU **44.54** (= 846.28/19).
+> **Δ 도 같은 비율로 희석되므로 존재 클래스 평균으로 환산해야 한다** (fog_night 계수 19/11 ≈ 1.73).
+> 환산하지 않으면 참 Δ +1.0 이 +0.58 로 읽혀 **방향을 잘못 폐기**한다.
+>
+> **2. fog_night 단독 프로브는 과소검정이다.** 위 8개 결석 클래스가 바로 MUSES 격차의
+> 핵심(소형 things)이라, fog_night 25장으로는 그 축을 아예 관측할 수 없다.
+> → `night`(val 100장) / `day`(val 150장) 쌍을 **추가로** 기동했다. G-P2 대조도
+> clear_day(50장) 대신 통계력이 나은 `day` 를 쓴다.
+>
+> **3. 기동된 런** (전부 base = P39.1-rank 3모달 seed2 `epoch208_82.62_top1`, 1024², BS1, eff-batch 16 동일)
+>
+> | 런 | 조건 | train/val 장수 | ep | LR | GPU | 역할 |
+> |---|---|---|---|---|---|---|
+> | `base_fognight` | fog_night | 150/25 | 1 | **0.0** | 1 | 기준선 — **완료, mIoU 44.54 (존재11 76.93)** |
+> | `fognight_lr1e4` | fog_night | 150/25 | 40 | 1e-4 | 6 | 전문가 |
+> | `fognight_lr3e4` | fog_night | 150/25 | 40 | 3e-4 | 7 | 전문가 — **LR 민감도**(과소튜닝 거짓음성 방어) |
+> | `base_night` / `night_lr1e4` | night | 600/100 | 1 / 20 | 0.0 / 1e-4 | 1 | 헤드라인 |
+> | `base_day` / `day_lr1e4` | day | 900/150 | 1 / 13 | 0.0 / 1e-4 | 1 | G-P2 대조 (최적화 예산 정합: 12000 vs 11700 samples) |
+>
+> **기준선을 LR 0 런으로 잡은 이유**: 전문가와 **완전히 같은 평가 경로**로 재야 Δ 가 성립한다.
+> 공개된 per-condition 수치(fog_night 69.610 등)는 다른 평가기 산출이라 직접 빼면 안 된다.
+>
+> **코드**: `DATASET.CASE`(조건 셀 제한) + `MODEL.FINETUNE_INIT`(가중치만, optimizer/scheduler/epoch 초기화)
+> 를 `train_reliadino.py` 에 추가 — develop 8236773 / 4fb0979. FINETUNE_INIT×AUTO_RESUME 동시 사용은
+> 하드 가드로 차단(epoch 0 되돌림 → 무한 재시작). 기동 검증: missing=0 unexpected=0, RANDOM INIT 0건.
+>
+> ⚠️ **미해결**: LR 1e-4/3e-4 는 임의 선택이다. 셋 다 Δ≈0 이면 "천장이 낮다"와 "미세조정이
+> 부족하다"가 구분되지 않는다 — LR 민감도 런이 그 방어책이지만 완전하지는 않다.
 
 # 조건×클래스 어댑터(CEA) 방향 — oracle 프로브 선행 제안 (2026-08-08)
 
