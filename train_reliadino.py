@@ -1107,7 +1107,13 @@ if __name__ == '__main__':
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
     cfg['_CFG_NAME'] = Path(args.cfg).stem
 
-    fix_seeds(3407)
+    # TRAIN.SEED — 진짜 시드 노브. 미지정이면 기존값 3407 그대로라 기존 런과 바이트 동일.
+    # ⚠️ 이걸 넣기 전까지 'seed2/seed3' 런은 시드가 실제로 달라진 적이 없다(3407 고정).
+    # MODEL.C3.SEED 는 C1 이 꺼져 있으면 inert 라서 시드 역할을 하지 못했다.
+    # 그 런들의 편차는 시드 분산이 아니라 GPU 비결정성만 반영한다 = 참 시드 분산의 하한.
+    _seed = cfg.get('TRAIN', {}).get('SEED', 3407)
+    fix_seeds(_seed)
+    print(f"[SEED] fix_seeds({_seed})")
     setup_cudnn()
     gpu = setup_ddp()
     modals = ''.join(m[0] for m in cfg['DATASET']['MODALS'])
