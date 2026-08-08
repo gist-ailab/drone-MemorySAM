@@ -9,6 +9,19 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+## 2026-08-09 — ProbeA2 백본 스케일링 프로브 완료 (opus 세션)
+
+plan.md #9 실행. 코드(`tools/probe_backbone_scaling.py`, develop `6b33a2b`/`2511b61`)는 labcode 위임 후
+fresh-eyes 검수(실제 pretrained 로드·음성 가드 2종·selftest 독립 재현) + jarvis 실전 스모크(4/4 PASS) 통과 후 기동.
+
+**결과**: frozen DINOv3 + 공용 경량 head, MUSES RGB, val mIoU(best) S+ 59.85 / B 62.82 / L 68.67 / **H+ 69.19**.
+- G-A2-상한 Δ(H+−L)=+0.52 → 중간대역(사실상 포화 근접, S+→L +8.82 대비 급격한 수확체감)
+- G-A2-하한 Δ(L−S+)=+8.82(>3.0) → "방법 기여는 대형 백본 전제"로 논문 스코프 정직 공개 필요, 용량 정합 방어 불가
+- 조건별: H+가 야간·악천후(fog/rain/snow_night) +3.7~4.7 vs clear_day −3.06 — 헤드라인 상쇄됨. 오늘 밤 다른 발견(drop-lidar day 0.64 vs fog_night 7.19~7.39)과 같은 축.
+
+원장 H12/H12′ 신설. 상세 = [experiments/analysis/2026-08-09-probea2-backbone-scaling.md](../experiments/analysis/2026-08-09-probea2-backbone-scaling.md).
+미결: 7B 추가 측정(hpca100 A100 필요, 24GB OOM 위험) — 코디네이터 판단 대기.
+
 ## 2026-08-08 — current.md 스냅샷 전면 재작성 + .claude_logs 정리 (discussion 세션)
 
 - **current.md를 진짜 스냅샷으로 복원**: 07-15~08-06 날짜 엔트리 22개가 스냅샷 블록에 적층돼 있던 것을 본 파일로 이관(아래 아카이브 절). 연구 정체성 문구를 반증된 RBMA attn-bias 중심에서 "학습 전용 손실 + per-modal LoRA 트렁크" 축으로 개정. DELIVER 최고 수치 3중 모순(68.19/67.74/69.44 동시 유통) 해소 — 현행 legal 최고 = P46 C3-only 본run @1024 평가 val 69.44/test 56.99.
