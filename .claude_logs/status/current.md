@@ -33,7 +33,10 @@ moved: 2026-07-08
 
 ### 활성 런 / 대기 (2026-08-08, 커밋 기준 — 실시간은 [experiments/plan.md](../experiments/plan.md)·registry)
 
-- 🔵 **P46 C3-only @1024² 학습** — elice-b200 (BS8, eff-batch 16 동일; 커밋 c6efc8c) + jarvis GPU6,7 (df753e8). **ETA 08-09 새벽 — 이 판정이 CVPR/RA-L 분기 게이트** (legal 환산 val ≥69.60 또는 test ≥57.35면 DELIVER SOTA 돌파).
+- 🔵 **P46 C3-only @1024² 학습** — elice-b200 단독(BS8, eff-batch 16; 커밋 c6efc8c). **이 판정이 CVPR/RA-L 분기 게이트** (legal val ≥69.60 또는 test ≥57.35면 DELIVER SOTA 돌파).
+  실측(08-08 15:13, sonnet): 2GPU 99%, ep48, ~14.5분/ep, 에러 0 → **ep70 도달 ≈ 08-08 20:30, 완주(ep200) ≈ 08-10 04:00**. 학습로그 val-best **69.71@ep28**(ep46까지 정체).
+  ⚠️ **69.71을 게이트 통과로 읽지 말 것** — 학습로그 지표다. P39.1@1024 런에서 학습로그가 legal(val.py) 대비 **+2.58 부풀려짐**이 실측됐다(런별 상이·외삽 금지). 판정은 val-best ckpt의 val.py fair-eval로만. 유통 중인 "test-best 57.55@32"는 학습로그에 [Test] 라인이 없어 **출처 미확인**(별도 eval 추정) — 어차피 test-best는 보고 금지.
+  (jarvis GPU6,7 분신은 08-08 새벽 ep18에서 사망 → 그 슬롯은 seedB로 전환, 아래.)
 - ✅ **P39.1-rank @1024² 대조 — 목적 달성, ep126/200 에서 조기 종료(2026-08-08 14:50, user 지시, GPU 4장 회수)**.
   **해상도 순효과 확정** (양쪽 val.py@1024 직접 실측, 환산 없음):
 
@@ -50,7 +53,8 @@ moved: 2026-07-08
   ⚠️ 그 전까지 'seed2/seed3' 런은 시드가 실제로 달라진 적이 없다 — `fix_seeds(3407)` 하드코딩이고 `MODEL.C3.SEED` 는 C1 off 시 inert.
   따라서 기존 편차 0.59 는 GPU 비결정성만 반영한 값 = 참 시드 분산의 **하한**이고, SOTA 격차 −0.36 은 그 하한보다도 작다.
 - ⏸ **P47-2 UniBal** — 구현·스모크 완료, A100급 4장 대기.
-- 🆕 **CEA 프로브(조건-전문가 상한)** — 제안 등록([decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md)), 현행 큐 종료 후 빈 GPU에 기동. 게이트 G-P1/G-P2 사전 등록.
+- 🔴 **CEA 프로브(조건-전문가 상한) — 완료 + 1차 판정 = 방향 폐기 제안 (coordinator 확정 대기)**: 7런 전부 완주(jarvis, 06:38~10:40). oracle Δ(fog_night) = **+0.21(희석 보정 후) < 게이트 +1.0** — 조건별 완전 전문화의 상한이 +0.2 수준 = 공용 어댑터가 이미 조건별 최적 근접. day 대조는 −0.23. **"우리 융합은 이미 상한 근처" 포지셔닝 서사를 실측으로 지지** → 논문 분석 절 재료로 회수. 수치·게이트 적용·한계 = [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6.
+- ⚠️ **jarvis GPU2-5 완전 유휴 (08-08 15:13 실측)** — GPU-never-idle 규칙 위반 상태. 투입 후보(학습 0 우선): ① RGB-D 2모달 @1024 fair-eval(config e055aab 준비됨) ② elice ep28 val-best ckpt 회수 후 **조기 fair-eval**(게이트 조기 판정 가능 — val-best가 ep28에서 18ep째 정체 중이라 이미 확정됐을 수 있음).
 
 ### 논문 트랙 (CVPR 2027 마감 ~2026-11 중순 / RA-L rolling)
 

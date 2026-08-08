@@ -1,7 +1,7 @@
 ---
 created: 2026-08-08
 author: fable (MMSAM discussion 세션)
-status: 프로브 **기동됨** (2026-08-08 06:38 KST, jarvis GPU1/6/7) — 결과 대기
+status: 프로브 **완료 + 1차 판정 = G-P1 미달 → 방향 폐기 제안** (2026-08-08 15:30, fable — coordinator 확정 대기, §6)
 ---
 
 > 🔴 **기동 시 발견 — 게이트 적용 전 반드시 읽을 것 (2026-08-08, opus 세션)**
@@ -101,5 +101,28 @@ status: 프로브 **기동됨** (2026-08-08 06:38 KST, jarvis GPU1/6/7) — 결�
 - [ ] 현행 큐(1024² 판정, seed3) 종료 후 빈 GPU에 기동 — 학습 기동·조회는 sonnet 위임, 판정은 상위 모델
 - [ ] G-P1/G-P2 판정 → 이 문서 상단 status 갱신 + experiments/registry.md 행 추가
 - [ ] 통과 시 P49-CEA 상세 설계 문서 신설 (model-proposal 스킬 절차)
+
+## 6. 프로브 결과 + 1차 판정 (2026-08-08 15:30, fable)
+
+> 수치 출처 = jarvis `drone-MemorySAM-probe` 로그 7건 원문(sonnet 실측 회수, 15:13 KST). 전 런 완료, 에러 0.
+> base = P39.1-rank 3모달 seed2 `epoch208_82.62_top1`, 기준선(LR 0)과 전문가가 **동일 평가 경로** — Δ 성립.
+
+| 조건 | 기준선(LR 0) | 전문가 best | Δ(로그) | Δ(희석 보정, fog_night ×19/11) |
+|---|---|---|---|---|
+| fog_night | 44.54 | 44.66@ep2 (lr1e-4) / 44.42 (lr3e-4) | +0.12 / −0.12 | **+0.21 / −0.21** |
+| night | 78.79 | 78.81@ep2 | +0.02 | +0.02 |
+| day (G-P2 대조) | 83.12 | 82.89@ep2 | **−0.23** | −0.23 |
+
+**게이트 적용**:
+- **G-P1 (천장)**: oracle Δ(fog_night) = +0.21 (보정 후) **< +1.0 → 미달.** LR 민감도 쌍(3e-4)도 음성 — 과소튜닝 거짓음성 방어 통과. 전 조건에서 전문가 best가 ep2에서 나오고 이후 하락(소데이터 즉시 과적합) — 40ep 탐색은 충분했다.
+- **G-P2 (대조)**: day −0.23 < fog_night +0.21 — 방향성은 예측과 일치하나(악조건>양조건), G-P1 미달이 지배적.
+
+**1차 판정: 방향 폐기 제안.** 조건별 완전 전문화의 oracle 상한이 +0.2 수준 = **공용 어댑터가 이미 조건별 최적에 근접해 있다.** 조건 전문화로는 MUSES 잔여 격차를 메울 수 없다 — "우리 융합은 이미 상한 근처, 남은 격차는 RGB 표현력"이라는 포지셔닝 서사를 **실측으로 지지**하는 결과이므로, 프로브 자체는 논문 분석 절(§4 예고대로) 재료로 회수한다.
+
+**한계 명시**: ① LoRA+trunk만 미세조정(full FT 아님) ② fog_night val 25장 노이즈(단 게이트 여유폭이 5배라 결론 불변) ③ base가 이미 82.62 고성능이라 전문화 여지 자체가 작았을 가능성 — 단 그게 바로 G-P1이 재려던 것이다.
+
+**후속**: coordinator 확정 시 이 방향을 재제안 금지 목록(artifact D절)에 추가. P49 번호는 이 계열에 소모하지 않음.
+
+---
 
 관련: [2026-08-05-p48-instance-supervision-proposal.md](2026-08-05-p48-instance-supervision-proposal.md)(폐기 판정에 시점 오류 논란 — 재판정 별도 필요) · [experiments/analysis/2026-08-05-p46-module-ablation-query-nooop.md](../experiments/analysis/2026-08-05-p46-module-ablation-query-nooop.md)(흡수 실증) · [[p34-reliadino]] · [[muses-dataset-setup]]
