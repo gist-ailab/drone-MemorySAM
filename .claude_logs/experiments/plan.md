@@ -110,7 +110,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | ~~6~~ | ~~CEA oracle 프로브~~ | — | — | 🔴 **완료 + 폐기 확정(2026-08-08)** — 7런 완주, G-P1 5배 미달(oracle Δ +0.21 < +1.0). 적응 가설 계열 폐쇄. [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6·§7, 원장 H4 |
 | **7** | **RGB-D 2모달 fair-eval** | 학습 0, 기존 ckpt @1024 재평가 | GPU 여유 시 | 기존 RGB-D 2모달 ckpt를 현행 @1024 프로토콜로 재평가해 공정 비교선 확보. **지위 = 4모달 헤드라인의 ablation**(user 2026-08-08 — 2모달은 SOTA 트랙 아님) |
 | **8** | **H10 재판정 미니 실험** (인스턴스 감독) | 4090 1~2장 × ~반나절 | GPU 여유 시 | **의뢰서 = [decisions/2026-08-08-h10-readjudication-experiment-request.md](../decisions/2026-08-08-h10-readjudication-experiment-request.md)** — 이 문서만 읽고 실행 가능. 게이트(학습 후 things PQ>33.6) 사전 등록, 결과 기록처 명시 |
-| **9** | **ProbeA2 — 백본 상한 프로브** (DINOv3-L vs 상위 백본, RGB 단독) | 4090 1~2장 × 반나절 | **제안 — 코디네이터 승인 대기** | "남은 격차 = RGB 표현력" 서사의 직접 검증. ProbeA1 프로토콜 재사용. 게이트(제안): Δ≥+1.5 → 백본 승급 본설계 / <+0.5 → 표현력 축 소진 기록. 승인 시 의뢰서 작성 |
+| **9** | **ProbeA2 — 백본 스케일링 프로브** (S+/B/L/H+, RGB 단독) | jarvis 4090 1~2장 × 1~2일 | **승인됨(2026-08-08) — 실행 세션 배정 대기** | **의뢰서 = [decisions/2026-08-08-probea2-backbone-scaling-request.md](../decisions/2026-08-08-probea2-backbone-scaling-request.md)** (7종 섹션 완비, 이 문서만 읽고 실행 가능). 상한(H+, 표현력 천장)과 하한(S+≈Swin-T 28M, 공정성 방어)을 한 프로브로. 게이트 G-A2-상한/하한 사전 등록. 2단 분리(추출→캐시 head)라 **A100 불필요** |
 
 ## ✅ 완료·판정 (재실행 금지)
 
