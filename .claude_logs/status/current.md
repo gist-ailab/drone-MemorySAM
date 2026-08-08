@@ -53,7 +53,7 @@ moved: 2026-07-08
   ⚠️ 그 전까지 'seed2/seed3' 런은 시드가 실제로 달라진 적이 없다 — `fix_seeds(3407)` 하드코딩이고 `MODEL.C3.SEED` 는 C1 off 시 inert.
   따라서 기존 편차 0.59 는 GPU 비결정성만 반영한 값 = 참 시드 분산의 **하한**이고, SOTA 격차 −0.36 은 그 하한보다도 작다.
 - ⏸ **P47-2 UniBal** — 구현·스모크 완료, A100급 4장 대기.
-- 🔴 **CEA 프로브(조건-전문가 상한) — 완료 + 1차 판정 = 방향 폐기 제안 (coordinator 확정 대기)**: 7런 전부 완주(jarvis, 06:38~10:40). oracle Δ(fog_night) = **+0.21(희석 보정 후) < 게이트 +1.0** — 조건별 완전 전문화의 상한이 +0.2 수준 = 공용 어댑터가 이미 조건별 최적 근접. day 대조는 −0.23. **"우리 융합은 이미 상한 근처" 포지셔닝 서사를 실측으로 지지** → 논문 분석 절 재료로 회수. 수치·게이트 적용·한계 = [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6.
+- 🔴 **CEA 프로브(조건-전문가 상한) — 폐기 확정 (2026-08-08 16:00, 제안 세션)**: 7런 완주, oracle Δ(fog_night) **+0.21 < 게이트 +1.0**(5배 미달), night가 주야갭 4.33 중 **+0.02만 회수** → "평균 최적성 함정" 가설까지 반증. **적응 가설 계열(융합 가중→추론 재가중→추출 전문화) 3단계 완결 폐쇄** — 남은 격차의 원인은 배분이 아니라 **정보**. 재제안 금지. canonical = **[research/hypothesis-ledger.md](../research/hypothesis-ledger.md)(가설 원장, 신설)** + [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6·§7. 음성 결과는 MUSES 포지셔닝의 oracle 상계로 논문 회수.
 - ⚠️ **jarvis GPU2-5 완전 유휴 (08-08 15:13 실측)** — GPU-never-idle 규칙 위반 상태. 투입 후보(학습 0 우선): ① RGB-D 2모달 @1024 fair-eval(config e055aab 준비됨) ② elice ep28 val-best ckpt 회수 후 **조기 fair-eval**(게이트 조기 판정 가능 — val-best가 ep28에서 18ep째 정체 중이라 이미 확정됐을 수 있음).
 
 ### 논문 트랙 (CVPR 2027 마감 ~2026-11 중순 / RA-L rolling)
