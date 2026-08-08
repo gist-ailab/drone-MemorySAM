@@ -55,6 +55,7 @@ created: 2026-07-08
 - **새 실험 launch 시**: `experiments/registry.md`에 행 추가 (config 경로·서버·상태), 종료 시 상태·수치 갱신 + `experiments/log.md` 상세 기록.
 - 기존 config 파일명은 변경 금지 (output 디렉토리 매핑 보존).
 - 실험 결과·시각화 산출물은 `/mnt/HDD2/src/logs/<model>_eval_<date>/` (쓰기 전 touch 테스트 — ISSUE-023 참조).
+- **실험 의뢰서 규약 (신설 2026-08-08)**: 세션 간 실험 전달은 복붙이 아니라 의뢰서로 한다 — `decisions/YYYY-MM-DD-<slug>-request.md` + `experiments/plan.md` 대기열 행 등재 + develop push. **필수 섹션 7종**: ①의뢰 취지(+근거 링크) ②실행 스펙(base ckpt·데이터·선행조건·자원) ③구현(코드 변경 범위·워커 위임 여부·검수 게이트) ④총 ETA ⑤폴백(사전 정의 — 즉석 판단 금지) ⑥사전 등록 게이트(**적용 시점 명기** — P48 사태 재발 방지, 양방향 행동 정의) ⑦결과 기록처(registry·analysis·원장·history 통보). 실행 세션은 이 문서만 읽고 기동 가능해야 한다. 첫 사례 = [decisions/2026-08-08-h10-readjudication-experiment-request.md](../decisions/2026-08-08-h10-readjudication-experiment-request.md).
 
 ## 5. Obsidian 볼트 규칙
 
