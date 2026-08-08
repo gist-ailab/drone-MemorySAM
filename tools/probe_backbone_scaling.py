@@ -970,7 +970,9 @@ def main():
     ap.add_argument('--backbone', choices=list(BACKBONES), help='cache/probe: which backbone')
     ap.add_argument('--backbones', default=','.join(DEFAULT_SET),
                     help='smoke/report: comma list (default S+,B,L,H+)')
-    ap.add_argument('--gpu', default='0')
+    ap.add_argument('--gpu', default='0',
+                    help='sets CUDA_VISIBLE_DEVICES only if it is not already exported '
+                         '(an existing export wins — 빈 GPU 배치 규약을 런처가 이미 정했을 때 존중)')
     ap.add_argument('--dataset-root', default='/SSDb/jemo_maeng/dset/MUSES')
     ap.add_argument('--cache-dir', default='/mnt/SSD2/probea2_cache',
                     help='LOCAL SSD only (의뢰서 ②). jarvis: /SSDb/jemo_maeng/cache/probea2')
