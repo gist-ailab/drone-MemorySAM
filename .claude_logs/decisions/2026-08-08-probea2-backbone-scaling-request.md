@@ -2,7 +2,7 @@
 created: 2026-08-08 18:30
 author: fable (MMSAM discussion 세션)
 type: 실험 의뢰서 (conventions §4 의뢰서 규약 — 이 문서만 읽고 실행 가능해야 함)
-status: 의뢰 등재 (코디네이터 승인 2026-08-08) — 실행 세션 미배정
+status: 1차 완료 (2026-08-09, 결과 = [analysis/2026-08-09-probea2-backbone-scaling.md](../experiments/analysis/2026-08-09-probea2-backbone-scaling.md), 원장 H12/H12′) — G-A2-상한 중간대역 → **7B 재판정 여부 코디네이터 결정 대기** (§⑧ 참조)
 ---
 
 # 실험 의뢰서 — ProbeA2: 백본 스케일링 프로브 (상한 H+ / 하한 S+·B, RGB 단독)
@@ -57,3 +57,12 @@ status: 의뢰 등재 (코디네이터 승인 2026-08-08) — 실행 세션 미�
 4. `experiments/plan.md` #9 행 상태 갱신 + `status/history-2026H2.md` 완료 통보 엔트리
 
 관련: [2026-08-08-condexpert-adapter-probe-proposal.md](2026-08-08-condexpert-adapter-probe-proposal.md)(적응 계열 폐쇄 — 본 의뢰의 배경) · ProbeA1 = NAS `analysis_logs/ProbeA1_dinov3_20260712/` · [meta/conventions.md](../meta/conventions.md) §4 의뢰서 규약
+
+## ⑧ 7B 재판정 스펙 (제안 세션 fable, 2026-08-09 — 코디네이터 승인 시에만 실행)
+
+1차 결과에서 **헤드라인 게이트가 상쇄로 오염됨이 실측**됐다(H+: 야간·악천후 +3.7~4.7 vs clear_day −3.06 → 합계 +0.52). 따라서 7B 판정은 헤드라인 mIoU가 아니라 **축 분리**로 사전 등록한다:
+
+- **G-A2-7B-악조건**: adverse 서브셋(night 계열+fog/rain/snow) Δ(7B−H+) **≥ +1.5** → "prior 용량이 야간 정보를 산다" 채택 — 차기 아키텍처 설계에 대형 prior 축 편입 검토. **< +0.5** → 악조건 축도 포화, H12 완전 폐쇄.
+- **G-A2-7B-clear**: clear_day Δ가 H+에서와 같이 음수로 지속되는지 관찰(단조성 확인) — 프로브 head 용량 artifact 가능성 병기.
+- 자원: **hpca100 A100(40GB) 1장 × 반나절** (bf16 ~13.4GB + 추론 활성화). C2(MCC) 측정과 슬롯 경합 시 **C2 우선**(더 오래된 미결 + 논문 표 직접 소요), 7B은 그 뒤 or 잔여 1장.
+- 폴백: 7B 가중치 미확보/40GB OOM → H12를 "L 근방 포화(7B 미확인)"로 정직 표기하고 종결 — 논문 지장 없음.
