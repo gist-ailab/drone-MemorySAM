@@ -6,6 +6,7 @@
 
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
+| [2026-08-08-h10-readjudication-experiment-request.md](2026-08-08-h10-readjudication-experiment-request.md) | **실험 의뢰서** — H10(P48 인스턴스 감독) 재판정 미니 실험. 실행 세션이 이 문서만 읽고 기동 가능(게이트·기록처 명시) | 의뢰 등재 |
 | [2026-08-08-condexpert-adapter-probe-proposal.md](2026-08-08-condexpert-adapter-probe-proposal.md) | **조건×클래스 어댑터(CEA) 방향 — oracle 프로브 선행 제안** (가칭 P49) — 상태: 제안, 프로브 게이트 대기(학습 미기동) | — |
 | [2026-08-05-p48-instance-supervision-proposal.md](2026-08-05-p48-instance-supervision-proposal.md) | P48 — 쿼리 경로 인스턴스 감독(Instance Supervision) 제안 — 🔴 **상태: 폐기(2026-08-06)**, 사전등록 게이트(things PQ>30) 미달(실측 22.87) | — |
 | [2026-08-03-p47-mub-muses-proposal.md](2026-08-03-p47-mub-muses-proposal.md) | **P47-MUB MUSES Uni-modal Balance & 투영 밀도화** — 진단 재정의(병목=clear/day RGB under-optimization, 야간 아님). D-1 lidar projected_to_rgb_dgf 교체(비용0) + D-2 modality-laziness 억제 aux head. 게이트: val≥82.62(seed2 초과) | - |
