@@ -34,7 +34,21 @@ moved: 2026-07-08
 ### 활성 런 / 대기 (2026-08-08, 커밋 기준 — 실시간은 [experiments/plan.md](../experiments/plan.md)·registry)
 
 - 🔵 **P46 C3-only @1024² 학습** — elice-b200 (BS8, eff-batch 16 동일; 커밋 c6efc8c) + jarvis GPU6,7 (df753e8). **ETA 08-09 새벽 — 이 판정이 CVPR/RA-L 분기 게이트** (legal 환산 val ≥69.60 또는 test ≥57.35면 DELIVER SOTA 돌파).
-- 🔵 **P39.1-rank @1024² 대조** — jarvis GPU1-5 (해상도 교란 검증, a65e9cf). 전 세대 P39.1~P47이 768²·batch1로 학습돼 온 사실이 08-06 발견됨 — 해상도 순효과 판정용 대조군.
+- ✅ **P39.1-rank @1024² 대조 — 목적 달성, ep126/200 에서 조기 종료(2026-08-08 14:50, user 지시, GPU 4장 회수)**.
+  **해상도 순효과 확정** (양쪽 val.py@1024 직접 실측, 환산 없음):
+
+  | 학습 해상도 | ckpt (val-best) | val | test |
+  |---|---|---|---|
+  | 768² | P39.1-rank ep106 | 66.72 | 53.68 |
+  | 1024² | P39.1-rank ep54 | **67.87** | **55.69** |
+  | **순효과** | | **+1.15** | **+2.01** |
+
+  → 전 세대(P39.1~P47)가 768² 로 학습된 동안 **test 약 2점을 해상도만으로 손해**보고 있었다.
+  조기 종료 근거: val-best 가 ep54 이후 **70 epoch** 갱신 없음 + legal 값이 위 실측으로 확정 → 잔여 epoch 정보가치 없음.
+  부수 검증: 실측(67.87/55.69)이 학습로그 환산 추정과 소수점까지 일치 → 오프셋(val −2.58/test −1.79)이 **이 런에 대해** 정확. 런별 값이므로 외삽 금지.
+- 🆕 **P46 C3-only @1024² seedB** — jarvis GPU6,7 (2f3ff6e). **첫 진짜-시드 런**(`TRAIN.SEED`=20260808).
+  ⚠️ 그 전까지 'seed2/seed3' 런은 시드가 실제로 달라진 적이 없다 — `fix_seeds(3407)` 하드코딩이고 `MODEL.C3.SEED` 는 C1 off 시 inert.
+  따라서 기존 편차 0.59 는 GPU 비결정성만 반영한 값 = 참 시드 분산의 **하한**이고, SOTA 격차 −0.36 은 그 하한보다도 작다.
 - ⏸ **P47-2 UniBal** — 구현·스모크 완료, A100급 4장 대기.
 - 🆕 **CEA 프로브(조건-전문가 상한)** — 제안 등록([decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md)), 현행 큐 종료 후 빈 GPU에 기동. 게이트 G-P1/G-P2 사전 등록.
 
