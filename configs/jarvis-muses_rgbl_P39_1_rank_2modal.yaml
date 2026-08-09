@@ -1,4 +1,4 @@
-# ═══ P39.1-rank — jarvis MUSES: P39-DPC + R-1(gated_mlp trunk) + R-2(VICReg) + M-2(gate/calib off). ep30 게이트: lidar rank≥15 & fog_night drop-lidar≥4.0 ═══
+# ═══ RGB-L 2모달 — P39.1-rank seed2 레시피에서 event만 제거. 목적: 상위권 실구성(MM SAM-adapter RGB-L 81.07) 직접 비교 + 3>4모달 추세의 2모달 연장 검증 (plan.md 미결 #4, 2026-08-10) ═══
 # MODEL 블록 = hpca100-deliver_rgbdel_P38_m2f.yaml의 M2F 레시피 그대로 (GATE/VETO/CALIB/ROUTER on,
 #   CEFR·CLASS_TOKEN·ATTN_BIAS·CONSISTENCY off, M2F on) — P37a-MUSES(CEFR)·P37b-MUSES(classtoken)와
 #   같은 백본/공정레시피 위에 헤드만 M2F로 = head-only 계보 비교.
@@ -114,7 +114,7 @@ DATASET:
   NAME          : MUSES
   ROOT          : '/SSDb/jemo_maeng/dset/MUSES'
   IGNORE_LABEL  : 255
-  MODALS        : ['img', 'lidar']   # 🔴 RGB-L 2모달 — 리더보드 상위권 구성(MM SAM-adapter 81.07 / RoadFormer+ 80.38)과 직접 비교
+  MODALS        : ['img', 'lidar']   # 2모달 — event 제거 (RGB-L, MM SAM-adapter 81.07 직접 비교)
   RGB_SUBROOT   : null
   THERMAL_SUBROOT : null
   LIDAR_SUBROOT : null
