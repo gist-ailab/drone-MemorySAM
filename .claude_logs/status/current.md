@@ -12,6 +12,7 @@ moved: 2026-07-08
 # 프로젝트 현황 (Project Status)
 
 > 최종 업데이트: **2026-08-08** (스냅샷 전면 재작성 — 문서 정리 경위는 history 2026-08-08 엔트리 참조)
+> 📊 **사용자용 상황판(artifact)**: https://claude.ai/code/artifact/11924e8a-12fc-4dbc-a174-ead7259b0228 — 갱신 규약 [meta/conventions.md](../meta/conventions.md) §4 (판정 변화 시 `meta/status-report.html` 갱신 + 동일 URL 재배포)
 
 ---
 

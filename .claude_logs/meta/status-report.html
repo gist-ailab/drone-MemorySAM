@@ -1,0 +1,199 @@
+<title>MemorySAM 작업 현황</title>
+<style>
+  :root{
+    --paper:#f4f6f4; --card:#ffffff; --raise:#e9eeeb; --line:#d8e0dc;
+    --ink:#141a17; --ink2:#3d4c46; --muted:#66756e;
+    --accent:#0e6f62; --accent-soft:#d9ebe7;
+    --good:#1c7c46; --good-soft:#ddefe3;
+    --warn:#a3690e; --warn-soft:#f6ead3;
+    --dead:#b3372f; --dead-soft:#f6dfdc;
+    --hold:#5b6770; --hold-soft:#e5e9ec;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0d1412; --card:#141c19; --raise:#1b2521; --line:#28342f;
+      --ink:#e4ece8; --ink2:#a7b8b1; --muted:#7b8c85;
+      --accent:#57d0bd; --accent-soft:#123330;
+      --good:#67d494; --good-soft:#10291a;
+      --warn:#e5ab4e; --warn-soft:#2f2410;
+      --dead:#ef9088; --dead-soft:#331714;
+      --hold:#93a1aa; --hold-soft:#1d262b;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0d1412; --card:#141c19; --raise:#1b2521; --line:#28342f;
+    --ink:#e4ece8; --ink2:#a7b8b1; --muted:#7b8c85;
+    --accent:#57d0bd; --accent-soft:#123330;
+    --good:#67d494; --good-soft:#10291a;
+    --warn:#e5ab4e; --warn-soft:#2f2410;
+    --dead:#ef9088; --dead-soft:#331714;
+    --hold:#93a1aa; --hold-soft:#1d262b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
+    font-family:-apple-system,"Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:980px;margin:0 auto;padding:0 20px 80px}
+
+  header{padding:44px 0 20px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  .eyebrow{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  h1{font-size:clamp(24px,4vw,34px);margin:0 0 8px;letter-spacing:-.02em;font-weight:650;text-wrap:balance}
+  .stamp{font-size:12.5px;color:var(--muted)}
+  .stamp b{color:var(--ink2);font-weight:600}
+
+  /* verdict strip */
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:22px 0 0}
+  .vcard{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;border-left:3px solid var(--tone,var(--accent))}
+  .vcard .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:3px}
+  .vcard .v{font-size:14.5px;font-weight:650;color:var(--tone,var(--ink))}
+  .vcard .d{font-size:12.5px;color:var(--ink2);margin-top:3px}
+  .t-good{--tone:var(--good)} .t-warn{--tone:var(--warn)} .t-dead{--tone:var(--dead)} .t-hold{--tone:var(--hold)}
+
+  section{margin:36px 0 0}
+  h2{font-size:17px;margin:0 0 4px;font-weight:640;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--raise);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pos{color:var(--good);font-weight:640}.neg{color:var(--warn);font-weight:640}.kill{color:var(--dead);font-weight:640}
+
+  .pill{display:inline-block;font-size:11px;font-weight:650;padding:2px 9px;border-radius:99px;white-space:nowrap}
+  .p-good{background:var(--good-soft);color:var(--good)}
+  .p-warn{background:var(--warn-soft);color:var(--warn)}
+  .p-dead{background:var(--dead-soft);color:var(--dead)}
+  .p-hold{background:var(--hold-soft);color:var(--hold)}
+  .p-acc{background:var(--accent-soft);color:var(--accent)}
+
+  /* hypothesis grid */
+  .hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px}
+  .hcell{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font-size:12.5px}
+  .hcell .hid{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted);margin-right:6px}
+  .hcell .ht{color:var(--ink2)}
+
+  .note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 7px 7px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  .note.dead{border-color:var(--dead);background:var(--dead-soft)}
+
+  ul.tight{margin:8px 0 0;padding-left:18px;font-size:13.5px;color:var(--ink2)}
+  ul.tight li{margin-bottom:6px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.88em;background:var(--raise);padding:1px 5px;border-radius:3px}
+  footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">drone-MemorySAM · living status board</p>
+  <h1>MemorySAM 작업 현황</h1>
+  <p class="stamp">최종 갱신 <b>2026-08-09</b> (discussion 세션) · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
+
+  <div class="strip">
+    <div class="vcard t-good">
+      <div class="k">논문 트랙</div>
+      <div class="v">RA-L 확정 권고</div>
+      <div class="d">분기 게이트(P46@1024²) 미달 확정 → 임계 경로 = 초안 재중심화 리라이트</div>
+    </div>
+    <div class="vcard t-warn">
+      <div class="k">DELIVER</div>
+      <div class="v">−0.16 / −0.36 (근SOTA)</div>
+      <div class="d">격차 &lt; 런 편차. 구 SOTA(DGFusion)는 no-tradeoff 상회</div>
+    </div>
+    <div class="vcard t-dead">
+      <div class="k">MUSES</div>
+      <div class="v">−2.60 (vs camera-only)</div>
+      <div class="d">융합계보 1위 · 포지셔닝 전환 확정</div>
+    </div>
+    <div class="vcard t-good">
+      <div class="k">Detection</div>
+      <div class="v">0.9321 / 목표 0.85</div>
+      <div class="d">국책과제 달성 — 종결 국면</div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <h2>이번 주기 핵심 판정 (2026-08-08 밤 ~ 08-09)</h2>
+  <p class="sub">세 갈래 격차-축소 시도가 하룻밤에 전부 결론남 — "더 하면 된다"가 아니었다.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>시도</th><th>결과</th><th>판정</th></tr></thead>
+    <tbody>
+      <tr><td><b>배분(적응)</b> — CEA oracle 조건-전문가 상한 프로브</td><td class="n">oracle Δ(fog_night) +0.21 &lt; 게이트 +1.0 · night가 주야갭 4.33 중 +0.02만 회수</td><td><span class="pill p-dead">폐기 확정</span> 적응 가설 3단계 완결 폐쇄</td></tr>
+      <tr><td><b>해상도</b> — P46 C3-only @1024² 본학습</td><td class="n">val 69.79↑ / legal test 56.50↓ 역발산 (yeon 병행런 재현)</td><td><span class="pill p-dead">게이트 미달 확정</span> → RA-L 분기</td></tr>
+      <tr><td><b>순수 스케일</b> — ProbeA2 백본 스케일링 (S+/B/L/H+)</td><td class="n">L→H+ +0.52 (S+→L +8.82와 대조, 수확체감) · 단 악조건만 +3.7~4.7 vs clear_day −3.06 상쇄</td><td><span class="pill p-warn">중간대역</span> 7B 재판정 승인 대기 (§⑧ 축분리 게이트)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">종합: 남은 격차의 원인은 <b>배분이 아니라 정보</b>. 남은 유력 축 = <b>데이터</b>(양·품질) 또는 <b>아키텍처 신규 설계</b>. 부수 발견 — 기존 seed2/3은 시드가 안 달라진 런(3407 하드코딩), <span class="mono">seedB</span>가 첫 진짜-시드 런.</div>
+</section>
+
+<section>
+  <h2>벤치마크 현황</h2>
+  <p class="sub">legal 프로토콜 수치만. test-best 인용 금지(철회 사고 2회).</p>
+  <div class="scroll"><table>
+    <thead><tr><th>벤치</th><th>우리 최선</th><th>SOTA</th><th>격차</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td>DELIVER val/test</td><td class="n">69.44 / 56.99 <span style="color:var(--muted)">(P46 C3-only, @1024 평가)</span></td><td class="n">69.60 / 57.35 (MM SAM-adapter)</td><td class="n neg">−0.16 / −0.36</td><td><span class="pill p-warn">근SOTA 정체</span></td></tr>
+      <tr><td>MUSES test</td><td class="n">79.788 <span style="color:var(--muted)">(P39.1-rank seed2 3모달)</span></td><td class="n">82.39 (GtA, camera-only)</td><td class="n kill">−2.60</td><td><span class="pill p-acc">융합계보 1위</span> 79.571 &gt; DGFusion 79.5</td></tr>
+      <tr><td>MUSES PQ (things)</td><td class="n">22.87</td><td class="n">59.26 (CAFuser)</td><td class="n kill">−23점대</td><td><span class="pill p-hold">비교 불가 — limitation</span></td></tr>
+      <tr><td>Det mAP50</td><td class="n">0.9321</td><td class="n">0.85 (국책 목표)</td><td class="n pos">+0.08</td><td><span class="pill p-good">달성</span></td></tr>
+      <tr><td>MULTIAQUA M-score</td><td class="n">82.10 (P9/P22)</td><td class="n">—</td><td class="n">—</td><td><span class="pill p-hold">챌린지 종료 · 고정</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>가설 원장 요약</h2>
+  <p class="sub">canonical = <span class="mono">research/hypothesis-ledger.md</span> — 새 제안 전 필독. ✗ = 재제안 금지.</p>
+  <div class="hgrid">
+    <div class="hcell"><span class="hid">H1</span><span class="pill p-dead">✗</span> <span class="ht">학습 게이트 모달 가중</span></div>
+    <div class="hcell"><span class="hid">H2</span><span class="pill p-dead">✗</span> <span class="ht">RBMA attn-bias</span></div>
+    <div class="hcell"><span class="hid">H3</span><span class="pill p-dead">✗</span> <span class="ht">추론 재가중 (유해)</span></div>
+    <div class="hcell"><span class="hid">H4</span><span class="pill p-dead">✗</span> <span class="ht">조건 전문화 어댑터 (oracle 상계)</span></div>
+    <div class="hcell"><span class="hid">H5</span><span class="pill p-good">✓</span> <span class="ht">조건×모달 상호작용 실재 (단 소진)</span></div>
+    <div class="hcell"><span class="hid">H6</span><span class="pill p-good">✓</span> <span class="ht">백본 표현력 지배 (+11.6)</span></div>
+    <div class="hcell"><span class="hid">H7</span><span class="pill p-good">✓</span> <span class="ht">학습 해상도 +1.15/+2.01</span></div>
+    <div class="hcell"><span class="hid">H8</span><span class="pill p-good">✓</span> <span class="ht">C3 prototype (클래스축 특이)</span></div>
+    <div class="hcell"><span class="hid">H9</span><span class="pill p-dead">✗</span> <span class="ht">쿼리 경로 이중화 (dense 복제)</span></div>
+    <div class="hcell"><span class="hid">H10</span><span class="pill p-warn">⚠️</span> <span class="ht">인스턴스 감독 — 재판정 의뢰 등재</span></div>
+    <div class="hcell"><span class="hid">H11</span><span class="pill p-dead">✗</span> <span class="ht">radar 기여 (MUSES)</span></div>
+    <div class="hcell"><span class="hid">H12</span><span class="pill p-warn">⚠️</span> <span class="ht">L 초과 스케일 — 포화 근접, 7B 대기</span></div>
+    <div class="hcell"><span class="hid">H12′</span><span class="pill p-dead">✗</span> <span class="ht">용량 정합 방어 (−8.82, 스코프 공개)</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>활성 런 · 대기열</h2>
+  <p class="sub">실시간 = <span class="mono">watchdog.sh status</span> · 큐 canonical = <span class="mono">experiments/plan.md</span></p>
+  <div class="scroll"><table>
+    <thead><tr><th>항목</th><th>자원</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td>P46 @1024² elice 잔여 epoch</td><td>elice-b200 ×2</td><td><span class="pill p-hold">참고 관찰로 격하</span> (게이트 미달 확정)</td></tr>
+      <tr><td>P46 @1024² seedB (첫 진짜-시드)</td><td>jarvis GPU6,7</td><td><span class="pill p-acc">학습 중</span></td></tr>
+      <tr><td>P47-2 UniBal (MUSES 4모달)</td><td>A100×4 대기</td><td><span class="pill p-hold">구현·스모크 완료</span></td></tr>
+      <tr><td>C2(MCC) 순기여 측정</td><td>hpca100 A100 유휴</td><td><span class="pill p-warn">최우선 미결</span></td></tr>
+      <tr><td>RGB-D 2모달 @1024 fair-eval (학습 0)</td><td>1 GPU</td><td><span class="pill p-warn">config 준비됨</span></td></tr>
+      <tr><td>H10 재판정 미니 실험</td><td>4090 1~2장 ~2일</td><td><span class="pill p-acc">의뢰서 등재 (#8)</span></td></tr>
+      <tr><td>ProbeA2-7B (축분리 게이트 §⑧)</td><td>A100 1장 반나절</td><td><span class="pill p-warn">승인 대기</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>논문 트랙 (RA-L)</h2>
+  <ul class="tight">
+    <li><b>서사</b>: ①조건×모달 상호작용 실재 → ②적응 기제 전 수준 실패 + oracle 상계 → ③작동하는 것은 표현력·학습 신호(단 L 근방 포화) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제). <b>실패 이력이 주장의 증거가 되는 구조.</b></li>
+    <li><b>임계 경로</b>: ReliaDINO 초안(볼트 <span class="mono">_paper_submission/</span>) — RBMA 중심 서사가 반증된 상태라 <b>재중심화 리라이트</b>가 최우선. 슬롯 3(MUSES 제출)·5(multi-seed)는 이미 충족.</li>
+    <li><b>필요 ablation</b>: RGB-D fair-eval · MUSES RGB-L · C2 순기여 · 시드 분산(seedB 계열).</li>
+    <li><b>재현성 규약</b>: test-best 금지 · train/eval 해상도 mismatch 명시 · 3-seed mean±std.</li>
+  </ul>
+</section>
+
+<footer>
+  <b>갱신 시스템</b> — 원본 = repo <span class="mono">.claude_logs/meta/status-report.html</span> (git 추적, develop).
+  의미 있는 판정 변화(게이트 판정·SOTA 변동·큐 변화) 시 아무 세션이나: ① 이 파일 갱신 → ② develop push → ③ Artifact 도구로 동일 URL 재배포(<span class="mono">url</span> 파라미터). 규약 = <span class="mono">meta/conventions.md</span> §4.
+  수치 출처는 항상 <span class="mono">status/current.md</span>·<span class="mono">hypothesis-ledger.md</span>·분석 문서 — 이 보드에 새 수치를 먼저 쓰지 말 것(보드는 파생물).
+</footer>
+</div>

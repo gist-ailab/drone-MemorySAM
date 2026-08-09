@@ -8,3 +8,4 @@
 | [bot-roles.md](bot-roles.md) | 세션 역할(코드분석봇/코딩봇/실험분석봇/그림봇) 지침 — **세션 시작 Step 0에서 읽기** | 09 |
 | [taskboard.md](taskboard.md) | Supervisor 세션별 목표 태스크보드 — 세션 시작 시 자기 섹션 확인, 완료 시 상태 갱신 | 22 |
 | [2026-08-06-session-handover-a830ad4d.md](2026-08-06-session-handover-a830ad4d.md) | 세션 인수인계 a830ad4d → 4e9bdc6f — 동일 이름 모니터링 세션 중복 정리, 07-30~08-05 작업 인계 목록 | — |
+| [status-report.html](status-report.html) | **상태 리포트 보드 원본** (artifact 발행용 HTML) — 공개 URL·갱신 규약 = [conventions.md](conventions.md) §4. 판정 변화 시 갱신 후 동일 URL 재배포 | — |
