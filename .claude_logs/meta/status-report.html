@@ -89,7 +89,7 @@
 <header>
   <p class="eyebrow">drone-MemorySAM · living status board</p>
   <h1>MemorySAM 작업 현황</h1>
-  <p class="stamp">최종 갱신 <b>2026-08-09</b> (discussion 세션) · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
+  <p class="stamp">최종 갱신 <b>2026-08-09 (v2 — Det 트래킹 종료·실험 카드 추가)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
 
   <div class="strip">
     <div class="vcard t-good">
@@ -106,11 +106,6 @@
       <div class="k">MUSES</div>
       <div class="v">−2.60 (vs camera-only)</div>
       <div class="d">융합계보 1위 · 포지셔닝 전환 확정</div>
-    </div>
-    <div class="vcard t-good">
-      <div class="k">Detection</div>
-      <div class="v">0.9321 / 목표 0.85</div>
-      <div class="d">국책과제 달성 — 종결 국면</div>
     </div>
   </div>
 </header>
@@ -138,10 +133,10 @@
       <tr><td>DELIVER val/test</td><td class="n">69.44 / 56.99 <span style="color:var(--muted)">(P46 C3-only, @1024 평가)</span></td><td class="n">69.60 / 57.35 (MM SAM-adapter)</td><td class="n neg">−0.16 / −0.36</td><td><span class="pill p-warn">근SOTA 정체</span></td></tr>
       <tr><td>MUSES test</td><td class="n">79.788 <span style="color:var(--muted)">(P39.1-rank seed2 3모달)</span></td><td class="n">82.39 (GtA, camera-only)</td><td class="n kill">−2.60</td><td><span class="pill p-acc">융합계보 1위</span> 79.571 &gt; DGFusion 79.5</td></tr>
       <tr><td>MUSES PQ (things)</td><td class="n">22.87</td><td class="n">59.26 (CAFuser)</td><td class="n kill">−23점대</td><td><span class="pill p-hold">비교 불가 — limitation</span></td></tr>
-      <tr><td>Det mAP50</td><td class="n">0.9321</td><td class="n">0.85 (국책 목표)</td><td class="n pos">+0.08</td><td><span class="pill p-good">달성</span></td></tr>
       <tr><td>MULTIAQUA M-score</td><td class="n">82.10 (P9/P22)</td><td class="n">—</td><td class="n">—</td><td><span class="pill p-hold">챌린지 종료 · 고정</span></td></tr>
     </tbody>
   </table></div>
+  <p class="sub" style="margin-top:8px">Detection(mAP50 0.9321 / 목표 0.85)은 목표 달성으로 <b>트래킹 종료</b> — 2026-08-09 user 지시.</p>
 </section>
 
 <section>
@@ -165,20 +160,40 @@
 </section>
 
 <section>
-  <h2>활성 런 · 대기열</h2>
-  <p class="sub">실시간 = <span class="mono">watchdog.sh status</span> · 큐 canonical = <span class="mono">experiments/plan.md</span></p>
+  <h2>남은 실험 — 카드</h2>
+  <p class="sub">각 카드 = 풀려는 문제 → 투입한 것 → 성공 시 인사이트(novelty) → 실패 시 배우는 것. 큐 canonical = <span class="mono">experiments/plan.md</span> · 실시간 = <span class="mono">watchdog.sh status</span></p>
+
+  <div class="vcard t-warn" style="margin-bottom:10px">
+    <div class="k">판정 대기 ① · C2-MCC 순기여 측정 <span class="pill p-warn">hpca100 A100 유휴 — 최우선</span></div>
+    <div class="d" style="margin-top:6px">
+      <b>문제</b>: DELIVER test 격차 −0.36. C3 prototype(+1.35~1.74)은 실증됐지만, P46의 세 모듈 중 C2만 담당 런이 서버 소실로 죽어 <b>순기여를 한 번도 못 쟀다</b> — 유일하게 "결과를 모르는" 학습 전용 손실.<br>
+      <b>투입</b>: MIC 계열 masked consistency — EMA-teacher는 원본, student는 50% 패치 마스킹 입력을 보고 마스킹 영역에서 일치 강제. 추론 불변(학습 전용). 측정 = C3 단독 vs C2+C3 A/B.<br>
+      <b>성공 시(novelty)</b>: "문맥 추론 강제"가 prototype과 <b>독립인 두 번째 학습-전용 축</b>임을 실증 — 산술적으로 C3 이득과 합산 시 −0.36 격차를 넘을 유일한 잔여 경로. 논문 기둥 ③(학습 신호 축)이 1개→2개 모듈로 강화.<br>
+      <b>실패 시(Δ≈0)</b>: 학습-전용 손실 축도 prototype 하나로 소진 → "남은 축 = 데이터·신규 설계" 결론이 최종 확정. + frozen 백본/LoRA 세팅에서 MIC 마스킹이 무효라는 데이터 포인트(원장 등재).
+    </div>
+  </div>
+
+  <div class="vcard t-warn" style="margin-bottom:10px">
+    <div class="k">판정 대기 ② · ProbeA2-7B (축분리 게이트 §⑧) <span class="pill p-warn">승인 대기 · A100 1장 반나절 · C2 후순위</span></div>
+    <div class="d" style="margin-top:6px">
+      <b>문제</b>: 1차 프로브에서 헤드라인 Δ(H+−L)=+0.52는 포화처럼 보이지만, <b>상쇄의 결과</b>였다 — 악조건 +3.7~4.7 vs clear_day −3.06. 격차의 원인이 "정보 부족"(H5′)이라면, 더 큰 vision prior가 야간 정보를 사 오는지가 미확정.<br>
+      <b>투입</b>: DINOv3-7B frozen feature 추출 + 동일 head, 판정을 헤드라인이 아닌 <b>악조건 서브셋 Δ로 축분리</b>(1차의 상쇄 오염 재발 방지).<br>
+      <b>성공 시(novelty)</b>: <b>"야간·악천후 정보 결핍은 prior 용량으로 보충된다"</b> — 정보 결핍 명제의 건설적 해답 실증. 차기 아키텍처 = 대형 prior 축 편입 근거. 스케일링을 조건축으로 분해한 분석 자체가 논문 분석 절 소재.<br>
+      <b>실패 시(악조건 Δ&lt;+0.5)</b>: H12 완전 폐쇄 — 스케일로도 야간 정보를 못 산다 → 배분·해상도·스케일 3축 전부 닫힌 <b>완결된 소거 증명</b>이 논문 서사를 오히려 강화. 남은 축 = 데이터·신규 설계로 최종 수렴.
+    </div>
+  </div>
+
   <div class="scroll"><table>
-    <thead><tr><th>항목</th><th>자원</th><th>상태</th></tr></thead>
+    <thead><tr><th>진행·대기</th><th>문제 → 투입</th><th>성공 시 / 실패 시</th><th>상태</th></tr></thead>
     <tbody>
-      <tr><td>P46 @1024² elice 잔여 epoch</td><td>elice-b200 ×2</td><td><span class="pill p-hold">참고 관찰로 격하</span> (게이트 미달 확정)</td></tr>
-      <tr><td>P46 @1024² seedB (첫 진짜-시드)</td><td>jarvis GPU6,7</td><td><span class="pill p-acc">학습 중</span></td></tr>
-      <tr><td>P47-2 UniBal (MUSES 4모달)</td><td>A100×4 대기</td><td><span class="pill p-hold">구현·스모크 완료</span></td></tr>
-      <tr><td>C2(MCC) 순기여 측정</td><td>hpca100 A100 유휴</td><td><span class="pill p-warn">최우선 미결</span></td></tr>
-      <tr><td>RGB-D 2모달 @1024 fair-eval (학습 0)</td><td>1 GPU</td><td><span class="pill p-warn">config 준비됨</span></td></tr>
-      <tr><td>H10 재판정 미니 실험</td><td>4090 1~2장 ~2일</td><td><span class="pill p-acc">의뢰서 등재 (#8)</span></td></tr>
-      <tr><td>ProbeA2-7B (축분리 게이트 §⑧)</td><td>A100 1장 반나절</td><td><span class="pill p-warn">승인 대기</span></td></tr>
+      <tr><td><b>P46@1024 seedB</b><br><span class="mono" style="font-size:11px">jarvis 6,7</span></td><td>기존 seed2/3이 전부 같은 시드(3407 하드코딩)여서 참 시드 분산을 모름 → 첫 진짜-시드 런(TRAIN.SEED 신설)</td><td>분산 작음 → mean±std로 근SOTA 주장 안정화 / 분산 큼 → −0.36 격차 논의 자체가 무의미해짐(ckpt 선택 프로토콜 문제로 이동)</td><td><span class="pill p-acc">학습 중</span></td></tr>
+      <tr><td><b>P47-2 UniBal</b><br><span class="mono" style="font-size:11px">A100×4 대기</span></td><td>MUSES 리더보드 모달↑=순위↓ 역상관 + 우리 4모달&lt;3모달 → modality laziness 진단, 모달별 독립 head에 동일 GT CE 직결(추론 불변)</td><td>4모달≥3모달 복원 → laziness가 원인이었다는 실증 + 융합계보 SOTA 재도전 / 실패 → RGB 본류 병목 확정, 포지셔닝 전환 최종 승인</td><td><span class="pill p-hold">구현 완료</span></td></tr>
+      <tr><td><b>H10 재판정</b><br><span class="mono" style="font-size:11px">4090 1~2장 ~2일</span></td><td>things PQ 22.87의 원인이 "클래스단위 타깃의 상한"(D2)인지 — 인스턴스 감독을 실제로 붙여 올바른 시점에 게이트 재적용 (의뢰서 #8)</td><td>PQ&gt;33.6 → 쿼리 잠재력 실재, dense-쿼리 중복을 깨는 열쇠=과제 분리 실증 / 미달 → 감독으로 못 깨움=능력 신설 필요, H10 종결</td><td><span class="pill p-acc">의뢰서 등재</span></td></tr>
+      <tr><td><b>RGB-D fair-eval</b><br><span class="mono" style="font-size:11px">1 GPU · 학습 0</span></td><td>DELIVER SOTA의 최고 구성이 RGB-D — 기존 2모달 ckpt를 @1024 프로토콜로 재평가해 동일 구성 직접 비교선 확보</td><td>모달 효율 표(ablation) 완성 — event/lidar 무기여(drop Δ≈0) 서사 뒷받침 / 2모달&gt;4모달이면 laziness 증거 추가</td><td><span class="pill p-warn">config 준비</span></td></tr>
+      <tr><td><b>MUSES RGB-L</b><br><span class="mono" style="font-size:11px">~1일</span></td><td>상위권 실구성(MM SAM-adapter RGB-L 81.07)과 직접 비교 — 3&gt;4모달 추세가 2모달까지 이어지는지</td><td>2모달 우위면 "적을수록 낫다" 정량화(laziness 서사) / 아니면 3모달이 스윗스팟으로 확정</td><td><span class="pill p-hold">대기</span></td></tr>
     </tbody>
   </table></div>
+  <p class="sub" style="margin-top:8px">elice P46@1024 잔여 epoch은 게이트 미달 확정으로 <b>참고 관찰</b>로 격하. CEA·P48 등 폐기 실험은 가설 원장 참조.</p>
 </section>
 
 <section>
