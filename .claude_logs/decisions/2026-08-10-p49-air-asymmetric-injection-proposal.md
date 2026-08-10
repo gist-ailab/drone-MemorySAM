@@ -1,7 +1,7 @@
 ---
 created: 2026-08-10
 author: fable (MMSAM discussion 세션, model-proposal 스킬 절차)
-status: 제안 — 코디네이터 승인 대기 (게이트 사전 등록 완료)
+status: 🟢 승인(2026-08-10 user) — Phase 0 측정 + Phase 1 구현(labcode) 동시 진행 중
 ---
 
 # P49-AIR 제안 — Asymmetric Injection with RGB-primary (2026-08-10)
