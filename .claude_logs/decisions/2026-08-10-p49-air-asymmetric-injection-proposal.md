@@ -59,7 +59,7 @@ status: 🟢 승인(2026-08-10 user) — Phase 0 측정 + Phase 1 구현(labcode
 
 1. **Phase 0 (학습 0, 즉시)**: ⚠️ **분할 정의 교체(2026-08-10 판정)** — MM-SA의 easy/hard는 수동·시각검사 분할로 미공개라 재현 불가(그들 repo에 산출물 없음, 1797/100 전수 수동 분할). 대체 = **메타데이터 기반 재현 가능 분할**: `RGB-degraded` = RGB 손상 case(Motion-Blur/Over-Exposure/Under-Exposure) ∪ night 조건, `RGB-clean` = 나머지. **proxy임을 명시**하고 MM-SA 수치(57.75/45.46)와의 직접 수치 비교는 하지 않는다(분할 상이) — 패턴 비교만. 부수 이득: 그들 분할의 비재현성 비판 + 재현 가능 대안 제공이 논문 방법론 기여가 됨. 현행 P46 ckpt의 clean/degraded 분해 측정, 유휴 GPU 1장 ~2h.
 2. **Phase 1 구현**: labcode 위임(대규모 — A1~A4). conventions 코드 검수 파이프라인 의무(fresh-eyes 7렌즈 + 스모크 grad/등가 + 로더 실측). 신규 `semseg/models/reliadino/p49.py` + MODEL_REGISTRY 등록.
-3. **Phase 2 본런**: DELIVER 먼저(jarvis/yeon — MM-SA가 2×3090으로 학습했음이 실증, 자원 블록 아님. grad-ckpt+accum으로 eff-batch 16 유지). 완주·게이트 판정 후 MUSES.
+3. **Phase 2 본런**: DELIVER 먼저. ⚠️ **해상도 확정(2026-08-10 실측)**: @1024 full-FT는 24GB에서 forward OOM(no-go, KV_GRID 32도 무효 — ViT-L 활성화 지배·grad-ckpt는 INJECT와 상호배제) → **@768² 학습 + 완주 후 @1024 평가**로 확정. 이는 검증된 최선 프로토콜(P46 최고 69.44/56.99 = @768 학습+@1024 평가)과 동일해 공정 비교 정합. config `deliver_rgbdel_P49_air_768.yaml`. jarvis 1,2,5(3×4090), eff-batch 16 accum. 완주·게이트 판정 후 MUSES.
 4. C2 측정(A100 확보 시)·7B 프로브(진행 중)는 독립 병행 — 결과에 따라 §3-2 손실 스위트·백본 선택 보강.
 
 관련: 원장 [research/hypothesis-ledger.md](../research/hypothesis-ledger.md) · 딥리서치 원문 = 본 문서 §1 인용(해부/노벨티/벤치 3축, 2026-08-10) · [2026-08-08-condexpert-adapter-probe-proposal.md](2026-08-08-condexpert-adapter-probe-proposal.md)(적응 계열 폐쇄) · MM-SA 2509.10408 · MIC 2212.01322 · SePiCo 2204.08808 · MUSES 2401.12761
