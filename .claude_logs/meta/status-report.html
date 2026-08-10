@@ -89,7 +89,7 @@
 <header>
   <p class="eyebrow">drone-MemorySAM · living status board</p>
   <h1>MemorySAM 작업 현황</h1>
-  <p class="stamp">최종 갱신 <b>2026-08-10 (v3.3 — RGB-L 공식 test 79.571·RGB-D 판정 반영)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
+  <p class="stamp">최종 갱신 <b>2026-08-10 (v4 — P49-AIR 승인·구현·본런 기동)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
 
   <div class="strip">
     <div class="vcard t-good">
@@ -186,6 +186,7 @@
   <div class="scroll"><table>
     <thead><tr><th>진행·대기</th><th>문제 → 투입</th><th>성공 시 / 실패 시</th><th>상태</th></tr></thead>
     <tbody>
+      <tr><td><b>P49-AIR 본런</b><br><span class="mono" style="font-size:11px">yeon 2,6,7 · 150ep</span></td><td>대칭 융합의 RGB 오염(원장 3회 기록) → 비대칭 RGB-주경로 FT + 인코더-내부 zero-init 주입(MM-SA 해부 기반, 딥리서치 3축). @768 학습(24GB @1024 no-go 실측)</td><td>test ≥57.35 → DELIVER SOTA / G-4M(4모달≥3모달) → "모달 늘려도 안 깨지는 융합" 주장 / ep30 γ정체·RGB-clean 훼손 → 중단·키1 재판정</td><td><span class="pill p-acc">학습 중 (08-10 19:10)</span></td></tr>
       <tr><td><b>P46@1024 seedB</b><br><span class="mono" style="font-size:11px">jarvis 6,7</span></td><td>기존 seed2/3이 전부 같은 시드(3407 하드코딩)여서 참 시드 분산을 모름 → 첫 진짜-시드 런(TRAIN.SEED 신설)</td><td>분산 작음 → mean±std로 근SOTA 주장 안정화 / 분산 큼 → −0.36 격차 논의 자체가 무의미해짐(ckpt 선택 프로토콜 문제로 이동)</td><td><span class="pill p-acc">학습 중</span></td></tr>
       <tr><td><b>P47-2 UniBal</b><br><span class="mono" style="font-size:11px">A100×4 대기</span></td><td>MUSES 리더보드 모달↑=순위↓ 역상관 + 우리 4모달&lt;3모달 → modality laziness 진단, 모달별 독립 head에 동일 GT CE 직결(추론 불변)</td><td>4모달≥3모달 복원 → laziness가 원인이었다는 실증 + 융합계보 SOTA 재도전 / 실패 → RGB 본류 병목 확정, 포지셔닝 전환 최종 승인</td><td><span class="pill p-hold">구현 완료</span></td></tr>
       <tr><td><b>H10 재판정</b><br><span class="mono" style="font-size:11px">4090 1~2장 ~2일</span></td><td>things PQ 상한 원인 규명(D2) — 인스턴스 감독 재판정</td><td>취소 사유: PQ는 비경쟁축(DGFusion 등 경쟁 논문 전부 mIoU 경쟁·PQ 미리포트) → 논문 기여로 연결 안 됨. H10은 원장에 미결·동결</td><td><span class="pill p-dead">취소 (08-10 user)</span></td></tr>
