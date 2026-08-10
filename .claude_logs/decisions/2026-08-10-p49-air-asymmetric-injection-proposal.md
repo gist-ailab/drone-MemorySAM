@@ -46,7 +46,7 @@ status: 🟢 승인(2026-08-10 user) — Phase 0 측정 + Phase 1 구현(labcode
 
 | 시점 | 게이트 | 미달 시 |
 |---|---|---|
-| ep30 (조기) | ① γ 노름 성장(≈0 정체 아님) ② **RGB-easy 무손실**(base 대비 ≥−0.3) ③ RGB-hard 개선 방향(+) | ①흡수 재발 → 중단·키1 재판정 ②③ RGB 오염 재발 → 중단 |
+| ep30 (조기) | ① γ 노름 성장(≈0 정체 아님) ② **RGB-clean 무손실**(base 대비 ≥−0.3) ③ RGB-degraded 개선 방향(+) | ①흡수 재발 → 중단·키1 재판정 ②③ RGB 오염 재발 → 중단 |
 | DELIVER 완주 | **legal test ≥ 57.35**(SOTA, primary) · val ≥ 69.60(보조) · thin-class 유지(RailTrack ≥62) | 미달 시 A1~A4 토글 ablation으로 기여 분해 후 부분 채택 판단 |
 | MUSES 완주 | 3모달 79.788 초과 + **published 1위(MM-SA 81.07) 사정권 ≥80.5** · **fog ≥74**(융합 우위 조건 방어) | fog 붕괴 시 P44 재림으로 판정 |
 | **4모달 복원 (G-4M, user 목표 정합)** | **P49 4모달 ≥ P49 3모달** (radar 추가 무손실) — 비대칭 주입의 "유해 모달이 RGB를 오염 못 함" 예측의 직접 검증 = **H11 재검증**. 통과 시 "모달을 늘려도 깨지지 않는 융합"이 논문 주장으로 승격 + **4모달 구성이 양 벤치 공식 대표**가 됨 | 미달 시(4<3 지속) radar 유해는 구조 무관으로 H11 ✗ 재확정, 대표 구성은 벤치별 최적(DELIVER 4모달/MUSES 3모달)으로 정직 보고 |
@@ -56,7 +56,7 @@ status: 🟢 승인(2026-08-10 user) — Phase 0 측정 + Phase 1 구현(labcode
 
 ## 5. 실행 계획
 
-1. **Phase 0 (학습 0, 즉시)**: DELIVER RGB-easy/hard 분할 재현 + 현행 P46 최고 ckpt의 easy/hard 분해 측정 — "대칭 융합의 easy 오염" 병리를 우리 수치로 확인(제안의 motivation 그림). 유휴 GPU 1장, ~2h.
+1. **Phase 0 (학습 0, 즉시)**: ⚠️ **분할 정의 교체(2026-08-10 판정)** — MM-SA의 easy/hard는 수동·시각검사 분할로 미공개라 재현 불가(그들 repo에 산출물 없음, 1797/100 전수 수동 분할). 대체 = **메타데이터 기반 재현 가능 분할**: `RGB-degraded` = RGB 손상 case(Motion-Blur/Over-Exposure/Under-Exposure) ∪ night 조건, `RGB-clean` = 나머지. **proxy임을 명시**하고 MM-SA 수치(57.75/45.46)와의 직접 수치 비교는 하지 않는다(분할 상이) — 패턴 비교만. 부수 이득: 그들 분할의 비재현성 비판 + 재현 가능 대안 제공이 논문 방법론 기여가 됨. 현행 P46 ckpt의 clean/degraded 분해 측정, 유휴 GPU 1장 ~2h.
 2. **Phase 1 구현**: labcode 위임(대규모 — A1~A4). conventions 코드 검수 파이프라인 의무(fresh-eyes 7렌즈 + 스모크 grad/등가 + 로더 실측). 신규 `semseg/models/reliadino/p49.py` + MODEL_REGISTRY 등록.
 3. **Phase 2 본런**: DELIVER 먼저(jarvis/yeon — MM-SA가 2×3090으로 학습했음이 실증, 자원 블록 아님. grad-ckpt+accum으로 eff-batch 16 유지). 완주·게이트 판정 후 MUSES.
 4. C2 측정(A100 확보 시)·7B 프로브(진행 중)는 독립 병행 — 결과에 따라 §3-2 손실 스위트·백본 선택 보강.
