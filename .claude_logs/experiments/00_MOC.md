@@ -22,6 +22,7 @@
 
 | 파일 | 한줄설명 |
 |------|----------|
+| [analysis/2026-08-10-rgbd-2modal-fair-eval.md](analysis/2026-08-10-rgbd-2modal-fair-eval.md) | RGB-D 2모달 @1024 fair-eval — 열세 확정(65.79/54.14), event/lidar 기여는 "추론 무기여·학습 유기여"로 교정 |
 | [analysis/2026-08-06-pq-perclass-vs-instance-density.md](analysis/2026-08-06-pq-perclass-vs-instance-density.md) | per-class PQ ↔ 인스턴스 밀도 상관 — D2 진단(작고 얇은 인스턴스 PQ 붕괴)의 직접 확인, 새 실험 없이 두 측정 교차 |
 | [analysis/2026-08-06-pq-first-measurement-p48-gate.md](analysis/2026-08-06-pq-first-measurement-p48-gate.md) | PQ 첫 측정 — P48 사전등록 게이트(things PQ>30) 판정용, P47-MUB D-1 ep172 MUSES val PQ 실측 |
 | [analysis/2026-08-06-p46-c3only-fair-eval-final.md](analysis/2026-08-06-p46-c3only-fair-eval-final.md) | P46-CTR C3-only fair-eval 최종 판정(val-best ckpt만 사용) — 본/seed2 val·test·RailTrack 정리표 |
