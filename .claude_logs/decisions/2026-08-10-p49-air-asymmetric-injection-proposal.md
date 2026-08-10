@@ -40,7 +40,8 @@ status: 🟢 승인(2026-08-10 user) — Phase 0 측정 + Phase 1 구현(labcode
   3. **진단 체계**: RGB-easy/hard 렌즈(그들 방법론 채택·인용) + 우리 축분리·drop-modal 인과 분석 — "왜 작동하는가"의 깊이.
   4. (opt, 후순위) MUSES event **3초 스트림** 시간 인코딩 — 벤치 합법 유일 시간 신호, 미점유. 단 현행 정적 event 기여 +0.217이라 천장 캘리브레이션 선행(별도 프로브 게이트 없이는 본학습 금지).
 - 제약 준수: DGFusion/CAFuser 유사 구조 아님(조건 토큰·융합 게이팅 없음), 외부 신호 불사용, 단일 아키텍처(DELIVER·MUSES 공용).
-- **공정성 트레이드오프 정직 기록**: A1로 학습 파라미터가 ~300M이 됨 — MM-SA(SAM ViT-L FT ~308M)와 대등해져 매칭 비교는 깔끔해지나, "frozen foundation + 소량 어댑터" 효율 서사는 포기. H12′(용량 정합 방어 불가)는 유지 — S+급 스케일링 행 별도 보고.
+- **공정성 트레이드오프 정직 기록 (구현 후 정정 2026-08-10)**: 학습 파라미터 ≈**0.5B**(백본 304M + ConvNeXt-S×3 ≈150M + 주입/헤드) — §3 초안의 "≈300M"은 백본만 센 수치였다. 2모달 매칭 구성에서는 MM-SA(백본 308M+aux 1개)와 대등, 4모달은 aux 3개라 더 큼 — 논문에 구성별 파라미터 표 공개. "frozen foundation" 효율 서사는 포기, H12′ 유지.
+- **구현 확정 사항 (검수 세션 판정 2026-08-10)**: ① **γ 게이트 2종**(injector + pyramid) — extractor→헤드 경로도 보조 의존이라 identity 보존에 2종 필수(스모크 C 검증). γ=0 step-0에서 보조 인코더 gradient 출구는 VICReg(기본 on). ② **HEAD_MODE=pixel 확정** — 픽셀 헤드가 주 출력, M2F-lite는 독립 보조손실(deep supervision 실증 자산과 정합, 추론 결정론); query 직접출력 팔은 ablation 토글로 유지. ③ DEFORM 미구현은 명시적 raise(조용한 폴백 금지), vanilla attn + KV_GRID 64 예산. ④ **INJECT와 grad-ckpt 상호배제**(hook 오염) → 1024² full-FT는 40GB 기준 설계 — **24GB 실측이 Phase 2 선행 관문**(OOM 시 KV_GRID 32/부분 FT 검토).
 
 ## 4. 게이트 (사전 등록)
 

@@ -1330,9 +1330,19 @@ class ReliaDINO(nn.Module):
                         modal_feats=feats if self.m2f.use_modal_src else None)
 
 
-def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
-    """Map a training-config dict (configs/*_P34_reliadino.yaml) to ReliaDINO."""
+def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
+    """Map a training-config dict (configs/*_P34_reliadino.yaml) to ReliaDINO.
+
+    [P49-AIR] `MODEL.P49.ENABLE: true` 면 별도 클래스(p49.P49AIR)로 분기한다 —
+    P49는 융합 트렁크 자체가 없어 ReliaDINO의 인자 표면에 얹을 수 없다. 키가
+    없으면 이 분기는 존재하지 않는 것과 같다(기존 모델 경로 완전 무변경).
+    import 는 여기서 지역으로 한다 — p49 가 이 모듈의 FPNSegHead 를 재사용하므로
+    모듈 최상단에서 임포트하면 순환한다.
+    """
     mc = cfg['MODEL']
+    if (mc.get('P49', {}) or {}).get('ENABLE', False):
+        from .p49 import build_p49
+        return build_p49(cfg, num_classes)
     fus = mc.get('FUSION', {}) or {}
     ab = fus.get('ATTN_BIAS', {}) or {}
     gate = mc.get('GATE', {}) or {}

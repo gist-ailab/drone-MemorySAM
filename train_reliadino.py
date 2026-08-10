@@ -46,7 +46,7 @@ except ImportError:
 
 from semseg.augmentations_mm import get_train_augmentation, get_val_augmentation
 from semseg.datasets import *                                    # noqa: F401,F403
-from semseg.losses import get_loss
+from semseg.losses import OhemCrossEntropy, get_loss
 from semseg.metrics import Metrics
 from semseg.models.reliadino import build_reliadino
 from semseg.models.reliadino import p46 as P46
@@ -117,6 +117,61 @@ def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
                     old_f.rename(target)
                     break
     return topk_list
+
+
+def _p49_llrd_groups(model, lr: float, decay: float,
+                     backbone_prefix: str = 'encoder.backbone'):
+    """[P49-A1] layer-wise LR decay 파라미터 그룹.
+
+    A1이 백본을 통째로 푼다(≈300M trainable). 전 층에 같은 LR을 주면 저층의
+    사전학습 표현이 초반 warmup에서 지워진다 — DINOv3/BEiT/ViT-Adapter 계열의
+    표준 처방이 layer-wise LR decay다. 깊이 i 층의 LR = lr · decay^(L+1−i).
+
+    층 인덱스는 **파라미터 이름**에서 읽는다:
+      `<prefix>.blocks.<i>.…`            -> i + 1
+      `<prefix>.` 의 나머지(patch_embed / cls_token / pos_embed / reg_token / rope …)
+                                          -> 0   (가장 깊은 감쇠)
+      백본 밖(보조 인코더 / injector / FPN / head / γ)   -> L + 1 (감쇠 없음, lr 그대로)
+    즉 신규 모듈은 항상 full lr 이고 백본만 깎인다. `p.dim() == 1` (norm/bias/γ)은
+    weight decay 0 — semseg.optimizers.get_optimizer 와 같은 규약이다.
+
+    이 함수는 P49 + RGB_FT + OPTIMIZER.LLRD 가 모두 켜졌을 때만 호출된다.
+    """
+    core = model.module if hasattr(model, 'module') else model
+    bb = core
+    for part in backbone_prefix.split('.'):
+        bb = getattr(bb, part, None)
+        if bb is None:
+            raise RuntimeError(f"[P49-LLRD] '{backbone_prefix}' 를 찾지 못했다 — "
+                               f"P49ViTEncoder 레이아웃이 바뀌었는지 확인하라")
+    n_layers = len(bb.blocks)
+    top = n_layers + 1
+
+    def layer_id(name: str) -> int:
+        if not name.startswith(backbone_prefix + '.'):
+            return top
+        rest = name[len(backbone_prefix) + 1:]
+        if rest.startswith('blocks.'):
+            try:
+                return int(rest.split('.')[1]) + 1
+            except (IndexError, ValueError):
+                return top
+        return 0
+
+    buckets = {}
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        lid = layer_id(name)
+        key = (lid, p.dim() == 1)
+        buckets.setdefault(key, []).append(p)
+    groups = []
+    for (lid, no_decay), params in sorted(buckets.items()):
+        g = {'params': params, 'lr': lr * (decay ** (top - lid))}
+        if no_decay:
+            g['weight_decay'] = 0.0
+        groups.append(g)
+    return groups
 
 
 def main(cfg, gpu, save_dir, logger):
@@ -202,11 +257,38 @@ def main(cfg, gpu, save_dir, logger):
     iters_per_epoch = len(trainset) // (train_cfg['BATCH_SIZE'] * world_size)
 
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
+    # [P49-A5] OHEM CE 옵션. `LOSS.OHEM` 이 없으면 위 get_loss 결과 그대로 =
+    # 기존 경로 완전 무변경. (`LOSS.NAME: OhemCrossEntropy` 로도 켤 수 있지만
+    # 그 경로는 thresh/min_kept 를 노출하지 않아 표준값 고정이 불가능하다.)
+    if loss_cfg.get('OHEM', False):
+        loss_fn = OhemCrossEntropy(trainset.ignore_label, None,
+                                   thresh=float(loss_cfg.get('OHEM_THRESH', 0.7)),
+                                   min_kept=int(loss_cfg.get('OHEM_MIN_KEPT', 100000)))
+        if is_rank0:
+            logger.info(f"[LOSS] OHEM CE on — thresh={loss_cfg.get('OHEM_THRESH', 0.7)} "
+                        f"min_kept={loss_cfg.get('OHEM_MIN_KEPT', 100000)}")
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)
     lambda_aux_ce = (model_cfg.get('FUSION', {}) or {}).get('AUX_CE_WEIGHT', 0.5)
     # [P37b] class-token aux CE weight (only produced when CLASS_TOKEN.ENABLE)
     lambda_ctd = (model_cfg.get('CLASS_TOKEN', {}) or {}).get('AUX_CE_W', 0.4)
-    optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
+    # [P49-A1] layer-wise LR decay. P49 + RGB_FT + 유효한 LLRD 셋이 전부 켜졌을
+    # 때만 다른 경로를 탄다 — 그 외에는 아래 get_optimizer 한 줄로 기존과 동일.
+    _p49_cfg = (model_cfg.get('P49', {}) or {})
+    _llrd = float(optim_cfg.get('LLRD', 0) or 0)
+    if _p49_cfg.get('ENABLE', False) and _p49_cfg.get('RGB_FT', True) and 0.0 < _llrd < 1.0:
+        _groups = _p49_llrd_groups(model, lr, _llrd)
+        if str(optim_cfg['NAME']).lower() == 'adamw':
+            optimizer = torch.optim.AdamW(_groups, lr, betas=(0.9, 0.999), eps=1e-8,
+                                          weight_decay=optim_cfg['WEIGHT_DECAY'])
+        else:
+            optimizer = torch.optim.SGD(_groups, lr, momentum=0.9,
+                                        weight_decay=optim_cfg['WEIGHT_DECAY'])
+        if is_rank0:
+            _lrs = sorted({g['lr'] for g in _groups})
+            logger.info(f"[P49-A1] LLRD on — decay={_llrd} groups={len(_groups)} "
+                        f"lr range [{_lrs[0]:.3e}, {_lrs[-1]:.3e}]")
+    else:
+        optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     # [P35/T1 seam] LoRA up-projection(b_q/b_v) Frobenius norm cap — ep140 진단에서
     # blocks.1 depth-q ‖dW‖ 606(ep40 대비 36×) 폭주 관찰(리뷰 리스크). 기본 0=off.
     lora_norm_cap = float(train_cfg.get('LORA_NORM_CAP', 0) or 0)
@@ -359,6 +441,11 @@ def main(cfg, gpu, save_dir, logger):
 
     modals = dataset_cfg['MODALS']
     _core = model.module if hasattr(model, 'module') else model
+    # [P49] P49AIR 에는 융합 트렁크(`fusion`)가 없다 — 아래 RBMA/gate/router 로깅은
+    # 이 핸들이 None 이면 통째로 꺼진다. ReliaDINO 계보에서는 `_core.fusion` 과
+    # 동일한 객체라 동작이 바뀌지 않는다.
+    _fusion = getattr(_core, 'fusion', None)
+    _p49_core = _core if hasattr(_core, 'gamma_log') else None
 
     # ── [P46-CTR] C-2 (Masked-Context Consistency) + C-3 2-view 보조 branch ──
     # 보조 branch = 주 forward와 **같은 배치**를 (선택적으로) 스타일 변주 →
@@ -724,13 +811,13 @@ def main(cfg, gpu, save_dir, logger):
             if getattr(_core, '_rca_pick', None) is not None:
                 rca_picked += int(_core._rca_pick.sum())
             rca_seen += lbl.shape[0]
-            if _core.fusion._last_rel_auroc is not None:
-                auroc_rows.append(_core.fusion._last_rel_auroc)
-            if _core.fusion._last_gate_mean is not None:
-                gate_rows.append(_core.fusion._last_gate_mean.cpu().tolist())
-            if getattr(_core.fusion, '_last_router_mean', None) is not None:
-                router_rows.append(_core.fusion._last_router_mean.tolist())
-            _cefr = getattr(_core.fusion, 'cefr', None)     # [P37a]
+            if _fusion is not None and _fusion._last_rel_auroc is not None:
+                auroc_rows.append(_fusion._last_rel_auroc)
+            if _fusion is not None and _fusion._last_gate_mean is not None:
+                gate_rows.append(_fusion._last_gate_mean.cpu().tolist())
+            if getattr(_fusion, '_last_router_mean', None) is not None:
+                router_rows.append(_fusion._last_router_mean.tolist())
+            _cefr = getattr(_fusion, 'cefr', None)          # [P37a]
             if _cefr is not None and _cefr._last_w_mean is not None:
                 cefr_rows.append(_cefr._last_w_mean.tolist())
             if is_rank0:
@@ -784,7 +871,7 @@ def main(cfg, gpu, save_dir, logger):
                             " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, gbar)))
             if router_rows:
                 rbar = np.array(router_rows, dtype=np.float64).mean(axis=0)
-                alpha = float(_core.fusion.router_alpha.detach())
+                alpha = float(_fusion.router_alpha.detach())
                 for i, name in enumerate(modals[:len(rbar)]):
                     writer.add_scalar(f'p36/router_w_{name}', rbar[i], epoch)
                     log_extra[f'p36/router_w_{name}'] = float(rbar[i])
@@ -795,7 +882,7 @@ def main(cfg, gpu, save_dir, logger):
                             f" alpha:{alpha:.4f}")
             if cefr_rows:                                   # [P37a] CEFR monitoring
                 cbar = np.array(cefr_rows, dtype=np.float64).mean(axis=0)
-                sigma_a = float(getattr(_core.fusion.cefr, '_last_sigma_a', 0.0) or 0.0)
+                sigma_a = float(getattr(_fusion.cefr, '_last_sigma_a', 0.0) or 0.0)
                 for i, name in enumerate(modals[:len(cbar)]):
                     writer.add_scalar(f'p37/cefr_w_{name}', cbar[i], epoch)
                     log_extra[f'p37/cefr_w_{name}'] = float(cbar[i])
@@ -860,8 +947,8 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P44] ep{epoch} mask_rate={_mr44:.4f} "
                             f"(mode={_core.p44_mask_mode}, "
                             f"target_frac {getattr(_core, 'p44_mask_frac', 0):.2f})")
-            if getattr(_core.fusion, 'p44_mutual_kl', False) or \
-                    getattr(_core.fusion, 'p44_rel_corr', False):
+            if getattr(_fusion, 'p44_mutual_kl', False) or \
+                    getattr(_fusion, 'p44_rel_corr', False):
                 writer.add_scalar('train/p44_mutual_kl', mkl_accum / (it + 1), epoch)
                 writer.add_scalar('train/p44_rel_corr', rc_accum / (it + 1), epoch)
                 log_extra['train/p44_mutual_kl'] = mkl_accum / (it + 1)
@@ -965,6 +1052,28 @@ def main(cfg, gpu, save_dir, logger):
                     msg += " γ " + " ".join(f"{n}:{float(v):.3f}"
                                             for n, v in zip(modals, g))
                 logger.info(msg)
+            if _p49_core is not None:
+                # ── [P49-AIR] ep30 게이트① : γ 노름이 성장하는가 ──────────────
+                # γ≈0 정체면 보조 정보가 모델에 **한 번도 들어오지 않은** 것이다
+                # (키1 재발) → 즉시 중단 판정. 제안 §4 사전등록 지표.
+                _g = _p49_core.gamma_log()
+                for k, v in _g.items():
+                    writer.add_scalar(k, v, epoch)
+                    log_extra[k] = v
+                if getattr(_p49_core, 'vicreg', False):
+                    writer.add_scalar('train/vicreg', vic_accum / (it + 1), epoch)
+                    log_extra['train/vicreg'] = vic_accum / (it + 1)
+                if _g:
+                    _names = getattr(_p49_core, 'aux_names', [])
+                    logger.info(
+                        "[P49] |γ| mean:{:.4f} | ".format(_g.get('p49/gamma_mean', 0.0))
+                        + " ".join(
+                            f"{n}:" + "/".join(
+                                f"{_g.get(f'p49/gamma_b{b}_{n}', 0.0):.3f}"
+                                for b in range(getattr(_p49_core, 'num_blocks', 0)))
+                            + f"(pyr {_g.get(f'p49/gammapyr_{n}', 0.0):.3f})"
+                            for n in _names)
+                        + f" | vicreg:{vic_accum / (it + 1):.4f}")
             if getattr(_core, 'rca_enable', False):
                 # [P40] RCA 감쇠 채택률 + readout CE
                 rate = rca_picked / max(rca_seen, 1)
