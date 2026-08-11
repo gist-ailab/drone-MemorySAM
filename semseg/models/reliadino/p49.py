@@ -484,6 +484,7 @@ class P49AIR(nn.Module):
                  inj_mlp_ratio: float = 4.0,
                  kv_grid: int = 32,
                  kv_grid_floor: int = 8,
+                 gamma_init: float = 0.0,
                  # A4
                  ms_head: bool = True,
                  head_mode: str = 'pixel',
@@ -588,10 +589,13 @@ class P49AIR(nn.Module):
                                          inj_mlp_ratio)
                                for _ in range(M)])
                 for _ in range(self.num_blocks)])
-            # 🔴 zero-init 게이트 2종. 이 둘이 보조 모달이 출력에 닿는 **유일한** 경로다.
-            self.gamma_inj = nn.Parameter(torch.zeros(self.num_blocks, M))
+            # 🔴 게이트 2종 — 보조 모달이 출력에 닿는 **유일한** 경로.
+            # gamma_init: 0.0=엄밀 zero-init(스모크 C의 identity 검증용) /
+            # 0.1=P39.1 실증 절충(2026-08-11 ep54 γ 정체 판정 후 본학습 기본 —
+            # 강한 RGB가 train을 자족하면 γ=0에 gradient 압력이 안 걸린다, 키1 5번째 사례)
+            self.gamma_inj = nn.Parameter(torch.full((self.num_blocks, M), float(gamma_init)))
             self.pyr_levels = [0, 1, 2, 3] if self.ms_head else [2]
-            self.gamma_pyr = nn.Parameter(torch.zeros(M, len(self.pyr_levels)))
+            self.gamma_pyr = nn.Parameter(torch.full((M, len(self.pyr_levels)), float(gamma_init)))
             self.level_embed = nn.Parameter(torch.zeros(4, self.inj_dim))
             nn.init.trunc_normal_(self.level_embed, std=0.02)
             self.pyr_proj = nn.ModuleList([
@@ -918,6 +922,7 @@ def build_p49(cfg: dict, num_classes: int) -> P49AIR:
         inj_mlp_ratio=p49.get('MLP_RATIO', 4.0),
         kv_grid=p49.get('KV_GRID', 32),
         kv_grid_floor=p49.get('KV_GRID_FLOOR', 8),
+        gamma_init=p49.get('GAMMA_INIT', 0.0),
         ms_head=p49.get('MS_HEAD', True),
         head_mode=p49.get('HEAD_MODE', 'pixel'),
         fpn_dim=mc.get('FPN_DIM', 256),

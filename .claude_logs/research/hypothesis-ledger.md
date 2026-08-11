@@ -28,6 +28,7 @@ author: fable (MMSAM discussion 세션)
 | H11 | radar 모달 기여 (MUSES) | drop ablation + 공식 test 2회 | ✗ 반증 | 4모달 −0.217, 야간 −0.376 | [experiments/analysis/2026-08-04-muses-radar-night-harm.md](../experiments/analysis/2026-08-04-muses-radar-night-harm.md) |
 | H12 | L 이상으로 백본을 더 키우면(H+, 840M) 표현력 천장이 더 열린다 | ProbeA2 — frozen S+/B/L/H+ + 공용 head, MUSES RGB | ⚠️ 중간대역(포화 근접) | Δ(H+−L)=+0.52(게이트 +1.5 미만·+0.5 근접) — S+→L 구간(+8.82)과 대조적으로 급격한 수확체감. 조건별로는 야간·악천후 +3.7~4.7 vs clear_day −3.06(상쇄) | [experiments/analysis/2026-08-09-probea2-backbone-scaling.md](../experiments/analysis/2026-08-09-probea2-backbone-scaling.md) |
 | H12′ | (하한 방어) S+(~29M, Swin-T 용량 정합)에서도 우리 스택 성능이 유지된다 | 동 프로브의 G-A2-하한 | ✗ 반증 | Δ(L−S+)=+8.82 (>3.0) — "방법 기여는 대형 백본 전제"로 논문 스코프 정직 공개 필요, 용량 정합 방어 불가 | 동상 |
+| H13 | zero-init 비대칭 주입(γ=0)이 강한 RGB 백본에서도 gradient 압력을 받는다 (MM-SA 전이 가설) | P49-AIR 본런 ep54 실측 | ✗ 반증 | γ mean 0.0011→0.0006 정체(54ep), val 63.83 = RGB 자족·aux 미사용. **zero-init 5번째 사망** — MM-SA(SAM, 약한 RGB 의미론)와의 차이가 원인 = 'RGB 표현력' 명제 재확인. 처방 = γ init 0.1(P39.1 실증, P49.1로 재기동) | [decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md](../decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md) §4 게이트① 적용 |
 
 ## 종합 — 계보가 확립한 명제 (2026-08-09 갱신)
 
