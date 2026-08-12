@@ -9,6 +9,12 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+## 2026-08-12 — ProbeA2 완결: 7B 69.37(+0.18), 표현력 축 소진 확정 (H12 폐쇄)
+
+- 7B 실행 = 모니터링 세션(hpca100 GPU2-3, user 협의로 슬롯 확보) / §⑧ 축분리 게이트 판정 = discussion 세션(fable).
+- 악조건 7조건 평균 Δ(7B−H+) +0.28 < +0.5, 야간 4조건 −0.57 — H+의 야간 집중 이득이 연장되지 않음. clear_day +2.82 반등으로 H+의 −3.06은 프로브 노이즈로 재해석(조건별 밴드 ±1~3).
+- 백본 승급 본설계 조건 미충족 최종 확정. 스케일링 5점 곡선 = 논문 그림 자산. 상세 [experiments/analysis/2026-08-09-probea2-backbone-scaling.md](../experiments/analysis/2026-08-09-probea2-backbone-scaling.md) §6.
+
 ## 2026-08-09 — ProbeA2 백본 스케일링 프로브 완료 (opus 세션)
 
 plan.md #9 실행. 코드(`tools/probe_backbone_scaling.py`, develop `6b33a2b`/`2511b61`)는 labcode 위임 후

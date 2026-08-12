@@ -111,7 +111,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | ~~6~~ | ~~CEA oracle 프로브~~ | — | — | 🔴 **완료 + 폐기 확정(2026-08-08)** — 7런 완주, G-P1 5배 미달(oracle Δ +0.21 < +1.0). 적응 가설 계열 폐쇄. [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6·§7, 원장 H4 |
 | ~~7~~ | ~~RGB-D 2모달 fair-eval~~ | — | — | 🔵 **착수(2026-08-10)** — yeon GPU2 val 모드 eval 중(tmux jemo:rgbd_eval1024), test 모드 후속. registry 행 참조 |
 | ~~8~~ | ~~H10 재판정 미니 실험~~ | — | 🔴 취소(2026-08-10 user — PQ 비경쟁축) | **의뢰서 = [decisions/2026-08-08-h10-readjudication-experiment-request.md](../decisions/2026-08-08-h10-readjudication-experiment-request.md)** — 이 문서만 읽고 실행 가능. 게이트(학습 후 things PQ>33.6) 사전 등록, 결과 기록처 명시 |
-| **9** | ~~ProbeA2 — 백본 스케일링 프로브~~ | jarvis GPU1, ~1h(캐시+head 학습 4종) | ✅ **완료(2026-08-09)** | 결과: S+ 59.85 / B 62.82 / L 68.67 / **H+ 69.19**. G-A2-상한 Δ(H+−L)=+0.52(중간대역, 7B 미측정) / G-A2-하한 Δ(L−S+)=+8.82(>3.0, 대형백본 전제 공개 필요). 상세 = [analysis/2026-08-09-probea2-backbone-scaling.md](analysis/2026-08-09-probea2-backbone-scaling.md), 원장 = [research/hypothesis-ledger.md](../research/hypothesis-ledger.md) H12/H12′. **미결**: 7B 추가 측정(hpca100 A100 필요 — 24GB OOM 위험) 여부는 코디네이터 판단 대기 |
+| **9** | ~~ProbeA2 — 백본 스케일링 프로브~~ | jarvis GPU1, ~1h(캐시+head 학습 4종) | ✅ **완료(2026-08-09)** | 결과: S+ 59.85 / B 62.82 / L 68.67 / **H+ 69.19**. G-A2 **완결(08-12)**: 7B 69.37(+0.18)·축분리 음성 → 표현력 축 소진 확정(원장 H12 ✗) / G-A2-하한 Δ(L−S+)=+8.82(>3.0, 대형백본 전제 공개 필요). 상세 = [analysis/2026-08-09-probea2-backbone-scaling.md](analysis/2026-08-09-probea2-backbone-scaling.md), 원장 = [research/hypothesis-ledger.md](../research/hypothesis-ledger.md) H12/H12′. **미결**: 7B 추가 측정(hpca100 A100 필요 — 24GB OOM 위험) 여부는 코디네이터 판단 대기 |
 | **10** | **P49-AIR** (비대칭 주입 구조 전환) | Phase0=1 GPU 2h(학습0) → 구현(labcode) → jarvis/yeon 2~4장, EPOCHS 100~200 | 🟢 **승인 + 구현 병합(be. 검수 PASS) — 24GB 실측 스모크 진행 중, 통과 시 본런 즉시 기동(user 사전 승인 2026-08-10, jarvis 1,2,5 예정, 워치독 등록 포함)** | [decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md](../decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md) — 대칭 융합 폐지, RGB 주경로 FT + 인코더-내부 zero-init 주입. ep30 게이트(γ성장·RGB-easy 무손실)·DELIVER test ≥57.35·falsifiable A/B 사전 등록 |
 
 ## 🅰️ A100/B200 대기열 (슬롯 감시 = `scripts/gpu_slot_watch.sh`, cron 10분 — 2026-08-10 도입)
@@ -121,7 +121,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | 순위 | 실험 | 필요 | 근거 |
 |---|---|---|---|
 | ① | **C2-MCC 순기여** (c2c3 config) | A100 2장 | 최장 미결·논문 표 직접 소요·40GB 필수(4090 OOM 실측) |
-| ② | **ProbeA2-7B** (§⑧ 축분리 게이트) | A100 1장 반나절 | H12 완결 + "prior로 야간 정보" 검증 |
+| ~~②~~ | ~~ProbeA2-7B~~ | — | ✅ 완료(08-12, hpca100 GPU2-3) — H12 폐쇄, analysis §6 |
 | ③ | **P49 @1024 학습 대조** | 4장 | @768 본런과의 해상도 대조(24GB no-go 실측으로 밀림) |
 
 ## ✅ 완료·판정 (재실행 금지)
