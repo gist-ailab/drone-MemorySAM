@@ -2,7 +2,7 @@
 created: 2026-08-08 18:30
 author: fable (MMSAM discussion 세션)
 type: 실험 의뢰서 (conventions §4 의뢰서 규약 — 이 문서만 읽고 실행 가능해야 함)
-status: 1차 완료 (2026-08-09, 결과 = [analysis/2026-08-09-probea2-backbone-scaling.md](../experiments/analysis/2026-08-09-probea2-backbone-scaling.md), 원장 H12/H12′) — G-A2-상한 중간대역 → **7B 재판정 여부 코디네이터 결정 대기** (§⑧ 참조)
+status: 🟢 완결 (2026-08-12) — 7B까지 5점 완성, G-A2-상한 §⑧ 축분리 판정 = 표현력 축 소진 확정(원장 H12 ✗). 결과 = analysis 문서 §6
 ---
 
 # 실험 의뢰서 — ProbeA2: 백본 스케일링 프로브 (상한 H+ / 하한 S+·B, RGB 단독)

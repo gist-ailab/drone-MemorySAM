@@ -26,7 +26,7 @@ author: fable (MMSAM discussion 세션)
 | H9 | 쿼리 경로 이중화가 기여 | module ablation | ✗ 무효(복제) | query 순기여 −0.09, 픽셀 98.9% dense와 동일 | [experiments/analysis/2026-08-05-p46-module-ablation-query-nooop.md](../experiments/analysis/2026-08-05-p46-module-ablation-query-nooop.md) |
 | H10 | 쿼리에 인스턴스 감독을 주면 things PQ 회복 (P48) | PQ 게이트 | ⚠️ 미결·동결 (취소 2026-08-10, user) | PQ는 비경쟁축(경쟁 논문 전부 mIoU) — 재판정 실험 취소, 미결인 채 동결 | [experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md](../experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md) |
 | H11 | radar 모달 기여 (MUSES) | drop ablation + 공식 test 2회 | ✗ 반증 | 4모달 −0.217, 야간 −0.376 | [experiments/analysis/2026-08-04-muses-radar-night-harm.md](../experiments/analysis/2026-08-04-muses-radar-night-harm.md) |
-| H12 | L 이상으로 백본을 더 키우면(H+, 840M) 표현력 천장이 더 열린다 | ProbeA2 — frozen S+/B/L/H+ + 공용 head, MUSES RGB | ⚠️ 중간대역(포화 근접) | Δ(H+−L)=+0.52(게이트 +1.5 미만·+0.5 근접) — S+→L 구간(+8.82)과 대조적으로 급격한 수확체감. 조건별로는 야간·악천후 +3.7~4.7 vs clear_day −3.06(상쇄) | [experiments/analysis/2026-08-09-probea2-backbone-scaling.md](../experiments/analysis/2026-08-09-probea2-backbone-scaling.md) |
+| H12 | L 이상으로 백본을 더 키우면 표현력 천장이 더 열린다 | ProbeA2 5점(S+/B/L/H+/7B) + §⑧ 축분리 | ✗ 반증(2026-08-12 확정) | H+→7B **+0.18**(8× 파라미터) · 악조건 축분리도 +0.28(<+0.5)·야간 −0.57 — 상쇄 뒤 숨은 신호 없음. H+의 야간 집중 이득은 노이즈 밴드(±1~3) 내 정황으로 격하 | [experiments/analysis/2026-08-09-probea2-backbone-scaling.md](../experiments/analysis/2026-08-09-probea2-backbone-scaling.md) |
 | H12′ | (하한 방어) S+(~29M, Swin-T 용량 정합)에서도 우리 스택 성능이 유지된다 | 동 프로브의 G-A2-하한 | ✗ 반증 | Δ(L−S+)=+8.82 (>3.0) — "방법 기여는 대형 백본 전제"로 논문 스코프 정직 공개 필요, 용량 정합 방어 불가 | 동상 |
 | H13 | zero-init 비대칭 주입(γ=0)이 강한 RGB 백본에서도 gradient 압력을 받는다 (MM-SA 전이 가설) | P49-AIR 본런 ep54 실측 | ✗ 반증 | γ mean 0.0011→0.0006 정체(54ep), val 63.83 = RGB 자족·aux 미사용. **zero-init 5번째 사망** — MM-SA(SAM, 약한 RGB 의미론)와의 차이가 원인 = 'RGB 표현력' 명제 재확인. 처방 = γ init 0.1(P39.1 실증, P49.1로 재기동) | [decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md](../decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md) §4 게이트① 적용 |
 
@@ -35,7 +35,7 @@ author: fable (MMSAM discussion 세션)
 1. **적응 가설 계열은 3단계 전부에서 닫혔다**: 융합 가중(H1·H2) → 추론 재가중(H3) → 추출 수준 oracle 상계(H4). 치팅을 줘도 +0.2라는 상계가 있으므로, 학습 가능한 어떤 조건부 메커니즘도 이를 넘을 수 없다. **적응형 기제의 재제안 금지.**
 2. **상호작용은 실재하되 이미 소진됐다**(H5·H5′): 남은 격차의 원인은 *배분*이 아니라 *정보*. 이득은 표현력(H6)·해상도(H7)·학습 신호(H8)·데이터에서만 나온다.
 3. **축 특이성**(H8): 클래스축 처방(prototype)은 클래스축 붕괴(DELIVER)에만 통한다. 축이 다른 벤치에 이식하면 손해 — 처방 전에 축 진단 선행.
-4. **표현력도 L 이상에서는 급격히 소진된다**(H12): SAM2→DINOv3-L(+11.6, H6)·S+→L(+8.82, H12′)은 크지만, L→H+(+0.52, H12)는 수확체감 — "더 큰 고정 백본으로 바꾸면 된다"는 단순한 해법의 여지도 좁다. 단 완전히 닫힌 결론은 아니다(7B 미측정, 중간대역).
+4. **표현력도 L 이상에서는 급격히 소진된다**(H12): SAM2→DINOv3-L(+11.6, H6)·S+→L(+8.82, H12′)은 크지만, L→H+(+0.52, H12)는 수확체감 — "더 큰 고정 백본으로 바꾸면 된다"는 단순한 해법의 여지도 좁다. 7B 실측(+0.18, 축분리 음성)으로 **완전히 닫혔다**(2026-08-12).
 5. **격차 축소 시도 세 갈래(배분·해상도·순수 스케일 확대) 모두 정체 근처**: 배분(H4, 폐기) · 학습 해상도 상승(H7 자체는 확인이지만 08-09 val/test 역발산으로 DELIVER 게이트는 미달) · 백본 추가 확대(H12, 중간대역/사실상 포화)는 전부 "더 하면 된다"가 아니었다. 남은 유력 축은 **데이터**(양·품질) 또는 **아키텍처 신규 설계**로 좁혀진다.
 6. **논문 서사**: ①상호작용 실재(H5) → ②적응 기제 전 수준 실패 + oracle 상계(H1~H4) → ③작동하는 것은 표현+학습신호(H6~H8), 단 표현력은 L 근방에서 포화(H12) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제, H12′). 실패가 서사의 증거가 되는 구조.
 
