@@ -120,7 +120,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 순위 | 실험 | 필요 | 근거 |
 |---|---|---|---|
-| ① | **C2-MCC 순기여** (c2c3 config) | A100 2장 | 최장 미결·논문 표 직접 소요·40GB 필수(4090 OOM 실측) |
+| ~~①~~ | ~~C2-MCC 순기여~~ | — | 🔵 **기동(2026-08-12 16:03, hpca100 GPU2,3 공유 — user 승인·모니터링 세션 실행)** — registry 행 참조, 판정 기준 사전 등록됨 |
 | ~~②~~ | ~~ProbeA2-7B~~ | — | ✅ 완료(08-12, hpca100 GPU2-3) — H12 폐쇄, analysis §6 |
 | ③ | **P49 @1024 학습 대조** | 4장 | @768 본런과의 해상도 대조(24GB no-go 실측으로 밀림) |
 

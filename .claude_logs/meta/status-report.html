@@ -89,7 +89,7 @@
 <header>
   <p class="eyebrow">drone-MemorySAM · living status board</p>
   <h1>MemorySAM 작업 현황</h1>
-  <p class="stamp">최종 갱신 <b>2026-08-10 (v4 — P49-AIR 승인·구현·본런 기동)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
+  <p class="stamp">최종 갱신 <b>2026-08-10 (v5 — H12 폐쇄(7B)·C2 기동·P49→P49.1 재기동)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
 
   <div class="strip">
     <div class="vcard t-good">
@@ -164,7 +164,7 @@
   <p class="sub">각 카드 = 풀려는 문제 → 투입한 것 → 성공 시 인사이트(novelty) → 실패 시 배우는 것. 큐 canonical = <span class="mono">experiments/plan.md</span> · 실시간 = <span class="mono">watchdog.sh status</span></p>
 
   <div class="vcard t-warn" style="margin-bottom:10px">
-    <div class="k">판정 대기 ① · C2-MCC 순기여 측정 <span class="pill p-dead">블록 — A100 40GB 필수</span> <span class="pill p-warn">config 주석 실측: 4090은 BS1도 OOM · hpca100 타인 점유(08-10) → A100 확보 대기</span></div>
+    <div class="k">판정 대기 ① · C2-MCC 순기여 측정 <span class="pill p-acc">학습 중 (08-12 16:03, hpca100 GPU2,3 공유 — user가 슬롯 협의로 해제)</span> <span class="pill p-warn">판정: C3-only(λ0.1) 대비 legal test Δ≥+0.5 → 유효</span></div>
     <div class="d" style="margin-top:6px">
       <b>문제</b>: DELIVER test 격차 −0.36. C3 prototype(+1.35~1.74)은 실증됐지만, P46의 세 모듈 중 C2만 담당 런이 서버 소실로 죽어 <b>순기여를 한 번도 못 쟀다</b> — 유일하게 "결과를 모르는" 학습 전용 손실.<br>
       <b>투입</b>: MIC 계열 masked consistency — EMA-teacher는 원본, student는 50% 패치 마스킹 입력을 보고 마스킹 영역에서 일치 강제. 추론 불변(학습 전용). 측정 = C3 단독 vs C2+C3 A/B.<br>
