@@ -1,7 +1,9 @@
-# ═══ P49-AIR MUSES 3모달 파생 — DELIVER g01(γ0.1) 게이트 통과 확정(legal test 57.68,
-#     2026-08-13) 후 제안서 §4/Phase2 순서대로 MUSES 착수. DELIVER g01 config에서
-#     DATASET.NAME/ROOT/MODALS 3개 + DGFUSION_AUG(DELIVER 전용 공정선 플래그) 제거만
-#     변경 — 나머지(구조·손실·옵티마이저·γ init 0.1)는 전부 동일(단일 아키텍처 원칙). ═══
+# ═══ P49-AIR MUSES 3모달 파생 — 2026-08-14 user 지시로 착수(DELIVER g01 legal test
+#     재검증은 별도 병행 진단 중, 🔴 "57.68 SOTA+0.33"는 철회됨 — val.py 정본 재측정 결과
+#     test@768 55.66/test@1024 56.19, 트레이너-eval과 −2.02 불일치로 원인 미상. INJECT-off
+#     A/B(42.96, −12.7 붕괴)만 확정 — 비대칭 주입 메커니즘 자체는 검증됨. DELIVER g01
+#     config에서 DATASET.NAME/ROOT/MODALS 3개 + DGFUSION_AUG(DELIVER 전용 공정선 플래그)
+#     제거만 변경 — 나머지(구조·손실·옵티마이저·γ init 0.1)는 전부 동일(단일 아키텍처 원칙). ═══
 # 설계 정본 = .claude_logs/decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md
 # 구현      = semseg/models/reliadino/p49.py  (trainer = train_reliadino.py) — 모달별
 #             보조 인코더는 DATASET.MODALS 순서로 제네릭하게 구성됨(p49.py:891) — 코드 미변경.
@@ -19,7 +21,7 @@
 # ⚠️ 서버별 경로(DATASET.ROOT)만 고쳐서 쓸 것. DELIVER g01의 ep30 게이트·falsifiable A/B는
 #    이미 DELIVER에서 통과·완주했으므로 MUSES 런에는 재적용하지 않음(구조 고정, 데이터만 교체).
 DEVICE          : cuda
-SAVE_DIR        : './outputs/ReliaDINO/muses_rgbel_P49_1_air_g01'
+SAVE_DIR        : './outputs/ReliaDINO/muses_rgbel_P49_1_air_3modal_g01'
 
 MODEL:
   NAME          : ReliaDINO                   # 트레이너 진입점(빌더가 P49로 분기)
@@ -179,6 +181,6 @@ WANDB:
 
 TEST:
   MODEL_PATH    : ''
-  FILE          : '/SSDb/jemo_maeng/dset/DELIVER'
+  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
   IMAGE_SIZE    : [768, 768]
   OVERLAY       : false
