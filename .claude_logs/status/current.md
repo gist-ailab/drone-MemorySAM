@@ -72,6 +72,8 @@ moved: 2026-07-08
 
 ### 열린 블로커 / 미결
 
+0. 🔴 **DELIVER 채점 프로토콜 확정 (논문 블로커, 2026-08-14 격상)** — 커뮤니티 관례가 resized-GT 채점일 가능성(CAFuser `CMNEXT_EQUIVALENT_EVAL` 주석). 공개표(MM-SA 57.35 등)와 우리 native-GT 수치의 비교 가능성 미확정 → CMNeXt 원조 코드 확인 + 대표 ckpt protocol-matched 재채점(학습 0) 필수. 내부 서열은 불변. [analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md](../experiments/analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md)
+
 1. **P48 폐기 판정 재확정 필요** — 08-06 게이트 적용 시점 오류 지적([experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md](../experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md)) 후 상위 재판정 기록 없음. 논문 스코프 밖으로 두되 기록은 닫을 것.
 2. **C2(MCC) 순기여 미측정** — 유일하게 결과를 모르는 조합 (40GB급 필요).
 3. **RGB-D 2모달 fair-eval(학습 0)** — SOTA 최고 구성 대비 직접 비교, 기존 ckpt @1024 재평가만 남음.

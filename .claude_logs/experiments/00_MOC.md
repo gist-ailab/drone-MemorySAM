@@ -22,6 +22,7 @@
 
 | 파일 | 한줄설명 |
 |------|----------|
+| [analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md](analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md) | P49.1 최종 판정(P46 미달·주입 기제 생존) + **채점 해상도 프로토콜 발견**(트레이너 768-GT 낙관 vs val.py native — 공개표 비교 이슈 격상) |
 | [analysis/2026-08-10-muses-official-test-rgbl-2modal.md](analysis/2026-08-10-muses-official-test-rgbl-2modal.md) | MUSES 공식 test 제출 #9 — RGB-L 2모달 79.571(4모달과 동률, 3모달 −0.217), 모달 스펙트럼 완성 |
 | [analysis/2026-08-10-rgbd-2modal-fair-eval.md](analysis/2026-08-10-rgbd-2modal-fair-eval.md) | RGB-D 2모달 @1024 fair-eval — 열세 확정(65.79/54.14), event/lidar 기여는 "추론 무기여·학습 유기여"로 교정 |
 | [analysis/2026-08-06-pq-perclass-vs-instance-density.md](analysis/2026-08-06-pq-perclass-vs-instance-density.md) | per-class PQ ↔ 인스턴스 밀도 상관 — D2 진단(작고 얇은 인스턴스 PQ 붕괴)의 직접 확인, 새 실험 없이 두 측정 교차 |
