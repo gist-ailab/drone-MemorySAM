@@ -32,3 +32,15 @@ type: fair-eval 판정 + 측정 프로토콜 규명
 원시: yeon `drone-MemorySAM-p49/logs/p491_*_20260814_011725.log` + `tools/diag_trainer_eval.py`(yeon 전용 하니스) + `/tmp/diag_trainer_eval_run.log`
 
 관련: [2026-08-06-p46-c3only-fair-eval-final.md](2026-08-06-p46-c3only-fair-eval-final.md) · monitor-log L720(CMNEXT_EQUIVALENT_EVAL 경고 원문) · registry `yeon_deliver_rgbdel_P49_1_air_768_g01`
+
+## 4. 공개표 프로토콜 확정 (2026-08-14, 3개 repo 1차 소스 — 블로커 #0 해소)
+
+| Repo | IoU 채점 | 함의 |
+|---|---|---|
+| CMNeXt(원조)·CAFuser(명시적 CMNeXt-equivalent, 기본 ON)·(DGFusion 등 그 계열) | **1024², GT nearest-다운샘플** | 구 리더보드 수치(DGFusion 56.71 등)는 리사이즈-GT 지표 |
+| **MM SAM-adapter(현 SOTA)** | **native 1042², GT 원본**(mmseg 관례, 예측 bilinear 업샘플) | **우리 val.py와 동일 프로토콜** |
+
+**판정**:
+1. **vs MM-SA(57.35) 비교는 처음부터 유효했다** — 우리 native-GT 정본과 동일 프로토콜. P46 −0.36, P49.1 미달 판정 전부 유지.
+2. **vs DGFusion 계열 비교는 우리가 불리한 자로 재 왔다** — 그들의 1024-리사이즈-GT는 낙관 지표. protocol-matched 재채점(P46 ep70 @1024-GT, 학습 0) 시 우리 수치는 상승만 가능 → "구 SOTA no-tradeoff 상회(+0.28)" 마진이 커진다. 재채점 1건만 하면 논문 표 각주 완결.
+3. **공개표 자체가 두 프로토콜 혼재**(MM-SA native vs CMNeXt 계열 1024-GT) — 이 발견 자체가 논문 프로토콜 절/각주 소재(우리가 양 프로토콜 수치를 모두 공개하는 것이 최선의 방어).
