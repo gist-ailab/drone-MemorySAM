@@ -89,7 +89,7 @@
 <header>
   <p class="eyebrow">drone-MemorySAM · living status board</p>
   <h1>MemorySAM 작업 현황</h1>
-  <p class="stamp">최종 갱신 <b>2026-08-12 (v6 — 최상단 모델 리포트 신설)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
+  <p class="stamp">최종 갱신 <b>2026-08-14 (v7 — P49.1 DELIVER 종결·MUSES 기동·채점 프로토콜 확정)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
 
   <div class="strip">
     <div class="vcard t-good">
@@ -129,7 +129,8 @@
       <b>실험 결과 지금까지</b>:
       <table style="min-width:0;margin-top:6px"><thead><tr><th>버전</th><th>결과</th><th>판정</th></tr></thead><tbody>
       <tr><td class="n">P49 v1 (γ=0)</td><td class="n">ep54: γ 0.0011→0.0006 정체 · val 63.83@50</td><td><span class="pill p-dead">게이트① 중단</span> zero-init 5번째 사망 — 강한 RGB가 train 자족 → γ 압력 부재(원장 H13). MM-SA(약한 SAM RGB)와의 차이 = 발견</td></tr>
-      <tr><td class="n">P49.1 (γ=0.1)</td><td class="n">재기동 — P39.1 실증 절충값</td><td><span class="pill p-warn">ep30 게이트 대기</span> γ 성장 · RGB-clean 무손실 · test ≥57.35 · G-4M(4모달≥3모달)</td></tr>
+      <tr><td class="n">P49.1 (γ=0.1) DELIVER</td><td class="n">완주. 정본(val.py native-GT) test <b>55.66@768 / 56.19@1024</b> — P46 미달. 트레이너 로그 57.68은 768-리사이즈-GT 낙관 지표로 판명(채점 프로토콜 발견) · INJECT-off <b>−12.7 붕괴</b> = 주입 기제 생존</td><td><span class="pill p-dead">성능 미달 종결</span> <span class="pill p-good">기제 생존 (첫 비-흡수 주입)</span></td></tr>
+      <tr><td class="n">P49.1 MUSES (3모달)</td><td class="n">08-14 11:45 기동(C3 off·300ep) — 남은 승부처</td><td><span class="pill p-acc">학습 중</span> 게이트: 79.788 초과 · MM-SA 81.07 사정권 · fog≥74 · 이후 G-4M</td></tr>
       </tbody></table>
     </div>
   </div>
