@@ -1,7 +1,7 @@
 ---
 created: 2026-08-17
 author: fable (MMSAM discussion 세션, model-proposal 절차 + 딥리서치 3축 A/B/C)
-status: 제안 — 프로브 게이트 사전 등록, 코디네이터 승인 대기
+status: 🟢 승인(2026-08-17 user) — pseudo-모달 생성 파이프라인 구현부터 착수, 학습은 λ0.1 시드런 완주 후 슬롯
 ---
 
 # P50-MAP 제안 — Modal Alignment Pretraining (2026-08-17)

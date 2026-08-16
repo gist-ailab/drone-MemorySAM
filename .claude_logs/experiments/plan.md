@@ -124,7 +124,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | ~~②~~ | ~~ProbeA2-7B~~ | — | ✅ 완료(08-12, hpca100 GPU2-3) — H12 폐쇄, analysis §6 |
 | ③ | **P49 @1024 학습 대조** | 4장 | @768 본런과의 해상도 대조(24GB no-go 실측으로 밀림) |
 
-| **11** | **P50-MAP 프로브** (모달 정렬 사전학습) | pseudo-모달 생성(수일) + 4090 2~4장 × 1~2일 | **제안 등재(2026-08-17) — 승인 대기** | [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md](../decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md) — 프로브 게이트(base 대비 test ≥+0.5) 사전 등록. 추론 그래프 무변경 = 단일-모델 원칙 자동 충족 |
+| **11** | **P50-MAP 프로브** (모달 정렬 사전학습) | pseudo-모달 생성(수일) + 4090 2~4장 × 1~2일 | 🟢 **승인(2026-08-17 user)** — 구현 착수, 학습은 시드런 완주 후 | [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md](../decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md) — 프로브 게이트(base 대비 test ≥+0.5) 사전 등록. 추론 그래프 무변경 = 단일-모델 원칙 자동 충족 |
+
+| **12** | **cross-attn 트렁크 A/B** (대칭 모달간 cross-attention 1~2층으로 트렁크 교체, 토글) | @768 1런 × jarvis/yeon 2~3장 × ~1일 | 🟢 **승인(2026-08-17 user)** — 시드런 완주 후, P50 프로브와 병행 | user 가설의 통제 검증. **게이트(사전 등록)**: 대표 레시피 동일·트렁크만 교체, legal test Δ **≥+0.3 → 채택 검토** / ±0.3 → 무차이(믹서 무관 실증) / ≤−0.3 → MLP 우위 재확인. 문헌 예측 = 무차이(MM1·StitchFusion·우리 P49). 어느 쪽이든 "믹서 vs 데이터" 분석 절 재료 |
 
 ## ✅ 완료·판정 (재실행 금지)
 
