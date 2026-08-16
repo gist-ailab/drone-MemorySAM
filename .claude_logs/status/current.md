@@ -32,6 +32,10 @@ moved: 2026-07-08
 | Det | D1-recovered(ViT-L) AP50 **0.9321**@ep6 | 목표 0.85 **+0.08** | 종결 국면 |
 | MULTIAQUA | P9 ep131 / P22 ep120 M-score **82.10** | (챌린지 종료, 고정) | 고정 |
 
+### 통일 아키텍처 확정 (2026-08-16, §6 규칙 집행)
+
+**P49-AIR 계열 종결** (DELIVER P46 미달 + MUSES 공식 val 81.16 < 82.13 + G-4M 실패). **통일 = ReliaDINO 계보(P39.1-rank 추론 그래프) + 진단-짝 학습손실** — 양 벤치 현 최고(P46-CTR 56.99 / P39.1-rank 79.788)가 이미 동일 추론 그래프(C1/C2/C3 전부 학습 전용). 판정 상세 [experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md](../experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md). 남은 결정전 = **C2**(DELIVER SOTA 산술 경로 + 레시피 통일 여부).
+
 ### 활성 런 / 대기 (2026-08-08, 커밋 기준 — 실시간은 [experiments/plan.md](../experiments/plan.md)·registry)
 
 - 🔴 **P46 C3-only @1024² 학습 — 게이트 미달 확정 (2026-08-09 02:35, 잠정→확정 격상)**. elice-b200 val-best@ep70: val **69.79**(+0.35 vs 768² 본run) 인데 legal test **56.50**(−0.49 vs 내부최고 56.99, −0.85 vs SOTA 57.35) — **val↑/test↓ 역발산**.

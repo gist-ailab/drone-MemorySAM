@@ -1,7 +1,7 @@
 ---
 created: 2026-08-10
 author: fable (MMSAM discussion 세션, model-proposal 스킬 절차)
-status: 🟢 승인(2026-08-10 user) — Phase 0 측정 + Phase 1 구현(labcode) 동시 진행 중
+status: 🔴 **계열 종결(2026-08-16, §6 규칙 집행)** — DELIVER 미달 + MUSES 공식 val −0.97 + G-4M 실패. 통일 아키텍처 = ReliaDINO 계보 + 진단-짝 손실. 회수 자산 = H13·H14·INJECT-off 실증·radar fog/day 특이 기여
 ---
 
 # P49-AIR 제안 — Asymmetric Injection with RGB-primary (2026-08-10)
