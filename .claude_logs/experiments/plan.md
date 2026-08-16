@@ -126,7 +126,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | **11** | **P50-MAP 프로브** (모달 정렬 사전학습) | pseudo-모달 생성(수일) + 4090 2~4장 × 1~2일 | 🟢 **승인(2026-08-17 user)** — 구현 착수, 학습은 시드런 완주 후 | [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md](../decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md) — 프로브 게이트(base 대비 test ≥+0.5) 사전 등록. 추론 그래프 무변경 = 단일-모델 원칙 자동 충족 |
 
-| **12** | **cross-attn 트렁크 A/B** (대칭 모달간 cross-attention 1~2층으로 트렁크 교체, 토글) | @768 1런 × jarvis/yeon 2~3장 × ~1일 | 🟢 **승인(2026-08-17 user)** — 시드런 완주 후, P50 프로브와 병행 | user 가설의 통제 검증. **게이트(사전 등록)**: 대표 레시피 동일·트렁크만 교체, legal test Δ **≥+0.3 → 채택 검토** / ±0.3 → 무차이(믹서 무관 실증) / ≤−0.3 → MLP 우위 재확인. 문헌 예측 = 무차이(MM1·StitchFusion·우리 P49). 어느 쪽이든 "믹서 vs 데이터" 분석 절 재료 |
+| **12** | **cross-attn 트렁크 A/B** (대칭 모달간 cross-attention 1~2층으로 트렁크 교체, 토글) | @768 1런 × jarvis/yeon 2~3장 × ~1일 | 🟢 **승인(2026-08-17 user)** — 시드런 완주 후, P50 프로브와 병행 | user 가설의 통제 검증. **게이트(사전 등록)**: 대표 레시피 동일·트렁크만 교체, legal test Δ **≥+0.3 → 채택 검토** / ±0.3 → 무차이(믹서 무관 실증) / ≤−0.3 → MLP 우위 재확인. 문헌 예측 = 무차이. ⚠️ **파라미터 교란 사전 명시**: xattn 트렁크 33.6M vs MLP 2.11M(15.9×) — **무차이/열세면 "15.9× 용량으로도 못 사는 믹서" = 결론 강화**, ≥+0.3 승리 시엔 파라미터-정합 대조(광폭 MLP) 추가 후 귀속. 구현·스모크 완료(2026-08-17, labcode+검수 PASS) |
 
 ## ✅ 완료·판정 (재실행 금지)
 

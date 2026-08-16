@@ -154,7 +154,10 @@ def make_toggles(core):
         # 표의 '+면 기여' 문구를 그대로 적용하지 마라 — Δ가 크게 +여도 정상이며,
         # p39_query_off(Δ≈0)와 짝지어 읽어야 진단이 확정된다.
         attr_toggle('p39_dense_off', 'p39_dense_off', True)
-    if getattr(core, 'trunk_exp', None) is not None:
+    # trunk_xattn = [A/B trunk] FUSION.TRUNK: xattn 팔. 같은 플래그가 두 구현을
+    # 모두 끄므로(_apply_trunk_exp) 여기서 함께 등록해야 xattn ckpt에서도 잰다.
+    if (getattr(core, 'trunk_exp', None) is not None
+            or getattr(core, 'trunk_xattn', None) is not None):
         attr_toggle('p39_trunkexp_off', 'p39_trunkexp_off', True)
     if m2f is not None:
         def m2f_toggle(name, attr, value):

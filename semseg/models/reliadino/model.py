@@ -28,7 +28,7 @@ from . import p46 as P46
 from . import p47 as P47
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
-from .fusion import ReliabilityGatedFusion
+from .fusion import ReliabilityGatedFusion, XAttnTrunk
 from .m2f_head import MaskQueryLiteHead
 from .panoptic_head import MaskClsHead
 
@@ -136,6 +136,14 @@ class ReliaDINO(nn.Module):
                  p39_trunk_exp: bool = False,
                  p39_trunk_mode: str = 'linear',
                  p39_trunk_hidden: int = 256,
+                 # [A/B trunk] MODEL.FUSION.TRUNK — 'gated_mlp'(기본, 기존 전
+                 # 모델과 byte-동일) | 'xattn'(대칭 모달간 cross-attention).
+                 fusion_trunk: str = 'gated_mlp',
+                 xattn_layers: int = 1,
+                 xattn_heads: int = 8,
+                 xattn_mlp_ratio: float = 4.0,
+                 xattn_ls_init: float = 1.0,
+                 xattn_gamma_init: float = 0.1,
                  p39_arbiter: bool = False,
                  p39_path_dropout_p: float = 0.25,
                  p39_router_ce_w: float = 0.4,
@@ -383,8 +391,31 @@ class ReliaDINO(nn.Module):
         self.trunk_exp = None
         self.trunk_gamma = None
         self.p39_trunk_mode = p39_trunk_mode
+        # [A/B trunk] 트렁크 구현 선택. 'gated_mlp'(기본)에서는 아래 분기가
+        # 한 번도 타지 않으므로 파라미터도 init RNG 소비도 늘지 않는다 =
+        # 기존 전 모델과 byte-동일 (스모크 A가 이 성질을 검사한다).
+        self.fusion_trunk = str(fusion_trunk).lower()
+        if self.fusion_trunk not in ('gated_mlp', 'xattn'):
+            raise ValueError(f"MODEL.FUSION.TRUNK 는 gated_mlp|xattn 이어야 한다 "
+                             f"(got {fusion_trunk!r}).")
+        self.trunk_xattn = None
+        if self.fusion_trunk == 'xattn' and not p39_trunk_exp:
+            # 조용한 실패 금지: 트렁크 자체가 없는데 TRUNK:xattn 을 준 config는
+            # "xattn 을 켰다"고 착각한 채 baseline 을 돌린다.
+            raise ValueError("MODEL.FUSION.TRUNK: xattn 은 MODEL.P39.TRUNK_EXP: true "
+                             "를 요구한다 (트렁크가 없으면 교체할 대상이 없다).")
         if p39_trunk_exp:
-            if p39_trunk_mode == 'gated_mlp':
+            if self.fusion_trunk == 'xattn':
+                # [A/B] gated-MLP 자리에 대칭 모달간 cross-attention 블록.
+                # 합산은 gated_mlp 와 **같은** tanh(γ) 게이트 잔차(아래 γ 동일
+                # init 0.1) — 두 팔의 차이를 per-modal 변환 하나로 국한한다.
+                self.trunk_xattn = XAttnTrunk(
+                    dim, self.num_modalities, num_layers=xattn_layers,
+                    num_heads=xattn_heads, mlp_ratio=xattn_mlp_ratio,
+                    ls_init=xattn_ls_init)
+                self.trunk_gamma = nn.Parameter(
+                    torch.full((self.num_modalities,), float(xattn_gamma_init)))
+            elif p39_trunk_mode == 'gated_mlp':
                 # [P39.1-R1] 선형 1×1의 암묵적 저rank 편향(deep matrix
                 # factorization/DirectCLR — P39에서 lidar rank 4.7 붕괴의 유력
                 # 원인)을 제거: LN→1×1→GELU→1×1 비선형 + tanh(γ) 게이트(ReZero/
@@ -720,8 +751,16 @@ class ReliaDINO(nn.Module):
         """[P39-V1/P39.1-R1] modal subspace restoration — seg/det 공용 단일
         경로. (감사 2026-07-21: det seam 2곳이 gated_mlp 모드에서 tanh(γ)
         게이트를 생략해 seg와 다른 trunk를 만들던 버그의 수정 — 결선을 한
-        곳으로 모아 재발 차단.)"""
-        if self.trunk_exp is None or self.p39_trunkexp_off:
+        곳으로 모아 재발 차단.)
+
+        [A/B trunk] FUSION.TRUNK: xattn 이면 per-modal 변환만 cross-attention
+        으로 갈아끼운다. 합산(tanh(γ) 게이트 잔차)·출력 shape·ablation 플래그는
+        gated_mlp 와 동일하다."""
+        if self.p39_trunkexp_off:
+            return fused
+        if self.trunk_xattn is not None:
+            return self.trunk_xattn(fused, feats, self.trunk_gamma)
+        if self.trunk_exp is None:
             return fused
         if self.trunk_gamma is not None:
             return fused + sum(
@@ -1345,6 +1384,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         return build_p49(cfg, num_classes)
     fus = mc.get('FUSION', {}) or {}
     ab = fus.get('ATTN_BIAS', {}) or {}
+    fus_xa = fus.get('XATTN', {}) or {}      # [A/B trunk] FUSION.TRUNK: xattn 옵션
     gate = mc.get('GATE', {}) or {}
     veto = gate.get('VETO_FLOOR', {}) or {}
     cal = mc.get('CALIBRATION', {}) or {}
@@ -1447,6 +1487,12 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         p39_trunk_exp=p39.get('TRUNK_EXP', False),
         p39_trunk_mode=p39.get('TRUNK_MODE', 'linear'),
         p39_trunk_hidden=p39.get('TRUNK_HIDDEN', 256),
+        fusion_trunk=fus.get('TRUNK', 'gated_mlp'),
+        xattn_layers=fus_xa.get('LAYERS', 1),
+        xattn_heads=fus_xa.get('NUM_HEADS', 8),
+        xattn_mlp_ratio=fus_xa.get('MLP_RATIO', 4.0),
+        xattn_ls_init=fus_xa.get('LS_INIT', 1.0),
+        xattn_gamma_init=fus_xa.get('GAMMA_INIT', 0.1),
         p39_arbiter=p39.get('ARBITER', False),
         p39_path_dropout_p=p39.get('PATH_DROPOUT_P', 0.25),
         p39_router_ce_w=p39.get('ROUTER_CE_W', 0.4),
