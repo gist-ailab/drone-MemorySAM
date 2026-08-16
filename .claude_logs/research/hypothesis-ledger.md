@@ -30,6 +30,7 @@ author: fable (MMSAM discussion 세션)
 | H12′ | (하한 방어) S+(~29M, Swin-T 용량 정합)에서도 우리 스택 성능이 유지된다 | 동 프로브의 G-A2-하한 | ✗ 반증 | Δ(L−S+)=+8.82 (>3.0) — "방법 기여는 대형 백본 전제"로 논문 스코프 정직 공개 필요, 용량 정합 방어 불가 | 동상 |
 | H13 | zero-init 비대칭 주입(γ=0)이 강한 RGB 백본에서도 gradient 압력을 받는다 (MM-SA 전이 가설) | P49-AIR 본런 ep54 실측 | ✗ 반증 | γ mean 0.0011→0.0006 정체(54ep), val 63.83 = RGB 자족·aux 미사용. **zero-init 5번째 사망** — MM-SA(SAM, 약한 RGB 의미론)와의 차이가 원인 = 'RGB 표현력' 명제 재확인. 처방 = γ init 0.1(P39.1 실증, P49.1로 재기동) | [decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md](../decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md) §4 게이트① 적용 |
 | H14 | MM-SA의 비대칭 주입 우위가 우리 스택(DINOv3)으로 전이된다 | P49/P49.1 양 벤치 본런 + 공식 프로토콜 재평가 | ✗ 반증(2026-08-16) | DELIVER 56.19<56.99 · MUSES 공식 val 81.16<82.13(−0.97) · G-4M도 실패(4모달 −0.33) — H13과 정합(강한 백본일수록 주입 이득 축소) | [experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md](../experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md) |
+| H15 | UDA 실증 masked consistency(MIC 계열)가 지도 멀티모달 융합에서도 전이 이득 | C2+C3 vs C3-only A/B(λ0.1 통제, val.py 동일 측정기) | ✗ 반증(유해, 2026-08-16) | Δ −1.67@1024 / −1.59@768 — 사전 등록 게이트 유해 대역. 학습전용 손실 축 = C3 단독 종결 | [experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md](../experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md) |
 
 ## 종합 — 계보가 확립한 명제 (2026-08-09 갱신)
 
@@ -38,6 +39,7 @@ author: fable (MMSAM discussion 세션)
 3. **축 특이성**(H8): 클래스축 처방(prototype)은 클래스축 붕괴(DELIVER)에만 통한다. 축이 다른 벤치에 이식하면 손해 — 처방 전에 축 진단 선행.
 4. **표현력도 L 이상에서는 급격히 소진된다**(H12): SAM2→DINOv3-L(+11.6, H6)·S+→L(+8.82, H12′)은 크지만, L→H+(+0.52, H12)는 수확체감 — "더 큰 고정 백본으로 바꾸면 된다"는 단순한 해법의 여지도 좁다. 7B 실측(+0.18, 축분리 음성)으로 **완전히 닫혔다**(2026-08-12).
 5. **격차 축소 시도 세 갈래(배분·해상도·순수 스케일 확대) 모두 정체 근처**: 배분(H4, 폐기) · 학습 해상도 상승(H7 자체는 확인이지만 08-09 val/test 역발산으로 DELIVER 게이트는 미달) · 백본 추가 확대(H12, 중간대역/사실상 포화)는 전부 "더 하면 된다"가 아니었다. 남은 유력 축은 **데이터**(양·품질) 또는 **아키텍처 신규 설계**로 좁혀진다.
-6. **논문 서사**: ①상호작용 실재(H5) → ②적응 기제 전 수준 실패 + oracle 상계(H1~H4) → ③작동하는 것은 표현+학습신호(H6~H8), 단 표현력은 L 근방에서 포화(H12) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제, H12′). 실패가 서사의 증거가 되는 구조.
+6. **캠페인 종결(2026-08-16)**: 성능 축 전 경로 판정 완료 — 적응(H1~H4)·스케일(H12)·구조 전환(H14)·손실 확장(H15) 전부 반증, 확인된 자산은 H5~H8. **현 자산 = 이 스택 세대의 상한** — DELIVER 56.99(SOTA −0.36)/MUSES 79.788(융합계보 1위). 임계 경로 = RA-L 리라이트.
+7. **논문 서사**: ①상호작용 실재(H5) → ②적응 기제 전 수준 실패 + oracle 상계(H1~H4) → ③작동하는 것은 표현+학습신호(H6~H8), 단 표현력은 L 근방에서 포화(H12) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제, H12′). 실패가 서사의 증거가 되는 구조.
 
 관련: [novelty-and-related-work.md](novelty-and-related-work.md)(노벨티 canonical) · SOTA 진단 artifact "MemorySAM — SOTA까지 무엇으로 가는가"(2026-08-08) · [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md)

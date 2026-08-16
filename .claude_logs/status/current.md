@@ -34,7 +34,7 @@ moved: 2026-07-08
 
 ### 통일 아키텍처 확정 (2026-08-16, §6 규칙 집행)
 
-**P49-AIR 계열 종결** (DELIVER P46 미달 + MUSES 공식 val 81.16 < 82.13 + G-4M 실패). **통일 = ReliaDINO 계보(P39.1-rank 추론 그래프) + 진단-짝 학습손실** — 양 벤치 현 최고(P46-CTR 56.99 / P39.1-rank 79.788)가 이미 동일 추론 그래프(C1/C2/C3 전부 학습 전용). 판정 상세 [experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md](../experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md). 남은 결정전 = **C2**(DELIVER SOTA 산술 경로 + 레시피 통일 여부).
+**P49-AIR 계열 종결** (DELIVER P46 미달 + MUSES 공식 val 81.16 < 82.13 + G-4M 실패). **통일 = ReliaDINO 계보(P39.1-rank 추론 그래프) + 진단-짝 학습손실** — 양 벤치 현 최고(P46-CTR 56.99 / P39.1-rank 79.788)가 이미 동일 추론 그래프(C1/C2/C3 전부 학습 전용). 판정 상세 [experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md](../experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md). ~~남은 결정전 = C2~~ → **C2 유해 확정(2026-08-16, Δ−1.67) — 캠페인 종결**: DELIVER 최종 56.99(SOTA −0.36)·MUSES 79.788. 잔여 = λ0.1 시드 통계뿐. **임계 경로 = RA-L 리라이트 단독.** [experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md](../experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md)
 
 ### 활성 런 / 대기 (2026-08-08, 커밋 기준 — 실시간은 [experiments/plan.md](../experiments/plan.md)·registry)
 
