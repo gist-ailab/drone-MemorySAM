@@ -124,6 +124,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | ~~②~~ | ~~ProbeA2-7B~~ | — | ✅ 완료(08-12, hpca100 GPU2-3) — H12 폐쇄, analysis §6 |
 | ③ | **P49 @1024 학습 대조** | 4장 | @768 본런과의 해상도 대조(24GB no-go 실측으로 밀림) |
 
+| **11** | **P50-MAP 프로브** (모달 정렬 사전학습) | pseudo-모달 생성(수일) + 4090 2~4장 × 1~2일 | **제안 등재(2026-08-17) — 승인 대기** | [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md](../decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md) — 프로브 게이트(base 대비 test ≥+0.5) 사전 등록. 추론 그래프 무변경 = 단일-모델 원칙 자동 충족 |
+
 ## ✅ 완료·판정 (재실행 금지)
 
 > 🔎 **2026-08-10 발견**: `jarvis_muses_rgbl_P39_1_rank_2modal`(MUSES RGB-L 2모달)이 **이미 2026-08-06 완주**돼 있었음(val 82.00@136, 서버 로컬 미기록 실행) — 재실행 금지, test 제출 여부만 판단 대기. registry 행 참조.
