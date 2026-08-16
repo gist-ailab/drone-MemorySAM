@@ -16,6 +16,12 @@ from .p47 import OGMGE, UniModalBalance, UniModalHead, resolve_modals
 # [P49-AIR] .model 다음에 임포트해야 한다 — p49 가 model.FPNSegHead 를 재사용한다.
 from .p49 import (P49AIR, P49ViTEncoder, AuxCNNEncoder, AuxStemEncoder,
                   AuxViTLoRAEncoder, Injector, Extractor, build_p49)
+# [P50-MAP] 정렬 사전학습 부품 — 사전학습 전용 + 파인튠 로더. 모델 클래스가 아니라
+# 순수 유틸이라 추론 그래프에 아무것도 더하지 않는다.
+from .p50 import (ADAPTER_GROUPS, DEFAULT_ADAPTER_GROUPS, ReconHead,
+                  filter_adapter_state_dict, load_pretrained_adapters,
+                  masked_recon_loss, sample_modal_token_masks,
+                  token_mask_to_pixel_mask)
 
 __all__ = [
     'FrozenViTEncoder', 'MultiModalLoRAQKV', 'SimpleFPN', 'LayerNorm2d',
@@ -31,4 +37,8 @@ __all__ = [
     # [P49-AIR] 비대칭 주입 + RGB 주경로
     'P49AIR', 'P49ViTEncoder', 'AuxCNNEncoder', 'AuxStemEncoder',
     'AuxViTLoRAEncoder', 'Injector', 'Extractor', 'build_p49',
+    # [P50-MAP] modal alignment pretraining (사전학습 전용 + 파인튠 로더)
+    'ADAPTER_GROUPS', 'DEFAULT_ADAPTER_GROUPS', 'ReconHead',
+    'filter_adapter_state_dict', 'load_pretrained_adapters',
+    'masked_recon_loss', 'sample_modal_token_masks', 'token_mask_to_pixel_mask',
 ]

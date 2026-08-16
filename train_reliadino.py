@@ -51,6 +51,7 @@ from semseg.metrics import Metrics
 from semseg.models.reliadino import build_reliadino
 from semseg.models.reliadino import p46 as P46
 from semseg.models.reliadino import p47 as P47
+from semseg.models.reliadino.p50 import load_pretrained_adapters   # [P50-MAP]
 from semseg.models.reliadino.mmpareto import MMPareto
 from semseg.optimizers import get_optimizer
 from semseg.schedulers import get_scheduler
@@ -216,6 +217,12 @@ def main(cfg, gpu, save_dir, logger):
 
     # ── model ───────────────────────────────────────────────────────────────
     model = build_reliadino(cfg, num_classes)
+    # [P50-MAP] 정렬 사전학습 어댑터(LoRA+융합+트렁크+FPN) 초기화 로드.
+    # MODEL.PRETRAINED_ADAPTERS 키가 없으면 no-op = 기존 config 전부 무영향.
+    # RESUME 보다 **앞**이다 — 재개 ckpt 가 있으면 그쪽이 최종적으로 덮어쓴다.
+    _p50 = load_pretrained_adapters(model, model_cfg, verbose=is_rank0)
+    if _p50 and is_rank0:
+        logger.info(f"[P50-MAP] PRETRAINED_ADAPTERS 로드: {_p50}")
     if train_cfg.get('GRADIENT_CHECKPOINT', False):
         model.set_grad_checkpointing(True)
         print("Encoder gradient checkpointing enabled")
