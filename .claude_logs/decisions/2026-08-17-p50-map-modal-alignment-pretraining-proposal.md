@@ -1,7 +1,7 @@
 ---
 created: 2026-08-17
 author: fable (MMSAM discussion 세션, model-proposal 절차 + 딥리서치 3축 A/B/C)
-status: 🟢 승인(2026-08-17 user) — pseudo-모달 생성 파이프라인 구현부터 착수, 학습은 λ0.1 시드런 완주 후 슬롯
+status: 🟢 진행 — 코드 구현·검수 완료 + **Places365 확보 완결(2026-08-17, NAS md5 검증)** → pseudo-모달 생성 단계(yeon). 사전학습 프로브는 생성 완료 후
 ---
 
 # P50-MAP 제안 — Modal Alignment Pretraining (2026-08-17)
