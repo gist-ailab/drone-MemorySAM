@@ -20,7 +20,7 @@ status: 🟢 승인(2026-08-17 user) — pseudo-모달 생성 파이프라인 �
 
 ## 2. 설계
 
-- **사전학습 데이터**: ImageNeXt 레시피 재구축(공개 미확정이라 자체 생성) — ImageNet 서브셋에 Omnidata depth + pseudo-LiDAR range-view + N-ImageNet event. thermal 불요(우리 벤치에 없음). 시작 규모 **200~300k장**(프로브), 통과 시 확장.
+- **사전학습 데이터**: 🟢 **코퍼스 = Places365 확정(user 2026-08-17)** — 공개 다운로드·장면 중심(주행 도메인 정합). 원본 tar = `/ailab_mat2/personal/jemo_maeng/dset/Places365/`(전 서버 공유), 생성 작업은 서버 로컬 SSD에서 후 tar로 회수(sshfs 소파일 금지 규칙). 서브셋 200k에 Omnidata depth + pseudo-LiDAR range-view + N-ImageNet event. thermal 불요(우리 벤치에 없음). 시작 규모 **200~300k장**(프로브), 통과 시 확장.
 - **사전학습 대상**: **백본 frozen 유지**(DINOv3-L) — LoRA(모달별) + 융합 트렁크 + FPN 헤드만 학습(≈50M trainable → 4090 함대 가능). 목적함수 = pseudo-라벨 seg(ImageNet엔 seg GT가 없으므로: SAM/DINO 기반 pseudo-mask 또는 MultiMAE식 cross-modal masked reconstruction — 프로브에서 두 팔 비교).
 - **파인튠**: 기존 통일 레시피 그대로(DELIVER는 +C3). **추론 아키텍처 무변경** — 단일-모델 원칙 유지, 순수 초기화 개선.
 - OmniSegmentor와의 차별(노벨티): ① frozen foundation 위 **어댑터·트렁크만** 정렬(그들은 소형 백본 전체) ② MUSES 최초 적용 + 야간/조건축 분해로 "사전학습이 정보 결핍을 채우는가" 분석(우리 체계) ③ 진단-짝 손실과 결합. 공정성: 사전학습은 ImageNet 파생 합성 — 경쟁 백본들의 사전학습과 동급 지위, 벤치 GT 무관.
