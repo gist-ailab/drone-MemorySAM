@@ -185,6 +185,20 @@ def oracle_synthesize_blocked(preds, gt, full_index, block):
 
     S, H, W = preds.shape
     correct = (preds == gt[None])  # (S,H,W) — oracle_synthesize 와 동일 정의(ignore 별도 필터 없음)
+
+    if H % block == 0 and W % block == 0:
+        # 벡터화 고속 경로(reshape 기반 블록 축소) — H,W 가 block 으로 나누어떨어질 때.
+        # counts[s, by, bx] = correct[s] 를 (by,bx) 블록으로 합산.
+        Hb, Wb = H // block, W // block
+        counts = correct.reshape(S, Hb, block, Wb, block).sum(axis=(2, 4))  # (S,Hb,Wb)
+        best = counts.argmax(axis=0)                                        # (Hb,Wb)
+        best_val = np.take_along_axis(counts, best[None], axis=0)[0]        # (Hb,Wb)
+        best = np.where(best_val == 0, full_index, best)                    # no-correct 폴백
+        best_full = np.repeat(np.repeat(best, block, axis=0), block, axis=1)  # (H,W)
+        O = np.take_along_axis(preds, best_full[None], axis=0)[0]
+        return O
+
+    # 가장자리(나누어떨어지지 않음) 폴백: 명시적 블록 루프.
     O = np.empty((H, W), dtype=preds.dtype)
     for y0 in range(0, H, block):
         y1 = min(y0 + block, H)
@@ -214,10 +228,10 @@ def oracle_synthesize_null(preds, gt, full_index, rng):
     gt = np.asarray(gt)
     S, H, W = preds.shape
     correct = (preds == gt[None]).reshape(S, -1)  # (S, H*W)
-    shuffled = np.empty_like(correct)
-    for s in range(S):
-        idx = rng.permutation(H * W)
-        shuffled[s] = correct[s][idx]
+    # S 개의 독립 순열을 한 번에: 각 행을 난수키로 argsort 하면 균등 랜덤 순열이 된다
+    # (Python for-loop로 S 번 rng.permutation 호출하는 것보다 훨씬 빠르고, 통계적으로 동치).
+    perm = np.argsort(rng.random((S, H * W)), axis=1)
+    shuffled = np.take_along_axis(correct, perm, axis=1)
     any_correct = shuffled.any(axis=0).reshape(H, W)
 
     O = preds[full_index].copy()
