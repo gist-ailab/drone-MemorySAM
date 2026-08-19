@@ -9,10 +9,19 @@
   3. 함수가 죽지 않고 정상 종료, 출력 shape/키가 맞는지.
   4. keep-subset 래퍼(_KeepSubsetDataset)가 유지 밖 모달만 zero-fill 하는지.
 
+2026-08-19 추가(통제 실험 — .claude_logs/experiments/analysis/2026-08-19-spatial-modality-oracle-verdict.md §3):
+  5. 회귀 가드: --select-granularity 1 (블록 크기 1) 이 기존 픽셀별 오라클과 byte-동일.
+  6. 선택 입도 스윕이 실제로 "블록이 커질수록 상계가 좁아진다"는 방향으로 동작하는지
+     (블록이 진짜 공간 구조와 정확히 맞아떨어지면 Δ 보존, 블록이 구조보다 커지면 Δ 붕괴).
+  7. 독립성 널 셔플이 진짜 구조가 있는 케이스와 없는 케이스를 구분해내는지.
+  8. _synthesize_split 파이프라인 레벨 회귀: 새 플래그를 안 쓰면 기존 필드가 그대로,
+     새 필드는 켰을 때만 추가된다.
+
 Usage:
   python tools/smoke_oracle_spatial_modality.py
 """
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.oracle_spatial_modality import (  # noqa: E402
     enumerate_subsets, subset_bitmask, subset_label, hist_from_pred,
-    miou_from_hist, oracle_synthesize, _KeepSubsetDataset,
+    miou_from_hist, oracle_synthesize, oracle_synthesize_blocked,
+    oracle_synthesize_null, _synthesize_split, _KeepSubsetDataset,
 )
 
 
@@ -162,6 +172,168 @@ def test_report_shapes():
     print(f"[ok] miou_from_hist 출력 shape: per-class={len(ious)}, mIoU={miou:.2f}")
 
 
+def test_blocked_regression(n_trials=200):
+    """[통제1 회귀] block<=1 이 기존 픽셀별 오라클(oracle_synthesize)과 byte-동일."""
+    for seed in range(n_trials):
+        r = _rng(seed)
+        C = r.randint(3, 8)
+        H, W = r.randint(8, 24), r.randint(8, 24)
+        M = r.randint(1, 4)
+        subs = enumerate_subsets(M)
+        full_index = len(subs) - 1
+        gt = r.randint(0, C, size=(H, W)).astype(np.int64)
+        preds = np.stack([r.randint(0, C, size=(H, W)) for _ in subs], axis=0)
+
+        O_pixel, _ = oracle_synthesize(preds, gt, full_index)
+        for block in (0, 1):  # 0/1 둘 다 "픽셀별과 동일"이어야 함
+            O_block = oracle_synthesize_blocked(preds, gt, full_index, block)
+            assert np.array_equal(O_pixel, O_block), \
+                f"seed={seed} block={block}: 픽셀별 오라클과 불일치(회귀 실패)"
+    print(f"[ok] 선택입도 회귀: block<=1 이 픽셀별 오라클과 {n_trials} trial 전부 byte-동일")
+
+
+def _construct_half_split_case(H=8, W=8):
+    """A=top-half 완벽·B=bottom-half 완벽·full=항상 오답(클래스2) 인 합성 케이스.
+
+    subs = enumerate_subsets(2) = [(0,),(1,),(0,1)], full_index=2, C=3.
+    진짜 공간 구조 = "위/아래 절반"(block=H//2 와 정확히 정렬).
+    반환: preds(3,H,W), gt(H,W), full_index.
+    """
+    subs = enumerate_subsets(2)
+    full_index = len(subs) - 1
+    gt = np.zeros((H, W), dtype=np.int64)
+    gt[H // 2:, :] = 1
+    pred_a = np.zeros((H, W), dtype=np.int64)          # top 절반 정답, bottom 오답
+    pred_b = np.ones((H, W), dtype=np.int64)           # bottom 절반 정답, top 오답
+    pred_full = np.full((H, W), 2, dtype=np.int64)     # 항상 오답(클래스 2, gt 에 없음)
+    preds = np.stack([pred_a, pred_b, pred_full], axis=0)
+    return preds, gt, full_index
+
+
+def test_granularity_tracks_real_structure():
+    """[통제1 동작] 블록이 진짜 구조(위/아래 절반)와 맞으면 Δ 보존, 구조보다 커지면 Δ 붕괴."""
+    H = W = 8
+    preds, gt, full_index = _construct_half_split_case(H, W)
+    C = 3
+    ignore = 255
+
+    def _delta_for_block(block):
+        O = oracle_synthesize_blocked(preds, gt, full_index, block)
+        _, m_full = miou_from_hist(hist_from_pred(preds[full_index], gt, C, ignore))
+        _, m_o = miou_from_hist(hist_from_pred(O, gt, C, ignore))
+        return m_o - m_full
+
+    delta_pixel = _delta_for_block(1)          # 픽셀별(=진짜 구조와 완전 정렬된 것과 동치)
+    delta_aligned = _delta_for_block(H // 2)   # 블록이 정확히 절반 크기 → 구조와 정렬
+    delta_whole = _delta_for_block(H)          # 블록 = 이미지 전체 → 절반 정보 소실
+
+    # C=3(그 중 클래스2는 gt/pred 어디에도 실현되지 않는 "항상 오답" 유도용) 이라
+    # mIoU 가 3-클래스 평균이 되어 절대값은 100에 못 미친다(class2 IoU=0 이 항상 섞임) —
+    # 여기서 보는 건 절대 크기가 아니라 **블록 크기에 따른 상대적 붕괴** 방향이다.
+    assert delta_pixel > 0, delta_pixel
+    assert abs(delta_aligned - delta_pixel) < 1e-6, \
+        (delta_aligned, delta_pixel)                     # 구조와 정렬된 블록 = 픽셀별과 동일
+    assert delta_whole < delta_aligned - 30, \
+        f"블록이 구조보다 커지면 Δ가 무너져야 하는데 aligned={delta_aligned} whole={delta_whole}"
+    print(f"[ok] 선택입도가 구조를 추적: Δ(pixel)={delta_pixel:.1f}  "
+          f"Δ(block={H // 2}, 구조정렬)={delta_aligned:.1f}  "
+          f"Δ(block={H}, 전체)={delta_whole:.1f}")
+
+
+def test_null_shuffle_discriminates():
+    """[통제2 동작] 진짜 구조가 있으면 관측Δ ≫ 널Δ, 구조가 없으면 관측Δ ≈ 널Δ."""
+    C, ignore = 3, 255
+
+    # (a) 진짜 구조 있음: 위/아래 절반 케이스 — 셔플하면 union 이 무너져야 함
+    preds, gt, full_index = _construct_half_split_case(H=16, W=16)
+    _, m_full = miou_from_hist(hist_from_pred(preds[full_index], gt, C, ignore))
+    O_real, _ = oracle_synthesize(preds, gt, full_index)
+    _, m_real = miou_from_hist(hist_from_pred(O_real, gt, C, ignore))
+    delta_real = m_real - m_full
+
+    rng = np.random.default_rng(0)
+    null_deltas = []
+    for _ in range(60):
+        O_null = oracle_synthesize_null(preds, gt, full_index, rng)
+        _, m_null = miou_from_hist(hist_from_pred(O_null, gt, C, ignore))
+        null_deltas.append(m_null - m_full)
+    mean_null = float(np.mean(null_deltas))
+    assert delta_real - mean_null > 10, \
+        f"구조 있는 케이스인데 관측Δ({delta_real:.1f})-널Δ({mean_null:.1f}) 차이가 너무 작음"
+    print(f"[ok] 독립성 널이 진짜 구조를 검출: 관측Δ={delta_real:.1f}  "
+          f"널Δ(mean of 60)={mean_null:.1f}  차이={delta_real - mean_null:+.1f}")
+
+    # (b) 구조 없음: 각 subset 이 독립 IID 50% 정답(공간 상관 없음) — 셔플해도 통계적으로 그대로
+    r = np.random.RandomState(42)
+    H2 = W2 = 24
+    gt2 = r.randint(0, C, size=(H2, W2)).astype(np.int64)
+    subs2 = enumerate_subsets(2)
+    full_index2 = len(subs2) - 1
+    # 각 subset 이 각 픽셀에서 독립적으로 50% 확률로 정답(gt 그대로), 아니면 다른 랜덤 오답
+    def _iid_pred(seed):
+        rr = np.random.RandomState(seed)
+        correct_mask = rr.rand(H2, W2) < 0.5
+        wrong = (gt2 + 1 + rr.randint(0, C - 1, size=(H2, W2))) % C
+        return np.where(correct_mask, gt2, wrong)
+    preds2 = np.stack([_iid_pred(1), _iid_pred(2), _iid_pred(3)], axis=0)
+    _, m_full2 = miou_from_hist(hist_from_pred(preds2[full_index2], gt2, C, ignore))
+    O_real2, _ = oracle_synthesize(preds2, gt2, full_index2)
+    _, m_real2 = miou_from_hist(hist_from_pred(O_real2, gt2, C, ignore))
+    delta_real2 = m_real2 - m_full2
+
+    rng2 = np.random.default_rng(1)
+    null_deltas2 = []
+    for _ in range(60):
+        O_null2 = oracle_synthesize_null(preds2, gt2, full_index2, rng2)
+        _, m_null2 = miou_from_hist(hist_from_pred(O_null2, gt2, C, ignore))
+        null_deltas2.append(m_null2 - m_full2)
+    mean_null2 = float(np.mean(null_deltas2))
+    assert abs(delta_real2 - mean_null2) < 15, \
+        f"IID(무구조) 케이스인데 관측Δ({delta_real2:.1f})와 널Δ({mean_null2:.1f})가 너무 다름"
+    print(f"[ok] 독립성 널이 무구조 케이스와 구분: 관측Δ={delta_real2:.1f}  "
+          f"널Δ(mean of 60)={mean_null2:.1f}  차이={delta_real2 - mean_null2:+.1f}")
+
+
+def test_synthesize_split_pipeline_regression():
+    """[파이프라인 회귀] granularities/n_null 기본(비활성)이면 기존 필드와 완전히 동일하고,
+    켰을 때만 새 필드(granularity_deltas/null_shuffle)가 조건부로 추가되는지."""
+    M, N, H, W, C = 2, 5, 6, 6, 3
+    subs = enumerate_subsets(M)
+    full_index = len(subs) - 1
+    class_names = ['x', 'y', 'z']
+
+    r = np.random.RandomState(7)
+    gt_all = r.randint(0, C, size=(N, H, W)).astype(np.uint8)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache_dir = Path(tmp)
+        np.save(cache_dir / "gt_val.npy", gt_all)
+        for sub in subs:
+            bm = subset_bitmask(sub)
+            pred = r.randint(0, C, size=(N, H, W)).astype(np.uint8)
+            np.save(cache_dir / f"pred_val_mask{bm}.npy", pred)
+
+        rep_base = _synthesize_split(subs, ['a', 'b'], full_index, cache_dir, 'val',
+                                     C, class_names, 255, conditions=None)
+        rep_ext = _synthesize_split(subs, ['a', 'b'], full_index, cache_dir, 'val',
+                                    C, class_names, 255, conditions=None,
+                                    granularities=[1, 2, 3], n_null=5, null_seed=0)
+
+    # 기존 필드는 완전히 동일해야 한다(회귀 가드)
+    for k in ('split', 'n_images', 'modals', 'num_subsets', 'miou_full', 'miou_oracle',
+              'delta', 'per_class', 'per_condition', 'star_distribution',
+              'star_none_pixels', 'summary'):
+        assert rep_base[k] == rep_ext[k], f"필드 '{k}' 가 확장 실행에서 달라짐(회귀 실패)"
+    assert 'granularity_deltas' not in rep_base and 'null_shuffle' not in rep_base
+    assert 'granularity_deltas' in rep_ext and 'null_shuffle' in rep_ext
+    # block=1 의 granularity delta 는 기존 delta 와 정확히 같아야 한다
+    assert rep_ext['granularity_deltas']['1'] == rep_base['delta'], \
+        (rep_ext['granularity_deltas']['1'], rep_base['delta'])
+    assert rep_ext['null_shuffle']['n_trials'] == 5
+    print(f"[ok] _synthesize_split 파이프라인 회귀: 기본 실행 필드 완전 동일, "
+          f"granularity['1']==delta({rep_base['delta']}), 신규 필드는 조건부 추가만")
+
+
 if __name__ == '__main__':
     print("=== smoke: oracle_spatial_modality ===")
     test_enumerate_subsets()
@@ -169,4 +341,9 @@ if __name__ == '__main__':
     test_report_shapes()
     test_oracle_beats_when_possible()
     test_monotonicity()
-    print("\n✅ ALL SMOKE PASSED — 단조성(oracle≥full)·포함관계·keep-subset 정합 확인")
+    test_blocked_regression()
+    test_granularity_tracks_real_structure()
+    test_null_shuffle_discriminates()
+    test_synthesize_split_pipeline_regression()
+    print("\n✅ ALL SMOKE PASSED — 단조성(oracle≥full)·포함관계·keep-subset 정합·"
+          "선택입도 회귀+동작·독립성널 판별·파이프라인 회귀 확인")
