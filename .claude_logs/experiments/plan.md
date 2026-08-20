@@ -69,10 +69,10 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | EPOCHS | ETA | 목적 |
 |---|---|---|---|---|
-| **P46 C3-only λ0.1 시드런 ×2** | jarvis GPU3,4(seed 20260815) · GPU6,7(seed 20260816) | 200 | 완주 ~08-18 오후 (ep92 기준 외삽) | 진짜-시드 분산 확보(기존 seed2/3은 3407 하드코딩=시드 불변). 트레이너 val-best 66.95/68.56(ep중간) + 본run 67.79 → **완주 후 val.py 정본 재평가로 mean±std 3점**. 단일-런 편차 0.59가 참 분산 하한임을 검정 |
-| **P50-MAP 정렬 사전학습 프로브** | yeon 유휴 4장 | 30(프로브) | 기동 중(배치 프로파일링 bs=8 OOM→bs=4 재측정) | Places365 200k pseudo-모달(생성 완료, 실패0)로 LoRA+트렁크 정렬 사전학습 → DELIVER 파인튠 1런. 게이트=base 대비 test ≥+0.5(제안서 [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md]) |
+| **P50-MAP 정렬 사전학습 프로브** | yeon GPU1,2,3,4(유휴였음, 3090×4) | 30 | 🔵 **기동·검증 PASS(2026-08-20)** — bs4×4=eff16, 375k step, **1.08 step/s → ep30 완주 ~4일**. tmux `jemo:p50_align`(창30), log `/SSDe/jemo_maeng/ckpt/p50map_probe/p50_align_train.log`. save-every-epoch → **loss plateau/ep~15에서 조기 파인튠 착수 가능(4일 안 기다림)** | Places365 200k pseudo-모달(생성 완료, 실패0)로 LoRA+트렁크 정렬 사전학습 → DELIVER 파인튠 1런. 게이트=base(56.99) 대비 test ≥+0.5. 검증: RANDOM INIT 0·4rank 18.5GB 활성·loss 0.79→0.51·bs8 OOM/bs4 정상. 제안서 [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md] |
 
-**대기(슬롯 확보 시 즉시)**: #12 cross-attn A/B(시드런 완주 후) · #13 spatial-modality oracle(빈 GPU 1장, 학습0) · #11 P50 파인튠(사전학습 산출 후) — 아래 대기열 참조.
+**대기(슬롯 확보 시 즉시)**: #11 P50 파인튠(사전학습 loss plateau 후, DELIVER 4장) · #15b confidence 라우터(user GO 대기, forward 재실행) — 아래 대기열 참조.
+**최근 완주(→registry/완료 이동)**: P46 C3-only λ0.1 시드런 ×2(jarvis, 완주 — 최종 legal mean±std 확정 대기) · cross-attn A/B(#12, legal −2.05 판정) · oracle 실현성 통제(#14) · no-GT 라우터 #15(val 음성).
 
 ## 📋 대기열 (우선순위 순)
 
