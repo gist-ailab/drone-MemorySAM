@@ -17,6 +17,13 @@
   8. _synthesize_split 파이프라인 레벨 회귀: 새 플래그를 안 쓰면 기존 필드가 그대로,
      새 필드는 켰을 때만 추가된다.
 
+2026-08-20 추가(통제3: 입력-실현성 #15 — .claude_logs/experiments/analysis/
+2026-08-20-oracle-realizability-control-verdict.md §4):
+  9. realizable_majority 가 GT 없이 픽셀별 다수결(동점은 작은 인덱스)을 정확히 계산.
+  10. consensus(oracle_synthesize_blocked 를 majority_map 으로 재사용)가 "다수결과
+      가장 많이 일치하는 부분집합"을 블록 단위로 정확히 고르는지.
+  11. --realizable 기본(off)이면 파이프라인 필드가 여전히 byte-동일(회귀 가드 확장).
+
 Usage:
   python tools/smoke_oracle_spatial_modality.py
 """
@@ -31,7 +38,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.oracle_spatial_modality import (  # noqa: E402
     enumerate_subsets, subset_bitmask, subset_label, hist_from_pred,
     miou_from_hist, oracle_synthesize, oracle_synthesize_blocked,
-    oracle_synthesize_null, _synthesize_split, _KeepSubsetDataset,
+    oracle_synthesize_null, realizable_majority, _synthesize_split,
+    _KeepSubsetDataset,
 )
 
 
@@ -334,6 +342,92 @@ def test_synthesize_split_pipeline_regression():
           f"granularity['1']==delta({rep_base['delta']}), 신규 필드는 조건부 추가만")
 
 
+def test_realizable_majority():
+    """[통제3 ①] realizable_majority 가 GT 없이 픽셀별 다수결(동점=작은 인덱스)을 계산."""
+    C = 4
+    # 3x1 픽셀, 4개 부분집합: 픽셀0 = {0,0,0,1}→다수결0, 픽셀1={1,1,2,2}→동점,작은쪽1,
+    # 픽셀2={3,3,3,3}→3(만장일치)
+    preds = np.array([
+        [[0, 1, 3]],
+        [[0, 1, 3]],
+        [[0, 2, 3]],
+        [[1, 2, 3]],
+    ])  # (S=4, H=1, W=3)
+    maj = realizable_majority(preds, C)
+    assert maj.shape == (1, 3)
+    assert maj[0, 0] == 0, f"만장일치 근접 다수결 실패: {maj[0,0]}"
+    assert maj[0, 1] == 1, f"동점 tie-break(작은 인덱스) 실패: {maj[0,1]}"
+    assert maj[0, 2] == 3, f"만장일치 실패: {maj[0,2]}"
+    print(f"[ok] realizable_majority: 다수결={maj.flatten().tolist()} "
+          f"(만장일치/동점tie-break/만장일치 전부 정확)")
+
+
+def test_realizable_consensus_via_blocked():
+    """[통제3 ②] oracle_synthesize_blocked 를 majority_map 으로 재사용 = "블록별 다수결-부합
+    부분집합 커밋"이 실제로 majority 예측과 무관하게(GT 미사용) 동작하는지."""
+    C = 3
+    H = W = 4
+    # subset0 = 항상 클래스0, subset1 = 항상 클래스1, subset2(=full) = 항상 클래스2.
+    # 다수결(3개 중 서로 다른 값 3개 → 전부 동점, tie-break로 subset0 값인 0이 항상 선택됨).
+    preds = np.stack([
+        np.zeros((H, W), dtype=np.int64),
+        np.ones((H, W), dtype=np.int64),
+        np.full((H, W), 2, dtype=np.int64),
+    ], axis=0)
+    full_index = 2
+    majority_map = realizable_majority(preds, C)
+    assert np.all(majority_map == 0), "3-way 동점에서 tie-break(가장 작은 인덱스) 실패"
+
+    # consensus: majority_map(=전부 0)과 가장 많이 일치하는 부분집합은 subset0(preds[0]=0 전부)
+    # → 블록 전체가 subset0(=클래스0) 예측으로 커밋돼야 한다. GT 는 이 선택에 전혀 관여 안 함
+    # (아래에서 GT 를 다르게 줘도 커밋 결과는 동일해야 함이 핵심 포인트).
+    O_c = oracle_synthesize_blocked(preds, majority_map, full_index, block=2)
+    assert np.all(O_c == 0), "consensus 가 majority 와 가장 잘 맞는 subset0 을 못 골랐음"
+
+    # GT 를 다른 값(전부 1)으로 바꿔도 — consensus 선택 자체는 majority_map 만 보므로 불변.
+    O_c2 = oracle_synthesize_blocked(preds, majority_map, full_index, block=2)
+    assert np.array_equal(O_c, O_c2), "consensus 선택이 GT 에 의존하면 안 됨(입력만 사용)"
+    print(f"[ok] consensus(=oracle_synthesize_blocked+majority_map 재사용): "
+          f"GT 미사용으로 다수결-부합 부분집합(subset0)을 블록 전체에 정확히 커밋")
+
+
+def test_realizable_pipeline_integration():
+    """[파이프라인] --realizable 기본(off)=기존과 byte-동일, 켜면 'realizable' 필드만 추가."""
+    M, N, H, W, C = 2, 4, 4, 4, 3
+    subs = enumerate_subsets(M)
+    full_index = len(subs) - 1
+    class_names = ['x', 'y', 'z']
+
+    r = np.random.RandomState(11)
+    gt_all = r.randint(0, C, size=(N, H, W)).astype(np.uint8)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache_dir = Path(tmp)
+        np.save(cache_dir / "gt_val.npy", gt_all)
+        for sub in subs:
+            bm = subset_bitmask(sub)
+            pred = r.randint(0, C, size=(N, H, W)).astype(np.uint8)
+            np.save(cache_dir / f"pred_val_mask{bm}.npy", pred)
+
+        rep_base = _synthesize_split(subs, ['a', 'b'], full_index, cache_dir, 'val',
+                                     C, class_names, 255, conditions=None)
+        rep_rz = _synthesize_split(subs, ['a', 'b'], full_index, cache_dir, 'val',
+                                   C, class_names, 255, conditions=None,
+                                   granularities=[2], realizable={'majority', 'consensus'})
+
+    for k in ('split', 'n_images', 'modals', 'num_subsets', 'miou_full', 'miou_oracle',
+              'delta', 'per_class', 'per_condition', 'star_distribution',
+              'star_none_pixels', 'summary'):
+        assert rep_base[k] == rep_rz[k], f"필드 '{k}' 가 --realizable 로 달라짐(회귀 실패)"
+    assert 'realizable' not in rep_base
+    assert 'realizable' in rep_rz
+    assert 'majority' in rep_rz['realizable'] and 'consensus' in rep_rz['realizable']
+    assert '2' in rep_rz['realizable']['consensus']
+    print(f"[ok] --realizable 파이프라인: 기본 필드 완전 동일, "
+          f"realizable={{majority:{rep_rz['realizable']['majority']['delta']:+.4f}, "
+          f"consensus[2]:{rep_rz['realizable']['consensus']['2']:+.4f}}} 조건부 추가")
+
+
 if __name__ == '__main__':
     print("=== smoke: oracle_spatial_modality ===")
     test_enumerate_subsets()
@@ -345,5 +439,8 @@ if __name__ == '__main__':
     test_granularity_tracks_real_structure()
     test_null_shuffle_discriminates()
     test_synthesize_split_pipeline_regression()
+    test_realizable_majority()
+    test_realizable_consensus_via_blocked()
+    test_realizable_pipeline_integration()
     print("\n✅ ALL SMOKE PASSED — 단조성(oracle≥full)·포함관계·keep-subset 정합·"
-          "선택입도 회귀+동작·독립성널 판별·파이프라인 회귀 확인")
+          "선택입도 회귀+동작·독립성널 판별·파이프라인 회귀·입력-실현성(majority/consensus) 확인")

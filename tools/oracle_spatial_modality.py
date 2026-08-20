@@ -239,6 +239,26 @@ def oracle_synthesize_null(preds, gt, full_index, rng):
     return O
 
 
+def realizable_majority(preds, num_classes):
+    """[통제#15: 입력-실현성 ①] 픽셀별 다수결 앙상블 — **GT 불사용**.
+
+    각 픽셀에서 15개 부분집합 예측값의 최빈값(mode)을 취한다. 순수 입력(예측맵)
+    만으로 계산되는 GT-free 앙상블이라, 이 자체가 "실현 가능한(라우터가 GT 없이도
+    만들 수 있는)" 예측기의 하한 후보다. 동점(최빈값이 여럿)이면 작은 클래스
+    인덱스가 우선(np.argmax 첫-최댓값 관례와 일치).
+
+    preds: (S,H,W) int. 반환: majority_map (H,W), preds.dtype.
+    """
+    preds = np.asarray(preds)
+    S, H, W = preds.shape
+    flat = preds.reshape(S, -1)  # (S, N)
+    counts = np.zeros((num_classes, flat.shape[1]), dtype=np.int32)
+    for c in range(num_classes):
+        counts[c] = (flat == c).sum(axis=0)
+    majority = counts.argmax(axis=0).reshape(H, W)
+    return majority.astype(preds.dtype)
+
+
 # ───────────────────────── torch 경로 (main 전용, 실제 forward) ─────────────────────────
 
 class _KeepSubsetDataset:
@@ -332,7 +352,7 @@ def _cache_predictions(model, base_ds, subset, num_classes, ignore_label, device
 
 def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
                       num_classes, class_names, ignore_label, conditions=None,
-                      granularities=None, n_null=0, null_seed=0):
+                      granularities=None, n_null=0, null_seed=0, realizable=None):
     """캐시된 예측맵들로 오라클 합성 + Δ/분포 리포트 dict 생성.
 
     conditions: None 또는 길이 N 의 조건 라벨 리스트(per-condition Δ 용).
@@ -340,13 +360,19 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
                    비어있으면 기존과 완전히 동일한 dict 를 반환한다(새 필드 없음).
     n_null: [통제2] 독립성 널 셔플 trial 수. 0 이면 계산 안 함(새 필드 없음).
     null_seed: 널 셔플 재현용 시드.
+    realizable: None/[] 또는 {'majority','consensus'} 의 부분집합 — [통제3: 입력-실현성 #15]
+                GT 를 쓰지 않는 no-GT 라우터 하한. 'majority'=픽셀별 다수결 앙상블(1개 값).
+                'consensus'=블록별 "다수결과 가장 부합하는 부분집합" 커밋(granularities 의
+                각 블록크기에서 계산 — oracle_synthesize_blocked 를 GT 대신 다수결맵으로
+                재사용). 둘 다 **선택 단계에서 GT 미사용**(평가에는 여느 Δ와 동일하게 GT 사용).
 
-    🔴 회귀 가드: granularities/n_null 이 기본값(둘 다 비활성)이면 기존 필드
+    🔴 회귀 가드: granularities/n_null/realizable 이 전부 기본값(비활성)이면 기존 필드
     (miou_full/miou_oracle/delta/per_class/per_condition/star_distribution/
     star_none_pixels/summary) 는 이전 버전과 byte-동일하다 — 이 계산 경로는
     전혀 변경하지 않았다(신규 필드는 조건부로만 추가).
     """
     granularities = list(granularities) if granularities else []
+    realizable = set(realizable) if realizable else set()
 
     gt_path = cache_dir / f"gt_{split}.npy"
     gt_all = np.load(gt_path, mmap_mode='r')
@@ -376,6 +402,12 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
     # [통제2] 널 셔플 trial별 누적 히스토그램
     rng = np.random.default_rng(null_seed) if n_null > 0 else None
     hist_null = [np.zeros((C, C), dtype=np.float64) for _ in range(n_null)]
+    # [통제3: 입력-실현성 #15] GT 불사용 no-GT 라우터
+    do_majority = 'majority' in realizable
+    do_consensus = 'consensus' in realizable
+    hist_majority = np.zeros((C, C), dtype=np.float64) if do_majority else None
+    hist_consensus = ({b: np.zeros((C, C), dtype=np.float64) for b in (granularities or [8])}
+                       if do_consensus else {})
 
     for i in range(N):
         gt = np.asarray(gt_all[i]).astype(np.int64)
@@ -398,6 +430,18 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
         for t in range(n_null):
             Onull = oracle_synthesize_null(preds, gt, full_index, rng)
             hist_null[t] += hist_from_pred(Onull, gt, C, ignore_label)
+
+        if do_majority or do_consensus:
+            # 다수결 앙상블 맵 — GT 미사용(선택 단계). majority/consensus 공용 참조.
+            majority_map = realizable_majority(preds, C)
+            if do_majority:
+                hist_majority += hist_from_pred(majority_map, gt, C, ignore_label)
+            if do_consensus:
+                for b in hist_consensus:
+                    # oracle_synthesize_blocked 를 GT 대신 majority_map 으로 재사용:
+                    # "블록별로 다수결과 가장 일치하는 부분집합을 커밋"과 동치(선택에 GT 없음).
+                    Oc = oracle_synthesize_blocked(preds, majority_map, full_index, b)
+                    hist_consensus[b] += hist_from_pred(Oc, gt, C, ignore_label)
 
         # S* 분포 (valid 픽셀만)
         valid = (gt != ignore_label) & (gt < C)
@@ -494,6 +538,19 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
             'trials': null_deltas,
         }
 
+    if do_majority or do_consensus:
+        realizable_result = {}
+        if do_majority:
+            _, m_maj = miou_from_hist(hist_majority)
+            realizable_result['majority'] = {'delta': round(m_maj - miou_full, 4)}
+        if do_consensus:
+            consensus_deltas = {}
+            for b, h in hist_consensus.items():
+                _, m_b = miou_from_hist(h)
+                consensus_deltas[str(b)] = round(m_b - miou_full, 4)
+            realizable_result['consensus'] = consensus_deltas
+        result['realizable'] = realizable_result
+
     return result
 
 
@@ -531,6 +588,18 @@ def _print_report(rep):
         print(f"  [통제2] 독립성 널(n={ns['n_trials']}): "
               f"mean_Δ={ns['mean_delta']:+.4f}  std={ns['std_delta']:.4f}  "
               f"관측Δ={rep['delta']:+.4f}  (관측−널={rep['delta'] - ns['mean_delta']:+.4f})")
+    if 'realizable' in rep:
+        rz = rep['realizable']
+        print(f"  [통제3: 입력-실현성 #15, GT 불사용]")
+        if 'majority' in rz:
+            print(f"    majority(픽셀 다수결 앙상블)  Δ={rz['majority']['delta']:+.4f}")
+        if 'consensus' in rz:
+            print(f"    consensus(블록별 합의-부합 커밋):")
+            for b, d in rz['consensus'].items():
+                print(f"      block={b:<4} Δ={d:+.4f}")
+        print(f"    게이트: 어느 변형이든 block16 Δ≥+1.0 → 입력-실현성 확인 / "
+              f"전부 <+0.5 → 값싼 실현신호 부재 "
+              f"(정본: 2026-08-20-oracle-realizability-control-verdict §4)")
 
 
 def _write_reports(rep, out_dir):
@@ -612,6 +681,11 @@ def main():
                          '캐시 재사용, GPU/forward 불요.')
     ap.add_argument('--null-seed', type=int, default=0,
                     help='--null-shuffle 재현용 시드(기본 0).')
+    ap.add_argument('--realizable', default='',
+                    help="[통제3: 입력-실현성 #15] 콤마 구분 'majority,consensus'. "
+                         "GT 불사용 no-GT 라우터 하한 — majority=픽셀별 다수결 앙상블, "
+                         "consensus=블록별(--select-granularity 재사용) 다수결-합의 "
+                         "부합 부분집합 커밋. 합성 단계 전용, GPU 불요.")
     args = ap.parse_args()
 
     import yaml
@@ -633,6 +707,10 @@ def main():
 
     granularities = _parse_int_list(args.select_granularity)
     n_null = args.null_shuffle
+    realizable = {x.strip() for x in args.realizable.split(',') if x.strip()}
+    for tok in realizable:
+        if tok not in ('majority', 'consensus'):
+            raise ValueError(f"--realizable 항목 '{tok}' 은 'majority'|'consensus' 만 허용")
 
     out_dir = Path(args.out_dir)
     cache_dir = out_dir / 'cache'
@@ -727,7 +805,7 @@ def main():
         rep = _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
                                 num_classes, class_names, ignore_label, conditions,
                                 granularities=granularities, n_null=n_null,
-                                null_seed=args.null_seed)
+                                null_seed=args.null_seed, realizable=realizable)
         _print_report(rep)
         _write_reports(rep, out_dir)
 
