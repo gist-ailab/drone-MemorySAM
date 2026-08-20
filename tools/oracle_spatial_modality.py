@@ -259,6 +259,47 @@ def realizable_majority(preds, num_classes):
     return majority.astype(preds.dtype)
 
 
+def realizable_confidence_blocked(preds, confs, full_index, block):
+    """[통제3b: 입력-실현성] 블록 B×B 마다 **평균 confidence 최대**인 부분집합을 커밋 —
+    **GT 불사용**(majority/consensus 와 달리 다수결 참조맵도 필요 없다).
+
+    각 부분집합의 per-pixel max-softmax(confs)를 블록 안에서 평균해, 그 평균이 가장
+    높은 부분집합의 예측을 블록 전체에 대입한다. confidence 는 어떤 블록에서도
+    정의되므로(전부 0일 수 없음) no-correct 류 폴백이 불필요하다 — full_index 는
+    인터페이스 일관성을 위해 받되 이 함수 안에서는 쓰이지 않는다.
+
+    block<=1: 픽셀별로 그 픽셀에서 confidence 가 가장 높은 부분집합의 예측을 그대로
+    쓴다(이게 "block=1 정의" — 블록이 1픽셀이면 평균이 곧 그 픽셀의 값과 같다).
+
+    preds: (S,H,W), confs: (S,H,W) float. 반환: O (H,W), preds.dtype.
+    """
+    preds = np.asarray(preds)
+    confs = np.asarray(confs)
+    S, H, W = preds.shape
+
+    if block <= 1:
+        best = confs.argmax(axis=0)  # (H,W) — 픽셀별 최고-confidence 부분집합
+        return np.take_along_axis(preds, best[None], axis=0)[0]
+
+    if H % block == 0 and W % block == 0:
+        Hb, Wb = H // block, W // block
+        avg_conf = confs.reshape(S, Hb, block, Wb, block).mean(axis=(2, 4))  # (S,Hb,Wb)
+        best = avg_conf.argmax(axis=0)
+        best_full = np.repeat(np.repeat(best, block, axis=0), block, axis=1)
+        return np.take_along_axis(preds, best_full[None], axis=0)[0]
+
+    # 가장자리(나누어떨어지지 않음) 폴백: 명시적 블록 루프.
+    O = np.empty((H, W), dtype=preds.dtype)
+    for y0 in range(0, H, block):
+        y1 = min(y0 + block, H)
+        for x0 in range(0, W, block):
+            x1 = min(x0 + block, W)
+            avg = confs[:, y0:y1, x0:x1].reshape(S, -1).mean(axis=1)
+            best_s = int(np.argmax(avg))
+            O[y0:y1, x0:x1] = preds[best_s, y0:y1, x0:x1]
+    return O
+
+
 # ───────────────────────── torch 경로 (main 전용, 실제 forward) ─────────────────────────
 
 class _KeepSubsetDataset:
@@ -304,24 +345,38 @@ def _deliver_condition(path):
 
 
 def _cache_predictions(model, base_ds, subset, num_classes, ignore_label, device,
-                       batch_size, npy_path, gt_path):
+                       batch_size, npy_path, gt_path, conf_path=None):
     """subset 하나에 대한 argmax 예측맵 전체를 forward 해 npy 로 저장(+GT 없으면 함께).
 
-    이미 npy_path 가 있으면 skip(재개 가능). 반환: (n_images,)."""
+    이미 npy_path/gt_path 가 있고(conf_path 가 없거나 이미 있으면) skip(재개 가능).
+    conf_path 가 주어졌는데 없으면(pred 는 이미 있어도) — [통제3b: confidence 라우터]
+    를 위해 **forward 를 다시 돌려 confidence(max-softmax, float16)만 새로 저장**한다.
+    🔴 이 경우에도 npy_path(기존 pred)/gt_path 는 **절대 덮어쓰지 않는다**(존재하면
+    쓰지 않고 건너뜀) — 오라클/블록/널 결과의 재현성을 그대로 보존하기 위한 불변 가드.
+
+    반환: (n_images,) 또는 None(전부 skip)."""
     import torch
     import torch.nn.functional as F
     from torch.utils.data import DataLoader
 
-    if npy_path.exists() and (gt_path.exists() or subset is None):
-        print(f"  [skip] {npy_path.name} 이미 존재 (재개)")
+    pred_exists = npy_path.exists()
+    gt_exists = gt_path.exists() or subset is None
+    conf_needed = conf_path is not None
+    conf_exists = conf_needed and conf_path.exists()
+
+    if pred_exists and gt_exists and (not conf_needed or conf_exists):
+        print(f"  [skip] {npy_path.name} (+conf) 이미 존재 (재개)")
         return None
 
+    save_pred = not pred_exists   # 🔴 불변 가드: 이미 있으면 절대 다시 안 씀
     save_gt = not gt_path.exists()
+    save_conf = conf_needed and not conf_exists
+
     wrapped = _KeepSubsetDataset(base_ds, subset)
     loader = DataLoader(wrapped, batch_size=batch_size, num_workers=4,
                         pin_memory=True, shuffle=False)
 
-    preds_all, gts_all = [], []
+    preds_all, gts_all, confs_all = [], [], []
     model.eval()
     with torch.no_grad():
         for bi, (images, labels) in enumerate(loader):
@@ -331,23 +386,38 @@ def _cache_predictions(model, base_ds, subset, num_classes, ignore_label, device
             if output.shape[-2:] != labels.shape[-2:]:
                 output = F.interpolate(output, size=labels.shape[-2:],
                                        mode='bilinear', align_corners=False)
-            pred = output.argmax(dim=1).to(torch.uint8).cpu().numpy()  # (B,H,W)
-            preds_all.append(pred)
+            if save_pred:
+                pred = output.argmax(dim=1).to(torch.uint8).cpu().numpy()  # (B,H,W)
+                preds_all.append(pred)
+            if save_conf:
+                # [통제3b] per-pixel max-softmax — GT 불사용, 순수 모델 자신감 신호.
+                conf = output.softmax(dim=1).max(dim=1).values.to(torch.float16).cpu().numpy()
+                confs_all.append(conf)
             if save_gt:
                 gts_all.append(labels.to(torch.int16).cpu().numpy())
             if bi % 20 == 0:
                 print(f"    forward {bi * batch_size}/{len(wrapped)}", flush=True)
 
-    preds = np.concatenate(preds_all, axis=0)
-    npy_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(npy_path, preds)
-    print(f"  [saved] {npy_path.name}  shape={preds.shape}")
+    n = None
+    if save_pred:
+        preds = np.concatenate(preds_all, axis=0)
+        npy_path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(npy_path, preds)
+        print(f"  [saved] {npy_path.name}  shape={preds.shape}")
+        n = preds.shape[0]
+    if save_conf:
+        confs = np.concatenate(confs_all, axis=0)
+        conf_path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(conf_path, confs)
+        print(f"  [saved] {conf_path.name}  shape={confs.shape} dtype={confs.dtype}")
+        n = confs.shape[0]
     if save_gt:
         gts = np.concatenate(gts_all, axis=0)
         # GT 는 0-24 + 255(ignore). int16 로 저장(255 안전).
         np.save(gt_path, gts)
         print(f"  [saved] {gt_path.name}  shape={gts.shape}")
-    return preds.shape[0]
+        n = gts.shape[0]
+    return n
 
 
 def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
@@ -360,11 +430,13 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
                    비어있으면 기존과 완전히 동일한 dict 를 반환한다(새 필드 없음).
     n_null: [통제2] 독립성 널 셔플 trial 수. 0 이면 계산 안 함(새 필드 없음).
     null_seed: 널 셔플 재현용 시드.
-    realizable: None/[] 또는 {'majority','consensus'} 의 부분집합 — [통제3: 입력-실현성 #15]
-                GT 를 쓰지 않는 no-GT 라우터 하한. 'majority'=픽셀별 다수결 앙상블(1개 값).
-                'consensus'=블록별 "다수결과 가장 부합하는 부분집합" 커밋(granularities 의
-                각 블록크기에서 계산 — oracle_synthesize_blocked 를 GT 대신 다수결맵으로
-                재사용). 둘 다 **선택 단계에서 GT 미사용**(평가에는 여느 Δ와 동일하게 GT 사용).
+    realizable: None/[] 또는 {'majority','consensus','confidence'} 의 부분집합 —
+                [통제3: 입력-실현성 #15] GT 를 쓰지 않는 no-GT 라우터 하한.
+                'majority'=픽셀별 다수결 앙상블(1개 값). 'consensus'=블록별 "다수결과
+                가장 부합하는 부분집합" 커밋(oracle_synthesize_blocked 를 GT 대신
+                다수결맵으로 재사용). 'confidence'=블록별 "평균 max-softmax 최대인
+                부분집합" 커밋(conf_{split}_mask*.npy 캐시 필요 — 없으면 RuntimeError).
+                전부 **선택 단계에서 GT 미사용**(평가에는 여느 Δ와 동일하게 GT 사용).
 
     🔴 회귀 가드: granularities/n_null/realizable 이 전부 기본값(비활성)이면 기존 필드
     (miou_full/miou_oracle/delta/per_class/per_condition/star_distribution/
@@ -405,9 +477,25 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
     # [통제3: 입력-실현성 #15] GT 불사용 no-GT 라우터
     do_majority = 'majority' in realizable
     do_consensus = 'consensus' in realizable
+    do_confidence = 'confidence' in realizable
     hist_majority = np.zeros((C, C), dtype=np.float64) if do_majority else None
     hist_consensus = ({b: np.zeros((C, C), dtype=np.float64) for b in (granularities or [8])}
                        if do_consensus else {})
+    hist_confidence = ({b: np.zeros((C, C), dtype=np.float64) for b in (granularities or [8])}
+                        if do_confidence else {})
+    conf_maps = None
+    if do_confidence:
+        conf_maps = []
+        for sub in subsets:
+            cp = cache_dir / f"conf_{split}_mask{subset_bitmask(sub)}.npy"
+            if not cp.exists():
+                raise RuntimeError(
+                    f"--realizable confidence 요청했지만 {cp.name} 캐시 없음 — "
+                    f"먼저 forward 로 confidence 캐시를 만들어야 한다.")
+            arr = np.load(cp, mmap_mode='r')
+            if arr.shape[0] != N:
+                raise RuntimeError(f"conf 캐시 길이 불일치: {cp.name} n={arr.shape[0]} != {N}")
+            conf_maps.append(arr)
 
     for i in range(N):
         gt = np.asarray(gt_all[i]).astype(np.int64)
@@ -442,6 +530,12 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
                     # "블록별로 다수결과 가장 일치하는 부분집합을 커밋"과 동치(선택에 GT 없음).
                     Oc = oracle_synthesize_blocked(preds, majority_map, full_index, b)
                     hist_consensus[b] += hist_from_pred(Oc, gt, C, ignore_label)
+
+        if do_confidence:
+            confs = np.stack([np.asarray(cm[i]).astype(np.float32) for cm in conf_maps], axis=0)
+            for b in hist_confidence:
+                Ocf = realizable_confidence_blocked(preds, confs, full_index, b)
+                hist_confidence[b] += hist_from_pred(Ocf, gt, C, ignore_label)
 
         # S* 분포 (valid 픽셀만)
         valid = (gt != ignore_label) & (gt < C)
@@ -538,7 +632,7 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
             'trials': null_deltas,
         }
 
-    if do_majority or do_consensus:
+    if do_majority or do_consensus or do_confidence:
         realizable_result = {}
         if do_majority:
             _, m_maj = miou_from_hist(hist_majority)
@@ -549,6 +643,12 @@ def _synthesize_split(subsets, modal_names, full_index, cache_dir, split,
                 _, m_b = miou_from_hist(h)
                 consensus_deltas[str(b)] = round(m_b - miou_full, 4)
             realizable_result['consensus'] = consensus_deltas
+        if do_confidence:
+            confidence_deltas = {}
+            for b, h in hist_confidence.items():
+                _, m_b = miou_from_hist(h)
+                confidence_deltas[str(b)] = round(m_b - miou_full, 4)
+            realizable_result['confidence'] = confidence_deltas
         result['realizable'] = realizable_result
 
     return result
@@ -596,6 +696,10 @@ def _print_report(rep):
         if 'consensus' in rz:
             print(f"    consensus(블록별 합의-부합 커밋):")
             for b, d in rz['consensus'].items():
+                print(f"      block={b:<4} Δ={d:+.4f}")
+        if 'confidence' in rz:
+            print(f"    confidence(블록별 평균 max-softmax 최대 커밋):")
+            for b, d in rz['confidence'].items():
                 print(f"      block={b:<4} Δ={d:+.4f}")
         print(f"    게이트: 어느 변형이든 block16 Δ≥+1.0 → 입력-실현성 확인 / "
               f"전부 <+0.5 → 값싼 실현신호 부재 "
@@ -682,10 +786,13 @@ def main():
     ap.add_argument('--null-seed', type=int, default=0,
                     help='--null-shuffle 재현용 시드(기본 0).')
     ap.add_argument('--realizable', default='',
-                    help="[통제3: 입력-실현성 #15] 콤마 구분 'majority,consensus'. "
+                    help="[통제3: 입력-실현성 #15] 콤마 구분 'majority,consensus,confidence'. "
                          "GT 불사용 no-GT 라우터 하한 — majority=픽셀별 다수결 앙상블, "
                          "consensus=블록별(--select-granularity 재사용) 다수결-합의 "
-                         "부합 부분집합 커밋. 합성 단계 전용, GPU 불요.")
+                         "부합 부분집합 커밋(둘 다 합성 단계 전용, GPU 불요). "
+                         "confidence=블록별 평균 max-softmax 최대 부분집합 커밋 — "
+                         "conf_*.npy 캐시가 없으면 **forward 재실행**(기존 pred/gt 캐시는 "
+                         "절대 덮어쓰지 않음, conf 파일만 추가).")
     args = ap.parse_args()
 
     import yaml
@@ -709,8 +816,10 @@ def main():
     n_null = args.null_shuffle
     realizable = {x.strip() for x in args.realizable.split(',') if x.strip()}
     for tok in realizable:
-        if tok not in ('majority', 'consensus'):
-            raise ValueError(f"--realizable 항목 '{tok}' 은 'majority'|'consensus' 만 허용")
+        if tok not in ('majority', 'consensus', 'confidence'):
+            raise ValueError(
+                f"--realizable 항목 '{tok}' 은 'majority'|'consensus'|'confidence' 만 허용")
+    need_conf = 'confidence' in realizable
 
     out_dir = Path(args.out_dir)
     cache_dir = out_dir / 'cache'
@@ -728,6 +837,8 @@ def main():
         for sub in to_run:
             bm = subset_bitmask(sub)
             if not (cache_dir / f"pred_{split}_mask{bm}.npy").exists():
+                return True
+            if need_conf and not (cache_dir / f"conf_{split}_mask{bm}.npy").exists():
                 return True
         return False
 
@@ -781,9 +892,10 @@ def main():
             for sub in to_run:
                 bm = subset_bitmask(sub)
                 npy_path = cache_dir / f"pred_{split}_mask{bm}.npy"
+                conf_path = (cache_dir / f"conf_{split}_mask{bm}.npy") if need_conf else None
                 print(f"  subset={subset_label(sub, modal_names)} (mask {bm})")
                 _cache_predictions(model, base_ds, sub, num_classes, ignore_label,
-                                   device, bs, npy_path, gt_path)
+                                   device, bs, npy_path, gt_path, conf_path=conf_path)
 
         if args.no_synth:
             continue

@@ -38,8 +38,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.oracle_spatial_modality import (  # noqa: E402
     enumerate_subsets, subset_bitmask, subset_label, hist_from_pred,
     miou_from_hist, oracle_synthesize, oracle_synthesize_blocked,
-    oracle_synthesize_null, realizable_majority, _synthesize_split,
-    _KeepSubsetDataset,
+    oracle_synthesize_null, realizable_majority, realizable_confidence_blocked,
+    _synthesize_split, _KeepSubsetDataset,
 )
 
 
@@ -428,6 +428,70 @@ def test_realizable_pipeline_integration():
           f"consensus[2]:{rep_rz['realizable']['consensus']['2']:+.4f}}} 조건부 추가")
 
 
+def test_realizable_confidence_basic():
+    """[통제3b ①] realizable_confidence_blocked — block=1(픽셀별 최고-confidence 선택)과
+    block>1(블록 평균 confidence 최대 부분집합 커밋)이 정의대로 동작하는지."""
+    # 2 부분집합, 4x4, 좌반쪽은 subset0 이 고신뢰(0.9), 우반쪽은 subset1 이 고신뢰(0.9).
+    # subset0=항상 클래스0 예측, subset1=항상 클래스1 예측.
+    H = W = 4
+    preds = np.stack([
+        np.zeros((H, W), dtype=np.int64),
+        np.ones((H, W), dtype=np.int64),
+    ], axis=0)
+    confs = np.stack([
+        np.where(np.arange(W)[None, :] < W // 2, 0.9, 0.1) * np.ones((H, W)),  # subset0: 왼쪽 고신뢰
+        np.where(np.arange(W)[None, :] < W // 2, 0.1, 0.9) * np.ones((H, W)),  # subset1: 오른쪽 고신뢰
+    ], axis=0)
+    full_index = 1
+
+    # block=1: 픽셀별로 confidence 높은 쪽 채택 → 왼쪽=subset0(클래스0), 오른쪽=subset1(클래스1)
+    O1 = realizable_confidence_blocked(preds, confs, full_index, block=1)
+    assert np.all(O1[:, :W // 2] == 0) and np.all(O1[:, W // 2:] == 1), O1
+
+    # block=4(이미지 전체): 평균 confidence 는 두 subset 다 (0.9+0.1)/2=0.5 로 동률
+    # → argmax 첫-최댓값 규약상 subset0(인덱스 작은 쪽) 전체 커밋.
+    O4 = realizable_confidence_blocked(preds, confs, full_index, block=4)
+    assert np.all(O4 == 0), O4
+
+    # block=2(왼쪽/오른쪽 2열씩 블록): 왼쪽 블록은 subset0 평균 0.9 > subset1 평균 0.1 → subset0
+    #                                오른쪽 블록은 그 반대 → subset1.
+    O2 = realizable_confidence_blocked(preds, confs, full_index, block=2)
+    assert np.all(O2[:, :W // 2] == 0) and np.all(O2[:, W // 2:] == 1), O2
+
+    print(f"[ok] realizable_confidence_blocked: block=1(픽셀별 정확)·"
+          f"block=2(블록평균, 구조와 정렬)·block=4(전체 동률→tie-break) 전부 정의대로 동작")
+
+
+def test_confidence_pipeline_requires_cache():
+    """[파이프라인] --realizable confidence 는 conf 캐시가 없으면 명확한 에러를 낸다
+    (조용히 무시하거나 잘못된 값을 내지 않음 — no-GT 실현성 판정을 오도하면 안 되므로)."""
+    M, N, H, W, C = 2, 3, 4, 4, 3
+    subs = enumerate_subsets(M)
+    full_index = len(subs) - 1
+    class_names = ['x', 'y', 'z']
+    r = np.random.RandomState(3)
+    gt_all = r.randint(0, C, size=(N, H, W)).astype(np.uint8)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache_dir = Path(tmp)
+        np.save(cache_dir / "gt_val.npy", gt_all)
+        for sub in subs:
+            bm = subset_bitmask(sub)
+            pred = r.randint(0, C, size=(N, H, W)).astype(np.uint8)
+            np.save(cache_dir / f"pred_val_mask{bm}.npy", pred)
+            # conf 캐시는 일부러 만들지 않는다.
+
+        raised = False
+        try:
+            _synthesize_split(subs, ['a', 'b'], full_index, cache_dir, 'val',
+                              C, class_names, 255, conditions=None,
+                              granularities=[2], realizable={'confidence'})
+        except RuntimeError:
+            raised = True
+        assert raised, "conf 캐시 없이 --realizable confidence 가 조용히 통과함(안전하지 않음)"
+    print(f"[ok] --realizable confidence: conf 캐시 없으면 RuntimeError로 명확히 실패(오판정 방지)")
+
+
 if __name__ == '__main__':
     print("=== smoke: oracle_spatial_modality ===")
     test_enumerate_subsets()
@@ -442,5 +506,8 @@ if __name__ == '__main__':
     test_realizable_majority()
     test_realizable_consensus_via_blocked()
     test_realizable_pipeline_integration()
+    test_realizable_confidence_basic()
+    test_confidence_pipeline_requires_cache()
     print("\n✅ ALL SMOKE PASSED — 단조성(oracle≥full)·포함관계·keep-subset 정합·"
-          "선택입도 회귀+동작·독립성널 판별·파이프라인 회귀·입력-실현성(majority/consensus) 확인")
+          "선택입도 회귀+동작·독립성널 판별·파이프라인 회귀·"
+          "입력-실현성(majority/consensus/confidence) 확인")
