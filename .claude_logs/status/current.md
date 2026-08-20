@@ -26,7 +26,7 @@ moved: 2026-07-08
 
 | 벤치 | 우리 최선 | vs SOTA | 판정 |
 |---|---|---|---|
-| DELIVER | **P46 C3-only 본run** val-best@ep70, **@1024 평가**: val **69.44** / test **56.99** (RailTrack 67.69, base 4.02) | MM SAM-adapter 대비 **−0.16 / −0.36** | 사정권 — 격차 < 단일런 편차(0.59). 구 SOTA(DGFusion)는 no-tradeoff 상회(+2.93/+0.28) |
+| DELIVER | **P46 C3-only 3-seed(@768학습/@1024평가, 검증됨 2026-08-20)** val **67.98±1.32** / test **54.44±2.21** (base 69.44/56.99, seed815 66.88/53.25, seed816 67.62/53.08) | mean 기준 MM-SA 대비 **−2.91** / DGFusion −2.27 | 🔴 **"사정권" 주장 반증** — 참 시드 std(test 2.21)가 격차보다 큼, base=3점 중 최댓값. 단일런 56.99를 헤드라인 불가. [experiments/analysis/2026-08-20-p46-seed-variance-verdict.md] |
 | MUSES | **P39.1-rank seed2 3모달** Codabench test **79.788** (val 82.13; day 80.246/night 76.818, fog_night 69.610 최악) | GtA(camera-only) −2.60 / **융합(4모달)계보 1위**(79.571 > DGFusion 79.5) | 정면 돌파 비현실 → 포지셔닝 전환(융합계보 1위 + adverse robustness 인과 실증) |
 | MUSES PQ | things 22.87 / All 35.55 (P47-D1 ep172) | SOTA(CAFuser) 59.26 −23점대 | PQ 축 비교 불가 — limitation 절 소재 |
 | Det | D1-recovered(ViT-L) AP50 **0.9321**@ep6 | 목표 0.85 **+0.08** | 종결 국면 |
@@ -61,9 +61,7 @@ moved: 2026-07-08
   → 전 세대(P39.1~P47)가 768² 로 학습된 동안 **test 약 2점을 해상도만으로 손해**보고 있었다.
   조기 종료 근거: val-best 가 ep54 이후 **70 epoch** 갱신 없음 + legal 값이 위 실측으로 확정 → 잔여 epoch 정보가치 없음.
   부수 검증: 실측(67.87/55.69)이 학습로그 환산 추정과 소수점까지 일치 → 오프셋(val −2.58/test −1.79)이 **이 런에 대해** 정확. 런별 값이므로 외삽 금지.
-- 🆕 **P46 C3-only @1024² seedB** — jarvis GPU6,7 (2f3ff6e). **첫 진짜-시드 런**(`TRAIN.SEED`=20260808).
-  ⚠️ 그 전까지 'seed2/seed3' 런은 시드가 실제로 달라진 적이 없다 — `fix_seeds(3407)` 하드코딩이고 `MODEL.C3.SEED` 는 C1 off 시 inert.
-  따라서 기존 편차 0.59 는 GPU 비결정성만 반영한 값 = 참 시드 분산의 **하한**이고, SOTA 격차 −0.36 은 그 하한보다도 작다.
+- 🔴 **P46 C3-only 진짜-시드 분산 확정 (2026-08-20) — "사정권" 주장 붕괴**: @768 진짜-시드 2런(seed815/816, config develop c4d5166, IMAGE_SIZE [768,768] 로그 확인=@1024 오염 아님) legal 재평가 → base 포함 3점 **test 54.44±2.21 / val 67.98±1.32**. base(56.99)가 두 축 모두 **최댓값**. 이전 "편차 0.59(SOTA −0.36보다 큼→사정권)"은 **가짜-시드(3407 하드코딩) GPU 비결정성만 잰 값**이라 반증됨 — 참 std는 그 3.7배. val·test 양의상관(낮은 시드가 둘 다 낮음)=런 품질 분산. **함의: DELIVER 근SOTA 헤드라인 불가, mean±std 보고 필수.** 미결: 분산이 seed-init인지 ckpt-선택(트레이너 val-best가 legal의 나쁜 대리)인지 — legal-val 기준 재선택으로 축소 가능성(미검). [experiments/analysis/2026-08-20-p46-seed-variance-verdict.md]
 - ⏸ **P47-2 UniBal** — 구현·스모크 완료, A100급 4장 대기. **4모달 역전의 유일한 남은 등록 레버**.
 - 🔴 **P47-D1(LiDAR 밀도화) 폐기 (2026-08-17 공식 test)**: val 82.58(4모달 역대최강)이었으나 공식 test **78.790** = 4모달 base 79.571 −0.781. val→test 낙차 3.79(계보 ~2.8 +1.0) = val 과적합. **MUSES에서 val 단독 이득은 제출 근거 불가** 3회째 확증. 판정: [experiments/analysis/2026-08-17-p47-d1-muses-official-test-verdict.md](../experiments/analysis/2026-08-17-p47-d1-muses-official-test-verdict.md)
 - 🔴 **CEA 프로브(조건-전문가 상한) — 폐기 확정 (2026-08-08 16:00, 제안 세션)**: 7런 완주, oracle Δ(fog_night) **+0.21 < 게이트 +1.0**(5배 미달), night가 주야갭 4.33 중 **+0.02만 회수** → "평균 최적성 함정" 가설까지 반증. **적응 가설 계열(융합 가중→추론 재가중→추출 전문화) 3단계 완결 폐쇄** — 남은 격차의 원인은 배분이 아니라 **정보**. 재제안 금지. canonical = **[research/hypothesis-ledger.md](../research/hypothesis-ledger.md)(가설 원장, 신설)** + [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6·§7. 음성 결과는 MUSES 포지셔닝의 oracle 상계로 논문 회수.

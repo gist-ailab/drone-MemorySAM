@@ -33,6 +33,7 @@ author: fable (MMSAM discussion 세션)
 | H15 | UDA 실증 masked consistency(MIC 계열)가 지도 멀티모달 융합에서도 전이 이득 | C2+C3 vs C3-only A/B(λ0.1 통제, val.py 동일 측정기) | ✗ 반증(유해, 2026-08-16) | Δ −1.67@1024 / −1.59@768 — 사전 등록 게이트 유해 대역. 학습전용 손실 축 = C3 단독 종결 | [experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md](../experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md) |
 | H16 | spatial×modality routing이 DINOv3에서 SAM2-SoftMoE가 못 잡은 여지를 가진다 (user 재개방: H1 반증은 SAM2 계보라 spatial 축 DINOv3 미검증) | 오라클(08-19) + 실현성 통제 #14 + no-GT 라우터 #15(08-20) → **confidence #15b 대기** | ⏳ **개방 유지, 전망 하향** | GT-회수 여지 실재(block16 +4~8, 공간응집)하나 **합의/다수결 라우터는 음수(−1.0~1.4)** = 여지가 **anti-consensus**(소수-옳음, 함께 틀리는 thin-class 경계). 남은 관문 = confidence 라우터(#15b, forward 재실행). <+0.5면 실용적 폐쇄 | [experiments/analysis/2026-08-20-fusion-mechanism-double-negative.md](../experiments/analysis/2026-08-20-fusion-mechanism-double-negative.md) |
 | H17 | 명시적 모달간 cross-attention 트렁크가 gated-MLP 트렁크를 이긴다 (user 가설, 통제 A/B) | xattn vs gated_mlp 동일레시피 drop-in 교체, val.py legal | ✗ 반증 | legal @1024 **54.94 < 56.99 (−2.05)**, 파라미터 15.9×로도 패배. connector 선택 2차(MM1)·믹서 비병목 실증. 단 "drop-in 교체" 한정(xattn 전용 튜닝 미실시) — 손실 폭+문헌+원장으로 계열 종료 권고 | [experiments/analysis/2026-08-20-fusion-mechanism-double-negative.md](../experiments/analysis/2026-08-20-fusion-mechanism-double-negative.md) |
+| H18 | P46 C3-only legal test가 seed에 강건(단일런 56.99 대표 가능) | @768 진짜-시드 3점(base+seed815/816) val.py legal 재평가 | ✗ 반증(2026-08-20) | test **54.44±2.21**(σ가 SOTA격차보다 큼), base=3점 최댓값. 이전 "편차 0.59"는 가짜-시드(3407 하드코딩) GPU노이즈. **DELIVER 근SOTA 헤드라인 붕괴** → mean±std 보고 필수. 분산 seed-init vs ckpt선택 미결 | [experiments/analysis/2026-08-20-p46-seed-variance-verdict.md](../experiments/analysis/2026-08-20-p46-seed-variance-verdict.md) |
 
 ## 종합 — 계보가 확립한 명제 (2026-08-09 갱신)
 
@@ -41,7 +42,7 @@ author: fable (MMSAM discussion 세션)
 3. **축 특이성**(H8): 클래스축 처방(prototype)은 클래스축 붕괴(DELIVER)에만 통한다. 축이 다른 벤치에 이식하면 손해 — 처방 전에 축 진단 선행.
 4. **표현력도 L 이상에서는 급격히 소진된다**(H12): SAM2→DINOv3-L(+11.6, H6)·S+→L(+8.82, H12′)은 크지만, L→H+(+0.52, H12)는 수확체감 — "더 큰 고정 백본으로 바꾸면 된다"는 단순한 해법의 여지도 좁다. 7B 실측(+0.18, 축분리 음성)으로 **완전히 닫혔다**(2026-08-12).
 5. **격차 축소 시도 세 갈래(배분·해상도·순수 스케일 확대) 모두 정체 근처**: 배분(H4, 폐기) · 학습 해상도 상승(H7 자체는 확인이지만 08-09 val/test 역발산으로 DELIVER 게이트는 미달) · 백본 추가 확대(H12, 중간대역/사실상 포화)는 전부 "더 하면 된다"가 아니었다. 남은 유력 축은 **데이터**(양·품질) 또는 **아키텍처 신규 설계**로 좁혀진다.
-6. **캠페인 종결(2026-08-16)**: 성능 축 전 경로 판정 완료 — 적응(H1~H4)·스케일(H12)·구조 전환(H14)·손실 확장(H15) 전부 반증, 확인된 자산은 H5~H8. **현 자산 = 이 스택 세대의 상한** — DELIVER 56.99(SOTA −0.36)/MUSES 79.788(융합계보 1위). 임계 경로 = RA-L 리라이트.
+6. **캠페인 종결(2026-08-16)**: 성능 축 전 경로 판정 완료 — 적응(H1~H4)·스케일(H12)·구조 전환(H14)·손실 확장(H15) 전부 반증, 확인된 자산은 H5~H8. **현 자산 = 이 스택 세대의 상한** — DELIVER 54.44±2.21(SOTA −2.9, 🔴 08-20 시드분산으로 근SOTA 반증)/MUSES 79.788(융합계보 1위, 단일제출). 임계 경로 = RA-L 리라이트.
 7. **논문 서사**: ①상호작용 실재(H5) → ②적응 기제 전 수준 실패 + oracle 상계(H1~H4) → ③작동하는 것은 표현+학습신호(H6~H8), 단 표현력은 L 근방에서 포화(H12) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제, H12′). 실패가 서사의 증거가 되는 구조.
 
 관련: [novelty-and-related-work.md](novelty-and-related-work.md)(노벨티 canonical) · SOTA 진단 artifact "MemorySAM — SOTA까지 무엇으로 가는가"(2026-08-08) · [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md)
