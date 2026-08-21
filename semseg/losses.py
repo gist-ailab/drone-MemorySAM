@@ -20,16 +20,21 @@ class CrossEntropy(nn.Module):
 
 
 class OhemCrossEntropy(nn.Module):
-    def __init__(self, ignore_label: int = 255, weight: Tensor = None, thresh: float = 0.7, aux_weights: list = [1, 1]) -> None:
+    # `min_kept`: 하드 픽셀이 이보다 적으면 loss 상위 min_kept개를 강제로 쓴다.
+    # 0(기본) = 기존 동작(유효 픽셀 수 // 16) — 기존 호출부는 전부 이 경로다.
+    # 양수면 mmseg 관례의 절대 하한(표준 100000)으로 고정된다. [P49-A5]
+    def __init__(self, ignore_label: int = 255, weight: Tensor = None, thresh: float = 0.7, aux_weights: list = [1, 1], min_kept: int = 0) -> None:
         super().__init__()
         self.ignore_label = ignore_label
         self.aux_weights = aux_weights
+        self.min_kept = int(min_kept)
         self.thresh = -torch.log(torch.tensor(thresh, dtype=torch.float))
         self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_label, reduction='none')
 
     def _forward(self, preds: Tensor, labels: Tensor) -> Tensor:
         # preds in shape [B, C, H, W] and labels in shape [B, H, W]
-        n_min = labels[labels != self.ignore_label].numel() // 16
+        n_valid = labels[labels != self.ignore_label].numel()
+        n_min = min(self.min_kept, n_valid) if self.min_kept > 0 else n_valid // 16
         loss = self.criterion(preds, labels).view(-1)
         loss_hard = loss[loss > self.thresh]
 

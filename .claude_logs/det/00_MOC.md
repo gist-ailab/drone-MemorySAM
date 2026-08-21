@@ -11,3 +11,4 @@
 | [assets/p29-p30-perclass-compare.csv](assets/p29-p30-perclass-compare.csv) | 위 두 문서의 per-class AP50/AP 원시 수치(CSV) | — (2026-07-28 회수) |
 | [det-cert-D1-realtime.md](det-cert-D1-realtime.md) | Det 공인인증(2026-07-23) — D1 ViT-S/S+/B/L 백본 스윕, RTX 5080 FPS 추정(fleet에 실기 없음), 인증 모델 확정(ViT-S+) + 재현 패키지 위치 | — |
 | [det-cert-D1-vitsp-handoff.md](det-cert-D1-vitsp-handoff.md) | det-cert-D1-vitsp-handoff.md — D1 ViT-S+ 인증 웨이트·코드·정보 핸드오프(다른 세션용) | — |
+| [det-architecture-map.md](det-architecture-map.md) | Detection architecture map — P29→P39 각 모델의 detector가 seg 인코더에서 feature를 뽑는 tap point 3가지 구조 비교 | — |

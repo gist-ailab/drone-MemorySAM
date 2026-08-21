@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # 이슈 및 해결 기록 (Issues & Fixes)
 
-> 최종 업데이트: 2026-07-21
+> 최종 업데이트: 2026-08-06
 > 코딩 세션은 이 파일을 읽고 동일한 실수를 반복하지 말 것
 
 ---
@@ -17,6 +17,9 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-032** | ✅ **수정**(2026-08-06) | `val.py` `evaluate()`(val 모드 함수)에 `@torch.no_grad()` 누락 — ViT-L 전체 autograd 그래프 유지로 **iteration 1에서 100% OOM**(ckpt 종류 무관). `run_test_inference()`(test 모드)는 정상 데코레이션돼 있어 test만 성공. 커밋 c0e413c로 1줄 수정. 상세: 하단 ISSUE-032 |
+| **ISSUE-030** | ✅ **수정(2026-08-06)** | `train_reliadino.py` `last_checkpoint.pth`+topK best 저장이 임시파일+rename 없이 최종 경로에 직접 덮어써 **비원자적**이었음 — 저장 도중 사망(preempt/OOM/SIGKILL) 시 파일 손상으로 AUTO_RESUME 실패 위험. `_atomic_save`(tmp+os.replace) 헬퍼로 양쪽 다 수정, 스모크 3건 통과(커밋 0bc65f5). 상세: 하단 ISSUE-030 |
+| **ISSUE-031** | 🟡 **프로세스 결함, 재발방지 적용(2026-08-04)** | hpca100 P47-1 `BATCH_SIZE:1`이 A100(40GB) 기준 재프로파일 없이 3090/4090용 값 그대로 사용됨 — 실측 rank당 24.6GB/40GB=60%(정책 목표 85~90% 미달). 이 런은 재기동 위험·1-변수 순수성 이유로 변경 안 함, **이후 A100 신규 기동 전 `torch.cuda.max_memory_allocated()` 프로파일 필수화**로 재발방지. 상세: 하단 ISSUE-031 |
 | **ISSUE-028** | ✅ **수정(2026-07-29)** | **P46-CTR jarvis OOM은 누수가 아니라 warmup 계단이다.** C2_MCC/C3_PROTO `WARMUP_EP:5` + epoch 0-index → 로그상 **ep6(=epoch 5) iter0이 보조 branch·EMA teacher·proto 손실이 최초로 도는 지점**. ep1~5(=epoch 0~4)는 P39.1-base 그대로라 15.2GB였고 P46 비용은 **한 번도 측정된 적이 없다**. 부수적으로 상수 오버헤드 4건(보조 `_baux` 미도달 서브그래프·루프 지역변수·teacher `_last_*` 캐시·PrototypeBank full-copy)을 수정. **peak 2-그래프 구조 자체는 설계라 그대로** → BS1에서도 24GB로 부족. 상세: 하단 ISSUE-028 |
 | **ISSUE-026** | ✅ **수정(2026-07-21)** | ColorAugSSD brightness가 uint8(0-255) 입력을 [0,1] 클램프 → 발화 샘플(p=0.5) RGB가 백색 상수로 붕괴(사실상 RGB-dropout 0.5). **07-16 이후 DGFUSION_AUG:true DELIVER 학습 전부 오염**(jarvis P37a-DELIVER/P37b(사망런), hpca100 P38-DELIVER 완주분·**P39-DPC resume 진행 중**, yeon 스모크). MUSES 전 계보 무영향. **P38-DELIVER/P39-DELIVER 게이트 판정 보류.** 상세: 하단 ISSUE-026 |
 | **ISSUE-029** | ✅ **수정(2026-07-28)** | hpca100 HF 백본 이중고장 — `HF_HUB_OFFLINE=1`일 때 DINOv3+DINOv2 폴백 둘 다 local cache lookup 실패로 **RANDOM INIT**(경고 없이 조용히 진행됨), offline 미설정 시엔 반대로 HF Hub 온라인 조회 단계에서 **정체(hang)**. 최초 진단(P44-BMR 과균형)은 오진 — 실제 원인은 백본. `RELIADINO_LOCAL_BACKBONE` env로 로컬 safetensors 직접 로드하는 우회 코드로 해결(697a10a). 저조(mIoU 급락) 발생 시 **백본 로드 라인부터 먼저 확인할 것**. 상세: 하단 ISSUE-029 |
@@ -49,6 +52,54 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-032: `val.py evaluate()`에 `@torch.no_grad()` 누락 — val 모드 100% OOM [수정, 2026-08-06]
+
+**위치**: `val.py:1182` `def evaluate(...)` (val 모드에서 호출되는 함수) — 바로 위(1179)는 무관한 헬퍼 `_pad_rows_to_same_width`의 끝일 뿐, `evaluate()` 자체엔 `@torch.no_grad()`도 `with torch.no_grad():`도 없었다. `model.eval()`은 dropout/BN 동작만 바꿀 뿐 autograd 추적을 끄지 않는다.
+
+**증상**: final-iter(`last_checkpoint.pth`) 11건 재평가 배치(`/tmp/finaliter_batch.sh`, jarvis)에서 **val 모드가 전부 PARSE_FAIL**. 원인은 파싱 실패가 아니라 진짜 크래시 — `CONTROL_valbest_ep62`(검증용 정상 val-best 체크포인트)조차 **iteration 1/2005**에서 `CUDA OutOfMemoryError`. ckpt 종류(final-iter/val-best) 무관하게 100% 재현.
+
+**진단**: ViT-L/16 + LoRA + M2F 전체 forward에서 autograd 그래프가 유지된 채 backward 없이 매 iteration 쌓이므로 즉시 OOM. test 모드는 별도 함수 `run_test_inference()`(`val.py:1466`, 데코레이터 1465에 정상 존재)를 호출해 무사 — val만 죽는 이유가 이걸로 설명된다.
+
+**수정**: `def evaluate` 바로 위에 `@torch.no_grad()` 1줄 추가. 다른 변경 없음. 커밋 `c0e413c`(develop push 완료).
+
+**교훈**: 🔴 **OOM을 GPU 상주메모리·배치크기 문제로 진단하기 전에 `no_grad`/`inference_mode` 여부부터 확인할 것.** 특히 두 개의 유사 평가 경로(val/test) 중 하나만 죽으면, 배치·데이터 차이보다 먼저 두 함수의 grad-context 데코레이션 차이를 대조하라.
+
+---
+
+### ISSUE-031: A100 이전 시 배치 재프로파일 누락 — 상시규칙 미적용 [프로세스 결함, 재발방지 적용, 2026-08-04]
+
+**상시규칙**(메모리 `batch-sizing-policy`): "배치는 GPU 85~90% 채우게, eff-batch 16은 accum으로 유지(LR 불변), 서버 이전 시 재프로파일 필수"
+
+**위반 사례**: `configs/hpca100-muses_rgbelr_P47_d1_dgfproj_4modal.yaml`의 `BATCH_SIZE: 1`. 주석은 *"seed2와 동일(1-변수 비교 유지)"*로만 적혀 있고 **A100(40GB) 기준 프로파일 흔적이 없다.** 3090/4090(24GB)용 값을 그대로 가져왔다.
+
+**실측(2026-08-04, 2GPU 재기동 후 정상 구간)**: **rank당 24.6GB / 40GB = 60%** — 정책 목표 85~90%에 크게 미달.
+- GPU2 30,558MiB(우리 24,618 + 타 테넌트 5,922) / GPU3 24,683MiB(우리 24,670)
+- ⚠️ 기동검증 당시 registry에 기록된 "34.1~34.3GiB/rank"는 PyTorch caching allocator의 **기회적 예약치**였고, 타 테넌트가 있으면 24.6GB로 줄어든다. **`nvidia-smi memory.used`는 예약량이지 실제 소요량이 아니다** — 프로파일에는 `torch.cuda.max_memory_allocated()`를 써야 한다.
+
+**이 런은 변경하지 않기로 판정(2026-08-04)**: ①BS2는 GPU2의 가용 34GB(타 테넌트 5.9GB 점유)를 초과할 위험 ②ep181/300 진행 중인 **계보 최고 기록 런**(82.58@ep172)이라 재기동 위험 ③base가 BS1이라 1-변수 순수성 훼손
+
+**재발방지**: 이후 **A100 신규 기동 전 메모리 프로파일을 필수 단계로** 둔다. 짧은 스모크로 `torch.cuda.max_memory_allocated()` 측정 → 85% 채우는 BS 채택 → eff-batch 16은 accum으로 유지(LR 불변). 적용 대상: P47-2 4모달 · MUSES RGB-L 2모달 · DELIVER RGB-D 2모달.
+
+---
+
+### ISSUE-030: `last_checkpoint.pth` 비원자적 저장 — 저장 도중 사망 시 재개 불가 [수정, 2026-08-06]
+
+**위치**: `train_reliadino.py:485` — `torch.save(_ckpt(), save_dir/'last_checkpoint.pth')`가 **최종 경로에 직접 덮어쓴다**(임시파일+rename 없음).
+
+**증상**: 매 epoch 같은 파일을 in-place로 다시 쓰므로, 그 사이에 프로세스가 죽으면(preempt·OOM·노드 장애·SIGKILL) **파일이 잘린 상태로 남아 AUTO_RESUME이 실패**한다.
+
+**발견 경위(2026-08-04)**: P47-1을 4GPU→2GPU로 옮기며 `cp`로 백업했는데 **md5가 5분 내 3회 바뀌어** 백업본 무결성을 보장할 수 없었다. 원인은 학습이 백업보다 빠르게 같은 파일을 덮어쓴 것.
+
+🔴 **hpca100은 공유 pod이라 preempt로 잡이 죽는 전례가 있는 서버**다. 실제 위험.
+
+**완화(현재)**: `epochNN_<miou>_topK_checkpoint.pth`(epoch-태그)는 한 번 쓰고 다시 안 건드리는 **안정 파일**이라 최후 수단으로 쓸 수 있다. 이번에도 `epoch176_82.3_top5`가 정상 로드됨을 확인했다(epoch=176, model 722 entries, optimizer/scheduler/scaler 전부 존재).
+
+**수정안**: `torch.save`를 `<path>.tmp`에 쓴 뒤 `os.replace(tmp, path)`로 원자적 교체. 같은 파일시스템이므로 rename은 원자적이다.
+
+**상태**: ✅ 수정 완료(2026-08-06, 커밋 `0bc65f5`). `_atomic_save(obj, path)` 헬퍼 추가 — `<path>.tmp`에 `torch.save` 후 `os.replace(tmp, path)`. `last_checkpoint.pth`와 topK best-checkpoint 저장 양쪽에 적용. 스모크 3건(실제 torch, jarvis MMSS_SAM env): fresh save+load / 동일 파일명 반복 덮어쓰기 / tmp 파일이 중간에 남아도 기존 target 무결 — 전부 통과. 진행 중이던 학습런은 코드 미변경(다음 재기동부터 적용).
 
 ---
 

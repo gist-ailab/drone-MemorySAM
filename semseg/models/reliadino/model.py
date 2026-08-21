@@ -25,11 +25,21 @@ import torch.nn.functional as F
 
 from . import p44 as P44
 from . import p46 as P46
+from . import p47 as P47
+from .cmlc import CrossModalLoRACoupling
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
-from .fusion import ReliabilityGatedFusion
+from .fusion import ReliabilityGatedFusion, XAttnTrunk
 from .m2f_head import MaskQueryLiteHead
 from .panoptic_head import MaskClsHead
+
+# [PQ] Cityscapes/MUSES 19-class trainId space. The thing set is not a guess:
+# third_party/MUSES/MUSES/AUPQ/uncertainty_aware_panoptic_quality.py declares
+# THINGS = (24,25,26,27,28,31,32,33) in Cityscapes *labelIds*, which is exactly
+# person/rider/car/truck/bus/train/motorcycle/bicycle = trainIds 11..18, and
+# STUFF = (7,8,11,12,13,17,19,20,21,22,23) = trainIds 0..10.
+CITYSCAPES_TRAINIDS = tuple(range(19))
+CITYSCAPES_THING_TRAINIDS = (11, 12, 13, 14, 15, 16, 17, 18)
 
 
 class FPNSegHead(nn.Module):
@@ -127,6 +137,14 @@ class ReliaDINO(nn.Module):
                  p39_trunk_exp: bool = False,
                  p39_trunk_mode: str = 'linear',
                  p39_trunk_hidden: int = 256,
+                 # [A/B trunk] MODEL.FUSION.TRUNK — 'gated_mlp'(기본, 기존 전
+                 # 모델과 byte-동일) | 'xattn'(대칭 모달간 cross-attention).
+                 fusion_trunk: str = 'gated_mlp',
+                 xattn_layers: int = 1,
+                 xattn_heads: int = 8,
+                 xattn_mlp_ratio: float = 4.0,
+                 xattn_ls_init: float = 1.0,
+                 xattn_gamma_init: float = 0.1,
                  p39_arbiter: bool = False,
                  p39_path_dropout_p: float = 0.25,
                  p39_router_ce_w: float = 0.4,
@@ -191,6 +209,14 @@ class ReliaDINO(nn.Module):
                  p46_proto_temp: float = 0.1,
                  p46_proto_pixels: int = 4096,
                  p46_proto_warmup_ep: int = 5,
+                 p47_2_unibal: bool = False,
+                 p47_2_lambda_u: float = 0.4,
+                 p47_2_modals='all',
+                 p47_2_head: str = 'linear',
+                 p47_2_hidden: int = 256,
+                 p47_2_warmup_ep: int = 0,
+                 p47_2_gt_div: int = 4,
+                 p47_2_reduce: str = 'mean',
                  p45_fogstyle: bool = False,
                  p45_prob: float = 0.5,
                  p45_sigma: float = 0.5,
@@ -208,7 +234,11 @@ class ReliaDINO(nn.Module):
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
-                 modal_dropout_warmup_ep: int = 20):
+                 modal_dropout_warmup_ep: int = 20,
+                 # [P51] CMLC — ViT block 경계 cross-modal LoRA coupling (default OFF)
+                 cmlc_enable: bool = False,
+                 cmlc_layers: Sequence[int] = (6, 12, 18),
+                 cmlc_rank: int = 16):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -350,6 +380,11 @@ class ReliaDINO(nn.Module):
                 for _ in range(n_taps))
         self._p43_taps = None          # per-forward, modality-averaged taps
         self._last_p43_out = None      # eval-only, for panoptic_inference
+        # [PQ] same stash for the P38/P39 M2F head. `_m2f_capture` is False
+        # everywhere except inside _m2f_forward_out(), so the training and the
+        # semantic eval paths are untouched (no extra tensor kept alive).
+        self._last_m2f_out = None
+        self._m2f_capture = False
         # eval-time ablation flags (tools/module_ablation attr_toggle 호환)
         self.p43_m2f_off = False
         self.p43_lateral_off = False
@@ -361,12 +396,36 @@ class ReliaDINO(nn.Module):
         self.trunk_exp = None
         self.trunk_gamma = None
         self.p39_trunk_mode = p39_trunk_mode
+        # [A/B trunk] 트렁크 구현 선택. 'gated_mlp'(기본)에서는 아래 분기가
+        # 한 번도 타지 않으므로 파라미터도 init RNG 소비도 늘지 않는다 =
+        # 기존 전 모델과 byte-동일 (스모크 A가 이 성질을 검사한다).
+        self.fusion_trunk = str(fusion_trunk).lower()
+        if self.fusion_trunk not in ('gated_mlp', 'xattn'):
+            raise ValueError(f"MODEL.FUSION.TRUNK 는 gated_mlp|xattn 이어야 한다 "
+                             f"(got {fusion_trunk!r}).")
+        self.trunk_xattn = None
+        if self.fusion_trunk == 'xattn' and not p39_trunk_exp:
+            # 조용한 실패 금지: 트렁크 자체가 없는데 TRUNK:xattn 을 준 config는
+            # "xattn 을 켰다"고 착각한 채 baseline 을 돌린다.
+            raise ValueError("MODEL.FUSION.TRUNK: xattn 은 MODEL.P39.TRUNK_EXP: true "
+                             "를 요구한다 (트렁크가 없으면 교체할 대상이 없다).")
         if p39_trunk_exp:
-            if p39_trunk_mode == 'gated_mlp':
+            if self.fusion_trunk == 'xattn':
+                # [A/B] gated-MLP 자리에 대칭 모달간 cross-attention 블록.
+                # 합산은 gated_mlp 와 **같은** tanh(γ) 게이트 잔차(아래 γ 동일
+                # init 0.1) — 두 팔의 차이를 per-modal 변환 하나로 국한한다.
+                self.trunk_xattn = XAttnTrunk(
+                    dim, self.num_modalities, num_layers=xattn_layers,
+                    num_heads=xattn_heads, mlp_ratio=xattn_mlp_ratio,
+                    ls_init=xattn_ls_init)
+                self.trunk_gamma = nn.Parameter(
+                    torch.full((self.num_modalities,), float(xattn_gamma_init)))
+            elif p39_trunk_mode == 'gated_mlp':
                 # [P39.1-R1] 선형 1×1의 암묵적 저rank 편향(deep matrix
                 # factorization/DirectCLR — P39에서 lidar rank 4.7 붕괴의 유력
-                # 원인)을 제거: LN→1×1→GELU→1×1 비선형 + tanh(γ) 게이트(γ=0
-                # init, ReZero/LLaMA-Adapter) — shortcut이 초기 gradient
+                # 원인)을 제거: LN→1×1→GELU→1×1 비선형 + tanh(γ) 게이트(ReZero/
+                # LLaMA-Adapter 계열이나 γ init은 0이 아니라 0.1 — 아래
+                # 참조) — shortcut이 초기 gradient
                 # highway가 되어 LoRA를 저rank 코드로 조각하는 것을 막는다.
                 # V1의 night +2.50 기여 메커니즘은 보존.
                 h = int(p39_trunk_hidden)
@@ -466,6 +525,11 @@ class ReliaDINO(nn.Module):
         self.p39_router_ce_w = float(p39_router_ce_w)
         # eval-time ablation flags (tools/module_ablation attr_toggle 호환)
         self.p39_query_off = False
+        # [2026-08-05] p39_query_off의 반대쪽 측정용: dense(FPN head) 기여를 빼고
+        # **query 단독**으로 semantic을 얼마나 하는지 읽는다. 학습의 query-only
+        # turn(아래 path dropout)을 추론에 토글로 노출한 것.
+        # 🔴 추론 전용 — self.training일 때는 절대 참조하지 않는다.
+        self.p39_dense_off = False
         self.p39_trunkexp_off = False
 
         # [P40] RCA — Reliability-Conditioned Attenuation (학습 전용).
@@ -543,6 +607,38 @@ class ReliaDINO(nn.Module):
         self._last_fused_postfusion = None   # T3: fusion 직후 fused (fused-level 모듈 이전)
         self._last_fused_prehead = None      # T5: _decode 직전 fused (CEFR·trunk_exp 등 fused-level
                                              #     모듈 이후. router/classtoken/m2f는 이 뒤 logit-level이라 미포함)
+
+        # ── [P47-2] Uni-modal Balance (구 D-2) ───────────────────────────────
+        # 모달별 **독립** 경량 head + uni-modal CE (학습 전용, 추론 경로 불변).
+        # 진단 = modality laziness: 융합 손실만으로 학습하면 지배 모달(RGB)의
+        # uni-modal feature가 under-optimize 된다 (2305.01233 / 1905.12681 /
+        # 2203.12221). 손실은 주 손실에 직접 합산된다(키1 — zero-init 잔차 아님).
+        # 🔴 **가장 마지막에 생성**한다: off일 때 이 블록이 init RNG 스트림을
+        #    전혀 건드리지 않아야 P39.1 baseline과 seed 재현이 일치한다(2026-07-21
+        #    ClassTokenLiteHead 중복 생성으로 스트림이 어긋났던 사고의 교훈).
+        self.p47_2 = None
+        if p47_2_unibal:
+            self.p47_2 = P47.UniModalBalance(
+                dim=dim, num_classes=num_classes,
+                num_modalities=self.num_modalities,
+                active=P47.resolve_modals(p47_2_modals, self.modalities),
+                head=p47_2_head, hidden=p47_2_hidden, lambda_u=p47_2_lambda_u,
+                warmup_ep=p47_2_warmup_ep, gt_div=p47_2_gt_div,
+                reduce=p47_2_reduce)
+
+        # ── [P51] CMLC — 인코딩-시간 cross-modal LoRA coupling ────────────────
+        # 선택한 ViT block 경계에서 per-modal 저랭크 코드를 결합(cmlc.py) — 결합
+        # 이 block 중간에 일어나 이후 block 이 결합된 표현으로 계속 인코딩한다.
+        # default OFF: 이 블록이 init RNG 스트림을 전혀 건드리지 않아야 기존
+        # 계보와 seed 재현이 일치한다(P47-2 주석의 사고 교훈 — 가장 마지막에
+        # 생성). [F] dominant-mask forcing 은 별도 단계로 이번엔 없다.
+        self.cmlc_enable = bool(cmlc_enable)
+        self.cmlc_layers = [int(i) for i in cmlc_layers]
+        self.cmlc = None
+        if self.cmlc_enable:
+            self.cmlc = CrossModalLoRACoupling(
+                num_modalities=self.num_modalities, dim=dim,
+                r=int(cmlc_rank), num_couple_points=len(self.cmlc_layers))
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -633,9 +729,22 @@ class ReliaDINO(nn.Module):
         deterministic reduction, not a learned/inferred modality weighting
         (which is the reverse-engineered failure path C-2). The projections
         that follow are trainable, the backbone stays frozen.
+
+        [P51] CMLC on → 모달을 (M,B,C,H,W)로 쌓어 encoder.forward_coupled(배치-
+        모달 단일 forward + block 경계 결합)로 갈아끼운다. forward_coupled 가
+        last_taps 를 모달 평균으로 채워 주므로 여기서는 그대로 소비한다.
+        cmlc_enable 이 False 면 아래 순차 루프가 **그대로** 돈다(기존 경로
+        100% 불변 가드).
         """
         collect = (self.p43_lateral is not None and not self.p43_lateral_off)
         self.encoder.collect_taps = collect     # don't pay for taps we discard
+        if self.cmlc_enable and self.cmlc is not None:
+            stack = torch.stack(list(x), dim=0)          # (M, B, C, H, W)
+            feats = self.encoder.forward_coupled(
+                stack, self.cmlc, self.cmlc_layers)
+            self._p43_taps = (list(self.encoder.last_taps)
+                              if (collect and self.encoder.last_taps) else None)
+            return feats
         feats, acc = [], None
         for i in range(self.num_modalities):
             feats.append(self.encoder(x[i], i))
@@ -674,8 +783,16 @@ class ReliaDINO(nn.Module):
         """[P39-V1/P39.1-R1] modal subspace restoration — seg/det 공용 단일
         경로. (감사 2026-07-21: det seam 2곳이 gated_mlp 모드에서 tanh(γ)
         게이트를 생략해 seg와 다른 trunk를 만들던 버그의 수정 — 결선을 한
-        곳으로 모아 재발 차단.)"""
-        if self.trunk_exp is None or self.p39_trunkexp_off:
+        곳으로 모아 재발 차단.)
+
+        [A/B trunk] FUSION.TRUNK: xattn 이면 per-modal 변환만 cross-attention
+        으로 갈아끼운다. 합산(tanh(γ) 게이트 잔차)·출력 shape·ablation 플래그는
+        gated_mlp 와 동일하다."""
+        if self.p39_trunkexp_off:
+            return fused
+        if self.trunk_xattn is not None:
+            return self.trunk_xattn(fused, feats, self.trunk_gamma)
+        if self.trunk_exp is None:
             return fused
         if self.trunk_gamma is not None:
             return fused + sum(
@@ -790,6 +907,26 @@ class ReliaDINO(nn.Module):
             logits = logits + self.fusion.router_alpha * F.interpolate(
                 routed, size=logits.shape[-2:], mode='bilinear', align_corners=False)
         return logits, m_feat
+
+    def _check_p39_ablation_flags(self):
+        """추론-시 ablation 플래그 정합성 검사 (조용한 실패 금지).
+
+        p39_query_off는 기존 동작(무해한 no-op 포함)을 그대로 둔다. 새로 추가된
+        p39_dense_off만 (a) query_off와 동시 지정(logits≡0 → 무의미) (b) arbiter/
+        m2f 부재로 플래그가 무시되는 경로에서 에러를 던진다 — 무시된 채 Δ=0이
+        나오면 "dense 없이도 된다"는 정반대 오판을 부른다."""
+        if not self.p39_dense_off:
+            return
+        if self.p39_query_off:
+            raise ValueError(
+                'p39_query_off와 p39_dense_off를 동시에 켤 수 없다 — 두 경로를 모두 '
+                '지우면 logits가 0이 되어 측정이 무의미하다. 하나씩 켜라.')
+        if self.arb_lambda is None or self.m2f is None:
+            raise ValueError(
+                'p39_dense_off는 P39-V5 arbiter(arb_lambda) + m2f 쿼리 헤드가 모두 '
+                '있는 모델에서만 의미가 있다 (legacy β 잔차 경로에는 query-only 턴이 '
+                f'없다). arb_lambda={"O" if self.arb_lambda is not None else "X"}, '
+                f'm2f={"O" if self.m2f is not None else "X"}.')
 
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
                 gt_mask: Optional[torch.Tensor] = None):
@@ -925,6 +1062,7 @@ class ReliaDINO(nn.Module):
             aux['vicreg'] = self._vicreg_loss(feats)    # [P39.1-R2] pre-scaled
         if not self.training:
             self._last_fused_prehead = fused.detach()      # [analysis §0.5 T5]
+            self._check_p39_ablation_flags()   # m2f 부재 경로까지 커버하려 여기서
         # [P43] the mask-cls head reads the pyramid the pixel head just used.
         _p43_run = (self.p43 is not None and not self.p43_m2f_off
                     and (self.training or self.p43_eval_head
@@ -960,6 +1098,8 @@ class ReliaDINO(nn.Module):
             m2f_out = self.m2f(
                 fused, m_feat,
                 modal_feats=feats if self.m2f.use_modal_src else None)  # [P39-V2]
+            if self._m2f_capture:
+                self._last_m2f_out = m2f_out    # [PQ] eval-only stash, read-only
             sem_q = self.m2f.semantic_scores(m2f_out)       # (B, K, H/4, W/4)
             if self.arb_lambda is not None:
                 # [P39-V5] compete-and-arbitrate (β 잔차 대체): per-class Λ로
@@ -984,6 +1124,10 @@ class ReliaDINO(nn.Module):
                         logits = q_scaled                   # query-only turn
                     else:
                         logits = logits + q_scaled
+                elif self.p39_dense_off:
+                    # 추론 전용 ablation: 학습의 query-only 턴과 동일한 결선.
+                    # ⚠️ "제거 효과"가 아니라 **쿼리 단독 성능**을 읽는 토글.
+                    logits = q_scaled
                 else:
                     logits = logits + q_scaled
             else:
@@ -1037,6 +1181,15 @@ class ReliaDINO(nn.Module):
             _pf = m_feat if self.p46_proto_src == 'mfeat' else fused
             aux['p46_proto'] = self.p46_proto_lambda * self.p46_proto(
                 _pf, gt_mask, update=(not self._p46_replay_path))
+        if self.p47_2 is not None and self.training and gt_mask is not None:
+            # [P47-2] uni-modal balance. **추가 forward 없음** — 이 forward가 이미
+            # 만든 per-modal feats를 그대로 쓴다(ISSUE-028의 2-forward 문제 무관).
+            # img 마스킹(P42/P44)이 걸린 픽셀은 fusion aux_ce와 같은 규약으로
+            # ignore 처리한다(발견C: 0-입력에서 GT를 맞히는 장면 prior 환각 방지).
+            _u = self.p47_2(feats, gt_mask, epoch=self._current_epoch,
+                            img_mask=_img_mask, img_idx=self._img_idx)
+            if _u is not None:
+                aux['p47_2_uni'] = _u                  # pre-scaled (LAMBDA_U in module)
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
@@ -1071,21 +1224,93 @@ class ReliaDINO(nn.Module):
         return self._last_p43_out
 
     @torch.no_grad()
+    def _m2f_forward_out(self, batched_input: List[torch.Tensor]):
+        """[PQ] One eval forward with the M2F query output captured; returns the
+        raw head dict {'cls','masks','membed',...}.
+
+        Deliberately routed through `self.forward()` rather than through
+        `extract_m2f_output()`: forward is the only path that applies the CEFR
+        two-pass blend, so a hand-rolled encoder->fusion->head replay would
+        silently score a DIFFERENT feature map than the semantic evaluation on
+        any CEFR-enabled config. Nothing about the semantic output changes —
+        `_m2f_capture` only makes forward keep a reference it already built.
+        """
+        if self.m2f is None:
+            raise RuntimeError("[PQ] MODEL.M2F.ENABLE is off — no query head")
+        if self.training:
+            raise RuntimeError("[PQ] call model.eval() first")
+        prev = self._m2f_capture
+        self._m2f_capture = True
+        try:
+            self.forward(batched_input, True)
+        finally:
+            self._m2f_capture = prev
+        out = self._last_m2f_out
+        self._last_m2f_out = None          # don't pin the tensors after the read
+        if out is None:                    # unreachable unless forward changes
+            raise RuntimeError("[PQ] M2F output was not captured by forward()")
+        return out
+
+    def _resolve_thing_ids(self, thing_ids: Optional[Sequence[int]]) -> List[int]:
+        """Explicit argument > MODEL.P43.THING_IDS > the Cityscapes/MUSES
+        default. There is NO defensible default for a 25-class DELIVER model
+        (DELIVER ships no panoptic protocol), so that case must be explicit."""
+        if thing_ids is not None:
+            return [int(t) for t in thing_ids]
+        if self.p43_thing_ids:
+            return [int(t) for t in self.p43_thing_ids]
+        if self.num_classes == len(CITYSCAPES_TRAINIDS):
+            return list(CITYSCAPES_THING_TRAINIDS)
+        raise ValueError(
+            f"[PQ] no thing_ids: the model has {self.num_classes} classes, which "
+            "is not the 19-class Cityscapes/MUSES trainId space. Pass thing_ids "
+            "explicitly (or set MODEL.P43.THING_IDS).")
+
+    @torch.no_grad()
     def panoptic_inference(self, batched_input: List[torch.Tensor],
                            thing_ids: Optional[Sequence[int]] = None,
                            obj_thresh: float = 0.8, overlap_thresh: float = 0.8,
-                           size: Optional[Sequence[int]] = None):
+                           size: Optional[Sequence[int]] = None,
+                           crop: Optional[Sequence[int]] = None,
+                           crop_size: Optional[Sequence[int]] = None):
         """PQ path: list of (panoptic_seg (h,w) int32, segments_info).
 
-        `thing_ids` defaults to MODEL.P43.THING_IDS (Cityscapes/MUSES trainIds
-        11..18); everything else is treated as stuff and merged per class.
-        `size` = (H,W) to emit at label resolution.
+        Dispatches on the head that is actually built:
+          * MODEL.P43.M2F_HEAD on  -> the P43 MaskClsHead (unchanged behaviour)
+          * else MODEL.M2F.ENABLE  -> the P38/P39 MaskQueryLiteHead — this is
+            what the P39.1-rank production checkpoints carry, so it is the path
+            that makes their PQ measurable at all.
+          * neither                -> RuntimeError (a per-pixel head cannot
+            produce instances; failing loud beats reporting a fabricated PQ).
+
+        `thing_ids` defaults to MODEL.P43.THING_IDS, else Cityscapes/MUSES
+        trainIds 11..18; everything else is stuff and merged per class.
+        `size` = (H,W) to emit at label resolution. `crop`/`crop_size`
+        un-letterbox first (M2F path only — see the head docstring); they are
+        the geometry from tools/eval_muses_official.letterbox_valid_box.
         """
-        out = self._p43_forward_out(batched_input)
-        ids = self.p43_thing_ids if thing_ids is None else thing_ids
-        return self.p43.panoptic_inference(
-            out, ids, obj_thresh=obj_thresh, overlap_thresh=overlap_thresh,
-            size=(tuple(size) if size is not None else None))
+        if self.p43 is not None:
+            if crop is not None or crop_size is not None:
+                raise NotImplementedError(
+                    "[PQ] crop/crop_size (un-letterboxing) is implemented on the "
+                    "M2F path only; the P43 head keeps its 2026-07-25 behaviour.")
+            out = self._p43_forward_out(batched_input)
+            ids = self.p43_thing_ids if thing_ids is None else thing_ids
+            return self.p43.panoptic_inference(
+                out, ids, obj_thresh=obj_thresh, overlap_thresh=overlap_thresh,
+                size=(tuple(size) if size is not None else None))
+        if self.m2f is not None:
+            out = self._m2f_forward_out(batched_input)
+            return self.m2f.panoptic_inference(
+                out, self._resolve_thing_ids(thing_ids),
+                obj_thresh=obj_thresh, overlap_thresh=overlap_thresh,
+                size=(tuple(size) if size is not None else None),
+                crop=(tuple(crop) if crop is not None else None),
+                crop_size=(tuple(crop_size) if crop_size is not None else None))
+        raise RuntimeError(
+            "[PQ] no mask-classification head is active (MODEL.P43.M2F_HEAD and "
+            "MODEL.M2F.ENABLE are both off). This model is per-pixel only and "
+            "cannot produce panoptic segments — PQ is structurally undefined.")
 
     @torch.no_grad()
     def semantic_from_queries(self, batched_input: List[torch.Tensor],
@@ -1176,11 +1401,22 @@ class ReliaDINO(nn.Module):
                         modal_feats=feats if self.m2f.use_modal_src else None)
 
 
-def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
-    """Map a training-config dict (configs/*_P34_reliadino.yaml) to ReliaDINO."""
+def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
+    """Map a training-config dict (configs/*_P34_reliadino.yaml) to ReliaDINO.
+
+    [P49-AIR] `MODEL.P49.ENABLE: true` 면 별도 클래스(p49.P49AIR)로 분기한다 —
+    P49는 융합 트렁크 자체가 없어 ReliaDINO의 인자 표면에 얹을 수 없다. 키가
+    없으면 이 분기는 존재하지 않는 것과 같다(기존 모델 경로 완전 무변경).
+    import 는 여기서 지역으로 한다 — p49 가 이 모듈의 FPNSegHead 를 재사용하므로
+    모듈 최상단에서 임포트하면 순환한다.
+    """
     mc = cfg['MODEL']
+    if (mc.get('P49', {}) or {}).get('ENABLE', False):
+        from .p49 import build_p49
+        return build_p49(cfg, num_classes)
     fus = mc.get('FUSION', {}) or {}
     ab = fus.get('ATTN_BIAS', {}) or {}
+    fus_xa = fus.get('XATTN', {}) or {}      # [A/B trunk] FUSION.TRUNK: xattn 옵션
     gate = mc.get('GATE', {}) or {}
     veto = gate.get('VETO_FLOOR', {}) or {}
     cal = mc.get('CALIBRATION', {}) or {}
@@ -1206,6 +1442,10 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
     p46_c3 = p46.get('C3_PROTO', {}) or {}             #   C-3 prototype consistency
     #   C-1(RCS 샘플러)·C-2(EMA teacher masked consistency)는 모델이 아니라
     #   학습 루프의 결선이다 → train_reliadino.py가 MODEL.P46.C1_RCS/C2_MCC를 읽는다.
+    p47_2 = mc.get('P47_2', {}) or {}                  # [P47-2] Uni-modal Balance (구 D-2)
+    #   OGM_GE(gradient 변조)는 optimizer step 결선이라 train_reliadino.py가
+    #   MODEL.P47_2.OGM_GE를 직접 읽는다 (여기서는 head/손실만 만든다).
+    cmlc = mc.get('CMLC', {}) or {}                    # [P51] block-경계 cross-modal coupling
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -1280,6 +1520,12 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p39_trunk_exp=p39.get('TRUNK_EXP', False),
         p39_trunk_mode=p39.get('TRUNK_MODE', 'linear'),
         p39_trunk_hidden=p39.get('TRUNK_HIDDEN', 256),
+        fusion_trunk=fus.get('TRUNK', 'gated_mlp'),
+        xattn_layers=fus_xa.get('LAYERS', 1),
+        xattn_heads=fus_xa.get('NUM_HEADS', 8),
+        xattn_mlp_ratio=fus_xa.get('MLP_RATIO', 4.0),
+        xattn_ls_init=fus_xa.get('LS_INIT', 1.0),
+        xattn_gamma_init=fus_xa.get('GAMMA_INIT', 0.1),
         p39_arbiter=p39.get('ARBITER', False),
         p39_path_dropout_p=p39.get('PATH_DROPOUT_P', 0.25),
         p39_router_ce_w=p39.get('ROUTER_CE_W', 0.4),
@@ -1348,6 +1594,14 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         p46_proto_temp=p46_c3.get('TEMPERATURE', 0.1),
         p46_proto_pixels=p46_c3.get('PIXELS', 4096),
         p46_proto_warmup_ep=p46_c3.get('WARMUP_EP', 5),
+        p47_2_unibal=p47_2.get('ENABLE', False),
+        p47_2_lambda_u=p47_2.get('LAMBDA_U', 0.4),
+        p47_2_modals=p47_2.get('MODALS', 'all'),
+        p47_2_head=p47_2.get('HEAD', 'linear'),
+        p47_2_hidden=p47_2.get('HIDDEN', 256),
+        p47_2_warmup_ep=p47_2.get('WARMUP_EP', 0),
+        p47_2_gt_div=p47_2.get('GT_DIV', 4),
+        p47_2_reduce=p47_2.get('REDUCE', 'mean'),
         p45_fogstyle=p45_fs.get('ENABLE', False),
         p45_prob=p45_fs.get('PROB', 0.5),
         p45_sigma=p45_fs.get('SIGMA', 0.5),
@@ -1366,4 +1620,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> ReliaDINO:
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),
         modal_dropout_warmup_ep=mdrop.get('WARMUP_EP', 20),
+        cmlc_enable=cmlc.get('ENABLE', False),                              # [P51]
+        cmlc_layers=tuple(cmlc.get('COUPLE_LAYERS', (6, 12, 18))),
+        cmlc_rank=cmlc.get('RANK', 16),
     )

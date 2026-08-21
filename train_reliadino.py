@@ -46,10 +46,12 @@ except ImportError:
 
 from semseg.augmentations_mm import get_train_augmentation, get_val_augmentation
 from semseg.datasets import *                                    # noqa: F401,F403
-from semseg.losses import get_loss
+from semseg.losses import OhemCrossEntropy, get_loss
 from semseg.metrics import Metrics
 from semseg.models.reliadino import build_reliadino
 from semseg.models.reliadino import p46 as P46
+from semseg.models.reliadino import p47 as P47
+from semseg.models.reliadino.p50 import load_pretrained_adapters   # [P50-MAP]
 from semseg.models.reliadino.mmpareto import MMPareto
 from semseg.optimizers import get_optimizer
 from semseg.schedulers import get_scheduler
@@ -85,6 +87,17 @@ def evaluate(model, dataloader, device, dist_sync=False):
     return acc, macc, f1, mf1, ious, miou
 
 
+def _atomic_save(obj, path):
+    """[ISSUE-030 fix] torch.save는 대상 경로에 직접 쓴다 — 저장 도중 사망(preempt/
+    OOM/SIGKILL)하면 파일이 잘린 채 남아 그 이름을 신뢰하는 코드(AUTO_RESUME 등)가
+    깨진다. 같은 디렉터리의 임시 파일에 먼저 쓰고 os.replace로 교체한다(동일
+    파일시스템 내 rename은 원자적 — 중간 상태가 존재하지 않는다)."""
+    path = Path(path)
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
+
+
 def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
                              ckpt_dict, k=5):
     """Same naming/rotation as train_sam2_lora_paper._update_topk_checkpoints."""
@@ -98,13 +111,68 @@ def _update_topk_checkpoints(topk_list, new_miou, new_epoch, save_dir, prefix,
     for rank, (miou, ep) in enumerate(topk_list, 1):
         target = save_dir / f"{prefix}epoch{ep}_{miou}_top{rank}_checkpoint.pth"
         if (miou, ep) == (new_miou, new_epoch):
-            torch.save(ckpt_dict, target)
+            _atomic_save(ckpt_dict, target)
         else:
             for old_f in save_dir.glob(f"{prefix}epoch{ep}_{miou}_top*_checkpoint.pth"):
                 if old_f != target:
                     old_f.rename(target)
                     break
     return topk_list
+
+
+def _p49_llrd_groups(model, lr: float, decay: float,
+                     backbone_prefix: str = 'encoder.backbone'):
+    """[P49-A1] layer-wise LR decay 파라미터 그룹.
+
+    A1이 백본을 통째로 푼다(≈300M trainable). 전 층에 같은 LR을 주면 저층의
+    사전학습 표현이 초반 warmup에서 지워진다 — DINOv3/BEiT/ViT-Adapter 계열의
+    표준 처방이 layer-wise LR decay다. 깊이 i 층의 LR = lr · decay^(L+1−i).
+
+    층 인덱스는 **파라미터 이름**에서 읽는다:
+      `<prefix>.blocks.<i>.…`            -> i + 1
+      `<prefix>.` 의 나머지(patch_embed / cls_token / pos_embed / reg_token / rope …)
+                                          -> 0   (가장 깊은 감쇠)
+      백본 밖(보조 인코더 / injector / FPN / head / γ)   -> L + 1 (감쇠 없음, lr 그대로)
+    즉 신규 모듈은 항상 full lr 이고 백본만 깎인다. `p.dim() == 1` (norm/bias/γ)은
+    weight decay 0 — semseg.optimizers.get_optimizer 와 같은 규약이다.
+
+    이 함수는 P49 + RGB_FT + OPTIMIZER.LLRD 가 모두 켜졌을 때만 호출된다.
+    """
+    core = model.module if hasattr(model, 'module') else model
+    bb = core
+    for part in backbone_prefix.split('.'):
+        bb = getattr(bb, part, None)
+        if bb is None:
+            raise RuntimeError(f"[P49-LLRD] '{backbone_prefix}' 를 찾지 못했다 — "
+                               f"P49ViTEncoder 레이아웃이 바뀌었는지 확인하라")
+    n_layers = len(bb.blocks)
+    top = n_layers + 1
+
+    def layer_id(name: str) -> int:
+        if not name.startswith(backbone_prefix + '.'):
+            return top
+        rest = name[len(backbone_prefix) + 1:]
+        if rest.startswith('blocks.'):
+            try:
+                return int(rest.split('.')[1]) + 1
+            except (IndexError, ValueError):
+                return top
+        return 0
+
+    buckets = {}
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        lid = layer_id(name)
+        key = (lid, p.dim() == 1)
+        buckets.setdefault(key, []).append(p)
+    groups = []
+    for (lid, no_decay), params in sorted(buckets.items()):
+        g = {'params': params, 'lr': lr * (decay ** (top - lid))}
+        if no_decay:
+            g['weight_decay'] = 0.0
+        groups.append(g)
+    return groups
 
 
 def main(cfg, gpu, save_dir, logger):
@@ -131,6 +199,11 @@ def main(cfg, gpu, save_dir, logger):
     ds_kwargs = {}
     if dataset_cfg.get('NAME') == 'MUSES':
         ds_kwargs['proj_dir'] = dataset_cfg.get('PROJ_DIR', 'projected_to_rgb')
+        # MUSES-only knob (조건-전문가 oracle 프로브): train/val 을 하나의 조건
+        # 셀로 제한한다. 'fog_night' 같은 조합 또는 'fog'/'night' 단일 축.
+        # 미지정(기본)이면 기존과 완전히 동일 — 전 조건 학습.
+        if dataset_cfg.get('CASE'):
+            ds_kwargs['case'] = dataset_cfg['CASE']
     trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
     valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
     testset = None
@@ -144,6 +217,12 @@ def main(cfg, gpu, save_dir, logger):
 
     # ── model ───────────────────────────────────────────────────────────────
     model = build_reliadino(cfg, num_classes)
+    # [P50-MAP] 정렬 사전학습 어댑터(LoRA+융합+트렁크+FPN) 초기화 로드.
+    # MODEL.PRETRAINED_ADAPTERS 키가 없으면 no-op = 기존 config 전부 무영향.
+    # RESUME 보다 **앞**이다 — 재개 ckpt 가 있으면 그쪽이 최종적으로 덮어쓴다.
+    _p50 = load_pretrained_adapters(model, model_cfg, verbose=is_rank0)
+    if _p50 and is_rank0:
+        logger.info(f"[P50-MAP] PRETRAINED_ADAPTERS 로드: {_p50}")
     if train_cfg.get('GRADIENT_CHECKPOINT', False):
         model.set_grad_checkpointing(True)
         print("Encoder gradient checkpointing enabled")
@@ -163,8 +242,20 @@ def main(cfg, gpu, save_dir, logger):
     resume_path = model_cfg.get('RESUME_PATH', '')
     if model_cfg.get('RESUME_ENABLE', False) and resume_path and os.path.isfile(resume_path):
         resume_checkpoint = torch.load(resume_path, map_location='cpu')
-        model.load_state_dict(resume_checkpoint['model_state_dict'], strict=False)
-        print(f"Resumed weights from {resume_path} (epoch {resume_checkpoint.get('epoch', 0)})")
+        _ld = model.load_state_dict(resume_checkpoint['model_state_dict'], strict=False)
+        print(f"Resumed weights from {resume_path} (epoch {resume_checkpoint.get('epoch', 0)}) "
+              f"missing={len(_ld.missing_keys)} unexpected={len(_ld.unexpected_keys)}")
+        if _ld.missing_keys:
+            print(f"  missing[:8]={_ld.missing_keys[:8]}")
+        if _ld.unexpected_keys:
+            print(f"  unexpected[:8]={_ld.unexpected_keys[:8]}")
+        # FINETUNE_INIT: 가중치만 가져오고 optimizer/scheduler/epoch 카운터는 초기화한다.
+        # 수렴한 ckpt에서 짧게 미세조정할 때(조건-전문가 프로브) 필요 — 그냥 RESUME 하면
+        # start_epoch 과 거의 소진된 LR 스케줄까지 복원돼 전문화가 일어나지 않는다.
+        # ⚠️ AUTO_RESUME 과 같이 켜지 말 것 (크래시 후 epoch 0 으로 되돌아가 무한 재시작).
+        if model_cfg.get('FINETUNE_INIT', False):
+            resume_checkpoint = None
+            print("[FINETUNE_INIT] weights only — optimizer/scheduler/epoch reset to fresh")
 
     # ── optim / sched / loaders / amp ───────────────────────────────────────
     purposed_batch_size = 16
@@ -173,11 +264,38 @@ def main(cfg, gpu, save_dir, logger):
     iters_per_epoch = len(trainset) // (train_cfg['BATCH_SIZE'] * world_size)
 
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
+    # [P49-A5] OHEM CE 옵션. `LOSS.OHEM` 이 없으면 위 get_loss 결과 그대로 =
+    # 기존 경로 완전 무변경. (`LOSS.NAME: OhemCrossEntropy` 로도 켤 수 있지만
+    # 그 경로는 thresh/min_kept 를 노출하지 않아 표준값 고정이 불가능하다.)
+    if loss_cfg.get('OHEM', False):
+        loss_fn = OhemCrossEntropy(trainset.ignore_label, None,
+                                   thresh=float(loss_cfg.get('OHEM_THRESH', 0.7)),
+                                   min_kept=int(loss_cfg.get('OHEM_MIN_KEPT', 100000)))
+        if is_rank0:
+            logger.info(f"[LOSS] OHEM CE on — thresh={loss_cfg.get('OHEM_THRESH', 0.7)} "
+                        f"min_kept={loss_cfg.get('OHEM_MIN_KEPT', 100000)}")
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)
     lambda_aux_ce = (model_cfg.get('FUSION', {}) or {}).get('AUX_CE_WEIGHT', 0.5)
     # [P37b] class-token aux CE weight (only produced when CLASS_TOKEN.ENABLE)
     lambda_ctd = (model_cfg.get('CLASS_TOKEN', {}) or {}).get('AUX_CE_W', 0.4)
-    optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
+    # [P49-A1] layer-wise LR decay. P49 + RGB_FT + 유효한 LLRD 셋이 전부 켜졌을
+    # 때만 다른 경로를 탄다 — 그 외에는 아래 get_optimizer 한 줄로 기존과 동일.
+    _p49_cfg = (model_cfg.get('P49', {}) or {})
+    _llrd = float(optim_cfg.get('LLRD', 0) or 0)
+    if _p49_cfg.get('ENABLE', False) and _p49_cfg.get('RGB_FT', True) and 0.0 < _llrd < 1.0:
+        _groups = _p49_llrd_groups(model, lr, _llrd)
+        if str(optim_cfg['NAME']).lower() == 'adamw':
+            optimizer = torch.optim.AdamW(_groups, lr, betas=(0.9, 0.999), eps=1e-8,
+                                          weight_decay=optim_cfg['WEIGHT_DECAY'])
+        else:
+            optimizer = torch.optim.SGD(_groups, lr, momentum=0.9,
+                                        weight_decay=optim_cfg['WEIGHT_DECAY'])
+        if is_rank0:
+            _lrs = sorted({g['lr'] for g in _groups})
+            logger.info(f"[P49-A1] LLRD on — decay={_llrd} groups={len(_groups)} "
+                        f"lr range [{_lrs[0]:.3e}, {_lrs[-1]:.3e}]")
+    else:
+        optimizer = get_optimizer(model, optim_cfg['NAME'], lr, optim_cfg['WEIGHT_DECAY'])
     # [P35/T1 seam] LoRA up-projection(b_q/b_v) Frobenius norm cap — ep140 진단에서
     # blocks.1 depth-q ‖dW‖ 606(ep40 대비 36×) 폭주 관찰(리뷰 리스크). 기본 0=off.
     lora_norm_cap = float(train_cfg.get('LORA_NORM_CAP', 0) or 0)
@@ -330,6 +448,11 @@ def main(cfg, gpu, save_dir, logger):
 
     modals = dataset_cfg['MODALS']
     _core = model.module if hasattr(model, 'module') else model
+    # [P49] P49AIR 에는 융합 트렁크(`fusion`)가 없다 — 아래 RBMA/gate/router 로깅은
+    # 이 핸들이 None 이면 통째로 꺼진다. ReliaDINO 계보에서는 `_core.fusion` 과
+    # 동일한 객체라 동작이 바뀌지 않는다.
+    _fusion = getattr(_core, 'fusion', None)
+    _p49_core = _core if hasattr(_core, 'gamma_log') else None
 
     # ── [P46-CTR] C-2 (Masked-Context Consistency) + C-3 2-view 보조 branch ──
     # 보조 branch = 주 forward와 **같은 배치**를 (선택적으로) 스타일 변주 →
@@ -390,6 +513,40 @@ def main(cfg, gpu, save_dir, logger):
     # 로그상 ep6(=epoch 5) iter0이 보조 branch가 **최초로** 도는 지점이다.
     p46_mem_log = int(os.environ.get('P46_MEM_LOG', '0'))
 
+    # ── [P47-2] Uni-modal Balance (구 D-2) ──────────────────────────────────
+    # 손실(per-modal uni-modal CE)은 model이 만들어 aux['p47_2_uni']로 내려보낸다
+    # (pre-scaled). 여기서는 **로깅**과, 선택 토글인 **OGM-GE gradient 변조**만
+    # 결선한다 — 후자는 optimizer step 결선이라 모델 안에 있을 수 없다.
+    _p47_2 = (model_cfg.get('P47_2', {}) or {})
+    _ogm_cfg = (_p47_2.get('OGM_GE', {}) or {})
+    p47_2_on = bool(_p47_2.get('ENABLE', False))
+    p47_2_ogm = None
+    if p47_2_on and is_rank0:
+        _act = [modals[i] for i in _core.p47_2.active]
+        logger.info(f"[P47-2] uni-modal balance on — lambda_u={_core.p47_2.lambda_u} "
+                    f"modals={_act} head={_p47_2.get('HEAD', 'linear')} "
+                    f"reduce={_core.p47_2.reduce} gt_div={_core.p47_2.gt_div} "
+                    f"warmup_ep={_core.p47_2.warmup_ep} "
+                    f"params={sum(p.numel() for p in _core.p47_2.parameters())/1e3:.1f}K")
+    if _ogm_cfg.get('ENABLE', False):
+        if not p47_2_on:
+            raise RuntimeError("[P47-2] OGM_GE는 P47_2.ENABLE 없이는 쓸 수 없다 "
+                               "(per-modal 점수의 출처가 uni-modal aux head다)")
+        if ((model_cfg.get('P44', {}) or {}).get('MMPARETO', {}) or {}).get('ENABLE', False):
+            # 둘 다 optimizer step 직전에 p.grad를 재작성한다 → 결합 의미가 미정의.
+            raise RuntimeError("[P47-2] OGM_GE와 P44.MMPARETO는 동시에 켤 수 없다 "
+                               "(둘 다 gradient를 재작성한다).")
+        p47_2_ogm = P47.OGMGE(_core, num_modalities=len(modals),
+                              alpha=float(_ogm_cfg.get('ALPHA', 0.5)),
+                              ema=float(_ogm_cfg.get('EMA', 0.9)),
+                              min_k=float(_ogm_cfg.get('MIN_K', 0.1)),
+                              ge_noise=float(_ogm_cfg.get('GE_NOISE', 0.0)))
+        if is_rank0:
+            logger.info(f"[P47-2] OGM-GE on — alpha={p47_2_ogm.alpha} "
+                        f"ema={p47_2_ogm.ema} min_k={p47_2_ogm.min_k} "
+                        f"ge_noise={p47_2_ogm.ge_noise} "
+                        f"modulated LoRA tensors={len(p47_2_ogm.params)}")
+
     # ── [P44-B1] MMPareto gradient 통합 ─────────────────────────────────────
     # OFF(기본)면 mmpareto is None → 아래 학습 루프의 optimizer 경로는 기존과
     # 완전히 동일하다(단일 backward + scaler.step). ON이면 micro-step마다 주
@@ -430,6 +587,11 @@ def main(cfg, gpu, save_dir, logger):
         # [P46-CTR] C-2 consistency / C-3 prototype 손실 + pseudo-label 통과율
         mcc_accum = proto_accum = xview_accum = 0.0
         mcc_rate_sum = 0.0; mcc_rate_n = 0
+        # [P47-2] uni-modal balance: 손실 + 모달별 CE/정확도 + OGM 계수
+        uni_accum = 0.0
+        uni_ce_sum = np.zeros(len(modals)); uni_acc_sum = np.zeros(len(modals))
+        uni_n = np.zeros(len(modals))
+        ogm_k = None
         pareto_stats = []
         window_pareto = False
         rca_picked = rca_seen = 0
@@ -477,11 +639,13 @@ def main(cfg, gpu, save_dir, logger):
                     p44_hard = aux.get('p44_hard_aux', _zero)   # [P44-M3] pre-scaled (model)
                     p45_sty = aux.get('p45_fogstyle', _zero)    # [P45-F1] pre-scaled (model)
                     p46_proto = aux.get('p46_proto', _zero)     # [P46-C3] pre-scaled (LAMBDA in model)
+                    p47_uni = aux.get('p47_2_uni', _zero)       # [P47-2] pre-scaled (LAMBDA_U in model)
                     total = (loss_seg + lambda_cal * cal_loss
                              + lambda_aux_ce * aux_ce + gate_ent + router_reg
                              + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
                              + vicreg + rca_ce + fcr + p43_mask
-                             + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto)
+                             + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto
+                             + p47_uni)
 
                     # ── [P46-C2/C3] 보조 branch (스타일 2-view → 패치 마스킹) ──
                     # ⚠️ DDP: 같은 iteration의 2번째 forward. 두 forward의
@@ -568,7 +732,16 @@ def main(cfg, gpu, save_dir, logger):
                     del _gm, _ga
                 else:
                     scaler.scale(loss).backward()
+            if p47_2_ogm is not None:
+                # [P47-2] micro-step마다 per-modal uni-modal 정확도를 적재
+                # (BS1에서 스텝별 값이 요동치므로 step 경계에서 평균 + EMA한다).
+                p47_2_ogm.observe(_core.p47_2.last_acc)
             if (it + 1) % accumulation_steps == 0:
+                if p47_2_ogm is not None:
+                    # 🔴 순서: backward가 끝나(=DDP all-reduce 완료) p.grad가 확정된
+                    # **뒤**, optimizer.step() **전**. AMP GradScaler의 스케일은
+                    # 상수배와 교환 가능하므로 unscale_ 없이 안전하다.
+                    ogm_k = p47_2_ogm.apply_()
                 if window_pareto:
                     _st = mmpareto.combine()      # allreduce → Pareto 결합 → p.grad
                     pareto_stats.append(_st)
@@ -622,6 +795,13 @@ def main(cfg, gpu, save_dir, logger):
             mcc_accum += float(p46_cons)    # [P46-C2] pre-scaled
             proto_accum += float(p46_proto)  # [P46-C3] pre-scaled (주 view)
             xview_accum += float(p46_xv)    # [P46-C3] pre-scaled (2-view)
+            uni_accum += float(p47_uni)     # [P47-2] pre-scaled (LAMBDA_U in model)
+            if p47_2_on:
+                for _mi, (_c, _a) in enumerate(zip(_core.p47_2.last_ce,
+                                                   _core.p47_2.last_acc)):
+                    if _c is None:
+                        continue
+                    uni_ce_sum[_mi] += _c; uni_acc_sum[_mi] += _a; uni_n[_mi] += 1
             if p46_class_ema is not None and (it % p46_ema_interval == 0):
                 # [P46-C1] 런타임 per-class 난이도 = 내부신호. 샘플러가 다음
                 # refresh 때 이 EMA를 읽어 고-loss 클래스를 추가 up-weight 한다.
@@ -638,13 +818,13 @@ def main(cfg, gpu, save_dir, logger):
             if getattr(_core, '_rca_pick', None) is not None:
                 rca_picked += int(_core._rca_pick.sum())
             rca_seen += lbl.shape[0]
-            if _core.fusion._last_rel_auroc is not None:
-                auroc_rows.append(_core.fusion._last_rel_auroc)
-            if _core.fusion._last_gate_mean is not None:
-                gate_rows.append(_core.fusion._last_gate_mean.cpu().tolist())
-            if getattr(_core.fusion, '_last_router_mean', None) is not None:
-                router_rows.append(_core.fusion._last_router_mean.tolist())
-            _cefr = getattr(_core.fusion, 'cefr', None)     # [P37a]
+            if _fusion is not None and _fusion._last_rel_auroc is not None:
+                auroc_rows.append(_fusion._last_rel_auroc)
+            if _fusion is not None and _fusion._last_gate_mean is not None:
+                gate_rows.append(_fusion._last_gate_mean.cpu().tolist())
+            if getattr(_fusion, '_last_router_mean', None) is not None:
+                router_rows.append(_fusion._last_router_mean.tolist())
+            _cefr = getattr(_fusion, 'cefr', None)          # [P37a]
             if _cefr is not None and _cefr._last_w_mean is not None:
                 cefr_rows.append(_cefr._last_w_mean.tolist())
             if is_rank0:
@@ -665,7 +845,7 @@ def main(cfg, gpu, save_dir, logger):
             # aux dict는 backward가 이미 saved tensor를 푼 그래프 노드들).
             # 여기서 명시적으로 끊는다 — 아래 통계는 전부 위에서 float로 뽑아 뒀다.
             del logits, m_feat, aux, total, loss
-            del p46_proto, p46_cons, p46_xv
+            del p46_proto, p46_cons, p46_xv, p47_uni
 
         train_loss /= (it + 1)
         avg_lr = scheduler.get_lr()
@@ -698,7 +878,7 @@ def main(cfg, gpu, save_dir, logger):
                             " ".join(f"{n}:{w:.3f}" for n, w in zip(modals, gbar)))
             if router_rows:
                 rbar = np.array(router_rows, dtype=np.float64).mean(axis=0)
-                alpha = float(_core.fusion.router_alpha.detach())
+                alpha = float(_fusion.router_alpha.detach())
                 for i, name in enumerate(modals[:len(rbar)]):
                     writer.add_scalar(f'p36/router_w_{name}', rbar[i], epoch)
                     log_extra[f'p36/router_w_{name}'] = float(rbar[i])
@@ -709,7 +889,7 @@ def main(cfg, gpu, save_dir, logger):
                             f" alpha:{alpha:.4f}")
             if cefr_rows:                                   # [P37a] CEFR monitoring
                 cbar = np.array(cefr_rows, dtype=np.float64).mean(axis=0)
-                sigma_a = float(getattr(_core.fusion.cefr, '_last_sigma_a', 0.0) or 0.0)
+                sigma_a = float(getattr(_fusion.cefr, '_last_sigma_a', 0.0) or 0.0)
                 for i, name in enumerate(modals[:len(cbar)]):
                     writer.add_scalar(f'p37/cefr_w_{name}', cbar[i], epoch)
                     log_extra[f'p37/cefr_w_{name}'] = float(cbar[i])
@@ -774,8 +954,8 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P44] ep{epoch} mask_rate={_mr44:.4f} "
                             f"(mode={_core.p44_mask_mode}, "
                             f"target_frac {getattr(_core, 'p44_mask_frac', 0):.2f})")
-            if getattr(_core.fusion, 'p44_mutual_kl', False) or \
-                    getattr(_core.fusion, 'p44_rel_corr', False):
+            if getattr(_fusion, 'p44_mutual_kl', False) or \
+                    getattr(_fusion, 'p44_rel_corr', False):
                 writer.add_scalar('train/p44_mutual_kl', mkl_accum / (it + 1), epoch)
                 writer.add_scalar('train/p44_rel_corr', rc_accum / (it + 1), epoch)
                 log_extra['train/p44_mutual_kl'] = mkl_accum / (it + 1)
@@ -826,6 +1006,36 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P46-C3] proto:{proto_accum / (it + 1):.4f} "
                             f"xview:{xview_accum / (it + 1):.4f} "
                             f"bank_cov:{float(_core.p46_proto._last_cov):.2f}")
+            if p47_2_on:
+                # [P47-2] 게이트 진단: per-modal acc가 **모달별로 갈라지는지**.
+                # 전부 붙어 있으면 uni-modal 압력이 안 걸린 것(λ_u 상향 검토),
+                # img만 홀로 치솟으면 여전히 RGB 지배(=modality laziness 잔존).
+                _uni = uni_accum / (it + 1)
+                writer.add_scalar('train/p47_2_uni', _uni, epoch)
+                log_extra['train/p47_2_uni'] = _uni
+                _n = np.maximum(uni_n, 1.0)
+                _ce = uni_ce_sum / _n
+                _acc = uni_acc_sum / _n
+                for i, name in enumerate(modals):
+                    if uni_n[i] == 0:
+                        continue
+                    writer.add_scalar(f'p47/uni_ce_{name}', _ce[i], epoch)
+                    writer.add_scalar(f'p47/uni_acc_{name}', _acc[i], epoch)
+                    log_extra[f'p47/uni_ce_{name}'] = float(_ce[i])
+                    log_extra[f'p47/uni_acc_{name}'] = float(_acc[i])
+                _seen = [i for i in range(len(modals)) if uni_n[i] > 0]
+                logger.info(
+                    f"[P47-2] uni_aux:{_uni:.4f} per-modal ce:" +
+                    " ".join(f"{modals[i]}:{_ce[i]:.3f}" for i in _seen) +
+                    " acc:" +
+                    " ".join(f"{modals[i]}:{_acc[i]:.3f}" for i in _seen) +
+                    (" | ogm k:" + " ".join(f"{modals[i]}:{ogm_k[i]:.3f}"
+                                            for i in range(len(modals)))
+                     if ogm_k is not None else ""))
+                if ogm_k is not None:
+                    for i, name in enumerate(modals):
+                        writer.add_scalar(f'p47/ogm_k_{name}', ogm_k[i], epoch)
+                        log_extra[f'p47/ogm_k_{name}'] = float(ogm_k[i])
             if pareto_stats:
                 # [P44-B1] 게이트② 진단: modal-aux gradient와 주 gradient의 내적
                 # 부호. lidar 그룹의 cos가 음수→양수로 전환하는지가 사전등록 지표.
@@ -849,6 +1059,28 @@ def main(cfg, gpu, save_dir, logger):
                     msg += " γ " + " ".join(f"{n}:{float(v):.3f}"
                                             for n, v in zip(modals, g))
                 logger.info(msg)
+            if _p49_core is not None:
+                # ── [P49-AIR] ep30 게이트① : γ 노름이 성장하는가 ──────────────
+                # γ≈0 정체면 보조 정보가 모델에 **한 번도 들어오지 않은** 것이다
+                # (키1 재발) → 즉시 중단 판정. 제안 §4 사전등록 지표.
+                _g = _p49_core.gamma_log()
+                for k, v in _g.items():
+                    writer.add_scalar(k, v, epoch)
+                    log_extra[k] = v
+                if getattr(_p49_core, 'vicreg', False):
+                    writer.add_scalar('train/vicreg', vic_accum / (it + 1), epoch)
+                    log_extra['train/vicreg'] = vic_accum / (it + 1)
+                if _g:
+                    _names = getattr(_p49_core, 'aux_names', [])
+                    logger.info(
+                        "[P49] |γ| mean:{:.4f} | ".format(_g.get('p49/gamma_mean', 0.0))
+                        + " ".join(
+                            f"{n}:" + "/".join(
+                                f"{_g.get(f'p49/gamma_b{b}_{n}', 0.0):.3f}"
+                                for b in range(getattr(_p49_core, 'num_blocks', 0)))
+                            + f"(pyr {_g.get(f'p49/gammapyr_{n}', 0.0):.3f})"
+                            for n in _names)
+                        + f" | vicreg:{vic_accum / (it + 1):.4f}")
             if getattr(_core, 'rca_enable', False):
                 # [P40] RCA 감쇠 채택률 + readout CE
                 rate = rca_picked / max(rca_seen, 1)
@@ -889,7 +1121,7 @@ def main(cfg, gpu, save_dir, logger):
                 if extra:
                     d.update(extra)
                 return d
-            torch.save(_ckpt(), save_dir / 'last_checkpoint.pth')
+            _atomic_save(_ckpt(), save_dir / 'last_checkpoint.pth')
 
         # ── eval every EVAL_INTERVAL epochs (val + test, per-class IoU) ──────
         do_eval = (((epoch + 1) % train_cfg['EVAL_INTERVAL'] == 0
@@ -991,12 +1223,24 @@ if __name__ == '__main__':
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
     cfg['_CFG_NAME'] = Path(args.cfg).stem
 
-    fix_seeds(3407)
+    # TRAIN.SEED — 진짜 시드 노브. 미지정이면 기존값 3407 그대로라 기존 런과 바이트 동일.
+    # ⚠️ 이걸 넣기 전까지 'seed2/seed3' 런은 시드가 실제로 달라진 적이 없다(3407 고정).
+    # MODEL.C3.SEED 는 C1 이 꺼져 있으면 inert 라서 시드 역할을 하지 못했다.
+    # 그 런들의 편차는 시드 분산이 아니라 GPU 비결정성만 반영한다 = 참 시드 분산의 하한.
+    _seed = cfg.get('TRAIN', {}).get('SEED', 3407)
+    fix_seeds(_seed)
+    print(f"[SEED] fix_seeds({_seed})")
     setup_cudnn()
     gpu = setup_ddp()
     modals = ''.join(m[0] for m in cfg['DATASET']['MODALS'])
     exp_name = '_'.join([cfg['DATASET']['NAME'], cfg['MODEL']['BACKBONE'], modals])
     save_dir = Path(cfg['SAVE_DIR'], exp_name)
+
+    # FINETUNE_INIT 는 epoch 카운터를 0 으로 되돌리므로 AUTO_RESUME 과 같이 켜면
+    # 크래시 때마다 처음부터 다시 시작하는 무한 루프가 된다. 기동 전에 막는다.
+    if cfg['MODEL'].get('FINETUNE_INIT', False) and cfg['MODEL'].get('AUTO_RESUME', False):
+        raise ValueError("MODEL.FINETUNE_INIT 과 MODEL.AUTO_RESUME 은 동시에 켤 수 없다 "
+                         "(FINETUNE_INIT 이 epoch 을 0 으로 되돌려 무한 재시작).")
 
     # AUTO_RESUME: same semantics as train_sam2_lora_paper.py
     if cfg['MODEL'].get('AUTO_RESUME', False) and not (

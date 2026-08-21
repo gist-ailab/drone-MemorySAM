@@ -300,3 +300,5 @@ tmp/
 # Restructure C0: repo hygiene additions
 outputs_model_explain/
 .wandb_key
+# watchdog run manifests / status / alerts (per-machine runtime state — never commit)
+.watchdog/

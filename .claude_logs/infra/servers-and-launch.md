@@ -6,6 +6,8 @@ moved: 2026-07-08
 
 # 13. 서버 레지스트리 & 원격 실험 자동 실행 (Servers & Remote Launch)
 
+> **2026-08-08 추가**: `servers.conf`에 6번째 `policy` 필드(`ban:1,2`/`off`) — GPU 예약·서버 제한은 여기에 기록하면 auto-pick과 명시적 지정 모두에 기계 강제된다. launch 성공 시 run이 워치독에 자동 등록되어 이후 감시(기동검증·stall·사망·완주)는 cron이 한다. 상세 = [watchdog.md](watchdog.md).
+
 > 이 문서는 "X 실험을 <서버>에서 돌려줘" 류의 지시를 AI가 자동 처리하기 위한 **운영 매뉴얼**이다.
 > 서버 메타데이터의 단일 출처(single source of truth)는 **`scripts/servers.conf`** 이고,
 > 실제 실행/추적은 **`scripts/remote_exp.sh`** 로 한다.

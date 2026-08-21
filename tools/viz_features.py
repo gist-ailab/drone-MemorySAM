@@ -40,15 +40,36 @@ import val as V  # reuse load_model / create_dataset / get_val_augmentation
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]); IMAGENET_STD = np.array([0.229, 0.224, 0.225])
 
-def denorm(t):
+def denorm(t, modal='img'):
+    """입력 텐서를 표시용 [0,1]로 되돌린다.
+
+    🔴 로더(`semseg/augmentations_mm.Normalize`)의 규약이 모달마다 다르다:
+      - 'img'          : /255 → ImageNet 정규화   → 역정규화 필요
+      - 그 외 전 모달  : /255 만                  → **이미 [0,1], 역정규화 금지**
+    (2026-08-05 수정) 이전 구현은 3채널이면 무조건 ImageNet 역정규화를 걸어,
+    depth/event/lidar가 [0.485,0.714] 폭 0.23의 균일 회색으로 뭉개졌다.
+    """
     a = t.detach().float().cpu().numpy()           # (C,H,W)
     a = np.transpose(a, (1, 2, 0))
-    if a.shape[2] == 3:
-        a = a * IMAGENET_STD + IMAGENET_MEAN
-    else:
-        a = a[..., :1]
-        a = (a - a.min()) / (a.max() - a.min() + 1e-8)
-    return np.clip(a, 0, 1)
+    if modal == 'img' and a.shape[2] == 3:
+        return np.clip(a * IMAGENET_STD + IMAGENET_MEAN, 0, 1)
+    if a.shape[2] == 1:
+        a = a[..., 0]
+    elif a.shape[2] > 3:
+        a = a[..., :3]
+    a = np.clip(a, 0, 1)
+    # 희소·저대비 모달(lidar 투영, event)은 [0,1] 안에서도 폭이 좁다 →
+    # 구조를 보이게 1–99% 스트레치. 원본 범위는 제목에 함께 표기한다.
+    lo, hi = float(np.percentile(a, 1)), float(np.percentile(a, 99))
+    if hi - lo > 1e-6:
+        a = np.clip((a - lo) / (hi - lo), 0.0, 1.0)
+    return a
+
+
+def raw_range(t):
+    """표시 전 원본 [min,max] (스트레치가 무엇을 늘렸는지 제목에 남기기 위함)."""
+    a = t.detach().float().cpu().numpy()
+    return float(a.min()), float(a.max())
 
 def pca_rgb(feat):                                  # feat (C,H,W) -> (H,W,3) in [0,1]
     C, H, W = feat.shape
@@ -160,7 +181,11 @@ def main():
             ax[r, c].imshow(img, cmap=cmap); ax[r, c].set_title(title, fontsize=8); ax[r, c].axis('off')
         # R1 inputs + GT/Pred/Error
         for i in range(m):
-            show(0, i, denorm(images[i]).squeeze(), f"in:{modals[i]}", cmap='gray' if denorm(images[i]).shape[-1]==1 else None)
+            vis = denorm(images[i], modals[i])
+            lo, hi = raw_range(images[i])
+            ttl = (f"in:{modals[i]}" if modals[i] == 'img'
+                   else f"in:{modals[i]}  [{lo:.2f},{hi:.2f}]→1-99%")
+            show(0, i, vis.squeeze(), ttl, cmap='gray' if vis.ndim == 2 else None)
         show(0, m,   ds_cls.decode_segmap(gt.astype(np.uint8), palette), "GT")
         show(0, m+1, ds_cls.decode_segmap(final_pred_r, palette), "Pred")
         show(0, m+2, err, "Error", cmap='Reds')

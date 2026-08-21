@@ -2,7 +2,7 @@
 
 > model-proposal 스킬 산출. **fable 딥리서치 3축**(기제·노벨티·물리/벤치) 병렬 조사 + 기존 분석 자산 교차. 판정·설계 = 이 세션(opus).
 
-> 🔴 **전장 정의 (user 확정 2026-08-03)**: 우리 메인 벤치 구성은 **4모달**이고 3모달은 ablation이다. DELIVER는 이미 4모달(img/depth/event/lidar, 현 SOTA test 57.05도 4모달)이나 **MUSES만 3모달(img/lidar/event)로 굳어져 있었다** — radar 4모달이 3모달보다 낮았기 때문(seed2 4모달 82.35 < 3모달 82.62, drop-radar +0.13). 본 제안은 그 결과를 **"radar 무익"이 아니라 "학습이 추가 모달을 살리지 못함"**으로 재해석하고, **4모달(img/lidar/event/radar)을 기준 구성으로** D-1·D-2를 검증한다. 3모달은 대조군.
+> 🔴 **전장 정의 (user 확정 2026-08-03)**: 우리 메인 벤치 구성은 **4모달**이고 3모달은 ablation이다. DELIVER는 이미 4모달(img/depth/event/lidar, 현 최고 test 55.7(legal, **정정 2026-08-04: 57.05는 test-best로 무효**)도 4모달)이나 **MUSES만 3모달(img/lidar/event)로 굳어져 있었다** — radar 4모달이 3모달보다 낮았기 때문(seed2 4모달 82.35 < 3모달 82.62, drop-radar +0.13). 본 제안은 그 결과를 **"radar 무익"이 아니라 "학습이 추가 모달을 살리지 못함"**으로 재해석하고, **4모달(img/lidar/event/radar)을 기준 구성으로** D-1·D-2를 검증한다. 3모달은 대조군.
 
 ## 0. 선행조건 충족 (§0.5)
 
@@ -24,9 +24,40 @@
 
 - 우리 주야격차 5.14는 **4모달 SOTA 대역 상단**(DGFusion 3.57 / CAFuser 5.12 / camera-only 9.6~11.7) — 이미 좋은 편. 잔여 헤드룸 ~1.6pt(전체 환산 +0.63).
 - **야간 개선은 전체 mIoU에 0.4배만 반영**(day:night=6:4). 격차 전소거해도 상한 +2.06.
-- 🔴 **모달 수 ↑ = 순위 ↓ 역상관 실재**: camera-only 82.39 > C+L 81.07 > 4모달 79.49. 우리 radar 무익(+0.13)과 정합.
+- ~~🔴 **모달 수 ↑ = 순위 ↓ 역상관 실재**: camera-only 82.39 > C+L 81.07 > 4모달 79.49.~~ **← 🔴 철회 (2026-08-04, §1.6 참조)**
 
-**기제 판정**: **modality laziness / greedy joint learning** — 융합 학습이 RGB uni-modal feature를 under-optimize시킨다. 이론 증명(2203.12221), 실증(1905.12681·2202.05306·2305.01233), 리더보드 역상관, 우리 radar/event 무기여가 모두 한 방향.
+**기제 판정**: **modality laziness / greedy joint learning** — 융합 학습이 RGB uni-modal feature를 under-optimize시킨다. 이론 증명(2203.12221), 실증(1905.12681·2202.05306·2305.01233), 우리 radar 손해(4모달 val 82.35/test 79.571 < 3모달 82.62/79.788)가 같은 방향. ⚠️ **단 "리더보드 역상관"은 근거에서 제외한다(§1.6).**
+
+### 1.6 🔴 정정 — "모달↑ = 성능↓"은 문헌에 의해 반박된다 (2026-08-04, 원문 검증)
+
+§1의 리더보드 역상관 논거는 **잘못된 추론**이었다. 그것은 **서로 다른 팀의 서로 다른 방법론 간 비교**이며, 모달 개수가 방법론 정체성과 교란되어 있다(GtA가 단지 더 강한 방법일 뿐). **통제된 within-method ablation은 정반대를 말한다** — arXiv 원문 직접 확인:
+
+| 출처 | 구성 | 결과 |
+|---|---|---|
+| **CAFuser Table IX** (2410.10791v2, MUSES test PQ) | RGB 55.7 → +L **58.7(+3.0)** → +R **59.3(+0.6)** → +E **59.7(+0.4)** | **단조 증가.** 캡션: *"Each added modality improves the PQ"* |
+| **DGFusion 본문** (2509.09828v3, MUSES PQ) | C+L 60.19 → **CLRE 61.03 (+0.84)** | 4모달 > 2모달 |
+| **DGFusion Table III** (DELIVER mIoU) | CLE 51.6 → **CLDE 56.7 (+5.1)** | 모달 추가로 대폭 상승 |
+
+⚠️ DGFusion은 **MUSES per-sensor ablation을 싣지 않았다**(Table IV/V는 아키텍처·loss만). "DGFusion도 3모달이 낫다"는 근거는 **존재하지 않는다**.
+
+**함의 (제안의 재정위)**:
+1. **"MUSES/벤치마크의 구조적 문제"라는 프레이밍은 쓸 수 없다.** 잘 융합하면 모달은 도움이 된다. P47-2의 노벨티 주장을 그 수준으로 올리지 말 것.
+2. 대신 문제는 **우리 모델 고유의 결함**으로 좁혀진다 — 이게 오히려 더 선명하고 **고칠 수 있는** 문제다. 기준선: CAFuser 기준 radar 증분은 **+0.6 PQ**여야 정상인데 우리는 **−0.217 mIoU**다.
+3. 🔴 **radar 기대치 재보정**: SOTA조차 lidar 위 radar는 **+0.6 PQ**뿐이다. radar에서 큰 이득을 기대한 설계는 애초에 비현실적이었다.
+
+### 1.7 🔴 SOTA의 조건별 융합 가중치 — 야간 폴백의 정답지 (CAFuser Fig.5)
+
+CAFuser가 학습한 **조건별 모달 가중치(%)** — 우리 야간 손해의 직접 대조군:
+
+| 조건 | RGB | Lidar | **Radar** | Events |
+|---|---|---|---|---|
+| Clear Day | 68 | 8 | **5** | 19 |
+| Fog Night | 48 | 18 | **7** | 27 |
+| **변화** | **−20** | **+10** | **+2** | **+8** |
+
+🔴 **radar는 전 조건에서 5~7%로 사실상 고정**이고, 야간 폴백은 **events(+8)·lidar(+10)** 로 간다. 즉 조건 인지 융합을 제대로 학습한 모델의 결론은 **"야간에도 radar를 믿지 마라"** 이다.
+
+우리는 야간 4/4 조건 전부 악화(`2026-08-04-muses-radar-night-harm.md`)이므로 **정반대로 라우팅하고 있을 가능성**이 높다. → **검증 항목 추가**: 4모달 런의 router 가중치(`_last_router_mean`)를 주/야로 분리 집계해 위 표와 대조한다. radar 가중치가 야간에 5~7%를 크게 넘으면 기제 확정.
 
 ### 1.5 🔴 자체 실측 확증 — C3 실패의 조건별 분해 (2026-08-03)
 
@@ -71,6 +102,28 @@ MUSES-C3(λ0.2, val 81.65@ep136 완주)와 base(P39.1-seed2)의 **조건별 차�
 - 구현: per-modal LoRA 출력 → 경량 linear head → CE(주 손실과 별도 가중 λ_u). **추론 시 aux head 미사용**(P46 C3와 동일한 학습전용 계약).
 - 선택 확장(토글): OGM-GE(2203.15332)식 on-the-fly gradient modulation — 모달별 학습속도 불균형 보정.
 - 근거: 리더보드 모달↑=순위↓ 역상관 + 우리 radar/event 무기여 + 이론(2203.12221). **RGB 본류 표현력(clear/day −4.4)을 직접 겨냥.**
+
+### 3.1 🔴 구현 중 발견 — base에 이미 per-modal aux CE가 있다 (2026-08-04, 코드검수)
+
+**발견**: `FUSION.AUX_CE_WEIGHT`(4모달 seed2 config에서 **0.5**)로 이미 모달별 aux decoder + CE가 돌고 있다 (`fusion.py:363` `self.aux_decoders`, `:551` `aux_logits = [self.aux_decoders[i](feats[i]) ...]`, `train_reliadino.py:178`). D-2 원안의 전제("uni-modal 감독이 없다")는 **부분적으로 틀렸다.**
+
+**그럼에도 P47-2가 별도 모듈로 성립하는 이유 — 코드로 확인한 3가지**:
+
+| # | 근거 | 확인 위치 |
+|---|---|---|
+| 1 | 🔴 **기존 aux head는 추론 경로에 있다.** P36 router가 `sum(w_route[i] * aux_logits[i])`를 **예측에 더한다**(주석: "train AND eval — the routed residual is part of the prediction"). 4모달 seed2는 `ROUTER.ENABLE: true`. ⇒ 그 head는 *uni-modal 표현력*이 아니라 *라우팅용 로짓 품질*도 동시에 최적화 중이며, **가중치를 올리면 추론 예측 자체가 바뀐다.** | `fusion.py:600-603` |
+| 2 | 기존 aux logits는 reliability 신호(`rel_cal`/`corr_veto`/`b_cons`)와 calibration loss의 **입력**이기도 하다 ⇒ 목적 3중 결합. | `fusion.py:558, 496, 658` |
+| 3 | 기존은 **모달 평균 고정**(`AUX_CE_WEIGHT/m`) ⇒ 4모달에서 모달당 0.125 균등. **"RGB에만 더 주기"가 표현 불가능**한데, 우리 진단은 정확히 RGB 편중을 요구한다. | `fusion.py` aux 합산부 |
+
+⇒ **P47-2 = 추론 불변(학습 전용) + 목적 단일(uni-modal 정확도만) + 모달별 가중 가능**한 별도 head. "λ만 올린 것"이 아니다.
+
+**대조군 설계 수정**: 당초 "`AUX_CE_WEIGHT` 0.5→1.0만 올린 대조군"을 두려 했으나, #1·#2 때문에 그것은 **깨끗한 대조군이 아니다**(router 잔차·reliability 신호가 함께 변함 = 교란). "순진한 경로가 충분한가"를 보는 값은 남으므로 **우선순위 3(여유 GPU 시)** 으로 격하하고, 해석 시 교란을 명시한다.
+
+**λ 캘리브레이션 주의**: `REDUCE: mean`이라 모달당 실효 가중 = `λ_u/4`. λ_u=0.4 → **0.1/모달**(기존 0.125보다 작다). 즉 `MODALS: all`·λ_u 0.4는 per-modal 압력을 0.125→0.225(**+80%**)로 올리는 **보수적** 설정이다. 진단(RGB 편중)을 **직접** 때리는 설정은 `MODALS: ['img']`이며, 이때 λ_u 전량이 RGB에 실려 0.4 = 기존 대비 **3.2×**.
+
+**실행 arm 우선순위(수정)**: ① `MODALS:['img']` λ_u 0.4 — 진단의 직접 검증(clear/day 게이트와 1:1 대응) ② `MODALS:all` λ_u 0.4 — 문헌 정합(balance) ③ `AUX_CE_WEIGHT` 1.0 대조군(교란 있음, 여유 시).
+
+**검수 결과(2026-08-04, opus)**: conventions 준수(`p47.py` 신규 360줄 + 스모크 365줄, 결선만 model.py/train_reliadino.py) · 추론 게이팅 `self.training and gt_mask is not None`(`model.py:1067`) · **추가 forward 없음**(같은 forward의 feats 재사용 ⇒ ISSUE-028 무관) · off면 `self.p47_2 is None`(DELIVER 무영향) · config 1-변수 확인(base 대비 `SAVE_DIR`+`P47_2` 블록만) · 메모리 +51.7MiB/step. **판정: 병합 가능.** 등가성 `|Δ|max=0`·키1 grad 도달은 labcode 스모크 자체보고 → ep30 즉검의 **per-modal acc 분화**로 재확인한다.
 
 ## 4. 게이트 사전등록 (🔴 4모달 기준 재설정, 2026-08-03)
 

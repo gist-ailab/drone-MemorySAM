@@ -1160,6 +1160,26 @@ def _collate_fn(batch):
 # ============================================================================
 
 @torch.no_grad()
+def _pad_rows_to_same_width(row1, row2):
+    """[2026-08-05] seg_viz 행 폭 정합.
+
+    row1 은 모달 수 × W, row2 는 항상 3 × W 라 모달이 3개가 아니면 폭이 어긋나
+    np.concatenate 가 죽는다. save_dir 는 기본값이 ckpt 옆 경로라 항상 설정되므로
+    **4모달 DELIVER 는 val.py 평가(val/test 양쪽)가 100% 실패했다.**
+    넓은 쪽 폭에 맞춰 좁은 행의 오른쪽을 0 으로 패딩한다. 3모달은 무변경.
+    """
+    w = max(row1.shape[1], row2.shape[1])
+
+    def _pad(a):
+        if a.shape[1] >= w:
+            return a
+        pad = np.zeros((a.shape[0], w - a.shape[1]) + a.shape[2:], dtype=a.dtype)
+        return np.concatenate([a, pad], axis=1)
+
+    return _pad(row1), _pad(row2)
+
+
+@torch.no_grad()
 def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modals=None,
              gamma_list=None, detailed=False, tta_flip=False):
     model.eval()
@@ -1321,6 +1341,8 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
                         row1 = np.concatenate(raw_modals, axis=1)
                         legend_img = _draw_legend(classes, palette, orig_h, orig_w)
                         row2 = np.concatenate([legend_img, colored, overlay], axis=1)
+                        # [2026-08-05] 폭 불일치 방지 (4모달 DELIVER 크래시).
+                        row1, row2 = _pad_rows_to_same_width(row1, row2)
                         viz = np.concatenate([row1, row2], axis=0)
                         viz_bottom = _get_uamm_amf_moe_viz(model, b, modals, viz.shape[0], viz.shape[1])
                         if viz_bottom is not None:
@@ -1573,6 +1595,8 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
                     row1 = np.concatenate(raw_modals, axis=1)
                     legend_img = _draw_legend(classes, palette, orig_h, orig_w)
                     row2 = np.concatenate([legend_img, colored, overlay], axis=1)
+                    # [2026-08-05] evaluate() 와 동일한 폭 불일치 (4모달 DELIVER 크래시).
+                    row1, row2 = _pad_rows_to_same_width(row1, row2)
                     viz = np.concatenate([row1, row2], axis=0)
                     viz_bottom = _get_uamm_amf_moe_viz(model, b, modals, viz.shape[0], viz.shape[1])
                     if viz_bottom is not None:

@@ -1,5 +1,7 @@
 # MUSES 공식 test 결과 — 통합 인덱스 (2026-07-20 기준)
 
+> ⚠️ **부분 STALE (2026-08-08 판정)**: 아래 표는 제출 #4(08-03)까지만 반영 — 이후 공식 test 5건 누락(P39.1-rank seed2 3모달 **79.788 = 현행 최고**, 4모달 seed2 79.571, P43 79.351, P39 78.881, P44 78.429; 수치 출처 = experiments/registry.md). "우리 최고 79.025(P38)" 및 SOTA 격차 −3.365 서술은 구식 — 현행 격차 = 79.788 vs GtA 82.39 = **−2.60**. 제출물 단일 정본 = /ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/. **+제출 #9(2026-08-10): RGB-L 2모달 79.571**(4모달과 동률, [판독](2026-08-10-muses-official-test-rgbl-2modal.md)).
+
 Codabench comp **14005** 제출분 전체. **이 파일이 MUSES test 수치의 단일 진입점**이고, 상세·원시 데이터는 아래 "출처" 열을 따라간다.
 ⚠️ MUSES test GT는 서버 비공개 → **test-best 훔쳐보기가 구조적으로 불가**. 전 제출이 val-best ckpt 단일 선택이라 선택편향 없음.
 

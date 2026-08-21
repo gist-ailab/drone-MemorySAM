@@ -6,126 +6,85 @@ moved: 2026-07-08
 ---
 
 > **역할**: 프로젝트 **현재 상태 스냅샷의 단일 출처(single source of truth)** — 매 갱신 시 아래 스냅샷 블록만 덮어쓴다.
-> 과거 진행 이력(역시간순)은 [history-2026H2.md](history-2026H2.md)(2026-07-01~) · [history-2026H1.md](history-2026H1.md)(~2026-06-30)로 분리됨.
+> 날짜 붙은 진행 엔트리(📝/🏆/⚠️/🛠)는 **이 파일에 쌓지 말고** [history-2026H2.md](history-2026H2.md) 최상단에 append한다 (2026-08-08 재확립 — 이전에 22개 엔트리가 여기 적층돼 스냅샷 기능을 잃었던 사고의 재발 방지).
+> 과거 이력: [history-2026H2.md](history-2026H2.md)(2026-07-01~) · [history-2026H1.md](history-2026H1.md)(~2026-06-30)
 
 # 프로젝트 현황 (Project Status)
 
-> 최종 업데이트: 2026-07-08
-
-**⚠️ 리포 재구조화 (2026-07-08, develop 병합)**: `.claude_logs` 폴더 택소노미·`lora_sam/` 패키지(MODEL_REGISTRY)·configs 재편. 구번호 매핑 = [00_INDEX.md](../00_INDEX.md), 규칙 = [meta/conventions.md](../meta/conventions.md). **원격 서버는 진행 중 학습 종료 전까지 pull 금지.**
+> 최종 업데이트: **2026-08-08** (스냅샷 전면 재작성 — 문서 정리 경위는 history 2026-08-08 엔트리 참조)
+> 📊 **사용자용 상황판(artifact)**: https://claude.ai/code/artifact/11924e8a-12fc-4dbc-a174-ead7259b0228 — 갱신 규약 [meta/conventions.md](../meta/conventions.md) §4 (판정 변화 시 `meta/status-report.html` 갱신 + 동일 URL 재배포)
 
 ---
 
 ## 📌 현재 상태 스냅샷 (CURRENT — 여기만 읽으면 됨)
 
-> 이 블록은 **현재 상태의 단일 출처(single source of truth)**다. 매 갱신 시 이 블록만 덮어쓰고,
-> 과거 진행 내역은 아래 "역시간순 진행 로그"에 엔트리로 남긴다. (아래 로그의 `## 현재 상태:` 같은 옛 헤더는 그 시점 스냅샷일 뿐 현재 아님.)
+**연구 정체성 (2026-08-08 개정)**: 계보 12세대의 공통 가설은 "모달 신뢰도/유용도에 따른 적응적 가중". 검증 결과 — **추론 경로 안의 가중(학습 게이트·SoftMoE·RBMA attn-bias·추론 재가중)은 전부 반증**됐고, 성능을 실제로 움직인 축은 ① frozen 백본 + per-modal LoRA(SAM2→DINOv3, 계보 최대 단일 변수 +11.6) ② 트렁크 rank 복원(P39.1 gated-MLP+VICReg) ③ **학습 전용 손실**(P46-C3 prototype, deep supervision)이다. 구 정체성 문구(RBMA attn-bias)는 폐기 — 근거는 [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §1과 SOTA 진단 artifact(2026-08-08).
 
-**연구 정체성**: 기여는 **RBMA (Reliability-Biased Memory Attention)** — SAM2/SAM3 memory cross-attention **logit에 training-free reliability를 additive bias로 가산**. canonical 정리 = [research/novelty-and-related-work.md](../research/novelty-and-related-work.md).
+**🎯 공식 목표 (user 2026-07-03 설정, 기준선 2026-08-08 갱신)**: ① **Seg = 논문 publish** — DELIVER 현행 SOTA = **MM SAM-adapter val 69.60 / test 57.35** (구 기준 DGFusion 66.51/56.71은 이미 상회); MUSES test SOTA = **GtA 82.39(camera-only)**, 융합계보 기준 DGFusion 79.5. ② **Det = 국책과제 mAP50 0.85 — 달성 완료**(0.9321). ③ MULTIAQUA 확장 예정.
 
-**🎯 공식 목표 (2026-07-03 사용자 설정 — 모든 수치는 이 기준과 비교해 보고)**: ① **Seg = 논문 publish** — DELIVER(all-modal) **val ≥66.51 / test ≥56.71**, MUSES SOTA **val 79.72 / test 79.49**, MULTIAQUA도 실행 예정. ② **Det = 국가연구개발과제 R&D** — **mAP50 0.85** (v2 split 기준). 세션별 액션 할당 = [meta/taskboard.md](../meta/taskboard.md).
+### 벤치별 현재 최선 (legal 프로토콜: val-best 또는 final-iter만, test-best 금지)
 
-**챌린지 최선 (MULTIAQUA, 고정)**: **P9 ep131 & P22 ep120 공동 1위, M-score 82.10** (Val 93.3 / Test 70.9). P10~P27의 adaptive fusion은 모두 gate 상수수렴 병목으로 P9 미돌파 → 이 진단이 RBMA 동기.
+| 벤치 | 우리 최선 | vs SOTA | 판정 |
+|---|---|---|---|
+| DELIVER | **P46 C3-only 3-seed(@768학습/@1024평가, 검증됨 2026-08-20)** val **67.98±1.32** / test **54.44±2.21** (base 69.44/56.99, seed815 66.88/53.25, seed816 67.62/53.08) | mean 기준 MM-SA 대비 **−2.91** / DGFusion −2.27 | 🔴 **"사정권" 주장 반증** — 참 시드 std(test 2.21)가 격차보다 큼, base=3점 중 최댓값. 단일런 56.99를 헤드라인 불가. [experiments/analysis/2026-08-20-p46-seed-variance-verdict.md] |
+| MUSES | **P39.1-rank seed2 3모달** Codabench test **79.788** (val 82.13; day 80.246/night 76.818, fog_night 69.610 최악) | GtA(camera-only) −2.60 / **융합(4모달)계보 1위**(79.571 > DGFusion 79.5) | 정면 돌파 비현실 → 포지셔닝 전환(융합계보 1위 + adverse robustness 인과 실증) |
+| MUSES PQ | things 22.87 / All 35.55 (P47-D1 ep172) | SOTA(CAFuser) 59.26 −23점대 | PQ 축 비교 불가 — limitation 절 소재 |
+| Det | D1-recovered(ViT-L) AP50 **0.9321**@ep6 | 목표 0.85 **+0.08** | 종결 국면 |
+| MULTIAQUA | P9 ep131 / P22 ep120 M-score **82.10** | (챌린지 종료, 고정) | 고정 |
 
-**📝 2026-07-15 RA-L 논문 트랙 개시**: NAS 볼트 `_paper_submission/`에 ReliaDINO(=P34/P36 계보) RA-L 초안 v1 전 섹션 작성+컴파일 완료(9p, `ReliaDINO_RAL_latest.pdf`). 타 세션이 채울 실험 슬롯 8개 = [research/ral-paper-plan.md](../research/ral-paper-plan.md). ⚠️ legal 최선 = P34 val 68.19/test 56.62(test-SOTA −0.09, "57.60"은 test-best라 철회) → P34 재중심화 리라이트 예정.
+### 통일 아키텍처 확정 (2026-08-16, §6 규칙 집행)
 
-**📝 2026-07-18 P38 MaskQueryLite hpca100 4×A100 본학습 중 (ETA 07-19)**: P36 공정 레시피(GATE·VETO·CALIB·ROUTER on / ATTN_BIAS·CONSISTENCY·PHYSAUG off / DGFUSION_AUG on) 동결 위에 Mask2Former-lite query head(100 query, 6-layer masked cross-attn, 공유 cls/mask-embed head, β-zero-init로 시작 시 P36 byte-identical) 추가한 1-변수 비교. mask-classification 구조로 전환해 `panoptic_inference()` 경로 확보 = MUSES **PQ** 산출이 처음으로 가능해짐(기존 per-pixel head는 구조적으로 PQ 불가 — DGFusion/CAFuser는 OneFormer 스택이라 PQ가 주표). 커밋 3bb2c41(develop 병합 tip 6d922bd). hpca100 GPU 0-3(A100×4)에서 07-18 launch(config `configs/hpca100-deliver_rgbdel_P38_m2f.yaml`, develop @c3d1184, EPOCHS 200, ~0.77s/it·497it/ep) — 기동 검증 통과(iter 342→420/497 전진, 4GPU 25GB/83-100%, 에러 0, M2F ENABLE 확인). 실데이터 2ep 스모크는 yeon GPU0에서 병행 진행 중(참고용). 상세 [models/arch-evolution.md](../models/arch-evolution.md) P38 / 실행 현황 [experiments/plan.md](../experiments/plan.md). 판정 게이트 = P36 fair(val 67.74/test 55.62) 대비 + thin-class(Wall/Water/RailTrack) IoU. 🔴 **bengio seg-P37a/b는 사망 확정**(GPU5 HW 고장, 재부팅 후 SSH 미복귀) — jarvis 재기동분이 계보 승계.
+**P49-AIR 계열 종결** (DELIVER P46 미달 + MUSES 공식 val 81.16 < 82.13 + G-4M 실패). **통일 = ReliaDINO 계보(P39.1-rank 추론 그래프) + 진단-짝 학습손실** — 양 벤치 현 최고(P46-CTR 56.99 / P39.1-rank 79.788)가 이미 동일 추론 그래프(C1/C2/C3 전부 학습 전용). 판정 상세 [experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md](../experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md). ~~남은 결정전 = C2~~ → **C2 유해 확정(2026-08-16, Δ−1.67) — 캠페인 종결**: DELIVER 최종 56.99(SOTA −0.36)·MUSES 79.788. 잔여 = λ0.1 시드 통계뿐. **임계 경로 = RA-L 리라이트 단독.** [experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md](../experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md)
 
-**📝 2026-07-20 P39 Dual-Path Compete 구현 완료 (학습 대기)**: P38(MaskQueryLite) 게이트 미달을 이어받아, P30~P38 계보의 반복 실패 패턴(zero-init 잔차 사장·router 유일 실적·FUSED rank 병목·클래스축/도메인축 위치 불일치·event 기여의 데이터셋 종속성)을 실패-키로 역변환해 설계에 내장(근거 [decisions/2026-07-20-p39-dual-path-compete-proposal.md](../decisions/2026-07-20-p39-dual-path-compete-proposal.md)). 구조 = **V1 트렁크 rank 확장**(모달별 선형 투영 가산 합류, zero-init 아님) + **V2 modal-token query attention**(융합 병목 우회, det 폴백 유지) + **V3 anchored+free query**(K 클래스 고정 + 자유 Hungarian) + **V4 balanced point sampling**(클래스당 쿼터 256) + **V5 per-class Λ 중재 + path dropout 경쟁(dense-only 25% / query-only 25% / 결합 50%) + router 직접 CE(0.4)** — β 잔차 결선은 폐기. 전 항목 토글 가능(`p39_query_off`/`p39_trunkexp_off` 등 + config off). **단일 아키텍처로 DELIVER·MUSES 모두 커버**(user 지정). 합성 스모크 **PASS**(5지점 grad, 토글 유효, det 폴백, P38 호환 등가성 확인) — 실데이터 스모크는 미실행(yeon 배치 예정, 본학습 선행조건). config 3벌: `configs/hpca100-deliver_rgbdel_P39_dpc.yaml`(200ep)/`configs/jarvis-muses_rgbel_P39_dpc.yaml`/`configs/yeon-deliver_rgbdel_P39_dpc_smoke.yaml`(2ep). **판정 게이트(사전 등록)** = DELIVER: P36 fair(val 67.74/test 55.62) + thin-class 복원(Wall≥13/Water≥9.5/RailTrack≥62) · MUSES: P38 val 82.22 이상. 배치 = 대기열 1순위([experiments/plan.md](../experiments/plan.md)) — hpca100(P38-DELIVER 종료·판정 후 그 슬롯) / jarvis(P38-MUSES 완주 후). 상세 [models/arch-evolution.md](../models/arch-evolution.md) P39. 커밋 c31dcd5(develop).
+### 활성 런 / 대기 (2026-08-08, 커밋 기준 — 실시간은 [experiments/plan.md](../experiments/plan.md)·registry)
 
-**📝 2026-07-20 P39 학습 진행 + 분석 판정 (analysis 세션)**: 두 벤치 모두 학습 중이며 **모듈 기제는 성공, 성능 전환은 실패** 상태.
-- **모듈(조기 즉검, [analysis/2026-07-20-p39-earlycheck-toggles.md](../experiments/analysis/2026-07-20-p39-earlycheck-toggles.md))**: V1 rank확장 off-Δ **+0.76~2.89(전 조건·양 벤치 최대 기여)**, V5 query경쟁 MUSES 전 조건 +(최대 +1.09), router 의존 **+22~40 → +0.4~2.3으로 해소**(직접감독 성공), arb λ 0.69→1.0~2.3 성장. **5세대 만의 첫 non-no-op** — 실패-키 처방(키1 경쟁결합·키2 직접감독·키3 rank확장)이 기제 수준에서 전부 유효.
-- **DELIVER 4모달(img/depth/event/lidar) 3시점([analysis/2026-07-20-p39-deliver-3ckpt-compare.md](../experiments/analysis/2026-07-20-p39-deliver-3ckpt-compare.md))**: val **65.68@ep64로 P38 피크(65.19) 첫 돌파**했으나 **test 5-cond 평균은 최저 50.98**(ep60 51.96 > ep38 51.65 > ep64) — **val↔test 순위 역전**. 손실의 대부분이 **RailTrack 단독 −20.4**(cloud 59.2→6.4, 전 조건 진행형). 원인 = query·router가 동일 클래스를 상충 점유(ep38 night: query_off RailTrack −25.4, router_off −24.4) + gate/calib이 thin-class에 **유해**(ep60 night off 시 +35.9/+26.0 — 3세대 no-op에서 유해로 판정 변경). thin-class 게이트 **세 시점 모두 0/3 미달**.
-- **MUSES 3모달(img/lidar/event) 공식 test**: P39-DPC ep146 = **78.881**(P38-m2f 79.025 −0.144, P34-3modal 78.979 −0.098) → 미돌파. 단 **주야 격차 5.14→3.73(−1.41)**로 개선, clear_night +3.69인데 **fog_night 62.68로 −12.05 붕괴**(전 제출 최저)가 전체를 상쇄. fog_night 정밀 대조분석(P39 ep146 vs P38 ep156, 조합 CASE 지원 커밋 dee524f) 진행 중.
-- **🔴 physaug는 공정성 문제로 사용 배제(user 판정 07-20)** — P39.1 변수에서 제외하고 게이트는 아키텍처만으로 넘는다. 헤드라인 비교표는 physaug-off 계열(P35/P36 fair·P38·P39)로만 구성.
-- **P39.1 후보(physaug 제외)**: D-1 V5 Λ 배타/온도 선택(query·router 상충 해소) · D-3 gate/calib 완전 off(유해 판정) · D-2 앵커 query 클래스 균형 손실 가중 · MUSES는 전 모달 동시 열화 시 V2 modal-src fallback.
-- 모듈·제안영역 시각 리포트(fig 8장+판정표) = NAS `analysis_logs/module_report_20260720/`, 포인터 [analysis/2026-07-20-module-visual-report.md](../experiments/analysis/2026-07-20-module-visual-report.md). 실패-키 canonical = [analysis/2026-07-20-failure-keys-p38-deliver-p37a-muses.md](../experiments/analysis/2026-07-20-failure-keys-p38-deliver-p37a-muses.md).
+- 🔴 **P46 C3-only @1024² 학습 — 게이트 미달 확정 (2026-08-09 02:35, 잠정→확정 격상)**. elice-b200 val-best@ep70: val **69.79**(+0.35 vs 768² 본run) 인데 legal test **56.50**(−0.49 vs 내부최고 56.99, −0.85 vs SOTA 57.35) — **val↑/test↓ 역발산**.
+  yeon λ0.05 병행런도 동일 패턴(ep60→62 사이 val 68.72→69.03 소폭↑, test 56.58→**54.29** 급락 −2.29).
+  **확정 근거**: ep70 이후 24 epoch(ep90~94) 동안 val 이 69.79→69.73→69.51→69.23 로 **단조 하락** — 정체가
+  아니라 명백한 하락 국면. 동 구간 raw test 는 58.41@ep92 로 SOTA 를 크게 웃도는 값이 찍혔으나 **비legal**
+  (val 하락 중 발생) — val-test 상관이 낮다는 추가 증거이지 돌파 근거가 아니다.
+  **해석**: 1024² 학습이 val 은 밀어올리지만 test 는 별개로(과적합 방향으로) 움직인다 — 08-08 22시 리포트의
+  "1024² 가 정점을 밀어올린다" 잠정 해석은 **기각**. elice 잔여 epoch 는 참고용 관찰로 격하.
+  → **RA-L 포지셔닝("no-tradeoff 우위 + MUSES 융합계보 1위 + adverse robustness 인과") 이 현재 더 현실적 경로.**
+  ⚠️ 게이트 확정 미달로 3-seed 재현 확인의 실익이 낮아짐(이미 2개 독립런이 val↑/test↓ 재현) — jarvis 5장·
+  yeon 3장(6주기·12시간 미배치) 용도를 **C2(MCC) 순기여 측정(hpca100 A100×2 유휴) 또는 RA-L 소재 확보**로
+  전환 검토. (jarvis GPU6,7 분신은 08-08 새벽 ep18에서 사망 → 그 슬롯은 seedB로 전환, 아래.)
+- ✅ **P39.1-rank @1024² 대조 — 목적 달성, ep126/200 에서 조기 종료(2026-08-08 14:50, user 지시, GPU 4장 회수)**.
+  **해상도 순효과 확정** (양쪽 val.py@1024 직접 실측, 환산 없음):
 
-**📝 2026-07-21 P39.1(rank 수리) + P40(RCA) 구현 완료 (학습 대기)**: P39-MUSES 표준분석(lidar effective-rank 4.7 붕괴, adapter가 압축 주체)과 fog_night 붕괴(62.68) 원인규명을 관련연구 딥리서치 3편(rank collapse / modality imbalance / fog 물리)과 교차검증해 제안·구현. 근거 = [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md). 커밋 **ac5c7fe**(develop).
-- **P39.1** = P39-DPC 위에 V1 트렁크 결합을 `fused += tanh(γ)·MLP_m(f_m)`(LN→1×1→GELU→1×1, γ init 0.1 — 0이면 gradient 완전 차단이라 절충)로 교체(R-1) + per-modal 토큰 VICReg var+cov(R-2, lidar×1.0/기타×0.25, λ 0.1/0.01, 2048 서브샘플) + M-2(gate/calib/veto config off, fog_night 유해 실증 반영) + eval마다 per-modal effective-rank 로그(`p391/rank_*`) 추가.
-- **P40** = P39.1 위에 RCA(Reliability-Conditioned Attenuation) — C-1 lidar 리턴 유효성 신호(입력 유도) 가드/분석 + C-2 자기추정 rel(img) 배치 하위 분위(30%) 샘플 img feature soft 감쇠(α 0.1~0.5, hard-zero 금지, p_max 0.5, warmup 20ep, 학습 전용) + C-3 감쇠 샘플 한정 lidar readout 보조 CE(w 0.5, gradient 출구).
-- config 5벌: `jarvis-muses_rgbel_{P39_1_rank,P40_rca}.yaml` / `hpca100-deliver_rgbdel_{P39_1_rank,P40_rca}.yaml` / `yeon-deliver_rgbdel_P40_rca_smoke.yaml`(아키 동일 = 단일 모델 제약 유지).
-- 합성 스모크 **PASS**(RCA pick 발생, C-1 가드 동작, 손실 유한, grad 흐름, eval 결정론, linear 모드 하위호환).
-- **판정 게이트(사전 등록)**: P39.1 ep30 = lidar effective-rank ≥15 & fog_night drop-lidar ≥4.0(미달 시 R-3: r16+rsLoRA로 재기동) · P40 = MUSES test ≥79.025 & fog_night ≥74, DELIVER = P36 fair + thin-class.
-- **실행 순서**: 분석 선행 2건(fog val per-scene 감사 + P39 ckpt trunk_exp-off rank 재측정 — **분석 세션 몫, 학습 0**) → P39.1 투입(첫 빈 슬롯) → rank 게이트 통과 후 P40 투입. 대기열 [experiments/plan.md](../experiments/plan.md) #1(P39.1)/#2(P40). 상세 [models/arch-evolution.md](../models/arch-evolution.md) P39.1/P40.
+  | 학습 해상도 | ckpt (val-best) | val | test |
+  |---|---|---|---|
+  | 768² | P39.1-rank ep106 | 66.72 | 53.68 |
+  | 1024² | P39.1-rank ep54 | **67.87** | **55.69** |
+  | **순효과** | | **+1.15** | **+2.01** |
 
-**📝 2026-07-24 P43~P45 CVPR SOTA 제안 등재 (딥리서치 6축, 학습 대기)**: 멀티에이전트 딥리서치(모달불균형·상호증류·fog·panoptic·condition-adaptive·SOTA지형 6기 병렬) 교차 종합으로 3안 등재 — [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md). **전략 판정(Codabench 실측)**: MUSES mIoU 1위 = 미발표 카메라단독 GtA 82.39, 2위 = frozen-SAM 2모달 81.07 → **mIoU는 융합에 죽은 SOTA 축**; **PQ 1위 DGFusion 61.03은 사정권 + frozen-VFM 참가자 0 = 유일한 현실적 SOTA 축**(우리는 현재 PQ 산출 불가 = 구조적 배제 상태). ① **P43 PanopticDual(헤드라인)** = dual-head 공동학습(per-pixel 유지 + M2F Hungarian 독립 주손실, PMT 2603.25398 레시피 + multi-depth lateral) → PQ 확보, 착륙 지대 58~61, ep30 게이트 = PQ_thing>0 & thin-class −1pt 이내. ② **P44 BMR** = MMPareto gradient 통합 + peer 상호증류 + MCRM 국소 마스킹(전부 loss/gradient 레벨, P42 후계) → fog +2~5pt, ep30 게이트 = dMIoU(lidar)>1. ③ **P45 FogStyle** = FIFO식 fused-feature 스타일 불변(P44 위 토글). 대기열 #10/#11 등재. 선행(학습0) = P38 ckpt 기존 m2f_head로 val PQ 하한 실측.
+  → 전 세대(P39.1~P47)가 768² 로 학습된 동안 **test 약 2점을 해상도만으로 손해**보고 있었다.
+  조기 종료 근거: val-best 가 ep54 이후 **70 epoch** 갱신 없음 + legal 값이 위 실측으로 확정 → 잔여 epoch 정보가치 없음.
+  부수 검증: 실측(67.87/55.69)이 학습로그 환산 추정과 소수점까지 일치 → 오프셋(val −2.58/test −1.79)이 **이 런에 대해** 정확. 런별 값이므로 외삽 금지.
+- 🔴 **P46 C3-only 진짜-시드 분산 확정 (2026-08-20) — "사정권" 주장 붕괴**: @768 진짜-시드 2런(seed815/816, config develop c4d5166, IMAGE_SIZE [768,768] 로그 확인=@1024 오염 아님) legal 재평가 → base 포함 3점 **test 54.44±2.21 / val 67.98±1.32**. base(56.99)가 두 축 모두 **최댓값**. 이전 "편차 0.59(SOTA −0.36보다 큼→사정권)"은 **가짜-시드(3407 하드코딩) GPU 비결정성만 잰 값**이라 반증됨 — 참 std는 그 3.7배. val·test 양의상관(낮은 시드가 둘 다 낮음)=런 품질 분산. **함의: DELIVER 근SOTA 헤드라인 불가, mean±std 보고 필수.** 미결: 분산이 seed-init인지 ckpt-선택(트레이너 val-best가 legal의 나쁜 대리)인지 — legal-val 기준 재선택으로 축소 가능성(미검). [experiments/analysis/2026-08-20-p46-seed-variance-verdict.md]
+- ⏸ **P47-2 UniBal** — 구현·스모크 완료, A100급 4장 대기. **4모달 역전의 유일한 남은 등록 레버**.
+- 🔴 **P47-D1(LiDAR 밀도화) 폐기 (2026-08-17 공식 test)**: val 82.58(4모달 역대최강)이었으나 공식 test **78.790** = 4모달 base 79.571 −0.781. val→test 낙차 3.79(계보 ~2.8 +1.0) = val 과적합. **MUSES에서 val 단독 이득은 제출 근거 불가** 3회째 확증. 판정: [experiments/analysis/2026-08-17-p47-d1-muses-official-test-verdict.md](../experiments/analysis/2026-08-17-p47-d1-muses-official-test-verdict.md)
+- 🔴 **CEA 프로브(조건-전문가 상한) — 폐기 확정 (2026-08-08 16:00, 제안 세션)**: 7런 완주, oracle Δ(fog_night) **+0.21 < 게이트 +1.0**(5배 미달), night가 주야갭 4.33 중 **+0.02만 회수** → "평균 최적성 함정" 가설까지 반증. **적응 가설 계열(융합 가중→추론 재가중→추출 전문화) 3단계 완결 폐쇄** — 남은 격차의 원인은 배분이 아니라 **정보**. 재제안 금지. canonical = **[research/hypothesis-ledger.md](../research/hypothesis-ledger.md)(가설 원장, 신설)** + [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6·§7. 음성 결과는 MUSES 포지셔닝의 oracle 상계로 논문 회수.
+- ⚠️ **jarvis GPU2-5 완전 유휴 (08-08 15:13 실측)** — GPU-never-idle 규칙 위반 상태. 투입 후보(학습 0 우선): ① RGB-D 2모달 @1024 fair-eval(config e055aab 준비됨) ② elice ep28 val-best ckpt 회수 후 **조기 fair-eval**(게이트 조기 판정 가능 — val-best가 ep28에서 18ep째 정체 중이라 이미 확정됐을 수 있음).
 
-**📝 2026-07-25 P43/P44/P45 구현 완료 + develop 병합 (학습 대기, hpca100 첫 슬롯)**: P43 PanopticDual + P44 BMR + P45 FogStyle 구현 완료, develop 병합 35ddbe0(+config 3e3b54f). 제안 문서 = [decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md](../decisions/2026-07-24-p43-p45-cvpr-sota-proposal.md)(§7 토론 반영 포함). P43 = `semseg/models/reliadino/panoptic_head.py`(MaskClsHead, 100 query, Hungarian CE/BCE/Dice + PointRend, semantic mask-cls 모드) + encoder.py multi-depth lateral(blocks 5/11/17) + model.py 배선(`_encode_all`/`_apply_p43_lateral`/`panoptic_inference`/`semantic_from_queries`), 독립 주손실 `L = L_pixel + λ(t)·L_mask`(λ 0.1→1.0 warmup 5ep), configs {jarvis-muses,hpca100-muses,hpca100-deliver,yeon-deliver-smoke}_P43_pdual. 합성 스모크(`tools/smoke_p43.py`) 전건 PASS(독립성 assert 포함, off 시 baseline byte-identical). PQ 실측은 MUSES panoptic GT 부재로 TODO. P44 = `semseg/models/reliadino/mmpareto.py`(B-1 gradient 통합) + `p44.py`(B-2 mutual KL/relational correspondence, B-3 coverage-pattern 국소 마스킹, V-1 presence 재정규화, P45 fogstyle) + fusion.py/model.py/train_reliadino.py 배선, configs {jarvis-muses,hpca100-deliver}_P44_bmr + yeon smoke. 스모크(`tools/smoke_p44.py`) 86 assert PASS. 구현 기록 = [models/p44-bmr-implementation.md](../models/p44-bmr-implementation.md). 병합 후 P43+P44+P45 동시-on 통합 검증(forward/backward 유한·eval 결정론·panoptic_inference 동작) PASS. 학습0 검증 2건(`tools/analyze_router_coverage.py`, develop 7b053e0)이 hpca100 GPU2/3에서 실행 중 — 결과는 별도 세션이 회수 예정. 배치: P43-MUSES가 hpca100 GPU2,3 첫 슬롯([experiments/plan.md](../experiments/plan.md) ⚡ 절 기재).
+### 논문 트랙 (CVPR 2027 마감 ~2026-11 중순 / RA-L rolling)
 
-**📝 2026-07-27 MUSES 공식 test 신기록 — P39.1-seed2 79.788**: `muses_P39_1_seed2_3modal_ep208_submission.zip`(val-best 82.62@ep208) 공식 test mIoU **79.788** — 구 최고 P38-m2f 79.025 대비 **+0.763, 새 MUSES test-best**로 대체. SOTA(GtA 82.39) 격차 **−3.37 → −2.60**로 축소. val→test 낙차 −2.83(82.62→79.79). per-condition: clear 79.300/fog 78.705/rain 79.063/snow 79.042, day 80.246/night 76.818(격차 −3.43), fog_night **69.610(전 조합 최악)**, snow_day 71.155<snow_night 77.413(**역전 3회째**). 약클래스(full): motorcycle 58.07·rider 59.47·pole 62.07·fence 65.70. 상세 [experiments/log.md](../experiments/log.md) §2026-07-27, 제출 인덱스 `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/MUSES_TEST_RESULTS_INDEX.md`.
+- **분기 게이트 = P46 @1024² 판정(08-09)**: 돌파 + 3-seed 재현 → CVPR 도전 / 미달 → RA-L 확정.
+- 스토리(2026-08-08 논의): "test 전이 실패는 단일 병리가 아니다 — 클래스축(DELIVER)·조건축(MUSES)은 다른 처방을 요구한다" — 기둥 = per-modal LoRA 트렁크(P39.1) + 학습 전용 prototype 손실(P46-C3) + drop-modal 인과 분석. C3의 MUSES 이식 실패(−0.765)는 대조 실험으로 재활용.
+- 🔴 **RA-L 초안(ReliaDINO v1, 볼트 `_paper_submission/`) 재중심화 필요** — 현재 RBMA 중심 서사는 반증된 상태. [research/ral-paper-plan.md](../research/ral-paper-plan.md)의 슬롯 3(MUSES 제출)·5(multi-seed)는 이미 충족됨(문서에 미반영).
 
-**📝 2026-07-27 P43-PanopticDual MUSES 표준분석 완료**: adapter·lidar eff-rank(23.5~28.0, VICReg OFF에도 건강, P39-DPC rank붕괴는 트렁크 자초로 P43 회피)·LATERAL(Δ +0.3~+1.9, feat_cos~0.75 no-op 아님)·router(Δ +4.7~+11.3) 정상 작동, 융합병목(per-modal 25~35 → FUSED_pf 5.5~11.3 급압축)만 잔존. **4모달 실증 근거**: drop-lidar dMIoU day/clear 0.64 → night 2.26·snow_night 2.73·rain_night 4.99·**fog_night 7.19**(비RGB의 adverse-night 인과 기여 확인, P39.1-DELIVER −0.78과 정반대) vs drop-event≈0~음수(잉여/사망, CKA(event~lidar) 0.79~0.85) → 4번째 모달은 event 대체가 아니라 **radar 추가**가 유력(radar-fix 재실험 최우선). 상세 [experiments/analysis/2026-07-27-p43-pdual-muses-standard-analysis.md](../experiments/analysis/2026-07-27-p43-pdual-muses-standard-analysis.md).
+### 열린 블로커 / 미결
 
-**📝 2026-07-27 P39.1-seed2(우리 최고, val 82.62/test 79.788) MUSES 표준분석 완료**: VICReg(R-2)가 lidar eff-rank를 78.5~100.3까지 확장(P43 VICReg-off 23.5~28.0의 3~4배) 실증, trunk(R-1, p39_trunkexp_off) 전조건 +2.05~+6.78 순기여, router +0.5~+4.5 순기여, drop-lidar 야간·adverse(fog_night 7.39/snow_night 7.6/rain_night 7.57) 인과 기여 확인 — P39.1의 R-1·R-2 기제 모두 검증됨. 흠: arbiter query가 일부 야간 조건(rain −0.26/night −0.37/clear_night −0.29)에서 미세 유해. 4-modal(+radar) 착수 근거로 연결(drop-lidar 야간 기여 → radar가 fog에서 lidar 산란 보완 기대). 상세 [experiments/analysis/2026-07-27-seed2-p39_1-muses-standard-analysis.md](../experiments/analysis/2026-07-27-seed2-p39_1-muses-standard-analysis.md).
+0. ✅ **DELIVER 채점 프로토콜 확정 완료(2026-08-14)** — MM-SA(현 SOTA)=native GT(**우리와 동일, SOTA 비교 유효**) / CMNeXt·CAFuser·DGFusion 계열=1024-리사이즈 GT(낙관 지표 — 이들 대비 우리 수치는 과소). 잔여 작업 = P46 ep70의 1024-GT 재채점 1건(학습 0, DGFusion 비교 각주용). [analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md](../experiments/analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md)
 
-**📝 2026-07-28 P44-BMR MUSES — hpca100 외부 preempt 사망 → 재개 성공**: hpca100 외부 preempt 사망(07-28, best val 80.59@ep126 미완주) → **hpca100 preempt 후 재개 성공(07-28, ep150부터, HF offline fix)**. BMR 기제는 DELIVER P44-BMR(jarvis 진행중)로 계속 검증.
+1. **P48 폐기 판정 재확정 필요** — 08-06 게이트 적용 시점 오류 지적([experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md](../experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md)) 후 상위 재판정 기록 없음. 논문 스코프 밖으로 두되 기록은 닫을 것.
+2. **C2(MCC) 순기여 미측정** — 유일하게 결과를 모르는 조합 (40GB급 필요).
+3. **RGB-D 2모달 fair-eval(학습 0)** — SOTA 최고 구성 대비 직접 비교, 기존 ckpt @1024 재평가만 남음.
+4. MUSES RGB-L 2모달 런(~1일) — 상위권 실구성과 직접 비교.
+5. 반증 확정(재제안 금지) 목록 = artifact D절: attn-bias 계열·추론 재가중·CEFR·zero-init 잔차·rank/η² 개입·모달 드롭·gradient 균형화·radar(MUSES)·NORM_ALL.
 
-**📝 2026-07-28 P39.1-rank 5-seed variance 완결**: seed3 완주(81.89@ep204, Total 20:47:50)로 5-seed 전원 완주 — seed1 82.03/seed2 82.62/seed3 81.89/seed4 81.92/seed5 81.70(범위 81.70~82.62, 평균 82.03, 논문 variance 보고용).
+### 재현성 규약 (전 세션 공통, 논문 표 작성 시 재검증)
 
-**📝 2026-07-28 P44-BMR MUSES 표준분석 완료**: val 80.71@ep156 완주분 표준분석 결과 — **BMR이 비RGB(lidar) 사용을 P39.1/seed2 대비 늘리지 못함**(drop-lidar day −0.42, seed2의 day 4.24보다 낮음). val 이득도 없음(80.71 < seed2 82.62, −1.91). 유일한 특징은 lidar 사용의 야간 편중(fog_night 6.71 vs day −0.42) — test(adverse-night 비중 높음) 전이 여부는 남아있음. DELIVER에서도 P44-BMR(66.31)이 P39.1-rank(67.60) 대비 우위 없음(정체 지속). 상세 [experiments/analysis/2026-07-28-p44-bmr-muses-standard-analysis.md](../experiments/analysis/2026-07-28-p44-bmr-muses-standard-analysis.md).
-
-**📝 2026-07-28 P44-BMR MUSES 공식 test — 78.429, BMR 방향 종료**: `muses_P44_bmr_3modal_ep156_submission.zip` 제출 결과 **공식 test 78.429** — seed2(79.788) 대비 **−1.36**, P38(79.025)·P34(78.979)보다도 낮음. SOTA(82.39) 격차 −3.96. 🔴 **fog_night 56.443 = seed2(69.61) 대비 −13.2pt 파국** — "야간편중 lidar 사용이 유리"라는 BMR 가설이 test에서 완전 반증(오히려 야간·fog에서 seed2보다 나쁨). snow_day(68.60)<snow_night(72.07) 역전 재현. **BMR 방향 종료(val·test 모두 P39.1 열세)** — 우리 test 최고는 seed2 79.788 그대로. 상세 [experiments/log.md](../experiments/log.md) §2026-07-28.
-
-**📝 2026-07-28 P43-PanopticDual MUSES 공식 test — 79.351(우리 2위)**: `muses_P43_pdual_3modal_ep156_submission.zip`(val 82.51) 제출 결과 **공식 test 79.351** — seed2(79.788) 대비 −0.44로 **2위**, 단 P38(79.025)·P34(78.979)·P44(78.429)보다는 높음. SOTA(82.39) 격차 −3.04. day 80.81(seed2 80.25보다 우세)·night 75.19(seed2 76.82보다 열세)·fog_night 67.76(seed2 69.61보다 열세) — PQ 헤드 병행학습이라는 다른 기제인데도 P39.1 계열 수준의 성능, MUSES 최고는 여전히 **seed2 79.788**. 상세 [experiments/log.md](../experiments/log.md) §2026-07-28.
-
-**📝 2026-07-30 P46-CTR DELIVER — RailTrack 게이트 통과(C1+C3 ep40, class-transfer 가설 확증)**: c1c3(C1_RCS+C3_PROTO, C2_MCC off) ep40 체크포인트(val 67.36)의 test@768 per-class eval에서 **RailTrack test 4.02(base)→59.10(+55.1)** — 사전등록 primary falsifiable 게이트(≥40) 압도적 통과, DGFusion(64.47)에 근접. Wall/Water/Bridge는 게이트 제외(DGFusion도 test IoU 0~4로 동반붕괴 확인됨, §9) 그대로 저조(10.84/10.96/0.02). Overall test는 52.47→54.92(+2.45)로 개선되었으나 secondary gate(56.62)·DGFusion(56.71) 미달 — **RailTrack 회복이 overall 돌파로 직결되진 않음**(다른 붕괴 클래스가 천장). val에서는 RailTrack 18.53으로 test보다 낮은 역전 현상 관찰(해석 보류). ep40은 중간 체크포인트(학습은 계속 진행 중, ep200 완주 후 재판정 예정) — C1 RCS의 단독 기여를 분리하는 C3-only ablation(jarvis GPU4-7)도 병행 중이며 ep40 도달 시 동일 gate eval 예정. 상세 [experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md](../experiments/analysis/2026-07-30-p46-ctr-c1c3-railtrack-gate.md).
-
-**🏆 2026-08-03 P46 C3-only λ0.2 DELIVER 완주 — test SOTA 돌파 확정**: jarvis GPU4-7, 200/200 완주(Total 07:58:28) — **test 57.05@ep108**(DGFusion SOTA 56.71 대비 **+0.34**, 내부최고 P34 56.62 대비 **+0.43**), val 67.47@ep118. **@768 동일 프로토콜**이라 해상도 mismatch 없는 깨끗한 비교. λ 스윕(0.05/0.1/0.15/0.2) 중 λ0.2가 test 최적, val은 λ0.05가 최고(68.57) — **val·test가 서로 다른 λ를 선호**. 미해결: RailTrack val<test 역전, DGFusion final-iter 프로토콜 차이. 상세 [experiments/analysis/2026-08-03-p46-c3only-lambda-sweep-deliver-sota.md](../experiments/analysis/2026-08-03-p46-c3only-lambda-sweep-deliver-sota.md).
-
-**⚡ 2026-07-08 최신 (아래 표는 07-02 시점, P30~P31 시대의 기록임)**
-
-| 트랙 | 상태 | 수치 / 다음 액션 |
-|------|------|------------------|
-| **P32 (CoRB) seg** | 🏁 **학습 완료 + 4축 독립 검증 완료** | 최종 **Day-Val 64.12@ep98(계보 최고) / Test 55.00**(P31 54.85 +0.15, P28 55.27에 −0.27 미달; 목표 갭 val −2.39/test −1.71). 검증 결론: CoRB attn-bias는 **유의한 순손해**(ΔmIoU −0.013, p=4.5e-22) — 신호는 유효, pre-softmax 주입은 무효. 지배 원인 = per-class 전이 붕괴(복구 상한 +7.9pt). 상세 [experiments/analysis/p32-verification-p33v2.md](../experiments/analysis/p32-verification-p33v2.md) + 볼트 `research/vault/P32_CoRB/P32_정량검증_실패분석_20260708.md` |
-| **P33-v2 (CG-MoD 개정)** | ✅ **설계 완료 (구현 대기)** | 원안(doc 26) 적대적 비판 + 딥리서치 3축 반영: M0 무학습 진단 3종 → M1 class-transfer 복구(RCS+text-anchor+MIC consistency, night+**sun**) → M2 dropout+distillation → M3 soft gate(corr_veto) → M4 CoRB 제거. 기대 test 56.5~58. Global escape: val<65.5 → 카드 A(DINOv3-RBMA) 전환. 볼트 `research/vault/P33_CGMoD/P33_v2_설계개정_20260708.md` |
-| **Det (국책과제)** | 🎯 **목표 달성** | egofill 데이터(2.01×)만으로 **mAP50 0.8501**@ep9 (official v2 test). 남은 서사 = 저조도 robustness delta. 상세 doc 19 E2.5 |
-| **옵시디언↔repo 동기화** | ✅ 규약 제정 | NAS 볼트 canonical, `scripts/sync_research_vault.sh`(NAS→repo pull), 실험폴더 패턴 `P<N>_<이름>/`. `research/vault/README.md` §🔄 |
-
-**⚡ 2026-07-15 15:50 갱신 — seg 현재 트랙 (최신). B200 학습 전부 완주, 도는 프로세스 0.**
-
-> 🔴 **보고 기준 정정(07-15)**: 트레이너는 `epochNN_<val>_topK`(val-best)와 `test_epochNN_<test>_topK`(**test-best**) 두 계열을 저장한다. **test-best 인용 = test셋 훔쳐보기라 논문 불가.** 소유자가 P35 config에 이미 명시: *"ckpt 선정: val-best만 보고(합법)"*. 07-12~14의 "P34 test-SOTA 57.60 돌파" 등 보고는 **전부 test-best 기반이라 철회**. 아래는 **legal(val-best) 실측**.
-
-| 모델 | val-best | 그 에폭 test | vs val-SOTA 68.6 | vs test-SOTA 56.71 | 목표(66.51/56.71) |
-|---|---|---|---|---|---|
-| **P34 ReliaDINO (최선)** | **68.19** @ep120 | **56.62** | **−0.41** | **−0.09** | val ✅ / test ✗ |
-| P35 paper | 67.61 @ep78 | 55.52 | −0.99 | −1.19 | val ✅ / test ✗ |
-| P36 router | 67.74 @ep52 | 55.62 | −0.86 | −1.09 | val ✅ / test ✗ |
-
-> 🔴 **어떤 모델도 test-SOTA 미돌파.** 최선 = **P34: val 68.19 / test 56.62 (test −0.09로 아깝게 미달)**.
-
-**모델 구성(config diff 실측)**: `P35 = P34 − ATTN_BIAS(RBMA) − CONSISTENCY − PhysAug`(DGFusion 공정 레시피) · `P36 = P35 + Per-Class Reliability-Anchored Router`(P31 포트).
-- **P34 vs P36 직접 비교는 부당**(P34만 PhysAug on). **정당한 짝 = P35 vs P36 → 라우터 val +0.13 / test +0.10 근소 우위**(노이즈 수준). 지난 "라우터 이식 실패" 판정 철회.
-- **노벨티**: 새 메커니즘은 **P36 > P34**(router는 P36만 보유). P34가 더 가진 ATTN_BIAS·CONSISTENCY는 소유자 G0c ablation에서 **효과 ≈0**(baseline 68.20/56.64 vs strip-full 68.45/56.38; **gate/calib만 test +0.26 실기여**). → **간판 노벨티 RBMA attn-bias가 DINOv3 계보에선 무력**, P34 수치 우위는 대체로 PhysAug(증강) 덕. 논문 서사 재정비 필요.
-
-| 트랙 | 상태 | 비고 |
-|---|---|---|
-| **P36_router** | 🏁 **완주**(ep200/200, 07-15 11:14 KST) | best ep52/58 이후 148/142ep 미갱신, val 끝까지 61.45 열화. per-class 붕괴: Bridge 0.06·Other 4.35·Ground 4.83·Wall 5.67·Dynamic 6.31·Water 10.10 (주력 Road/Sky/Cars/Bus/Truck은 90+ 정상). ckpt 백업 완료. |
-| **MUSES × P34-ReliaDINO** | 🏁 **완주 + 공식 재평가 완료** | **공식 val mIoU 80.86**@ep276(내부 81.02 −0.16, thin class 집중). 프로토콜=CAFuser `MUSESSemSegEvaluator`(=stock detectron2, argmax 전 native 업샘플·GT 무리사이즈) 소스 확정. **DAY 83.56 / NIGHT 82.03(−1.53만) — 악조건 robustness 강함**(공통 11클래스 통제; naive는 조건별 클래스수 상이로 오해 유발). 🔴 **SOTA 주장 불가**: **79.72=DGFusion val(CAFuser 아님; CAFuser 78.71/CAA 79.04)**, **MUSES는 test로 랭킹**(DGFusion test 79.49)인데 우리는 test 없음 + 백본 10×(ViT-L 300M vs Swin-T 28M) + val-selected ckpt. **결론 = Codabench 14005 test 제출**(hinton 가능, 계정 필요); *방법* 주장하려면 Swin-T 동급 재학습. 회수 `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/MUSES_P34_20260715/`(ckpt 1.7G + official_eval/ raw confusion 포함). loader+config develop 병합(b4d69c1). |
-| **🔴 B200 마감** | **2026-07-15 23:59 KST** (잔여 ~8h) | 학습 전부 완주·회수 완료. 백업: `B200_backup_20260715/`(8.7G) + `P34_final_20260713/` + `MUSES_P34_20260715/`(1.7G). 구세대 가중치 ~400GB는 의도적 미백업(로그·config만). |
-
-**진행 중 트랙 (2026-07-02 시점 기록 — 위 표가 최신)**
-
-| 트랙 | 상태 | 최신 수치 / 다음 액션 |
-|------|------|----------------------|
-| **seg: P34 ReliaDINO (B200 DELIVER)** | 🏁🏆 **완주**(07-13 15:34, DINOv3 ViT-L/16 frozen+RBMA) — 최종 **Val 68.19@ep120 / Test 57.60@ep140**. **Test-SOTA(DGFusion 56.71) +0.89 돌파**(경쟁 지표 승리, 계보 최초) / Val 목표 66.51 달성(val-SOTA 68.6엔 −0.41). **P34=확정 최선 seg.** best ckpt NAS 회수·검증 완료(/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/P34_final_20260713). 모니터 RUN-20. |
-| **SAM2 RBMA seg (P29, B200)** | ⏹ **종료**(ep150, 2026-06-30 11:03; P30 띄우려 수동 중단) | 최종 best **Val 63.20@ep100 / Test 54.34@ep146**(ckpt 보존). val 70 미달·ep34부터 60~63 정체. 모니터 RUN-2 |
-| **SAM2 RBMA seg (P28, B200)** | 🔴 사망(ep16, 2026-06-24) → **P29로 대체됨** | best Val 57.87@ep12 / Test 50.61@ep12. `last_checkpoint.pth` 보존. 모니터 RUN-1 |
-| **Det 객체검출** | 🎯 **best=bengio det_P29_egofill mAP50 0.8501** / event ablation 완주·final_full 진행 | **egofill(RUN-11) 🏁완주**: best **mAP50 0.8501@ep9**(공식 v2 test) — **목표 0.85 달성**(lidar egofill+2×데이터). **det_P29_event(RUN-14) 🏁완주**(07-07): best mAP50 **0.8427@ep14** → event≈egofill-lidar(−0.008, 모달 ablation 유의미). **det_P29_final_full(RUN-15) 🟢학습중**(07-08~): P29+egofill을 최종 annotation(_final_ann/instances_train_egofill.json)으로 재학습, EPOCHS50 ep0. det_P31_v3clip(RUN-10) 완료: mAP50 0.4724(v3clip=비공식). P30-Det 0.256. 모니터 RUN-10/11/14/15 |
-| **SAM3 RBMA (포팅)** | **학습/디버깅 중** (DELIVER 25cls) | ✅6/21 decoder repurpose로 class-collapse 돌파: val 8.49→**16.27@ep22 (상승 중)**. 다음=ep40~60+ 상한 확인 |
-| **P29 (SDC 조건 라우팅)** | **설계 완료 (구현 대기)** | Soft-MoE LoRA 라우팅 비특화 진단 → label-free image-derived 조건 latent+prototype→FiLM gate(헤드라인), RBMA 신뢰도를 라우팅으로 확장(P29-B). 상세 [models/arch-evolution.md](../models/arch-evolution.md) P29 / 노벨티 [research/novelty-and-related-work.md](../research/novelty-and-related-work.md) §2.7 |
-| **P30 (class-token decoder + reliability-anchored router)** | **구현 완료 (학습 대기, P28 종료 후 GPU 2,3)** | P28 실패분석(rare-class collapse: Water/Bridge=0; event/LiDAR 미사용 Δ≈0) 직격 → ① class-token decoder(SAM3-RBMA class-collapse break 이식, m_feat에 class query cross-attn) ② reliability-anchored 학습 modality router(상수수렴 방지, per-class). 두 모듈 CPU smoke PASS, 모델 wiring compile-only. config `b200-deliver_rgbdel_P30_physaug.yaml`. 상세 [models/arch-evolution.md](../models/arch-evolution.md) P30 / 노벨티 [research/novelty-and-related-work.md](../research/novelty-and-related-work.md) §2.8 |
-| **P31 (Calibrated Dual-Reliability RBMA + MS-HR class-token decoder)** | **구현+P31.1 수정 완료 (B200 자동 launch 대기)** — 2026-07-03, develop 반영 | doc 20 P31-Seg core 우선순위 ①② 구현: [Seg-A] per-modal temperature + correctness-contrastive **calibration loss**(event/LiDAR AUROC .30/.22 수리) / [Seg-C] `ClassTokenDecoderMS`(simple-FPN {4,8,16,32} + 학습형 ConvTranspose HR pixel-embed + training-only aux CE @H/4) / [레버①] Hiera 마지막 3 block unfreeze(LR×0.1) / [레버②] **router 'decisive' reg**(uniform 라우팅 해소) / [Seg-B] consistency bias·rel-AMF는 기본 OFF(AUROC>0.5 조건부). **P31.1 (비판 리뷰 `/mnt/HDD2/src/logs/P31_review_20260702/` 검증 반영)**: P30-seg 실측 붕괴(Val 49.76@ep136/Test 44.10@ep146 = P29 대비 −13.4/−10.2) 확인 → **CTD aux-only 강등**(최종 출력=SAM decoder 복원, CTD는 training-only aux CE) + **per-modal reliability AUROC/router-w 학습 중 로깅**(tb/wandb `p31/*`) + **SDC OFF**. B200 watcher가 P30(ep~194/200) 종료 시 GPU 4-7에 자동 launch. config `b200-deliver_rgbdel_P31_physaug.yaml`. 상세 [models/arch-evolution.md](../models/arch-evolution.md) P31 |
-| **P32 (CoRB — Corroboration-Biased Memory Attention)** | 🟡 **학습 plateau + 분석 완료**(2026-07-06, branch `worktree-p32-corrb` 미병합) | RBMA 신뢰도 신호를 self-entropy → **무학습 cross-modal corroboration(corr_veto)** 으로 교체(`LoRA_Sam_P32._compute_bias_source`, λ만 학습). **Phase 0 게이트 PASS**(corroboration이 event/LiDAR AUROC .30/.22→.54/.81 반전, [experiments/analysis/p32-phase0-results.md](../experiments/analysis/p32-phase0-results.md)). **학습 결과 미달**: Test **53.45@ep40** / Val **61.65@ep30** (P28 55.27/63.40·P31 54.75/63.20 대비 −1.8/−1.8, ep26~30 plateau). **분석 판정(핵심)**: "신호는 맞고 라우팅 실패" — corroboration AUROC는 좋으나 **drop-modality Δ[img6.2,depth15.6,event~0,lidar~0] = event/LiDAR 여전히 죽음(Mode C)**. soft attention-bias로는 feature/decoder가 약한 모달(competence≈0) 부활 불가, 오히려 P28 self-entropy(약모달 down-weight)보다 소폭 악화. 구조적 사망 class(Bridge/Water/Wall/Other IoU~0)=frozen-backbone ceiling. 산출물 `/mnt/HDD2/src/logs/P32_eval_20260706/`. **처방**: ① **P32-C(PruneMem: hard pruning+modality dropout)** 로 event/LiDAR 강제 사용(다음 단계) ② calibration 복원+corroboration 결합 ③ 구조적 사망=backbone unfreeze/CTD. config `b200-deliver_rgbdel_P32_physaug.yaml`. 상세 [models/arch-evolution.md](../models/arch-evolution.md) P32 / [experiments/analysis/p32-phase0-results.md](../experiments/analysis/p32-phase0-results.md) |
-
-**📦 2026-07-28 리포 통합 + 재현 경로**: worktree 브랜치를 **develop 하나로 정리**했다(worktree 15→3, 로컬 브랜치 22→5). 삭제 브랜치의 원본 커밋은 전부 **`archive/<브랜치>` 태그 11개**로 보존 — 옛 브랜치를 찾으면 `git tag -l 'archive/*'`를 보라. **`26-drone-certificate`는 통합 대상이 아니며 유지**. 사용 중인 worktree 2개(`p34-det`·`p30-det`)는 다른 세션이 점유 중이라 보존했다. 폐기 브랜치에만 있던 고유 자산(**MUSES 공식 native-해상도 재채점기 `tools/eval_muses_official.py`** 등 도구 7종·config 5종·연구문서 6종)은 develop 택소노미로 회수했다. **정량 재현 경로 신설** = [`REPRODUCE.md`](../../REPRODUCE.md) + `bash scripts/reproduce_eval.sh <deliver|muses|muses-official|multiaqua|det>`. 상세·검증 내역 = [history-2026H2.md](history-2026H2.md) 2026-07-28 엔트리. ⚠️ 아래 P32 행의 "branch `worktree-p32-corrb` 미병합" 표기는 **옛 기록** — 해당 브랜치는 develop에 포함돼 정리됐다.
-
-**열린 블로커**
-- SAM3 ViT single-scale 한계 → SAM2 P28(val~55) 대비 격차 규명 필요.
-- SAM3 최소 클래스(Pedestrian/Pole/sign/Dynamic/Water) 여전히 0 → `decoder_high_res`(FPN skip) 후속 실험 후보.
-- P28 multiaqua B200 config 경로 검증.
-
-**다음 마일스톤**: ① SAM3-RBMA 수렴 곡선 확보 → ② SAM2 P28 B200 학습 → ③ RBMA ablation(SoftMoE LoRA / SQG / AMF 제거 robustness).
-
----
-
+- **test-best ckpt 인용 금지** (철회 사고 2회: P34 57.60, P46 57.05). val-best 선택 민감도 큼(ep20→26에서 test −2.76) → 3-seed mean±std 필수.
+- 학습 @768 / 평가 @1024 mismatch는 논문에 명시 (P46 @1024² 학습 완주 시 해소).
+- 진행보고 포맷 = user auto-memory `progress-report-format` (2블록 + 벤치 baseline 표).

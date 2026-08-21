@@ -1,6 +1,6 @@
 # 📁 .claude_logs 인덱스 (Master Index)
 
-> 최종 업데이트: 2026-07-08 (**폴더 재구조화** — 번호 파일 → 주제 폴더)
+> 최종 업데이트: 2026-08-08 (MOC 전면 재등록 — 미등록 40건 해소; 폴더 재구조화 자체는 2026-07-08)
 > 이 폴더의 **front door**. 새 세션은 `CLAUDE.md` → **이 인덱스** → `status/current.md` → 작업 폴더 순으로 진입.
 > 각 폴더의 `00_MOC.md`가 그 폴더의 문서 목록/역할을 안내한다.
 
@@ -23,12 +23,12 @@
 | 폴더 | 역할 | 핵심 문서 |
 |------|------|-----------|
 | [status/](status/00_MOC.md) | **현재 상태 + 진행 이력** (구 01 분할) | [current.md](status/current.md) = 스냅샷 단일 출처 · history-2026H2/H1 |
-| [models/](models/00_MOC.md) | 모델 아키텍처 | [arch-evolution.md](models/arch-evolution.md)(canonical) · figures-ascii · explain/(버전별 노트) |
-| [experiments/](experiments/00_MOC.md) | 실험 기록 | [registry.md](experiments/registry.md)(허브) · [log.md](experiments/log.md)(canonical) · monitor-log · analysis/ · [benchmark_roadmap.md](experiments/benchmark_roadmap.md)(벤치마크·모달리티 확장 로드맵) |
-| [det/](det/00_MOC.md) | Detection 트랙 진단 | [diagnosis-plan.md](det/diagnosis-plan.md)(det 작업 전 필독) · p29det-data-fix |
-| [datasets/](datasets/00_MOC.md) | 데이터셋 구축/수리 | [lidar-egofill.md](datasets/lidar-egofill.md) |
+| [models/](models/00_MOC.md) | 모델 아키텍처 | [arch-evolution.md](models/arch-evolution.md)(canonical) · figures-ascii · explain/(버전별 노트) · [p44-bmr-implementation.md](models/p44-bmr-implementation.md) |
+| [experiments/](experiments/00_MOC.md) | 실험 기록 | [registry.md](experiments/registry.md)(허브) · [log.md](experiments/log.md)(canonical) · monitor-log · analysis/ · [benchmark_roadmap.md](experiments/benchmark_roadmap.md)(벤치마크·모달리티 확장 로드맵) · [plan.md](experiments/plan.md)(GPU 잡기 전 필독) · [launch-runbook.md](experiments/launch-runbook.md) |
+| [det/](det/00_MOC.md) | Detection 트랙 진단 | [diagnosis-plan.md](det/diagnosis-plan.md)(det 작업 전 필독) · p29det-data-fix · [det-cert-D1-realtime.md](det/det-cert-D1-realtime.md)·[det-cert-D1-vitsp-handoff.md](det/det-cert-D1-vitsp-handoff.md)(D1 인증 트랙) · [det-architecture-map.md](det/det-architecture-map.md) |
+| [datasets/](datasets/00_MOC.md) | 데이터셋 구축/수리 | [lidar-egofill.md](datasets/lidar-egofill.md) · [muses-dataset.md](datasets/muses-dataset.md) |
 | [research/](research/00_MOC.md) | 관련연구·노벨티 | [novelty-and-related-work.md](research/novelty-and-related-work.md)(canonical) · vault-digest · vault/ · related-work-raw |
-| [decisions/](decisions/00_MOC.md) | 설계 제안·감사 (날짜 prefix) | 2026-07-02 P31 재설계 · 2026-07-03 최적화 감사 · 2026-06-16 SAM3 포팅 |
+| [decisions/](decisions/00_MOC.md) | 설계 제안·감사 (날짜 prefix) | P39~P49 설계 제안 계보 (최신: 2026-08-08 condexpert-adapter-probe) — 목록은 00_MOC |
 | [infra/](infra/00_MOC.md) | 서버·환경 | [servers-and-launch.md](infra/servers-and-launch.md)(원격 실행 시 먼저) · environment |
 | [issues/](issues/00_MOC.md) | 이슈 트래킹 | [issues-and-fixes.md](issues/issues-and-fixes.md)(코딩 전 상단 상태표 확인) |
 | [meta/](meta/00_MOC.md) | 세션 운영 | **[conventions.md](meta/conventions.md)(구조 유지 규칙)** · bot-roles · taskboard |

@@ -1,0 +1,261 @@
+<title>MemorySAM 작업 현황</title>
+<style>
+  :root{
+    --paper:#f4f6f4; --card:#ffffff; --raise:#e9eeeb; --line:#d8e0dc;
+    --ink:#141a17; --ink2:#3d4c46; --muted:#66756e;
+    --accent:#0e6f62; --accent-soft:#d9ebe7;
+    --good:#1c7c46; --good-soft:#ddefe3;
+    --warn:#a3690e; --warn-soft:#f6ead3;
+    --dead:#b3372f; --dead-soft:#f6dfdc;
+    --hold:#5b6770; --hold-soft:#e5e9ec;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0d1412; --card:#141c19; --raise:#1b2521; --line:#28342f;
+      --ink:#e4ece8; --ink2:#a7b8b1; --muted:#7b8c85;
+      --accent:#57d0bd; --accent-soft:#123330;
+      --good:#67d494; --good-soft:#10291a;
+      --warn:#e5ab4e; --warn-soft:#2f2410;
+      --dead:#ef9088; --dead-soft:#331714;
+      --hold:#93a1aa; --hold-soft:#1d262b;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0d1412; --card:#141c19; --raise:#1b2521; --line:#28342f;
+    --ink:#e4ece8; --ink2:#a7b8b1; --muted:#7b8c85;
+    --accent:#57d0bd; --accent-soft:#123330;
+    --good:#67d494; --good-soft:#10291a;
+    --warn:#e5ab4e; --warn-soft:#2f2410;
+    --dead:#ef9088; --dead-soft:#331714;
+    --hold:#93a1aa; --hold-soft:#1d262b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
+    font-family:-apple-system,"Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:980px;margin:0 auto;padding:0 20px 80px}
+
+  header{padding:44px 0 20px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  .eyebrow{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  h1{font-size:clamp(24px,4vw,34px);margin:0 0 8px;letter-spacing:-.02em;font-weight:650;text-wrap:balance}
+  .stamp{font-size:12.5px;color:var(--muted)}
+  .stamp b{color:var(--ink2);font-weight:600}
+
+  /* verdict strip */
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:22px 0 0}
+  .vcard{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;border-left:3px solid var(--tone,var(--accent))}
+  .vcard .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:3px}
+  .vcard .v{font-size:14.5px;font-weight:650;color:var(--tone,var(--ink))}
+  .vcard .d{font-size:12.5px;color:var(--ink2);margin-top:3px}
+  .t-good{--tone:var(--good)} .t-warn{--tone:var(--warn)} .t-dead{--tone:var(--dead)} .t-hold{--tone:var(--hold)}
+
+  section{margin:36px 0 0}
+  h2{font-size:17px;margin:0 0 4px;font-weight:640;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--raise);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pos{color:var(--good);font-weight:640}.neg{color:var(--warn);font-weight:640}.kill{color:var(--dead);font-weight:640}
+
+  .pill{display:inline-block;font-size:11px;font-weight:650;padding:2px 9px;border-radius:99px;white-space:nowrap}
+  .p-good{background:var(--good-soft);color:var(--good)}
+  .p-warn{background:var(--warn-soft);color:var(--warn)}
+  .p-dead{background:var(--dead-soft);color:var(--dead)}
+  .p-hold{background:var(--hold-soft);color:var(--hold)}
+  .p-acc{background:var(--accent-soft);color:var(--accent)}
+
+  /* hypothesis grid */
+  .hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px}
+  .hcell{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font-size:12.5px}
+  .hcell .hid{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted);margin-right:6px}
+  .hcell .ht{color:var(--ink2)}
+
+  .note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 7px 7px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  .note.dead{border-color:var(--dead);background:var(--dead-soft)}
+
+  ul.tight{margin:8px 0 0;padding-left:18px;font-size:13.5px;color:var(--ink2)}
+  ul.tight li{margin-bottom:6px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.88em;background:var(--raise);padding:1px 5px;border-radius:3px}
+  footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">drone-MemorySAM · living status board</p>
+  <h1>MemorySAM 작업 현황</h1>
+  <p class="stamp">최종 갱신 <b>2026-08-17 (v9 — P47-D1 공식 test 78.790 폐기 판정 · P50-MAP pseudo-모달 생성 가동 · cross-attn A/B 대기)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
+
+  <div class="strip">
+    <div class="vcard t-good">
+      <div class="k">논문 트랙</div>
+      <div class="v">RA-L 확정 — 리라이트가 유일한 임계 경로</div>
+      <div class="d">성능 축 전 경로 판정 종결(08-16). 확정 자산: DELIVER 56.99(−0.36)·MUSES 79.788(융합계보 1위)·원장 H1~H15</div>
+    </div>
+    <div class="vcard t-warn">
+      <div class="k">DELIVER</div>
+      <div class="v">−0.16 / −0.36 (근SOTA)</div>
+      <div class="d">격차 &lt; 런 편차. 구 SOTA(DGFusion)는 no-tradeoff 상회</div>
+    </div>
+    <div class="vcard t-dead">
+      <div class="k">MUSES</div>
+      <div class="v">−2.60 (vs camera-only)</div>
+      <div class="d">융합계보 1위 · 포지셔닝 전환 확정</div>
+    </div>
+  </div>
+</header>
+
+<section style="margin-top:28px">
+  <h2>현재 모델 — 구조와 실험 결과</h2>
+  <p class="sub">위 = 지금 검증 중인 차기 구조 · 아래 = 확정 실적을 가진 현행 최고 모델</p>
+
+  <div class="vcard t-warn" style="margin-bottom:14px">
+    <div class="k">실험 중 · P49.1-AIR (비대칭 주입 — 차기 후보) <span class="pill p-acc">yeon 3×3090 · ep30 게이트 대기</span></div>
+    <div class="d" style="margin-top:8px">
+      <pre class="mermaid">graph LR
+  RGB[RGB 입력] --> VIT["DINOv3-L 24층<br/>부분 fine-tune · LLRD 0.9<br/>(주경로 — init 시 identity)"]
+  AUX["depth / event / lidar"] --> CNN["ConvNeXt-S ×3<br/>(모달별 CNN 인코더)"]
+  CNN -->|"Injector: γ-게이트 cross-attn<br/>4블록 경계 · γ init 0.1"| VIT
+  VIT -->|Extractor| PYR["멀티스케일 피라미드<br/>(γ_pyr 게이트)"]
+  VIT --> PYR
+  PYR --> HEAD["FPN + 픽셀 헤드<br/>+ M2F-lite 보조손실(deep-sup)"]
+  HEAD --> OUT[세그멘테이션]</pre>
+      <b>왜 이 구조인가</b>: 현 SOTA(MM SAM-adapter)의 published ablation이 우리 기본 구조(frozen+LoRA)를 최약 구성(49.77 &lt; RGB단독 53.32)으로, 비대칭 주입을 +7.4로 실증 — 그리고 그들이 진단한 병리("대칭 융합이 easy 픽셀에서 RGB 오염")가 우리 원장에 3회 독립 기록돼 있음. 학습 파라미터 ≈0.5B(백본 304M + aux 150M), @768 학습(24GB 실측 19.8GB).<br><br>
+      <b>실험 결과 지금까지</b>:
+      <table style="min-width:0;margin-top:6px"><thead><tr><th>버전</th><th>결과</th><th>판정</th></tr></thead><tbody>
+      <tr><td class="n">P49 v1 (γ=0)</td><td class="n">ep54: γ 0.0011→0.0006 정체 · val 63.83@50</td><td><span class="pill p-dead">게이트① 중단</span> zero-init 5번째 사망 — 강한 RGB가 train 자족 → γ 압력 부재(원장 H13). MM-SA(약한 SAM RGB)와의 차이 = 발견</td></tr>
+      <tr><td class="n">P49.1 (γ=0.1) DELIVER</td><td class="n">완주. 정본(val.py native-GT) test <b>55.66@768 / 56.19@1024</b> — P46 미달. 트레이너 로그 57.68은 768-리사이즈-GT 낙관 지표로 판명(채점 프로토콜 발견) · INJECT-off <b>−12.7 붕괴</b> = 주입 기제 생존</td><td><span class="pill p-dead">성능 미달 종결</span> <span class="pill p-good">기제 생존 (첫 비-흡수 주입)</span></td></tr>
+      <tr><td class="n">P49.1 MUSES (3모달·4모달)</td><td class="n">공식 val 3모달 <b>81.16</b>(현직 82.13 −0.97) · 4모달 80.83(3모달 −0.33, fog/day만 +5.1)</td><td><span class="pill p-dead">계열 종결 (08-16, §6 집행)</span> 양 벤치 패배 확정 — 회수 자산: H13·INJECT-off −12.7·radar fog/day 특이</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <div class="vcard t-good">
+    <div class="k">확정 최고 · ReliaDINO 계보 (P46-C3 / P39.1-rank) <span class="pill p-good">legal 실적 보유</span></div>
+    <div class="d" style="margin-top:8px">
+      <pre class="mermaid">graph LR
+  IN["RGB + depth/event/lidar"] --> ENC["frozen DINOv3-L<br/>+ 모달별 LoRA"]
+  ENC --> TRUNK["gated-MLP 융합 트렁크<br/>γ tanh(0.1) + VICReg (rank 복원)"]
+  TRUNK --> H2["FPN + 픽셀 헤드<br/>+ M2F-lite(deep-sup)"]
+  H2 --> O2[세그멘테이션]
+  PROTO["C3 prototype 대조손실<br/>(학습 전용 · 클래스축)"] -.학습 시만.-> TRUNK</pre>
+      <table style="min-width:0;margin-top:6px"><thead><tr><th>벤치</th><th>구성</th><th>legal 성적</th><th>vs SOTA</th></tr></thead><tbody>
+      <tr><td>DELIVER</td><td class="n">P46 C3-only (@768 학습·@1024 평가)</td><td class="n">val <b>69.44</b> / test <b>56.99</b> · RailTrack 4.02→<b>67.69</b></td><td class="n neg">−0.16 / −0.36 (MM-SA) · 구 SOTA DGFusion은 no-tradeoff 상회</td></tr>
+      <tr><td>MUSES</td><td class="n">P39.1-rank 3모달 (img/lidar/event)</td><td class="n">공식 test <b>79.788</b> · day 80.2/night 76.8</td><td class="n neg">published 1위 MM-SA 81.07 대비 −1.28 · <b>융합(4모달)계보 1위</b></td></tr>
+      <tr><td>MUSES 모달 해부</td><td class="n">RGB-L 2모달</td><td class="n">79.571 = 4모달과 동률</td><td class="n">event +0.22/radar −0.22 — RGB+LiDAR 이후 평탄</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>이번 주기 핵심 판정 (2026-08-08 밤 ~ 08-09)</h2>
+  <p class="sub">세 갈래 격차-축소 시도가 하룻밤에 전부 결론남 — "더 하면 된다"가 아니었다.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>시도</th><th>결과</th><th>판정</th></tr></thead>
+    <tbody>
+      <tr><td><b>배분(적응)</b> — CEA oracle 조건-전문가 상한 프로브</td><td class="n">oracle Δ(fog_night) +0.21 &lt; 게이트 +1.0 · night가 주야갭 4.33 중 +0.02만 회수</td><td><span class="pill p-dead">폐기 확정</span> 적응 가설 3단계 완결 폐쇄</td></tr>
+      <tr><td><b>해상도</b> — P46 C3-only @1024² 본학습</td><td class="n">val 69.79↑ / legal test 56.50↓ 역발산 (yeon 병행런 재현)</td><td><span class="pill p-dead">게이트 미달 확정</span> → RA-L 분기</td></tr>
+      <tr><td><b>순수 스케일</b> — ProbeA2 백본 스케일링 (S+/B/L/H+)</td><td class="n">5점 완성: L→H+ +0.52, <b>H+→7B +0.18</b>(8×) · §⑧ 축분리도 음성(악조건 +0.28·야간 −0.57)</td><td><span class="pill p-dead">H12 완전 폐쇄 (08-12)</span> 표현력 축 소진 확정 — 5점 곡선은 논문 그림</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">종합: 남은 격차의 원인은 <b>배분이 아니라 정보</b>. 남은 유력 축 = <b>데이터</b>(양·품질) 또는 <b>아키텍처 신규 설계</b>. 부수 발견 — 기존 seed2/3은 시드가 안 달라진 런(3407 하드코딩), <span class="mono">seedB</span>가 첫 진짜-시드 런.</div>
+</section>
+
+<section>
+  <h2>벤치마크 현황</h2>
+  <p class="sub">legal 프로토콜 수치만. test-best 인용 금지(철회 사고 2회).</p>
+  <div class="scroll"><table>
+    <thead><tr><th>벤치</th><th>우리 최선</th><th>SOTA</th><th>격차</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td>DELIVER val/test</td><td class="n">69.44 / 56.99 <span style="color:var(--muted)">(P46 C3-only, @1024 평가)</span></td><td class="n">69.60 / 57.35 (MM SAM-adapter)</td><td class="n neg">−0.16 / −0.36</td><td><span class="pill p-warn">근SOTA 정체</span></td></tr>
+      <tr><td>MUSES test</td><td class="n">79.788 <span style="color:var(--muted)">(P39.1-rank seed2 3모달)</span></td><td class="n">82.39 (GtA, camera-only)</td><td class="n kill">−2.60</td><td><span class="pill p-acc">융합계보 1위</span> 79.571 &gt; DGFusion 79.5</td></tr>
+      <tr><td>MUSES PQ (things)</td><td class="n">22.87</td><td class="n">59.26 (CAFuser)</td><td class="n kill">−23점대</td><td><span class="pill p-hold">비교 불가 — limitation</span></td></tr>
+      <tr><td>MULTIAQUA M-score</td><td class="n">82.10 (P9/P22)</td><td class="n">—</td><td class="n">—</td><td><span class="pill p-hold">챌린지 종료 · 고정</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="sub" style="margin-top:8px">Detection(mAP50 0.9321 / 목표 0.85)은 목표 달성으로 <b>트래킹 종료</b> — 2026-08-09 user 지시.</p>
+</section>
+
+<section>
+  <h2>가설 원장 요약</h2>
+  <p class="sub">canonical = <span class="mono">research/hypothesis-ledger.md</span> — 새 제안 전 필독. ✗ = 재제안 금지.</p>
+  <div class="hgrid">
+    <div class="hcell"><span class="hid">H1</span><span class="pill p-dead">✗</span> <span class="ht">학습 게이트 모달 가중</span></div>
+    <div class="hcell"><span class="hid">H2</span><span class="pill p-dead">✗</span> <span class="ht">RBMA attn-bias</span></div>
+    <div class="hcell"><span class="hid">H3</span><span class="pill p-dead">✗</span> <span class="ht">추론 재가중 (유해)</span></div>
+    <div class="hcell"><span class="hid">H4</span><span class="pill p-dead">✗</span> <span class="ht">조건 전문화 어댑터 (oracle 상계)</span></div>
+    <div class="hcell"><span class="hid">H5</span><span class="pill p-good">✓</span> <span class="ht">조건×모달 상호작용 실재 (단 소진)</span></div>
+    <div class="hcell"><span class="hid">H6</span><span class="pill p-good">✓</span> <span class="ht">백본 표현력 지배 (+11.6)</span></div>
+    <div class="hcell"><span class="hid">H7</span><span class="pill p-good">✓</span> <span class="ht">학습 해상도 +1.15/+2.01</span></div>
+    <div class="hcell"><span class="hid">H8</span><span class="pill p-good">✓</span> <span class="ht">C3 prototype (클래스축 특이)</span></div>
+    <div class="hcell"><span class="hid">H9</span><span class="pill p-dead">✗</span> <span class="ht">쿼리 경로 이중화 (dense 복제)</span></div>
+    <div class="hcell"><span class="hid">H10</span><span class="pill p-warn">⚠️</span> <span class="ht">인스턴스 감독 — 재판정 의뢰 등재</span></div>
+    <div class="hcell"><span class="hid">H11</span><span class="pill p-dead">✗</span> <span class="ht">radar 기여 (MUSES)</span></div>
+    <div class="hcell"><span class="hid">H12</span><span class="pill p-warn">⚠️</span> <span class="ht">L 초과 스케일 — 포화 근접, 7B 대기</span></div>
+    <div class="hcell"><span class="hid">H12′</span><span class="pill p-dead">✗</span> <span class="ht">용량 정합 방어 (−8.82, 스코프 공개)</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>남은 실험 — 카드</h2>
+  <p class="sub">각 카드 = 풀려는 문제 → 투입한 것 → 성공 시 인사이트(novelty) → 실패 시 배우는 것. 큐 canonical = <span class="mono">experiments/plan.md</span> · 실시간 = <span class="mono">watchdog.sh status</span></p>
+
+  <div class="vcard t-warn" style="margin-bottom:10px">
+    <div class="k">판정 대기 ① · C2-MCC 순기여 측정 <span class="pill p-dead">유해 확정 (08-16, Δ−1.67)</span> — UDA 실증 기법의 지도 전이 한계 발견(H15). DELIVER SOTA 마지막 경로 종결 — 학습손실 축은 C3 단독</div>
+    <div class="d" style="margin-top:6px">
+      <b>문제</b>: DELIVER test 격차 −0.36. C3 prototype(+1.35~1.74)은 실증됐지만, P46의 세 모듈 중 C2만 담당 런이 서버 소실로 죽어 <b>순기여를 한 번도 못 쟀다</b> — 유일하게 "결과를 모르는" 학습 전용 손실.<br>
+      <b>투입</b>: MIC 계열 masked consistency — EMA-teacher는 원본, student는 50% 패치 마스킹 입력을 보고 마스킹 영역에서 일치 강제. 추론 불변(학습 전용). 측정 = C3 단독 vs C2+C3 A/B.<br>
+      <b>성공 시(novelty)</b>: "문맥 추론 강제"가 prototype과 <b>독립인 두 번째 학습-전용 축</b>임을 실증 — 산술적으로 C3 이득과 합산 시 −0.36 격차를 넘을 유일한 잔여 경로. 논문 기둥 ③(학습 신호 축)이 1개→2개 모듈로 강화.<br>
+      <b>실패 시(Δ≈0)</b>: 학습-전용 손실 축도 prototype 하나로 소진 → "남은 축 = 데이터·신규 설계" 결론이 최종 확정. + frozen 백본/LoRA 세팅에서 MIC 마스킹이 무효라는 데이터 포인트(원장 등재).
+    </div>
+  </div>
+
+  <div class="vcard t-warn" style="margin-bottom:10px">
+    <div class="k">판정 대기 ② · ProbeA2-7B (축분리 게이트 §⑧) <span class="pill p-warn">승인 대기 · A100 상실로 보류(24GB 시도 폴백 가능) · C2 후순위</span></div>
+    <div class="d" style="margin-top:6px">
+      <b>문제</b>: 1차 프로브에서 헤드라인 Δ(H+−L)=+0.52는 포화처럼 보이지만, <b>상쇄의 결과</b>였다 — 악조건 +3.7~4.7 vs clear_day −3.06. 격차의 원인이 "정보 부족"(H5′)이라면, 더 큰 vision prior가 야간 정보를 사 오는지가 미확정.<br>
+      <b>투입</b>: DINOv3-7B frozen feature 추출 + 동일 head, 판정을 헤드라인이 아닌 <b>악조건 서브셋 Δ로 축분리</b>(1차의 상쇄 오염 재발 방지).<br>
+      <b>성공 시(novelty)</b>: <b>"야간·악천후 정보 결핍은 prior 용량으로 보충된다"</b> — 정보 결핍 명제의 건설적 해답 실증. 차기 아키텍처 = 대형 prior 축 편입 근거. 스케일링을 조건축으로 분해한 분석 자체가 논문 분석 절 소재.<br>
+      <b>실패 시(악조건 Δ&lt;+0.5)</b>: H12 완전 폐쇄 — 스케일로도 야간 정보를 못 산다 → 배분·해상도·스케일 3축 전부 닫힌 <b>완결된 소거 증명</b>이 논문 서사를 오히려 강화. 남은 축 = 데이터·신규 설계로 최종 수렴.
+    </div>
+  </div>
+
+  <div class="scroll"><table>
+    <thead><tr><th>진행·대기</th><th>문제 → 투입</th><th>성공 시 / 실패 시</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td><b>P49-AIR 본런</b><br><span class="mono" style="font-size:11px">yeon 2,6,7 · 150ep</span></td><td>대칭 융합의 RGB 오염(원장 3회 기록) → 비대칭 RGB-주경로 FT + 인코더-내부 zero-init 주입(MM-SA 해부 기반, 딥리서치 3축). @768 학습(24GB @1024 no-go 실측)</td><td>test ≥57.35 → DELIVER SOTA / G-4M(4모달≥3모달) → "모달 늘려도 안 깨지는 융합" 주장 / ep30 γ정체·RGB-clean 훼손 → 중단·키1 재판정</td><td><span class="pill p-dead">계열 종결 (08-16)</span></td></tr>
+      <tr><td><b>P46@1024 seedB</b><br><span class="mono" style="font-size:11px">jarvis 6,7</span></td><td>기존 seed2/3이 전부 같은 시드(3407 하드코딩)여서 참 시드 분산을 모름 → 첫 진짜-시드 런(TRAIN.SEED 신설)</td><td>분산 작음 → mean±std로 근SOTA 주장 안정화 / 분산 큼 → −0.36 격차 논의 자체가 무의미해짐(ckpt 선택 프로토콜 문제로 이동)</td><td><span class="pill p-acc">학습 중</span></td></tr>
+      <tr><td><b>P47-2 UniBal</b><br><span class="mono" style="font-size:11px">A100×4 대기</span></td><td>MUSES 리더보드 모달↑=순위↓ 역상관 + 우리 4모달&lt;3모달 → modality laziness 진단, 모달별 독립 head에 동일 GT CE 직결(추론 불변)</td><td>4모달≥3모달 복원 → laziness가 원인이었다는 실증 + 융합계보 SOTA 재도전 / 실패 → RGB 본류 병목 확정, 포지셔닝 전환 최종 승인. <b>D1 폐기로 4모달 역전의 유일한 남은 레버</b></td><td><span class="pill p-hold">구현 완료</span></td></tr>
+      <tr><td><b>P47-D1 LiDAR 밀도화</b><br><span class="mono" style="font-size:11px">4모달 · hpca100 완주</span></td><td>lidar 커버리지 6.5%→32.6%(DGFusion 투영 정합) — "정보 축" 데이터 품질 개선으로 4모달 역전 시도</td><td><b>공식 test 78.790 (08-17)</b> — val 82.58(4모달 역대최강, +0.23)인데 test는 4모달 base 79.571 대비 <b>−0.78</b>. val→test 낙차 3.79(계보 ~2.8 +1.0) = <b>val 과적합</b>. "MUSES에서 val 단독 이득으로 제출 금지" 3회째 확증</td><td><span class="pill p-dead">폐기 (제출 #10)</span></td></tr>
+      <tr><td><b>P50-MAP 정렬 사전학습</b><br><span class="mono" style="font-size:11px">yeon 1-4 생성 중</span></td><td>LoRA+트렁크가 타깃 3~4천 장 from-scratch(사전학습 0) — VLM 교훈("융합 모듈 2차, 정렬 1차")+OmniSegmentor(+5.1이 사전학습만으로) → Places365 200k를 pseudo-모달(depth/lidar/event)로 렌더링해 정렬 사전학습 후 파인튠. 추론 그래프 무변경</td><td>프로브 게이트: base(56.99 레시피) 대비 test ≥+0.5 → 본 확장 / &lt;0 → 폐기. 성공 시 = "센서 도메인 stage-1 정렬" 노벨티(frozen foundation 위 어댑터만 정렬은 미점유) / 실패 → 데이터 축도 소거, 서사 완결</td><td><span class="pill p-acc">pseudo-모달 생성 중 (ETA ~3.4h, 파일럿 PASS)</span></td></tr>
+      <tr><td><b>Cross-attn 트렁크 A/B</b><br><span class="mono" style="font-size:11px">시드런 후 jarvis</span></td><td>user 가설 "MLP 합산 대신 모달간 cross-attention이어야 하지 않나" 통제 검증 — XAttnTrunk(대칭 모달간 attn, LayerScale 1.0) vs gated-MLP, 나머지 byte-동일</td><td>게이트 ±0.3: xattn 우세 → 트렁크 교체 + GeminiFusion 계열 대비 포지셔닝 / 동급·열세 → "connector 선택은 2차"(MM1) 실측 확증으로 P50 근거 강화</td><td><span class="pill p-hold">구현·스모크 완료 (대기)</span></td></tr>
+      <tr><td><b>H10 재판정</b><br><span class="mono" style="font-size:11px">4090 1~2장 ~2일</span></td><td>things PQ 상한 원인 규명(D2) — 인스턴스 감독 재판정</td><td>취소 사유: PQ는 비경쟁축(DGFusion 등 경쟁 논문 전부 mIoU 경쟁·PQ 미리포트) → 논문 기여로 연결 안 됨. H10은 원장에 미결·동결</td><td><span class="pill p-dead">취소 (08-10 user)</span></td></tr>
+      <tr><td><b>RGB-D fair-eval</b><br><span class="mono" style="font-size:11px">1 GPU · 학습 0</span></td><td>SOTA 최고 구성(RGB-D)과 동일 구성 직접 비교</td><td><b>val 65.79 / test 54.14 — 열세 확정</b>(SOTA RGB-D −3.21, 우리 4모달 −2.85). "2모달 충분" 기각. 발견: event/lidar 기여 = 추론 무기여·<b>학습 유기여</b>(drop Δ≈0인데 학습부터 빼면 −2.85) — DELIVER는 4모달 필요, MUSES는 2모달 동급(벤치별 모달 요구 상이)</td><td><span class="pill p-good">완료 판정</span></td></tr>
+      <tr><td><b>MUSES RGB-L</b><br><span class="mono" style="font-size:11px">~1일</span></td><td>상위권 실구성(MM SAM-adapter RGB-L 81.07)과 직접 비교 — 3&gt;4모달 추세가 2모달까지</td><td><b>공식 test 79.571 — 4모달과 동률, 3모달 −0.217</b>. 모달 한계기여: event +0.22 / radar −0.22 = RGB+LiDAR 이후 평탄. fog_night 69.819(event 없이도 동급). DELIVER(2모달 −2.85 붕괴)와 정반대 → 벤치별 모달 요구 상이 양방향 실측 완성</td><td><span class="pill p-good">공식 test 확정 (제출 #9)</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="sub" style="margin-top:8px">elice P46@1024 런은 08-09 23:46 <b>OOM 사망</b>(공유박스 타인 점유 과밀) — 이미 게이트 미달 확정·참고 관찰 격하 상태였고 val-best@ep70 데이터는 확보됨. 재기동 안 함. 시드 함대는 λ 착오 교정 후 <b>λ0.1 2런(jarvis, TRAIN.SEED 검증됨)</b>으로 재기동 — 완주 ~08-18/19, 본run 56.99와 mean±std 3점 구성. CEA·P48 등 폐기 실험은 가설 원장 참조.</p>
+</section>
+
+<section>
+  <h2>논문 트랙 (RA-L)</h2>
+  <ul class="tight">
+    <li><b>서사</b>: ①조건×모달 상호작용 실재 → ②적응 기제 전 수준 실패 + oracle 상계 → ③작동하는 것은 표현력·학습 신호(단 L 근방 포화) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제). <b>실패 이력이 주장의 증거가 되는 구조.</b></li>
+    <li><b>임계 경로</b>: ReliaDINO 초안(볼트 <span class="mono">_paper_submission/</span>) — RBMA 중심 서사가 반증된 상태라 <b>재중심화 리라이트</b>가 최우선. 슬롯 3(MUSES 제출)·5(multi-seed)는 이미 충족.</li>
+    <li><b>필요 ablation</b>: RGB-D fair-eval · MUSES RGB-L · C2 순기여 · 시드 분산(seedB 계열).</li>
+    <li><b>재현성 규약</b>: test-best 금지 · train/eval 해상도 mismatch 명시 · 3-seed mean±std.</li>
+  </ul>
+</section>
+
+<footer>
+  <b>갱신 시스템</b> — 원본 = repo <span class="mono">.claude_logs/meta/status-report.html</span> (git 추적, develop).
+  의미 있는 판정 변화(게이트 판정·SOTA 변동·큐 변화) 시 아무 세션이나: ① 이 파일 갱신 → ② develop push → ③ Artifact 도구로 동일 URL 재배포(<span class="mono">url</span> 파라미터). 규약 = <span class="mono">meta/conventions.md</span> §4.
+  수치 출처는 항상 <span class="mono">status/current.md</span>·<span class="mono">hypothesis-ledger.md</span>·분석 문서 — 이 보드에 새 수치를 먼저 쓰지 말 것(보드는 파생물).
+</footer>
+</div>

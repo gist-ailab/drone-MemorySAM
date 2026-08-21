@@ -265,6 +265,120 @@ class CrossModalAttentionLayer(nn.Module):
         return x
 
 
+class XAttnTrunkLayer(nn.Module):
+    """[A/B trunk] 대칭 모달간 cross-attention 1층 — 모달별 **개별** 프로젝션.
+
+    GeminiFusion(2406.01210)식 inter-modal attention을 1/16 토큰 레벨로 축약한
+    것. 위의 `CrossModalAttentionLayer`(융합 본체)와 달리 (a) 가중치를 모달 간
+    공유하지 않고 (b) RBMA 바이어스를 받지 않는다 — 이 층은 P39-V1 트렁크
+    (`ReliaDINO.trunk_exp`, gated-MLP)의 **대체 구현**이지 융합 본체의 변형이
+    아니다. 통제 A/B의 대상이 트렁크 하나로 국한돼야 하므로 융합·인코더·헤드·
+    손실은 전부 손대지 않는다.
+
+    한 층에서 모달 m은 **나머지 모달들의 토큰을 concat**한 것을 K/V로 삼아
+    cross-attn 하고, 이어서 FFN을 통과한다. 두 잔차 모두 LayerScale이 붙되
+    **init 1.0** (= 평범한 잔차)이다. zero-init은 금지 — 원장 키1(소극 잔차로
+    얹은 경로가 gradient를 못 받고 사장된 사고 4연속)의 재판이 된다.
+
+    모달 갱신은 **동시**다: 한 층 안에서 모든 모달이 같은 입력 스냅샷을 보므로
+    모달 순서에 따른 비대칭이 생기지 않는다(사양의 '대칭').
+    """
+
+    def __init__(self, dim: int, num_modalities: int, num_heads: int = 8,
+                 mlp_ratio: float = 4.0, ls_init: float = 1.0):
+        super().__init__()
+        if num_modalities < 2:
+            raise ValueError("XAttnTrunkLayer 는 모달 2개 이상에서만 정의된다 "
+                             f"(got {num_modalities}) — 모달 간 cross-attn 이므로.")
+        if dim % num_heads != 0:
+            raise ValueError(f"dim({dim}) 이 num_heads({num_heads}) 로 나눠떨어져야 한다.")
+        m = num_modalities
+        self.m = m
+        self.num_heads = num_heads
+        self.norm_q = nn.ModuleList(nn.LayerNorm(dim) for _ in range(m))
+        self.norm_kv = nn.ModuleList(nn.LayerNorm(dim) for _ in range(m))
+        self.q = nn.ModuleList(nn.Linear(dim, dim) for _ in range(m))
+        self.k = nn.ModuleList(nn.Linear(dim, dim) for _ in range(m))
+        self.v = nn.ModuleList(nn.Linear(dim, dim) for _ in range(m))
+        self.proj = nn.ModuleList(nn.Linear(dim, dim) for _ in range(m))
+        self.norm2 = nn.ModuleList(nn.LayerNorm(dim) for _ in range(m))
+        hidden = int(dim * mlp_ratio)
+        self.mlp = nn.ModuleList(
+            nn.Sequential(nn.Linear(dim, hidden), nn.GELU(), nn.Linear(hidden, dim))
+            for _ in range(m))
+        # LayerScale (per-channel), init 1.0 = 평범한 잔차. 🔴 0으로 바꾸지 말 것.
+        self.ls_attn = nn.Parameter(torch.full((m, dim), float(ls_init)))
+        self.ls_mlp = nn.Parameter(torch.full((m, dim), float(ls_init)))
+
+    def _attend(self, i: int, xq: torch.Tensor, xkv: torch.Tensor) -> torch.Tensor:
+        B, Nq, C = xq.shape
+        h = self.num_heads
+        q = self.q[i](xq).reshape(B, Nq, h, C // h).transpose(1, 2)
+        k = self.k[i](xkv).reshape(B, -1, h, C // h).transpose(1, 2)
+        v = self.v[i](xkv).reshape(B, -1, h, C // h).transpose(1, 2)
+        out = F.scaled_dot_product_attention(q, k, v)
+        return self.proj[i](out.transpose(1, 2).reshape(B, Nq, C))
+
+    def forward(self, tokens: List[torch.Tensor]) -> List[torch.Tensor]:
+        """tokens: m x (B, N, C) -> 같은 shape 리스트."""
+        m = self.m
+        out = []
+        for i in range(m):
+            kv = torch.cat([tokens[j] for j in range(m) if j != i], dim=1)
+            x = tokens[i]
+            x = x + self.ls_attn[i] * self._attend(
+                i, self.norm_q[i](x), self.norm_kv[i](kv))
+            x = x + self.ls_mlp[i] * self.mlp[i](self.norm2[i](x))
+            out.append(x)
+        return out
+
+
+class XAttnTrunk(nn.Module):
+    """[A/B trunk] P39-V1 트렁크의 cross-attention 판 (`MODEL.FUSION.TRUNK: xattn`).
+
+    현행(gated-MLP) 트렁크는 모달별 1×1 MLP의 게이트 잔차다:
+
+        fused' = fused + Σ_m tanh(γ_m) · MLP_m(LN(f_m))
+
+    이 클래스는 `MLP_m(LN(f_m))` 자리만 **모달 간 cross-attention 블록**으로
+    바꾼다. 합산 방식(tanh(γ) 게이트, γ init 0.1)과 출력 shape (B,C,h,w)은
+    현행과 **정확히 동일**하고 γ는 모델이 소유한다(`ReliaDINO.trunk_gamma` —
+    트레이너의 p391/trunk_gamma_* 로깅이 두 모드에서 같은 뜻을 갖는다).
+    즉 두 팔의 차이는 per-modal 변환 하나뿐 = 통제 A/B가 성립한다.
+
+    forward(fused, feats, gamma) -> (B, C, h, w)   # 현행 트렁크와 동일 shape
+    gamma=None 이면 게이트 없이 모달 **평균**을 더한다(사양이 허용한 대안 합산).
+    """
+
+    def __init__(self, dim: int, num_modalities: int, num_layers: int = 1,
+                 num_heads: int = 8, mlp_ratio: float = 4.0,
+                 ls_init: float = 1.0):
+        super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"FUSION.XATTN.LAYERS 는 1 이상이어야 한다 (got {num_layers}).")
+        self.m = int(num_modalities)
+        self.layers = nn.ModuleList(
+            XAttnTrunkLayer(dim, num_modalities, num_heads, mlp_ratio, ls_init)
+            for _ in range(int(num_layers)))
+
+    def modal_outputs(self, feats: List[torch.Tensor]) -> List[torch.Tensor]:
+        """feats: m x (B,C,h,w) -> 모달별 cross-attended map, 같은 shape."""
+        m = len(feats)
+        assert m == self.m, f"got {m} modalities, expected {self.m}"
+        B, C, h, w = feats[0].shape
+        tokens = [f.flatten(2).transpose(1, 2) for f in feats]      # m x (B,N,C)
+        for layer in self.layers:
+            tokens = layer(tokens)
+        return [t.transpose(1, 2).reshape(B, C, h, w) for t in tokens]
+
+    def forward(self, fused: torch.Tensor, feats: List[torch.Tensor],
+                gamma: Optional[torch.Tensor] = None) -> torch.Tensor:
+        ys = self.modal_outputs(feats)
+        if gamma is not None:
+            return fused + sum(torch.tanh(gamma[i]) * ys[i] for i in range(len(ys)))
+        return fused + sum(ys) / len(ys)
+
+
 class ReliabilityGatedFusion(nn.Module):
     """Cross-modal fusion with RBMA-v2 attention bias + competence output gate.
 

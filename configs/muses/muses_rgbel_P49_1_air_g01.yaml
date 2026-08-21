@@ -1,0 +1,186 @@
+# ═══ P49-AIR MUSES 3모달 파생 — 2026-08-14 user 지시로 착수(DELIVER g01 legal test
+#     재검증은 별도 병행 진단 중, 🔴 "57.68 SOTA+0.33"는 철회됨 — val.py 정본 재측정 결과
+#     test@768 55.66/test@1024 56.19, 트레이너-eval과 −2.02 불일치로 원인 미상. INJECT-off
+#     A/B(42.96, −12.7 붕괴)만 확정 — 비대칭 주입 메커니즘 자체는 검증됨. DELIVER g01
+#     config에서 DATASET.NAME/ROOT/MODALS 3개 + DGFUSION_AUG(DELIVER 전용 공정선 플래그)
+#     제거만 변경 — 나머지(구조·손실·옵티마이저·γ init 0.1)는 전부 동일(단일 아키텍처 원칙). ═══
+# 설계 정본 = .claude_logs/decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md
+# 구현      = semseg/models/reliadino/p49.py  (trainer = train_reliadino.py) — 모달별
+#             보조 인코더는 DATASET.MODALS 순서로 제네릭하게 구성됨(p49.py:891) — 코드 미변경.
+#
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py \
+#       --cfg configs/muses/muses_rgbel_P49_1_air_g01.yaml
+#
+# 한 줄: DELIVER에서 확정된 구조(RGB 주경로 DINOv3-L 부분 FT + 비대칭 zero-init 주입,
+#        γ init 0.1)를 그대로 MUSES 3모달(img/lidar/event)에 적용.
+#
+# 사전등록 게이트 (제안 §4, MUSES 완주)
+#   3모달 val ≥ 79.788(우리 최고) 초과 + published 1위(MM-SA 81.07) 사정권 ≥80.5 · fog ≥74
+#   G-4M(별도, 4모달 config 필요)  4모달 ≥ 3모달(radar 추가 무손실) = H11 재검증
+#
+# ⚠️ 서버별 경로(DATASET.ROOT)만 고쳐서 쓸 것. DELIVER g01의 ep30 게이트·falsifiable A/B는
+#    이미 DELIVER에서 통과·완주했으므로 MUSES 런에는 재적용하지 않음(구조 고정, 데이터만 교체).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/muses_rgbel_P49_1_air_3modal_g01'
+
+MODEL:
+  NAME          : ReliaDINO                   # 트레이너 진입점(빌더가 P49로 분기)
+  BACKBONE      : P49AIR-ViTL16               # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8                           # RGB_FT=true 면 미사용(ablation 팔 전용)
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  # ═══ [P49-AIR] A1~A5. 전 항목 토글 = ablation 분해 보장 ═══════════════════
+  P49:
+    ENABLE      : true
+
+    # ── A1 RGB 주경로 = DINOv3-L **부분 fine-tune** (LoRA 폐지) ──────────────
+    # 근거: MM-SA 2509.10408 Tab.4 — frozen+LoRA 49.77 은 RGB-only 53.32 보다
+    # 낮은 최약 구성이고 full FT 는 57.14. 층별 LR은 OPTIMIZER.LLRD 가 건다.
+    RGB_FT      : true
+
+    # ── A2 보조 모달 인코더 = 모달별 독립 ConvNeXt-S ────────────────────────
+    # 근거: lidar rank 붕괴(H8) — sparse 모달에 conv prior 가 유리.
+    # false 로 내리면 AUX_ENCODER 가 'vit_lora'(기존 계보 팔)로 자동 전환된다.
+    AUX_CNN     : true
+    AUX_BACKBONE : convnext_small
+    AUX_PRETRAINED : true
+    # AUX_ENCODER : convnext        # convnext | stem | vit_lora (미지정=AUX_CNN 따름)
+
+    # ── A3 인코더-내부 비대칭 주입 ──────────────────────────────────────────
+    # ViT 24층을 4블록(6층)으로 나눠 경계마다 Injector(+zero-init γ) / Extractor.
+    # 🔴 INJECT:false 면 보조 모달이 **완전히 무시**되어 RGB 단독과 등가다
+    #    (tools/smoke_p49.py B 가 allclose 로 확인).
+    INJECT      : true
+    GAMMA_INIT    : 0.1              # P49.1 — zero-init 정체(ep54 γ≈0.0006) 판정 후 P39.1 실증 절충값
+    DEFORM      : false     # 🔴 true 는 미구현 — 명시적으로 죽는다(조용한 폴백 없음)
+    NUM_BLOCKS  : 4
+    DIM         : 256       # 보조 토큰 채널
+    ATTN_DIM    : 256       # cross-attn 내부 차원
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    # vanilla cross-attn의 K/V 예산: 레벨 i 그리드 상한 = KV_GRID >> i (하한 FLOOR).
+    # 1024² 기준 보조 4레벨이 64²/32²/16²/8² = 5440 토큰. 메모리가 빠듯하면 32로.
+    KV_GRID     : 64
+    KV_GRID_FLOOR : 8
+
+    # ── A4 헤드 = 멀티스케일 피라미드 → M2F-lite (query 경쟁 경로 제거) ─────
+    # 🔴 P39 dual-path(arbiter + path dropout + β 잔차)는 쓰지 않는다 (H9: query
+    #    경로 순기여 −0.09 = dense 복제). M2F 손실은 **독립 주손실**이고 logits
+    #    에 더해지지 않는다 → 추론 경로는 결정론적 픽셀 헤드 하나뿐이다.
+    MS_HEAD     : true
+    HEAD_MODE   : pixel     # pixel(기본) | query(=semantic_scores 를 출력으로)
+    M2F:
+      ENABLE          : true
+      NUM_QUERIES     : 100
+      NUM_LAYERS      : 6
+      DIM             : 256
+      NUM_HEADS       : 8
+      MLP_RATIO       : 2.0
+      W_CLS           : 2.0
+      W_BCE           : 5.0
+      W_DICE          : 5.0
+      NO_OBJ_W        : 0.1
+      POINTS          : 12544
+      DEEP_SUPERVISION : true
+      LOSS_W          : 0.5
+      ANCHORED        : true
+      POINT_QUOTA     : 256
+
+    # ── A5(일부) VICReg on 보조 인코더 ──────────────────────────────────────
+    # H8 실증(lidar eff.rank 4.7 → 복원). γ=0 인 step 0 구간에서 보조 인코더의
+    # **유일한 gradient 출구**이기도 하다 → 끄지 말 것 (p49.py 상단 주석).
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LEVEL   : 2           # 보조 멀티스케일 중 stride-16 레벨
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ A5 C-3 prototype (클래스축) — 기존 P46 키를 그대로 재사용 ═══════════
+  # 🔴 MUSES 파생 시 OFF — C3(클래스축 처방)는 MUSES(조건축)에 이식 시 −0.765 실증 손해
+  #    (원장 H8, P46-C3 MUSES 이식 실패). fable 지적(2026-08-13) 반영.
+  P46:
+    C3_PROTO:
+      ENABLE      : false
+      FEATURE     : mfeat   # P49는 mfeat(stride-4 head feature, 256)만 지원
+      LAMBDA      : 0.2
+      TEMPERATURE : 0.1
+      EMA         : 0.999
+      PIXELS      : 4096
+      WARMUP_EP   : 5
+      CROSS_VIEW  : false   # 2-forward 보조 branch 미사용(P49는 replay 미지원)
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/SSDb/jemo_maeng/dset/MUSES'   # ⚠️ 서버별로 교체
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event']   # P39.1-rank 3모달 관례(계보 최고 구성)
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : false
+
+TRAIN:
+  IMAGE_SIZE    : [768, 768]      # /16 -> 64x64 tokens
+  BATCH_SIZE    : 1                 # eff-batch 16 은 trainer 의 grad-accum 이 맞춘다
+                                    # (accumulation_steps = ceil(16 / (BS*world)))
+  EPOCHS        : 300                # DELIVER의 150이 아니라 300 — MUSES 계보 val-best가 ep136~208대(fable 권고)
+                                      # 관례: val-best 70ep 미갱신 시 조기 종료(자동화 아님, 감시 세션이 판단)
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  # 🔴 P49 + INJECT 에서는 모델이 이 값을 거부하고 off 로 되돌린다 — 블록 경계
+  #    주입 훅의 보조 상태가 backward 재계산과 충돌한다(ISSUE-027 계열).
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : CrossEntropy
+  CLS_WEIGHTS   : false
+  OHEM          : true              # [A5] OHEM CE 채택 (MM-SA 와 동일 처방)
+  OHEM_THRESH   : 0.7
+  OHEM_MIN_KEPT : 100000
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0002            # 백본이 풀렸으므로 기존 6e-4 보다 낮춘다
+  WEIGHT_DECAY  : 0.01
+  LLRD          : 0.9               # [A1] layer-wise LR decay (백본만 감쇠)
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false

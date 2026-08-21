@@ -1,5 +1,7 @@
 # RA-L 논문 제출 트랙 — 포인터 & 실행 계획 (2026-07-15 시작)
 
+> ⚠️ **갱신 필요 (2026-08-08 판정)**: 07-15 이후 미갱신. 슬롯 3(MUSES 공식 test)은 제출 8건·최고 79.788로, 슬롯 5(multi-seed)는 P39.1-rank 5-seed(82.03±)로 **이미 충족**됐으나 미반영. 논문 모델 중심도 P34/ReliaDINO-RBMA → P46-C3(DELIVER)·P39.1-rank(MUSES) 계보로 이동 — 재중심화 방향은 status/current.md "논문 트랙" 절 + decisions/2026-08-08-condexpert-adapter-probe-proposal.md 참조.
+
 > **원본 작업 위치 = NAS 볼트** `/nas_jm/Research/26_MultimodalSeg/_paper_submission/` (이 문서는 repo-측 포인터).
 > 세션 "MMSAM | *Paper" 소유. 다른 세션은 이 문서로 논문에 필요한 실험 슬롯을 확인하고 결과를 회신한다.
 

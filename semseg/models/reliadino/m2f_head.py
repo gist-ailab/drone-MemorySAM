@@ -416,26 +416,68 @@ class MaskQueryLiteHead(nn.Module):
         return results
 
     # ── MUSES panoptic post-processing (unused on DELIVER) ──────────────────
+    @staticmethod
+    def _pan_out_hw(src_hw, size, crop, crop_size):
+        """Output (H,W) of the geometry chain, computed WITHOUT touching the
+        tensors (so the empty-query case still emits the right canvas)."""
+        h, w = int(src_hw[0]), int(src_hw[1])
+        if crop_size is not None:
+            h, w = int(crop_size[0]), int(crop_size[1])
+        if crop is not None:
+            t0, t1, l0, l1 = (int(v) for v in crop)
+            h, w = t1 - t0, l1 - l0
+        if size is not None:
+            h, w = int(size[0]), int(size[1])
+        return h, w
+
     @torch.no_grad()
     def panoptic_inference(self, out: Dict, thing_ids: List[int],
-                           obj_thresh: float = 0.8, overlap_thresh: float = 0.8):
+                           obj_thresh: float = 0.8, overlap_thresh: float = 0.8,
+                           size=None, crop=None, crop_size=None):
         """Standard Mask2Former panoptic post-processing, per image.
-        Returns list of (panoptic_seg (H/4,W/4) int32 segment ids,
-        segments_info [{id, category_id, isthing}])."""
+        Returns list of (panoptic_seg (H,W) int32 segment ids,
+        segments_info [{id, category_id, isthing}]).
+
+        Geometry (eval only, all optional; defaults = the historical stride-4
+        behaviour). The mask logits leave the head at stride 4 of the network
+        input, so scoring against native-resolution panoptic GT needs:
+          `crop_size=(S,S)`  resample the logits to the network side S,
+          `crop=(t0,t1,l0,l1)` cut the letterbox band out (see
+              tools/eval_muses_official.letterbox_valid_box),
+          `size=(H,W)`       land on the label resolution.
+        Every resample runs on the LOGITS, before sigmoid / argmax / the 0.5
+        threshold — resampling an already-binarised map shreds thin segments
+        and silently changes which query wins a pixel.
+        Queries are filtered by `obj_thresh` BEFORE the resample, so the
+        full-resolution tensor is M deep, not num_queries deep (numerically
+        identical: bilinear acts per channel).
+        """
         results = []
         prob = F.softmax(out['cls'].float(), dim=-1)
-        masks = out['masks'].float().sigmoid()
+        logits = out['masks'].float()
+        out_h, out_w = self._pan_out_hw(logits.shape[-2:], size, crop, crop_size)
         for b in range(prob.shape[0]):
             scores, labels = prob[b].max(-1)
             keep = (labels != self.num_classes) & (scores > obj_thresh)
             cur_scores, cur_labels = scores[keep], labels[keep]
-            cur_masks = masks[b][keep]                          # (M,h,w)
-            h, w = cur_masks.shape[-2:]
-            pan = torch.zeros((h, w), dtype=torch.int32, device=masks.device)
+            cur_masks = logits[b][keep]                         # (M,h,w) logits
+            pan = torch.zeros((out_h, out_w), dtype=torch.int32,
+                              device=logits.device)
             segments: List[Dict] = []
             if cur_masks.numel() == 0:
                 results.append((pan, segments))
                 continue
+            ml = cur_masks.unsqueeze(0)                         # (1,M,h,w)
+            if crop_size is not None:
+                ml = F.interpolate(ml, size=(int(crop_size[0]), int(crop_size[1])),
+                                   mode='bilinear', align_corners=False)
+            if crop is not None:
+                t0, t1, l0, l1 = (int(v) for v in crop)
+                ml = ml[..., t0:t1, l0:l1]
+            if size is not None:
+                ml = F.interpolate(ml, size=(int(size[0]), int(size[1])),
+                                   mode='bilinear', align_corners=False)
+            cur_masks = ml.squeeze(0).sigmoid()                 # (M,out_h,out_w)
             cur_prob_masks = cur_scores.view(-1, 1, 1) * cur_masks
             mask_ids = cur_prob_masks.argmax(0)                 # (h,w)
             seg_id = 0

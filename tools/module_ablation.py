@@ -149,7 +149,15 @@ def make_toggles(core):
     # 해당 모듈이 실재할 때만 등록.
     if getattr(core, 'arb_lambda', None) is not None:
         attr_toggle('p39_query_off', 'p39_query_off', True)
-    if getattr(core, 'trunk_exp', None) is not None:
+        # ⚠️ 해석 주의: p39_dense_off는 다른 토글과 달리 "모듈을 끈 효과"가 아니라
+        # **쿼리 단독 성능**을 읽는다(dense FPN 기여 제거 → logits = q_scaled).
+        # 표의 '+면 기여' 문구를 그대로 적용하지 마라 — Δ가 크게 +여도 정상이며,
+        # p39_query_off(Δ≈0)와 짝지어 읽어야 진단이 확정된다.
+        attr_toggle('p39_dense_off', 'p39_dense_off', True)
+    # trunk_xattn = [A/B trunk] FUSION.TRUNK: xattn 팔. 같은 플래그가 두 구현을
+    # 모두 끄므로(_apply_trunk_exp) 여기서 함께 등록해야 xattn ckpt에서도 잰다.
+    if (getattr(core, 'trunk_exp', None) is not None
+            or getattr(core, 'trunk_xattn', None) is not None):
         attr_toggle('p39_trunkexp_off', 'p39_trunkexp_off', True)
     if m2f is not None:
         def m2f_toggle(name, attr, value):

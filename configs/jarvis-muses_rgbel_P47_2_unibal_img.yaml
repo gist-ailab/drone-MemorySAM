@@ -1,0 +1,199 @@
+# ═══ P39.1-rank — jarvis MUSES: P39-DPC + R-1(gated_mlp trunk) + R-2(VICReg) + M-2(gate/calib off). ep30 게이트: lidar rank≥15 & fog_night drop-lidar≥4.0 ═══
+# MODEL 블록 = hpca100-deliver_rgbdel_P38_m2f.yaml의 M2F 레시피 그대로 (GATE/VETO/CALIB/ROUTER on,
+#   CEFR·CLASS_TOKEN·ATTN_BIAS·CONSISTENCY off, M2F on) — P37a-MUSES(CEFR)·P37b-MUSES(classtoken)와
+#   같은 백본/공정레시피 위에 헤드만 M2F로 = head-only 계보 비교.
+# M2F(P38, semseg/models/reliadino/m2f_head.py = MaskQueryLite):
+#   100 learned query가 gated fused stride-16 위 6-layer masked cross-attn(공유 cls/mask head deep-sup).
+#   attn mask = 공유-head 예측 리사이즈(_attn_bias) — P37b mask_proj 버그(ISSUE-024) 없음(supervised).
+#   final = conv_head + β·M2F_logits, β zero-init → 시작 시 P36과 byte-identical.
+# DATASET/TRAIN = MUSES 3모달, jarvis 경로(/SSDb/jemo_maeng/dset/MUSES, 8.14GB 처리본 회수됨 2026-07-19).
+#   radar 제외(val −0.09 무익). PhysAug on(P34/P37 MUSES 레시피 보존).
+# 🔴 GRADIENT_CHECKPOINT: false (encoder active_modality 버그 회피).
+#   torchrun --nproc_per_node=<N> train_reliadino.py --cfg <this>   (develop = P38 seg 코드 포함 브랜치에서)
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_muses_rgbel_P47_2_unibal_img'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20) — off, ablation 분리
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  # [P36] per-class router 유지 (P38-DELIVER와 동일 — M2F 대비 1-변수 비교)
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }   # P37a 헤드 off
+  CLASS_TOKEN: { ENABLE: false }   # P37b 헤드 off
+
+  P47_2:                     # [P47-2] Uni-modal Balance (구 D-2). 학습 전용·추론 불변.
+    ENABLE      : true
+    LAMBDA_U    : 0.4        # REDUCE=mean → 모달당 실효 λ_u/|active|
+    MODALS      : ['img']
+    HEAD        : linear     # LN + 1×1 conv
+    HIDDEN      : 256        # HEAD=conv1x1일 때만
+    WARMUP_EP   : 0          # 계단식 발동은 OOM/불안정 위험(P46 사례) — 0 유지
+    GT_DIV      : 4          # fusion aux_ce·P39 deep-sup과 동일 규약
+    REDUCE      : mean
+    OGM_GE:
+      ENABLE   : false
+      ALPHA    : 0.5
+      EMA      : 0.9
+      MIN_K    : 0.1
+      GE_NOISE : 0.0
+
+  # [P38] MaskQueryLite (Mask2Former-lite) — 헤드
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256                   # query dim_t (params ≈5.5M)
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0                   # zero-init residual (do not change)
+    W_CLS           : 2.0                   # M2F 표준 가중 2/5/5
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544                 # point-sampled mask losses (M2F 관행)
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5                   # aux['m2f_loss'] 전역 스케일
+    SRC             : modal                 # [P39-V2] query가 per-modal 토큰 합집합을 attend (fused rank-병목 우회)
+    ANCHORED        : true                  # [P39-V3] K개 클래스 앵커 query (고정 할당) + 나머지 Hungarian
+    POINT_QUOTA     : 256                   # [P39-V4] GT 영역별 최소 포인트 쿼터 (thin-mask 기아 수정)
+
+
+  # [P39] Dual-Path Compete (decisions/2026-07-20-p39-dual-path-compete-proposal.md)
+  P39:
+    TRUNK_EXP       : true                  # V1: fused += Σ P_m(f_m) (rank 확장, 주 경로)
+    ARBITER         : true                  # V5: per-class Λ 중재 + path dropout 경쟁 (β 잔차 대체)
+    PATH_DROPOUT_P  : 0.25                  # dense-only / query-only 각 25%
+    ROUTER_CE_W     : 0.4                   # router 직접 CE 감독 가중
+    TRUNK_MODE      : gated_mlp             # [P39.1-R1] 선형→LN·MLP·tanh(γ) 게이트 (저rank 지름길 제거, γ=0.1 init — 0이면 gradient가 안 흘러 사장됨)
+    TRUNK_HIDDEN    : 256
+    VICREG:                                 # [P39.1-R2] var+cov rank 복원 (per-modal 토큰, lidar 강조)
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/SSDb/jemo_maeng/dset/MUSES'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : true
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # jarvis=24GB: BS2@1024²는 OOM(22.5GB). BS1로 fit(~12GB).
+                                    # seg accum=ceil(16/(BS×world))가 eff-batch 자동보정 → BS1×4×accum4=16 (hpca100 BS2×4와 동일).
+                                    # grad-ckpt는 active_modality 버그라 못 켬 → BS로만 조절.
+  EPOCHS        : 300
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false

@@ -4860,3 +4860,1551 @@ RANDOM INIT: 0건.
 - GPU2,3,4(타유저): 14.0-14.6GB, 0-1%util(유휴 관측).
 
 **요약**: P46 4실험 전부 학습 중, 사망 없음. **C3-only 본실험 신기록(67.22@62, 26ep만의 갱신)** — 게이트eval(56.82@1024 ep40)은 중간ckpt였고 학습은 계속 전진 중. C3-only seed2는 극초반(ep7)이라 재현성 판단 이름. C2C3는 ep4, 메모리 안전권 재확인. ep200 완주는 4실험 모두 아직 한참 남음(C3-only 본실험이 가장 앞서 31.5%). yeon 두 실험 모두 장기정체 지속. 유휴 GPU: yeon 타유저 구간(우리 것 아님) 외 없음. 이상징후 없음.
+
+---
+
+### 2026-08-02 18:29 KST — 3서버 정기점검 (P46 λ-sweep)
+
+**jarvis (repo drone-MemorySAM-develop, GPU0=user 예약)**:
+- GPU1-3(env 실측 CUDA_VISIBLE_DEVICES=1,2,3) **P46 C3-only λ0.05** (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml`, DELIVER): Epoch[132/200] iter 600/1327(45%), GPU1-3 15.0-15.1GB/90-96%util.
+  - val 궤적: 112=66.15→114=66.44→116=66.70→118=66.04→120=65.72→122=65.66→124=64.73→126=65.43→128=64.49→130=65.01. **Best val 68.57@ep62(70epoch 무갱신)**.
+  - test 궤적: 112=55.61→114=56.78(신기록)→116=56.24→118=55.84→120=55.83→122=56.10→124=56.40→126=56.23→128=56.54→130=55.43. **Best test 56.78@ep114**.
+  - 속도 12.83min/ep(ep112→130 실측) → ep200까지 ETA≈+14.5h(08-03 09:00 KST경).
+- GPU4-7(env 실측 CUDA_VISIBLE_DEVICES=4,5,6,7) **P46 C3-only λ0.2** (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02.yaml`, DELIVER): Epoch[173/200] iter 470/995(47%), GPU4-7 3.3GB/100%util(⚠️ GPU1-3 대비 메모리 1/4 수준, 원인 미확인).
+  - val 궤적: 154=66.68→156=67.04→158=67.42→160=66.59→162=67.14→164=66.69→166=66.64→168=66.58→170=66.80→172=66.93. **Best val 67.47@ep118(54epoch 무갱신)**.
+  - test 궤적: 154=55.47→156=55.42→158=55.13→160=55.30→162=54.46→164=55.23→166=55.00→168=55.61→170=54.99→172=55.76. **Best test 57.05@ep108(64epoch 무갱신)**.
+  - 속도 9.72min/ep(ep154→172 실측) → ep200까지 ETA≈+4.4h(08-02 22:51 KST경).
+- GPU0: 4062MiB/0%util — user 예약 유지(우리 프로세스 없음).
+
+**hpca100 (repo /home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM)**:
+- 🔴 **P46 C2+C3** (`hpca100-deliver_rgbdel_P46_ctr_c2c3.yaml`): **사망 확인, 약 27시간 방치**. run.log 마지막 갱신 08-01 06:03:16 KST — "Received 1 death signal, shutting down workers"(SIGHUP ×4). 사망 시점까지 Epoch 루프 진입 전(HF hub 백본 로딩 단계, DINOv3 ViT-L/16)이라 **Val/Test 로그 전무**(ep0 도달 못함, 08-01 05:59:21 로딩 시작 → 06:03:16 사망, 약 4분 생존). ps에 관련 프로세스 없음(현재 jovyan 계정엔 GR00T/DOMINO 타실험만 존재).
+  - nvidia-smi: GPU0-3 각 11860MiB 점유 · 0%util, **Processes 목록은 공백**(귀속 프로세스 안 보임 — 좀비 메모리 또는 타테넌트 비가시 점유, 원인 미확인).
+
+**yeon (repo drone-MemorySAM-p38)**:
+- GPU1,2,5(env 실측 CUDA_VISIBLE_DEVICES=1,2,5) **P46 C3-only λ0.15** (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DELIVER): Epoch[26/200] iter 528/1327(40%), GPU1/2/5 각 14.86/14.82/14.82GB · 100/69/47%util.
+  - val 궤적: 6=59.39→8=58.58→10=60.44→12=64.72(신기록)→14=63.25→16=62.74→18=63.52→20=64.27→22=64.67→24=64.87(신기록). **Best val 64.87@ep24**.
+  - test 궤적: 6=51.53→8=52.77(신기록)→10=52.34→12=52.91(신기록)→14=53.44(신기록)→16=53.37→18=52.65→20=54.47(신기록)→22=54.69(신기록)→24=53.82. **Best test 54.69@ep22**.
+  - 속도 26.4min/ep(ep6→24 실측, 07:33 기동) → ep200까지 ETA≈+76.6h(약 3.2일, 08-05 23:00 KST경).
+- GPU6,7(env 실측 CUDA_VISIBLE_DEVICES=6,7) **P44-BMR seed2** (`yeon-deliver_rgbdel_P44_bmr.yaml`, DELIVER, 07-28부터 연속): Epoch[154/200] iter 399/1991(20%), GPU6,7 각 15.54/15.50GB · 65/100%util.
+  - val 궤적: 144=65.58→146=65.27→148=65.33→150=65.58→152=64.68. **Best val 66.09@ep108(46epoch 무갱신)**.
+  - test 궤적: 144=52.10→146=52.58→148=52.58→150=52.48→152=52.45. **Best test 53.73@ep56(96epoch 무갱신)**.
+  - 속도 25.5min/ep(ep144→152 실측) → ep200까지 ETA≈+19.6h(08-03 14:00 KST경).
+- GPU0(15047MiB/0%util), GPU3(14829MiB/98%util), GPU4(14826MiB/0%util): 우리 프로세스 아님(귀속 불명, GPU3만 활성 연산 중 — 타유저 추정, 실측 필요).
+
+**요약(raw, 판정 없음)**: jarvis 2실험 모두 val/test 장기 정체(54~70epoch 무갱신) 지속, 사망 없음. **hpca100 C2+C3 08-01 06:03 사망 후 27h 방치 — 미재기동**. yeon 2실험 모두 진행 중, P44-BMR도 46~96epoch 정체. 이상 GPU 메모리(hpca100 좀비 4장, jarvis lam02 저메모리)는 원인 미확인으로 플래그만.
+
+### 2026-08-02 — hpca100 MUSES-C3(λ0.2) 신규 기동 (P46-CTR MUSES 이식)
+
+**배경**: DELIVER P46 C3-only(λ0.2)가 test 57.05로 DGFusion SOTA(56.71) 돌파. MUSES도 동일 class-transfer 붕괴 패턴(night truck 44.40 vs day 76.43, motorcycle 58, rider 59) 보유 — 같은 기제를 MUSES 3모달(img/lidar/event) 최고 base(P39.1-rank seed2, val 82.62/test 79.788) 위에 이식.
+
+**hpca100 복구 진단**: GPU0-3 전부 11860MiB/GPU 유령 점유(0%util, `nvidia-smi` 프로세스 테이블 공백 — 컨테이너 격리로 타테넌트 비가시, 우리 프로세스 아님. 08-01 정기점검에서도 동일 관측된 지속 현상, 원인 미확인 그대로) — 가용 여유 ~28.4GB/GPU 확인 후 진행. `P46_ctr_c2c3` 잔재 프로세스는 없었음(재확인 완료, 이전 08-01 06:03 사망 기록과 정합 — 이미 완전히 죽어 있었음).
+
+**config**: `configs/hpca100-muses_rgbel_P46_c3only_lam02.yaml` (신규, 커밋 7892ebb) — MUSES P39.1-rank seed2 base 동결 + P46.C3_PROTO만 이식(LAMBDA 0.2, FEATURE mfeat, TEMPERATURE 0.1, EMA 0.999, PIXELS 4096, WARMUP_EP 5, CROSS_VIEW false). C1_RCS/C2_MCC off. num_classes는 `trainset.n_classes`에서 자동으로 흘러 PrototypeBank까지 전달됨(하드코딩 없음, 코드 확인 완료) — MUSES 19클래스 무수정 대응. develop push + 로컬 허브(172.27.183.150) pull + hpca100 pull 전부 완료.
+
+**기동**: hpca100 GPU0-3 (A100×4, 4-proc DDP), tmux 세션 `musesc3`, `HF_HUB_OFFLINE=1`로 1회 성공(캐시 적중, 재시도 불요). 로그 `~/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100-muses_rgbel_P46_c3only_lam02/run.log`, wandb `seongjulee/MemorySAM/a3kgnr9z`.
+
+**기동검증 PASS (6항)**: ①백본 DINOv3 safetensors 정상 로드(RANDOM INIT 0건) ②Resumed 0건(진짜 fresh, Epoch[1/300] 0부터 시작) ③`[P46-C3] prototype consistency on — lambda=0.2 tau=0.1 ema=0.999 cross_view=False feature=mfeat` 확인, `[P46-C1]`/`[P46-C2]` 로그 0건(둘 다 off 정상) ④iter 55→87/375 전진(19초 구간) ⑤GPU0-3 4장 전부 util>0(76-92%, 데드락 아님) ⑥loss 14.72→9.41 유한 감소, GPU0-3 각 ~30.5GiB 총점유(유령 11.86GiB 기저 위 이 실험 실사용 ~19.3GiB/rank, 28.4GB 여유 내). EPOCHS300, jarvis(λ0.05/λ0.2 DELIVER)·yeon(λ0.15 DELIVER/P44) 학습 무간섭 확인.
+
+**요약**: hpca100 MUSES-C3(λ0.2) fresh 기동 성공, 이상징후 없음.
+
+### 2026-08-02 20:30 KST — 3서버 정기점검 (P46 λ-sweep, 직전 18:29 대비)
+
+**jarvis (repo drone-MemorySAM-develop, GPU0=user 예약)**:
+- GPU1-3 **P46 C3-only λ0.05** (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml`, DELIVER): Epoch[140/200] (직전 132). GPU1/2/3 15046/14990/15056MiB · 96/99/63%util.
+  - val epoch140: 65.57. **Best val 68.57@ep62(변동없음)**.
+  - test epoch140: 56.02. **Best test 56.78@ep114(변동없음)**.
+  - 60epoch 잔여, 직전 대비 8epoch/121min → ETA(raw 추정)≈+15.1h(08-03 11:30 KST경).
+- GPU4-7 **P46 C3-only λ0.2** (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02.yaml`, DELIVER): Epoch[184/200] (직전 173, 완주 아님). GPU4/5/6/7 15048/14992/14992/14992MiB · 89/97/93/62%util.
+  - val epoch184: 66.83. **Best val 67.47@ep118(변동없음)**.
+  - test epoch184: 55.55. **Best test 57.05@ep108(변동없음)**.
+  - 16epoch 잔여, 직전 대비 11epoch/121min → ETA(raw 추정)≈+2.9h(08-02 23:24 KST경).
+- GPU0: 4062MiB/0%util — user 예약 그대로.
+- Total Training Time / Traceback: 양쪽 로그 모두 미검출.
+
+**hpca100 (repo ~/SSDb/jemo_maeng/src/drone-MemorySAM)**:
+- **MUSES-C3 λ0.2** (`hpca100-muses_rgbel_P46_c3only_lam02.yaml`, MUSES, 08-02 11:02 기동): Epoch[6/300] iter 337/375(90%), loss 2.66 유한. GPU0-3 31788/31776/31658/31514MiB · 73/83/75/87%util.
+  - **[Val]/[Test] 로그 0건 — 첫 eval 아직 미도달**(EVAL_INTERVAL=2/EVAL_START=0 설정이나 미관측, 원인 불명).
+  - 백본 로딩 정상: `Loading pretrained weights from Hugging Face hub (timm/vit_large_patch16_dinov3.lvd1689m)` 확인, **"RANDOM INIT" 0건**(HF_HUB_OFFLINE 함정 미해당, 정상).
+  - `[P46-C3]` 진단: `proto:0.0000→0.0844, xview:0.0000, bank_cov:0.00→1.00`(뱅크 채워지는 중).
+  - tmux `musesc3` 세션 생존 확인. ETA: **속도 미확정(첫 eval 전, epoch당 소요 데이터 부족)** — raw ETA 계산 보류.
+- Total Training Time / Traceback: 미검출.
+
+**yeon (repo drone-MemorySAM-p38)**:
+- GPU1,2,5 **P46 C3-only λ0.15** (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DELIVER): Epoch[28/200] (직전 26), mid-eval(55%). GPU1/2/5 **3550/3550/3546MiB**(⚠️ 직전 점검 14.8GB/rank 대비 대폭 감소, 원인 미확인) · 100/100/100%util.
+  - val epoch28: 63.08. **Best val 64.87@ep24(변동없음)**.
+  - test epoch28: 54.27. **Best test 54.69@ep22(변동없음)**.
+  - ⚠️ **동일 cfg로 20:25 기동한 저CPU시간 PID 12개 추가 관측**(07:33 기동 torchrun 그룹과 별도, master 프로세스 라인 미확인) — 중복/재기동 여부 미판정, raw 관측만.
+  - 2epoch/121min → ETA(raw 추정, 신뢰도 낮음)≈+173h(약 7.2일, 08-10경) — 직전 점검 추정(26.4min/ep)보다 대폭 느려짐(60.5min/ep), 위 GPU메모리 이상과 정합 가능성.
+- GPU6,7 **P44-BMR seed2** (`yeon-deliver_rgbdel_P44_bmr.yaml`, DELIVER, 07-28부터 연속): Epoch[154/200] (직전 152). GPU6,7 15536/15500MiB · 99-100/100%util.
+  - val epoch154: (미제공, best 기준) **Best val 66.09@ep108(변동없음)**.
+  - test epoch154: (미제공) **Best test 53.73@ep56(변동없음)**.
+  - 2epoch/121min → ETA(raw 추정)≈+46.4h(08-04 19:00 KST경).
+- GPU0(15047MiB/0%), GPU3(14829MiB/98%), GPU4(14826MiB/0%): 전부 jongwon_kim 프로세스(jw_e2e_* cfg) 귀속 확인, 우리 프로세스 아님. GPU3,4 예약 미간섭 확인.
+- Total Training Time / Traceback: 양쪽 로그 모두 미검출.
+
+**요약(raw, 판정 없음)**: 5개 실험 전부 진행 중, 사망/완주 없음. hpca100 MUSES-C3는 epoch6까지 진행, 첫 eval 전. ⚠️ yeon λ0.15 GPU메모리 급감(14.8GB→3.5GB/rank) + 동일cfg 중복 PID 관측 — 원인 미확인, 플래그만.
+
+
+### 2026-08-02 20:34 KST — yeon λ0.15 "중복 기동" 의심 해소 (오탐)
+
+**진단 결과 — 중복 아님, 단일 그룹**:
+1. torchrun 마스터는 lam015에 **1개뿐**(`PID 4161740`, 07:33:25 기동, `--nproc_per_node=3 --master_port=29651`). 두 번째 master/distributed.run 라인 없음.
+2. 20:25에 관측된 신규 PID 12개(584535-584543, 584671-584680)는 **PPID가 전부 4161900/4161901/4161902**(07:33 기동 원본 rank worker) — 독립 master 아니라 기존 rank의 자식 프로세스. etime 8:45-8:54로 최근 spawn, 부모는 13:00:29로 연속 실행 중.
+3. `nvidia-smi --query-compute-apps`: GPU1/2/5에 각 **PID 1개씩만** 붙음(4161900/4161901/4161902, ~3520-3522MiB) — 동일 GPU에 중복 PID 없음. GPU6,7(P44)·GPU0,3,4(타유저 sam3d-objects) 무간섭 확인.
+4. 로그파일은 **1개뿐**(`yeon_deliver_P46_c3only_lam015_run.log`, mtime 20:34). "Epoch [1/200]" 2658건은 **오탐** — tqdm progress bar가 `\r`로 갱신되며 매 iter마다 "Epoch [1/200]" 접두어를 재출력, `tr '\r' '\n'` 변환 시 폭발적으로 늘어난 것(재기동 아님). 로그 tail 확인 결과 현재 **eval 진행바 662/669(98%)** — eval phase 진행 중.
+
+**결론**: kill 없음(중복 아니므로). 직전 관측된 3징후(메모리 14.8→3.55GB, 20:25 신규 PID 12개, 26→60min/ep 저하)는 **eval phase 샘플링 아티팩트**로 설명 가능(eval은 backward/optimizer state 없어 메모리 낮음, eval DataLoader가 non-persistent workers라 재생성, wall-clock에 긴 eval pass 포함되며 겉보기 속도 저하) — 단, 이 인과관계 자체는 미확정(raw 정합성만 확인, 실제 원인 단정 아님).
+
+
+### 2026-08-02 22:36 KST — 3서버 정기점검 (jarvis λ0.2 완주 여부 + hpca100 MUSES-C3 첫 eval 확인)
+
+**jarvis (repo /home/jemo_maeng/src/drone-MemorySAM-develop, GPU0=user 예약 4062MiB/0%util)**:
+- GPU4-7 **P46 C3-only λ0.2** (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02.yaml`, DELIVER): **미완주** — Epoch[198/200] 654/995(65%) @2.6it/s. GPU4/5/6/7 15048/14992/14992/14992MiB · 97/68/89/61%util.
+  - val epoch196: 66.75. **Best val 67.47@ep118(변동없음)**.
+  - test epoch196: 55.73. **Best test 57.05@ep108(변동없음)**.
+  - `Total Training Time`/`Traceback` 미검출(정상 진행 중, 사망 아님).
+  - ckpt 디렉터리(`outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c3only_lam02/`): val-best=`epoch118_67.47_top1_checkpoint.pth`, test-best=`test_epoch108_57.05_top1_checkpoint.pth`(top1~5 다수 보존).
+  - 잔여 스텝(2epoch+현재epoch 잔여)≈2331 @2.6it/s→ 순수훈련 ~15분 + Val/Test eval(각~4-5분) → **ETA≈23:00~23:10 KST경**(직전 예측 23:24와 근접).
+- GPU1-3 **P46 C3-only λ0.05** (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml`, DELIVER): Epoch[151/200] 405/1327(31%) @2.67it/s. GPU1/2/3 **3616/3660/3766MiB**(⚠️ 직전 20:30 점검 15046/14990/15056MiB 대비 대폭 감소, 원인 미확인 — 20:34 항목의 "eval-phase 아티팩트" 가설과 유사 패턴이나 현재는 raw tail로 training 중임을 확인함, 정합성 미확정) · 99/100/100%util.
+  - val epoch150: 64.96. **Best val 68.57@ep62(변동없음)**.
+  - test epoch148: 55.89. **Best test 56.78@ep114(변동없음)**, epoch150 test는 그 시점 eval 진행 중(로그 미기록).
+  - `Total Training Time`/`Traceback` 미검출.
+
+**hpca100 (repo ~/SSDb/jemo_maeng/src/drone-MemorySAM, 시스템 시계 UTC — 로그 타임스탬프도 UTC, KST=UTC+9)**:
+- **MUSES-C3 λ0.2** (`hpca100-muses_rgbel_P46_c3only_lam02.yaml`, MUSES): **첫 eval 이미 다수 통과, 직전 관측(ep6/300)보다 크게 전진** — Epoch[35/300] 207/375(55%) @1.68it/s. GPU0-3 31866/31736/31612/31476MiB · 74/100/96/93%util.
+  - **val 궤적(ep2→34, 전부)**: 2=46.35→4=66.17→6=71.88→8=74.40→10=74.70→12=75.69→14=75.88→16=76.24→18=77.42(신기록)→20=76.14→22=75.38→24=77.69(신기록)→26=77.76(신기록)→28=77.57→30=78.28(신기록)→32=78.76(신기록)→34=78.88(신기록). **Best val 78.88@ep34**.
+  - **[Test] 로그 0건 — 정상**(버그 아님): 로그에 명시 `[INFO] Test set not available: MUSES test GT is withheld by the benchmark (gt_semantic/test has 0 files); train/val only.` MUSES 벤치마크 구조상 val만 로컬 평가, test는 codabench 별도 제출.
+  - `Total Training Time`/`Traceback` 미검출.
+
+**yeon (repo /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38)**:
+- GPU1,2,5 **P46 C3-only λ0.15** (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DELIVER, 로그 `logs/yeon_deliver_P46_c3only_lam015_run.log`): Epoch[35/200] 332/1327(25%, raw byte 재확인) @1.26it/s. GPU1/2/5 3568/3448/3448MiB · 99/99/99%util.
+  - test epoch24: 53.82, Best 54.69@ep22. val epoch26: 64.58(변동없음, best@24). test epoch26: 55.35(신기록). val epoch28: 63.08. test epoch28: 54.27. val epoch30: 63.76. test epoch30: 55.32. val epoch32: 63.85. test epoch32: 55.41(신기록). val epoch34: 63.41. **Best val 64.87@ep24 / Best test 55.41@ep32**.
+- GPU6,7 **P44-BMR seed2** (`yeon-deliver_rgbdel_P44_bmr.yaml`, DELIVER, 로그 실제경로 `/SSDe/jemo_maeng/yeon_deliver_P44_bmr_seed2_run.log` — repo 밖 SSDe 마운트, 07-28부터 연속): Epoch[158/200] 완료, 현재 test eval 진행 중(262/475, 55%). GPU6,7 4208/4114MiB · 100/100%util.
+  - val epoch146→158: 65.27→65.33→65.58→64.68→65.43→64.83→65.41. **Best val 66.09@ep108(변동없음)**.
+  - test epoch146→156: 52.58→52.58→52.48→52.45→52.33→52.36. **Best test 53.73@ep56(변동없음)**.
+- GPU0,3,4: **jongwon_kim 소유 확인**(hoi_transformer/sam3d-objects env, cfg jw_e2e_hawor/norealnoise/wobj5) — 우리 프로세스 아님, GPU1,2,5/6,7과 간섭 없음. GPU0=PID 3433696(15047MiB, elapsed 1일05시간), GPU3=PID 63932(14829MiB,79%util,elapsed12:55:20), GPU4=PID 264205(14826MiB,64%util,elapsed09:18:52) — 3개 다 활성 연산 중(이전 "무침" 표현과 달리 GPU3,4는 실제로 타유저가 사용 중).
+
+**요약(raw, 판정 없음)**: 5개 실험 전부 진행 중, 사망 없음. jarvis λ0.2는 미완주(ep198/200, ETA~23:00-23:10). hpca100 MUSES-C3는 ep6이 아니라 ep35까지 진행, val 17회 로깅·best 78.88@34, test는 벤치마크 구조상 원천 없음(정상). ⚠️ jarvis λ0.05 GPU메모리 급감(15GB→3.6GB/rank, training 중임에도) 재관측 — 08-02 20:34 항목과 유사 패턴, 원인 미확정. yeon GPU0,3,4는 무침이 아니라 jongwon_kim 활성 사용 중으로 확인(GPU3,4).
+
+### 2026-08-03 02:37 KST — 3서버 정기점검 (jarvis λ0.05/λ0.3, hpca100 MUSES-C3, yeon λ0.15/P44-BMR)
+
+**jarvis (repo /home/jemo_maeng/src/drone-MemorySAM-develop)**:
+- GPU1-3 **P46 C3-only λ0.05** (`configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml`, DELIVER, torchrun nproc=3, 08-01 기동): Epoch[168/200]. GPU1 15048MiB/91%, GPU2 14994MiB/69%, GPU3 15056MiB/99%.
+  - val epoch168: 66.44. **Best val 68.57@ep62(변동없음)**.
+  - test epoch168: 55.45. **Best test 56.78@ep114(변동없음)**.
+  - ETA(raw, ep150→168 18ep/13557s=753s/ep): 잔여 32ep → **약 6.7h**.
+- GPU4-7 **P46 C3-only λ0.3** (`configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DELIVER, torchrun nproc=4, 오늘 00:39 기동): Epoch[10/200]. GPU4 15050MiB/100%, GPU5 14994MiB/98%, GPU6 14992MiB/100%, GPU7 14994MiB/89%.
+  - val epoch10: 58.51. **Best val 61.76@ep6**.
+  - test epoch10: 53.11. **Best test 53.11@ep10**.
+  - ETA(raw, ep2→10 8ep/4592s=574s/ep): 잔여 190ep → **약 30.3h**.
+- GPU0: 4062MiB/0%util — user 예약(무침), 유휴 판정 미충족.
+- Total Training Time/Traceback: 양쪽 로그 모두 미검출.
+
+**hpca100 (repo ~/SSDb/jemo_maeng/src/drone-MemorySAM, tmux musesc3)**:
+- **MUSES-C3 λ0.2** (`configs/hpca100-muses_rgbel_P46_c3only_lam02.yaml`, MUSES, torchrun --standalone nproc=4): Epoch 90/300(train 375/375 완료, val eval 진행중 7/16). GPU0 31790MiB/100%, GPU1 31782MiB/92%, GPU2 31674MiB/91%, GPU3 31542MiB/90%.
+  - val 궤적(발췌): ep72 80.79→ep74 80.53→ep76 79.95→ep78 80.73→ep80 80.51→ep82 80.56→ep84 80.66→ep86 80.63→ep88 80.15. **Best val 80.79@ep72(변동없음)**.
+  - test: 0건(GT 비공개, MUSES 벤치마크 구조상 정상).
+  - ETA(raw, ep80→88 4×2ep 평균8:39.5/2ep=4.325min/ep): 잔여 210ep → **약 15.1h**.
+  - Total Training Time/Traceback: 미검출.
+
+**yeon (repo /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38)**:
+- GPU1,2,5 **P46 C3-only λ0.15** (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DELIVER, torchrun nproc=3 master_port=29651): Epoch[44/200] iter745-747/1327(56%). GPU1 14880MiB/100%, GPU2 14824MiB/100%, GPU5 14822MiB/97%.
+  - val ep36 65.90→ep38 65.51→ep40 65.33→ep42 65.21. **Best val 65.90@ep36(변동없음)**.
+  - test ep36 55.27→ep38 55.27→ep40 56.49(갱신)→ep42 55.78. **Best test 56.49@ep40**.
+  - ETA(raw, ep36→38 53min·38→40 62min·40→42 53min, 평균27.5min/ep): 잔여156ep → **약 71.5h(약3.0일)**.
+- GPU6,7 **P44-BMR seed2** (`yeon-deliver_rgbdel_P44_bmr.yaml`, DELIVER, torchrun nproc=2 master_port=29650, 07-28부터 연속): Epoch[163/200] iter1627/1991(82%). GPU6 15536MiB/97%, GPU7 15500MiB/98%.
+  - val ep158 65.41→ep160 65.18→ep162 65.50. **Best val 66.09@ep108(변동없음)**.
+  - test ep158~162 갱신 없음. **Best test 53.73@ep56(변동없음)**.
+  - ETA(raw, ep158→160 98:22·160→162 98:20, 평균49min/ep): 잔여37ep → **약30.2h**.
+- GPU0,3,4: 15047/14829/14826MiB, util 0/0/0%(측정순간) — 유휴 판정 미충족(메모리 점유), 소유 프로세스 재확인은 이번 회차에 미실시(raw만).
+- Total Training Time/Traceback: 양쪽 로그 모두 미검출.
+
+**요약(raw, 판정 없음)**: 5개 실험 전부 진행 중(완주/사망 시그니처 없음). jarvis λ0.05 ep168/200, λ0.3 ep10/200. hpca100 MUSES-C3 ep90/300(val eval phase). yeon λ0.15 ep44/200, P44-BMR ep163/200. 유휴 GPU 0장(전 서버 기준 mem/util 임계 미충족).
+
+### 2026-08-03 04:27 KST — 3서버 정기점검 (jarvis λ0.05/λ0.3, hpca100 MUSES-C3, yeon λ0.15/P44-BMR seed2)
+
+**jarvis (repo /home/jemo_maeng/src/drone-MemorySAM-develop)**:
+- GPU1-3 **P46 C3-only λ0.05** (`configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml`, DELIVER, torchrun nproc=3): Epoch[179/200] 740/1327 진행 중. GPU1 15046MiB/98%, GPU2 14992MiB/100%, GPU3 15056MiB/70%.
+  - val epoch178: 66.04. **Best val 68.57@ep62(변동없음)**.
+  - test epoch178: 55.84. **Best test 56.78@ep114(변동없음)**.
+  - ETA(raw, ep176→178 25m12s/2ep=12.6min/ep): 잔여21ep(179→200) → **약4.4h**.
+- GPU4-7 **P46 C3-only λ0.3** (`configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DELIVER, torchrun nproc=4): Epoch[24/200] val완료, test eval 진행중(48/475). GPU4 3322MiB/100%, GPU5 3260MiB/100%, GPU6 3284MiB/100%, GPU7 3286MiB/100%.
+  - val epoch24: 65.12. **Best val 65.35@ep22**.
+  - test epoch22: (예정), **Best test 55.45@ep20**.
+  - ⚠️ GPU4-7 메모리 15050/14994/14992/14994MiB(직전 02:37 점검) → **3322/3260/3284/3286MiB로 급감** — λ0.05(GPU1-3)에서 08-02 20:34·02:37 항목에 이미 관측된 것과 동일 패턴이 λ0.3에서도 재관측됨(training 진행 중은 raw tail로 확인, 원인 미확정).
+  - ETA(raw, ep22→24 19m10s/2ep=9.58min/ep): 잔여176ep → **약28.1h**.
+- GPU0: 4062MiB/0%util — user 예약, 유휴 판정 미충족.
+- Total Training Time/Traceback: 양쪽 로그 모두 미검출.
+
+**hpca100 (repo ~/SSDb/jemo_maeng/src/drone-MemorySAM, tmux musesc3)**:
+- **MUSES-C3 λ0.2** (`configs/hpca100-muses_rgbel_P46_c3only_lam02.yaml`, MUSES, torchrun --standalone nproc=4): Epoch[118/300] 124→158/375 진행. GPU0 31878MiB/89%, GPU1 31634MiB/91%, GPU2 31628MiB/91%, GPU3 31508MiB/82%.
+  - val 궤적(ep94→116): 80.95→80.82→80.55→80.94→79.99→80.89→80.66→80.50→81.06(신기록)→80.52→81.09(신기록)→81.17(신기록). **Best val 81.17@ep116(갱신, 직전 80.79@ep72 대비 +0.38)**.
+  - test: 0건(GT 비공개, 정상).
+  - ETA(raw, ep110→116 3×2ep 평균8:37/2ep=4.31min/ep): 잔여182ep → **약13.0h**.
+  - Total Training Time/Traceback: 미검출.
+
+**yeon (repo /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38)**:
+- GPU1,2,5 **P46 C3-only λ0.15** (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DELIVER, torchrun nproc=3): Epoch[48/200] eval 623/669(93%) 진행중. GPU1 3550MiB/99%, GPU2 3588MiB/100%, GPU5 3554MiB/100%.
+  - val epoch46: 65.04. **Best val 65.90@ep36(변동없음)**.
+  - test epoch42→46: 55.78→56.18→55.39. **Best test 56.49@ep40(변동없음)**.
+  - ETA(raw, ep2→46 19h19m55s/44ep=26.36min/ep): 잔여154ep → **약67.7h(≈2.82일)**.
+- GPU6,7 **P44-BMR seed2** (`yeon-deliver_rgbdel_P44_bmr.yaml`, DELIVER, torchrun nproc=2, 07-28부터 연속, 로그 `/SSDe/jemo_maeng/yeon_deliver_P44_bmr_seed2_run.log`): Epoch[166/200] 904/1991 진행. GPU6 15556MiB/99%, GPU7 15500MiB/86%.
+  - val epoch164: 63.81. **Best val 66.09@ep108(변동없음)**.
+  - test epoch164: 54.04. **Best test 54.04@ep164(신기록, 직전 53.73@ep56 대비 +0.31)**.
+  - ETA(raw, 최근구간 ep126→164 31h10m13s/38ep=49.2min/ep): 잔여36ep → **약29.5h(≈1.23일)**.
+- GPU0,3,4: 15047/14829/14826MiB, util100/100/98% — 타유저(jongwon_kim, 직전 항목과 동일 소유 추정) 점유 지속, 유휴 판정 미충족.
+- Total Training Time/Traceback/CUDA out of memory: 5개 실험 로그 전부 미검출.
+
+**요약(raw, 판정 없음)**: 5개 실험 전부 진행 중(완주/사망 시그니처 없음). jarvis λ0.05 ep179/200, λ0.3 ep24/200(⚠️ GPU4-7 메모리 급감 재관측). hpca100 MUSES-C3 ep118/300(val 신기록 81.17@116). yeon λ0.15 ep48/200, P44-BMR seed2 ep166/200(test 신기록 54.04@164). 유휴 GPU 0장(전 서버 기준 mem/util 임계 미충족).
+
+## 2026-08-03 06:28 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (`/home/jemo_maeng/src/drone-MemorySAM-develop`)
+
+GPU: 0=4062MiB/0%(타유저,무침) 1=3674MiB/99% 2=3620MiB/100% 3=3786MiB/99% 4=15028MiB/95% 5=14992MiB/88% 6=14990MiB/92% 7=14992MiB/74% — 유휴 없음.
+
+| exp | GPU | cfg | dataset | epoch | best val@ep | best test@ep | 완주/사망 | ETA |
+|---|---|---|---|---|---|---|---|---|
+| C3-only λ0.05 | 1-3 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml | DELIVER | 188/200 진행중 (ep188 val 65.73) | 68.57@62 (불변) | 56.78@114 (불변) | 미완주, Traceback 없음 | ep186→188 12.6min/ep → 잔여12ep ≈ +151min → ~08:57 KST 08-03 |
+| C3-only λ0.3 | 4-7 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml | DELIVER | 37/200 (29% ep) | 66.29@36 | 55.76@32 (ep36 test 54.68) | 미완주, Traceback 없음 | ep32→36 9.6min/ep → 잔여163ep ≈ +1565min → ~08-04 08시경 |
+
+체크포인트(exp1, `outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c3only_lam005/`): val-best `epoch62_68.57_top1_checkpoint.pth` / test-best `test_epoch114_56.78_top1_checkpoint.pth`
+체크포인트(exp2, `outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c3only_lam03/`): val-best `epoch36_66.29_top1_checkpoint.pth` / test-best `test_epoch32_55.76_top1_checkpoint.pth`
+
+### hpca100 (`~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux musesc3)
+
+GPU: 0=31768MiB/90% 1=31750MiB/96% 2=31644MiB/92% 3=31522MiB/92% — 유휴 없음.
+
+| exp | GPU | cfg | dataset | epoch | best val@ep | test | 완주/사망 | ETA |
+|---|---|---|---|---|---|---|---|---|
+| MUSES-C3 λ0.2 | 0-3 | hpca100-muses_rgbel_P46_c3only_lam02.yaml | MUSES (img/lidar/event) | 146/300 진행중 (30%) | 81.65@136 (ep144 val 80.80) | 0건 (GT 비공개, 정상) | 미완주, Traceback 없음 | ep140→146 259s/ep → 잔여154ep ≈ +11.1h |
+
+### yeon (`/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`)
+
+GPU: 0=15047MiB/0%(타유저,무침) 1=14880MiB/99% 2=14822MiB/69% 3=14829MiB/0%(예약,무침) 4=14826MiB/77%(무침) 5=14820MiB/100% 6=15536MiB/100% 7=15500MiB/73% — 유휴 없음(GPU3,4는 예약/타점유로 무침).
+
+| exp | GPU | cfg | dataset | epoch | best val@ep | best test@ep | 완주/사망 | ETA |
+|---|---|---|---|---|---|---|---|---|
+| λ0.15 | 1,2,5 | yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml | DELIVER | 53/200 진행중 (~18%) | 65.90@36 (ep50/52: 64.18/63.86) | 56.49@40 (ep52: 56.28) | 미완주, Traceback 없음 | ep48→50 26.3min/ep → 잔여147ep ≈ +64.4h(~2.7d) |
+| P44-BMR seed2 | 6,7 | yeon-deliver_rgbdel_P44_bmr.yaml (SAVE_DIR _seed2) | DELIVER | 168/200 (eval 진행중) | 66.09@108 (ep150-166: 64.68-65.59) | 54.04@164 (ep166: 52.65) | 미완주, Traceback 없음 | ep162→166 49.2min/ep → 잔여32ep ≈ +26.2h(~1.1d) |
+
+이상징후: 없음 (전 서버 Traceback/death 없음, GPU util>0 확인, 완주 시그니처 없음).
+
+## 2026-08-03 08:30 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (`/home/jemo_maeng/src/drone-MemorySAM-develop`)
+
+GPU: 0=4062MiB/0%(타유저,무침) 1=15048MiB/98% 2=14992MiB/100% 3=15056MiB/65% 4=15028MiB/84% 5=14992MiB/100% 6=14992MiB/68% 7=14992MiB/100% — 유휴 없음.
+
+| exp | GPU | cfg | dataset | epoch | best val@ep | best test@ep | 완주/사망 | ETA |
+|---|---|---|---|---|---|---|---|---|
+| C3-only λ0.05 (DELIVER, 최우선) | 1-3 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml | DELIVER | 198/200 진행중 (92%, iter1227/1327) | 68.57@62 (불변) | 56.78@114 (불변) | **미완주** — `Total Training Time` 미검출, Traceback 없음 | ep196→198 진행중, 최근 12.63min/ep(ep2→196 평균) → 잔여~2ep ≈ +26min → **~08:53 KST 완주 예상** |
+| C3-only λ0.3 | 4-7 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml | DELIVER | 50/200 (7%, iter67/995) | **66.85@48 (신기록, 직전 66.29@36 대비 +0.56)** | 55.76@32 (불변) | 미완주, Traceback 없음 | 9.59min/ep(ep2→48 평균) → 잔여150ep ≈ +24.1h |
+
+체크포인트(exp1 λ0.05, `outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c3only_lam005/DELIVER_ReliaDINO-ViTL16_idel/`): val-best `epoch62_68.57_top1_checkpoint.pth` / test-best `test_epoch114_56.78_top1_checkpoint.pth` — **run 미완주(ep198/200), GPU1-3 아직 점유중(98%/100%/65%), 유휴 전환 없음**.
+체크포인트(exp2 λ0.3, `outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c3only_lam03/DELIVER_ReliaDINO-ViTL16_idel/`): val-best `epoch48_66.85_top1_checkpoint.pth` / test-best `test_epoch32_55.76_top1_checkpoint.pth`
+
+### hpca100 (`~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux musesc3)
+
+GPU: 0=31784MiB/96% 1=31680MiB/100% 2=31688MiB/79% 3=31514MiB/87% — 유휴 없음.
+
+| exp | GPU | cfg | dataset | epoch | best val@ep | test | 완주/사망 | ETA |
+|---|---|---|---|---|---|---|---|---|
+| MUSES-C3 λ0.2 | 0-3 | hpca100-muses_rgbel_P46_c3only_lam02.yaml | MUSES (img/lidar/event) | 174/300 진행중 (epoch173 완료, 174 진행 5%) | **81.65@136 (불변, ep138→172 전부 80.71~81.51 사이 미갱신) — base 82.62 미돌파** | 0건 (GT 비공개, 정상) | 미완주, Traceback 없음 | 최근 ep136→172(36ep) 258.2s/ep → 잔여126ep ≈ +9h2m |
+
+val 궤적(ep136→172, tr'\r'\n' grep tail): 81.65(ep136,best)→81.05→81.51→81.31→80.80→81.14→81.11→81.19→81.43→80.71→81.43→81.26→80.77→80.75→80.94→80.74→81.22→80.99 — **36epoch 연속 81.65@ep136 미갱신**.
+
+### yeon (`/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`)
+
+GPU: 0=15047MiB/0%(타유저,무침) 1=14880MiB/99% 2=14824MiB/69% 3=14829MiB/0%(예약,무침) 4=14826MiB/0%(무침) 5=14820MiB/81% 6=4110MiB/100% 7=4136MiB/100% — 유휴 없음(GPU3,4는 예약/타점유로 무침; GPU6,7은 저메모리지만 util100%=eval페이즈 정상, 이상 아님).
+
+| exp | GPU | cfg | dataset | epoch | best val@ep | best test@ep | 완주/사망 | ETA |
+|---|---|---|---|---|---|---|---|---|
+| λ0.15 | 1,2,5 | yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml | DELIVER | 58/200 진행중 (34%, iter449/1327) | 65.90@36 (불변) | 56.49@40 (불변) | 미완주, Traceback 없음 | 52-53min/2ep(ep54→56) → 잔여142ep ≈ +62.1h |
+| P44-BMR seed2 | 6,7 | yeon-deliver_rgbdel_P44_bmr.yaml (SAVE_DIR _seed2) | DELIVER | 171/200 (4%, iter74/1991) | 66.09@108 (불변) | 54.04@164 (불변) | 미완주, Traceback 없음 | 98min/2ep(ep168→170) → 잔여29ep ≈ +23.7h |
+
+⚠️ **이상 시그니처(raw, 미해석)**: yeon에서 `--cfg configs/yeon-deliver_rgbdel_P44_bmr.yaml` 프로세스가 **오늘 08:18에 새로 8개(PID 1097946-1097968) 생성**됨 — CPU time 32-33초로 극히 짧음(방금 뜬 것), 기존 07-28부터 연속중인 P44-BMR seed2 torchrun 그룹(PID 1853193/1853194 등, 각 8560+분)과는 별개 프로세스. **중복 기동/재시작 가능성 — 원인 미확인, 사용자 확인 필요.**
+
+이상징후: 위 yeon 신규프로세스 8개 외에는 전 서버 Traceback/death 없음, GPU util>0 확인(GPU6,7 저메모리는 eval페이즈로 정상), 완주 시그니처 없음.
+
+## 2026-08-03 10:29 KST — 정기점검 (jarvis/hpca100/yeon 3서버, raw 조회)
+
+> 🎯 **jarvis GPU1-3 C3-only λ0.05 (DELIVER) 완주** — 200/200 epoch, Total Training Time 18:05:01. Best Val **68.57@ep62**, Best Test **56.78@ep114**. ckpt: `epoch62_68.57_top1_checkpoint.pth`, `test_epoch114_56.78_top1_checkpoint.pth` (경로 `outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_ctr_c3only_lam005/DELIVER_ReliaDINO-ViTL16_idel/`). **GPU1-3 프로세스 종료·idle 전환 확인**(0/26/90 MiB, 0% util) — 신규 job 미기동.
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(minkyou+, host_cloud_manager.py, 무침) |
+| 1 | 26MiB | 0% | idle (λ0.05 완주 후 해제) |
+| 2 | 26MiB | 0% | idle |
+| 3 | 90MiB | 0% | idle |
+| 4-7 | 15048/14992/14992/15012 MiB | 93/81/94/62% | λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`) |
+
+GPU4-7 λ0.3: ep60 진행중. 최근 로그:
+```
+[Val] ep48 66.85 Best 66.85(48) / [Test] ep48 55.66 Best 55.76(32)
+[Val] ep50 66.33 / [Test] ep50 55.70
+[Val] ep52 65.56 / [Test] ep52 55.62
+[Val] ep54 66.34 / [Test] ep54 55.52
+[Val] ep56 65.70 / [Test] ep56 55.51
+[Val] ep58 66.68 / [Test] ep58 54.98
+[Val] ep60 66.44 Best 66.85(48) / [Test] ep60 55.94 Best 55.94(60)
+```
+Best Val 66.85@48, Best Test 55.94@60 (신규 test 최고 갱신, 이전 조회 55.76@32).
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux `musesc3`)
+MUSES-C3 λ0.2 (`hpca100-muses_rgbel_P46_c3only_lam02.yaml`), ep202/300 진행중(iter 16/375). GPU 4장 전부 사용중(31866/31716/31650/31504 MiB, 90/92/93/92%) — 유휴 없음.
+
+최근 10회 [Val] (ep182~200):
+```
+ep182 80.80  ep184 80.68  ep186 81.20  ep188 81.28  ep190 81.46
+ep192 81.22  ep194 81.04  ep196 80.99  ep198 81.12  ep200 81.30
+```
+Best Val (스크립트 기록) = **81.65@ep136**, ep136 이후 66ep(136→202) 무갱신 지속. 로그 전체 top values: 81.43/81.43/81.46/81.51/81.65 — all-time max = 81.65. **82.62 초과 값 없음.** [Test] count = 0 (정상, 설계상 예상값).
+
+### yeon
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1,2,5 | 14880/14824/14820 MiB | 58/100/100% | λ0.15 |
+| 3,4 | 14829/14826 MiB | 0%/0% | 예약(GPU3,4, 타유저 프로세스도 존재) — 무침 |
+| 6,7 | 15536/15500 MiB | 56/100% | P44-BMR seed2 |
+
+GPU1,2,5 λ0.15 (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`), ep62 진행중(마지막 완료 ep60). 로그(`/SSDb/jemo_maeng/.../logs/yeon_deliver_P46_c3only_lam015_run.log`):
+```
+ep32 Val63.85/Test55.41  ep34 Val63.41/Test55.18  ep36 Val65.90(Best)/Test55.27
+ep38 Val65.51/Test55.27  ep40 Val65.33/Test56.49(Best)  ep42 Val65.21/Test55.78
+ep44 Val64.11/Test56.18  ep46 Val65.04/Test55.39  ep48 Val63.94/Test55.99
+ep50 Val64.18/Test55.41  ep52 Val63.86/Test56.28  ep54 Val65.12/Test55.90
+ep56 Val65.64/Test55.26  ep58 Val65.29/Test56.63(Best)  ep60 Val63.99/Test56.04
+```
+Best Val 65.90@36, Best Test 56.63@58.
+
+GPU6,7 P44-BMR seed2 (`/SSDe/jemo_maeng/yeon_deliver_P44_bmr_seed2_run.log`), ep173 진행중(마지막 완료 ep172).
+```
+ep144 Val65.58/Test52.10  ep146 Val65.27/Test52.58  ep148 Val65.33/Test52.58
+ep150 Val65.58/Test52.48  ep152 Val64.68/Test52.45  ep154 Val65.43/Test52.33
+ep156 Val64.83/Test52.36  ep158 Val65.41/Test52.68  ep160 Val65.18/Test52.85
+ep162 Val65.50/Test52.76  ep164 Val63.81/Test54.04(Best)  ep166 Val65.59/Test52.65
+ep168 Val65.53/Test52.53  ep170 Val65.59/Test52.21  ep172 Val65.35/Test52.32
+```
+Best Val 66.09@108, Best Test 54.04@164.
+
+---
+## 2026-08-03 12:29 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(host_cloud_manager.py, 무침) |
+| 1 | 15050MiB | 86% | seed2 λ0.2 |
+| 2 | 14994MiB | 93% | seed2 λ0.2 |
+| 3 | 15056MiB | 100% | seed2 λ0.2 |
+| 4 | 3380MiB | 100% | λ0.3 |
+| 5 | 3320MiB | 100% | λ0.3 |
+| 6 | 3278MiB | 99% | λ0.3 |
+| 7 | 3286MiB | 100% | λ0.3 |
+
+유휴 GPU 없음.
+
+GPU1-3 seed2 λ0.2 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`, DATASET: DELIVER): Epoch [10/200] iter 613/1327(~46%). [Val]/[Test] 기록 아직 없음(첫 eval 전). 로그 mtime 12:27:33(현재).
+
+GPU4-7 λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DATASET: DELIVER): Epoch [74/200] 완료(995/995). [Val] ep74 65.85 Best 66.85(48). [Test] ep72 56.01 Best 56.10(70) — ep74 test eval 진행중(기록 전). 로그 mtime 12:27:33.
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux `musesc3`)
+MUSES-C3 λ0.2 (`hpca100-muses_rgbel_P46_c3only_lam02.yaml`): **미완주**. Epoch [229/300] iter 149-154/375(~40%). GPU 4장 전부 사용중(31790/31658/31666/31538 MiB, 90/90/94/92%) — 유휴 없음.
+
+최근 [Val]:
+```
+ep222 81.09  ep224 81.31  ep226 81.19  ep228 81.22
+```
+Best Val = **81.65@ep136** (93ep 무갱신 지속, ep136→229). [Test] 0건(설계상 정상). 로그 mtime 2026-08-03 03:27:51(UTC 표기, 크기 19,769,896 bytes, 계속 증가중).
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 100% | 타유저(무침) |
+| 1 | 3566MiB | 99% | λ0.15 |
+| 2 | 3610MiB | 100% | λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약, 무침) |
+| 4 | 14826MiB | 0% | 타유저(예약, 무침) |
+| 5 | 3490MiB | 100% | λ0.15 |
+| 6 | 15536MiB | 98% | P44-BMR seed2 |
+| 7 | 15500MiB | 100% | P44-BMR seed2 |
+
+GPU1,2,5 λ0.15 (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`): Epoch [66/200] 학습완료, eval 진행중(~43%). [Val] ep66 65.16 Best 65.90(36). [Test] ep66 기록 전. 로그 mtime 12:27:42, size 22,885,939 bytes. (프로세스 목록에 12:23 기동 신규 워커셋 12개 관측 — 기존 런과 동일 cfg, 신규 epoch 워커 재기동으로 추정, 재확인 불필요.)
+
+GPU6,7 P44-BMR seed2 (`/SSDe/jemo_maeng/yeon_deliver_P44_bmr_seed2_run.log`): Epoch [176/200] 진행중(215/1991, ~11%). 마지막 완료 [Val] ep174 64.77 / [Test] ep174 52.05. Best Val 66.09@108, Best Test 54.04@164. 로그 mtime 12:28:07, size 85,878,209 bytes.
+
+---
+## 2026-08-03 14:30 KST 정기점검 (raw, 판정 없음)
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux `musesc3`) — 최우선 확인 대상
+MUSES-C3 λ0.2 (`hpca100-muses_rgbel_P46_c3only_lam02.yaml`): **미완주** (직전 12:29 ep229 → 현재 ep257/300, iter 262/375 ~70%). `Total Training Time` 로그 없음.
+
+| GPU | mem.used | util |
+|---|---|---|
+| 0 | ~19.7-19.9GB | 75% |
+| 1 | ~19.7-19.9GB | 100% |
+| 2 | ~19.7-19.9GB | 91% |
+| 3 | ~19.7-19.9GB | 92% |
+
+유휴 GPU 없음 → A100×4 회수 불가.
+
+최근 [Val]:
+```
+ep250 80.96  ep252 81.39  ep254 81.26  ep256 81.16
+```
+Best Val = **81.65@ep136** (직전 12:29 대비 무갱신 지속, 136→256 = 120ep). [Test] 0건(설계상 정상, GT 비공개).
+
+Best ckpt (top1, 불변): `epoch136_81.65_top1_checkpoint.pth`
+기타 top-K: top2 epoch140_81.51 / top3 epoch240_81.51 / top4 epoch190_81.46 / top5 epoch246_81.45 / last_checkpoint.pth 존재.
+
+잔여 43ep, 관측 케이던스(9분/2ep) 선형추정 시 완주 ~08:40-09:00경(로그 실측 ETA 아님, 외삽치).
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | ~15050MiB | 99-100% | seed2 λ0.2 |
+| 2 | ~14990MiB | 91-100% | seed2 λ0.2 |
+| 3 | ~15060MiB | 99-100% | seed2 λ0.2 |
+| 4 | ~15050MiB | 89-100% | λ0.3 |
+| 5 | ~14990MiB | 89-100% | λ0.3 |
+| 6 | ~14990MiB | 89-100% | λ0.3 |
+| 7 | ~14990MiB | 89-100% | λ0.3 |
+
+유휴 GPU 없음.
+
+GPU1-3 seed2 λ0.2 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`): **첫 eval 확보됨** (직전 12:29엔 ep10 첫 eval 전). Epoch [19/200] iter 945/1327(~71%).
+```
+ep2  Val50.04/Test46.06   ep4  Val54.49/Test50.19   ep6  Val57.41/Test51.28
+ep8  Val59.14/Test51.07   ep10 Val64.77/Test52.01   ep12 Val65.29/Test52.70(Best)
+ep14 Val62.97/Test51.94   ep16 Val64.96/Test52.40   ep18 Val64.49/Test52.26
+```
+Best Val 65.29@12, Best Test 52.70@12.
+
+GPU4-7 λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`): Epoch [87/200] iter533/995(~54%).
+```
+ep68 Val65.48/Test55.85  ep70 Val66.55/Test56.10  ep72 Val66.38/Test56.01
+ep74 Val65.85/Test55.65  ep76 Val66.57/Test54.57  ep78 Val66.19/Test55.22
+ep80 Val66.11/Test55.93  ep82 Val66.09/Test56.46(Best Test)
+ep84 Val67.34(Best Val)/Test55.71  ep86 Val66.24/Test56.18
+```
+**신기록**: Best Val 67.34@84 (직전 66.85@48 갱신), Best Test 56.46@82 (직전 56.10@70 갱신).
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1 | 14880MiB | 100% | λ0.15 |
+| 2 | 14822MiB | 70% | λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약, 무침) |
+| 4 | 14826MiB | 97% | 타유저(직전 0%→97%, 변화 관측) |
+| 5 | 14820MiB | 41% | λ0.15 |
+| 6 | 15556MiB | 91% | P44-BMR seed2 |
+| 7 | 15500MiB | 100% | P44-BMR seed2 |
+
+유휴 GPU 없음.
+
+GPU1,2,5 λ0.15 (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`): Epoch [71/200] step915/1327(~69%). 최근: ep68 Val65.79/Test55.33, ep70 Val65.80/Test54.46. Best Val 65.90@36 / Best Test 56.63@58 — 직전 12:29 대비 무갱신.
+
+GPU6,7 P44-BMR seed2 (`/SSDe/jemo_maeng/yeon_deliver_P44_bmr_seed2_run.log`): **미완주** (Total Training Time 로그 없음). Epoch [178/200] step1492/1991(~75%), 잔여 22ep. 최근: ep174 Val64.77/Test52.05, ep176 Val65.58/Test52.53. Best Val 66.09@108 / Best Test 54.04@164 — 직전 12:29 대비 무갱신.
+
+---
+## 2026-08-03 16:27~16:30 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | ~15050MiB | 97% | seed2 λ0.2 |
+| 2 | ~14990MiB | 100% | seed2 λ0.2 |
+| 3 | ~15060MiB | 100% | seed2 λ0.2 |
+| 4 | ~15000MiB | 100% | λ0.3 |
+| 5 | ~15000MiB | 60% | λ0.3 |
+| 6 | ~15000MiB | 58% | λ0.3 |
+| 7 | ~15000MiB | 92% | λ0.3 |
+
+유휴 GPU 없음.
+
+GPU1-3 seed2 λ0.2 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`, DATASET: DELIVER): Epoch [28/200] 완료, eval 진행중(605/633,~96%). [Val] ep28 64.45 Best 65.29(ep12, 무갱신). [Test] ep28 미기록(ep26 시점 최신). Best Test **54.25@ep26 (신기록, 직전 52.70@12 대비 상승)**. 로그 mtime 16:23:29.
+
+GPU4-7 λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DATASET: DELIVER): Epoch [100/200] batch305/995(~31%). [Val] ep98 66.32 Best 67.34(84, 무갱신). [Test] ep98 55.62 Best 56.46(82, 무갱신). 로그 mtime 16:15:38(val)/16:18:38(test).
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux `musesc3`)
+MUSES-C3 λ0.2 (`hpca100-muses_rgbel_P46_c3only_lam02.yaml`): **미완주**. Epoch [283/300] 완료, [284/300] 진행중(~26%). `Total Training Time` 로그 없음(grep exit 1). 잔여 ~16-17ep.
+
+| GPU | mem.used | util |
+|---|---|---|
+| 0 | 29386MiB | 100% |
+| 1 | 29261MiB | 100% |
+| 2 | 19838MiB | 86% |
+| 3 | 19650MiB | 100% |
+
+유휴 GPU 없음.
+
+최근 [Val] (ep244~282, 전량 동일 best): `epoch:282 mIoU 81.23 Best 81.65(ep136)`. Best Val = **81.65@ep136** (직전 14:30 ep256 대비 무갱신 지속, 136→282 = 146ep). [Test] 0건(설계상 정상).
+
+로그 mtime 2026-08-03 07:27:48 UTC(=16:27:48 KST), size 24,472,859 bytes.
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1 | 14880MiB | 28% | λ0.15 |
+| 2 | 14822MiB | 99% | λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약, 무침) |
+| 4 | 14826MiB | 0% | 타유저(예약, 무침) |
+| 5 | 14820MiB | 100% | λ0.15 |
+| 6 | 4150MiB | 100% | P44-BMR seed2 |
+| 7 | 4116MiB | 100% | P44-BMR seed2 |
+
+유휴 GPU 없음.
+
+GPU1,2,5 λ0.15 (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DATASET: DELIVER): Epoch [74/200]. [Val] ep74 66.28 **Best 66.28@74 (신기록, 직전 65.90@36 대비 상승)** (16:03:53 아님 —15:55:04). [Test] ep74 55.16 Best 56.63(58, 무갱신, 16:03:53).
+
+GPU6,7 P44-BMR seed2 (`/SSDe/jemo_maeng/yeon_deliver_P44_bmr_seed2_run.log`): **미완주**(Total Training Time 로그 없음). Epoch [180/200] 진행중(잔여 20ep). [Val] ep178 65.48 Best 66.09(108, 무갱신, 14:51:49); ep180 65.21 Best 66.09(108, 무갱신, 16:30:11 — 최신 라인, [Test] ep180 아직 미기록). [Test] ep178 52.53 Best 54.04(164, 무갱신, 15:04:09).
+
+---
+## 2026-08-03 18:20~18:30 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`)
+GPU1-3 seed2 λ0.2 (`configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`, DATASET: DELIVER): Epoch [36/200] 진행중(eval loop). [Val] Best 66.02@ep36(직전 65.29@12 대비 상승). [Test] Best 55.92@ep32(최근 로그 지점 54.67@ep36).
+
+GPU4-7 λ0.3 (`configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DATASET: DELIVER): Epoch [110/200] 진행중(eval loop). [Val] Best 67.34@ep84(무갱신). [Test] Best 56.80@ep106(직전 56.46@82 대비 상승).
+
+GPU0: 타유저/유휴(util 0%). GPU1-7: 전량 busy(util 99-100%, GPU당 ~3.2-3.7GB, LoRA 규모 메모리 풋프린트).
+
+양쪽 로그 모두 completion banner·traceback·crash 시그니처 없음. 프로세스 둘 다 생존.
+
+ETA: 이번 회차 미산출(epoch당 소요시간 데이터 미확보).
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux `musesc3`)
+MUSES-C3 λ0.2 (GPU0-3, `configs/hpca100-muses_rgbel_P46_c3only_lam02.yaml`, DATASET: MUSES): **Epoch [300/300] (마지막 epoch), 375 iters 중 ~13-16% 진행** — **아직 미완주**, `Total Training Time` 배너 없음.
+
+Best Val: 81.65@ep136, ep180~ep298 로그된 모든 val 체크포인트에서 정체(무갱신).
+
+Test: 0건 (이 MUSES-C3 config에서는 정상/설계상 기대값, 에러 아님).
+
+A100 4장 전량 util 100%, GPU당 ~29.5-29.7GB 사용 — 유휴 아님, 노드 재배정 불가 상태 지속.
+
+프로세스 생존 확인(torchrun, 4 rank, 8/2부터 계속 실행 중).
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`)
+GPU1,2,5 λ0.15 (`configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DATASET: DELIVER): Epoch 78 로그, 다음 epoch eval 중. `[Val] epoch:78 mIoU:65.40 Best:66.36(ep76)` / `[Test] epoch:78 mIoU:54.46 Best:56.63(ep58)`.
+
+GPU6,7 P44-BMR seed2 (`configs/yeon-deliver_rgbdel_P44_bmr.yaml`, DATASET: DELIVER, run label "seed2"): Epoch 182/200 로그, eval 중. `[Val] epoch:182 mIoU:65.57 Best:66.09(ep108)` / `[Test] epoch:182 mIoU:52.45 Best:54.04(ep164)`. **미완주**(ep200 항목 없음, completion banner 없음) — 잔여 18ep.
+
+GPU0,3,4: 타유저(GPU3,4는 정책상 예약, 사용 무관하게 손대지 않음). GPU1,2,5,6,7: 우리 것, 전량 busy(util 92-100%).
+
+ETA: 이번 회차 미산출(epoch당 소요시간 데이터 미확보).
+
+### 이번 세션 코드 수정
+- `tools/seg_viz_video.py` 모달리티별 denormalization 버그 수정 (RGB 이외 모달 — depth/lidar/event/thermal — 이 ImageNet 통계로 이중 un-normalize되던 문제. img만 ImageNet un-normalize 적용, depth/lidar/event는 그대로 두고, thermal은 percentile stretch 적용). `--cols` 그리드 옵션 및 `--all-modals` 플래그 추가.
+- `b295401` 커밋(develop 위 a1f9ef7 기준), `git push origin HEAD:develop`으로 푸시. 로컬 허브(이 체크아웃)는 `b295401`까지 클린하게 pull됨.
+- NAS 폴더 `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/videos/inference_deliver_test_p46_c3_lam02_modal/` 갱신: 기존 버그 있는 3row 영상 옆에 수정된 3col 영상 추가(`p46_c3_lam02_deliver_test_modal_3col_40f.mp4`, 9.9M); README.md에 3row 버전은 denorm 버그 있음, 3col이 수정본이라고 명시.
+
+---
+## 2026-08-03 20:25~20:35 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`, 서버시각 20:27:51 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | 15048MiB | 92% | λ0.2 seed2 |
+| 2 | 14992MiB | 91% | λ0.2 seed2 |
+| 3 | 15056MiB | 100% | λ0.2 seed2 |
+| 4 | 3360MiB | 100% | λ0.3 |
+| 5 | 3284MiB | 100% | λ0.3 |
+| 6 | 3262MiB | 100% | λ0.3 |
+| 7 | 3286MiB | 99% | λ0.3 |
+
+유휴 GPU 없음.
+
+GPU4-7 λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [124/200] 진행중. [Val] Best 67.34@ep84(무갱신, ep124 val=67.21). [Test] Best 56.80@ep106(ep122 test=55.88, ep124 미기록). Traceback/완주배너 없음. 페이스 9.57min/ep(ep122→124) → 잔여76ep ETA ≈ 2026-08-04 08:30 KST.
+
+GPU1-3 λ0.2 seed2 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [48] 진행중(ep46까지 로그). [Val] Best 66.64@ep40(ep46 val=65.55). [Test] Best 55.93@ep44(ep46 test=55.25). Traceback/완주배너 없음. 페이스 12.68min/ep(ep44→46) → 잔여152ep(목표200) ETA ≈ 2026-08-05 04:30 KST.
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux `musesc3`)
+> 🎯 **MUSES-C3 λ0.2 완주** (`hpca100-muses_rgbel_P46_c3only_lam02.yaml`, DATASET: MUSES, MODALS=img/lidar/event **3모달**): `Total Training Time 22:31:59` 확인. 최종 [Val] epoch:300 mIoU:81.21 / Best:81.65(ep136, 갱신 없이 유지). [Test] 로그 0건(이 config 설계상 정상). GPU0 9924MiB/62%, GPU1-3 9864MiB/0% — 임계치(mem≤2000&util≤10) 미충족(종료 직후 잔류 메모리로 추정, teardown 중일 가능성). Traceback 없음.
+
+> ⚠️ **P47-D1 4모달 미기동**: `configs/` 전체에서 `*P47*` 매칭 config 없음, 관련 프로세스 없음. hpca100에서 현재 실행 중인 job은 위 P46_c3only_lam02(이미 완주)뿐. 그 외 잡(`efp_eval_server.py`/`eval_gr00t_zmq.py`, gr00t 환경 포트 5751/5752/5761/5762)은 본 레포와 무관.
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1 | 14880MiB | 82% | λ0.15 |
+| 2 | 14822MiB | 74% | λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약, 무침) |
+| 4 | 14826MiB | 0% | 타유저(예약, 무침) |
+| 5 | 14820MiB | 80% | λ0.15 |
+| 6 | 15536MiB | 84% | P44-BMR seed2 |
+| 7 | 15500MiB | 83% | P44-BMR seed2 |
+
+유휴 GPU 없음.
+
+GPU1,2,5 λ0.15 (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달, MODAL_DROPOUT.MODALS=all): Epoch [84] 진행중. [Val] Best 66.66@ep84(신규 갱신). [Test] Best 56.63@ep58(ep84는 미확인 언급 없음, 현재치 56.26). Traceback/완주배너 없음. 페이스 26.5min/ep → 잔여116ep ETA ≈ 2026-08-05 23:40 KST.
+
+GPU6,7 P44-BMR seed2 (`yeon-deliver_rgbdel_P44_bmr.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [184/200] 진행중, **미완주**(완주 배너 없음, 잔여16ep — 직전 점검 "완주 임박" 대비 정정: GPU6,7 여전히 84%/83% busy). [Val] ep184 65.29 Best 66.09(ep108, 무갱신). [Test] ep184 52.46 Best 54.04(ep164, 무갱신). 페이스 ~49min/ep(2ep델타 98min) → ETA ≈ 2026-08-04 08:50 KST.
+
+---
+## 2026-08-03 22:27~22:32 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`, 서버시각 22:27:17 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | 15048MiB | 100% | λ0.2 seed2 |
+| 2 | 14992MiB | 100% | λ0.2 seed2 |
+| 3 | 15056MiB | 100% | λ0.2 seed2 |
+| 4 | 15046MiB | 90% | λ0.3 |
+| 5 | 14990MiB | 95% | λ0.3 |
+| 6 | 14990MiB | 61% | λ0.3 |
+| 7 | 14992MiB | 100% | λ0.3 |
+
+유휴 GPU 없음.
+
+GPU4-7 λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [137/200] 진행중(ep136까지 로그). [Val] Best 67.34@ep84(ep136 val=65.98, 무갱신). [Test] Best 56.80@ep106(ep136 test=55.81, 무갱신). Traceback/완주배너 없음. 페이스 9.575min/ep(ep132-136 평균) → 잔여64ep ETA ≈ 2026-08-04 08:40 KST.
+
+GPU1-3 λ0.2 seed2 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [57] 진행중(ep56까지 로그). [Val] Best 66.64@ep40(ep56 val=65.64, 무갱신). [Test] Best 55.93@ep44(ep56 test=54.36, 무갱신). Traceback/완주배너 없음. 페이스 12.62min/ep(ep48-56 평균) → 잔여144ep ETA ≈ 2026-08-05 04:44 KST.
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, 서버시각 22:28:08 KST)
+GPU0-3 P47-D1 4모달 (`hpca100-muses_rgbelr_P47_d1_dgfproj_4modal.yaml`, DATASET: MUSES, PROJ_DIR=projected_to_rgb_dgf, MODALS=img/lidar/event/radar 4모달, tmux `p47d1_4modal`): Epoch [8/300] 진행중(314/375 iter, 84%). [Val] ep2 mIoU 49.90 / ep4 68.68 / ep6 68.70(Best, 최근 로그 3개뿐, 계속 상승 초반 구간). [Test] 로그 0건(P47-D1 val-only 구간으로 추정). GPU 4장 전량 34.5-34.6GB busy(util 75-100%) — 유휴 없음. Traceback/완주배너 없음. 페이스 14.65min/ep(ep4-6) → 잔여294ep ETA ≈ 2026-08-06 22:00 KST.
+
+별도 tmux `musesc3`(`hpca100-muses_rgbel_P46_c3only_lam02.yaml`)도 4GPU에서 병행 실행 중 확인(전회 완주 로깅된 잡과 무관한 재기동으로 추정, 이번 점검 범위 밖 — 상세 미조사).
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`, 서버시각 22:31:53 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 97% | 타유저(무침) |
+| 1 | 14880MiB | 100% | λ0.15 |
+| 2 | 14824MiB | 76% | λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약, 무침) |
+| 4 | 14826MiB | 0% | 타유저(예약, 무침) |
+| 5 | 14820MiB | 93% | λ0.15 |
+| 6 | 15536MiB | 98% | P44-BMR seed2 |
+| 7 | 15500MiB | 100% | P44-BMR seed2 |
+
+유휴 GPU 없음(GPU3,4는 util 0%지만 mem~14.8GB로 임계치 미충족 — 타유저 잔류 메모리로 추정).
+
+GPU1,2,5 λ0.15 (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [88] 진행중(ep88까지 로그). [Val] Best 66.66@ep84(ep88 val=65.70). [Test] Best 56.63@ep58(ep88 test=55.06). Traceback/완주배너 없음. 페이스 26.4min/ep(ep70-88 평균) → 잔여112ep ETA ≈ 2026-08-05 23:49 KST.
+
+GPU6,7 P44-BMR seed2 (`yeon-deliver_rgbdel_P44_bmr.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [186/200] 진행중, **미완주**(완주배너 없음, 잔여14ep — 전회 "완주 임박" 대비 여전히 진행 중, GPU6,7 98%/100% busy 유지). [Val] ep186 65.32 Best 66.09(ep108, 무갱신). [Test] ep186 52.28 Best 54.04(ep164, 무갱신). 페이스 49.14min/ep(ep168-186 평균) → ETA ≈ 2026-08-04 09:59 KST.
+
+### 4모달 seed2 zip 마무리 (hpca100 → 로컬)
+predict_muses_test.py 프로세스 종료 확인(실제 출력경로 `/tmp/muses_P39_1_rank_4modal_seed2_ep260/pred/`, 지시문의 `/tmp/muses_P39_1_rank_4m`와 상이). PNG 750/750 확인, `predict_summary.json`: ckpt=epoch260_82.35_top1_checkpoint.pth, radar_decode=fixed, classes_never_predicted=[], degenerate_images_le2_classes=[]. 샘플 1장(`REC0006_frame_042430.png`) mode L / 1920x1080 / uint8 / min0-max18 확인.
+
+zip 구조 정정: 기존 제출 zip(`muses_P39_1_seed2_3modal_ep208_submission.zip`)은 지시문 가정(루트 평평)과 달리 **`labelTrainIds/` 서브폴더 구조**(`tools/verify_submission.py`의 Codabench comp.14005 규격과 일치) — 신규 zip도 동일 구조로 생성.
+
+`tools/verify_submission.py` 결과: 파일수 750/750 PASS, 파일명↔stem 매칭 PASS, per-file 포맷(mode L/1920x1080/uint8/값0-18) 전량 PASS, degenerate 없음(최소 distinct class/img=6) PASS, 전19클래스 존재 PASS → **ALL CHECKS PASSED**.
+
+최종 경로: `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/muses_P39_1_rank_4modal_seed2_ep260_submission.zip`, 크기 12,763,066 bytes(12.2MB), md5 `0980c64ea9fe5e835b9466683041a9e0`(hpca100 원본·로컬 사본 동일 확인). Codabench 업로드 없음.
+
+---
+## 2026-08-04 00:27~00:31 KST 정기점검 (raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`, 서버시각 00:27:11 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | 3694MiB | 99% | λ0.2 seed2 |
+| 2 | 3656MiB | 100% | λ0.2 seed2 |
+| 3 | 3744MiB | 99% | λ0.2 seed2 |
+| 4 | 15028MiB | 99% | λ0.3 |
+| 5 | 14992MiB | 100% | λ0.3 |
+| 6 | 14992MiB | 73% | λ0.3 |
+| 7 | 14992MiB | 98% | λ0.3 |
+
+유휴 GPU 없음. GPU1-3(λ0.2 seed2) 메모리가 이전 점검 대비 15GB대→3.6~3.7GB대로 급감 확인 — eval 구간 소배치로 추정(GPU6,7 P44-BMR 유사 패턴 참고), 프로세스는 계속 진행 중(死 아님).
+
+GPU4-7 λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [150/200] 진행중(421/995, 42%). [Val] Best 67.34@ep84(무갱신, ep148 val=66.39). [Test] Best 56.80@ep106(무갱신, ep148 test=56.18). Traceback/완주배너 없음. 페이스 9.76min/ep(ep130-148 평균) → 잔여50ep ETA ≈ 2026-08-04 08:54 KST.
+
+GPU1-3 λ0.2 seed2 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [67] 진행중(5/1327 방금 시작). [Val] **Best 67.74@ep62(신규 갱신, 이전 66.64@40)**(ep66 val=65.62). [Test] Best 55.93@ep44(무갱신, ep66 test=55.39). Traceback/완주배너 없음.
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, tmux `p47d1_4modal`, 서버시각 00:27:49 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 34640MiB | 100% | P47-D1 |
+| 1 | 34610MiB | 100% | P47-D1 |
+| 2 | 34686MiB | 100% | P47-D1 |
+| 3 | 34544MiB | 100% | P47-D1 |
+
+유휴 GPU 없음(4장 전량 34.5-34.7GB busy).
+
+GPU0-3 P47-D1 4모달 (`hpca100-muses_rgbelr_P47_d1_dgfproj_4modal.yaml`, DATASET: MUSES, PROJ_DIR=projected_to_rgb_dgf, MODALS=img/lidar/event/radar 4모달): Epoch [21/300] 진행중(160/375, 43%, loss1.9822/cal0.0000/auxCE0.4178). [Val] 최근 5개 — ep12 74.64(Best75.07@8) / ep14 74.30(Best75.07@8) / ep16 76.31(Best@16) / ep18 77.38(Best@18) / ep20 **77.55(Best@20, 신규갱신)**. [Test] 로그 0건(ep30 게이트 미도달, P47-D1 설계상 정상). Traceback/완주배너 없음. 페이스 639.3s/ep(ep2-20 평균) → 잔여279ep ETA ≈ 2026-08-06 02:08 KST.
+
+별도 tmux `musesc3`(`hpca100-muses_rgbel_P46_c3only_lam02.yaml`) 프로세스가 재차 확인됨(전회 07-02 완주 로깅된 잡과 별개 재기동으로 추정) — 이번 점검 지시문 범위(P47-D1) 밖, 상세 미조사.
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`, 서버시각 00:29~00:31 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1 | 14882MiB | 99% | λ0.15 |
+| 2 | 14822MiB | 74-100% | λ0.15 |
+| 3 | 14829MiB | 0-100% | 타유저(예약, 무침) |
+| 4 | 14826MiB | 0-59% | 타유저(예약, 무침) |
+| 5 | 14820MiB | 76-100% | λ0.15 |
+| 6 | 15556→4132MiB | 100% | P44-BMR seed2 |
+| 7 | 15500→4094MiB | 100% | P44-BMR seed2 |
+
+유휴 GPU 없음. GPU6,7 메모리 스냅샷 간 15.5GB→4.1GB 감소 확인 — eval 구간 소배치로 추정(프로세스 계속 진행, 死 아님).
+
+GPU6,7 P44-BMR seed2 (`yeon-deliver_rgbdel_P44_bmr.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): 학습 epoch "190/200" 표시 완료, 현재 eval 진행 중(84/502, 계속 전진 — 정지 아님). [Val] Best 66.09@ep108(무갱신, ep188 val=65.44). [Test] Best 54.04@ep164(무갱신, ep188 test=52.60). Traceback/완주배너 없음. 페이스 49.1min/ep(ep170-188 평균) → 잔여10ep ETA ≈ 2026-08-04 08:40 KST.
+
+GPU1,2,5 λ0.15 (`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`, DATASET: DELIVER, MODALS=img/depth/event/lidar 4모달): Epoch [94/200] 진행중(1034/1327, 78%). [Val] **Best 67.02@ep92(신규 갱신, 이전 66.66@84)**(ep92 val=67.02, 최신치=최고치). [Test] Best 56.63@ep58(무갱신, ep92 test=54.63). Traceback/완주배너 없음. 페이스 26.4min/ep(ep74-92 평균) → 잔여106ep ETA ≈ 2026-08-05 23:10 KST.
+
+### 완주/사망 요약
+이번 점검 구간 완주 없음, 사망(Traceback) 없음. 신규 idle GPU 전환 없음.
+
+---
+## 2026-08-04 04:26~04:27 KST 재점검 (jarvis 지연으로 3서버 동시 재조회, raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`, 서버시각 04:27:02 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | 15048MiB | 90% | λ0.2 seed2 |
+| 2 | 14992MiB | 98% | λ0.2 seed2 |
+| 3 | 15056MiB | 100% | λ0.2 seed2 |
+| 4 | 3382MiB | 99% | λ0.3 |
+| 5 | 3284MiB | 100% | λ0.3 |
+| 6 | 3284MiB | 99% | λ0.3 |
+| 7 | 3284MiB | 100% | λ0.3 |
+
+유휴 GPU 없음.
+
+GPU4-7 λ0.3 (`jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DELIVER 4모달): **미완주** — Epoch [174/200] 진행중(마지막 학습라인 996it/06:30). 완주배너("Total Training Time" 등) grep 무매치. [Val] ep170 67.83(Best@170, 신규) / ep172 67.71 / ep174 67.52. [Test] ep168 55.15(Best56.80@106) / ep170 54.52 / ep172 54.59. 페이스 ep170→172→174 각 19.2min/2ep→9.6min/ep → 잔여26ep ETA ≈ 08:37 KST. GPU4-7 미유휴.
+
+GPU1-3 λ0.2 seed2: Epoch [86/200] 진행중(583/1327, 44%). [Val] ep78 없음(생략)/ep80 67.28(Best67.74@62, 무갱신)/ep82 67.06/ep84 66.94. [Test] ep78 54.86(Best55.96@68)/ep80 55.99(Best신규@80)/ep82 55.48/ep84 55.69.
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, 서버시각 19:26:41 UTC = 04:26:41 KST)
+| GPU | mem.used | util |
+|---|---|---|
+| 0 | 5343MiB | 100% |
+| 1 | 5290MiB | 99% |
+| 2 | 15154MiB | 100% |
+| 3 | 15034MiB | 100% |
+
+유휴 GPU 없음.
+
+P47-D1 4모달(`hpca100-muses_rgbelr_P47_d1_dgfproj_4modal.yaml`, MUSES 4모달): ep30 게이트 **도달 확인**(ep30 val 78.99 기록 재확인, 현재 ep44까지 진행). [Val] 최근6개 — ep34 79.53(Best@34) / ep36 79.51 / ep38 78.72 / ep40 78.99 / ep42 79.46 / ep44 79.17(Best 79.53@34 유지). [Test] 로그 0건. 현재 eval 진행바 37/63. 페이스 ep34→44 평균 9.39min/ep → 잔여256ep ETA ≈ 2026-08-05 20:30 KST 부근.
+
+별도 tmux `musesc3`(P46 c3only lam02) 프로세스 존재 확인, 금회 조사범위 밖.
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`, 서버시각 04:26:33 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1 | 14880MiB | 100% | λ0.15 |
+| 2 | 14822MiB | 100% | λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약,무침) |
+| 4 | 14826MiB | 0% | 타유저(예약,무침) |
+| 5 | 14822MiB | 100% | λ0.15 |
+| 6 | 15536MiB | 61% | P44-BMR seed2 |
+| 7 | 15500MiB | 100% | P44-BMR seed2 |
+
+유휴 GPU 없음. GPU6,7 미유휴 확인(P44-BMR seed2 미완주).
+
+GPU6,7 P44-BMR seed2(`yeon-deliver_rgbdel_P44_bmr.yaml`, DELIVER 4모달): **미완주** — Epoch [195/200] 진행중(888/1991, 45%). 완주배너 grep 무매치. [Val] ep190 65.47(Best66.09@108)/ep192 65.48/ep194 65.34. [Test] ep190 52.48(Best54.04@164)/ep192 52.48/ep194 52.41. top1 ckpt 파일명(현재 기준 불변): val=`epoch108_66.09_top1_checkpoint.pth`, test=`test_epoch164_54.04_top1_checkpoint.pth`. 페이스 ep190→192→194 각 98.4min/2ep→49.2min/ep → 잔여5.5ep ETA ≈ 08:56 KST.
+
+GPU1,2,5 λ0.15: Epoch [103/200] 진행중(383/1327, 29%). [Val] ep98 65.67(Best67.02@92)/ep100 64.97/ep102 65.20. [Test] ep98 55.43(Best56.63@58)/ep100 55.37/ep102 55.03. 페이스 ep98→100→102 각 52.5min/2ep→26.25min/ep → 잔여98ep ETA ≈ 2026-08-05 23:20 KST 부근.
+
+### 완주/사망 요약
+이번 재점검 구간 완주 없음(λ0.3·P44-BMR seed2 모두 ETA 경과했으나 미완주, 진행 중 확인), 사망(Traceback) 없음. 신규 idle GPU 없음(전 서버 유휴 GPU 0장).
+
+---
+## 2026-08-04 06:26~06:28 KST 재점검 (완주 2건 확인 최우선, raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`, 서버시각 06:26:54 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | 15050MiB | 72% | P46-3 λ0.2 seed2 |
+| 2 | 14990MiB | 100% | P46-3 λ0.2 seed2 |
+| 3 | 15056MiB | 99% | P46-3 λ0.2 seed2 |
+| 4 | 15046MiB | 87% | P46-3 λ0.3 |
+| 5 | 14990MiB | 91% | P46-3 λ0.3 |
+| 6 | 14992MiB | 67% | P46-3 λ0.3 |
+| 7 | 14992MiB | 100% | P46-3 λ0.3 |
+
+유휴 GPU 없음.
+
+GPU4-7 P46-3 λ0.3(구 c3only_lam03, `jarvis-deliver_rgbdel_P46_ctr_c3only_lam03.yaml`, DELIVER 4모달): **미완주** — Epoch [187/200] 진행중(597/995, 60%). 완주배너 grep 무매치. [Val] ep180 67.37/ep182 67.52/ep184 67.47/ep186 67.69 (Best 67.83@170 불변). [Test] ep180 55.56/ep182 54.95/ep184 54.98/ep186 55.11 (Best 56.80@106 불변). 페이스 ep180→186 각 19.1~19.25min/2ep→9.6min/ep → 잔여13ep ETA≈08:32 KST. GPU4-7 미유휴.
+
+GPU1-3 P46-3 λ0.2 seed2(구 lam02_seed2): Epoch [95/200] 진행중(978/1327, 74%). [Val] ep88 66.87/ep90 66.36/ep92 66.77/ep94 66.85 (Best 67.74@62 불변). [Test] ep88 55.94/ep90 55.51/ep92 55.54/ep94 55.50 (Best 55.99@80 불변).
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, 서버시각 21:27:14 UTC = 06:27:14 KST)
+| GPU | mem.used | util |
+|---|---|---|
+| 0 | 24721MiB | 80% |
+| 1 | 24654MiB | 100% |
+| 2 | 24826MiB | 86% |
+| 3 | 24702MiB | 100% |
+
+유휴 GPU 없음.
+
+P47-1(구 D-1, `hpca100-muses_rgbelr_P47_d1_dgfproj_4modal.yaml`, MUSES 4모달+dgf 밀도화): Epoch [66/300] 진행중(349/375, 93%). [Val] 최근6개 — ep54 80.60(Best@54, 신규갱신) / ep56 80.12 / ep58 80.21 / ep60 80.31 / ep62 80.70(Best@62, 신규갱신) / ep64 **81.09(Best@64, 신규갱신)**. **Best 79.53@34 → 81.09@64로 갱신 확인**(3회 연속 신기록: ep54/62/64). [Test] 로그 0건. 페이스 ep54→64 각 ~11.2~11.3min/2ep→5.6min/ep(전회 대비 페이스 향상) → 잔여234ep ETA≈2026-08-05 04:29 KST 부근.
+
+별도 tmux `musesc3`(P46-3 lam02) 프로세스 존재 계속 확인, 금회 조사범위 밖.
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`, 서버시각 06:28:09 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1 | 14880MiB | 96% | P46-3 λ0.15 |
+| 2 | 14822MiB | 100% | P46-3 λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약,무침) |
+| 4 | 14826MiB | 0% | 타유저(예약,무침) |
+| 5 | 14820MiB | 91% | P46-3 λ0.15 |
+| 6 | 15536MiB | 100% | P44-BMR seed2 |
+| 7 | 15500MiB | 100% | P44-BMR seed2 |
+
+유휴 GPU 없음. GPU6,7 미유휴 확인(P44-BMR seed2 미완주).
+
+GPU6,7 P44-BMR seed2: **미완주** — Epoch [198/200] 진행중(99/1991, 5%). 완주배너 grep 무매치. [Val] ep192 65.48/ep194 65.34/ep196 65.29 (Best 66.09@108 불변). [Test] ep192 52.48/ep194 52.41/ep196 52.39 (Best 54.04@164 불변). top1 ckpt 파일명 불변: val=`epoch108_66.09_top1_checkpoint.pth`, test=`test_epoch164_54.04_top1_checkpoint.pth`. last_checkpoint.pth 06:25 갱신(계속 진행중 확인). 페이스 ep192→196 각 98.4~98.5min/2ep→49.2min/ep → 잔여2.05ep ETA≈08:09 KST.
+
+GPU1,2,5 P46-3 λ0.15: Epoch [108/200] 진행중(279/1327, 21%). [Val] ep98 65.67/ep100 64.97/ep102 65.20/ep104 65.20/ep106 65.36 (Best 67.02@92 불변). [Test] ep98 55.43/ep100 55.37/ep102 55.03/ep104 55.67/ep106 55.76 (Best 56.63@58 불변).
+
+### 완주/사망 요약
+이번 재점검 구간 완주 없음(λ0.3·P44-BMR seed2 모두 재차 ETA 경과했으나 미완주 확인, GPU4-7·GPU6,7 미유휴). 사망(Traceback) 없음. hpca100 P47-1 val best 신기록(81.09@64) 확인. 신규 idle GPU 없음(전 서버 유휴 GPU 0장).
+
+---
+## 2026-08-04 08:26~08:27 KST 재점검 (완주 2건 확인 최우선, raw, 판정 없음)
+
+### jarvis (repo `/home/jemo_maeng/src/drone-MemorySAM-develop`, 서버시각 08:26:53 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 4062MiB | 0% | 타유저(무침) |
+| 1 | 3736MiB | 99% | P46-3 λ0.2 seed2 |
+| 2 | 3622MiB | 99% | P46-3 λ0.2 seed2 |
+| 3 | 3686MiB | 99% | P46-3 λ0.2 seed2 |
+| 4 | 15028MiB | 97% | P46-3 λ0.3 |
+| 5 | 14992MiB | 100% | P46-3 λ0.3 |
+| 6 | 14990MiB | 80% | P46-3 λ0.3 |
+| 7 | 14992MiB | 93% | P46-3 λ0.3 |
+
+유휴 GPU 없음.
+
+GPU4-7 P46-3 λ0.3: **미완주** — 완주배너 grep 무매치(빈 결과). **Epoch [200/200] 진행중(191/995, 19%)** — 최종 epoch 도달했으나 아직 진행 중. [Val] ep194 67.71/ep196 67.68/ep198 67.79 (Best 67.83@170 불변). [Test] ep194 55.02/ep196 55.17/ep198 54.91 (Best 56.80@106 불변). GPU4-7 미유휴.
+
+GPU1-3 P46-3 λ0.2 seed2: Epoch [105/200] 진행중(방금 시작, 1/1327). [Val] ep100 65.90/ep102 66.57/ep104 65.90 (Best 67.74@62 불변). [Test] ep100 **56.27(Best 신규갱신@100, 이전 55.99@80)**/ep102 55.29. > 🆕 test best 55.99→56.27@ep100
+
+### hpca100 (repo `~/SSDb/jemo_maeng/src/drone-MemorySAM`, 서버시각 23:26:48 UTC = 08:26:48 KST)
+| GPU | mem.used | util |
+|---|---|---|
+| 0 | 24731MiB | 91% |
+| 1 | 24654MiB | 92% |
+| 2 | 24852MiB | 94% |
+| 3 | 24704MiB | 100% |
+
+유휴 GPU 없음.
+
+P47-1: Epoch [88/300] 진행중(42/375, 11%). [Val] 최근8개 — ep72 81.43(Best@72) / ep74 80.74 / ep76 80.30 / ep78 81.46(Best@78) / ep80 81.08 / ep82 81.32 / ep84 **81.61(Best@84, 신규갱신)** / ep86 81.28. > 🆕 best 81.09@64→81.61@84. **base 82.35 기준 미돌파**(현재 최고 81.61, −0.74). [Test] 로그 0건.
+
+별도 tmux `musesc3` 프로세스 계속 확인, 금회 조사범위 밖.
+
+### yeon (repo `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`, 서버시각 08:26:51~08:27:49 KST)
+| GPU | mem.used | util | 상태 |
+|---|---|---|---|
+| 0 | 15047MiB | 0% | 타유저(무침) |
+| 1 | 14880MiB | 0% | P46-3 λ0.15 (raw 이상치 — 하단 참고) |
+| 2 | 3470MiB | 100% | P46-3 λ0.15 |
+| 3 | 14829MiB | 0% | 타유저(예약,무침) |
+| 4 | 14826MiB | 0% | 타유저(예약,무침) |
+| 5 | 3512MiB | 100% | P46-3 λ0.15 |
+| 6 | 15556MiB | 100% | P44-BMR seed2 |
+| 7 | 15500MiB | 100% | P44-BMR seed2 |
+
+유휴 GPU 없음(GPU1은 util 0%이나 mem 14880MiB>2000이라 유휴 기준 미충족).
+
+GPU6,7 P44-BMR seed2: **미완주** — 완주배너 grep 무매치(train.log·mirror 로그 둘 다). **Epoch [200/200] 진행중(1303/1991, 65%, tqdm 잔여~12m22s)** — 최종 epoch 도달했으나 아직 진행 중. [Val] ep190 65.47/ep192 65.48/ep194 65.34/ep196 65.29/ep198 65.34 (Best 66.09@108 불변). [Test] ep190 52.48/ep192 52.48/ep194 52.41/ep196 52.39/ep198 52.37 (Best 54.04@164 불변). top1 ckpt 파일명 불변: val=`epoch108_66.09_top1_checkpoint.pth`, test=`test_epoch164_54.04_top1_checkpoint.pth`. last_checkpoint.pth mtime 08:03(진행중 확인). GPU6,7 미유휴.
+
+GPU1,2,5 P46-3 λ0.15: Epoch [110] 완료, test-eval 진행중(66/669, 10%). [Val] ep100 64.97/ep102 65.20/ep104 65.20/ep106 65.36/ep108 65.54/ep110 65.56 (Best 67.02@92 불변). [Test] ep100 55.37/ep102 55.03/ep104 55.67/ep106 55.76/ep108 55.24/ep110 55.10 (Best 56.63@58 불변).
+
+⚠️ **raw 이상 flag(판정 없음)**: λ0.15와 동일 config(`yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml`)·동일 master_port=29651로 08:26에 **별도 torchrun 프로세스(PID 2140043, nproc_per_node=3, workers 0분 CPU)가 신규 관측됨** — 기존 프로세스(8월02 시작, PID 4161740)와 별개로 공존. GPU1 mem 14880MiB/util 0%인 상태와 시점이 일치. 원인 미조사(범위 밖), 다음 점검에서 재확인 필요.
+
+### 완주/사망 요약
+이번 재점검 구간 완주 없음 — **λ0.3·P44-BMR seed2 둘 다 epoch 200/200(최종 epoch) 진행 중이나 미종료**(완주배너 무매치, GPU 미유휴). 사망(Traceback) 없음. 신기록 2건(hpca100 P47-1 val 81.61@84, jarvis λ0.2 seed2 test 56.27@100). 유휴 GPU 0장. yeon λ0.15에서 동일config 중복 프로세스 관측(이상 flag, 미조사).
+
+---
+## 2026-08-04 (직후) yeon λ0.15 중복프로세스 진단 (판정 요청 대응, raw)
+
+**대상**: 08:26~08:27 점검에서 flag한 GPU1 이상(mem 14880MiB/util 0%) + 동일config·동일master_port(29651) 신규 PID(~2140043).
+
+### 1. `ps -eo pid,ppid,lstart,etime,cmd | grep -a 'lam015'`
+- 기존 master: PID 4161740, PPID 4161738, 시작 `Sun Aug 2 07:33:25`, `--nproc_per_node=3 --master_port=29651`, etime 2일00:57.
+- 기존 worker rank: 4161900/4161901/4161902 (PPID=4161740), 시작 `Aug 2 07:33:29`.
+- 기존 dataloader 자식(Aug2 07:33:42): PID 4162157-4162200, PPID=위 rank 중 하나.
+- **신규 PID(2140043-2140051, 2140220-2140223)**: 시작 `Tue Aug 4 08:26:46/08:26:54`, etime~04:12/04:04. **전부 PPID=4161900/4161901/4161902 중 하나** — 기존 rank의 자식.
+
+### 2. `pgrep -af torchrun` / `pgrep -af torch.distributed.run`
+이 config용 master **1개뿐**(4161740, Aug2, port29651). 유일한 다른 torchrun은 무관한 P44_bmr(1852990, port29650). **독립 master 2개·포트충돌 없음.**
+
+### 3. GPU-PID 매핑 + 프로세스 상태
+GPU1(8f8ebbd3)→4161900, GPU2(7eb56e37)→4161901, GPU5(e9171f2a)→4161902. 재확인 시점 GPU1/2/5 전부 ~3470-3512MiB/util 100%로 **GPU1 정상 복귀 확인**(08:26 이상은 일시적). `/proc/4161900/status` State=R(running, 정상). 신규 자식 4개(2140220-2140223) `/proc/.../status`: Name=`pt_data_worker`, State=S(sleeping) — PyTorch DataLoader worker 정확히 그 프로세스명, 좀비 아님.
+
+### 4. 로그(`logs/yeon_deliver_P46_c3only_lam015_run.log`)
+Epoch 배너 1→2→...→112까지 단조 진행, 재출현(`Epoch [1/200]` 재등장) 없음. eval bar 45%→57% 꾸준히 전진(1.20it/s). traceback/watchdog/OOM/CUDA error grep 무매치(유일 NCCL관련 라인=Aug2 07:33:35 무해한 시작 경고).
+
+### 판별 결과
+**Case 1(양성) 적용**: 신규 PID 전부 기존 worker의 PPID를 가짐 = dataloader 자식(정상 respawn 패턴). Master 1개·재시작 없음·에러 없음·GPU1 자가복귀로 교차 검증. **조치 없음(kill 안 함)**. GPU6,7·GPU0,3,4·jarvis·hpca100 전부 무침(read-only nvidia-smi만).
+
+## 2026-08-04 10:31 KST — 정기점검 + 🔴 기준 수치 대규모 정정
+
+### 배치 현황
+| 서버/GPU | 실험 | 데이터셋 | 상태 |
+|---|---|---|---|
+| hpca100 0-3 | P47-1 (lidar 밀도화, dgfproj) | MUSES 4모달 CLRE | 진행 (직전 ep101/300, best val 81.71@92, base 대비 +0.4 유지) |
+| jarvis 1-3 | P46-3 λ0.2 seed2 | DELIVER CLDE | 진행 |
+| jarvis 4,5 | P47-2 arm① (MODALS=['img']) | MUSES 3모달 | 신규 기동, 검증 6항 PASS |
+| jarvis 6,7 | P47-2 arm② (MODALS=all) | MUSES 3모달 | 신규 기동, 검증 6항 PASS |
+| yeon 1,2,5 | P46-3 λ0.15 | DELIVER CLDE | 진행 |
+| yeon 6,7 | **DELIVER CLE (P46-3 λ0.05, depth 제외)** | DELIVER 3모달 | **신규 기동**, 검증 PASS (MODALS=['img','lidar','event'], RANDOM INIT 0, 12.3GB/71~100%) |
+| yeon 0,3,4 | 타 프로세스 / 사용금지 자원 | — | 무침 |
+
+유휴 GPU: **0장**
+
+### 🔴 이번 점검의 핵심 — 기준 수치 3건 정정 (모두 원문/로그 재확인)
+
+**① DELIVER SOTA 기준이 낡았다** (MM SAM-adapter 2509.10408v1 누락)
+- val SOTA 68.79 → **69.60** · test SOTA 56.71 → **57.35** (둘 다 MM SAM-adapter RGB-D 2모달)
+- 우리 격차: val −0.22 → **−1.03** / test −1.02 → **−1.66**
+
+**② P46-3 λ 스윕의 "DELIVER SOTA 돌파(57.05)" 철회**
+- 57.05는 **test-best ckpt** 값 = test peeking, 규약상 무효
+- legal 재계산: val-best 기준 최고 55.62(λ0.05) / final-iter 기준 55.69(λ0.05=λ0.2 동률)
+- 실제 이득은 base 대비 test **+1.35~1.74**, val **+0.97** — 효과 자체는 견고
+- 🔴 λ 순위가 규칙마다 뒤집힘(test-best: λ0.2 정점 / legal: λ0.05 최고) → 잘못된 λ로 후속 실험 갈 뻔했음
+
+**③ MUSES 헤드라인 구성 변경**
+- 논문 표는 전원 **4모달(CLRE)** — 3모달 79.788은 표에 실을 수 없는 구성
+- 비교 가능한 수치 = **4모달 79.571** → DGFusion 79.5 대비 **+0.07 = 4모달 계보 1위**
+- 4모달 공식 test 결과 수신: 79.571 (3모달 79.788 대비 −0.217)
+
+### 🔴 radar 판정 정밀화 — 야간에 국소화
+3모달 vs 4모달 조건별 델타: day **+0.189** / night **−0.376**, 야간 4/4 조건 전부 음수
+(clear_night −2.379 / **fog_night −5.372** / rain_night −0.713 / snow_night −1.526)
+- 디코딩 불일치 배제 확인 (학습 `_open_radar` == 추론 `--radar-decode fixed`, 학습 시작 07-28 > 픽스 07-21)
+- 대조군: CAFuser Fig.5는 radar 가중치를 전 조건 5~7%로 고정하고 야간 폴백을 events(+8)·lidar(+10)로 보냄
+- ⚠️ 조합 조건은 75~150장이라 단일 수치 노이즈 큼 — 신뢰 구간은 "야간 4/4 음수"라는 방향성
+
+### "모달↑=성능↓" 철회
+within-method ablation은 전부 단조 증가 (CAFuser Table IX: RGB 55.7→+L 58.7→+R 59.3→+E 59.7 / DGFusion DELIVER CLE 51.6→CLDE 56.7). 리더보드 역상관은 방법론 교란. **우리 모델만 손해 = 회수 가능한 결함.**
+
+### panoptic 가능 여부
+🟢 **구조적으로 가능** — `m2f_head.py:panoptic_inference` 구현·감사 완료, MUSES AUPQ 채점 코드 보유, 우리 최고 모델이 M2F head 사용(arbitrate 경로로 query 실학습). 빠진 것은 `model.panoptic_inference`의 M2F 라우팅 + PQ 평가 스크립트뿐. **재학습 불필요.** labcode 작업 중.
+
+### 다음
+- 빈 GPU 발생 시 최우선 = **MUSES RGB-L 2모달**(상위권 구성, 81.07과 직접 비교)
+- PQ 배선 완료 후 기존 ckpt로 PQ 실측(eval 1회)
+- λ0.1 test@val-best 미감사분 확인
+
+## 2026-08-04 12:34 KST — 정기점검 (2h) · P47-1 신기록 · P47-2 ep30 게이트
+
+### 서버별 현황 (유휴 GPU 0장, 이상징후·데드락 없음)
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best val@ep | test@val-best | 판정 |
+|---|---|---|---|---|---|---|
+| hpca100 0-3 | P47-1 lidar 밀도화 | MUSES 4모달 CLRE | 131/300 | **82.29@124** 🔴신기록 | (제출로만) | 역전 사정권 |
+| jarvis 4,5 | P47-2 arm① img-only | MUSES 3모달 | 31/300 | 78.45@30 | — | 게이트 통과·열세 |
+| jarvis 6,7 | P47-2 arm② all | MUSES 3모달 | 31/300 | 79.16@30 | — | 게이트 통과·우세 |
+| jarvis 1-3 | P46-3 λ0.2 seed2 | DELIVER CLDE | 124/200 | 67.74@62 | 55.55 | 재현성 |
+| yeon 1,2,5 | P46-3 λ0.15 | DELIVER CLDE | 121/200 | 67.02@92 | 54.63 | 열세 확정 |
+| yeon 6,7 | DELIVER CLE (depth 제외) | DELIVER 3모달 | 5/200 | 51.77@4 | 49.29 | 정상 |
+| yeon 0,3,4 · jarvis 0 | 타 사용자(jongwon_kim / minkyoun) 점유 | — | — | — | — | 무침 |
+
+ETA: P47-1 08-05 04:30 · P47-2 08-05 20:20 · λ0.2seed2 08-05 04:30 · λ0.15 08-05 23:00 · CLE 08-09(잠정)
+
+### 🔴 판정 ① P47-1 — base 최종 기록에 −0.06까지 접근
+base 4모달 seed2 최종 82.35@**ep260** vs P47-1 **82.29@ep124** (176 epoch 잔여).
+3모달 82.62(역전 목표선)까지 −0.33. 모델 코드 0줄 변경(데이터 레시피만)인 개입이
+지금까지 시도한 어떤 모듈보다 크다.
+
+### 🔴 판정 ② P47-2 ep30 게이트 — 통과, 그러나 **진단이 반증되는 방향**
+kill 게이트(base 대비 −1.0) 둘 다 미발동 → 계속. base@ep30 = 78.73.
+- arm① img-only (λ_u 0.4 전량을 img에 = 기존 대비 3.2×): 78.45 → base **−0.28**
+- arm② all (모달당 0.133): 79.16 → base **+0.43**
+
+🔴 **예측과 반대다.** "RGB가 under-optimize" 진단이 맞다면 RGB에 3.2× 압력을 준
+arm①이 이겨야 한다. per-modal 로그가 결정적:
+| | arm①(img 0.4) | arm②(img 0.133) |
+|---|---|---|
+| img acc | 0.949 | 0.951 |
+| img ce | 0.143 | 0.141 |
+→ **가중치를 3배 주든 말든 RGB uni-modal 성적이 동일** = RGB 보조 헤드는 이미 포화.
+"RGB가 덜 학습됐다"는 전제의 직접 반증. arm②의 +0.43은 lidar(ce 0.362)·event(ce 0.407)에
+감독이 붙은 것에서 온다 → P47-2는 "RGB 게으름 교정"이 아니라 **"약한 모달에 자기 감독"**
+으로 재해석해야 한다(원 문헌 Gradient-Blending/UMT의 balance에 오히려 더 가까움).
+⚠️ ep30은 초반이고 격차 0.71은 seed 분산(P39.1 0.92)보다 작다 — 방향만 명확, 확정 아님.
+
+### 🟢 PQ 블로커 해소
+labcode가 "MUSES panoptic GT 미보유"로 보고했으나 **샌드박스로 경로를 못 본 것**이었다.
+실제로 `/ailab_mat2/dataset/MUSES/`에 `gt_panoptic/`(train·val, 조건별 하위폴더) +
+`val.json`·`train.json`(COCO 포맷) + `gt_uncertainty/` 전부 존재. 규약 추정 불필요, 공식 json 사용 가능.
+PQ 배선 완료(labcode `e0890d6`, 스모크 73건 전건 PASS, semantic 등가 |Δ|max=0).
+**남은 것은 GPU 1장뿐.**
+
+### 완주 확인
+hpca100 `muses_rgbel_P46_c3only_lam02`(MUSES 3모달) 300/300 완주 — Best Val 81.65@ep136, 총 22:31:59.
+
+### 다음 배치 (08-05 04:30 hpca100·jarvis 동시 확보 예정)
+1. PQ 실측(GPU 1장, 단시간) 2. P47-2 4모달(radar per-modal CE 확인) 3. MUSES RGB-L 2모달 4. DELIVER RGB-D 2모달
+
+### ⚠️ 선재 결함 발견(우리 변경과 무관)
+`tools/smoke_p44.py`가 2건 FAIL — `p44_validity_renorm`을 False로 기대하는데 config는
+07-25에 `ENABLE: true`로 전환됨(스모크 기대값이 낡음). 미수정.
+
+## 2026-08-04 14:44 KST — 정기점검 (2h) · P47-2 우위 소멸 · P47-1 정체 · ETA 밀림
+
+### 서버별 현황 (유휴 GPU 0장, 사망·D-state·데드락 없음)
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best val@ep | test@val-best | 판정 |
+|---|---|---|---|---|---|---|
+| hpca100 0-3 | P47-1 밀도화 | MUSES 4모달 CLRE | 153/300 | 82.29@124 | (제출로만) | 29ep 정체 |
+| jarvis 4,5 | P47-2 arm① img | MUSES 3모달 | 49/300 | 79.08@48 | — | base −0.58 |
+| jarvis 6,7 | P47-2 arm② all | MUSES 3모달 | 49/300 | 79.60@46 | — | base −0.06 |
+| jarvis 1-3 | P46-3 λ0.2 seed2 | DELIVER CLDE | 134/200 | 67.74@62 | 55.55 | 72ep 정체 |
+| yeon 1,2,5 | P46-3 λ0.15 | DELIVER CLDE | 124/200 | 67.02@92 | 54.63 | 열세 확정 |
+| yeon 6,7 | DELIVER CLE (depth 제외) | DELIVER 3모달 | 8/200 | 54.65@8 | 49.05 | 단조 상승, 정상 |
+| yeon 0,3,4 · jarvis 0 | 타 사용자(jongwon_kim / host_cloud_manager) | — | — | — | — | 무침 |
+
+⚠️ **ETA 대폭 변경**: hpca100 P47-1 페이스가 5.6 → **11.19분/epoch**로 절반(공유 pod 경합 추정,
+GPU util 85~100% 정상) → 완주 **08-05 04:30 → 18:08**. 이에 따라 배치 계획 재조정(아래).
+그 외 ETA: jarvis λ0.2seed2 08-05 04:55 · P47-2 08-05 20:09~20:16 · yeon λ0.15 08-05 23:15 · CLE 08-08 12:30.
+
+### 🔴 판정 ① P47-2 — 초반 우위가 소멸, 두 arm 모두 base 미달
+base(3모달 seed2) 궤적을 같은 기준(각 시점 best-so-far)으로 대조:
+| 시점 | base | arm① img | arm② all |
+|---|---|---|---|
+| ep30 | 78.73 | 78.45 (−0.28) | 79.16 (**+0.43**) |
+| ep48 | **79.66**(ep36 갱신) | 79.08 (**−0.58**) | 79.60 (**−0.06**) |
+→ arm②의 +0.43이 −0.06으로 소멸, arm①은 −0.28→−0.58로 악화. **둘 다 base 미달.**
+kill 게이트(−1.0) 미발동이므로 계속하되 전망은 부정적.
+⚠️ 이전 엔트리(12:2x)의 "arm② 우세" 판정은 **arm① 대비**였고 base 대비로는 성립하지 않는다 — 정정.
+
+### 🔴 판정 ② P47-2 진단(RGB under-optimization)이 실측으로 부정되는 중
+ep49 per-modal 로그:
+| | arm①(img에 λ 0.4) | arm②(img에 0.133) |
+|---|---|---|
+| img acc | 0.957 | 0.956 |
+| img ce | 0.120 | 0.124 |
+**RGB에 3× 가중을 줘도 RGB uni-modal 성적이 20 epoch째 불변.** ep30 단발이 아니라 궤적 전체.
+"RGB가 덜 학습됐다"는 전제가 성립하지 않는다. arm②/arm① 차이의 출처는 RGB가 아니라
+lidar(ce 0.310)·event(ce 0.361)에 감독이 붙은 것.
+
+### 판정 ③ P47-1 — 정체이나 붕괴 아님
+ep124 이후 29ep 갱신 없음(ep148 82.16 / ep150 82.11 / ep152 81.88, 완만한 하강).
+단 base 자신도 ep70~100을 30ep 평평하게 보낸 뒤 ep260에 82.35 도달 — 이 계보의 패턴이다.
+잔여 147ep. 판정선 = **ep180~200에서 82.29를 다시 넘는가.**
+
+### 판정 ④ λ0.15 열세 확정 (4회째 재확인)
+67.02@92에서 32ep 정체. λ0.05(68.57/55.62) 대비 −1.55/−0.99.
+
+### 🔴 배치 계획 재조정 (hpca100 ETA 밀림 반영)
+먼저 비는 자원은 hpca100이 아니라 **jarvis 1-3 (08-05 04:55, 4090×3)**.
+| 순서 | 시점 | 자원 | 올릴 것 |
+|---|---|---|---|
+| 1 | 08-05 04:55 | jarvis 1-3 | ① PQ 실측(1장·단시간) → ② MUSES RGB-L 2모달(2장) |
+| 2 | 08-05 18:08 | hpca100 0-3 | P47-2 4모달 (radar per-modal CE 확인) |
+| 3 | 08-05 23:15 | yeon 1,2,5 | DELIVER RGB-D 2모달 |
+
+⚠️ **PQ 실측 선행 준비**: jarvis MUSES에 `gt_panoptic`이 없다(frame_camera·gt_semantic·projected_to_rgb만).
+`/ailab_mat2/dataset/MUSES/gt_panoptic/val`(250장) + `val.json`을 jarvis로 전송 필요. 소량.
+
+### 🔴 DGFusion/CAFuser 코드 조사 결과 (사용자 질의: "태스크 헤드가 각각 있어 따로 학습?")
+**아니다.** 태스크별 분리 파라미터 0개 — query_embed·디코더·class_embed·mask_embed·task_mlp 전부 공유,
+손실은 태스크 인자를 받지 않는다. "헤드가 각각"이 아니라 **추론 함수가 각각**
+(semantic/panoptic/instance_inference)이고 셋 다 같은 pred_logits·pred_masks에서 파생.
+체크포인트 1개·평가 1회로 PQ와 mIoU 동시 산출.
+근거: cafuser.py:340-386 / dgfusion.py:445-460 / train_net.py:146-159,433 / oneformer_transformer_decoder.py:427-499
+
+**그러나 우리에게 중요한 차이 3건**:
+1. 그들 MUSES mIoU는 **task token="The task is panoptic"** 상태에서 측정된 값
+   (`MODEL.ONE_FORMER.TEST.TASK: "panoptic"`, 평가 명령이 override 안 함).
+2. 학습의 **66%가 인스턴스 단위 GT**(TASK_PROB semantic 0.33/instance 0.33/panoptic 0.34).
+3. DELIVER는 그들도 **100% semantic 전용**(pan_seg_file_name 부재 → is_panoptic=False 고정)
+   → DELIVER 비교는 깨끗하고, MUSES만 프로토콜이 어긋난다.
+
+### 🔴 우리 헤드는 클래스 단위 — PQ 기대값 하향
+M2F(`m2f_head.py:315-321`)·P43(`panoptic_head.py:279-300`) 둘 다 MaskFormer semantic 모드
+(`torch.unique(gt_s4)` → 클래스당 마스크 1장). 데이터로더는 `gt_semantic`만 읽고 `gt_panoptic`은
+학습 파이프라인에 등장하지 않는다(평가 도구에서만 사용).
+→ **자동차 3대가 세그먼트 1개.** PQ의 thing 부분(19클래스 중 8개)에 구조적 상한.
+PQ 실측의 의미는 "Table I 진입 판정"이 아니라 **"stuff는 얼마나 나오고 thing이 얼마나 무너지나"의 진단**으로 하향.
+
+**파생 가설(P48 후보)**: 그들이 인스턴스 감독을 66% 받고도 semantic mIoU를 그 상태에서 낸다는 것은
+**인스턴스 감독이 semantic 성능 자체의 보조 신호**일 가능성을 시사한다. MUSES gt_panoptic을 이미
+보유하므로 검증 가능. P47-1 완주 판정 후 정식 제안 예정.
+
+### 참고
+hpca100에 GPU를 잡지 않는 고아 tmux wrapper(PID 4106079, musesc3) 잔존 — 연산 실체 없어 무해, 미조치.
+
+## 2026-08-04 18:42 KST — 정기점검 (2h) · 🔴 자원 재배치 (user 승인) · P47-2 ep80 판정
+
+### 🔴 user 승인 하에 2건 중단 → GPU 5장 재배치
+사용자 원문: **"둘 다 중단하고 재배치해줘"**
+
+| 중단 | 중단 시점 | 최종 수치 | 사유 |
+|---|---|---|---|
+| jarvis P47-2 arm①(unibal_img) GPU4,5 | ep83/300 | best val **80.38@ep80** | ep80에서 base 80.87 대비 **−0.49**, 모듈 전제(RGB under-optimization)가 per-modal 실측으로 반증 |
+| yeon P46-3 λ0.15 GPU1,2,5 | ep135/200 | best val **67.02@ep92** / 그 ep의 test **54.63** (test-best는 56.63@ep58) | 4회 연속 열세, val 정점 후 43ep 정체, λ곡선 정보가치 낮음 |
+
+확보: **jarvis 4,5 · yeon 1,2,5 (총 5장)**. 보호 대상 4건(P47-1 / arm② / λ0.2seed2 / CLE) 전부 무사 확인.
+
+### 🔴 P47-2 ep80 판정 — 사전등록 게이트 결과
+| 시점 | base(best-so-far) | arm① img | Δ | arm② all | Δ |
+|---|---|---|---|---|---|
+| ep30 | 78.73 | 78.45 | −0.28 | 79.16 | **+0.43** |
+| ep48 | 79.66 | 79.08 | −0.58 | 79.60 | −0.06 |
+| ep60 | 80.73 | 80.05 | −0.68 | 80.43 | −0.30 |
+| **ep80** | **80.87** | **80.38** | **−0.49** | **80.83** | **−0.04** |
+
+- kill 게이트(−1.0)는 **둘 다 미발동**. arm②는 ep60 −0.30 → **ep80 −0.04로 회복**(사실상 동률).
+- ⚠️ **직전 엔트리의 "격차가 계속 벌어진다" 판정은 정정한다** — arm②는 회복했다.
+- arm② 유지 결정(문헌 표준 구성, 후반 이득 여부 확인 가치), arm①만 중단.
+- per-modal(ep80): img arm `acc:img 0.961 ce 0.107` / all arm `acc:img 0.958 lidar 0.905 event 0.889, ce img 0.116 lidar 0.268 event 0.320`
+  → **RGB에 3.2× 가중을 줘도 img 성적 무차이**가 네 번째 확인. 진단 반증 유지.
+- ⚠️ arm②에서 `router_ce:nan` 1회(16:17:56) 후 정상 복귀 — 단발, 재발 감시 필요.
+
+### 서버별 현황 (재배치 전 기준)
+| 서버/GPU | 실험 | 데이터셋 | 진행 | best@ep | 판정 |
+|---|---|---|---|---|---|
+| hpca100 2,3 | P47-1 밀도화 | MUSES 4모달 CLRE | 187/300 | val 82.58@172 | 15ep 정체, **OOM 위험 없음** |
+| jarvis 6,7 | P47-2 arm② all | MUSES 3모달 | 80/300 | val 80.83@66 | base −0.04 |
+| jarvis 1-3 | P46-3 λ0.2 seed2 | DELIVER CLDE | 150/200 | 67.74@62 / test 55.55 | 진행 |
+| yeon 6,7 | DELIVER CLE | DELIVER 3모달 | 17/200 | 59.11@14 / **test 53.63** | 🟢 DGFusion CLE 51.6 **+2.03** |
+
+ETA: P47-1 08-05 15:16 · arm② 08-05 20:17 · λ0.2seed2 08-05 04:37 · CLE 08-08 00:20
+
+### P47-1 GPU 이전 완료 (17:13 KST)
+GPU 0-3 → **2,3**(2장). AUTO_RESUME으로 **ep179에서 재개, 손실 0 epoch**. iters/epoch 375→750, accum 4→8로 **eff-batch 16 유지**(LR 불변, 1-변수 비교 유지). pace 11분/ep.
+- **GPU 0,1 인계 완료** — 현재 타 잡이 39.7GB씩 100%로 사용 중.
+- OOM 감시: 우리 rank 24.6GB(GPU2) / 24.7GB(GPU3), GPU2 여유 10.4GB. **위험 없음.**
+- 🔴 **메모리 실측이 registry 기록(34.1~34.3GiB/rank)과 다르다** — 그건 caching allocator 예약치였다. 실제 소요 24.6GB = **40GB의 60%**로 정책(85~90%) 미달 → **ISSUE-031** 등재.
+
+### 재배치 내용 (기동 중)
+| 자원 | 작업 |
+|---|---|
+| jarvis GPU4 | **MUSES 공식 프로토콜 val 재평가 ×2**(val-best ep260 / final-iter ep300) + **PQ 실측**(thing/stuff 분해) |
+| yeon GPU1,2,5 | **DELIVER RGB-D 2모달** (`yeon-deliver_rgbd_P46_c3only_lam005_2modal.yaml`) — MM SAM-adapter 최고구성(val 69.60/test 57.35) 대조. **`P46_MEM_LOG=50`으로 메모리 프로파일 동반**(ISSUE-031 재발방지 첫 적용) |
+| jarvis GPU5 | MUSES RGB-L 2모달 대기 (평가 종료 후) |
+
+신규 config 2종 커밋 `ce40624`: `jarvis-muses_rgbl_P39_1_rank_2modal.yaml` · `yeon-deliver_rgbd_P46_c3only_lam005_2modal.yaml` (각각 SAVE_DIR+MODALS 2줄만 변경한 1-변수 파생)
+
+### 이슈 2건 등재 (커밋 1e184d0)
+- **ISSUE-030** 🔴 `last_checkpoint.pth` 비원자적 저장(`train_reliadino.py:485`) — 저장 중 사망 시 재개 불가. 수정안 `.tmp`+`os.replace`. 미수정.
+- **ISSUE-031** 🟡 A100 배치 재프로파일 누락 — `nvidia-smi memory.used`는 **예약량**이지 소요량이 아니다. 프로파일은 `torch.cuda.max_memory_allocated()`(트레이너의 `P46_MEM_LOG` 환경변수로 산출 가능)로.
+
+## 2026-08-05 02:00 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 | 226/300 | best val 82.58@172 | ~661s/ep | ETA 08-05 15:28
+  → ⚠️ ep172 이후 54 epoch 무갱신(정체). 4GPU→2GPU 축소 재기동(08-04, GPU0,1 타 연구원 양도)은 의도된 조치.
+hpca100 (완주) | hpca100-muses_rgbel_P46_c3only_lam02 | MUSES 3모달 | 300/300 완료 | best val 81.65@136 (final ep300 81.21) | — | 종료
+jarvis GPU1,2,3 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2 | DELIVER 4모달 | 186/200 | best val 67.74@62 (test 55.55@62) | ~12.7분/ep | ETA 08-05 04:39
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달(img+lidar) | 38/300 | best val 79.09@38 (갱신중) | ~4:54/ep | ETA 08-05 22:58
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 | 142/300 | best val 81.60@136 | ~7:06/ep | ETA 08-05 20:20
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달(img+depth) | 34/200 | best val 65.67@32 | ~729s/ep | ETA 08-06 11:23
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달(CLE) | 32/200 | best val 60.28@30 | ~1795s/ep | ETA 08-08 13:30
+yeon GPU0 | module_ablation.py (분석) | DELIVER test | 완료 | — | — | 종료
+
+> ⚠️ 유휴 GPU 3서버 전부 0장. yeon GPU3,4는 타 사용자(jongwon_kim) 재점유 — 우리 대상 아님.
+> ⚠️ test mIoU가 MUSES run들과 yeon DELIVER run들 로그에 미기록 → 이번 사이클 SOTA-test 델타 산출 불가.
+
+## 2026-08-05 02:30 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 | 230/300 | best val 82.58@172 | ~11.0분/ep | ETA 08-05 15:25
+jarvis GPU1,2,3 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2 | DELIVER 4모달 | 190/200 | best val 67.74@62 (val-best test 55.55) | ~12.7분/ep | ETA 08-05 04:39
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달(img+lidar) | 48/300 | best val 79.87@46 (갱신중) | ~4.9분/ep | ETA 08-05 23:00
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 | 148/300 | best val 81.60@136 | ~7.1분/ep | ETA 08-05 20:30
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달(img+depth) | 38/200 | best val 65.67@32 | ~12.1분/ep + eval | ETA 08-06 11:13
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달(CLE) | 33/200 | best val 60.28@30 | ~25.1분/ep + eval | ETA 08-08 13:47
+yeon GPU0 | (유휴 → 피쳐 시각화 배치) | — | — | — | — | —
+
+> 🔴 P47-1: best val ep172 이후 58ep 무갱신(82.53~82.54 정체). 남은 70ep 계속 진행 — final-iter가 legal 보고 프로토콜이라 중도 종료하지 않음.
+> 🔴 P46 λ0.2 seed2에 best test 56.30@146이 찍혔으나 **test-best는 헤드라인 사용 불가**(규약 위반). legal = val-best 55.55 / final-iter(ep200 대기).
+> ⚠️ 유휴 GPU: yeon GPU0 1장뿐(1,2,5·6,7 학습중 / 3,4 타 사용자). hpca100·jarvis 0장.
+> ⚠️ MUSES run 3건 모두 학습 로그에 test 미기록 — SOTA-test 델타 산출 불가.
+
+## 2026-08-05 04:30 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 | 241/300 | best val 82.58@172 | ~11분/ep | ETA 08-05 15:16
+jarvis GPU1,2,3 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2 | DELIVER 4모달 | 200/200 진행중(13%) | val-best 67.74@62 (test 55.55) | ~25분/ep | 완주 04:40~45
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달(img+lidar) | 73/300 | best val 80.88@72 (갱신중) | ~4.9분/ep | ETA 08-05 23:00
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 | 166/300 | best val 81.90@152 (갱신) | ~7.1분/ep | ETA 08-05 20:15
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달(img+depth) | 48/200 | best val 65.78@46 · test 55.02@46(동일 ep) | ~11.6분/ep | ETA 08-06 10:00
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달(CLE) | 37/200 | best val 60.28@30 · best test 54.67@36 | ~29.5분/ep | ETA 08-08 13:00
+yeon GPU0 | (유휴 — 작업 대기) | — | — | — | — | —
+
+> 🔴 P47-1 정체 확정: ep222~240 val이 82.05~82.54 진동, best 82.58은 밴드 상단 +0.04 = **노이즈 봉우리**. 3모달 82.62 대비 −0.04는 노이즈 내 구별 불가 → **DGFusion식 투영 밀도화 효과 없음(음성 결과 확정)**.
+> ⚠️ 같은 논리로 내부최고 MUSES val 82.62도 노이즈 봉우리일 수 있음 — val-best 단일 수치로 0.1~0.3 차이를 논한 판정들 재검토 필요.
+> ✅ MUSES RGB-L 2모달 ep72 80.88 — 비교군 MM SAM-adapter(RGB-L) 81.07 대비 **−0.19**, 300ep 중 24% 지점.
+> ✅ DELIVER 2모달(img+depth) ep46에서 val-best와 test-best가 **같은 epoch**(65.78/55.02). 4모달 λ0.2의 val-best test 55.55와 −0.53차 — 모달 잉여 신호.
+> ⚠️ P47-2 arm② 81.60@136 → 81.90@152 갱신 — 앞서 '이득 없음' 판정은 **보류로 되돌림**.
+> ⚠️ jarvis 조회에서 P46 seed2가 'RGB 단일'로 오보됨. cfg 확인 결과 :146 MODALS=all(aug 블록) / :179 MODALS=['img','depth','event','lidar'] = **4모달**이 정답.
+> 🔴 원격 GPU 잡 기동이 권한 정책으로 차단됨 — yeon GPU0 유휴 상태로 대기 중(피쳐 시각화·P48 S1 측정 모두 실행 불가).
+> ⚠️ 유휴 GPU: yeon GPU0 1장뿐. hpca100·jarvis 0장. yeon GPU3,4는 타 사용자(D-state) — 금지.
+
+## 2026-08-05 06:30 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 | 252/300 | best val 82.58@172 (ep250 동률) | ~11분/ep | ETA 08-05 15:27
+jarvis GPU1,2,3 | jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2 | DELIVER 4모달 | 200/200 ✅완주(04:43) | val-best 67.74@62 → test 55.55 · final-iter ep200 65.71/55.31 · (best test 56.30@146 = 사용불가) | 총 18:09:40 | 종료 → GPU1,2,3 유휴
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달(img+lidar) | 98/300 | best val 81.08@86 (갱신중) | ~4.9분/ep | ETA 08-05 22:46
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 | 184/300 | best val 81.93@182 (갱신) | ~7.1분/ep | ETA 08-05 20:20
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달(img+depth) | 58/200 | best val 66.12@48 → 그 ep test 52.95 (best test 55.02@46은 별개 ep) | ~12.1분/ep | ETA 08-06 11:15
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달(CLE) | 42/200 | best val 60.28@30 → 그 ep test 53.49 (best test 54.67@36 별개 ep) | ~29.6분/ep | ETA 08-08 12:35
+
+> 🔴 **P46 λ0.2 seed2 완주 판정 = 실패.** legal 두 프로토콜 모두 내부최고 test 56.62 미달 — val-best 55.55(−1.07), final-iter 55.31(−1.31). best test 56.30@146은 test-peeking이라 사용 불가.
+> 🔴 val이 ep62 67.74 → ep200 65.71로 **−2.03 하락**. 138ep 추가 학습이 오히려 악화 → λ0.2에 EPOCHS 200은 과하다.
+> 🔴 **직전 사이클(04:30)의 'DELIVER 2모달 모달잉여 신호' 판정을 철회한다.** 당시 2모달 test 55.02를 4모달 val-best test 55.55와 비교했으나, 55.02는 **test-best(ep46)** 였다. 06:30 시점 legal 값은 val-best ep48의 test **52.95** = 4모달 대비 **−2.60**. DELIVER에서 2모달은 4모달보다 명확히 열세다. (MUSES 쪽 모달잉여 증거는 val-val 비교라 유효.)
+> ✅ MUSES RGB-L 2모달 ep86 val 81.08 — 비교군 MM SAM-adapter(RGB-L) 81.07 **동률 도달**, 300ep 중 29% 지점.
+> ⚠️ P47-1: ep232~250 val 82.27~82.58 진동, ep250에서 best와 동률. 80ep째 무갱신 — 노이즈 봉우리 판정 유지.
+> ⚠️ 유휴 GPU: **jarvis 1,2,3(3장) + yeon 0(1장)**. 원격 GPU 잡 기동이 권한 정책으로 차단돼 배치 못 하는 상태.
+> ℹ️ hpca100 tmux `musesc3` 래퍼는 08-03 09:34 완주한 P46 λ0.2 MUSES 3모달(best val 81.65@136)의 잔재 — 조사 불필요.
+
+## 2026-08-05 08:30 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 ['img','lidar','event','radar'] | 263/300 | best val 82.58@172 | ~11분/ep | ETA 08-05 15:27
+jarvis GPU1,2,3 | (유휴 — 04:43 P46 완주 이후 4시간째 비어있음) | — | — | — | — | —
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달 ['img','lidar'] | 122/300 | best val 81.49@116 (갱신중) | ~4.9분/ep | ETA 08-05 22:52
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 ['img','lidar','event'] | 198/300 | best val 81.93@182 | ~7.1분/ep | ETA 08-05 20:12
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 ['img','depth'] | 66/200 | best val 66.46@66 → 그 ep test 54.45 | ~12.15분/ep | ETA 08-06 11:18
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 ['img','lidar','event'] | 44/200 | best val 60.28@30 → 그 ep test 53.49 | ~29.7분/ep | ETA 08-08 13:20
+yeon GPU0 | (유휴) | — | — | — | — | —
+
+> ✅ **MUSES RGB-L 2모달이 비교군 추월** — ep116 val 81.49, MM SAM-adapter(RGB-L) 81.07 대비 **+0.42**. 300ep 중 39% 지점이고 계속 갱신(ep86 81.08 → ep116 81.49).
+> ⚠️ P47-1: **90 epoch째 무갱신**(ep244~262 밴드 82.27~82.58, ep250·254에서 best 동률 재접근). 노이즈 봉우리 판정 유지, 15:27 완주까지 존치.
+> ℹ️ **MUSES는 학습 중 test 평가가 구조적으로 불가**(`[INFO] Test set not available: MUSES test GT is withheld by the benchmark`). 앞으로 MUSES run의 test는 '미기록'이 아니라 **'해당 없음'**으로 적는다 — 공식 제출로만 획득.
+> ✅ **P48 진단 D2 검증 완료**: MUSES gt_panoptic/val.json의 실제 segments_info로 재측정 — things 8.66 inst/img · singleton 39.0% (제안서 인용값 7.84/39.9%와 일치). D2의 출처는 connected-component가 아니라 진짜 인스턴스 주석이었다. GT things 2165개를 클래스단위 타깃은 584 마스크로만 표현 → things RQ 상한 42.5, SQ 79 적용 시 **things PQ 상한 ≈33.6**(측정 18.33 = 상한의 절반).
+> 🔴 **DELIVER는 인스턴스 감독 불가** — COCO 주석이 `Human`/`Vehicle` 2개 카테고리뿐이라 25개 시맨틱 클래스와 정렬 안 됨. **P48은 MUSES 전용.** (또한 semantic CC로 센 DELIVER 인스턴스 수 43.89/img는 실제 주석 3.33/img 대비 13배 과대 → 폐기)
+> 🔴 **유휴 GPU 4장(jarvis 1,2,3 + yeon 0)이 4시간째 방치.** 원격 GPU 잡 기동이 권한 정책으로 차단돼 배치 불가. p39_dense_off 토글은 develop 병합·스모크 재검증 완료(a8016ea) — 실행만 남음.
+
+## 2026-08-05 10:30 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 ['img','lidar','event','radar'] | 272/300 | best val 82.58@172 | ~11분/ep | ETA 08-05 15:27
+jarvis GPU1,2,3 | (유휴 — 04:43 P46 완주 이후 6시간째) | — | — | — | — | —
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달 ['img','lidar'] | 147/300 | best val 81.49@116 | ~4.9분/ep | ETA 08-05 22:50
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 ['img','lidar','event'] | 218/300 | best val 81.93@182 | ~7.0분/ep | ETA 08-05 20:10
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 ['img','depth'] | 76/200 | best val 66.46@66 → 그 ep test 54.45 (test-best 55.29@74 = 사용불가) | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 ['img','lidar','event'] | 48/200 | best val 60.28@30 → 그 ep test 53.49 (test-best 54.67@36 = 사용불가) | ~29.5분/ep | ETA 08-08 13:10
+yeon GPU0 | (유휴) | — | — | — | — | —
+
+> 🔴 **yeon CLE에서 val↓ / test↑ 역행 4연속**: ep42~48 val 59.08→58.45→58.51→58.39 (하락), 같은 구간 test 53.72→54.03→54.41→54.66 (상승). DELIVER val↔test 전이 약함은 기지의 사실이나 **여기서는 부호가 반대**다. val-best 규약이 이 런에 불리 — 완주 시 final-iter 쪽이 나을 가능성. 완주 후 두 프로토콜 모두 확인할 것.
+> ⚠️ P47-1: **100 epoch째 무갱신**(ep244~272 밴드 82.27~82.58, ep250·254에서 동률 재접근). 노이즈 봉우리 판정 유지.
+> ⚠️ MUSES RGB-L 2모달: ep116 이후 **31 epoch 무갱신**(ep146 81.43). 08:30에 '계속 갱신 중'이라 했으나 그 후 평탄해졌다 — 판정 정정. 비교군 MM SAM-adapter(RGB-L) 81.07 대비 +0.42는 유지.
+> ⚠️ P47-2 arm②: ep182 이후 36 epoch 무갱신(81.5~81.9 진동).
+> 🔴 **유휴 GPU 4장(jarvis 1,2,3 + yeon 0)이 6시간째 방치.** 원격 GPU 잡 기동 권한 차단으로 배치 불가.
+> ℹ️ 서브에이전트 세션 한도(200) 도달 — 이후 점검은 상위 모델이 직접 ssh 조회로 수행.
+
+## 2026-08-05 12:30 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 | 282/300 | best val 82.58@172 | ~11분/ep | ETA 08-05 15:27
+jarvis GPU1,2,3 | (유휴 — P48 S1 측정 완료 후 반납) | — | — | — | — | —
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달 ['img','lidar'] | 170/300 | **best val 81.79@168 (갱신)** | ~4.9분/ep | ETA 08-05 22:50
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 | 232/300 | best val 81.93@182 | ~7.1분/ep | ETA 08-05 20:10
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 ['img','depth'] | 86/200 | val-best 66.46@66 → 그 ep test 54.45 (test-best 55.62@82 = 사용불가) | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 52/200 | val-best 60.28@30 → 그 ep test 53.49 (test-best 54.81@52 = 사용불가) | ~29.5분/ep | ETA 08-08 13:10
+yeon GPU0 | (유휴) | — | — | — | — | —
+
+> 🔴 **P48 S1 완료 — 쿼리와 dense가 서로의 완전한 복제로 확정.** MUSES 4모달 seed2(ep260), 조건당 60장:
+>   day base 75.26 / query_off −0.25 / **dense_off +0.60** / router_off +0.54 / trunkexp_off +3.51
+>   night base 75.87 / query_off +0.63 / **dense_off +0.38** / router_off **+6.07** / trunkexp_off +6.86
+>   fog_night base 40.50 / query_off +0.13 / **dense_off −0.29** / router_off +3.20 / trunkexp_off +1.71
+>   → **쿼리 단독** mIoU = day 74.66 · night 75.49 · fog_night 40.79(전체보다 높음). 전체의 99%를 쿼리 혼자 낸다.
+>   query_off도 Δ≈0이므로 **두 경로가 각각 단독으로 전체 성능을 재현** = 완전 중복. 제안서 S1 분기 규칙에 따라 **P48 진행 판정**(쿼리는 유능한데 과제가 겹쳐 안 쓰일 뿐).
+> ⚠️ **MUSES에서는 router/trunk_exp가 night에 크게 기여**(+6.07/+6.86) — DELIVER(+0.78/+1.11)와 그림이 다르다. **데이터셋 간 모듈 기여를 교차 인용하지 말 것.**
+> 🔴 **viz denormalize 버그 수정**(0a0cbfe): denorm()이 3채널이면 무조건 ImageNet 역정규화 → 비-RGB 모달이 [0.485,0.714] 균일 회색으로 뭉개졌다. 로더는 'img'만 ImageNet 정규화하고 나머지는 /255만 한다.
+> 🔴 **새 가설 — 모달 간 입력 스케일 불일치**: encoder.py:273이 모달별 정규화 없이 frozen ViT에 투입. img는 z-score(≈[−2.1,+2.6]), depth/event는 [0,1], **lidar는 [0,0.32~0.38]**(실측, viz 제목). 'lidar 표현 4.7차원 붕괴'의 기계적 원인 후보. **미검증 — 참조 구현(CMNeXt/DGFusion) 대조 필요.**
+> 🔴 **yeon DELIVER 두 run 모두 val↓ / test↑ 역행**: 2modal val 66.46@66→63.81@86 하락하는 동안 test 54.45→55.62 상승. CLE도 val 60.28@30→58.41@52 / test 53.49→54.81. **val-best 규약이 이 run들에 구조적으로 불리** — 완주 시 final-iter(legal)가 더 나을 가능성이 높으니 두 프로토콜 모두 산출할 것.
+> ✅ MUSES RGB-L 2모달 **81.79@168** — 비교군 MM SAM-adapter(RGB-L) 81.07 대비 **+0.72**, 우리 3모달 P47-2(81.93)에 **−0.14**까지 근접. 모달 잉여의 통제 증거로 유력.
+> ⚠️ P47-1: 110 epoch째 무갱신(ep272~282 82.40~82.57). 15:27 완주 예정.
+
+## 2026-08-05 14:30 KST
+
+hpca100 GPU2,3 | hpca100-muses_rgbelr_P47_d1_dgfproj_4modal (P47-1 밀도화) | MUSES 4모달 | 294/300 | best val 82.58@172 | ~11분/ep | ETA 08-05 15:30 (완주 임박)
+jarvis GPU1,2,3 | (유휴) | — | — | — | — | —
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달 ['img','lidar'] | 196/300 | **best val 81.86@172 (갱신)** | ~4.9분/ep | ETA 08-05 22:50
+jarvis GPU6,7 | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 | 250/300 | best val 81.93@182 | ~7.1분/ep | ETA 08-05 20:10
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 ['img','depth'] | 96/200 | val-best 66.46@66 → 그 ep test 54.45 (test-best 55.75@88 = 사용불가) | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 56/200 | val-best 60.28@30 → 그 ep test 53.49 (test-best 54.92@56 = 사용불가) | ~29.5분/ep | ETA 08-08 13:10
+yeon GPU0 | (유휴) | — | — | — | — | —
+
+> 🔴🔴 **DELIVER 내부최고 수치 오류 발견 — 헤드라인 표 전면 정정 필요.**
+>   `decisions/2026-07-16-p36-novelty-critical-review.md` 원문: P34 68.19/**56.62**(🔴 PhysAug ON = "공정선 밖, unfair-ours") · P35 fair 67.61/55.52 · **P36 67.74/55.62**.
+>   그동안 헤드라인으로 써온 **"67.74 / 56.62"는 val=P36 · test=P34를 이어붙인 쌍**이며, test 쪽은 `status/current.md:40`의 user 판정(07-20, "physaug 공정성 배제 — 헤드라인은 physaug-off 계열로만")을 위반한다.
+>   → **공정·legal 내부최고 DELIVER = P36 val 67.74 / test 55.62**(둘 다 val-best, 동일 모델). SOTA 격차는 −0.73이 아니라 **−1.73**(vs MM SAM-adapter 57.35).
+>   혼입 시점: 07-20/21/24 제안서는 "P36 fair 67.74/**55.62**"로 정확했고, **07-28 P46 제안서에서 56.62로 바뀌어 전파**됨.
+> 🔴 크론 baseline 표의 다른 두 수치도 legal 아님: **56.39** = test-best 계열(`plan.md`, 2026-08-04 무효 처리) · **56.82@1024** = `registry.md`가 스스로 "예비(ep40 중간ckpt·해상도 mismatch @768학습/@1024평가·3검증 필요)"로 표시. 둘 다 val-best도 final-iter도 아니다.
+> 🔴 **이번 세션 판정 일부 정정**: 56.62 기준으로 계산한 델타가 전부 과대. 공정 55.62 기준 → P46 λ0.2 seed2 val-best test 55.55 = **−0.07(사실상 동률)**, P39.1-rank 55.56 = −0.06, yeon 2모달 54.45 = −1.17. **P46 λ0.2 "내부최고 미달" 근거는 철회**(단 val ep62→ep200 −2.03 하락이라는 별개 실패 신호는 유효).
+> ⚠️ **체크포인트 규약 방침(user 논의 2026-08-05)**: val-best/final-iter 둘 다 legal이나 **런마다 유리한 쪽을 고르면 그 선택 행위가 test peeking**. → **모든 런에 두 값을 항상 병기**하고 규약을 고르지 않는다. 베이스라인은 각자 발표 수치 그대로 인용하되 어느 규약인지 표에 명시(CMNeXt=val-best / CAFuser·DGFusion=final-iter).
+> ✅ MUSES RGB-L **2모달 81.86@172** — 3모달 P47-2(81.93)에 **−0.07**까지 근접, 비교군 MM SAM-adapter(RGB-L) 81.07 대비 **+0.79**. 모달 잉여 통제 증거로 유력.
+> ⚠️ P47-1: 122ep 무갱신(ep280~294 82.40~82.53), 15:30 완주 임박 — 최종 val-best/final-iter 둘 다 기록할 것.
+> ⚠️ yeon 2모달 ep92에서 val 59.98로 급락 후 ep94 65.11 회복(일시적 스파이크, 붕괴 아님). val↓/test↑ 역행은 두 run 모두 지속.
+
+## 2026-08-05 20:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL_MODALS 대조) | MUSES 3모달 | 1/300 기동 | — | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달 | 270/300 | best val 81.87@234 | ~4.9분/ep | ETA 08-05 22:50
+jarvis (완주) | jarvis-muses_rgbel_P47_2_unibal_all (P47-2 arm②) | MUSES 3모달 | 300/300 ✅ | best val 81.93@182 | 총 11:19:03 | 종료
+jarvis GPU1,2,3 | final-iter 일괄 재평가 (23런) | DELIVER+MUSES | 32건 기록 | — | — | 진행 중
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 126/200 | val-best 66.46@66 → test 54.45 (test-best 55.80@120 = 사용불가) | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 68/200 | val-best 60.28@30 → test 53.49 (test-best 54.92@56 = 사용불가) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 | — | — | —
+
+> 🔴 **hpca100 상실**: P47-1 완주 직후 타 테넌트가 GPU 4장 전량 점유(37.9/37.9/40.3/34.3 GB). NORM_ALL 대조 런은 OOM으로 3회 실패 후 **jarvis GPU6,7로 재배치**(P47-2 완주로 확보). config는 jarvis 변형 생성(2a4c8e3).
+> 🔴 **오보 정정(18:30 사이클)**: hpca100 NORM_ALL 런을 "살아났다(util 99%)"고 보고했으나 **틀렸다**. 워커 CPU 시간이 1시간 55분간 78초에서 불변 = 죽어 있었고, 관측한 util은 **타 테넌트의 것**이었다. → **GPU를 공유하는 서버에서 util은 생존 신호가 아니다. 판정 기준 = 워커 CPU 시간 증가 + iteration 전진.** jarvis 재기동은 이 기준으로 검증 통과(iter 172→174 @2.01it/s, loss 9.2104→9.2039, RANDOM INIT 0).
+> 🔴 **P47-1 최종**: 300/300, val-best 82.58@172 / **final-iter 82.53**, 총 22:15:29. 두 프로토콜 모두 3모달 82.62 미달 → **밀도화 음성 확정. P39.1 이후 5세대 연속 미돌파(P43·P44·P46·P47-1·P47-2).**
+> 🔴 **P34/P35/P36 final-iter 영구 복구 불가**: NAS 전체 last_checkpoint.pth 9개 중 해당 3세대 없음(B200 회수 시 val-top-k/test-top-k만 반입). 헤드라인 P36은 val-best 단일 프로토콜로만 존재.
+> 🔴 **val.py 4모달 DELIVER 평가 버그 2곳 수정**(2a8b70f, 6cd37a8): evaluate()·run_test_inference() 양쪽 seg_viz 행 폭 불일치로 **4모달 DELIVER 평가가 100% 크래시**했다. final-iter가 비어 있던 이유의 상당 부분. 수정 후 DELIVER test 수치 산출 시작(예: P46_c3only test 53.06, P37a test 49.88).
+> ⚠️ **DELIVER 평가가 24GB 4090 한계선**(실측 23.38 GiB) — 간헐적 OOM으로 일부 PARSE_FAIL. 성공 수치는 유효, 실패분만 재시도 필요.
+> 🔴 **재평가 수치 전면 보류 유지**: P46 λ0.2-seed2 final-iter val 재평가 62.86 vs 학습로그 ep200 65.71 = **2.85 불일치 미해명**. 통제실험(val-best ep62 재평가 → 67.74 재현 여부)이 OOM으로 3회 실패, 배치 스크립트 경유로 재시도 중. **해명 전까지 어떤 재평가 수치도 표에 넣지 않는다.**
+
+## 2026-08-05 22:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL_MODALS 대조) | MUSES 3모달 | 16/300 | best val 76.27@16 | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU4,5 | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달 | 294/300 | best val 81.87@234 | ~4.9분/ep | ETA 08-05 23:00 (완주 임박)
+jarvis GPU1,2,3 | final-iter 일괄 재평가 | DELIVER+MUSES | **완료(ALL_DONE ×3, 37건)** | — | — | 종료
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 136/200 | val-best 66.46@66 → test 54.45 (test-best 55.80@120 = 사용불가) | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 72/200 | val-best 60.28@30 → test 53.49 (test-best 54.92@56 = 사용불가) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 (타 테넌트 4장 전량: 37.9/37.9/34.3/34.3 GB) | — | — | —
+
+> ✅ NORM_ALL 대조 런 정상 진행 — ep16 val 76.27, 워밍업 구간. base(seed2) 동일 시점 대조는 완주 후 판정.
+> 🔴 **통제실험 OOM 원인 규명**: DELIVER 4모달 val 평가는 **23.39 GiB** 를 쓰는데 4090 은 23.49 GiB. GPU3 은 상주 88 MiB 가 있어 가용 23.40 GiB → **여유 10 MiB 로 실패**. 배치가 성공한 GPU1/2 는 상주 24 MiB. → 원인은 코드가 아니라 **가용 메모리 한 끗 차이**. GPU1 에서 재실행 중.
+> ⚠️ **DELIVER 평가는 4090 에서 사실상 한계** — 상주 메모리가 조금만 있어도 실패한다. 향후 DELIVER 재평가는 완전히 빈 GPU에서만 돌릴 것.
+> 🔴 **재평가 37건 확보했으나 여전히 전면 보류** — P46 λ0.2-seed2 final-iter val 62.86 vs 학습로그 65.71(2.85 불일치) 미해명. 통제실험(val-best ep62 → 67.74 재현 여부) 결과 대기.
+
+## 2026-08-06 00:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL_MODALS 대조) | MUSES 3모달 | 34/300 | best val 78.94@32 | ~6.2분/ep | ETA 08-07 03:30
+jarvis (완주) | jarvis-muses_rgbl_P39_1_rank_2modal | MUSES 2모달(img+lidar) | 300/300 ✅ | **best val 81.87@234** | — | 종료 → GPU4,5 해방
+jarvis GPU1,2,4,5 | final-iter 재평가 재시도 (11건) | DELIVER | 기동 | — | — | 진행 중
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 146/200 | val-best 66.46@66 → test 54.45 (test-best 55.80@120 = 사용불가) | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 76/200 | val-best 60.28@30 → test 53.49 (test-best 55.07@76 = 사용불가) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 (타 테넌트 4장 전량 유지) | — | — | —
+
+> ✅ **MUSES RGB-L 2모달 완주: best val 81.87@ep234.** 3모달 P47-2(81.93) 대비 **−0.06**, 비교군 MM SAM-adapter(RGB-L) 81.07 대비 **+0.80**. 동일 아키텍처·레시피에서 모달 수만 바꾼 통제 비교 → **"모달을 늘려도 사실상 이득 없음"의 가장 깨끗한 증거 확보.**
+> 🔴 **통제실험 5회 연속 OOM — 원인 규명 실패, 가설 3개 전부 반증**:
+>   ① "GPU 상주 메모리 여유 부족" → 상주 24 MiB GPU1 에서도 동일 OOM
+>   ② "top-k ckpt 가 CUDA 텐서 저장" → val.py 로더는 이미 `map_location='cpu'`
+>   ③ "체크포인트 구조 차이" → **두 파일 구조 완전 동일**(같은 8키, 707 params, 전부 cpu, state 1.416 GB, 파일 1.820 GB)
+>   확인된 사실은 `last_checkpoint.pth`=성공 / `epoch*_top*_checkpoint.pth`=OOM 이 DELIVER·MUSES 양쪽에서 재현된다는 것뿐. **원인 미상.**
+> 🔴 **재평가 25건 확보했으나 전면 보류 유지** — val.py 가 학습로그 val-best 를 재현하는지 미검증. 통과 못 하면 헤드라인(MUSES 82.62 / DELIVER 67.74·55.62)까지 재검토 대상이 된다.
+> ⚠️ **관측: final-iter 가 val-best 보다 일관되게 낮다** — MUSES 8런 final-iter 79.68~81.53 vs val-best 82.62(seed2 기준 **−1.45**), DELIVER λ0.2 는 ep62→ep200 **−2.03**. "EPOCHS 과다" 가설로 이어지나 **통제실험 통과 전에는 주장하지 않는다.**
+
+---
+
+### 2026-08-06 01:08 KST - 진행상황 재점검 (마지막 점검 07-30 이후 상당 시간 경과 - 큰 변화 다수)
+
+주의: 마지막 sync(07-30) 이후 여러 실험이 완주/사망했고, 추적하지 않던 신규 실험군이 다수 확인됨.
+
+**jarvis P46 3실험 중 2개 완주, 1개(hpca100) 사망**:
+- P46-C3only 본실험(GPU4-7, 07-30 launch): 완주(ep200/200). Best Val mIoU 67.79 @ep70, Best Test mIoU 56.39 @ep108, Total Training Time 07:56:04.
+- P46-C3only-seed2(GPU1-3, 재현성검증): 완주(ep200/200). Best Val mIoU 67.18 @ep62, Best Test mIoU 56.41 @ep166, Total Training Time 17:53:38. -> 원본(67.79/56.39)과 근접(차 0.61/0.02) - 재현성 확인됨(같은 방향, 유사 크기).
+- P46-C2C3(hpca100 GPU2,3): 사망(완주 실패). run.log에 08-01 06:03 "Received 1 death signal, shutting down workers" + 4-rank SIGHUP(외부 종료, 코드 에러/OOM 아님) - 단 이 로그는 재시작 시도분만 담겨 있고 재시작 자체가 백본 다운로드 중 즉시 죽음. 체크포인트 기준 마지막 도달 지점 = epoch12, val 63.59 / test 52.52(그 이상 epoch 체크포인트 없음 - 실제 사망은 그보다 조금 전, 정확한 사망 시점은 로그 소실로 불명). hpca100 GPU2,3는 현재 완전히 다른 테넌트(joonhui_been, GR00T-N1.7-3B 로봇 파인튜닝)가 점유 중 - 홀드 지시가 있었으나 학습이 죽은 사이 GPU를 뺏김(churn 경고가 실현된 사례로 보임).
+
+**원래 추적 중이던 4-modal/P44 레이스도 전부 완주**:
+- yeon P39.1-rank 4모달 seed1: 완주(ep300/300). Best Val 81.82@ep162, Test N/A, Total 22:10:04. (82.62 미돌파로 종료)
+- yeon P44-BMR DELIVER seed2: 완주(ep200/200). Best Val 66.09@ep108, Best Test 54.04@ep164, Total 21:10:31.
+- 참고: hpca100 seed2(4모달, 07-30 이전에 이미 완주 보고됨, 82.35@260)는 이번 재점검 대상 아님(과거 기록 유지).
+
+**추적 범위 밖에서 신규 발견된 실험군(이 세션이 모르던 사이 다른 세션/코디네이터가 기동한 것으로 추정, raw만 보고, 맥락 없음)**:
+- hpca100: hpca100-muses_rgbel_P46_c3only_lam02.yaml(MUSES, C3-only lambda=0.2 추정) - 완주(ep300/300, Best Val 81.65@ep136, Test N/A, Total 22:31:59). 현재 프로세스는 종료됨(tmux 세션만 잔존).
+- yeon: 최소 3개 변형 확인 - yeon-deliver_rgbd_P46_c3only_lam005_2modal.yaml(GPU1,2,5, 별도 체크아웃 drone-MemorySAM-p38, 현재 ep148 진행 중, Best Val 66.46@ep66), yeon-deliver_rgble_P46_c3only_lam005_CLE.yaml(GPU6,7, 별도 체크아웃 drone-MemorySAM-p46-cle005, 현재 ep78 진행 중, Best Val 60.28@ep30), yeon-deliver_rgbdel_P46_ctr_c3only_lam015.yaml(tmux 창 존재하나 현재 미실행으로 보임 - GPU1,2,5를 2modal런과 공유하는 걸로 봐 선행/교체된 시도로 추정, 미확인).
+- jarvis: jarvis-muses_rgbel_P39_1_rank_normall.yaml(GPU6,7, 17.5GB/100%util로 활발히 학습 중) - 미확인 신규 실험.
+
+**GPU 현황 요약**:
+- jarvis: GPU0(user 예약) 4062MiB/0%util, GPU1-3 유휴(P46 완주로 해방), GPU4,5 낮은 사용(2.9/12.6GB, 0%util - 상태 불명확), GPU6,7 신규실험(normall) 가동 중(17.5GB/100%,100%).
+- hpca100: 4장 전부 타테넌트(GR00T 파인튜닝) - 우리 프로세스 0.
+- yeon: GPU0 유휴(237MiB), GPU1,2 가동(19.6-19.7GB/99-100%, 2modal런), GPU3,4 유휴(19/18MiB), GPU5 가동(19.6GB/100%, 2modal런 3번째 GPU), GPU6,7 가동(12.4GB/81-95%, CLE런).
+
+**이상/사망 정리**: hpca100 C2C3 1건 사망(외부 SIGHUP, churn으로 GPU 탈취 추정) - 그 외 전부 정상 완주 또는 진행 중. 판정(C2 순기여 재실험 필요 여부, 신규 lam 변형군의 존재 목적)은 코디네이터 몫 - 이 세션은 그 배경을 모른 채 raw로만 보고함.
+
+## 2026-08-06 02:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 진행 중 | — | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU1,2,4,5 | final-iter 재평가 재시도 | DELIVER | test 전건 성공 / val 전건 OOM | — | — | 진행 중
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 146+/200 | val-best 66.46@66 | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 76+/200 | val-best 60.28@30 | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 유지 | — | — | —
+
+> 🔴🔴 **최중요 발견 — 학습 로그 수치와 val.py 수치가 다른 이유를 코드로 확정했다. 평가 해상도가 다르다.**
+>   `train_reliadino.py:79` : `metrics.update(output.softmax(dim=1), labels)` → **모델 해상도(768²)에서, 768²로 리사이즈된 GT와** 채점
+>   `val.py:1252-1259` : `_unpad_resize_to_orig(...)` → `metrics.update(pred_softmax_orig, orig_label)` → **원본 해상도에서 원본 GT와** 채점
+>   축소 GT는 얇은 구조·소형 객체가 예측/정답 양쪽에서 함께 소실되어 **점수가 후하게 나온다.**
+>   **실측 오프셋(3런 재현)**: val 65.71→62.86(−2.85) · 67.67→64.77(−2.90) / test 55.31→53.33(−1.98) · 55.04→53.10(−1.94) · 55.06→53.06(−2.00)
+>   → **val 약 −2.9, test 약 −2.0 으로 체계적.** 노이즈 아님.
+>   ⚠️ **val 모드만 OOM 나던 것도 같은 원인** — 원본 해상도로 25클래스 softmax를 올리기 때문. 세 현상(수치 불일치·val 전용 OOM·재현성)이 하나로 설명된다.
+> 🔴 **함의(검증 필요, 아직 주장 아님)**: 우리가 보고해 온 DELIVER/MUSES 수치는 **전부 학습 로그(768² 리사이즈 GT) 출처**다. 공개 벤치마크(CAFuser/DGFusion/MM SAM-adapter)가 원본 해상도로 채점한다면, **우리 수치는 비교 불가하게 후하게 잡혀 있다**(DELIVER test 55.62 → 원본해상도 추정 ~53.6, SOTA 격차 −1.73 → ~−3.7). MUSES 는 공식 test 79.788(서버 채점=원본해상도) vs 우리 val 82.62(학습로그) 라는 **val↔test 괴리의 원인일 가능성**도 여기 있다.
+> ✅ **재평가 결정성 확인**: round1 vs round2 4/4 완전 일치(49.88/53.06/50.49/53.67). val.py 자체는 결정적.
+> 🔴 **다음 필수 작업**: ① 베이스라인(CAFuser/DGFusion/MM SAM-adapter)의 평가 해상도 원본 코드 확인 ② 확인되면 **전 수치를 원본 해상도 기준으로 재산출**하고 헤드라인·게이트 전면 재설정.
+
+## 2026-08-06 04:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 68/300 | best val 80.07@56 | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU1,2,3 | final-iter 재평가 | DELIVER | **test 11건 완료** | — | — | 마무리 중
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 164/200 | val-best 66.46@66 | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 84/200 | val-best 60.28@30 (test-best 55.07@76) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 유지 | — | — | —
+
+> ✅ **평가 해상도 결론 확정(코드 2경로 + GT 리사이즈까지 확인)**: `augmentations_mm.Resize.__call__` 이 **mask 도 NEAREST 로 768 로 축소**한다. 따라서
+>   학습 중 eval = 예측·정답 **모두 768²** / `val.py` = 예측을 **원본(1042²)으로 복원해 원본 GT 와** 비교.
+>   → 학습 로그 수치가 체계적으로 후하다(val ~+2.9, test ~+2.0). **val 전용 OOM 도 동일 원인**(원본 해상도 25클래스 softmax).
+> ✅ 🔴 **DELIVER final-iter test @원본해상도 — 우리 첫 단일 프로토콜 일관 비교표 (11건)**
+>   | 실험 | test | | 실험 | test |
+>   |---|---|---|---|---|
+>   | P46 c3only λ0.2 | **53.68** | | P46 c3only | 53.06 |
+>   | P46 c3only λ0.05 | 53.67 | | P44 BMR | 52.31 |
+>   | P46 c3only seed2 | 53.52 | | **P39.1-rank (base)** | **51.95** |
+>   | P46 c3only λ0.2 seed2 | 53.33 | | P37b classtoken | 50.49 |
+>   | P46 c3only λ0.3 | 53.10 | | P46 ctr(all-on) | 50.31 |
+>   | | | | P37a CEFR | 49.88 |
+>   🔴 **판정 전환: P46 C3-only 는 실패가 아니다.** 동일 프로토콜에서 base P39.1-rank(51.95) 대비 **+1.11 ~ +1.73** 로 6개 변형 전부 우위. 그동안 "P36 과 동률/실패" 로 본 것은 **서로 다른 자로 잰 학습로그 수치를 비교**했기 때문.
+>   ⚠️ 단 P34/P35/P36 은 last_checkpoint 부재로 이 표에 없다 — 역사적 최고와의 동일 프로토콜 비교는 아직 불가.
+> ⚠️ val 모드는 OOM 으로 미완(원본해상도 softmax 메모리). 24GB 로는 어려움 — A100 확보 시 재시도.
+
+## 2026-08-06 06:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 84/300 | best val 80.89@74 | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU1,2,3 | final-iter 재평가 | DELIVER | test 11건 완료 | — | — | 마무리
+jarvis GPU4 | **MUSES val @원본해상도 측정** (ep208 val-best, 학습로그 82.62) | MUSES 3모달 | 진행 중 | — | — | 결과 대기
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 174/200 | val-best 66.46@66 (test-best 55.80@120) | ~12.2분/ep | ETA 08-06 11:40
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 88/200 | val-best 60.28@30 (test-best 55.07@76) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 유지 (약 15시간째) | — | — | —
+
+> 🔴 **진행 중 측정 — MUSES val @원본해상도.** 학습로그 82.62(1024² 축소 GT) 대비 원본 해상도 값이 얼마인지가 **"DGFusion val 79.72 대비 +2.90 우위" 주장의 진위를 가른다.** 우리 공식 MUSES test 79.788 은 서버가 원본 해상도로 채점한 값이므로, val 도 같은 자로 재야 비교가 성립한다.
+> ⚠️ **베이스라인 평가 해상도는 아직 미확인** — `third_party/` 에는 MUSES 데이터 로더/시각화만 있고 채점 코드가 없다. CAFuser/DGFusion 원본 저장소 확보 필요(로컬 검증 불가).
+> ℹ️ MUSES 원본 해상도는 1080×1920(`third_party/MUSES/load_event.py:61 target_shape=(1920,1080)`).
+> ⚠️ yeon 두 run 모두 val↓/test↑ 역행 지속 — 2modal test-best 55.80@120 · CLE test-best 55.07@76 (둘 다 val-best epoch 아님).
+
+## 2026-08-06 08:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 102/300 | best val 81.25@100 | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU4 | DELIVER val @원본해상도 측정(메모리 추이 진단 겸) | DELIVER 4모달 | 진행 중 | — | — | 결과 대기
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 184/200 | val-best 66.46@66 (test-best 55.80@120) | ~12.2분/ep | ETA 08-06 11:40 (완주 임박)
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 92/200 | val-best 60.28@30 (test-best 55.11@90) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 유지 (약 17시간째) | — | — | —
+
+> ✅ 🔴 **MUSES val @원본해상도 실측 = 82.13** (학습로그 82.62 대비 **−0.49**). GPU 5.6GB 로 완주.
+>   → **DGFusion 공개 val 79.72 대비 +2.41** — 기존 "+2.90" 에서 축소되나 **우위 주장은 유지된다.**
+> 🔴 **정정: "MUSES val↔test 괴리가 평가 해상도 탓" 이라는 직전 사이클 서술을 철회한다.** 해상도 효과는 −0.49 뿐이라 val 82.62 vs 공식 test 79.788 의 2.8pt 괴리를 설명하지 못한다. **val↔test 격차는 측정 아티팩트가 아니라 실재하는 도메인 갭.**
+> 🔴 **오프셋은 데이터셋별로 다르다 — 일괄 보정 금지**: MUSES **−0.49** vs DELIVER **val −2.85~−2.90 / test −1.94~−2.00**. 해석(미검증): DELIVER 는 25클래스에 얇은 클래스(Pole/TrafficSign/RailTrack/Fence)가 많아 GT 축소 타격이 크다.
+> ⚠️ **미해명**: 같은 val.py 인데 MUSES val(250장)=5.6GB 완주 / DELIVER val(2005장)=23.4GB OOM. `evaluate()` 에 이미지별 누적 구조는 없고 `_last_*` 도 매번 덮어쓴다(코드 확인). 원인 미상 — GPU4 에서 메모리 추이 측정 중.
+
+## 2026-08-06 10:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 118/300 | best val 81.57@110 | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU1,2,3 | (재평가 잔여) | DELIVER | 진행 중 | — | — | —
+yeon GPU1,2,5 | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달 | 194/200 | val-best 66.46@66 (test-best 55.80@120) | ~12.2분/ep | ETA 08-06 11:40 (완주 임박)
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 96/200 | val-best 60.28@30 (test-best 55.18@94) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 유지 (약 19시간째) | — | — | —
+
+> ✅ 🔴 **DELIVER val-best(ep62, P46 λ0.2 seed2) @원본해상도 실측 = 65.45** (학습로그 67.74 대비 **−2.29**). 2005장 완주, GPU 2.9GB.
+>   → DELIVER val-best 오프셋 **−2.29**, final-iter 오프셋 −2.85~−2.90. 같은 방향·비슷한 크기.
+> 🔴 **어제의 "DELIVER 평가 23.39 GiB 한계선" 진단은 오진이었다.** 실측 **2.8~2.9 GB** 로 완주. 앞선 OOM 들은 내 배치 작업끼리의 자기 경합이었고, `nvidia-smi` **스냅샷 한 장으로 '빈 GPU' 를 판정**한 것이 원인. → 폐기: "DELIVER 재평가는 완전히 빈 GPU에서만". → 유지: **"스냅샷 한 장으로 GPU 점유를 판정하지 말 것"**.
+> 🔴 **오프셋을 세대 간 외삽하지 말 것 — EVAL.IMAGE_SIZE 가 세대마다 다르다**: P36 config = **[1024,1024]**, P46 = **[768,768]**. DELIVER 원본이 1042² 이므로 **P36 은 이미 거의 원본 해상도로 평가**했고 P46 만 크게 축소했다. P46 의 −2.29 를 P36 에 적용하면 오류.
+> ✅ **P36/P35 val-best ckpt 가 NAS 에 존재**(`B200_backup_20260715/ckpt/epoch52_67.74_top1`(=P36) · `epoch78_67.61_top1`(=P35)). last_checkpoint 은 없지만 **val-best 는 살아 있어 헤드라인 재측정이 가능**하다. jarvis 로 전송 중, eval 전용 config 생성(`jarvis-deliver_rgbdel_P36_router_eval.yaml`, ROOT/SAVE_DIR 만 변경).
+>   ⚠️ ckpt 는 파일명 점수로만 식별되나, 잘못 짝지으면 state_dict 키 불일치로 로더가 걸러낸다(missing=0 확인이 검증).
+
+## 2026-08-06 12:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 136/300 | best val 81.66@126 | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU4 | **P36 test @원본해상도 측정** | DELIVER 4모달 | 5/475 | — | — | 진행 중
+jarvis GPU5 | P36 val @원본해상도 | DELIVER 4모달 | **완료** | — | — | 종료
+yeon (완주) | yeon-deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2모달(img+depth) | **200/200 ✅** | val-best 66.46@66 · test-best 55.80@120 | 총 16:15:28 | 종료 → GPU1,2,5 해방
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 100/200 | val-best 60.28@30 (test-best 55.18@94) | ~29.5분/ep | ETA 08-08 13:10
+hpca100 | — | — | 🔴 자원 0 유지 (약 21시간째) | — | — | —
+
+> ✅ 🔴 **DELIVER 헤드라인 재측정 — P36 val-best(ep52) @원본해상도 = 66.26** (학습로그 67.74 대비 **−1.48**).
+>   ckpt = NAS `B200_backup_20260715/ckpt/epoch52_67.74_top1_checkpoint.pth`, cfg = `jarvis-deliver_rgbdel_P36_router_eval.yaml`(ROOT/SAVE_DIR 만 변경).
+>   🔴 로더 `missing=3 unexpected=0` — 누락 키는 `det_router_alpha`/`det_router_proj.{weight,bias}` 로 **P36 이후 det 트랙용으로 추가된 것이며 seg forward 에서 미사용 + zero-init**(`model.py:277-283` 확인). **seg 평가에 영향 없음, 짝짓기 유효.**
+> ✅ **오프셋이 EVAL.IMAGE_SIZE 에 따라 달라진다는 예측이 실측으로 확인됨**: P36(1024², 원본 1042² 근접) **−1.48** vs P46(768²) **−2.29**. → **세대 간 오프셋 외삽 금지** 재확인.
+> ✅ **yeon P46 RGB-D 2모달 완주**: val-best 66.46@66 / test-best 55.80@120 / 총 16:15:28. GPU1,2,5 해방.
+> ⚠️ 두 지표의 best epoch 이 66 vs 120 으로 크게 어긋남 — val↓/test↑ 역행이 완주까지 지속됐다. **legal 보고 시 val-best epoch 의 test 값을 써야 하며 55.80 은 test-peeking 이라 사용 불가.**
+
+## 2026-08-06 14:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 152/300 | best val 81.66@126 | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU5 | P46 val-best test @원본해상도 (마지막 조각) | DELIVER 4모달 | 26/1897 | — | — | 진행 중
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 104/200 | val-best 60.28@30 (test-best 55.18@94) | ~29.5분/ep | ETA 08-08 13:10
+yeon GPU1,2,5 | (2modal 완주로 해방) | — | 유휴 | — | — | —
+hpca100 | — | — | 🔴 자원 0 유지 (약 23시간째) | — | — | —
+
+> ✅ 🔴 **DELIVER 헤드라인 원본해상도 재측정 완료 (P36 val-best ep52)**
+>   | 지표 | 학습로그(1024²) | **원본해상도** | 오프셋 |
+>   |---|---|---|---|
+>   | val | 67.74 | **66.26** | −1.48 |
+>   | test | 55.62 | **54.58** | −1.04 |
+>   → SOTA(MM SAM-adapter val 69.60 / test 57.35) 대비 격차: val **−3.34** · test **−2.77** (기존 −1.86/−1.73 에서 확대).
+>   ⚠️ **단, 베이스라인이 원본해상도로 채점한다는 전제가 아직 미검증**이다. 확인 전까지 두 값을 병기한다.
+> ✅ 오프셋 정리(실측): P36(EVAL 1024²) val −1.48 / test −1.04 · P46(EVAL 768²) val −2.29 / final-iter val −2.85~−2.90, test −1.94~−2.00 · MUSES(letterbox 1024²) val −0.49.
+>   → **오프셋은 EVAL.IMAGE_SIZE 와 데이터셋에 따라 −0.5 ~ −2.9 로 크게 다르다. 일괄 보정·세대 간 외삽 모두 금지.**
+> ⚠️ 남은 조각: P46 val-best 의 test @원본해상도(측정 중). 이게 나오면 **P36 vs P46 을 동일 프로토콜(val-best·원본해상도)로 직접 비교**할 수 있다. 현재 부분 대조는 P36 test 54.58(val-best) vs P46 test 53.68(final-iter) 로 **프로토콜이 달라 비교 불가**.
+
+## 2026-08-06 16:13 KST 정기점검 (raw, 판정없음)
+
+### [A] PQ-2 (P47-MUB D-1 val PQ 측정)
+- 1차(패치 전): panoptic predict 250/250 완료(0 zero-seg), scoring 단계에서 `FileNotFoundError: gt_panoptic/val/val/...` (val/val 중복 경로) 크래시.
+- 커밋 b6d3da0(resolve_gt 페어링 fix) push+develop 반영, lecun pull 완료.
+- 재실행(v2) 중 **lecun이 12:43 실행 이후 15:31 재부팅**(`system boot 2026-08-06 15:31`, uptime 34min 확인) — 프로세스/로그(/tmp) 소실, PQ-2 결과 미회수.
+- 16:09 재재실행(v3, out=/tmp/pq_d1_out3, gpu1) 진행 중, 16:13 기준 panoptic predict 115/250(46%), ETA 예측완료 ~16:19-20 KST, scoring은 fix 이후 수초 내 완료 예상.
+
+### [B] 3서버 학습 현황
+| 서버 | 실험 | 데이터셋 | GPU | ep/총 | best@ep | 최근val | ETA(KST) |
+|---|---|---|---|---|---|---|---|
+| jarvis | muses_rgbl_P39_1_rank_2modal (RGB-L) | MUSES 2modal | 1,2,3 (100/94/80%) | 236/300 | 82.00@136 | 81.59 (ep236) | ~19:45(추정, 3.25min/ep) |
+| jarvis | muses_rgbel_P39_1_rank_normall | MUSES | 6,7 (100/100%) | 168/총? (300 미확인, config EPOCHS grep 실패) | 81.82@166 | 81.61 (ep168) | 총ep 미확인으로 산출 보류(7min/ep 관측) |
+| jarvis | 재평가배치 c3only val | DELIVER | 4 | iter 1025/2005 (51%) | - | - | ~16:33 |
+| jarvis | 재평가배치 P37a_cefr val | DELIVER | 5 | iter 51/126 (40%) | - | - | ~16:41 |
+| hpca100 | muses_rgbel_P46_c3only_lam02 | MUSES | - | **완주** | Best Val 81.65@136 | - | 완료(Total 22:31:59), GPU0-3는 타 tenant(GR00T 등)가 100/99/69/100% 점유, 우리 job 없음 |
+| yeon | deliver_rgble_P46_c3only_lam005_CLE | DELIVER | 6,7 (99/100%) | 진행중(ps로 실주소 확인, ep 미grep) | - | 60.28@30(이전 보고치) | 미산출 |
+| yeon | deliver_rgbd_P46_c3only_lam005_2modal | DELIVER 2modal | - | **완주** | Best Val 66.46@66 / Best Test 55.80@120 | - | 완료(Total 16:15:28), 창 idle 확인 |
+| yeon | c3only_lam015 | DELIVER | - | **사망/중단**(idle 프롬프트, 이전 보고와 일치) | - | - | - |
+
+유휴GPU: jarvis 8장 중 순수유휴 없음(0=잔여4GB/0%뿐, 1-3/6-7 학습중, 4-5는 재평가 프로세스 점유). hpca100 4장 모두 타tenant 점유(우리 job 0). yeon GPU1,2,5 = 0%util/0-18MiB(유휴), GPU3,4는 user 제약으로 사용금지(재승인 전), GPU0 237MiB/0%, GPU6,7 학습중.
+
+### [C] 재평가 배치 결과 (val.py no_grad 픽스 이후)
+완료분(results.txt, 전부 PARSE_FAIL 없음):
+| 런 | val | test |
+|---|---|---|
+| jarvis_deliver_rgbdel_P39_1_rank | 63.08 | 51.95 |
+| jarvis_deliver_rgbdel_P46_ctr_c3only_lam02_seed2 | 62.86 | 53.33 |
+| jarvis_deliver_rgbdel_P46_ctr_c3only_lam03 | 64.77 | 53.10 |
+| jarvis_deliver_rgbdel_P44_bmr | 62.91 | 52.31 |
+| jarvis_deliver_rgbdel_P46_ctr | 60.02 | 50.31 |
+| jarvis_deliver_rgbdel_P46_ctr_c3only_seed2 | 62.74 | 53.52 |
+
+모든 항목 test < val (정상 패턴), PARSE_FAIL 재발 없음.
+진행중(재시도): c3only val(GPU4), P37a_cefr val(GPU5) — 위 [B] 참조.
+아직 미재시도(직전 round1 PARSE_FAIL 상태 그대로, 재큐 대기): c3only_lam005 val, P37b_classtoken val, c3only_lam02 val, CONTROL_valbest_ep62 val, CTRL_MUSES_valbest_ep208 val.
+참고: c1c3(val63.48/test52.11), memprobe(val38.27/test36.94)는 fix 이전에도 이미 정상치였음(round1에서 PARSE_FAIL 아니었음).
+
+### [A-결과] PQ-2 v3 완료 (16:2x KST, raw, 판정없음)
+대상: P47-MUB D-1 (val 82.58@ep172, 4modal), MUSES val 250장, geometry=native, head=m2f.
+
+|       | PQ   | SQ   | RQ   | N  |
+|-------|------|------|------|----|
+| All   | 35.6 | 81.7 | 41.2 | 19 |
+| Things| 22.9 | 79.1 | 26.2 | 8  |
+| Stuff | 44.8 | 83.5 | 52.0 | 11 |
+
+경쟁 기준: DGFusion PQ-val 58.88 / CAFuser 59.26 (All 기준으로 추정, 소스=coordinator 제공치).
+report.json: lecun `/tmp/pq_d1_out3/report.json`.
+per-class 최고: train 57.7 / bus 51.7 / road 81.3 / sky 64.6. 최저: person 1.5 / bicycle 1.4 / rider 7.1.
+
+## 2026-08-06 16:30 KST
+
+jarvis GPU6,7 | jarvis-muses_rgbel_P39_1_rank_normall (NORM_ALL 대조) | MUSES 3모달 | 170/300 | **best val 81.86@170 (갱신중)** | ~6.2분/ep | ETA 08-07 03:30
+jarvis GPU4,5 | DELIVER 원본해상도 재평가 | DELIVER 4모달 | **완료** | — | — | 종료
+yeon GPU6,7 | yeon-deliver_rgble_P46_c3only_lam005_CLE | DELIVER 3모달 CLE | 108/200 | val-best 60.28@30 (test-best 55.44@106) | ~29.5분/ep | ETA 08-08 13:10
+yeon GPU0~5 | 유휴 (2modal 완주) | — | — | — | — | —
+hpca100 | — | — | 🔴 자원 0 (약 25시간째) | — | — | —
+
+> ✅ 🔴 **DELIVER 동일 프로토콜(val-best · 원본해상도) 비교 완성 — P36 이 여전히 최고**
+>   | 모델 | val | test |
+>   |---|---|---|
+>   | **P36 (ep52)** | **66.26** | **54.58** |
+>   | P46 λ0.2 seed2 (ep62) | 65.45 | 54.00 |
+>   → P36 이 val **+0.81** · test **+0.58** 우위. **P39.1 이후 세대는 P36 을 넘지 못했다** 는 결론이, 이제 서로 다른 학습로그 비교가 아니라 **단일 프로토콜 실측**으로 확립됐다.
+>   보조(final-iter · 원본해상도): P46 C3-only 53.06~53.68 > P39.1-rank 51.95 → **P39.1 계보 안에서는 C3-only 가 +1.1~1.7 개선**이나, P36 에는 못 미친다.
+> ✅ 오프셋 실측 완결: P36 val −1.48 / test −1.04 · P46 val −2.29 / test −1.55(val-best), −1.94~−2.00(final-iter) · MUSES val −0.49. **EVAL.IMAGE_SIZE 와 데이터셋에 따라 −0.5~−2.9 로 다름 → 일괄 보정·외삽 금지.**
+> ℹ️ **hpca100 미사용 사유 확정**: `joonhui_been` 의 GR00T-N1.7-3B 파인튜닝 2잡(각 `--nproc_per_node=2`, `--max_steps 50000`)이 A100 4장 전부 점유. 잔여 메모리 GPU0,1=3.0GB / GPU2,3=6.6GB. **학습 불가**(15~30GB 필요), 평가(2.9GB)는 물리적으로 가능하나 상대가 98~100% util 이라 방해가 되므로 미실행. 우리 P47-1 이 08-05 15:29 완주하며 반납한 직후 확장됨.
+> ⚠️ CLE 의 val↓/test↑ 역행 지속 — test-best 55.44@106 vs val-best 60.28@30(그 ep test 53.49).

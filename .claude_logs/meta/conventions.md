@@ -55,6 +55,8 @@ created: 2026-07-08
 - **새 실험 launch 시**: `experiments/registry.md`에 행 추가 (config 경로·서버·상태), 종료 시 상태·수치 갱신 + `experiments/log.md` 상세 기록.
 - 기존 config 파일명은 변경 금지 (output 디렉토리 매핑 보존).
 - 실험 결과·시각화 산출물은 `/mnt/HDD2/src/logs/<model>_eval_<date>/` (쓰기 전 touch 테스트 — ISSUE-023 참조).
+- **상태 리포트 보드 규약 (신설 2026-08-09)**: 사용자용 살아있는 상황판 = artifact **https://claude.ai/code/artifact/11924e8a-12fc-4dbc-a174-ead7259b0228** (원본 = repo `meta/status-report.html`, git 추적). **의미 있는 판정 변화 시**(게이트 판정·SOTA/내부최고 변동·활성 런/큐 변화·가설 원장 판정 변경) 아무 세션이나: ① `meta/status-report.html` 갱신(최종 갱신 날짜 포함) → ② develop push → ③ Artifact 도구로 **위 URL 재배포**(`url` 파라미터 지정 — 미지정 시 새 URL이 생기니 주의). 보드는 **파생물** — 새 수치를 보드에 먼저 쓰지 말고 current.md·원장·분석 문서에 먼저 기록 후 반영. favicon(🛰️)은 바꾸지 말 것.
+- **실험 의뢰서 규약 (신설 2026-08-08)**: 세션 간 실험 전달은 복붙이 아니라 의뢰서로 한다 — `decisions/YYYY-MM-DD-<slug>-request.md` + `experiments/plan.md` 대기열 행 등재 + develop push. **필수 섹션 7종**: ①의뢰 취지(+근거 링크) ②실행 스펙(base ckpt·데이터·선행조건·자원) ③구현(코드 변경 범위·워커 위임 여부·검수 게이트) ④총 ETA ⑤폴백(사전 정의 — 즉석 판단 금지) ⑥사전 등록 게이트(**적용 시점 명기** — P48 사태 재발 방지, 양방향 행동 정의) ⑦결과 기록처(registry·analysis·원장·history 통보). 실행 세션은 이 문서만 읽고 기동 가능해야 한다. 첫 사례 = [decisions/2026-08-08-h10-readjudication-experiment-request.md](../decisions/2026-08-08-h10-readjudication-experiment-request.md).
 
 ## 5. Obsidian 볼트 규칙
 
