@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from . import p44 as P44
 from . import p46 as P46
 from . import p47 as P47
+from .cmlc import CrossModalLoRACoupling
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion, XAttnTrunk
@@ -233,7 +234,11 @@ class ReliaDINO(nn.Module):
                  modal_dropout: bool = False,
                  modal_dropout_p: float = 0.3,
                  modal_dropout_targets: Sequence[int] = (0, 1),
-                 modal_dropout_warmup_ep: int = 20):
+                 modal_dropout_warmup_ep: int = 20,
+                 # [P51] CMLC — ViT block 경계 cross-modal LoRA coupling (default OFF)
+                 cmlc_enable: bool = False,
+                 cmlc_layers: Sequence[int] = (6, 12, 18),
+                 cmlc_rank: int = 16):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -621,6 +626,20 @@ class ReliaDINO(nn.Module):
                 warmup_ep=p47_2_warmup_ep, gt_div=p47_2_gt_div,
                 reduce=p47_2_reduce)
 
+        # ── [P51] CMLC — 인코딩-시간 cross-modal LoRA coupling ────────────────
+        # 선택한 ViT block 경계에서 per-modal 저랭크 코드를 결합(cmlc.py) — 결합
+        # 이 block 중간에 일어나 이후 block 이 결합된 표현으로 계속 인코딩한다.
+        # default OFF: 이 블록이 init RNG 스트림을 전혀 건드리지 않아야 기존
+        # 계보와 seed 재현이 일치한다(P47-2 주석의 사고 교훈 — 가장 마지막에
+        # 생성). [F] dominant-mask forcing 은 별도 단계로 이번엔 없다.
+        self.cmlc_enable = bool(cmlc_enable)
+        self.cmlc_layers = [int(i) for i in cmlc_layers]
+        self.cmlc = None
+        if self.cmlc_enable:
+            self.cmlc = CrossModalLoRACoupling(
+                num_modalities=self.num_modalities, dim=dim,
+                r=int(cmlc_rank), num_couple_points=len(self.cmlc_layers))
+
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
         if not (self.modal_dropout and self.training):
@@ -710,9 +729,22 @@ class ReliaDINO(nn.Module):
         deterministic reduction, not a learned/inferred modality weighting
         (which is the reverse-engineered failure path C-2). The projections
         that follow are trainable, the backbone stays frozen.
+
+        [P51] CMLC on → 모달을 (M,B,C,H,W)로 쌓어 encoder.forward_coupled(배치-
+        모달 단일 forward + block 경계 결합)로 갈아끼운다. forward_coupled 가
+        last_taps 를 모달 평균으로 채워 주므로 여기서는 그대로 소비한다.
+        cmlc_enable 이 False 면 아래 순차 루프가 **그대로** 돈다(기존 경로
+        100% 불변 가드).
         """
         collect = (self.p43_lateral is not None and not self.p43_lateral_off)
         self.encoder.collect_taps = collect     # don't pay for taps we discard
+        if self.cmlc_enable and self.cmlc is not None:
+            stack = torch.stack(list(x), dim=0)          # (M, B, C, H, W)
+            feats = self.encoder.forward_coupled(
+                stack, self.cmlc, self.cmlc_layers)
+            self._p43_taps = (list(self.encoder.last_taps)
+                              if (collect and self.encoder.last_taps) else None)
+            return feats
         feats, acc = [], None
         for i in range(self.num_modalities):
             feats.append(self.encoder(x[i], i))
@@ -1413,6 +1445,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     p47_2 = mc.get('P47_2', {}) or {}                  # [P47-2] Uni-modal Balance (구 D-2)
     #   OGM_GE(gradient 변조)는 optimizer step 결선이라 train_reliadino.py가
     #   MODEL.P47_2.OGM_GE를 직접 읽는다 (여기서는 head/손실만 만든다).
+    cmlc = mc.get('CMLC', {}) or {}                    # [P51] block-경계 cross-modal coupling
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -1587,4 +1620,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         modal_dropout_p=mdrop.get('P', 0.3),
         modal_dropout_targets=tuple(tgt_idx) if tgt_idx else (0, 1),
         modal_dropout_warmup_ep=mdrop.get('WARMUP_EP', 20),
+        cmlc_enable=cmlc.get('ENABLE', False),                              # [P51]
+        cmlc_layers=tuple(cmlc.get('COUPLE_LAYERS', (6, 12, 18))),
+        cmlc_rank=cmlc.get('RANK', 16),
     )
