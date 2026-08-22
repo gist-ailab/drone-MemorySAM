@@ -1,0 +1,232 @@
+# ═══ P51-CMLC 최소 프로브 [OFF] — hpca100 DELIVER 4모달: base = C3-only λ0.1 (CMLC 없음) ═══
+# 게이트 사전등록 = .claude_logs/decisions/2026-08-21-p51-crossmodal-lora-coupling-proposal.md
+# on(hpca100-deliver_rgbdel_P51_cmlc_on.yaml)과 **유일한 차이 = MODEL.CMLC.ENABLE**.
+# 나머지는 jarvis-deliver_rgbdel_P46_ctr_c3only_lam01.yaml(대표구성, C1 off/C2 off/C3 on λ0.1)과 동일.
+# 🔴 게이트: Δ(on−off) legal DELIVER test ≥+1.5 → A확장 / ≤0 → B재프레이밍. MUSES 비회귀 필수.
+# 🔴 매칭 시드(TRAIN.SEED) — on/off 동일해야 한다.
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_deliver_rgbdel_P51_cmlc_off'
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — 3토글 (전부 학습 전용) ═══
+  P46:
+    # ── C-1 Adaptive Rare-Class Sampling (데이터로더 레벨) ──────────────────
+    # train 라벨 전수를 1회 스캔해 per-class 픽셀빈도 + 클래스별 보유 이미지
+    # 목록을 CACHE_DIR에 캐시(.npz). 이후 런은 캐시를 재사용한다.
+    C1_RCS:
+      ENABLE        : false      # [C2+C3 변형] C1 유해 확정(C3-only > C1+C3) — 제외
+      MODE          : daformer   # P(c) ∝ exp((1−f_c)/T)  — DAFormer 식 4
+                                 # 'power'(P ∝ f^−T)는 T=0.01에서 사실상 균등 = no-op
+      TEMP          : 0.01       # T. 작을수록 희소 클래스로 강하게 쏠린다
+      MIN_PIXELS    : 1          # 클래스 c를 "담았다"고 볼 최소 픽셀 수
+      LOSS_BLEND_W  : 1.0        # P(c) ∝ base(c)·(1 + w·ĝ_c), ĝ = per-class 손실 EMA(평균 1 정규화)
+      EMA_M         : 0.99       # ĝ의 EMA 계수
+      EMA_INTERVAL  : 1          # 몇 스텝마다 ĝ 갱신 (GPU→CPU 동기화 비용 조절)
+      REFRESH       : 32         # 샘플러가 blend 분포를 다시 계산하는 draw 간격
+      SEED          : 0
+      CACHE_DIR     : ''         # '' -> <repo>/.cache/p46
+
+    # ── C-2 Masked-Context Consistency (MIC, source-only DG 변형) ──────────
+    # student = 패치 마스킹 입력, teacher = EMA 복사본 + **원본** 입력.
+    # 마스킹 영역에서만 teacher pseudo-label에 CE. target 도메인 불요.
+    C2_MCC:
+      ENABLE        : false      # [C3-only 대표구성] C2 off — P51 base는 C3-only에서 파생
+      MASK_RATIO    : 0.5        # 가려지는 패치 비율
+      PATCH         : 64         # 패치 변 길이(px). 768/64 = 12x12 그리드
+      MODALS        : all        # all = 전 모달 동일 위치 마스킹 (img만 지우면
+                                 # lidar/depth가 메워 context 압력이 사라진다)
+      LAMBDA        : 1.0        # λ2
+      CONF_THRESH   : 0.75       # teacher softmax max가 이 값 미만인 픽셀은 제외
+      LOSS          : ce         # ce | kl
+      EMA_ALPHA     : 0.999      # teacher EMA 상한 (a_t = min(1−1/(t+1), α))
+      WARMUP_EP     : 5          # teacher가 설 때까지 보조 branch 자체를 돌리지 않음
+
+    # ── C-3 Domain-Invariant Class-Prototype Consistency ───────────────────
+    # per-class EMA prototype bank(K×D) + prototype-contrastive CE.
+    # CROSS_VIEW=true면 C-2 보조 branch의 입력에 ColorAugSSD 등가 스타일 변주를
+    # 추가로 걸고, 그 branch feature를 **같은 bank**로 당긴다 = 도메인불변 2-view.
+    C3_PROTO:
+      ENABLE        : true
+      FEATURE       : mfeat      # mfeat(stride-4 head feature, 256) | fused(1/16, 1024)
+      LAMBDA        : 0.1        # λ3
+      TEMPERATURE   : 0.1        # cosine logit 온도 τ
+      EMA           : 0.999      # prototype EMA 계수
+      PIXELS        : 4096       # 손실당 서브샘플 픽셀 수
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false      # [C3-only 대표구성] 보조 branch 제거 — prototype은 주 forward aux로만
+      CROSS_VIEW_W  : 1.0        # 2-view 항의 추가 배율 (LAMBDA에 곱해짐)
+
+  # ═══ [P51] CMLC — 인코딩-시간 cross-modal LoRA coupling (OFF 프로브) ═══
+  CMLC:
+    ENABLE        : false      # 이 파일 전체에서 on config와 유일하게 다른 줄
+    COUPLE_LAYERS : [6, 12, 18]
+    RANK          : 16
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'   # hpca100 DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 51000021          # [P51 프로브] on/off 매칭 시드 — 반드시 on config와 동일
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1                 # A100 40GB 안전 마진. CMLC on은 배치-모달 동시 forward — 30-step 프로파일로 재확인
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # BS1 일관
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
