@@ -74,40 +74,39 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 **대기(슬롯 확보 시 즉시)**: #11 P50 파인튠(사전학습 loss plateau 후, DELIVER 4장) · #15b confidence 라우터(user GO 대기, forward 재실행) — 아래 대기열 참조.
 **최근 완주(→registry/완료 이동)**: P46 C3-only λ0.1 시드런 ×2(jarvis, 완주 — 최종 legal mean±std 확정 대기) · cross-attn A/B(#12, legal −2.05 판정) · oracle 실현성 통제(#14) · no-GT 라우터 #15(val 음성).
 
-## 📋 대기열 (우선순위 순)
+## 📋 대기열 (우선순위 순) — 2026-08-24 전면 재설계 (논문-가치 필터)
 
-| # | 실험 | 필요 자원 | 언제 | 근거 |
+> **재설계 기준**: ①논문(accept) 기여 — A(P51 확장)·B(진단-프레임워크) 어느 분기에서도 쓰이는가 ②24GB(yeon 3090/jarvis 4090)에서 도는가 ③원장 반증 경로가 아닌가. 옛 대기열 대부분은 계보 사망·중복으로 종결 처리(하단 🗑).
+
+### 🔵 진행 중 (3트랙)
+| 실험 | 자원 | 다음 이벤트 |
+|---|---|---|
+| P51-CMLC on/off 페어 ×2 (#16) | hpca100 A100×4 + jarvis 5,6 | hpca100 완주 → legal Δ 3층 분해(overall/per-cond/per-class) = **A/F/B 분기** |
+| P50-MAP finetune (seed821 매칭) (#11) | yeon 1,2 | 완주 → Δ vs 53.57, 게이트 ≥+0.5 |
+| 시드 n=5 (#3) | jarvis (822 마무리) | 완주 → n=5 mean±std 확정 → jarvis GPU 해방 |
+
+### 🎯 신규 대기열 (논문-가치 순, 여유 GPU 투입 대상)
+| # | 실험 | 자원 적합 | 논문 가치 (A/B 분기별) | 상태 |
 |---|---|---|---|---|
-| **1** | **P40 RCA-Fusion 본학습** (DELIVER + MUSES) | P39.1과 동일 자원, 완주 후 이어서 | **P39.1 rank 게이트(lidar effective-rank ≥15) 통과 확인 후** 투입 — rank가 죽은 채면 C-3 lidar readout이 헛돎 | **구현 완료(develop ac5c7fe)** — P39.1 위에 Reliability-Conditioned Attenuation 추가. C-1: lidar 리턴 유효성(입력 유도 내부 신호) → 가드/분석. C-2: 자기추정 rel(img) 배치 하위 분위(30%) 샘플의 img feature soft 감쇠(α 0.1~0.5, hard-zero 금지, p_max 0.5, warmup 20ep, 학습 전용). C-3: 감쇠 샘플 한정 lidar readout 보조 CE(w 0.5, gradient 출구). **판정 게이트(사전 등록)** = MUSES test ≥79.025 & fog_night ≥74(P38 복원 우선) · DELIVER = P36 fair + thin-class 유지. configs `jarvis-muses_rgbel_P40_rca.yaml`/`hpca100-deliver_rgbdel_P40_rca.yaml`/`yeon-deliver_rgbdel_P40_rca_smoke.yaml`(스모크). 합성 스모크 PASS(RCA pick 발생, C-1 가드 동작, 손실 유한, grad 흐름). 상세 [decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md](../decisions/2026-07-21-p39_1-p40-rank-rca-proposal.md) / [models/arch-evolution.md](../models/arch-evolution.md) P40 |
-| **2** | **P39-4모달 radar-fix 재실험** | hpca100/jarvis 4모달 슬롯 | P39.1/P40 완료 후 | ISSUE-025(MUSES radar 디코딩 버그) 픽스 후 radar 기여 재측정 — P34 4모달 test −0.72 판정이 broken-radar 상태 기반이라 보류 중 |
-| **3** | **시드 복제 (2~3 seed)** | 4 GPU × N | GPU 여유 시 | 세션 내내 "+0.13/+0.10은 노이즈"라 말했으나 **분산 데이터 없음**. ablation 표에 ± 를 달 수 있음 |
-| **4** | **TTA-on 실측** (참고용) | 1 GPU × ~7h(4090) | 여유 시 | **헤드라인 사용 불가 확정**(경쟁자 미사용) → ablation 행 전용. 준비물 배치 완료(hinton/jarvis). TTA-off는 G0a가 이미 확보(val 68.20/test 56.64) |
-| **5** | **P47-MUB (D-1 lidar 투영 밀도화 → D-2 uni-modal balance aux)** | MUSES 슬롯 (D-1 먼저, 학습0 선행확인 후) | **D-1 최우선**(비용0, 데이터 기존 존재) — `muses.py` config knob 추가 후 즉시 착수 가능. D-2는 D-1 결과 후 labcode 위임 구현+코드검수 | **제안 등재(2026-08-03)** — 진단 재정의: 내부 프레임("주야격차 5.14")은 SOTA 추월 관점에선 오도, Codabench 원본 대조로 병목=clear/day(−4.4~−5.9) 확인, 모달↑=순위↓ 역상관 실측. D-1: `projected_to_rgb`(유효 6.7%)→`projected_to_rgb_dgf`((7,7)+motion comp, 32.6%=4.99×, 오라클 검증 완료, 7500 PNG 기존재)로 교체만. D-2: modality-laziness(2305.01233 UMT 등) 억제용 per-modal aux CE head(학습시만, 추론 불변). **게이트**: val≥82.62(seed2 base 초과) & Codabench test≥79.788(우리 최고) 1회 제출. D-1 falsifiable=drop-lidar day dMIoU 4.24→≥6. D-2 falsifiable=val day≥81.5(야간만 오르면 반증). ep30 조기kill=base 궤적 대비 −1.0. DELIVER 무영향(추론 불변+MUSES 전용 데이터+토글). 상세 [decisions/2026-08-03-p47-mub-muses-proposal.md](../decisions/2026-08-03-p47-mub-muses-proposal.md) |
-| ~~6~~ | ~~CEA oracle 프로브~~ | — | — | 🔴 **완료 + 폐기 확정(2026-08-08)** — 7런 완주, G-P1 5배 미달(oracle Δ +0.21 < +1.0). 적응 가설 계열 폐쇄. [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6·§7, 원장 H4 |
-| ~~7~~ | ~~RGB-D 2모달 fair-eval~~ | — | — | 🔵 **착수(2026-08-10)** — yeon GPU2 val 모드 eval 중(tmux jemo:rgbd_eval1024), test 모드 후속. registry 행 참조 |
-| ~~8~~ | ~~H10 재판정 미니 실험~~ | — | 🔴 취소(2026-08-10 user — PQ 비경쟁축) | **의뢰서 = [decisions/2026-08-08-h10-readjudication-experiment-request.md](../decisions/2026-08-08-h10-readjudication-experiment-request.md)** — 이 문서만 읽고 실행 가능. 게이트(학습 후 things PQ>33.6) 사전 등록, 결과 기록처 명시 |
-| **9** | ~~ProbeA2 — 백본 스케일링 프로브~~ | jarvis GPU1, ~1h(캐시+head 학습 4종) | ✅ **완료(2026-08-09)** | 결과: S+ 59.85 / B 62.82 / L 68.67 / **H+ 69.19**. G-A2 **완결(08-12)**: 7B 69.37(+0.18)·축분리 음성 → 표현력 축 소진 확정(원장 H12 ✗) / G-A2-하한 Δ(L−S+)=+8.82(>3.0, 대형백본 전제 공개 필요). 상세 = [analysis/2026-08-09-probea2-backbone-scaling.md](analysis/2026-08-09-probea2-backbone-scaling.md), 원장 = [research/hypothesis-ledger.md](../research/hypothesis-ledger.md) H12/H12′. **미결**: 7B 추가 측정(hpca100 A100 필요 — 24GB OOM 위험) 여부는 코디네이터 판단 대기 |
-| **10** | **P49-AIR** (비대칭 주입 구조 전환) | Phase0=1 GPU 2h(학습0) → 구현(labcode) → jarvis/yeon 2~4장, EPOCHS 100~200 | 🟢 **승인 + 구현 병합(be. 검수 PASS) — 24GB 실측 스모크 진행 중, 통과 시 본런 즉시 기동(user 사전 승인 2026-08-10, jarvis 1,2,5 예정, 워치독 등록 포함)** | [decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md](../decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md) — 대칭 융합 폐지, RGB 주경로 FT + 인코더-내부 zero-init 주입. ep30 게이트(γ성장·RGB-easy 무손실)·DELIVER test ≥57.35·falsifiable A/B 사전 등록 |
+| **N1** | **MUSES 시드 분산 ×2** — P39.1-rank seed2 레시피 그대로 TRAIN.SEED만 2종(진짜 시드), val-분산 측정 | **jarvis 4090×4**(시드 완주 후 해방분, 검증된 레시피·~1일/시드) | **A·B 공통 필수** — MUSES 79.788이 단일제출(H18 동형 리스크). DELIVER처럼 val 시드분산 실측해야 mean±std 보고 성립. test는 Codabench 제한이라 **val 분산이 판정 신호**(val 안정이면 79.788 신뢰↑, 크면 재제출 전략 필요) | 🟡 config 복제만 필요(코드 0) — **승인 시 즉시** |
+| **N2** | **MLE-SAM 평균융합 baseline** — 우리 DINOv3-L 위에 trunk→산술평균 토글 1런 (DELIVER @768) | **yeon 3090×2** (기존 레시피, 코드 = trunk 우회 토글 소규모) | **A 필수·B 유용** — P51 공정성 §5 "경쟁자 재구현"(최근접 선행 MLE-SAM과 동일백본 대결). A면 비교표 필수 행, B여도 "평균 vs gated-MLP vs xattn 3점 믹서 스윕 완성"(분석 가치) | 🟡 소규모 코드(토글) + 1런 — 승인 시 |
+| **N3** | **C3 진단-구동 검출기 (분석, 학습 0)** — 기존 ckpt들의 val confusion에서 class-transfer 붕괴 지표(비대각 집중도) 정량화 → C3 on/off 효과와 상관 검증 (DELIVER 붕괴有/MUSES 無) | **GPU ~0**(캐시 confusion 재집계, 필요시 1 GPU eval) | **B 헤드라인 기둥·A여도 통일 서사 필수** — "벤치별 C3 on/off"를 원칙적 자동설정으로 전환하는 근거. 검출기가 두 벤치의 경험적 C3 효과와 일치하면 통일 아키텍처 주장 성립 | 🟡 분석 설계 = discussion 세션 직접 — **즉시 가능** |
+| **N4** | **MCubeS 이식 파일럿** — 통일 레시피(C3 off) baseline 1런 + 로더/스테이징 검증 (RGB+AoLP+DoLP+NIR) | **yeon 3090×2** (로더 `mcubes.py`·데이터 `/mnt/HDD1/Workspace/dset/MCubeS` 보유, yeon SSD 스테이징 필요) | **A·B 공통** — 3번째 벤치 = "modality-agnostic 일반성" 스트레스 테스트(물리 이질 모달). N3 검출기의 3번째 검증점(MCubeS 붕괴 유무→C3 예측). ⚠️ 경쟁자(CrossWeaver 48.76 B0)와 비교는 동일백본 각주 필수 | 🟡 데이터 스테이징 + config — 승인 시 |
+| **N5** | TTA-on 실측 (구 #4, 참고용 ablation 행) | yeon/jarvis 1장 ×7h | 낮음 — 헤드라인 불가 확정, ablation 완결성용 | ⏸ 위 소진 후 필러 |
 
-| **16** | **P51-CMLC 최소 프로브** (Cross-modal LoRA Coupling — 인코딩-시간 결합, on/off 매칭시드) | DELIVER on/off 매칭쌍(TRAIN.SEED 51000021), hpca100 A100×4(2GPU씩) | 🟡 **본런 착수(2026-08-21)**: config `hpca100-deliver_rgbdel_P51_cmlc_{on,off}.yaml`(C3-only λ0.1 base+CMLC 토글만 차이) 추가. **30-step 메모리 프로파일 완료**(단일GPU, on): peak=12.18GiB/reserved=12.25GiB — A100 40GB 대비 여유 충분, **GRADIENT_CHECKPOINT 불요 확정**(우려했던 24GB OOM 위험 기우로 판명). 본런 launch 검증 6항 전부 PASS: RANDOM INIT 0 · params on=357.7M/54.7M vs off=357.6M/54.6M(CMLC 파라미터 증분 확인) · 양쪽 iter 전진(on 2.4it/s·off 2.1it/s) · GPU0,1(on)/2,3(off) util 79-93% · loss finite · OOM 없음. ETA 1991it/ep×200ep÷~2.2it/s ≈ ep당 15분, 완주 ~2일. [F] dominant-mask는 이번 커밋에 미포함(다음 단계) — 이번 프로브는 CMLC 결합 단독 효과만 격리. **2번째 매칭시드 추가(2026-08-23)**: jarvis 유휴 GPU5,6(GPU7 예비)에 `jarvis-deliver_rgbdel_P51_cmlc_{on,off}_seed2.yaml` 착수 — SEED 51000022(1번 페어 51000021과 별개), 단일GPU(eff-batch=1, 1번 페어의 eff-batch=2와 다름 — 반복재현 목적, 정확한 하이퍼파라미터 복제 아님). 부팅검증 PASS(SEED 로그 일치·RANDOM INIT 0·2.5-2.7it/s·GPU5 13.4GiB/GPU6 15.6GiB OOM 없음). 완주 시 legal test는 hpca100 페어와 별개로 재확인 | H16 종결이 도출한 유일 열린 축(선택 죽음→인코딩 결합). **게이트**: Δ(CMLC on−off) legal DELIVER test ≥+1.5 → A확장 / ≤0 → B재프레이밍, MUSES 비회귀 필수. CrossWeaver(2604.02948) 차별=LoRA부분공간+frozen VFM. **공정성**: 동일백본 ablation + 경쟁자(MLE-SAM평균/CrossWeaver MIB) 재구현 필수. 상세 [decisions/2026-08-21-p51-crossmodal-lora-coupling-proposal.md](../decisions/2026-08-21-p51-crossmodal-lora-coupling-proposal.md) |
+### 🅰️ A100 대기열 (hpca100 P51 완주 후)
+| 순위 | 실험 | 근거 |
+|---|---|---|
+| ① | **P47-2 UniBal** (MUSES 4모달 역전 유일 레버, 구현·스모크 완료) | A100 필요(보조 head 메모리). P51 판정 후 슬롯 |
+| ② | P51 후속 (F 추가 재프로브 or MUSES 비회귀) — P51 Δ 판정에 따라 | 게이트 분기 결과 대기 |
 
-## 🅰️ A100/B200 대기열 (슬롯 감시 = `scripts/gpu_slot_watch.sh`, cron 10분 — 2026-08-10 도입)
-
-> hpca100(A100 40GB×4)·elice-b200 전부 타인 점유 중(0/4·0/8 실측). 빈 슬롯 전이 시 alerts.log + notify-send. **슬롯이 나면 아래 순서로 즉시 투입**:
-
-| 순위 | 실험 | 필요 | 근거 |
-|---|---|---|---|
-| ~~①~~ | ~~C2-MCC 순기여~~ | — | 🔵 **기동(2026-08-12 16:03, hpca100 GPU2,3 공유 — user 승인·모니터링 세션 실행)** — registry 행 참조, 판정 기준 사전 등록됨 |
-| ~~②~~ | ~~ProbeA2-7B~~ | — | ✅ 완료(08-12, hpca100 GPU2-3) — H12 폐쇄, analysis §6 |
-| ③ | **P49 @1024 학습 대조** | 4장 | @768 본런과의 해상도 대조(24GB no-go 실측으로 밀림) |
-
-| **11** | **P50-MAP 프로브** (모달 정렬 사전학습) | pseudo-모달 생성(수일) + 4090 2~4장 × 1~2일 | 🟢 **승인(2026-08-17 user)** — 구현 착수, 학습은 시드런 완주 후 | [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md](../decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md) — 프로브 게이트(base 대비 test ≥+0.5) 사전 등록. 추론 그래프 무변경 = 단일-모델 원칙 자동 충족 |
-
-| ~~12~~ | ~~cross-attn 트렁크 A/B~~ | — | ✅ **완료·판정(2026-08-20)** | legal @1024 **54.94 < 56.99 = −2.05** → "MLP 우위 재확인"(15.9× 파라미터로도 패배). user 가설 반증, 믹서 비병목 실증(H17). 판정 [analysis/2026-08-20-fusion-mechanism-double-negative.md](analysis/2026-08-20-fusion-mechanism-double-negative.md) |
-| ~~13~~ | ~~Spatial-Modality Oracle 프로브~~ | — | ✅ **완료·판정(2026-08-19)** | 결과 Δ **val +8.66/test +8.29**(게이트 8배 초과) → 내 사전확률(Δ<0.3) 반증. **단 상계 과대**(union-over-15 팽창+zero-fill OOD) → 게이트 발화≠라우터 정당화. **H16 잠정 재개방, 실현성 통제 #14 선행.** 판정 [experiments/analysis/2026-08-19-spatial-modality-oracle-verdict.md](analysis/2026-08-19-spatial-modality-oracle-verdict.md) |
-| ~~14~~ | ~~Oracle 실현성 통제~~ | — | ✅ **완료·판정(2026-08-20)** | 입도 스윕: block16 Δ +4.1~4.6·block64 +1.9~2.8(공간응집=폐쇄 아님). 널 +32~44≫관측 = **내 널 게이트 부등호 2차 스펙 오류**(독립셔플이 union 부풀림). 종합: GT-회수 여지 실재하나 **입력-실현성 미검** → #15로 이월. 판정 [analysis/2026-08-20-oracle-realizability-control-verdict.md](analysis/2026-08-20-oracle-realizability-control-verdict.md) |
-| ~~15~~ | ~~no-GT 라우터 실현성 하한~~ (캐시 전용 합의/다수결) | — | ✅ **완료·판정(2026-08-20, 양 split)** | majority/consensus **val −1.0~−1.4 / test −1.8~−1.96 전부 음수** = 값싼 실현신호 부재 확정. 여지가 anti-consensus(소수-옳음)라 합의 라우터가 틀린 쪽 선택. → #15b(confidence)가 마지막 관문. 판정 §B |
-| ~~15b~~ | ~~confidence 라우터 실현성~~ | — | ✅ **완료·판정(2026-08-20)** | block16 val −15.30/test −12.50 = 셋 중 최악(confidence가 역신호, OOD 과신). no-GT 3종 전부 음수 → **H16 종결(선택 불가, anti-consensus+anti-confidence)**. 단 인코딩-시간 결합(N2)은 미검=재조준. 판정 [analysis/2026-08-20-spatial-axis-closure-h16.md](analysis/2026-08-20-spatial-axis-closure-h16.md) |
+### 🗑 종결 처리 (2026-08-24 재설계에서 제거 — 재등재 금지 사유 명시)
+- ~~#1 P40 RCA-Fusion~~: 계보 사망(P39.1 게이트 자체가 P46/P51로 승계) + C-2 감쇠는 적응계열(H1~H4 폐쇄) 인접 — **원장 저촉**.
+- ~~#2 P39 radar-fix 재실험~~: 이미 충족 — fixed-decoder drop-radar ablation(2026-07-30)이 radar 무익(+0.13)을 재확정. 별도 학습 불요.
+- ~~#5 P47-MUB D-1~~: **이미 실행·폐기**(P47-D1 공식 test 78.790, val 과적합, 08-17). D-2는 위 A100 ①로 승계.
+- ~~#10 P49-AIR~~: 계열 종결(08-16, 양 벤치 패배·H14). plan 갱신 누락분 정리.
+- ~~A100 ③ P49 @1024 대조~~: P49 계열 종결로 무의미.
+- ~~ProbeA2-7B 추가 측정~~: H12 폐쇄(7B +0.18)로 종결.
 
 ## ✅ 완료·판정 (재실행 금지)
 
