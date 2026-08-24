@@ -29,7 +29,7 @@ from . import p47 as P47
 from .cmlc import CrossModalLoRACoupling
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
-from .fusion import ReliabilityGatedFusion, XAttnTrunk
+from .fusion import ReliabilityGatedFusion, XAttnTrunk, MeanFusionTrunk
 from .m2f_head import MaskQueryLiteHead
 from .panoptic_head import MaskClsHead
 
@@ -138,7 +138,8 @@ class ReliaDINO(nn.Module):
                  p39_trunk_mode: str = 'linear',
                  p39_trunk_hidden: int = 256,
                  # [A/B trunk] MODEL.FUSION.TRUNK — 'gated_mlp'(기본, 기존 전
-                 # 모델과 byte-동일) | 'xattn'(대칭 모달간 cross-attention).
+                 # 모델과 byte-동일) | 'xattn'(대칭 모달간 cross-attention)
+                 # | 'mean'([N2] MLE-SAM 산술 평균 재현 baseline).
                  fusion_trunk: str = 'gated_mlp',
                  xattn_layers: int = 1,
                  xattn_heads: int = 8,
@@ -400,10 +401,23 @@ class ReliaDINO(nn.Module):
         # 한 번도 타지 않으므로 파라미터도 init RNG 소비도 늘지 않는다 =
         # 기존 전 모델과 byte-동일 (스모크 A가 이 성질을 검사한다).
         self.fusion_trunk = str(fusion_trunk).lower()
-        if self.fusion_trunk not in ('gated_mlp', 'xattn'):
-            raise ValueError(f"MODEL.FUSION.TRUNK 는 gated_mlp|xattn 이어야 한다 "
-                             f"(got {fusion_trunk!r}).")
+        if self.fusion_trunk not in ('gated_mlp', 'xattn', 'mean'):
+            raise ValueError(f"MODEL.FUSION.TRUNK 는 gated_mlp|xattn|mean 이어야 "
+                             f"한다 (got {fusion_trunk!r}).")
         self.trunk_xattn = None
+        self.trunk_mean = None
+        if self.fusion_trunk == 'mean':
+            # [N2] MLE-SAM(2412.04220) 평균융합 팔 — 파라미터 0 트렁크가 게이트
+            # 융합 출력을 per-modal 산술 평균으로 **교체**한다(MeanFusionTrunk).
+            # gated_mlp/xattn 트렁크 파라미터를 만들지 않는다: mean 이 출력을
+            # 통째로 대체하므로 만들면 DDP unused-parameter 사고만 낸다.
+            # → 조용한 실패 금지: TRUNK_EXP: true 와 공존하면 "트렁크 확장을
+            # 켠 mean"이라는 착각만 남으므로 거부한다.
+            if p39_trunk_exp:
+                raise ValueError("MODEL.FUSION.TRUNK: mean 은 MODEL.P39.TRUNK_EXP: "
+                                 "false 와 함께 써야 한다 (mean 팔은 트렁크 "
+                                 "파라미터를 만들지 않는다).")
+            self.trunk_mean = MeanFusionTrunk()
         if self.fusion_trunk == 'xattn' and not p39_trunk_exp:
             # 조용한 실패 금지: 트렁크 자체가 없는데 TRUNK:xattn 을 준 config는
             # "xattn 을 켰다"고 착각한 채 baseline 을 돌린다.
@@ -787,9 +801,16 @@ class ReliaDINO(nn.Module):
 
         [A/B trunk] FUSION.TRUNK: xattn 이면 per-modal 변환만 cross-attention
         으로 갈아끼운다. 합산(tanh(γ) 게이트 잔차)·출력 shape·ablation 플래그는
-        gated_mlp 와 동일하다."""
+        gated_mlp 와 동일하다.
+
+        [N2] FUSION.TRUNK: mean 이면 게이트 융합 출력 fused를 per-modal 산술
+        평균(MeanFusionTrunk, 파라미터 0)로 교체한다 — MLE-SAM 재현 baseline.
+        p39_trunkexp_off 토글이 mean 팔에서도 '트렁크(=평균 교체) 제거'로
+        같은 뜻을 갖는다(끄면 게이트 융합 fused로 돌아간다)."""
         if self.p39_trunkexp_off:
             return fused
+        if self.trunk_mean is not None:
+            return self.trunk_mean(fused, feats)
         if self.trunk_xattn is not None:
             return self.trunk_xattn(fused, feats, self.trunk_gamma)
         if self.trunk_exp is None:
