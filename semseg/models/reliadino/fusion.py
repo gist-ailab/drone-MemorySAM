@@ -379,6 +379,26 @@ class XAttnTrunk(nn.Module):
         return fused + sum(ys) / len(ys)
 
 
+class MeanFusionTrunk(nn.Module):
+    """[N2] MLE-SAM(2412.04220) 평균융합 baseline (`MODEL.FUSION.TRUNK: mean`).
+
+    동일백본 통제비교용 경쟁자 재현: 게이트 융합(ReliabilityGatedFusion)의
+    출력 fused를 **버리고** per-modal 특징의 산술 평균으로 교체한다 —
+    MLE-SAM의 융합이 정확히 이 산술 평균이기 때문이다. 학습 파라미터 0.
+    인코더(per-modal LoRA)·FPN+헤드·per-modal 학습손실(aux_ce/VICReg/
+    prototype 등 전부 feats 기반)은 그대로 살아 있어, 융합 트렁크 하나가
+    두 팔의 유일한 차이가 된다.
+
+    forward(fused, feats, gamma=None) -> (B, C, h, w)   # 기존 트렁크와 동일 계약
+    fused/gamma 는 계산에 쓰이지 않는다(_apply_trunk_exp 호출부 시그니처 호환).
+    """
+
+    def forward(self, fused: torch.Tensor, feats: List[torch.Tensor],
+                gamma: Optional[torch.Tensor] = None) -> torch.Tensor:
+        del fused, gamma
+        return torch.stack(list(feats), dim=0).mean(dim=0)
+
+
 class ReliabilityGatedFusion(nn.Module):
     """Cross-modal fusion with RBMA-v2 attention bias + competence output gate.
 
