@@ -1,0 +1,153 @@
+<title>MemorySAM 모델 노벨티 맵</title>
+<style>
+  :root{
+    --bg:#faf9f7; --ink:#1e2228; --ink2:#454c56; --muted:#8a8f98; --line:#e3e0da;
+    --raise:#f1efeb; --accent:#3d6b8e; --good:#2e7d4f; --warn:#a8730a; --dead:#b04a3c;
+    --cardbg:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15171b; --ink:#e8e6e1; --ink2:#b7bcc4; --muted:#7c828c; --line:#2c3038;
+      --raise:#1e2126; --accent:#7aa7c7; --good:#5cb884; --warn:#d9a441; --dead:#d97b6c;
+      --cardbg:#1a1d22;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15171b; --ink:#e8e6e1; --ink2:#b7bcc4; --muted:#7c828c; --line:#2c3038;
+    --raise:#1e2126; --accent:#7aa7c7; --good:#5cb884; --warn:#d9a441; --dead:#d97b6c;
+    --cardbg:#1a1d22;
+  }
+  body{background:var(--bg);color:var(--ink);font-family:'Pretendard',-apple-system,'Noto Sans KR',sans-serif;
+       line-height:1.62;margin:0;font-size:15px}
+  .wrap{max-width:960px;margin:0 auto;padding:44px 24px 80px}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  h1{font-size:30px;margin:0 0 4px;letter-spacing:-.01em;text-wrap:balance}
+  h2{font-size:20px;margin:44px 0 6px;padding-top:20px;border-top:1px solid var(--line);letter-spacing:-.01em}
+  h3{font-size:16px;margin:22px 0 4px}
+  .stamp{font-size:13px;color:var(--muted);margin:0 0 20px}
+  .sub{font-size:13.5px;color:var(--ink2);margin:2px 0 12px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+  th{text-align:left;font-size:12px;letter-spacing:.05em;color:var(--muted);border-bottom:1.5px solid var(--line);padding:6px 10px 6px 0}
+  td{border-bottom:1px solid var(--line);padding:7px 10px 7px 0;vertical-align:top;color:var(--ink2)}
+  td b{color:var(--ink)}
+  .scroll{overflow-x:auto}
+  .card{background:var(--cardbg);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+  .card.warn{border-left:3px solid var(--warn)} .card.good{border-left:3px solid var(--good)}
+  .card.dead{border-left:3px solid var(--dead)} .card.accent{border-left:3px solid var(--accent)}
+  .pill{display:inline-block;font-size:11.5px;padding:1px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+  .p-good{color:var(--good);border-color:var(--good)} .p-warn{color:var(--warn);border-color:var(--warn)}
+  .p-dead{color:var(--dead);border-color:var(--dead)} .p-acc{color:var(--accent);border-color:var(--accent)}
+  .mono{font-family:ui-monospace,Menlo,monospace;font-size:.9em}
+  pre.mermaid{background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto}
+  .note{background:var(--raise);border-radius:8px;padding:12px 16px;font-size:13.5px;color:var(--ink2);margin:12px 0}
+  .nov{font-weight:700;color:var(--accent)}
+  ul{margin:8px 0;padding-left:20px;color:var(--ink2);font-size:13.5px}
+  li{margin-bottom:5px}
+  footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<p class="eyebrow">drone-MemorySAM · novelty map</p>
+<h1>모델 노벨티 맵 — 무엇이 새로운가</h1>
+<p class="stamp">2026-08-24 기준 · 논문(accept) 관점에서 "우리가 주장할 수 있는 것 / 없는 것"을 구분한 단일 문서 · 근거 = 원장(H1~H19)·딥리서치 3축·경쟁 논문 검증</p>
+
+<div class="note"><b>한 장 요약</b> — 베이스 구조(frozen DINOv3 + 모달별 LoRA)는 <b>노벨티가 아니다</b>(선행 점유). 방어 가능한 신규 주장은 셋: ① <span class="nov">P51-CMLC</span> = LoRA 부분공간 안에서의 인코딩-시간 cross-modal 결합(미점유 교집합), ② <span class="nov">소거-증명 체인</span> = "선택으로는 안 된다"를 오라클+실현성 배터리로 증명한 분석(우리 고유), ③ <span class="nov">P50-MAP</span> = frozen 백본 위 어댑터만 정렬 사전학습(얇지만 미점유). 셋 다 <b>성능 게이트 통과가 전제</b>이며 현재 검증 중이다.</div>
+
+<h2>0. 베이스 구조 (ReliaDINO 계보) — 노벨티 아님, 출발점</h2>
+<pre class="mermaid">graph LR
+  IN["RGB + depth/event/lidar<br/>(MUSES: RGB+lidar+event)"] --> ENC["frozen DINOv3-L (300M, 공유)<br/>+ 모달별 LoRA (Q/V, r16)"]
+  ENC --> TRUNK["gated-MLP 융합 트렁크<br/>+ VICReg"]
+  TRUNK --> HEAD["FPN + 픽셀 헤드 + M2F-lite"]
+  HEAD --> OUT[세그멘테이션]
+  C3["C3 prototype 손실<br/>(학습 전용·DELIVER만 on)"] -.-> TRUNK</pre>
+<ul>
+  <li><b>왜 노벨티가 아닌가</b>: "frozen 기초모델 + 모달별 LoRA"는 MLE-SAM(2412.04220)이 동일 벤치(DELIVER·MUSES·MCubeS)에서 선점. 인용 의무.</li>
+  <li><b>실적</b>: DELIVER test 54.44±2.21 (best 56.99=시드 outlier, 근SOTA 철회 H18) · MUSES test 79.788(융합계보 1위, 단일제출).</li>
+  <li><b>약점</b>: C3가 벤치별로 on/off 다름(축-특이, H8) → "진단-구동 활성화"로 재프레이밍 필요(N3 진행).</li>
+</ul>
+
+<h2>1. P51-CMLC — 인코딩-시간 Cross-modal LoRA 결합 <span class="pill p-acc">on/off 페어 ×2 학습 중</span></h2>
+<div class="card accent">
+<pre class="mermaid">graph LR
+  IN["4모달 입력"] --> L1["ViT blocks 1-6<br/>(frozen + 모달별 LoRA)"]
+  L1 --> C1["CMLC 결합점 ①<br/>z̃_m = z_m + Σ γ·C·z_k<br/>(r=16 부분공간, +0.11M)"]
+  C1 --> L2["blocks 7-12"] --> C2["결합점 ②"] --> L3["blocks 13-18"] --> C3b["결합점 ③"] --> L4["blocks 19-24"]
+  L4 --> TR["기존 융합 트렁크 → 헤드"]</pre>
+<p class="sub"><b>핵심</b>: 모달별 LoRA의 저랭크 코드를 인코더 <b>중간</b>(block 6·12·18)에서 서로 섞고, 섞인 표현이 다음 block의 입력이 된다 — 이후 층들이 "남의 센서가 귀띔한 정보"를 반영한 채 계속 인코딩(mid-encoder). fusion 직전 결합(xattn, −2.05 반증)과 구조적으로 다르다.</p>
+<div class="scroll"><table>
+<thead><tr><th>대비 대상</th><th>그들의 방식</th><th>P51의 차이</th></tr></thead>
+<tbody>
+<tr><td><b>현행 ReliaDINO</b></td><td>LoRA 4개가 완전 고립 → 마지막에 융합</td><td>인코딩 <b>도중</b> 저랭크 결합</td></tr>
+<tr><td><b>MLE-SAM</b> (2412.04220)</td><td>frozen SAM + LoRA를 <b>산술 평균</b></td><td>평균 대신 학습된 결합 (= 정확한 delta, N2로 동일백본 실측 중)</td></tr>
+<tr><td><b>CrossWeaver</b> (2604.02948, 4개월 선행)</td><td>full-feature 신뢰도 attention · <b>학습</b> SegFormer-B0</td><td><b>LoRA 부분공간</b>(16차원 채널)에서만 · <b>frozen</b> 대형 VFM</td></tr>
+<tr><td><b>P49-AIR</b> (우리 반증, H14)</td><td>RGB-중심 주입 → RGB가 삼킴(γ→0 사망)</td><td>대칭 결합 + γ init 1.0 → <b>γ 살아있음 실측</b>(0.55, 두 시드 재현)</td></tr>
+</tbody></table></div>
+<p class="sub"><b>노벨티 = 3겹 교집합</b> (각각 단독으론 부족, 교집합이 미점유):</p>
+<ul>
+<li><span class="nov">① 결합 위치 = PEFT(LoRA) 부분공간 안</span> — 조사한 어떤 논문도 어댑터 저랭크 코드 공간에서 cross-modal 상호작용을 안 함 (최근접 CoLA 2604.03314는 VL/AV 이종·2인코더, dense 시각 seg 아님)</li>
+<li><span class="nov">② frozen 대형 VFM 위 인코더-중간 결합</span> — 이 칸은 2026년 초에야 MoBaNet(2모달 RS)·CoLA가 좁게 점유, 3+ 동종 시각 모달 주행 seg는 빈 칸</li>
+<li><span class="nov">③ 소거-증명 동기</span> — "선택은 안 된다"(§3)를 먼저 증명하고 결합을 도출한 논리 사슬 = 우리 고유 분석</li>
+</ul>
+<p class="sub"><b>현재 상태 (정직)</b>: γ는 살아있으나(기제 사용 확인) trainer 지표는 <b>off ≥ on(+0.24~0.74)</b> = 조기 신호 비우호적. 최종 판정 = 완주 legal Δ(on−off) per-condition 분해: <span class="pill p-good">≥+1.5 → A 확장</span> <span class="pill p-warn">0~+1.5 → F(지배모달 마스킹) 추가</span> <span class="pill p-dead">≤0 균일 → B 재프레이밍</span></p>
+</div>
+
+<h2>2. 소거-증명 체인 — 분석 노벨티 (성능과 무관하게 확정된 자산) <span class="pill p-good">완결</span></h2>
+<div class="card good">
+<p class="sub">"융합을 어떻게 고칠까"가 아니라 <b>"무엇이 안 되는지를 체계적으로 닫은"</b> 체인 — 리뷰어가 "왜 이 구조여야 하나"를 물을 때의 답이자, SOTA-독립 accept 축(분석 기여).</p>
+<div class="scroll"><table>
+<thead><tr><th>단계</th><th>실험</th><th>결과</th></tr></thead>
+<tbody>
+<tr><td>여지 존재?</td><td>픽셀별 모달-부분집합 <b>오라클</b>(GT 치팅 상계)</td><td><b>+8.5 실재</b>, 16~64px 블록에서도 +2~4.6 = 공간응집 (전역 drop-modality ≈0과 대비 → "전역 잉여 ∧ 국소 상보" 분해)</td></tr>
+<tr><td>성격은?</td><td>독립성 널 + 오차상관 분석</td><td>여지가 <b>anti-consensus</b> — 다수 모달이 함께 틀린 곳에서 소수 하나가 옳음</td></tr>
+<tr><td>잡을 수 있나?</td><td>no-GT 라우터 3종 (다수결·합의·confidence)</td><td><b>전부 음수</b> (confidence −12.5 최악 = anti-confidence까지) → 추론-시간 선택 전면 폐쇄 (H16)</td></tr>
+<tr><td>결론</td><td>—</td><td>보완 정보는 실재하나 <b>선택 불가</b> → 인코딩-시간 결합(P51)만 남음</td></tr>
+</tbody></table></div>
+<p class="sub">+ 부수 확정: 믹서 3점 통제(xattn −2.05 / gated-MLP / mean=N2 측정 중) · 백본 스케일링 5점 곡선(S+→7B, H12) · 조건축 oracle +0.2(H4) — 전부 "적응·선택·스케일 축 소거"의 정량 증거.</p>
+</div>
+
+<h2>3. P50-MAP — 모달 정렬 사전학습 <span class="pill p-acc">finetune 중 (매칭 seed821 대조)</span></h2>
+<div class="card warn">
+<pre class="mermaid">graph LR
+  A["Places365 20만 장<br/>(RGB만 있는 일반 사진)"] --> B["pseudo-모달 생성<br/>depth 추정→pseudo-LiDAR→event proxy"]
+  B --> C["정렬 사전학습<br/>한 모달 가림→다른 모달로 복원<br/>(masked reconstruction)"]
+  C --> D["산출: 길들여진 LoRA+트렁크 가중치"]
+  D --> E["본 학습 (구조 100% 동일,<br/>출발점만 교체)"]</pre>
+<p class="sub"><b>핵심</b>: 구조는 안 바꾸고 <b>학습 출발점(초기화)</b>만 바꾼다 — 지금까지 LoRA+트렁크는 타깃 3~4천 장으로 맨땅 학습이었다. VLM 교훈("융합 모듈은 2차, 정렬 사전학습이 1차")의 센서 도메인 이식.</p>
+<ul>
+<li><span class="nov">노벨티(얇음, 정직히)</span>: 선행(OmniSegmentor 등)은 백본 전체를 사전학습 — 우리는 <b>frozen 백본 위 어댑터+트렁크만</b> 정렬. 이 조합은 미점유이나 단독 논문 기둥으론 약함 → 보조 기여 + "정보 축" 분석.</li>
+<li><b>게이트</b>: legal test − 53.57(무사전학습 매칭시드) ≥ +0.5 → 확장 / ≤0 → 폐기. P51과 직교(구조 vs 초기화)라 동시 판독 가능.</li>
+</ul>
+</div>
+
+<h2>4. 경쟁 지형 — 누가 무엇을 점유했나</h2>
+<div class="scroll"><table>
+<thead><tr><th>논문</th><th>점유한 것</th><th>우리와의 경계</th></tr></thead>
+<tbody>
+<tr><td><b>MLE-SAM</b> 2412.04220</td><td>frozen SAM + per-modal LoRA, DELIVER·MUSES·MCubeS</td><td>융합이 <b>산술 평균</b>(인코더 상호작용 없음) — P51의 정확한 대조군(N2로 동일백본 실측)</td></tr>
+<tr><td><b>CrossWeaver</b> 2604.02948</td><td>"신뢰도-인지 <b>인코더</b> cross-modal" 카테고리 (DeLiVER 64.69/MCubeS 48.76, B0)</td><td>학습 백본·full-feature — LoRA부분공간·frozen VFM은 안 함. <b>카테고리 주장 불가, 기제 차별화만 가능</b></td></tr>
+<tr><td><b>CHARM</b> 2508.03060</td><td>window cross-modal attention, 3벤치</td><td>학습 백본. "harmonization" 프레임 선점</td></tr>
+<tr><td><b>MoBaNet</b> 2603.17705 / <b>CoLA</b> 2604.03314</td><td>frozen VFM + 어댑터 인코더 상호작용 (2모달 RS / VL·AV)</td><td>3+ 동종 시각 모달 dense seg는 빈 칸 — 인용·차별화 의무</td></tr>
+<tr><td><b>MM SAM-adapter</b> 2509.10408</td><td>DELIVER SOTA 57.35 · RGB-easy/hard 분석 프로토콜</td><td>비대칭 주입은 우리 스택에서 전이 실패 실증(H14) — 역으로 우리 데이터포인트</td></tr>
+</tbody></table></div>
+
+<h2>5. 방어 전략 — 리뷰어 반론과 답</h2>
+<div class="scroll"><table>
+<thead><tr><th>반론</th><th>방어 (실행 상태)</th></tr></thead>
+<tbody>
+<tr><td>"백본이 80배 커서 이기는 것" (DINOv3-L vs B0)</td><td><b>동일백본 ablation</b>: 같은 frozen DINOv3-L에서 CMLC on/off + MLE-SAM 평균(N2 학습 중) + 필요시 CrossWeaver MIB 재구현. 백본 스케일링 5점(S+~7B)으로 "모듈 효과 vs 용량" 분리</td></tr>
+<tr><td>"LoRA 조합일 뿐" (조합≠기여)</td><td>기제 수준 격리: 결합 위치(부분공간 vs full-feature)·γ/C 관여도 실측·param-matched. + 소거 체인이 "왜 이 위치인가"를 증명</td></tr>
+<tr><td>"벤치마다 구성이 다르지 않나" (C3 on/off)</td><td>N3 <b>진단-구동 활성화</b>: class-transfer 붕괴를 자동 탐지해 켜는 원칙적 스위치로 재설계 — 3벤치(DELIVER有/MUSES無/MCubeS 검증 중)에서 진단↔효과 일치 증명</td></tr>
+<tr><td>"SOTA 아님"</td><td>정직 보고(n=5 mean±std — 대다수 경쟁자는 단일런)를 rigor로 전환 + SOTA-독립 accept 축(§2 분석) + 3벤치 일반성(MCubeS 진입)</td></tr>
+</tbody></table></div>
+
+<h2>6. 현재 판정 대기 (이 문서를 바꿀 결과들)</h2>
+<ul>
+<li><b>P51 페어1 legal Δ 3층 분해</b> (임박) — §1의 운명: A(확장) / F(마스킹 추가) / B(재프레이밍)</li>
+<li><b>P50 finetune Δ</b> vs 53.57 — §3의 운명</li>
+<li><b>N2 mean-fusion</b> — 믹서 3점 스윕 완성(§2 보강)</li>
+<li><b>N1 MUSES 시드 / 시드 n=5</b> — 정직 보고 통계 완성</li>
+<li><b>N4 MCubeS</b> — 3벤치 일반성 + N3 검증점</li>
+</ul>
+
+<footer>원본 = repo <span class="mono">.claude_logs/meta/novelty-map.html</span> (develop 추적) · 수치 출처 = <span class="mono">hypothesis-ledger.md</span>·분석 문서(이 문서는 파생물) · 자매 문서 = 상황판(MemorySAM 작업 현황 artifact)</footer>
+</div>
