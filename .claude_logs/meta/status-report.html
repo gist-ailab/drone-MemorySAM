@@ -89,23 +89,23 @@
 <header>
   <p class="eyebrow">drone-MemorySAM · living status board</p>
   <h1>MemorySAM 작업 현황</h1>
-  <p class="stamp">최종 갱신 <b>2026-08-17 (v9 — P47-D1 공식 test 78.790 폐기 판정 · P50-MAP pseudo-모달 생성 가동 · cross-attn A/B 대기)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
+  <p class="stamp">최종 갱신 <b>2026-08-23 (v10 — P51-CMLC 인코딩-시간 결합 프로브 가동(γ 살아있음) · DELIVER 근SOTA 주장 시드분산으로 철회 · CrossWeaver 선행 검증)</b> · 근거 = repo <span class="mono">.claude_logs/</span> 실측 기록만 · legal 프로토콜(val-best/final-iter, test-best 금지)</p>
 
   <div class="strip">
-    <div class="vcard t-good">
-      <div class="k">논문 트랙</div>
-      <div class="v">RA-L 확정 — 리라이트가 유일한 임계 경로</div>
-      <div class="d">성능 축 전 경로 판정 종결(08-16). 확정 자산: DELIVER 56.99(−0.36)·MUSES 79.788(융합계보 1위)·원장 H1~H15</div>
-    </div>
     <div class="vcard t-warn">
-      <div class="k">DELIVER</div>
-      <div class="v">−0.16 / −0.36 (근SOTA)</div>
-      <div class="d">격차 &lt; 런 편차. 구 SOTA(DGFusion)는 no-tradeoff 상회</div>
+      <div class="k">차기 아키텍처</div>
+      <div class="v">P51-CMLC 프로브 진행 (γ 살아있음)</div>
+      <div class="d">선택 축 종결(H16) → 인코딩-시간 cross-modal 결합. hybrid: 결합 단독 이득이면 A확장 / 무익이면 B재프레이밍. 완주 Δ ~1.2일</div>
     </div>
     <div class="vcard t-dead">
+      <div class="k">DELIVER</div>
+      <div class="v">54.44 ± 2.21 (근SOTA 철회)</div>
+      <div class="d">3-seed 진짜분산 실측: best 56.99=3점 최댓값, mean −2.9 vs SOTA. 단일런 헤드라인 불가(H18)</div>
+    </div>
+    <div class="vcard t-warn">
       <div class="k">MUSES</div>
-      <div class="v">−2.60 (vs camera-only)</div>
-      <div class="d">융합계보 1위 · 포지셔닝 전환 확정</div>
+      <div class="v">79.788 (융합계보 1위)</div>
+      <div class="d">published 1위 MM-SA 81.07 −1.28 · 단일제출(시드분산 미측정, 동일 리스크)</div>
     </div>
   </div>
 </header>
@@ -115,23 +115,26 @@
   <p class="sub">위 = 지금 검증 중인 차기 구조 · 아래 = 확정 실적을 가진 현행 최고 모델</p>
 
   <div class="vcard t-warn" style="margin-bottom:14px">
-    <div class="k">실험 중 · P49.1-AIR (비대칭 주입 — 차기 후보) <span class="pill p-acc">yeon 3×3090 · ep30 게이트 대기</span></div>
+    <div class="k">실험 중 · P51-CMLC (Cross-modal LoRA Coupling — 차기 아키텍처) <span class="pill p-acc">hpca100 A100 + jarvis · on/off 매칭 페어 ×2</span></div>
     <div class="d" style="margin-top:8px">
       <pre class="mermaid">graph LR
-  RGB[RGB 입력] --> VIT["DINOv3-L 24층<br/>부분 fine-tune · LLRD 0.9<br/>(주경로 — init 시 identity)"]
-  AUX["depth / event / lidar"] --> CNN["ConvNeXt-S ×3<br/>(모달별 CNN 인코더)"]
-  CNN -->|"Injector: γ-게이트 cross-attn<br/>4블록 경계 · γ init 0.1"| VIT
-  VIT -->|Extractor| PYR["멀티스케일 피라미드<br/>(γ_pyr 게이트)"]
-  VIT --> PYR
-  PYR --> HEAD["FPN + 픽셀 헤드<br/>+ M2F-lite 보조손실(deep-sup)"]
+  IN["RGB + depth/event/lidar"] --> LORA["frozen DINOv3-L 24층<br/>+ 모달별 LoRA (Q/V, r16)"]
+  LORA -->|"block 6·12·18 경계"| CMLC["CMLC 결합<br/>z̃_m = z_m + Σ γ·C·z_k<br/>(저랭크 r=16 부분공간)"]
+  CMLC -->|"결합된 토큰이<br/>다음 block 입력 = mid-encoder"| LORA
+  LORA --> TRUNK["gated-MLP 융합 트렁크<br/>+ VICReg"]
+  TRUNK --> HEAD["FPN + 픽셀 헤드<br/>+ M2F-lite(deep-sup)"]
   HEAD --> OUT[세그멘테이션]</pre>
-      <b>왜 이 구조인가</b>: 현 SOTA(MM SAM-adapter)의 published ablation이 우리 기본 구조(frozen+LoRA)를 최약 구성(49.77 &lt; RGB단독 53.32)으로, 비대칭 주입을 +7.4로 실증 — 그리고 그들이 진단한 병리("대칭 융합이 easy 픽셀에서 RGB 오염")가 우리 원장에 3회 독립 기록돼 있음. 학습 파라미터 ≈0.5B(백본 304M + aux 150M), @768 학습(24GB 실측 19.8GB).<br><br>
-      <b>실험 결과 지금까지</b>:
-      <table style="min-width:0;margin-top:6px"><thead><tr><th>버전</th><th>결과</th><th>판정</th></tr></thead><tbody>
-      <tr><td class="n">P49 v1 (γ=0)</td><td class="n">ep54: γ 0.0011→0.0006 정체 · val 63.83@50</td><td><span class="pill p-dead">게이트① 중단</span> zero-init 5번째 사망 — 강한 RGB가 train 자족 → γ 압력 부재(원장 H13). MM-SA(약한 SAM RGB)와의 차이 = 발견</td></tr>
-      <tr><td class="n">P49.1 (γ=0.1) DELIVER</td><td class="n">완주. 정본(val.py native-GT) test <b>55.66@768 / 56.19@1024</b> — P46 미달. 트레이너 로그 57.68은 768-리사이즈-GT 낙관 지표로 판명(채점 프로토콜 발견) · INJECT-off <b>−12.7 붕괴</b> = 주입 기제 생존</td><td><span class="pill p-dead">성능 미달 종결</span> <span class="pill p-good">기제 생존 (첫 비-흡수 주입)</span></td></tr>
-      <tr><td class="n">P49.1 MUSES (3모달·4모달)</td><td class="n">공식 val 3모달 <b>81.16</b>(현직 82.13 −0.97) · 4모달 80.83(3모달 −0.33, fog/day만 +5.1)</td><td><span class="pill p-dead">계열 종결 (08-16, §6 집행)</span> 양 벤치 패배 확정 — 회수 자산: H13·INJECT-off −12.7·radar fog/day 특이</td></tr>
+      <b>무엇을 하는 실험인가</b>: 모달별 LoRA가 만드는 저랭크 코드를 <b>인코더 block 경계(6·12·18)에서 cross-modal 결합</b>하고, 결합된 표현이 이후 block으로 계속 인코딩된다(fusion 직전 결합이 아니라 <b>mid-encoder</b> — 다운스트림 인코딩에 영향). 결합은 full-feature attention이 아니라 <b>r=16 어댑터 부분공간</b>에서(M²·r² 파라미터, +0.11M). 백본 frozen 무변경.<br><br>
+      <b>왜 이 구조인가</b>: 오라클+실현성 배터리가 <b>추론-시간 모달 "선택"을 종결(H16)</b>했다 — 보완 정보는 국소적으로 실재(+8.5)하나 anti-consensus라 라우팅/게이팅/confidence 어느 신호로도 도달 불가. 그래서 특징을 <b>선택</b>하는 대신 <b>인코딩 단계에서 결합해 생성</b>한다.<br><br>
+      <b>기존 대비 무엇이 다른가</b>:
+      <table style="min-width:0;margin-top:6px"><thead><tr><th>대상</th><th>그들/현행</th><th>P51-CMLC</th></tr></thead><tbody>
+      <tr><td class="n">현행 ReliaDINO</td><td class="n">모달별 LoRA <b>고립</b> → late gated-MLP 융합</td><td class="n">인코더 중간에서 저랭크 <b>결합</b></td></tr>
+      <tr><td class="n">MLE-SAM (2412.04220)</td><td class="n">frozen SAM + per-modal LoRA를 <b>산술 평균</b></td><td class="n">평균 대신 <b>결합</b>(= 정확한 delta)</td></tr>
+      <tr><td class="n">CrossWeaver (2604.02948, 선행)</td><td class="n">feature-space 신뢰도 MIB · <b>학습 SegFormer-B0</b></td><td class="n"><b>LoRA 부분공간</b> 결합 · <b>frozen 대형 VFM</b></td></tr>
+      <tr><td class="n">P49-AIR (우리 반증)</td><td class="n">RGB-중심 주입 → RGB가 삼킴(γ→0 death)</td><td class="n"><b>대칭</b> 저랭크 결합 (+F 마스킹은 2단계)</td></tr>
       </tbody></table>
+      <b>γ 조기 판독(ep30, hpca100 on-run)</b>: γ mean <b>0.549</b>(init 1.0, 0으로 안 죽음)·‖C‖ ratio 0.876·쌍별 분화 std 0.29 → <b>결합 살아있음</b>(P49의 γ→0 death와 명확히 다름, 기제 사용 확인). ⚠️ 단 trainer val-best 66.41@ep30이 base(~67.8) 하회·72epoch 정체 = <b>혼재 신호</b>. γ-alive는 necessary이지 sufficient 아님 — <b>성능 판정은 완주 legal Δ(on−off)</b>.<br><br>
+      <b>게이트(사전등록·하이브리드)</b>: Δ(on−off) legal DELIVER test <b>≥+1.5 → A 확장</b>(다중시드+MUSES 통일+동일백본 경쟁자 재구현) · 0~+1.5 → F(지배모달 마스킹) 추가 재프로브 · <b>≤0 → B 재프레이밍</b>(진단-구동 프레임워크 헤드라인). MUSES 비회귀 필수.
     </div>
   </div>
 
@@ -145,7 +148,7 @@
   H2 --> O2[세그멘테이션]
   PROTO["C3 prototype 대조손실<br/>(학습 전용 · 클래스축)"] -.학습 시만.-> TRUNK</pre>
       <table style="min-width:0;margin-top:6px"><thead><tr><th>벤치</th><th>구성</th><th>legal 성적</th><th>vs SOTA</th></tr></thead><tbody>
-      <tr><td>DELIVER</td><td class="n">P46 C3-only (@768 학습·@1024 평가)</td><td class="n">val <b>69.44</b> / test <b>56.99</b> · RailTrack 4.02→<b>67.69</b></td><td class="n neg">−0.16 / −0.36 (MM-SA) · 구 SOTA DGFusion은 no-tradeoff 상회</td></tr>
+      <tr><td>DELIVER</td><td class="n">P46 C3-only (@768 학습·@1024 평가) · <b>3-seed</b></td><td class="n">test <b>54.44 ± 2.21</b> (best 56.99=최댓값) · val 67.98±1.32</td><td class="n kill">mean −2.9 (MM-SA) · <b>근SOTA 철회(H18)</b> — 단일런 헤드라인 불가</td></tr>
       <tr><td>MUSES</td><td class="n">P39.1-rank 3모달 (img/lidar/event)</td><td class="n">공식 test <b>79.788</b> · day 80.2/night 76.8</td><td class="n neg">published 1위 MM-SA 81.07 대비 −1.28 · <b>융합(4모달)계보 1위</b></td></tr>
       <tr><td>MUSES 모달 해부</td><td class="n">RGB-L 2모달</td><td class="n">79.571 = 4모달과 동률</td><td class="n">event +0.22/radar −0.22 — RGB+LiDAR 이후 평탄</td></tr>
       </tbody></table>
@@ -164,7 +167,7 @@
       <tr><td><b>순수 스케일</b> — ProbeA2 백본 스케일링 (S+/B/L/H+)</td><td class="n">5점 완성: L→H+ +0.52, <b>H+→7B +0.18</b>(8×) · §⑧ 축분리도 음성(악조건 +0.28·야간 −0.57)</td><td><span class="pill p-dead">H12 완전 폐쇄 (08-12)</span> 표현력 축 소진 확정 — 5점 곡선은 논문 그림</td></tr>
     </tbody>
   </table></div>
-  <div class="note">종합: 남은 격차의 원인은 <b>배분이 아니라 정보</b>. 남은 유력 축 = <b>데이터</b>(양·품질) 또는 <b>아키텍처 신규 설계</b>. 부수 발견 — 기존 seed2/3은 시드가 안 달라진 런(3407 하드코딩), <span class="mono">seedB</span>가 첫 진짜-시드 런.</div>
+  <div class="note">종합: 남은 격차의 원인은 <b>배분이 아니라 정보</b>. → 후속(08-16~23)으로 <b>선택 축까지 종결(H16)</b>: spatial 모달 선택은 오라클 여지(+8.5)가 anti-consensus·anti-confidence라 realizable 신호로 도달 불가. 남은 유력 축 = <b>인코딩-시간 결합</b>(P51, 진행) · <b>데이터/정렬 사전학습</b>(P50, 진행). ⚠️ <b>진짜-시드 분산 실측(H18)</b>으로 DELIVER 근SOTA 주장 철회 — best 56.99는 3점 최댓값, mean 54.44±2.21.</div>
 </section>
 
 <section>
@@ -173,7 +176,7 @@
   <div class="scroll"><table>
     <thead><tr><th>벤치</th><th>우리 최선</th><th>SOTA</th><th>격차</th><th>상태</th></tr></thead>
     <tbody>
-      <tr><td>DELIVER val/test</td><td class="n">69.44 / 56.99 <span style="color:var(--muted)">(P46 C3-only, @1024 평가)</span></td><td class="n">69.60 / 57.35 (MM SAM-adapter)</td><td class="n neg">−0.16 / −0.36</td><td><span class="pill p-warn">근SOTA 정체</span></td></tr>
+      <tr><td>DELIVER test (3-seed)</td><td class="n">54.44 ± 2.21 <span style="color:var(--muted)">(best 56.99=최댓값, P46 C3-only)</span></td><td class="n">57.35 (MM SAM-adapter)</td><td class="n kill">mean −2.91</td><td><span class="pill p-dead">근SOTA 철회 (H18)</span> 진짜 시드분산</td></tr>
       <tr><td>MUSES test</td><td class="n">79.788 <span style="color:var(--muted)">(P39.1-rank seed2 3모달)</span></td><td class="n">82.39 (GtA, camera-only)</td><td class="n kill">−2.60</td><td><span class="pill p-acc">융합계보 1위</span> 79.571 &gt; DGFusion 79.5</td></tr>
       <tr><td>MUSES PQ (things)</td><td class="n">22.87</td><td class="n">59.26 (CAFuser)</td><td class="n kill">−23점대</td><td><span class="pill p-hold">비교 불가 — limitation</span></td></tr>
       <tr><td>MULTIAQUA M-score</td><td class="n">82.10 (P9/P22)</td><td class="n">—</td><td class="n">—</td><td><span class="pill p-hold">챌린지 종료 · 고정</span></td></tr>
@@ -197,8 +200,15 @@
     <div class="hcell"><span class="hid">H9</span><span class="pill p-dead">✗</span> <span class="ht">쿼리 경로 이중화 (dense 복제)</span></div>
     <div class="hcell"><span class="hid">H10</span><span class="pill p-warn">⚠️</span> <span class="ht">인스턴스 감독 — 재판정 의뢰 등재</span></div>
     <div class="hcell"><span class="hid">H11</span><span class="pill p-dead">✗</span> <span class="ht">radar 기여 (MUSES)</span></div>
-    <div class="hcell"><span class="hid">H12</span><span class="pill p-warn">⚠️</span> <span class="ht">L 초과 스케일 — 포화 근접, 7B 대기</span></div>
+    <div class="hcell"><span class="hid">H12</span><span class="pill p-dead">✗</span> <span class="ht">L 초과 스케일 (7B +0.18, 포화 확정)</span></div>
     <div class="hcell"><span class="hid">H12′</span><span class="pill p-dead">✗</span> <span class="ht">용량 정합 방어 (−8.82, 스코프 공개)</span></div>
+    <div class="hcell"><span class="hid">H13</span><span class="pill p-dead">✗</span> <span class="ht">zero-init 주입 γ 생존 (5번째 death)</span></div>
+    <div class="hcell"><span class="hid">H14</span><span class="pill p-dead">✗</span> <span class="ht">MM-SA 비대칭 주입 전이 (P49 양벤치 패)</span></div>
+    <div class="hcell"><span class="hid">H15</span><span class="pill p-dead">✗</span> <span class="ht">MIC masked consistency (유해 −1.67)</span></div>
+    <div class="hcell"><span class="hid">H16</span><span class="pill p-dead">✗</span> <span class="ht">spatial 모달 <b>선택</b> (anti-consensus·anti-confidence, 종결)</span></div>
+    <div class="hcell"><span class="hid">H17</span><span class="pill p-dead">✗</span> <span class="ht">cross-attn 트렁크 &gt; MLP (−2.05, 15.9×params)</span></div>
+    <div class="hcell"><span class="hid">H18</span><span class="pill p-dead">✗</span> <span class="ht">P46 시드 강건 (test σ2.21, 근SOTA 철회)</span></div>
+    <div class="hcell"><span class="hid">H19</span><span class="pill p-acc">⏳</span> <span class="ht">인코딩-시간 LoRA 결합 (P51, γ살아있음·Δ대기)</span></div>
   </div>
 </section>
 
@@ -233,8 +243,8 @@
       <tr><td><b>P46@1024 seedB</b><br><span class="mono" style="font-size:11px">jarvis 6,7</span></td><td>기존 seed2/3이 전부 같은 시드(3407 하드코딩)여서 참 시드 분산을 모름 → 첫 진짜-시드 런(TRAIN.SEED 신설)</td><td>분산 작음 → mean±std로 근SOTA 주장 안정화 / 분산 큼 → −0.36 격차 논의 자체가 무의미해짐(ckpt 선택 프로토콜 문제로 이동)</td><td><span class="pill p-acc">학습 중</span></td></tr>
       <tr><td><b>P47-2 UniBal</b><br><span class="mono" style="font-size:11px">A100×4 대기</span></td><td>MUSES 리더보드 모달↑=순위↓ 역상관 + 우리 4모달&lt;3모달 → modality laziness 진단, 모달별 독립 head에 동일 GT CE 직결(추론 불변)</td><td>4모달≥3모달 복원 → laziness가 원인이었다는 실증 + 융합계보 SOTA 재도전 / 실패 → RGB 본류 병목 확정, 포지셔닝 전환 최종 승인. <b>D1 폐기로 4모달 역전의 유일한 남은 레버</b></td><td><span class="pill p-hold">구현 완료</span></td></tr>
       <tr><td><b>P47-D1 LiDAR 밀도화</b><br><span class="mono" style="font-size:11px">4모달 · hpca100 완주</span></td><td>lidar 커버리지 6.5%→32.6%(DGFusion 투영 정합) — "정보 축" 데이터 품질 개선으로 4모달 역전 시도</td><td><b>공식 test 78.790 (08-17)</b> — val 82.58(4모달 역대최강, +0.23)인데 test는 4모달 base 79.571 대비 <b>−0.78</b>. val→test 낙차 3.79(계보 ~2.8 +1.0) = <b>val 과적합</b>. "MUSES에서 val 단독 이득으로 제출 금지" 3회째 확증</td><td><span class="pill p-dead">폐기 (제출 #10)</span></td></tr>
-      <tr><td><b>P50-MAP 정렬 사전학습</b><br><span class="mono" style="font-size:11px">yeon 1-4 생성 중</span></td><td>LoRA+트렁크가 타깃 3~4천 장 from-scratch(사전학습 0) — VLM 교훈("융합 모듈 2차, 정렬 1차")+OmniSegmentor(+5.1이 사전학습만으로) → Places365 200k를 pseudo-모달(depth/lidar/event)로 렌더링해 정렬 사전학습 후 파인튠. 추론 그래프 무변경</td><td>프로브 게이트: base(56.99 레시피) 대비 test ≥+0.5 → 본 확장 / &lt;0 → 폐기. 성공 시 = "센서 도메인 stage-1 정렬" 노벨티(frozen foundation 위 어댑터만 정렬은 미점유) / 실패 → 데이터 축도 소거, 서사 완결</td><td><span class="pill p-acc">pseudo-모달 생성 중 (ETA ~3.4h, 파일럿 PASS)</span></td></tr>
-      <tr><td><b>Cross-attn 트렁크 A/B</b><br><span class="mono" style="font-size:11px">시드런 후 jarvis</span></td><td>user 가설 "MLP 합산 대신 모달간 cross-attention이어야 하지 않나" 통제 검증 — XAttnTrunk(대칭 모달간 attn, LayerScale 1.0) vs gated-MLP, 나머지 byte-동일</td><td>게이트 ±0.3: xattn 우세 → 트렁크 교체 + GeminiFusion 계열 대비 포지셔닝 / 동급·열세 → "connector 선택은 2차"(MM1) 실측 확증으로 P50 근거 강화</td><td><span class="pill p-hold">구현·스모크 완료 (대기)</span></td></tr>
+      <tr><td><b>P50-MAP 정렬 사전학습</b><br><span class="mono" style="font-size:11px">yeon 1-4 · 사전학습 중</span></td><td>LoRA+트렁크가 타깃 3~4천 장 from-scratch(사전학습 0) — VLM 교훈("융합 모듈 2차, 정렬 1차")+OmniSegmentor(+5.1이 사전학습만으로) → Places365 200k pseudo-모달(생성 완료, 실패0)로 정렬 사전학습(MultiMAE식 cross-modal recon) 후 파인튠. 추론 그래프 무변경 = P51과 직교(초기화 축)</td><td>프로브 게이트: base(56.99 레시피) 대비 test ≥+0.5 → 본 확장 / &lt;0 → 폐기. 성공 시 = "센서 도메인 stage-1 정렬" 노벨티(frozen foundation 위 어댑터만 정렬은 미점유) / 실패 → 데이터 축도 소거, 서사 완결</td><td><span class="pill p-acc">사전학습 중 (ep~4/30, loss plateau 시 조기 파인튠)</span></td></tr>
+      <tr><td><b>Cross-attn 트렁크 A/B</b><br><span class="mono" style="font-size:11px">완주·판정</span></td><td>user 가설 "MLP 합산 대신 모달간 cross-attention이어야 하지 않나" 통제 검증 — XAttnTrunk(대칭 모달간 attn, LayerScale 1.0) vs gated-MLP, 나머지 byte-동일</td><td><b>legal @1024 54.94 vs 56.99 = −2.05</b> → "MLP 우위 재확인"(파라미터 15.9×로도 패배). user 가설 반증, 믹서 비병목 실증(H17). connector 2차(MM1) 확증</td><td><span class="pill p-dead">판정 종결 (−2.05, H17)</span></td></tr>
       <tr><td><b>H10 재판정</b><br><span class="mono" style="font-size:11px">4090 1~2장 ~2일</span></td><td>things PQ 상한 원인 규명(D2) — 인스턴스 감독 재판정</td><td>취소 사유: PQ는 비경쟁축(DGFusion 등 경쟁 논문 전부 mIoU 경쟁·PQ 미리포트) → 논문 기여로 연결 안 됨. H10은 원장에 미결·동결</td><td><span class="pill p-dead">취소 (08-10 user)</span></td></tr>
       <tr><td><b>RGB-D fair-eval</b><br><span class="mono" style="font-size:11px">1 GPU · 학습 0</span></td><td>SOTA 최고 구성(RGB-D)과 동일 구성 직접 비교</td><td><b>val 65.79 / test 54.14 — 열세 확정</b>(SOTA RGB-D −3.21, 우리 4모달 −2.85). "2모달 충분" 기각. 발견: event/lidar 기여 = 추론 무기여·<b>학습 유기여</b>(drop Δ≈0인데 학습부터 빼면 −2.85) — DELIVER는 4모달 필요, MUSES는 2모달 동급(벤치별 모달 요구 상이)</td><td><span class="pill p-good">완료 판정</span></td></tr>
       <tr><td><b>MUSES RGB-L</b><br><span class="mono" style="font-size:11px">~1일</span></td><td>상위권 실구성(MM SAM-adapter RGB-L 81.07)과 직접 비교 — 3&gt;4모달 추세가 2모달까지</td><td><b>공식 test 79.571 — 4모달과 동률, 3모달 −0.217</b>. 모달 한계기여: event +0.22 / radar −0.22 = RGB+LiDAR 이후 평탄. fog_night 69.819(event 없이도 동급). DELIVER(2모달 −2.85 붕괴)와 정반대 → 벤치별 모달 요구 상이 양방향 실측 완성</td><td><span class="pill p-good">공식 test 확정 (제출 #9)</span></td></tr>
@@ -246,10 +256,10 @@
 <section>
   <h2>논문 트랙 (RA-L)</h2>
   <ul class="tight">
-    <li><b>서사</b>: ①조건×모달 상호작용 실재 → ②적응 기제 전 수준 실패 + oracle 상계 → ③작동하는 것은 표현력·학습 신호(단 L 근방 포화) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제). <b>실패 이력이 주장의 증거가 되는 구조.</b></li>
-    <li><b>임계 경로</b>: ReliaDINO 초안(볼트 <span class="mono">_paper_submission/</span>) — RBMA 중심 서사가 반증된 상태라 <b>재중심화 리라이트</b>가 최우선. 슬롯 3(MUSES 제출)·5(multi-seed)는 이미 충족.</li>
-    <li><b>필요 ablation</b>: RGB-D fair-eval · MUSES RGB-L · C2 순기여 · 시드 분산(seedB 계열).</li>
-    <li><b>재현성 규약</b>: test-best 금지 · train/eval 해상도 mismatch 명시 · 3-seed mean±std.</li>
+    <li><b>서사(현재)</b>: ①조건×모달 상호작용 실재 → ②적응·선택 기제 전 수준 실패(oracle 상계 + H16 선택 종결: 보완정보는 anti-consensus라 선택 불가) → ③따라서 <b>인코딩-시간 결합(P51)</b>/정렬 사전학습(P50)이 유일 열린 축 → ④ P51 결과로 분기: <b>A</b>(결합 순이득 → 방법+분석) 또는 <b>B</b>(진단-구동 프레임워크 헤드라인). <b>소거 증명이 방법의 동기가 되는 구조.</b></li>
+    <li><b>accept 전략</b>: SOTA는 비현실(mean −2.9, 백본 80× 공정성). → <b>차별화(N2 LoRA-부분공간 결합·frozen VFM)</b> + <b>동일백본 ablation(MLE-SAM 평균·CrossWeaver MIB 재구현)</b> + SOTA-독립 분석축(anti-consensus·day-night). CrossWeaver(2604.02948)는 4개월 선행이라 "먼저 던지기"·"숫자 우위"는 불가 — 오직 차별화.</li>
+    <li><b>진행 중 3트랙</b>: P51-CMLC(아키텍처, γ 살아있음·Δ ~1.2일) · P50-MAP(초기화 정렬, ~4일) · 시드 n=5(baseline 분산, ~15h). MCubeS = 3번째 검증판(로더·데이터 보유, 아키텍처 확정 후).</li>
+    <li><b>재현성 규약</b>: test-best 금지 · train/eval 해상도 mismatch 명시 · <b>3-seed mean±std 필수(H18)</b> · MUSES 단일제출 시드 리스크 명시.</li>
   </ul>
 </section>
 
