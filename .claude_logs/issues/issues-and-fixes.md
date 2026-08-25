@@ -17,6 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-033** | 🟠 **원인 미규명(우회 확정)** | **val.py legal eval이 EVAL.BATCH_SIZE에 의존** — BS4가 base top1 val@1024를 66.88로 산출(BS1 정본 69.44 대비 **−2.56**). N6 가드체크로 발견(2026-08-25), 크래시 없이 수치만 오염. 우회 = **legal 수치는 전부 BS1 고정**(정본 프로토콜 명문화). 원인 후보: 배치 내 padding/attention 의존·batch-축 오염 모듈(표면 조사에선 미발견). ⚠️ 과거 legal 수치는 전부 BS1 config 사용으로 오염 없음(확인됨) |
 | **ISSUE-032** | ✅ **수정**(2026-08-06) | `val.py` `evaluate()`(val 모드 함수)에 `@torch.no_grad()` 누락 — ViT-L 전체 autograd 그래프 유지로 **iteration 1에서 100% OOM**(ckpt 종류 무관). `run_test_inference()`(test 모드)는 정상 데코레이션돼 있어 test만 성공. 커밋 c0e413c로 1줄 수정. 상세: 하단 ISSUE-032 |
 | **ISSUE-030** | ✅ **수정(2026-08-06)** | `train_reliadino.py` `last_checkpoint.pth`+topK best 저장이 임시파일+rename 없이 최종 경로에 직접 덮어써 **비원자적**이었음 — 저장 도중 사망(preempt/OOM/SIGKILL) 시 파일 손상으로 AUTO_RESUME 실패 위험. `_atomic_save`(tmp+os.replace) 헬퍼로 양쪽 다 수정, 스모크 3건 통과(커밋 0bc65f5). 상세: 하단 ISSUE-030 |
 | **ISSUE-031** | 🟡 **프로세스 결함, 재발방지 적용(2026-08-04)** | hpca100 P47-1 `BATCH_SIZE:1`이 A100(40GB) 기준 재프로파일 없이 3090/4090용 값 그대로 사용됨 — 실측 rank당 24.6GB/40GB=60%(정책 목표 85~90% 미달). 이 런은 재기동 위험·1-변수 순수성 이유로 변경 안 함, **이후 A100 신규 기동 전 `torch.cuda.max_memory_allocated()` 프로파일 필수화**로 재발방지. 상세: 하단 ISSUE-031 |
