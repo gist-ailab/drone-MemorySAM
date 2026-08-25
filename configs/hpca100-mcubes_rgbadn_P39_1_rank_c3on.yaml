@@ -1,0 +1,204 @@
+# ═══ [N4b] MCubeS C3-on 후속런 — N4(off, yeon, val-best 57.93@ep140)와 매칭 대조 ═══
+# 목적: RailTrack형 격차(rubber 18.80, published 26.5~29.7 대비 −10.9) 회복 여부로
+#   진단-구동 C3 활성화 서사를 검증(fable 사전등록, 2026-08-25).
+#   P1(기제): C3-on 시 rubber ≥+5 회복. P2(총량): overall Δ(C3on−off) ∈ [−0.5, +1.5]
+#   (MUSES −0.77과 DELIVER +1.4~1.7 사이, 붕괴강도 단조성).
+# MODEL 블록은 N4(configs/yeon-mcubes_rgbadn_P39_1_rank.yaml)와 완전히 동일 —
+#   유일 차이 = MODEL.P46.C3_PROTO(on, λ0.1, DELIVER C3-only 세팅과 동일) + TRAIN.SEED(3407, N4와 매칭).
+# 로더: semseg/datasets/mcubes.py(MCubeS, 20 classes).
+# ⚠️ MCubeS.__getitem__은 transform 인자를 쓰지 않고 자체 aug 파이프라인 사용(N4와 동일 caveat).
+# 데이터: hub → hpca100 /home/jovyan/SSDb/jemo_maeng/dset/MCubeS(tar 경유 스테이징, md5 검증 완료 2026-08-25).
+#   torchrun --standalone --nproc_per_node=2 train_reliadino.py --cfg <this>
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_mcubes_rgbadn_P39_1_rank_c3on'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20) — off, ablation 분리
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  # [P36] per-class router 유지 (P38-DELIVER와 동일 — M2F 대비 1-변수 비교)
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }   # P37a 헤드 off
+  CLASS_TOKEN: { ENABLE: false }   # P37b 헤드 off
+
+  # [P38] MaskQueryLite (Mask2Former-lite) — 헤드
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256                   # query dim_t (params ≈5.5M)
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0                   # zero-init residual (do not change)
+    W_CLS           : 2.0                   # M2F 표준 가중 2/5/5
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544                 # point-sampled mask losses (M2F 관행)
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5                   # aux['m2f_loss'] 전역 스케일
+    SRC             : modal                 # [P39-V2] query가 per-modal 토큰 합집합을 attend (fused rank-병목 우회)
+    ANCHORED        : true                  # [P39-V3] K개 클래스 앵커 query (고정 할당) + 나머지 Hungarian
+    POINT_QUOTA     : 256                   # [P39-V4] GT 영역별 최소 포인트 쿼터 (thin-mask 기아 수정)
+
+
+  # [P39] Dual-Path Compete (decisions/2026-07-20-p39-dual-path-compete-proposal.md)
+  P39:
+    TRUNK_EXP       : true                  # V1: fused += Σ P_m(f_m) (rank 확장, 주 경로)
+    ARBITER         : true                  # V5: per-class Λ 중재 + path dropout 경쟁 (β 잔차 대체)
+    PATH_DROPOUT_P  : 0.25                  # dense-only / query-only 각 25%
+    ROUTER_CE_W     : 0.4                   # router 직접 CE 감독 가중
+    TRUNK_MODE      : gated_mlp             # [P39.1-R1] 선형→LN·MLP·tanh(γ) 게이트 (저rank 지름길 제거, γ=0.1 init — 0이면 gradient가 안 흘러 사장됨)
+    TRUNK_HIDDEN    : 256
+    VICREG:                                 # [P39.1-R2] var+cov rank 복원 (per-modal 토큰, lidar 강조)
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [N4b] class-transfer recovery — C3만 on (DELIVER C3-only λ0.1과 동일 세팅) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+    C2_MCC:
+      ENABLE        : false
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+    C3_PROTO:
+      ENABLE        : true       # [N4b] 이 파일 전체에서 N4(off)와 유일하게 다른 축 (+TRAIN.SEED는 매칭용, 값은 N4와 동일)
+      FEATURE       : mfeat
+      LAMBDA        : 0.1
+      TEMPERATURE   : 0.1
+      EMA           : 0.999
+      PIXELS        : 4096
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MCubeS
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/MCubeS/multimodal_dataset'
+  IGNORE_LABEL  : 255
+  MODALS        : ['image', 'aolp', 'dolp', 'nir']   # MCubeS 내부 dict 키와 정확히 일치해야 함
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : false   # MCubeS 로더는 transform 인자를 쓰지 않으므로 이 블록 전체가 inert
+
+TRAIN:
+  SEED          : 3407              # [N4b 매칭] N4(off)가 실제 사용한 기본 시드와 동일(로그로 확인: fix_seeds(3407))
+  IMAGE_SIZE    : [1024, 1024]      # 실제로는 MCubeS 로더가 자체 1024 crop을 강제(위 주석 참조) — 문서화 목적
+  BATCH_SIZE    : 1                 # yeon 3090 24GB, MUSES@1024 실측(BS1~12GB) 기준 보수적 시작
+                                    # accum=ceil(16/(BS×world))가 eff-batch 자동보정 → BS1×2×accum8=16
+  EPOCHS        : 200                # [N4] DELIVER 대비 데이터 규모 작음(train 302장) 감안
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/MCubeS/multimodal_dataset'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
