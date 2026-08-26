@@ -26,7 +26,7 @@ moved: 2026-07-08
 
 | 벤치 | 우리 최선 | vs SOTA | 판정 |
 |---|---|---|---|
-| DELIVER | **P46 C3-only 3-seed(@768학습/@1024평가, 검증됨 2026-08-20)** val **67.98±1.32** / test **54.44±2.21** (base 69.44/56.99, seed815 66.88/53.25, seed816 67.62/53.08) | mean 기준 MM-SA 대비 **−2.91** / DGFusion −2.27 | 🔴 **"사정권" 주장 반증** — 참 시드 std(test 2.21)가 격차보다 큼, base=3점 중 최댓값. 단일런 56.99를 헤드라인 불가. [experiments/analysis/2026-08-20-p46-seed-variance-verdict.md] |
+| DELIVER | **P46 C3-only 4-seed 정본(val.py native-GT 통일, 2026-08-26 ISSUE-033 재측정)** val **66.94±0.50** / test **53.77±0.96** (base 66.88/**55.18**, seed815 66.88/53.25, seed816 67.62/53.08, seed821 66.40/53.57) | mean 기준 MM-SA **−3.58** / best −2.17 | 🔴 **구 69.44/56.99는 낙관 드라이버(ERC 리사이즈-GT) 산 — 정본 아님**. H18 재판정: base outlier +3.7→+1.9(도구 혼용이 과장), 분산은 작아짐(σ0.96). N6 재선택 결과로 최종 확정 |
 | MUSES | **P39.1-rank seed2 3모달** Codabench test **79.788** (val 82.13; day 80.246/night 76.818, fog_night 69.610 최악) | GtA(camera-only) −2.60 / **융합(4모달)계보 1위**(79.571 > DGFusion 79.5) | 정면 돌파 비현실 → 포지셔닝 전환(융합계보 1위 + adverse robustness 인과 실증) |
 | MUSES PQ | things 22.87 / All 35.55 (P47-D1 ep172) | SOTA(CAFuser) 59.26 −23점대 | PQ 축 비교 불가 — limitation 절 소재 |
 | Det | D1-recovered(ViT-L) AP50 **0.9321**@ep6 | 목표 0.85 **+0.08** | 종결 국면 |
