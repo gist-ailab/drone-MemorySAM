@@ -51,7 +51,7 @@
 <h1>모델 노벨티 맵 — 무엇이 새로운가</h1>
 <p class="stamp">2026-08-24 기준 · 논문(accept) 관점에서 "우리가 주장할 수 있는 것 / 없는 것"을 구분한 단일 문서 · 근거 = 원장(H1~H19)·딥리서치 3축·경쟁 논문 검증</p>
 
-<div class="note"><b>한 장 요약</b> — 베이스 구조(frozen DINOv3 + 모달별 LoRA)는 <b>노벨티가 아니다</b>(선행 점유). 방어 가능한 신규 주장은 셋: ① <span class="nov">P51-CMLC</span> = LoRA 부분공간 안에서의 인코딩-시간 cross-modal 결합(미점유 교집합), ② <span class="nov">소거-증명 체인</span> = "선택으로는 안 된다"를 오라클+실현성 배터리로 증명한 분석(우리 고유), ③ <span class="nov">P50-MAP</span> = frozen 백본 위 어댑터만 정렬 사전학습(얇지만 미점유). 셋 다 <b>성능 게이트 통과가 전제</b>이며 현재 검증 중이다.</div>
+<div class="note"><b>한 장 요약 (2026-08-26 P51 판정 반영)</b> — 베이스 구조(frozen DINOv3 + 모달별 LoRA)는 <b>노벨티가 아니다</b>(선행 점유). <b>아키텍처 모듈 축은 P51 반증으로 종결</b>(융합-기제 4갈래 전체 소거 — 선택·attention·평균·저랭크 결합). 살아있는 노벨티 주장: ① <span class="nov">진단-구동 활성화</span> = 붕괴 강도를 진단해 처방(C3)을 자동 배치하는 방법론(3벤치 dose-response 검증 중), ② <span class="nov">소거-증명 체인</span> = 4갈래 폐쇄의 통제 실측(우리 고유·시드-강건), ③ <span class="nov">P50-MAP</span> = frozen 백본 위 어댑터만 정렬 사전학습(게이트 검증 중), ④ <span class="nov">통일 레시피 일반성</span> = MCubeS 첫 시도 +3.28.</div>
 
 <h2>0. 베이스 구조 (ReliaDINO 계보) — 노벨티 아님, 출발점</h2>
 <pre class="mermaid">graph LR
@@ -66,8 +66,8 @@
   <li><b>약점</b>: C3가 벤치별로 on/off 다름(축-특이, H8) → "진단-구동 활성화"로 재프레이밍 필요(N3 진행).</li>
 </ul>
 
-<h2>1. P51-CMLC — 인코딩-시간 Cross-modal LoRA 결합 <span class="pill p-acc">on/off 페어 ×2 학습 중</span></h2>
-<div class="card accent">
+<h2>1. P51-CMLC — 인코딩-시간 Cross-modal LoRA 결합 <span class="pill p-dead">반증·종결 (2026-08-26, H19)</span></h2>
+<div class="card dead">
 <pre class="mermaid">graph LR
   IN["4모달 입력"] --> L1["ViT blocks 1-6<br/>(frozen + 모달별 LoRA)"]
   L1 --> C1["CMLC 결합점 ①<br/>z̃_m = z_m + Σ γ·C·z_k<br/>(r=16 부분공간, +0.11M)"]
@@ -88,7 +88,7 @@
 <li><span class="nov">② frozen 대형 VFM 위 인코더-중간 결합</span> — 이 칸은 2026년 초에야 MoBaNet(2모달 RS)·CoLA가 좁게 점유, 3+ 동종 시각 모달 주행 seg는 빈 칸</li>
 <li><span class="nov">③ 소거-증명 동기</span> — "선택은 안 된다"(§3)를 먼저 증명하고 결합을 도출한 논리 사슬 = 우리 고유 분석</li>
 </ul>
-<p class="sub"><b>현재 상태 (정직)</b>: γ는 살아있으나(기제 사용 확인) trainer 지표는 <b>off ≥ on(+0.24~0.74)</b> = 조기 신호 비우호적. 최종 판정 = 완주 legal Δ(on−off) per-condition 분해: <span class="pill p-good">≥+1.5 → A 확장</span> <span class="pill p-warn">0~+1.5 → F(지배모달 마스킹) 추가</span> <span class="pill p-dead">≤0 균일 → B 재프레이밍</span></p>
+<p class="sub"><b>최종 판정 (2026-08-26)</b>: 매칭페어 legal Δ(on−off) = <b>−0.82</b> (off 55.40 &gt; on 54.58) — per-condition은 <b>악조건일수록 유해</b>(fog −2.03·night −0.58, 유일 우세 = 최이지 sun +0.26) → F(마스킹) 구제 전제까지 반증, <b>B 재프레이밍 확정</b>. γ는 살아있었으나(0.55, 2시드 재현) 무익 = "기제 사용 ≠ 유익" 5번째 사례. 회수 자산: LoRA-부분공간 결합의 첫 통제 실측(음성) + anti-consensus 여지가 결합으로도 회수 불가라는 성격 규명 — 소거 체인(§2)에 편입.</p>
 </div>
 
 <h2>2. 소거-증명 체인 — 분석 노벨티 (성능과 무관하게 확정된 자산) <span class="pill p-good">완결</span></h2>
