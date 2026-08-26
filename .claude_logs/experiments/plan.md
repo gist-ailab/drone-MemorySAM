@@ -81,7 +81,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 ### 🔵 진행 중 (3트랙)
 | 실험 | 자원 | 다음 이벤트 |
 |---|---|---|
-| P51-CMLC on/off 페어 ×2 (#16) | hpca100 A100×4→2(user 지정 2026-08-24, GPU0,1 회수) + jarvis 5,6 | hpca100은 GPU2,3에서 순차 실행 중(on 재개→완주 후 off 재개, AUTO_RESUME 검증됨 missing=0). 완주 → legal Δ 3층 분해(overall/per-cond/per-class) = **A/F/B 분기** |
+| ~~P51-CMLC 페어1~~ (#16) | — | 🔴 **판정 종결(2026-08-26): H19 반증** — legal Δ(on−off) **−0.82**(off 55.40 > on 54.58), per-condition 악조건일수록 유해(fog −2.03·night −0.58, 유일우세 sun +0.26) → **F 기각 + B 재프레이밍 확정**. jarvis 페어2(5,6)는 완주 시 재현성 각주만. 판정 [analysis/2026-08-26-p51-cmlc-verdict-h19.md](analysis/2026-08-26-p51-cmlc-verdict-h19.md) |
 | P50-MAP finetune (seed821 매칭) (#11) | yeon 1,2 | 완주 → Δ vs 53.57, 게이트 ≥+0.5 |
 | 시드 n=5 (#3) | jarvis (822 마무리) | 완주 → n=5 mean±std 확정 → jarvis GPU 해방 |
 
