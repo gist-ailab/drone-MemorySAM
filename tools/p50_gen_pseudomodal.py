@@ -29,10 +29,13 @@
     <out>/meta.json           도구·버전·파라미터·실제 사용된 depth 백엔드
 
 [P50-EXT] MCubeS 팔용 추가 출력 (--modals aolp,dolp,nir) — 원자 파일 규격
-(semseg/datasets/mcubes.py 로더가 읽는 형태. 3채널로 미리 합치지 않는다 — 로더가 stack):
-    <out>/aolp_sin/<stem>.npy  H×W float32 ∈ [-1,1] (편광각 sin(2θ))
-    <out>/aolp_cos/<stem>.npy  H×W float32 ∈ [-1,1] (편광각 cos(2θ))
-    <out>/dolp/<stem>.npy      H×W float32 ∈ [0,1]
+(3채널로 미리 합치지 않는다 — pretrain 로더가 stack). float32 .npy 포맷은
+200k 기준 ~450GB 로 디스크를 초과해 **uint8 PNG 양자화**로 전면 교체했다:
+    <out>/aolp_sin/<stem>.png  H×W uint8 단채널 — u8 = round((v+1)/2·255),
+                              역변환 v = u8/255·2−1 (오차 ≤ 1/255)
+    <out>/aolp_cos/<stem>.png  H×W uint8 단채널 (동일 양자화, v = cos(2θ))
+    <out>/dolp/<stem>.png      H×W uint8 단채널 — u8 = round(v·255),
+                              역변환 v = u8/255 (오차 ≤ 1/255)
     <out>/nir/<stem>.png       H×W uint8 (8bit [0,1] 단채널)
 
 🔴 event 는 **프록시**다. N-ImageNet 을 받을 수 없는 환경 전제라, 단일 이미지의
@@ -63,7 +66,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-TOOL_VERSION = '1.1.0'
+TOOL_VERSION = '1.2.0'
 MODAL_DIRS = ('rgb', 'depth', 'lidar', 'event')
 # [P50-EXT] --modals 로 선택 가능한 모달 (rgb 는 코퍼스 기저라 항상 생성)
 SELECTABLE_MODALS = ('depth', 'lidar', 'event', 'aolp', 'dolp', 'nir')
@@ -442,6 +445,21 @@ def render_nir_proxy(rgb_u8: np.ndarray) -> np.ndarray:
     return np.clip(nir * 255.0 + 0.5, 0, 255).astype(np.uint8)
 
 
+def quantize_signed_unit(v: np.ndarray) -> np.ndarray:
+    """[−1,1] float → uint8 단채널: u8 = round((v+1)/2·255).
+
+    역변환은 pretrain 로더(p50_pretrain_align.py)의 u8/255·2−1 — 라운드트립
+    오차 ≤ 1/255(양자화 반 스텝)."""
+    return np.clip((v + 1.0) * 0.5 * 255.0 + 0.5, 0, 255).astype(np.uint8)
+
+
+def quantize_unit(v: np.ndarray) -> np.ndarray:
+    """[0,1] float → uint8 단채널: u8 = round(v·255).
+
+    역변환 u8/255 — 라운드트립 오차 ≤ 1/510."""
+    return np.clip(v * 255.0 + 0.5, 0, 255).astype(np.uint8)
+
+
 def depth_from_cached_hha(path: Path) -> Optional[np.ndarray]:
     """증분 모드용 — 기존 생성 depth(HHA PNG)에서 정규화 depth D 를 역복환한다.
 
@@ -525,15 +543,13 @@ def modal_dirs_of(modals: Sequence[str]) -> List[str]:
 
 
 def modal_outputs(out_root: Path, stem: str, modals: Sequence[str]) -> dict:
-    """stem 의 산출 파일 목록 — rgb(코퍼스 기저, 항상) + 선택 모달.
-    확장자는 MCubeS 로더 원자 파일 규격: aolp/dolp = .npy, 나머지 = .png."""
+    """stem 의 산출 파일 목록 — rgb(코퍼스 기저, 항상) + 선택 모달. 전 모달 .png
+    (aolp/dolp 는 uint8 양자화 단채널 — 상단 포맷 표 참조)."""
     out: dict = {'rgb': out_root / 'rgb' / f"{stem}.png"}
     for m in modals:
         if m == 'aolp':
-            out['aolp_sin'] = out_root / 'aolp_sin' / f"{stem}.npy"
-            out['aolp_cos'] = out_root / 'aolp_cos' / f"{stem}.npy"
-        elif m == 'dolp':
-            out['dolp'] = out_root / 'dolp' / f"{stem}.npy"
+            out['aolp_sin'] = out_root / 'aolp_sin' / f"{stem}.png"
+            out['aolp_cos'] = out_root / 'aolp_cos' / f"{stem}.png"
         else:
             out[m] = out_root / m / f"{stem}.png"
     return out
@@ -605,10 +621,10 @@ def worker(rank: int, args, files: List[str], in_root: str, ret: Optional[dict] 
                 if 'aolp' in sel and not (paths['aolp_sin'].is_file()
                                           and paths['aolp_cos'].is_file()):
                     a_sin, a_cos = render_aolp_proxy(n)
-                    np.save(paths['aolp_sin'], a_sin.astype(np.float32))
-                    np.save(paths['aolp_cos'], a_cos.astype(np.float32))
+                    Image.fromarray(quantize_signed_unit(a_sin)).save(paths['aolp_sin'])
+                    Image.fromarray(quantize_signed_unit(a_cos)).save(paths['aolp_cos'])
                 if 'dolp' in sel and not paths['dolp'].is_file():
-                    np.save(paths['dolp'], render_dolp_proxy(n).astype(np.float32))
+                    Image.fromarray(quantize_unit(render_dolp_proxy(n))).save(paths['dolp'])
 
     def flush():
         nonlocal done, failed, batch
@@ -796,8 +812,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             else '캐시 depth/<stem>.png (HHA ch0 역변환, 8bit 양자화 오차 포함)')
     if 'aolp' in sel:
         mod_meta['aolp'] = {
-            'format': 'float32 .npy H×W — aolp_sin / aolp_cos 원자 2파일 '
+            'format': 'uint8 PNG H×W 단채널 — aolp_sin / aolp_cos 원자 2파일 '
                       '(로더가 [sin,cos,sin] 3ch 로 stack — mcubes.py 관행)',
+            'quantization': 'u8 = round((v+1)/2·255), 역변환 v = u8/255·2−1 '
+                            '(해상도 2/255, 라운드트립 오차 ≤ 1/255)',
             'method': 'PROXY: 법선 n = normalize([-∂D/∂x, -∂D/∂y, 1]) (Sobel 3×3) 의 '
                       '방위각과 직교 관행 θ = atan2(n_y, n_x) + π/2 → sin(2θ), cos(2θ) '
                       '(편광각은 π 주기 → 2θ 인코딩, MCubeS 원본 sin/cos 분리 저장 관행)',
@@ -805,7 +823,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             '🔴 proxy': 'depth 유도 기하 proxy — 실측 편광 아님. 논문/문서에 proxy 로 명기할 것'}
     if 'dolp' in sel:
         mod_meta['dolp'] = {
-            'format': 'float32 .npy H×W [0,1]',
+            'format': 'uint8 PNG H×W 단채널 [0,1]',
+            'quantization': 'u8 = round(v·255), 역변환 v = u8/255 '
+                            '(해상도 1/255, 라운드트립 오차 ≤ 1/510)',
             'method': f'PROXY: 천정각 z = arccos(n_z) → Fresnel 근사(굴절률 1.5, '
                       f'specular-지배 가정) dolp = sin²z·{DOLP_FRESNEL_COEF} / '
                       f'(2 − sin²z), [0,1] 클립',

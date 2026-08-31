@@ -6,7 +6,9 @@
 
 검사 항목 (지시문 §6 대응)
   ① 기존 4모달 경로 byte-동일 — --modals 기본값 ≡ 'depth,lidar,event' 명시 런
-  ② aolp_sin/cos 값역 [-1,1] · dolp [0,1] · nir PNG 저장/재로드 shape 일치
+  ② aolp_sin/cos·dolp = uint8 PNG 단채널 — PNG 경유 역양자화 값역([-1,1]/[0,1])·
+     nir PNG 저장/재로드 shape 일치 + 라운드트립: 생성 시 float 원값 vs PNG 재로드
+     복원값의 |Δ|max ≤ 1/255 + ε (양자화 반 스텝)
   ③ normal 유도 수치 유한 (단위벡터)
   ④ pretrain --pretrain-modals rgb,aolp,dolp,nir — 2-step forward/backward 유한
   ⑤ 증분 모드 — depth 캐시 재사용, depth 재생성(백엔드 기동) 0회 + 기존 파일 무변경
@@ -111,21 +113,33 @@ def test_six_modal(work: Path, src: Path) -> Path:
     check('2b index.txt 전 stem complete', len(stems) == N_IMG, f"stems={len(stems)}")
 
     s0 = stems[0]
-    a_sin = np.load(out / 'aolp_sin' / f"{s0}.npy")
-    a_cos = np.load(out / 'aolp_cos' / f"{s0}.npy")
-    dolp = np.load(out / 'dolp' / f"{s0}.npy")
-    check('2c aolp/dolp npy = H×W float32 (3채널 미리 합침 없음)',
-          a_sin.shape == (SIZE, SIZE) and a_sin.dtype == np.float32
-          and a_cos.shape == (SIZE, SIZE) and a_cos.dtype == np.float32
-          and dolp.shape == (SIZE, SIZE) and dolp.dtype == np.float32,
-          f"sin{a_sin.shape}/{a_sin.dtype} dolp{dolp.shape}/{dolp.dtype}")
-    check('2d aolp 값역 [-1,1] + sin²+cos² == 1 (2θ 인코딩)',
+
+    def gray(name):
+        """uint8 단채널 PNG 원자 파일 로드 — (PIL image, H×W uint8)."""
+        im = Image.open(out / name / f"{s0}.png")
+        return im, np.asarray(im)
+
+    sin_im, sin_u8 = gray('aolp_sin')
+    cos_im, cos_u8 = gray('aolp_cos')
+    dolp_im, dolp_u8 = gray('dolp')
+    check('2c aolp/dolp PNG = H×W uint8 단채널 (3채널 미리 합침 없음)',
+          sin_im.mode == 'L' and cos_im.mode == 'L' and dolp_im.mode == 'L'
+          and sin_u8.ndim == 2 and cos_u8.ndim == 2 and dolp_u8.ndim == 2
+          and sin_u8.shape == (SIZE, SIZE) and cos_u8.shape == (SIZE, SIZE)
+          and dolp_u8.shape == (SIZE, SIZE) and sin_u8.dtype == np.uint8,
+          f"mode={sin_im.mode}/{cos_im.mode}/{dolp_im.mode} "
+          f"shape={sin_u8.shape} dtype={sin_u8.dtype}")
+    # 값역 검사도 PNG 경유 — 디스크 바이트에서 역양자화해 판정한다
+    a_sin = PRE.dequant_u8(sin_u8, -1.0, 1.0)
+    a_cos = PRE.dequant_u8(cos_u8, -1.0, 1.0)
+    dolp = PRE.dequant_u8(dolp_u8, 0.0, 1.0)
+    check('2d aolp(PNG 경유) 값역 [-1,1] + sin²+cos² ≈ 1 (2θ 인코딩, 양자화 허용치)',
           float(a_sin.min()) >= -1.0 and float(a_sin.max()) <= 1.0
           and float(a_cos.min()) >= -1.0 and float(a_cos.max()) <= 1.0
-          and float(np.abs(a_sin ** 2 + a_cos ** 2 - 1.0).max()) < 1e-5,
+          and float(np.abs(a_sin ** 2 + a_cos ** 2 - 1.0).max()) <= 4.0 / 255.0 + 1e-6,
           f"sin∈[{a_sin.min():.3f},{a_sin.max():.3f}] "
           f"cos∈[{a_cos.min():.3f},{a_cos.max():.3f}]")
-    check('2e dolp 값역 [0,1] + 분산 존재(단조 곡선 값 살아있음)',
+    check('2e dolp(PNG 경유) 값역 [0,1] + 분산 존재(단조 곡선 값 살아있음)',
           float(dolp.min()) >= 0.0 and float(dolp.max()) <= 1.0
           and float(dolp.std()) > 0.0,
           f"dolp∈[{dolp.min():.3f},{dolp.max():.3f}] std={dolp.std():.4f}")
@@ -148,12 +162,32 @@ def test_six_modal(work: Path, src: Path) -> Path:
     meta = json.loads((out / 'meta.json').read_text())
     ext_meta = {k: json.dumps(v, ensure_ascii=False)
                 for k, v in meta['modalities'].items() if k in ('aolp', 'dolp', 'nir')}
-    check('2h meta.json — modals_selected + 신규 3모달 전부 proxy 명시',
+    check('2h meta.json — modals_selected + 신규 3모달 전부 proxy·양자화 1/255 명시',
           meta.get('modals_selected')
           == ['depth', 'lidar', 'event', 'aolp', 'dolp', 'nir']
           and len(ext_meta) == 3
-          and all('proxy' in v.lower() for v in ext_meta.values()),
-          f"keys={sorted(ext_meta)}")
+          and all('proxy' in v.lower() for v in ext_meta.values())
+          and all('1/255' in str(meta['modalities'][k].get('quantization', ''))
+                  for k in ('aolp', 'dolp')),
+          f"keys={sorted(ext_meta)} "
+          f"aolp_quant={meta['modalities'].get('aolp', {}).get('quantization', '')}")
+
+    # 라운드트립 — 생성 시 float 원값 vs PNG 재로드 복원값. 원값은 생성 경로
+    # (rgb → synthetic 백엔드 D → 법선 → proxy 유도식)를 그대로 재현해 얻는다:
+    # synthetic 은 rgb 에 대해 결정론적이고 rgb PNG 는 load_square uint8 를
+    # 무손실 저장한 것이므로 재현 D 는 당시 float 원본 D 와 정확히 일치한다.
+    rgb_u8 = np.asarray(Image.open(out / 'rgb' / f"{s0}.png"))
+    t = torch.from_numpy(np.stack([rgb_u8]).astype(np.float32) / 255.0).permute(0, 3, 1, 2)
+    d_ref = GEN.SyntheticDepth(torch.device('cpu'))(t)[0].numpy()
+    s_ref, c_ref = GEN.render_aolp_proxy(GEN.surface_normal(d_ref))
+    dd_ref = GEN.render_dolp_proxy(GEN.surface_normal(d_ref))
+    tol = 1.0 / 255.0 + 1e-6
+    d_sin, d_cos, d_dolp = (float(np.abs(s_ref - a_sin).max()),
+                            float(np.abs(c_ref - a_cos).max()),
+                            float(np.abs(dd_ref - dolp).max()))
+    check('2i aolp/dolp 라운드트립 — float 원값 vs PNG 복원값 |Δ|max ≤ 1/255+ε',
+          max(d_sin, d_cos, d_dolp) <= tol,
+          f"|Δ|max sin={d_sin:.2e} cos={d_cos:.2e} dolp={d_dolp:.2e} tol={tol:.2e}")
 
     # [3] normal 유도 — 생성 depth(HHA) 역변환 → 법선이 유한·단위벡터
     D = GEN.depth_from_cached_hha(out / 'depth' / f"{s0}.png")
@@ -203,13 +237,13 @@ def test_pretrain_mcubes(data: Path, work: Path):
     check('4d dolp·nir 3채널 복제',
           bool(torch.allclose(x[2, 0], x[2, 1])) and bool(torch.allclose(x[2, 1], x[2, 2]))
           and bool(torch.allclose(x[3, 0], x[3, 1])) and bool(torch.allclose(x[3, 1], x[3, 2])))
-    # 비정규화 통과 증명 — /255·z-score 를 거치지 않았다면 디스크 값과 정확 일치해야
-    # 한다(train=False center crop 은 (0,0) = 원본 그대로, flip 도 없음).
+    # 비정규화 통과 증명 — /255·z-score 를 거치지 않았다면 디스크 PNG 의 역양자화값과
+    # 정확 일치해야 한다(train=False center crop 은 (0,0) = 원본 그대로, flip 도 없음).
     stem0 = ds.stems[0]
-    s_disk = np.load(data / 'aolp_sin' / f"{stem0}.npy")
-    c_disk = np.load(data / 'aolp_cos' / f"{stem0}.npy")
-    d_disk = np.load(data / 'dolp' / f"{stem0}.npy")
-    check('4e aolp/dolp 비정규화 통과 — 디스크 npy 값과 정확 일치',
+    s_disk = PRE.dequant_u8(np.asarray(Image.open(data / 'aolp_sin' / f"{stem0}.png")), -1.0, 1.0)
+    c_disk = PRE.dequant_u8(np.asarray(Image.open(data / 'aolp_cos' / f"{stem0}.png")), -1.0, 1.0)
+    d_disk = PRE.dequant_u8(np.asarray(Image.open(data / 'dolp' / f"{stem0}.png")), 0.0, 1.0)
+    check('4e aolp/dolp 비정규화 통과 — 디스크 PNG 역양자화값과 정확 일치',
           bool(torch.equal(x[1, 0], torch.from_numpy(s_disk)))
           and bool(torch.equal(x[1, 1], torch.from_numpy(c_disk)))
           and bool(torch.equal(x[2, 0], torch.from_numpy(d_disk)))
@@ -249,16 +283,15 @@ def test_incremental(src: Path, base_corpus: Path):
     check('5c 기존 4모달 파일 전부 무변경 (mtime+sha256)', before == after,
           f"changed={sorted(set(before) ^ set(after))[:3]}")
 
-    counts = {sub: len(list((base_corpus / sub).glob('*.npy' if sub != 'nir' else '*.png')))
-              for sub in EXT_SUBDIRS}
+    counts = {sub: len(list((base_corpus / sub).glob('*.png'))) for sub in EXT_SUBDIRS}
     check('5d 신규 4디렉토리 × 8장 생성', all(v == N_IMG for v in counts.values()),
           str(counts))
 
-    # 증분(캐시 D 유도) 결과도 값역·유한성 준수
+    # 증분(캐시 D 유도) 결과도 PNG 경유 값역·유한성 준수
     s0 = (base_corpus / 'index.txt').read_text().split()[0]
-    a_sin = np.load(base_corpus / 'aolp_sin' / f"{s0}.npy")
-    a_cos = np.load(base_corpus / 'aolp_cos' / f"{s0}.npy")
-    dolp = np.load(base_corpus / 'dolp' / f"{s0}.npy")
+    a_sin = PRE.dequant_u8(np.asarray(Image.open(base_corpus / 'aolp_sin' / f"{s0}.png")), -1.0, 1.0)
+    a_cos = PRE.dequant_u8(np.asarray(Image.open(base_corpus / 'aolp_cos' / f"{s0}.png")), -1.0, 1.0)
+    dolp = PRE.dequant_u8(np.asarray(Image.open(base_corpus / 'dolp' / f"{s0}.png")), 0.0, 1.0)
     check('5e 증분 aolp/dolp — 유한 + 값역([-1,1]/[0,1])',
           bool(np.isfinite(a_sin).all() and np.isfinite(a_cos).all()
                and np.isfinite(dolp).all())

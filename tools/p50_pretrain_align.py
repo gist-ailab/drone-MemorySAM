@@ -63,17 +63,27 @@ from semseg.models.reliadino.p50 import (DEFAULT_ADAPTER_GROUPS,         # noqa:
                                          sample_modal_token_masks,
                                          token_mask_to_pixel_mask)
 
-SCRIPT_VERSION = '1.1.0'
+SCRIPT_VERSION = '1.2.0'
 MODAL_DIR = {'img': 'rgb', 'depth': 'depth', 'lidar': 'lidar', 'event': 'event',
              'nir': 'nir'}
-# [P50-EXT] float32 .npy 원자 파일 모달 — mcubes.py 관행대로 로드 시 3채널로
-# stack 한다(aolp = [sin,cos,sin], dolp = 3ch 복제). 이미 [0,1]/[-1,1] float 이므로
-# /255·z-score 정규화를 하지 **않는다**(mcubes 로더도 aolp/dolp 를 비정규화 통과).
-NPY_MODALS = {'aolp': ('aolp_sin', 'aolp_cos'), 'dolp': ('dolp',)}
+# [P50-EXT] uint8 PNG 양자화 원자 파일 모달 — mcubes.py 관행대로 로드 시 3채널로
+# stack 한다(aolp = [sin,cos,sin], dolp = 3ch 복제). 디스크는 round 양자화된
+# uint8 PNG(해상도 1/255)라 역-affine(dequant_u8)로 float 복원한 뒤 [0,1]/[-1,1]
+# 값역 그대로 비정규화 통과 — /255·z-score 정규화를 하지 **않는다**(mcubes 로더도
+# aolp/dolp 를 비정규화 통과).
+QUANT_MODALS = {'aolp': ('aolp_sin', 'aolp_cos'), 'dolp': ('dolp',)}
 # --pretrain-modals 별칭: ReliaDINO 는 'img' 를 이름으로 특수취급(_img_idx)한다.
 PRETRAIN_MODAL_ALIASES = {'rgb': 'img'}
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
+
+
+def dequant_u8(u: np.ndarray, vmin: float, vmax: float) -> np.ndarray:
+    """uint8 PNG 픽셀 → float 역-affine: v = vmin + u/255·(vmax−vmin).
+
+    생성기(tools/p50_gen_pseudomodal.py) 양자화 u8 = round((v−vmin)/(vmax−vmin)·255)
+    의 역변환이다 — 라운드트립 오차 ≤ (vmax−vmin)/2/255."""
+    return (vmin + u.astype(np.float32) / 255.0 * (vmax - vmin)).astype(np.float32)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -97,9 +107,9 @@ class PseudoModalDataset(Dataset):
         self.norm_all = bool(norm_all_modals)
         self.train = train
         for m in self.modals:
-            if m not in MODAL_DIR and m not in NPY_MODALS:
+            if m not in MODAL_DIR and m not in QUANT_MODALS:
                 raise ValueError(f"P50 사전학습이 모르는 모달 '{m}' "
-                                 f"(지원: {sorted(list(MODAL_DIR) + list(NPY_MODALS))})")
+                                 f"(지원: {sorted(list(MODAL_DIR) + list(QUANT_MODALS))})")
             for d in self._modal_dirs(m):
                 if not d.is_dir():
                     raise FileNotFoundError(f"모달 디렉토리 없음: {d}")
@@ -123,23 +133,27 @@ class PseudoModalDataset(Dataset):
         return len(self.stems)
 
     def _modal_dirs(self, m: str) -> List[Path]:
-        if m in NPY_MODALS:
-            return [self.root / d for d in NPY_MODALS[m]]
+        if m in QUANT_MODALS:
+            return [self.root / d for d in QUANT_MODALS[m]]
         return [self.root / MODAL_DIR[m]]
 
     def _modal_files(self, m: str, stem: str) -> List[Path]:
-        if m in NPY_MODALS:
-            return [self.root / d / f"{stem}.npy" for d in NPY_MODALS[m]]
+        if m in QUANT_MODALS:
+            return [self.root / d / f"{stem}.png" for d in QUANT_MODALS[m]]
         return [self.root / MODAL_DIR[m] / f"{stem}.png"]
+
+    def _read_gray(self, subdir: str, stem: str) -> np.ndarray:
+        """uint8 단채널 PNG 원자 파일 → (H,W) uint8."""
+        return np.asarray(Image.open(self.root / subdir / f"{stem}.png"))
 
     def _read(self, m: str, stem: str) -> torch.Tensor:
         if m == 'aolp':            # mcubes.py 관행: sin/cos 원자 2파일 → [sin,cos,sin]
-            s = np.load(self.root / 'aolp_sin' / f"{stem}.npy").astype(np.float32)
-            c = np.load(self.root / 'aolp_cos' / f"{stem}.npy").astype(np.float32)
+            s = dequant_u8(self._read_gray('aolp_sin', stem), -1.0, 1.0)
+            c = dequant_u8(self._read_gray('aolp_cos', stem), -1.0, 1.0)
             a = np.stack([s, c, s], axis=2)                  # H×W×3
             return torch.from_numpy(a).permute(2, 0, 1)      # (3,H,W) float32
         if m == 'dolp':            # 3채널 복제 (mcubes.py 관행)
-            d = np.load(self.root / 'dolp' / f"{stem}.npy").astype(np.float32)
+            d = dequant_u8(self._read_gray('dolp', stem), 0.0, 1.0)
             a = np.stack([d, d, d], axis=2)
             return torch.from_numpy(a).permute(2, 0, 1)
         p = self.root / MODAL_DIR[m] / f"{stem}.png"
@@ -157,7 +171,7 @@ class PseudoModalDataset(Dataset):
             for t in imgs:
                 u = F.interpolate(t[None].float(), size=(max(h, s), max(w, s)),
                                   mode='nearest')[0]
-                # uint8 입력만 uint8 로 되돌린다 — npy 모달(aolp/dolp)은 float 값역 보존
+                # uint8 입력만 uint8 로 되돌린다 — aolp/dolp(역양자화 float)는 값역 보존
                 ups.append(u.to(torch.uint8) if t.dtype == torch.uint8 else u)
             imgs = ups
             h, w = imgs[0].shape[-2:]
@@ -178,8 +192,8 @@ class PseudoModalDataset(Dataset):
                 imgs[j] = imgs[j][[1, 0, 2]]
         out = []
         for m, t in zip(self.modals, imgs):
-            if m in NPY_MODALS:
-                out.append(t.float())          # 이미 float([0,1]/[-1,1]) — 비정규화 통과
+            if m in QUANT_MODALS:
+                out.append(t.float())          # 역양자화 float([0,1]/[-1,1]) — 비정규화 통과
                 continue
             x = t.float() / 255.0
             if m == 'img' or self.norm_all:
@@ -287,9 +301,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument('--pretrain-modals', type=str, default='',
                     help="모달 강제 지정(쉼표 목록). 기본 '' = cfg DATASET.MODALS 그대로"
                          "(종전 동작). [P50-EXT] MCubeS 팔: 'rgb,aolp,dolp,nir' — rgb 는 "
-                         "모델명 'img' 의 별칭, aolp/dolp 는 .npy 원자 파일(mcubes 관행 "
-                         "stack), nir 는 PNG 3채널 복제. 지정 시 모델 빌드의 "
-                         "DATASET.MODALS 도 같은 순서·이름으로 갈아끼운다")
+                         "모델명 'img' 의 별칭, aolp/dolp 는 uint8 PNG 원자 파일(역양자화 "
+                         "float 복원, mcubes 관행 stack), nir 는 PNG 3채널 복제. 지정 시 "
+                         "모델 빌드의 DATASET.MODALS 도 같은 순서·이름으로 갈아끼운다")
     ap.add_argument('--epochs', type=int, default=30)
     ap.add_argument('--bs', type=int, default=4, help='rank 당 배치')
     ap.add_argument('--lr', type=float, default=3e-4)
