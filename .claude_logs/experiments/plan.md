@@ -63,16 +63,15 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **lecun** | — | 🔴 타인(openvla) 점유 | — |
 | ~~B200~~ | — | 🔴 상실(07-15 마감) | — |
 
-## 🔬 실행 중 (2026-08-18 실상태로 재정리)
+## 🔬 실행 중 (2026-08-31 실상태 동기화)
 
-> ⚠️ **이 표는 "지금 도는 것"만 담는다.** 완주·종결된 런은 registry.md / 아래 "완료·판정" 절로 즉시 이동시킨다(과거엔 이 표가 3~4주치 완주 런의 묘지가 돼 단일출처가 깨졌음 — 08-18 청소).
+> ⚠️ **이 표는 "지금 도는 것"만 담는다.** 완주·종결된 런은 registry/analysis로 즉시 이동.
 
 | 실험 | 서버/GPU | EPOCHS | ETA | 목적 |
 |---|---|---|---|---|
-| **P50-MAP 정렬 사전학습 프로브** | yeon GPU1,2,3,4(유휴였음, 3090×4) → 파인튠은 GPU1,2 | 30 | 🟢 **사전학습 완주(2026-08-24, 5103.4min≈85h) — 226 adapter tensors 저장**. **게이트 재설계(fable)**: 원 게이트(base 56.99 +0.5)는 시드분산 발견으로 무효화(신규 3시드 53.08~53.57 밀집, 56.99=outlier) → 대조군을 **무사전학습 seed20260821**(legal test 53.57)로 교체. 파인튠 config `configs/yeon-deliver_rgbdel_P46_c3only_p50map_seed821.yaml`(TRAIN.SEED 20260821 매칭, 유일차=PRETRAINED_ADAPTERS, diff검증완료) **착수(2026-08-24)** — 어댑터 로드 확인: loaded=226/226·unexpected=0(missing=498은 groups=['lora','fusion','trunk','fpn'] 외 파라미터라 정상). 게이트: legal test@1024 − 53.57 ≥+0.5 → 확장 / ≤0 → 폐기 | Places365 200k pseudo-모달(생성 완료, 실패0)로 LoRA+트렁크 정렬 사전학습 → DELIVER 파인튠 1런. 검증: RANDOM INIT 0·4rank 18.5GB 활성·loss 0.79→0.51·bs8 OOM/bs4 정상. 제안서 [decisions/2026-08-17-p50-map-modal-alignment-pretraining-proposal.md] |
+| **P47-2 UniBal** (MUSES 4모달) | hpca100 GPU2,3 (A100×2) | 300 | ~2.9일 (08-31 기동, 로그디렉토리 버그 픽스 후 재기동판) | modality-laziness 처방(모달별 aux CE, 학습전용·추론불변) — **4모달 역전 유일 레버**. 게이트: 4모달 val ≥82.62(3모달 역전) / test ≥79.788 / drop-radar ≥+0.5 / ep30 kill −1.0 |
 
-**대기(슬롯 확보 시 즉시)**: #11 P50 파인튠(사전학습 loss plateau 후, DELIVER 4장) · #15b confidence 라우터(user GO 대기, forward 재실행) — 아래 대기열 참조.
-**최근 완주(→registry/완료 이동)**: P46 C3-only λ0.1 시드런 ×2(jarvis, 완주 — 최종 legal mean±std 확정 대기) · cross-attn A/B(#12, legal −2.05 판정) · oracle 실현성 통제(#14) · no-GT 라우터 #15(val 음성).
+**직전 완결(08-31)**: P50 파인튠 게이트 통과(+0.74, H22✓) · N2 믹서 판정(mean 55.45, H21✗) · N6 재선택 5/5(54.39±0.76) · MCubeS 3-seed(58.07±0.49) · MUSES 시드 3점(spread 0.66) · P51 페어2 완주(각주) — 전부 analysis/registry 반영됨.
 
 ## 📋 대기열 (우선순위 순) — 2026-08-24 전면 재설계 (논문-가치 필터)
 
@@ -88,12 +87,17 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 ### 🎯 신규 대기열 (논문-가치 순, 여유 GPU 투입 대상)
 | # | 실험 | 자원 적합 | 논문 가치 (A/B 분기별) | 상태 |
 |---|---|---|---|---|
-| **N1** | **MUSES 시드 분산 ×2** — P39.1-rank seed2 레시피 그대로 TRAIN.SEED만 2종(진짜 시드), val-분산 측정 | **jarvis 4090×4**(시드 완주 후 해방분, 검증된 레시피·~1일/시드) | **A·B 공통 필수** — MUSES 79.788이 단일제출(H18 동형 리스크). DELIVER처럼 val 시드분산 실측해야 mean±std 보고 성립. test는 Codabench 제한이라 **val 분산이 판정 신호**(val 안정이면 79.788 신뢰↑, 크면 재제출 전략 필요) | 🔵 **착수(2026-08-24/25)** — seed20260824(jarvis GPU1-4) + seed20260825(yeon GPU0,5,6,7, user 지시로 순차 대신 병렬 착수·결론 가속) **동시 진행 중**. 둘 다 검증 PASS(SEED 로그·RANDOM INIT 0·MODALS 3개·iter 전진). jarvis seed824 완주 시 jarvis 1-4 유휴 방지책 별도 검토 필요(N5 TTA-on 등) |
-| **N2** | **MLE-SAM 평균융합 baseline** — 우리 DINOv3-L 위에 trunk→산술평균 토글 1런 (DELIVER @768) | **yeon 3090×2** (기존 레시피, 코드 = trunk 우회 토글 소규모) | **A 필수·B 유용** — P51 공정성 §5 "경쟁자 재구현"(최근접 선행 MLE-SAM과 동일백본 대결). A면 비교표 필수 행, B여도 "평균 vs gated-MLP vs xattn 3점 믹서 스윕 완성"(분석 가치) | 🔵 **착수(2026-08-25)** — 타 사용자 작업 종료로 GPU3,4 확보, 기동검증 PASS(SEED 20260821 일치·TRUNK:mean·RANDOM INIT 0·1.42it/s·14.2GiB, gated_mlp 대비 가벼움) |
+| ~~N1~~ | ~~MUSES 시드 분산 ×2~~ | — | ✅ **완결(2026-08-27)** | 공식 val 3점 {82.13, 81.79(s824), 81.47(s825)} spread **0.66** = MUSES val 시드 안정 확정 → test 단일제출 방어 근거 | registry 참조 |
+| ~~N2~~ | ~~MLE-SAM 평균융합 baseline~~ | — | ✅ **완료·판정(2026-08-31, H21)** | legal test **55.45** — gated-MLP(54.2~55.4)와 동급 이상 = **우리 트렁크 우위 주장 철회**, 믹서 3점 완성(mean≈gated-MLP>xattn). 소거 논지 완결 재료 | 판정 [analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md](analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md) |
 | **N3** | **C3 진단-구동 검출기 (분석, 학습 0)** — 기존 ckpt들의 val confusion에서 class-transfer 붕괴 지표(비대각 집중도) 정량화 → C3 on/off 효과와 상관 검증 (DELIVER 붕괴有/MUSES 無) | **GPU ~0**(캐시 confusion 재집계, 필요시 1 GPU eval) | **B 헤드라인 기둥·A여도 통일 서사 필수** — "벤치별 C3 on/off"를 원칙적 자동설정으로 전환하는 근거. 검출기가 두 벤치의 경험적 C3 효과와 일치하면 통일 아키텍처 주장 성립 | 🟡 분석 설계 = discussion 세션 직접 — **즉시 가능** |
-| **N4** | **MCubeS 이식 파일럿** — 통일 레시피(C3 off) baseline 1런 + 로더/스테이징 검증 (RGB+AoLP+DoLP+NIR) | **yeon 3090×2** (로더 `mcubes.py`·데이터 `/mnt/HDD1/Workspace/dset/MCubeS` 보유, yeon SSD 스테이징 필요) | **A·B 공통** — 3번째 벤치 = "modality-agnostic 일반성" 스트레스 테스트(물리 이질 모달). N3 검출기의 3번째 검증점(MCubeS 붕괴 유무→C3 예측). ⚠️ 경쟁자(CrossWeaver 48.76 B0)와 비교는 동일백본 각주 필수 | 🟢 **N4 완주(2026-08-25)** val-best 57.93@ep140(published 최고 Mul-VMamba 54.65 +3.28, 판정 [analysis/2026-08-25-n4-mcubes-first-entry-verdict.md]). **N4b 사전등록(fable)**: rubber 18.80(published 26.5~29.7 대비 −10.9)=RailTrack형 격차 → C3-on 시 P1(rubber≥+5) · P2(overall Δ∈[-0.5,+1.5]). config `configs/hpca100-mcubes_rgbadn_P39_1_rank_c3on.yaml`(N4와 유일차=P46.C3_PROTO on λ0.1, SEED 3407 매칭) 커밋 완료, 데이터 hpca100 스테이징 완료(md5 검증) — hpca100 off 완주 감시 모니터가 자동 착수(GPU2,3) 대기 중 |
+| ~~N4~~ | ~~MCubeS 이식 파일럿~~ | — | ✅ **완결 + 3-seed(2026-08-31)** | {57.93, 57.67, 58.62} = **mean 58.07±0.49, published 최고(54.65) +3.42 / min +3.02 = MCubeS 1등 통계 확보**. N4b(C3-on)는 dose-response 예측 2/2 적중(H20✓) | [analysis/2026-08-25-n4-mcubes-first-entry-verdict.md] · [analysis/2026-08-27-n4b-dose-response-confirmed.md] |
 | ~~N4b~~ | ~~MCubeS C3-on 페어~~ | — | ✅ **완료·판정(2026-08-27): 사전등록 예측 2/2 적중** | rubber **+9.76**(18.80→28.56, published 대역 복귀) + overall Δ−0.10(범위 내) → **dose-response 3점 성립(H20 ✓)** — 진단-구동 프레임워크 예측력 실증, 논문 헤드라인 기둥. 판정 [analysis/2026-08-27-n4b-dose-response-confirmed.md](analysis/2026-08-27-n4b-dose-response-confirmed.md) |
-| **N6** | **DELIVER legal-val ckpt 재선택** (eval-only) — 각 시드런(base/815/816/821/822)의 저장 ckpt 전부(top-k+last=~30개)를 val.py legal VAL@1024로 재평가 → legal-val 최고 ckpt의 legal test 재보고 | 1 GPU 간헐 (첫 해방 슬롯) | 🟢 **P52 구성요소 ③(2026-08-25)** — 현행 선택이 트레이너 낙관지표 기준이라 시드 3.7pt 스프레드의 일부가 **선택 노이즈**일 가능성. 정본 val 선택으로 저시드 회복되면 DELIVER mean 상승(트릭 아닌 올바른 선택 프로토콜) | user 승인(2026-08-25). 준비 완료: `n6_batch_eval.sh`(jarvis에 배치, 30개 ckpt 순회) + `configs/eval/n6-...bs4.yaml`(EVAL.BATCH_SIZE 1→4, eval-only라 no_grad — ⚠️ 30개×BS1은 ~25 GPU-h 실측이라 원 추정(10h)보다 큼, BS4로 완화). 데이터가 jarvis 로컬이라 **jarvis의 아무 유휴 GPU**(자사 자원 회수분 포함) 감시 모니터 가동 중. 판정: 재선택 후 mean±std 재계산 — 저시드가 base에 근접하면 분산=선택 아티팩트 부분 확정, 변화 없으면 seed-init 근본 확정 |
+| ~~N6~~ | ~~DELIVER legal-val ckpt 재선택~~ | — | ✅ **완결(2026-08-31)** | 5/5: mean **53.82→54.39±0.76** (816 +2.21·821 +0.63, 선택 아티팩트 2/5런 실재). **최고 단일런 = seed816 55.29**(base 아님 — outlier 서사 완전 해소). 이후 모든 legal 수치는 하네스 가드 `--check` 필수 | registry·current.md 반영 |
+| **N7** | **VICReg-off 격리 토글 1런** (seed821 매칭, VICReg만 off) — 컴포넌트 기여표 마지막 미지 행 | yeon 2장 ×~15h | 🔶 **user 승인 대기(2026-08-31 제안)** — N2(H21)로 트렁크-타입 기여가 죽어서, 우리 설계 기여 중 VICReg(rank 복원)의 단독 격리가 필요해짐. MUSES +0.76이 트렁크+VICReg 묶음이었음 | 게이트: Δ(VICReg-on − off) — 격리 수치가 곧 논문 ablation 행 |
+| **N8** | **P50 런 legal-val 재선택** (eval-only, N6 프로토콜 대칭 적용) | 1 GPU ×~2h | 🟢 승인 불요(측정 마무리) — P50 최종치 확정(현 54.95는 trainer-top1 기준, 재선택 시 상승 가능성만 있음) | 완료 시 H22 수치 최종화 |
+| **N9** | **정성 증명 패키지** — ①VICReg 전후 유효랭크 스펙트럼 ②C3 전후 confusion(RailTrack·rubber) ③per-class 예측맵 패널 | 1 GPU 간헐 (기존 seg-analysis 도구) | 🟢 승인 불요(분석) — user 요구 "정량+정성 개선 증명"의 정성 절반. 논문 그림 직결 | 산출 = analysis_logs/ + 논문 figure 후보 |
+| **P52** | **P52 합성 3벤치 본런** — base + P50 init(H22✓) + 진단-구동 C3(H20✓) + [UniBal, 게이트 시] + 정본 선택 | DELIVER/MUSES/MCubeS 각 2~4장, UniBal 판정 후 | 🟡 **구성 확정(2026-08-31) — UniBal 판정(~2.9일) 대기 후 기동** | 최종 표: MCubeS 1등 확정 + MUSES 4모달(UniBal 결과에 따라) + DELIVER mean 최선. config 3벌 작성은 이 세션 |
+| **P50-EXT** | P50 사전학습 확장(코퍼스/에폭 스케일업) — 제안서 "통과 시 확장" 조항 | 대규모(수일) | ⏸ 등록만 — P52 본런 우선, user 판단 후 | H22 이득(+0.74)이 스케일에 비례하는지 |
 | **N5** | TTA-on 실측 (구 #4, 참고용 ablation 행) | yeon/jarvis 1장 ×7h | 낮음 — 헤드라인 불가 확정, ablation 완결성용 | ⏸ 위 소진 후 필러 |
 
 ### 🅰️ A100 대기열 (hpca100 P51 완주 후)
