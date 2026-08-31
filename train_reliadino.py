@@ -519,7 +519,11 @@ def main(cfg, gpu, save_dir, logger):
     # 결선한다 — 후자는 optimizer step 결선이라 모델 안에 있을 수 없다.
     _p47_2 = (model_cfg.get('P47_2', {}) or {})
     _ogm_cfg = (_p47_2.get('OGM_GE', {}) or {})
-    p47_2_on = bool(_p47_2.get('ENABLE', False))
+    # [P52] UNIBAL_ADAPTIVE 단독 케이스(P47_2.ENABLE off)에서도 model이
+    # p47_2 head를 만들어 aux['p47_2_uni']를 내려보낸다 — 로깅(last_ce/acc)도
+    # 함께 살아야 컨트롤러 관측치를 train.log에서 눈으로 추적할 수 있다.
+    p47_2_on = bool(_p47_2.get('ENABLE', False)) or bool(
+        (model_cfg.get('UNIBAL_ADAPTIVE', {}) or {}).get('ENABLE', False))
     p47_2_ogm = None
     if p47_2_on and is_rank0:
         _act = [modals[i] for i in _core.p47_2.active]
@@ -1036,6 +1040,17 @@ def main(cfg, gpu, save_dir, logger):
                     for i, name in enumerate(modals):
                         writer.add_scalar(f'p47/ogm_k_{name}', ogm_k[i], epoch)
                         log_extra[f'p47/ogm_k_{name}'] = float(ogm_k[i])
+            # ── [P52] adaptive 컨트롤러 λ 궤적 (EVAL_INTERVAL마다) ──────────────
+            # G4(창발)의 직접 증거 = config는 동일한데 λ 궤적이 벤치별 병리를
+            # 스스로 재현하는가 — 논문 그림의 원천이므로 train.log에 남긴다.
+            if ((epoch + 1) % train_cfg['EVAL_INTERVAL'] == 0
+                    or (epoch + 1) == epochs):
+                if getattr(_core, 'c3_adaptive', None) is not None:
+                    for _ln in _core.c3_adaptive.log_lines(epoch, class_names):
+                        logger.info(_ln)
+                if getattr(_core, 'unibal_adaptive', None) is not None:
+                    for _ln in _core.unibal_adaptive.log_lines(epoch, modals):
+                        logger.info(_ln)
             if pareto_stats:
                 # [P44-B1] 게이트② 진단: modal-aux gradient와 주 gradient의 내적
                 # 부호. lidar 그룹의 cos가 음수→양수로 전환하는지가 사전등록 지표.

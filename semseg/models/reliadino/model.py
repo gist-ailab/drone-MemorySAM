@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from . import p44 as P44
 from . import p46 as P46
 from . import p47 as P47
+from . import p52 as P52
 from .cmlc import CrossModalLoRACoupling
 from .classtoken import ClassTokenLiteHead
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
@@ -239,7 +240,20 @@ class ReliaDINO(nn.Module):
                  # [P51] CMLC — ViT block 경계 cross-modal LoRA coupling (default OFF)
                  cmlc_enable: bool = False,
                  cmlc_layers: Sequence[int] = (6, 12, 18),
-                 cmlc_rank: int = 16):
+                 cmlc_rank: int = 16,
+                 # [P52] adaptive 컨트롤러 (default OFF — off면 아래 블록이
+                 # init RNG 스트림/파라미터/버퍼를 전혀 건드리지 않는다)
+                 c3_adaptive: bool = False,
+                 c3_adaptive_lambda_max: float = 0.1,
+                 c3_adaptive_tau: float = 0.25,
+                 c3_adaptive_momentum: float = 0.99,
+                 c3_adaptive_warmup_ep: int = 5,
+                 unibal_adaptive: bool = False,
+                 unibal_adaptive_lambda_u_max: float = 0.4,
+                 unibal_adaptive_cap: float = 2.0,
+                 unibal_adaptive_momentum: float = 0.99,
+                 unibal_adaptive_warmup_ep: int = 0,
+                 unibal_adaptive_warmup_small: float = 0.05):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -653,6 +667,48 @@ class ReliaDINO(nn.Module):
             self.cmlc = CrossModalLoRACoupling(
                 num_modalities=self.num_modalities, dim=dim,
                 r=int(cmlc_rank), num_couple_points=len(self.cmlc_layers))
+
+        # ── [P52] adaptive 컨트롤러 (C3/UniBal, 전부 default OFF) ─────────────
+        # 온라인 병리 지표가 P46-C3 λ / P47-2 λ_u를 연속 조절한다(단일-config
+        # 자기-적응 — decisions/2026-08-31-p52-rxdino-adaptive-amendment.md).
+        # 컨트롤러는 파라미터 0·buffer persistent=False → off든 on이든
+        # state_dict 키가 늘지 않는다. **가장 마지막에 생성**(P47-2/CMLC와 같은
+        # 규약 — off 경로의 init RNG 스트림 불변).
+        self.c3_adaptive = None
+        self.unibal_adaptive = None
+        if c3_adaptive:
+            if self.p46_proto is None:
+                raise ValueError(
+                    "[P52] C3_ADAPTIVE는 P46.C3_PROTO.ENABLE 이 필요하다 — "
+                    "λ_c 를 적용할 prototype 손실이 없으면 무음 no-op이 된다"
+                    "(ISSUE-024류).")
+            self.c3_adaptive = P52.C3Adaptive(
+                num_classes=num_classes, lambda_max=c3_adaptive_lambda_max,
+                tau=c3_adaptive_tau, momentum=c3_adaptive_momentum,
+                warmup_ep=c3_adaptive_warmup_ep)
+        if unibal_adaptive:
+            # P47_2.ENABLE 과 독립 토글: 헤드가 없으면 **여기서 만든다**(재사용
+            # 우선). head/hidden/modals/gt_div/reduce는 P47_2 config을 그대로
+            # 따른다 — λ_u 만 컨트롤러가 지배한다.
+            if self.p47_2 is None:
+                self.p47_2 = P47.UniModalBalance(
+                    dim=dim, num_classes=num_classes,
+                    num_modalities=self.num_modalities,
+                    active=P47.resolve_modals(p47_2_modals, self.modalities),
+                    head=p47_2_head, hidden=p47_2_hidden,
+                    lambda_u=p47_2_lambda_u, warmup_ep=0,
+                    gt_div=p47_2_gt_div, reduce=p47_2_reduce)
+            # λ_u 의 warmup 게이트(forward epoch < warmup_ep → None 반환)는
+            # 컨트롤러가 소유한다(균일 소값 0.05). P47_2.WARMUP_EP 이 남아 있으면
+            # 두 warmup이 겹쳐 epoch 해석이 갈라지므로 여기서 0으로 통일한다.
+            self.p47_2.warmup_ep = 0
+            self.unibal_adaptive = P52.UniBalAdaptive(
+                num_modalities=self.num_modalities,
+                active=self.p47_2.active,
+                lambda_u_max=unibal_adaptive_lambda_u_max,
+                cap=unibal_adaptive_cap, momentum=unibal_adaptive_momentum,
+                warmup_ep=unibal_adaptive_warmup_ep,
+                warmup_small=unibal_adaptive_warmup_small)
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -1200,20 +1256,42 @@ class ReliaDINO(nn.Module):
             # — 보조(스타일 2-view/마스킹) branch는 갱신 없이 같은 bank로 당겨야
             # "두 도메인 view가 하나의 prototype으로 수렴"이라는 제약이 된다.
             _pf = m_feat if self.p46_proto_src == 'mfeat' else fused
-            aux['p46_proto'] = self.p46_proto_lambda * self.p46_proto(
-                _pf, gt_mask, update=(not self._p46_replay_path))
+            # [P52] C3-adaptive: per-class λ_c(이미 LAMBDA_MAX 포함)로 클래스별
+            # 가중. off(None)면 기존 균일 λ 경로 그대로다.
+            _cw = (self.c3_adaptive.lambdas(self._current_epoch)
+                   if self.c3_adaptive is not None else None)
+            if _cw is None:
+                aux['p46_proto'] = self.p46_proto_lambda * self.p46_proto(
+                    _pf, gt_mask, update=(not self._p46_replay_path))
+            else:
+                aux['p46_proto'] = self.p46_proto(
+                    _pf, gt_mask, update=(not self._p46_replay_path),
+                    class_weights=_cw)
         if self.p47_2 is not None and self.training and gt_mask is not None:
             # [P47-2] uni-modal balance. **추가 forward 없음** — 이 forward가 이미
             # 만든 per-modal feats를 그대로 쓴다(ISSUE-028의 2-forward 문제 무관).
             # img 마스킹(P42/P44)이 걸린 픽셀은 fusion aux_ce와 같은 규약으로
             # ignore 처리한다(발견C: 0-입력에서 GT를 맞히는 장면 prior 환각 방지).
+            # [P52] UniBal-adaptive: λ는 **직전 스텝까지의** L_m EMA로 정한다(관측
+            # → 처방의 인과 순서) — 이번 스텝 CE는 직후 observe의 입력이 된다.
+            _lam_u = (self.unibal_adaptive.lambdas(self._current_epoch)
+                      if self.unibal_adaptive is not None else None)
             _u = self.p47_2(feats, gt_mask, epoch=self._current_epoch,
-                            img_mask=_img_mask, img_idx=self._img_idx)
+                            img_mask=_img_mask, img_idx=self._img_idx,
+                            lambda_per_modal=_lam_u)
+            if self.unibal_adaptive is not None:
+                self.unibal_adaptive.observe(self.p47_2.last_ce)
             if _u is not None:
-                aux['p47_2_uni'] = _u                  # pre-scaled (LAMBDA_U in module)
+                aux['p47_2_uni'] = _u                  # pre-scaled (λ_u,m in module)
         logits = F.interpolate(logits.float(), size=(H, W),
                                mode='bilinear', align_corners=False)
         if self.training:
+            if self.c3_adaptive is not None and gt_mask is not None \
+                    and not self._p46_replay_path:
+                # [P52] C3-adaptive: 최종 argmax↔GT 혼동 EMA 갱신. 보조 branch
+                # (마스킹/스타일 변주 입력)는 train 배치 통계가 아니므로 제외.
+                # eval 경로는 이 블록 자체가 존재하지 않는다(추론 그래프 불변).
+                self.c3_adaptive.observe(logits, gt_mask)
             if token_logits is not None and gt_mask is not None:
                 # [P37b] training-only aux CE on token_logits at 1/4 label res
                 # (same downsampling convention as the fusion aux CE). Trainer
@@ -1467,6 +1545,8 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     #   OGM_GE(gradient 변조)는 optimizer step 결선이라 train_reliadino.py가
     #   MODEL.P47_2.OGM_GE를 직접 읽는다 (여기서는 head/손실만 만든다).
     cmlc = mc.get('CMLC', {}) or {}                    # [P51] block-경계 cross-modal coupling
+    c3a = mc.get('C3_ADAPTIVE', {}) or {}              # [P52] C3 λ_c 컨트롤러
+    uba = mc.get('UNIBAL_ADAPTIVE', {}) or {}          # [P52] UniBal λ_u,m 컨트롤러
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
     modals = cfg['DATASET']['MODALS']
     raw_targets = mdrop.get('TARGETS', ['img', 'depth'])
@@ -1644,4 +1724,17 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         cmlc_enable=cmlc.get('ENABLE', False),                              # [P51]
         cmlc_layers=tuple(cmlc.get('COUPLE_LAYERS', (6, 12, 18))),
         cmlc_rank=cmlc.get('RANK', 16),
+        # [P52] adaptive — LAMBDA_MAX 미지정 시 현행 균일 λ(P46.C3_PROTO.LAMBDA)을
+        # 계승해 상한이 기존 처방 강도를 넘지 않게 한다.
+        c3_adaptive=c3a.get('ENABLE', False),
+        c3_adaptive_lambda_max=c3a.get('LAMBDA_MAX', p46_c3.get('LAMBDA', 0.1)),
+        c3_adaptive_tau=c3a.get('TAU', 0.25),
+        c3_adaptive_momentum=c3a.get('EMA_M', 0.99),
+        c3_adaptive_warmup_ep=c3a.get('WARMUP_EP', 5),
+        unibal_adaptive=uba.get('ENABLE', False),
+        unibal_adaptive_lambda_u_max=uba.get('LAMBDA_U_MAX', 0.4),
+        unibal_adaptive_cap=uba.get('CAP', 2.0),
+        unibal_adaptive_momentum=uba.get('EMA_M', 0.99),
+        unibal_adaptive_warmup_ep=uba.get('WARMUP_EP', 0),
+        unibal_adaptive_warmup_small=uba.get('WARMUP_SMALL', 0.05),
     )

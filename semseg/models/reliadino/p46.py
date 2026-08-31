@@ -536,8 +536,16 @@ class PrototypeBank(nn.Module):
                 self.proto[c].mul_(self.m).add_(mu, alpha=1.0 - self.m)
 
     def forward(self, feat: torch.Tensor, gt: torch.Tensor,
-                update: bool = True) -> torch.Tensor:
-        """prototype-contrastive CE. bf16 autocast 아래에서도 fp32로 계산한다."""
+                update: bool = True,
+                class_weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """prototype-contrastive CE. bf16 autocast 아래에서도 fp32로 계산한다.
+
+        [P52] class_weights (K,) — 클래스별 λ_c. 주면 weighted CE(F.cross_entropy
+        표준 semantics: sum(w·ce)/sum(w))로, None이면 기존 균일 평균 그대로다.
+        λ_c≈0인 건강 클래스는 당기는 압력이 0이 된다(C3-adaptive — 붕괴 클래스만
+        prototype 당김). bank 갱신(_update)은 가중과 무관하게 항상 같은 클래스
+        평균으로 한다 — bank가 가중돼면 prototype 자체가 왜곡된다.
+        """
         with torch.autocast(device_type=feat.device.type, enabled=False):
             # `.float()`는 _sample이 **서브샘플 후에** 건다 (전체 사본 회피).
             f, g = self._sample(feat, gt)
@@ -557,7 +565,19 @@ class PrototypeBank(nn.Module):
             pn = F.normalize(self.proto.float(), dim=1).detach()
             logits = (fn @ pn.t()) / max(self.tau, 1e-4)          # (N,K)
             logits = logits.masked_fill(~live.view(1, -1), float('-inf'))
-            loss = F.cross_entropy(logits, g)
+            if class_weights is None:
+                loss = F.cross_entropy(logits, g)
+            else:
+                w = class_weights.detach().to(device=logits.device,
+                                             dtype=logits.dtype)
+                if float(w.sum()) <= 0.0:
+                    # [P52] warmup 등 전 클래스 λ_c=0 → weighted CE의 분모가
+                    # 0이 되어 NaN을 뿌린다. 손실은 0, bank 갱신은 계속(EMA
+                    # prototype은 λ와 무관하게 학습돼야 warmup 종료 직후 바로
+                    # 쓸 수 있다).
+                    loss = logits.new_zeros(())
+                else:
+                    loss = F.cross_entropy(logits, g, weight=w)
             if update:
                 self._update(f.detach(), g)
             return loss

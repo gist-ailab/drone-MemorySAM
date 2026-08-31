@@ -194,14 +194,22 @@ class UniModalBalance(nn.Module):
     # ── forward ──────────────────────────────────────────────────────────────
     def forward(self, feats: Sequence[torch.Tensor], gt_mask: torch.Tensor,
                 epoch: int = 0, img_mask: Optional[torch.Tensor] = None,
-                img_idx: int = -1) -> Optional[torch.Tensor]:
-        """활성 모달의 uni-modal CE. 반환값은 λ_u 적용 후(pre-scaled)."""
+                img_idx: int = -1,
+                lambda_per_modal: Optional[Sequence[float]] = None
+                ) -> Optional[torch.Tensor]:
+        """활성 모달의 uni-modal CE. 반환값은 λ_u 적용 후(pre-scaled).
+
+        [P52] lambda_per_modal (길이 M 시퀀스) — 모달별 λ_u,m(UniBal-adaptive
+        컨트롤러가 준다). 주면 `mean_m(λ_u,m·CE_m)`(reduce='mean')을,
+        None이면 기존 `λ_u·mean_m(CE_m)` 그대로다. last_ce/last_acc는 항상
+        λ 미적용 값 — 컨트롤러가 관측하는 L_m이 가중에 오염되지 않게.
+        """
         self.last_ce = [None] * self.M
         self.last_acc = [None] * self.M
         if epoch < self.warmup_ep:
             return None
         gt0, size = self._gt_at(gt_mask)
-        terms = []
+        terms: List[Tuple[int, torch.Tensor]] = []
         for i in self.active:
             gt = self._img_masked_gt(gt0, img_mask, size) if i == img_idx else gt0
             valid = gt != self.ignore_label
@@ -211,15 +219,18 @@ class UniModalBalance(nn.Module):
             lg = F.interpolate(lg.float(), size=size, mode='bilinear',
                                align_corners=False)
             ce = F.cross_entropy(lg, gt, ignore_index=self.ignore_label)
-            terms.append(ce)
+            terms.append((i, ce))
             self.last_ce[i] = float(ce.detach())
             with torch.no_grad():
                 hit = (lg.detach().argmax(1) == gt) & valid
                 self.last_acc[i] = float(hit.sum()) / float(valid.sum())
         if not terms:
             return None
-        agg = sum(terms) / (len(terms) if self.reduce == 'mean' else 1.0)
-        return self.lambda_u * agg
+        div = (len(terms) if self.reduce == 'mean' else 1.0)
+        if lambda_per_modal is None:
+            return self.lambda_u * (sum(ce for _, ce in terms) / div)
+        # per-modal λ_u,m — 활성 모달 인덱스로만 곱한다(config MODALS 순서 기준).
+        return sum(float(lambda_per_modal[i]) * ce for i, ce in terms) / div
 
 
 # ─────────────────────────────────────────────────────────────────────────────
