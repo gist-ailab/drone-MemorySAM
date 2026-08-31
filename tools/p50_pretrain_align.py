@@ -25,6 +25,13 @@
     # DDP (4090 ×4)
     torchrun --standalone --nproc_per_node=4 tools/p50_pretrain_align.py \
         --cfg <cfg> --data <dir> --out <ckpt> --epochs 30 --bs 4
+
+    # [P50-EXT] MCubeS 팔 — pseudo aolp/dolp/nir 코퍼스로 같은 팔을 돌린다.
+    # cfg 의 DATASET.MODALS 는 모델 빌드에도 쓰이므로 --pretrain-modals 지정 시
+    # 데이터·모델 양쪽이 이 순서/이름으로 갈아끼워진다('rgb' 는 모델명 'img' 의 별칭).
+    python tools/p50_pretrain_align.py --cfg <mcubes_cfg.yaml> \
+        --data /path/to/ImageNeXt_p50ext --out ckpts/p50map_mcubes.pth \
+        --pretrain-modals rgb,aolp,dolp,nir
 """
 from __future__ import annotations
 
@@ -56,8 +63,15 @@ from semseg.models.reliadino.p50 import (DEFAULT_ADAPTER_GROUPS,         # noqa:
                                          sample_modal_token_masks,
                                          token_mask_to_pixel_mask)
 
-SCRIPT_VERSION = '1.0.0'
-MODAL_DIR = {'img': 'rgb', 'depth': 'depth', 'lidar': 'lidar', 'event': 'event'}
+SCRIPT_VERSION = '1.1.0'
+MODAL_DIR = {'img': 'rgb', 'depth': 'depth', 'lidar': 'lidar', 'event': 'event',
+             'nir': 'nir'}
+# [P50-EXT] float32 .npy 원자 파일 모달 — mcubes.py 관행대로 로드 시 3채널로
+# stack 한다(aolp = [sin,cos,sin], dolp = 3ch 복제). 이미 [0,1]/[-1,1] float 이므로
+# /255·z-score 정규화를 하지 **않는다**(mcubes 로더도 aolp/dolp 를 비정규화 통과).
+NPY_MODALS = {'aolp': ('aolp_sin', 'aolp_cos'), 'dolp': ('dolp',)}
+# --pretrain-modals 별칭: ReliaDINO 는 'img' 를 이름으로 특수취급(_img_idx)한다.
+PRETRAIN_MODAL_ALIASES = {'rgb': 'img'}
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
@@ -83,21 +97,21 @@ class PseudoModalDataset(Dataset):
         self.norm_all = bool(norm_all_modals)
         self.train = train
         for m in self.modals:
-            if m not in MODAL_DIR:
+            if m not in MODAL_DIR and m not in NPY_MODALS:
                 raise ValueError(f"P50 사전학습이 모르는 모달 '{m}' "
-                                 f"(지원: {sorted(MODAL_DIR)})")
-            d = self.root / MODAL_DIR[m]
-            if not d.is_dir():
-                raise FileNotFoundError(f"모달 디렉토리 없음: {d}")
+                                 f"(지원: {sorted(list(MODAL_DIR) + list(NPY_MODALS))})")
+            for d in self._modal_dirs(m):
+                if not d.is_dir():
+                    raise FileNotFoundError(f"모달 디렉토리 없음: {d}")
         idx = self.root / 'index.txt'
         if idx.is_file():
             stems = [s for s in idx.read_text().splitlines() if s.strip()]
         else:
             stems = sorted(p.stem for p in (self.root / 'rgb').glob('*.png'))
-        # 4개 모달이 모두 있는 stem 만 (생성 중단 잔여물 방어)
+        # 선택 모달 전부(원자 파일 포함)가 있는 stem 만 (생성 중단 잔여물 방어)
         self.stems = [s for s in stems
-                      if all((self.root / MODAL_DIR[m] / f"{s}.png").is_file()
-                             for m in self.modals)]
+                      if all(p.is_file() for m in self.modals
+                             for p in self._modal_files(m, s))]
         if limit > 0:
             self.stems = self.stems[:limit]
         if not self.stems:
@@ -108,8 +122,28 @@ class PseudoModalDataset(Dataset):
     def __len__(self):
         return len(self.stems)
 
+    def _modal_dirs(self, m: str) -> List[Path]:
+        if m in NPY_MODALS:
+            return [self.root / d for d in NPY_MODALS[m]]
+        return [self.root / MODAL_DIR[m]]
+
+    def _modal_files(self, m: str, stem: str) -> List[Path]:
+        if m in NPY_MODALS:
+            return [self.root / d / f"{stem}.npy" for d in NPY_MODALS[m]]
+        return [self.root / MODAL_DIR[m] / f"{stem}.png"]
+
     def _read(self, m: str, stem: str) -> torch.Tensor:
+        if m == 'aolp':            # mcubes.py 관행: sin/cos 원자 2파일 → [sin,cos,sin]
+            s = np.load(self.root / 'aolp_sin' / f"{stem}.npy").astype(np.float32)
+            c = np.load(self.root / 'aolp_cos' / f"{stem}.npy").astype(np.float32)
+            a = np.stack([s, c, s], axis=2)                  # H×W×3
+            return torch.from_numpy(a).permute(2, 0, 1)      # (3,H,W) float32
+        if m == 'dolp':            # 3채널 복제 (mcubes.py 관행)
+            d = np.load(self.root / 'dolp' / f"{stem}.npy").astype(np.float32)
+            a = np.stack([d, d, d], axis=2)
+            return torch.from_numpy(a).permute(2, 0, 1)
         p = self.root / MODAL_DIR[m] / f"{stem}.png"
+        # nir(단채널 저장)도 convert('RGB') 로 3채널 복제된다 — mcubes 관행과 동일
         a = np.array(Image.open(p).convert('RGB'), dtype=np.uint8)   # copy(쓰기 가능)
         return torch.from_numpy(a).permute(2, 0, 1)          # (3,H,W) uint8
 
@@ -119,8 +153,13 @@ class PseudoModalDataset(Dataset):
         h, w = imgs[0].shape[-2:]
         s = self.img_size
         if h < s or w < s:
-            imgs = [F.interpolate(t[None].float(), size=(max(h, s), max(w, s)),
-                                  mode='nearest')[0].to(torch.uint8) for t in imgs]
+            ups = []
+            for t in imgs:
+                u = F.interpolate(t[None].float(), size=(max(h, s), max(w, s)),
+                                  mode='nearest')[0]
+                # uint8 입력만 uint8 로 되돌린다 — npy 모달(aolp/dolp)은 float 값역 보존
+                ups.append(u.to(torch.uint8) if t.dtype == torch.uint8 else u)
+            imgs = ups
             h, w = imgs[0].shape[-2:]
         if self.train:
             top = random.randint(0, h - s)
@@ -133,11 +172,15 @@ class PseudoModalDataset(Dataset):
             # event 프록시는 부호 있는 x-그래디언트에서 만들어졌다. 좌우 반전은
             # d/dx 의 부호를 뒤집으므로 ± 극성 채널도 함께 swap 해야 물리적으로
             # 일관된다 (안 하면 모델이 반전 여부를 극성으로 알아채는 지름길이 생긴다).
+            # aolp/dolp/nir 는 공간 반전만 한다 — mcubes.py 로더의 flip 관행과 동일.
             if 'event' in self.modals:
                 j = self.modals.index('event')
                 imgs[j] = imgs[j][[1, 0, 2]]
         out = []
         for m, t in zip(self.modals, imgs):
+            if m in NPY_MODALS:
+                out.append(t.float())          # 이미 float([0,1]/[-1,1]) — 비정규화 통과
+                continue
             x = t.float() / 255.0
             if m == 'img' or self.norm_all:
                 x = (x - self.mean) / self.std
@@ -241,6 +284,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument('--cfg', required=True, help='파인튠과 동일한 MODEL 절을 가진 yaml')
     ap.add_argument('--data', required=True, help='p50_gen_pseudomodal.py 출력 루트')
     ap.add_argument('--out', required=True, help='산출 어댑터 ckpt 경로(.pth)')
+    ap.add_argument('--pretrain-modals', type=str, default='',
+                    help="모달 강제 지정(쉼표 목록). 기본 '' = cfg DATASET.MODALS 그대로"
+                         "(종전 동작). [P50-EXT] MCubeS 팔: 'rgb,aolp,dolp,nir' — rgb 는 "
+                         "모델명 'img' 의 별칭, aolp/dolp 는 .npy 원자 파일(mcubes 관행 "
+                         "stack), nir 는 PNG 3채널 복제. 지정 시 모델 빌드의 "
+                         "DATASET.MODALS 도 같은 순서·이름으로 갈아끼운다")
     ap.add_argument('--epochs', type=int, default=30)
     ap.add_argument('--bs', type=int, default=4, help='rank 당 배치')
     ap.add_argument('--lr', type=float, default=3e-4)
@@ -290,6 +339,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
     ds_cfg = cfg['DATASET']
     modals = list(ds_cfg['MODALS'])
+    if args.pretrain_modals:
+        # [P50-EXT] 모달 강제 지정 — 데이터 로드와 모델 빌드(MODALS) 양쪽에 반영.
+        # 순서가 어긋나면 모달 i 번 인코더가 다른 모달을 보게 된다.
+        given = [t.strip() for t in args.pretrain_modals.split(',') if t.strip()]
+        if not given:
+            raise ValueError(f"--pretrain-modals 파싱 결과가 비었다: '{args.pretrain_modals}'")
+        modals = [PRETRAIN_MODAL_ALIASES.get(t, t) for t in given]
+        ds_cfg = dict(ds_cfg, MODALS=modals)
     img_size = args.img_size or int(cfg['TRAIN']['IMAGE_SIZE'][0])
     num_classes = args.num_classes or int(ds_cfg.get('NUM_CLASSES', 25))
     groups = [g.strip() for g in args.groups.split(',') if g.strip()]
@@ -307,6 +364,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # ── 모델 ───────────────────────────────────────────────────────────────
     cfg_for_build = dict(cfg)
     cfg_for_build['TRAIN'] = dict(cfg['TRAIN'], IMAGE_SIZE=[img_size, img_size])
+    cfg_for_build['DATASET'] = ds_cfg        # --pretrain-modals 반영(기본값은 무변경)
     base = build_reliadino(cfg_for_build, num_classes)
     fpn_dim = int(cfg['MODEL'].get('FPN_DIM', 256))
     fz = freeze_outside_groups(base, groups)
@@ -357,6 +415,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         'script': 'tools/p50_pretrain_align.py', 'version': SCRIPT_VERSION,
         'arm': 'multimae_cross_modal_masked_reconstruction',
         'cfg': args.cfg, 'data': args.data, 'modals': modals,
+        'pretrain_modals_arg': args.pretrain_modals,
         'img_size': img_size, 'num_classes': num_classes, 'groups': groups,
         'mask_ratio': args.mask_ratio, 'dirichlet_alpha': args.dirichlet_alpha,
         'lr': args.lr, 'bs_per_rank': args.bs, 'world_size': world,

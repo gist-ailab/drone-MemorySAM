@@ -14,6 +14,11 @@
     python tools/p50_gen_pseudomodal.py --imagenet <dir> --out <dir> \
         --n 8 --size 128 --depth-backend synthetic
 
+    # [P50-EXT] 증분 — 기존 코퍼스(예: 200k 산출물)에 aolp/dolp/nir 만 추가.
+    # depth 백엔드는 기동하지 않고 이미 생성된 depth(HHA) 캐시에서 유도한다.
+    python tools/p50_gen_pseudomodal.py --imagenet <dir> --out <기존out> \
+        --modals aolp,dolp,nir
+
 출력 (DELIVER 로더가 읽는 것과 같은 3채널 uint8 PNG):
     <out>/rgb/<stem>.png      원본 RGB(정사각 리사이즈본)
     <out>/depth/<stem>.png    HHA 3채널 (DELIVER 는 depth 모달을 'hha' 디렉토리에서
@@ -23,12 +28,24 @@
     <out>/index.txt           생성 완료 stem 목록
     <out>/meta.json           도구·버전·파라미터·실제 사용된 depth 백엔드
 
+[P50-EXT] MCubeS 팔용 추가 출력 (--modals aolp,dolp,nir) — 원자 파일 규격
+(semseg/datasets/mcubes.py 로더가 읽는 형태. 3채널로 미리 합치지 않는다 — 로더가 stack):
+    <out>/aolp_sin/<stem>.npy  H×W float32 ∈ [-1,1] (편광각 sin(2θ))
+    <out>/aolp_cos/<stem>.npy  H×W float32 ∈ [-1,1] (편광각 cos(2θ))
+    <out>/dolp/<stem>.npy      H×W float32 ∈ [0,1]
+    <out>/nir/<stem>.png       H×W uint8 (8bit [0,1] 단채널)
+
 🔴 event 는 **프록시**다. N-ImageNet 을 받을 수 없는 환경 전제라, 단일 이미지의
    로그 강도 공간 그래디언트에 ± 극성을 붙여 event 로더와 **채널 인터페이스만**
    맞춘 것이다. 실제 event 스트림의 시간 통계(노이즈·refractory·모션 블러)는
    담기지 않는다. 논문/문서에 반드시 'proxy' 로 적을 것.
+🔴 aolp/dolp/nir 도 전부 **프록시**다. 편광 두 모달은 그 이미지의 생성 depth 에서
+   유도한 법선의 기하(방위각·천정각) 뿐이며 실측 편광 스펙트럼이 아니고, nir 는
+   RGB 의 결정론적 변환(luminance + excess-green)일 뿐 실측 밴드가 아니다.
+   신경망 forward 는 한 번도 추가하지 않는다(증분 시 depth 백엔드 기동 0회).
 
-재개: 4개 출력이 모두 있는 stem 은 건너뛴다(부분 생성 파일은 다시 만든다).
+재개: 선택 모달(+rgb) 출력이 모두 있는 stem 은 건너뛴다. stem 처리 시에는
+      **없는 파일만** 쓴다 — 증분 생성이 기존 산출물을 절대 다시 쓰지 않는다.
 """
 from __future__ import annotations
 
@@ -46,8 +63,11 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-TOOL_VERSION = '1.0.0'
+TOOL_VERSION = '1.1.0'
 MODAL_DIRS = ('rgb', 'depth', 'lidar', 'event')
+# [P50-EXT] --modals 로 선택 가능한 모달 (rgb 는 코퍼스 기저라 항상 생성)
+SELECTABLE_MODALS = ('depth', 'lidar', 'event', 'aolp', 'dolp', 'nir')
+DEFAULT_MODALS = 'depth,lidar,event'      # 종전 동작(4모달 전량)과 동일
 IMG_EXTS = ('.jpeg', '.jpg', '.png', '.bmp', '.webp')
 
 # 가정 카메라 (ImageNet 은 intrinsics 가 없다 — 고정값을 쓰고 meta.json 에 남긴다)
@@ -56,6 +76,10 @@ MIN_DEPTH_M = 1.0        # 정규화 depth 0 이 대응하는 거리
 MAX_DEPTH_M = 60.0       # 정규화 depth 1 이 대응하는 거리
 HEIGHT_MAX_M = 5.0       # HHA ch1 포화 높이
 LIDAR_VALUE_SCALE = 0.38  # DELIVER lidar 실측 동적범위 [0, 0.38] (augmentations_mm 주석)
+
+# [P50-EXT] 편광/NIR proxy 파라미터 (유도식은 meta.json 에도 기록된다)
+DOLP_FRESNEL_COEF = 0.8   # DoLP Fresnel 근사 계수 (굴절률 1.5, specular-지배 가정)
+NIR_EXCESS_GREEN_W = 0.5  # NIR excess-green 보정 가중치 (식생 NIR 밝음 근사)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -369,6 +393,71 @@ def render_event_proxy(rgb_u8: np.ndarray, contrast_thresh: float = 0.15,
     return np.clip(ev * 255.0 + 0.5, 0, 255).astype(np.uint8)
 
 
+# ── [P50-EXT] 편광/NIR proxy (MCubeS 팔) ────────────────────────────────────
+# 🔴 전부 proxy 다. depth 유도(편광)·RGB 결정론 변환(NIR)이며 실측 모달이 아니다.
+#    새 신경망/백엔드 forward 는 추가하지 않는다.
+def surface_normal(depth_norm: np.ndarray) -> np.ndarray:
+    """생성 depth D → 근사 표면 법선 n = normalize([-∂D/∂x, -∂D/∂y, 1]) (Sobel 3×3).
+
+    D 를 높이장(height field)으로 보는 근사다. depth 척도(미터↔정규화)는 단위벡터화
+    로 흡수되고, 하류(DoLP 곡선)는 단조이기만 하면 되므로 척도 정확도는 요구하지
+    않는다 — proxy 유도식은 meta.json 에 기록된다."""
+    import cv2
+    gx = cv2.Sobel(depth_norm, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(depth_norm, cv2.CV_32F, 0, 1, ksize=3)
+    n = np.stack([-gx, -gy, np.ones_like(gx)], axis=-1)
+    return n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-8)
+
+
+def render_aolp_proxy(normal: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """편광각 **프록시** — (sin(2θ), cos(2θ)) 반환.
+
+    관행: 편광각은 법선 방위각과 직교 → θ = atan2(n_y, n_x) + π/2. 편광각은 π 주기라
+    2θ 인코딩으로 출력하며, sin/cos 를 분리 저장하는 것은 MCubeS 원본 관행
+    (polL_aolp_sin / polL_aolp_cos) 유지다 — 로더가 [sin, cos, sin] 3채널로 stack 한다."""
+    theta = np.arctan2(normal[..., 1], normal[..., 0]) + np.pi / 2.0
+    return np.sin(2.0 * theta), np.cos(2.0 * theta)
+
+
+def render_dolp_proxy(normal: np.ndarray) -> np.ndarray:
+    """DoLP **프록시** — 천정각 z = arccos(n_z) 의 Fresnel 근사(굴절률 1.5,
+    specular-지배 가정): dolp = sin²z·DOLP_FRESNEL_COEF / (2 − sin²z), [0,1] 클립.
+
+    브루스터각 근방에서 최대가 되는 단조 곡선이면 계수 정확도는 중요치 않다(proxy)."""
+    nz = np.clip(normal[..., 2], -1.0, 1.0)
+    s2 = 1.0 - nz * nz                                     # sin²(z)
+    return np.clip(s2 * DOLP_FRESNEL_COEF / (2.0 - s2), 0.0, 1.0)
+
+
+def render_nir_proxy(rgb_u8: np.ndarray) -> np.ndarray:
+    """NIR **프록시**(결정론적 변환, 실측 밴드 아님) — 8bit 단채널 uint8.
+
+      nir = clip(0.299R + 0.587G + 0.114B + NIR_EXCESS_GREEN_W·max(0, G − 0.5(R+B)), 0, 1)
+      = luminance + excess-green 보정(식생이 NIR 에서 밝게 보이는 것의 근사).
+    """
+    g = rgb_u8.astype(np.float32) / 255.0
+    r, gg, b = g[..., 0], g[..., 1], g[..., 2]
+    nir = (0.299 * r + 0.587 * gg + 0.114 * b
+           + NIR_EXCESS_GREEN_W * np.maximum(0.0, gg - 0.5 * (r + b)))
+    return np.clip(nir * 255.0 + 0.5, 0, 255).astype(np.uint8)
+
+
+def depth_from_cached_hha(path: Path) -> Optional[np.ndarray]:
+    """증분 모드용 — 기존 생성 depth(HHA PNG)에서 정규화 depth D 를 역복환한다.
+
+    render_hha 의 ch0 = (1/z − 1/MAX)/(1/MIN − 1/MAX) 를 역으로 풀어
+    D = (z − MIN)/(MAX − MIN) 을 복원한다(8bit 양자화 오차만 포함).
+    파일이 없으면 None — 이 경우 aolp/dolp 는 근거 없는 값을 만들지 않고 스킵한다."""
+    if not path.is_file():
+        return None
+    hha = np.asarray(Image.open(path))
+    lo, hi = 1.0 / MAX_DEPTH_M, 1.0 / MIN_DEPTH_M
+    ch0 = hha[..., 0].astype(np.float32) / 255.0
+    disp = np.maximum(ch0 * (hi - lo) + lo, 1e-3)
+    z = 1.0 / disp
+    return np.clip((z - MIN_DEPTH_M) / (MAX_DEPTH_M - MIN_DEPTH_M), 0.0, 1.0).astype(np.float32)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. 입력 목록 / IO
 # ═══════════════════════════════════════════════════════════════════════════
@@ -412,8 +501,42 @@ def load_square(path: Path, size: int) -> Optional[np.ndarray]:
     return np.asarray(im.crop((left, top, left + size, top + size)), dtype=np.uint8)
 
 
-def outputs_for(out_root: Path, stem: str) -> dict:
-    return {m: out_root / m / f"{stem}.png" for m in MODAL_DIRS}
+def parse_modals(spec: str) -> List[str]:
+    """'--modals' 파싱·검증 (예: 'depth,lidar,event,aolp,dolp,nir'). 순서를 유지한다."""
+    toks = [t.strip() for t in str(spec).split(',') if t.strip()]
+    if not toks:
+        raise ValueError(f"--modals 파싱 결과가 비었다: '{spec}'")
+    out: List[str] = []
+    for t in toks:
+        if t not in SELECTABLE_MODALS:
+            raise ValueError(f"알 수 없는 모달 '{t}' (선택 가능: {list(SELECTABLE_MODALS)})")
+        if t in out:
+            raise ValueError(f"--modals 에 '{t}' 가 중복된다")
+        out.append(t)
+    return out
+
+
+def modal_dirs_of(modals: Sequence[str]) -> List[str]:
+    """선택 모달 → 생성할 산출 디렉토리 목록 (aolp 은 sin/cos 2원자 파일)."""
+    dirs: List[str] = []
+    for m in modals:
+        dirs.extend(['aolp_sin', 'aolp_cos'] if m == 'aolp' else [m])
+    return dirs
+
+
+def modal_outputs(out_root: Path, stem: str, modals: Sequence[str]) -> dict:
+    """stem 의 산출 파일 목록 — rgb(코퍼스 기저, 항상) + 선택 모달.
+    확장자는 MCubeS 로더 원자 파일 규격: aolp/dolp = .npy, 나머지 = .png."""
+    out: dict = {'rgb': out_root / 'rgb' / f"{stem}.png"}
+    for m in modals:
+        if m == 'aolp':
+            out['aolp_sin'] = out_root / 'aolp_sin' / f"{stem}.npy"
+            out['aolp_cos'] = out_root / 'aolp_cos' / f"{stem}.npy"
+        elif m == 'dolp':
+            out['dolp'] = out_root / 'dolp' / f"{stem}.npy"
+        else:
+            out[m] = out_root / m / f"{stem}.png"
+    return out
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -421,6 +544,13 @@ def outputs_for(out_root: Path, stem: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 def worker(rank: int, args, files: List[str], in_root: str, ret: Optional[dict] = None):
     import torch
+
+    sel = parse_modals(args.modals)
+    # depth 백엔드 forward 는 depth/lidar 재(신규)생성할 때만 필요하다.
+    # aolp/dolp 는 그 이미지의 '생성된 depth' 를 재사용(당회 산출 또는 캐시 HHA)하고,
+    # nir/event 는 RGB 만 본다 — 증분 런(--modals aolp,dolp,nir)은 백엔드를 만들지도
+    # 않는다(기존 200k 산출물에 신규 모달만 얹는 경로가 주 사용례).
+    need_backend = ('depth' in sel) or ('lidar' in sel)
 
     gpus = [int(g) for g in str(args.gpu).split(',') if g.strip() != '']
     world = max(len(gpus), 1)
@@ -431,12 +561,15 @@ def worker(rank: int, args, files: List[str], in_root: str, ret: Optional[dict] 
     else:
         device = torch.device('cpu')
 
-    backend = build_depth_backend(args.depth_backend, device, args.omnidata_ckpt,
-                                  args.da_model, args.midas_variant,
-                                  verbose=(rank == 0))
+    backend = None
+    if need_backend:
+        backend = build_depth_backend(args.depth_backend, device, args.omnidata_ckpt,
+                                      args.da_model, args.midas_variant,
+                                      verbose=(rank == 0))
     if rank == 0:
-        print(f"[P50-gen] depth backend = {backend.name} | device={device} | "
-              f"workers={world}")
+        bname = backend.name if backend is not None else 'none (depth/lidar 미선택 — 캐시/RGB 유도만)'
+        print(f"[P50-gen] depth backend = {bname} | device={device} | "
+              f"workers={world} | modals={sel}")
 
     out_root = Path(args.out)
     in_root_p = Path(in_root)
@@ -446,6 +579,36 @@ def worker(rank: int, args, files: List[str], in_root: str, ret: Optional[dict] 
     done, skipped, failed = 0, 0, 0
     t0 = time.time()
     batch: List[Tuple[str, np.ndarray]] = []
+
+    def save_stem(stem: str, img: Optional[np.ndarray], dn: Optional[np.ndarray]):
+        """stem 의 **없는 산출만** 쓴다 — 증분 생성이 기존 파일을 다시 쓰지 않는다."""
+        paths = modal_outputs(out_root, stem, sel)
+        if img is not None:
+            if not paths['rgb'].is_file():
+                Image.fromarray(img).save(paths['rgb'])
+            if 'event' in sel and not paths['event'].is_file():
+                Image.fromarray(render_event_proxy(
+                    img, contrast_thresh=args.event_thresh,
+                    motion=args.event_motion, rng=rng)).save(paths['event'])
+            if 'nir' in sel and not paths['nir'].is_file():
+                Image.fromarray(render_nir_proxy(img)).save(paths['nir'])
+        if dn is not None:
+            if 'depth' in sel and not paths['depth'].is_file():
+                Image.fromarray(render_hha(dn, args.fov)).save(paths['depth'])
+            if 'lidar' in sel and not paths['lidar'].is_file():
+                Image.fromarray(render_pseudo_lidar(
+                    dn, args.fov, beams=args.lidar_beams, az_bins=args.lidar_az_bins,
+                    beam_width=args.lidar_beam_width,
+                    value_scale=args.lidar_value_scale)).save(paths['lidar'])
+            if 'aolp' in sel or 'dolp' in sel:
+                n = surface_normal(dn)
+                if 'aolp' in sel and not (paths['aolp_sin'].is_file()
+                                          and paths['aolp_cos'].is_file()):
+                    a_sin, a_cos = render_aolp_proxy(n)
+                    np.save(paths['aolp_sin'], a_sin.astype(np.float32))
+                    np.save(paths['aolp_cos'], a_cos.astype(np.float32))
+                if 'dolp' in sel and not paths['dolp'].is_file():
+                    np.save(paths['dolp'], render_dolp_proxy(n).astype(np.float32))
 
     def flush():
         nonlocal done, failed, batch
@@ -461,17 +624,8 @@ def worker(rank: int, args, files: List[str], in_root: str, ret: Optional[dict] 
             batch = []
             return
         for (stem, img), dn in zip(batch, depth):
-            paths = outputs_for(out_root, stem)
             try:
-                Image.fromarray(img).save(paths['rgb'])
-                Image.fromarray(render_hha(dn, args.fov)).save(paths['depth'])
-                Image.fromarray(render_pseudo_lidar(
-                    dn, args.fov, beams=args.lidar_beams, az_bins=args.lidar_az_bins,
-                    beam_width=args.lidar_beam_width,
-                    value_scale=args.lidar_value_scale)).save(paths['lidar'])
-                Image.fromarray(render_event_proxy(
-                    img, contrast_thresh=args.event_thresh,
-                    motion=args.event_motion, rng=rng)).save(paths['event'])
+                save_stem(stem, img, dn)
                 done += 1
             except Exception as e:
                 failed += 1
@@ -480,17 +634,36 @@ def worker(rank: int, args, files: List[str], in_root: str, ret: Optional[dict] 
 
     for i, f in enumerate(shard):
         stem = stem_of(f, in_root_p)
-        paths = outputs_for(out_root, stem)
+        paths = modal_outputs(out_root, stem, sel)
         if all(p.is_file() for p in paths.values()):
             skipped += 1
             continue
-        img = load_square(f, args.size)
-        if img is None:
+        # 원본 RGB 픽셀이 필요한가: rgb 산출이 없거나, event/nir 를 만들거나, 백엔드 입력
+        need_img = (not paths['rgb'].is_file()) or ('event' in sel) \
+            or ('nir' in sel) or need_backend
+        need_dn = any(m in sel for m in ('depth', 'lidar', 'aolp', 'dolp'))
+        img = load_square(f, args.size) if need_img else None
+        if need_img and img is None:
             failed += 1
             continue
-        batch.append((stem, img))
-        if len(batch) >= args.batch:
-            flush()
+        if need_backend:
+            batch.append((stem, img))
+            if len(batch) >= args.batch:
+                flush()
+        else:
+            dn = None
+            if need_dn:
+                dn = depth_from_cached_hha(out_root / 'depth' / f"{stem}.png")
+                if dn is None:
+                    print(f"[P50-gen][rank{rank}] {stem}: depth 캐시 없음 → aolp/dolp "
+                          f"스킵 (새로 만들려면 --modals 에 depth 를 포함할 것)",
+                          flush=True)
+            try:
+                save_stem(stem, img, dn)
+                done += 1
+            except Exception as e:
+                failed += 1
+                print(f"[P50-gen][rank{rank}] 저장 실패 {stem}: {e}")
         if rank == 0 and (i + 1) % max(args.log_interval, 1) == 0:
             el = time.time() - t0
             rate = (done + skipped) / max(el, 1e-6)
@@ -500,7 +673,7 @@ def worker(rank: int, args, files: List[str], in_root: str, ret: Optional[dict] 
     flush()
 
     stat = {'rank': rank, 'done': done, 'skipped': skipped, 'failed': failed,
-            'backend': backend.name}
+            'backend': backend.name if backend is not None else 'none'}
     print(f"[P50-gen][rank{rank}] finished {stat}")
     if ret is not None:
         ret[rank] = stat
@@ -526,6 +699,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--da-model', default='depth-anything/Depth-Anything-V2-Small-hf')
     p.add_argument('--midas-variant', default='DPT_Large')
     p.add_argument('--fov', type=float, default=DEFAULT_FOV_DEG, help='가정 수평 FOV(도)')
+    p.add_argument('--modals', type=str, default=DEFAULT_MODALS,
+                   help="쉼표 목록. 기본 'depth,lidar,event' = 종전 4모달(rgb 포함) 동작. "
+                        f"추가 가능: {list(SELECTABLE_MODALS)} — aolp/dolp 는 생성 depth "
+                        "재사용(캐시 HHA 역변환, 백엔드 기동 0회), nir 는 RGB 결정론 변환")
     p.add_argument('--lidar-beams', type=int, default=64)
     p.add_argument('--lidar-az-bins', type=int, default=1024)
     p.add_argument('--lidar-beam-width', type=float, default=0.25,
@@ -538,12 +715,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
+    sel = parse_modals(args.modals)
+    use_backend = ('depth' in sel) or ('lidar' in sel)
     out_root = Path(args.out)
-    for m in MODAL_DIRS:
-        (out_root / m).mkdir(parents=True, exist_ok=True)
+    for d in ['rgb'] + modal_dirs_of(sel):
+        (out_root / d).mkdir(parents=True, exist_ok=True)
 
     files = list_images(args.imagenet, args.n, args.seed)
-    print(f"[P50-gen] 입력 {len(files)}장 (root={args.imagenet}) → {out_root}")
+    print(f"[P50-gen] 입력 {len(files)}장 (root={args.imagenet}) → {out_root} "
+          f"(modals={sel})")
 
     gpus = [g for g in str(args.gpu).split(',') if g.strip() != '']
     fstr = [str(f) for f in files]
@@ -562,57 +742,109 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     stems, complete = [], 0
     for f in files:
         s = stem_of(f, in_root_p)
-        if all(p.is_file() for p in outputs_for(out_root, s).values()):
+        if all(p.is_file() for p in modal_outputs(out_root, s, sel).values()):
             stems.append(s)
             complete += 1
     (out_root / 'index.txt').write_text('\n'.join(stems) + '\n')
 
     import torch
-    meta = {
+    # 증분 런은 기존 meta 를 **병합**한다 — 원본 생성 provenance(depth 백엔드 등)를
+    # 덮어쓰지 않는다. 이번 런이 백엔드를 안 돌렸다면 depth_backend 는 캐시의
+    # 원 출처 기록을 유지한다.
+    meta_path = out_root / 'meta.json'
+    meta: dict = {}
+    if meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            meta = {}
+    now_backend = stats[0]['backend'] if stats else 'unknown'
+    mod_meta: dict = {
+        'rgb': {'format': 'uint8 PNG RGB', 'note': 'short-side resize + center crop'},
+    }
+    if 'depth' in sel:
+        mod_meta['depth'] = {
+            'format': 'uint8 PNG 3ch = HHA',
+            'channels': ['horizontal disparity', 'height above ground',
+                         'angle with gravity'],
+            'note': 'DELIVER 의 depth 모달은 hha 디렉토리를 읽는다',
+            'assumptions': {'fov_deg': args.fov,
+                            'min_depth_m': MIN_DEPTH_M,
+                            'max_depth_m': MAX_DEPTH_M,
+                            'height_max_m': HEIGHT_MAX_M,
+                            'gravity': 'image +y (assumed level camera)',
+                            'ground': 'Y 99th percentile'}}
+    if 'lidar' in sel:
+        mod_meta['lidar'] = {
+            'format': 'uint8 PNG 3ch (동일값 복제), 0 = no return',
+            'method': 'elevation-beam + azimuth-bin rasterization of '
+                      'estimated depth (nearest return per cell)',
+            'beams': args.lidar_beams, 'az_bins': args.lidar_az_bins,
+            'beam_width': args.lidar_beam_width,
+            'value_scale': args.lidar_value_scale,
+            'note': 'DELIVER lidar 실측 동적범위 [0,0.38] 에 정합'}
+    if 'event' in sel:
+        mod_meta['event'] = {
+            'format': 'uint8 PNG 3ch — ch0=+polarity, ch1=-polarity, ch2=0',
+            'method': 'PROXY: spatial gradient of log intensity under an '
+                      'assumed uniform translation (no temporal statistics)',
+            'contrast_thresh': args.event_thresh,
+            'motion': args.event_motion,
+            '🔴 proxy': 'N-ImageNet 대체물. 논문/문서에 proxy 로 명기할 것'}
+    # [P50-EXT] aolp/dolp 의 D 출처 — 당회 백엔드 산출인지 캐시 역변환인지
+    dsrc = ('depth 백엔드 당회 산출 D' if use_backend
+            else '캐시 depth/<stem>.png (HHA ch0 역변환, 8bit 양자화 오차 포함)')
+    if 'aolp' in sel:
+        mod_meta['aolp'] = {
+            'format': 'float32 .npy H×W — aolp_sin / aolp_cos 원자 2파일 '
+                      '(로더가 [sin,cos,sin] 3ch 로 stack — mcubes.py 관행)',
+            'method': 'PROXY: 법선 n = normalize([-∂D/∂x, -∂D/∂y, 1]) (Sobel 3×3) 의 '
+                      '방위각과 직교 관행 θ = atan2(n_y, n_x) + π/2 → sin(2θ), cos(2θ) '
+                      '(편광각은 π 주기 → 2θ 인코딩, MCubeS 원본 sin/cos 분리 저장 관행)',
+            'depth_source': dsrc,
+            '🔴 proxy': 'depth 유도 기하 proxy — 실측 편광 아님. 논문/문서에 proxy 로 명기할 것'}
+    if 'dolp' in sel:
+        mod_meta['dolp'] = {
+            'format': 'float32 .npy H×W [0,1]',
+            'method': f'PROXY: 천정각 z = arccos(n_z) → Fresnel 근사(굴절률 1.5, '
+                      f'specular-지배 가정) dolp = sin²z·{DOLP_FRESNEL_COEF} / '
+                      f'(2 − sin²z), [0,1] 클립',
+            'depth_source': dsrc,
+            '🔴 proxy': '단조 Fresnel 근사 곡선 proxy — 실측 DoLP 아님. '
+                        '논문/문서에 proxy 로 명기할 것'}
+    if 'nir' in sel:
+        mod_meta['nir'] = {
+            'format': 'uint8 PNG H×W 단채널 [0,1]',
+            'method': f'PROXY(결정론적 변환): nir = clip(0.299R + 0.587G + 0.114B + '
+                      f'{NIR_EXCESS_GREEN_W}·max(0, G − 0.5(R+B)), 0, 1) — luminance + '
+                      f'excess-green 보정(식생 NIR 밝음 근사). 로더가 3채널로 복제',
+            '🔴 proxy': 'RGB 결정론 변환 — 실측 NIR 밴드 아님. 논문/문서에 proxy 로 명기할 것'}
+    meta.update({
         'tool': 'tools/p50_gen_pseudomodal.py',
         'tool_version': TOOL_VERSION,
-        'created': time.strftime('%Y-%m-%dT%H:%M:%S'),
+        'created': meta.get('created', time.strftime('%Y-%m-%dT%H:%M:%S')),
+        'updated': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'design_doc': '.claude_logs/decisions/'
                       '2026-08-17-p50-map-modal-alignment-pretraining-proposal.md',
         'source_corpus': str(args.imagenet),
         'num_requested': len(files),
         'num_complete': complete,
         'image_size': args.size,
-        'depth_backend': stats[0]['backend'] if stats else 'unknown',
+        'modals_selected': sel,
         'depth_backend_requested': args.depth_backend,
+        'depth_backend_this_run': now_backend,
         'per_worker': stats,
-        'modalities': {
-            'rgb': {'format': 'uint8 PNG RGB', 'note': 'short-side resize + center crop'},
-            'depth': {'format': 'uint8 PNG 3ch = HHA',
-                      'channels': ['horizontal disparity', 'height above ground',
-                                   'angle with gravity'],
-                      'note': 'DELIVER 의 depth 모달은 hha 디렉토리를 읽는다',
-                      'assumptions': {'fov_deg': args.fov,
-                                      'min_depth_m': MIN_DEPTH_M,
-                                      'max_depth_m': MAX_DEPTH_M,
-                                      'height_max_m': HEIGHT_MAX_M,
-                                      'gravity': 'image +y (assumed level camera)',
-                                      'ground': 'Y 99th percentile'}},
-            'lidar': {'format': 'uint8 PNG 3ch (동일값 복제), 0 = no return',
-                      'method': 'elevation-beam + azimuth-bin rasterization of '
-                                'estimated depth (nearest return per cell)',
-                      'beams': args.lidar_beams, 'az_bins': args.lidar_az_bins,
-                      'beam_width': args.lidar_beam_width,
-                      'value_scale': args.lidar_value_scale,
-                      'note': 'DELIVER lidar 실측 동적범위 [0,0.38] 에 정합'},
-            'event': {'format': 'uint8 PNG 3ch — ch0=+polarity, ch1=-polarity, ch2=0',
-                      'method': 'PROXY: spatial gradient of log intensity under an '
-                                'assumed uniform translation (no temporal statistics)',
-                      'contrast_thresh': args.event_thresh,
-                      'motion': args.event_motion,
-                      '🔴 proxy': 'N-ImageNet 대체물. 논문/문서에 proxy 로 명기할 것'},
-        },
         'versions': {'python': sys.version.split()[0], 'numpy': np.__version__,
                      'torch': torch.__version__, 'pillow': Image.__version__},
         'args': vars(args),
-    }
-    (out_root / 'meta.json').write_text(json.dumps(meta, indent=2, ensure_ascii=False))
-    print(f"[P50-gen] 완료 — {complete}/{len(files)} 세트, meta={out_root/'meta.json'}")
+    })
+    if use_backend:
+        meta['depth_backend'] = now_backend
+    else:
+        meta.setdefault('depth_backend', now_backend)   # 캐시 depth 원 출처 보존
+    meta['modalities'] = {**meta.get('modalities', {}), **mod_meta}
+    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+    print(f"[P50-gen] 완료 — {complete}/{len(files)} 세트, meta={meta_path}")
     return 0
 
 
