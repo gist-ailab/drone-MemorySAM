@@ -1,0 +1,153 @@
+<title>RxDINO (P52) — 논문 구조 모델 카드</title>
+<style>
+  :root{
+    --bg:#faf9f7; --ink:#1e2228; --ink2:#454c56; --muted:#8a8f98; --line:#e3e0da;
+    --raise:#f1efeb; --accent:#3d6b8e; --good:#2e7d4f; --warn:#a8730a; --purple:#5b4a8a; --cardbg:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15171b; --ink:#e8e6e1; --ink2:#b7bcc4; --muted:#7c828c; --line:#2c3038;
+      --raise:#1e2126; --accent:#7aa7c7; --good:#5cb884; --warn:#d9a441; --purple:#a393d1; --cardbg:#1a1d22;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15171b; --ink:#e8e6e1; --ink2:#b7bcc4; --muted:#7c828c; --line:#2c3038;
+    --raise:#1e2126; --accent:#7aa7c7; --good:#5cb884; --warn:#d9a441; --purple:#a393d1; --cardbg:#1a1d22;
+  }
+  body{background:var(--bg);color:var(--ink);font-family:'Pretendard',-apple-system,'Noto Sans KR',sans-serif;line-height:1.66;margin:0;font-size:15px}
+  .wrap{max-width:980px;margin:0 auto;padding:44px 24px 80px}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  h1{font-size:29px;margin:0 0 4px;letter-spacing:-.01em;text-wrap:balance}
+  h2{font-size:20px;margin:46px 0 8px;padding-top:22px;border-top:1px solid var(--line)}
+  h3{font-size:15.5px;margin:22px 0 4px}
+  .stamp{font-size:13px;color:var(--muted);margin:0 0 18px}
+  .sub{font-size:13.5px;color:var(--ink2);margin:2px 0 12px}
+  p{font-size:14px;color:var(--ink2);margin:8px 0}
+  p b{color:var(--ink)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+  th{text-align:left;font-size:12px;letter-spacing:.05em;color:var(--muted);border-bottom:1.5px solid var(--line);padding:6px 10px 6px 0}
+  td{border-bottom:1px solid var(--line);padding:7px 10px 7px 0;vertical-align:top;color:var(--ink2)}
+  td b{color:var(--ink)}
+  .scroll{overflow-x:auto}
+  .note{background:var(--raise);border-radius:8px;padding:12px 16px;font-size:13.5px;color:var(--ink2);margin:12px 0}
+  .figwrap{background:#ffffff;border:1px solid var(--line);border-radius:10px;padding:8px;overflow-x:auto;margin:14px 0}
+  .figwrap svg{min-width:760px;width:100%;height:auto}
+  .figcap{font-size:12.5px;color:var(--muted);margin:4px 4px 18px}
+  .mono{font-family:ui-monospace,Menlo,monospace;font-size:.9em}
+  .pill{display:inline-block;font-size:11.5px;padding:1px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+  .p-good{color:var(--good);border-color:var(--good)} .p-warn{color:var(--warn);border-color:var(--warn)} .p-dead{color:#b04a3c;border-color:#b04a3c}
+  ul,ol{margin:8px 0;padding-left:20px;color:var(--ink2);font-size:13.5px}
+  li{margin-bottom:5px}
+  footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<p class="eyebrow">drone-MemorySAM · P52 · paper-structured model card</p>
+<h1>RxDINO: Self-Prescribing Training for Multimodal Segmentation</h1>
+<p class="stamp">2026-09-01 · ⚠️ <b>P52 본런 미실시</b> — 방법·근거·실험계획 문서 (구성요소 증거는 완료, §3에 구분 명시)</p>
+
+<div class="note"><b>초록</b> — 멀티모달 세그멘테이션 연구는 "모달을 더 잘 섞는" 융합 모듈 경쟁이 지배하지만, 우리는 통제 소거 실험으로 그 전제가 강한 frozen 백본 위에서 성립하지 않음을 보인다(선택·attention·평균·저랭크 결합 4갈래 전부 무익~유해). 성능을 실제로 움직이는 축은 <b>학습 신호와 초기화</b>다. 이에 우리는 RxDINO를 제안한다: 하나의 미니멀 frozen-VFM 아키텍처 위에서 ① 어댑터-만 정렬 사전학습으로 초기화하고 ② <b>학습 중 계산되는 병리 지표(클래스 붕괴·모달 게으름)가 학습-전용 처방의 강도를 스스로 조절</b>한다. 벤치별 설정 차이는 없으며, 데이터셋별 거동은 λ 궤적으로 창발한다. 주행(DELIVER·MUSES)과 재질(MCubeS)의 이질적 센서 셋에서 단일 레시피로 검증한다.</div>
+
+<h2>1. 기존 문제</h2>
+
+<h3>P1 — "잘 섞으면 오른다"는 미검증 전제</h3>
+<p>CMX → CMNeXt → GeminiFusion → CrossWeaver로 이어지는 계보는 매번 더 정교한 융합 모듈을 제안한다. 그러나 강한 frozen 백본 위에서 이 전제를 통제 검증한 결과(동일 백본·레시피·시드, 융합부만 교체): <b>선택/라우팅은 원리적으로 불가</b>(남은 보완정보가 anti-consensus — 다수가 틀린 곳에서만 소수가 옳고, 합의·신뢰도 어느 신호로도 표시 안 됨), <b>cross-attention은 −2.05</b>(파라미터 15.9×), <b>학습형 게이트 융합은 산술평균과 동급</b>, <b>인코더-내 저랭크 결합은 −0.82</b>. 즉 믹서는 병목이 아니다.</p>
+
+<h3>P2 — 벤치별 숨은 튜닝: "단일 메서드"의 부재</h3>
+<p>실무적으로 모든 방법이 데이터셋별로 손실·하이퍼파라미터를 조정하지만 논문에는 드러나지 않는다. 우리 자체 실측이 왜 이것이 문제인지 보여준다: 클래스축 처방(prototype 손실)을 고정 강도로 적용하면 붕괴가 있는 DELIVER에선 +1.4지만 <b>없는 MUSES에선 −0.77로 해롭다</b>. 병리는 벤치마다 다른데, 처방을 벤치별로 사람이 켜고 끄면 그것은 단일 메서드가 아니다.</p>
+
+<h3>P3 — 어댑터의 정렬 부재</h3>
+<p>frozen 백본 + 모달별 어댑터 패러다임(MLE-SAM 등)에서 어댑터·융합부는 타깃 데이터 수천 장만으로 from-scratch 학습된다. VLM 연구의 교훈("커넥터 선택은 부차적, 정렬 사전학습이 1차")이 센서 도메인에는 이식되지 않았다.</p>
+
+<h2>2. 해결 방법 — RxDINO</h2>
+
+<h3>2.1 전체 구조</h3>
+<p>추론 경로(①→⑤)는 의도적으로 단순하다: 공유 frozen 백본 + 모달별 LoRA → 미니멀 융합 → FPN 디코더. 모든 제안 요소는 <b>학습 시에만 존재</b>한다(점선) — 위쪽의 자기-적응 처방 2종과 아래쪽의 정렬 사전학습.</p>
+{{FIG1}}
+<p class="figcap"><b>Fig. 1 — 전체 개요.</b> 실선 ①~⑤ = 추론 경로(3벤치 동일 그래프). 녹색 점선 = 학습-전용 자기-적응 처방(추론 시 폐기), 보라 점선 = 초기화 전용 사전학습. 색 = frozen(파랑)/trainable(주황)/train-only(녹)/init-only(보라).</p>
+
+<div class="scroll"><table>
+<thead><tr><th>블록</th><th>구성</th><th>왜 (근거)</th></tr></thead>
+<tbody>
+<tr><td><b>② 인코더</b></td><td>DINOv3-L 24블록 <b>동결(304M)</b> + 모달별 LoRA(Q/V, r16, ~수 M)</td><td>백본이 계보 최대 변수(+11.6)이나 L 초과는 포화(+0.18) — 사되 파괴하지 않는다. 학습분 ~50M로 소비자 GPU 학습 가능</td></tr>
+<tr><td><b>③ 융합</b></td><td>gated-MLP(γ=tanh(0.1)) + VICReg(var+cov)</td><td>믹서 4갈래 소거(P1)가 미니멀리즘을 정당화. VICReg은 lidar 유효랭크 4.7→78+ 복원 실측</td></tr>
+<tr><td><b>④ 디코더</b></td><td>SimpleFPN(4스케일) + 픽셀 헤드 (+M2F-lite aux, 학습 전용)</td><td>표준 구성 — 기여 주장 없음</td></tr>
+</tbody></table></div>
+
+<h3>2.2 처방 A: C3-adaptive (클래스축)</h3>
+{{FIG2}}
+<p class="figcap"><b>Fig. 2 — C3-adaptive.</b> ① 학습 배치의 혼동을 EMA로 누적 → ② 오답이 <i>한 클래스로 집중</i>되는(=흡수되는) 클래스만 높은 점수 s_c — "그냥 어려운" 클래스(오답 분산)와 구분됨 → ③ 점수에 비례한 강도 λ_c로 그 클래스 특징만 자기 prototype으로 되당김. 건강한 클래스는 압력 0, 전 클래스 붕괴 시 균일 λ(고정팔)와 동일해지는 상한 구조.</p>
+
+<h3>2.3 처방 B: UniBal-adaptive (모달축)</h3>
+{{FIG3}}
+<p class="figcap"><b>Fig. 3 — UniBal-adaptive.</b> ① 각 모달이 경량 head로 "혼자" 세그를 시도 → ② 혼자 유난히 못 푸는 모달 = 융합 뒤에 숨어 학습이 안 된 게으른 모달 → ③ 그 모달에만 uni-modal CE를 강화(λ_u ∝ 게으름). head는 학습 후 폐기. 학습-내 모달 기여 측정→변조는 OGM-GE(CVPR'22)로 검증된 계열.</p>
+
+<h3>2.4 초기화: 정렬 사전학습</h3>
+{{FIG4}}
+<p class="figcap"><b>Fig. 4 — 정렬 사전학습.</b> RGB-만 웹 코퍼스에서 가짜 센서 6종을 유도(전부 proxy 명시) → 한 모달을 가리고 다른 모달로 복원하는 숙제로 어댑터+융합부가 모달 대응 구조를 선학습 → 가중치만 본학습의 출발점으로 이식. 매칭-시드 통제로 +0.74~+1.38 실측(이득은 조기 수렴 국면 집중 → 조기정지와 결합).</p>
+
+<h3>2.5 무엇이 새로운가 (경계 명시)</h3>
+<ul>
+<li><b>주장</b>: ① 병리 지표가 처방 강도를 온라인 조절하는 <b>자기-처방 학습</b>(클래스축+모달축 통합, 벤치별 config 0) ② frozen-VFM 위 <b>어댑터-만</b> 정렬 사전학습 ③ 믹서 무용의 4갈래 통제 소거 + anti-consensus 규명(설계 정당화).</li>
+<li><b>주장 안 함</b>: frozen 백본+모달별 LoRA(MLE-SAM 선점) · 융합 모듈 자체 · adaptive loss weighting 일반 개념(선례 존재 — 우리는 병리-특이 지표와 3벤치 창발 검증이 차별).</li>
+</ul>
+
+<h2>3. 실험 — <span class="pill p-warn">본런 미실시</span> 무엇이 들어가야 하나</h2>
+<p><b>정직한 현황</b>: RxDINO 통합 본런(adaptive 컨트롤러 on, 3벤치)은 아직 돌지 않았다. 컨트롤러는 구현·스모크 검증 완료, 아래 "완료" 표시는 구성요소·대조군 증거다.</p>
+
+<h3>3.1 주 실험 (미실시 — 논문 Table 1)</h3>
+<div class="scroll"><table>
+<thead><tr><th>실험</th><th>내용</th><th>판정 기준 (사전등록)</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td><b>E1. 3벤치 본런</b></td><td>단일 config × DELIVER/MUSES/MCubeS × 시드≥2, mean±std, legal 프로토콜(BS1·native-GT·하네스가드)</td><td>G1/G2/G3: 각 벤치 최선 고정팔 −0.3 이내</td><td><span class="pill p-warn">대기 (UniBal 고정런 완주 후)</span></td></tr>
+<tr><td><b>E2. 창발 검증</b></td><td>λ_c·λ_u 궤적 로깅 → 동일 config에서 벤치별 분화 확인</td><td>G4: DELIVER=RailTrack λ↑ / MUSES=λ_c≈0·radar λ_u↑ / MCubeS=rubber λ↑</td><td><span class="pill p-warn">대기 — 핵심 그림</span></td></tr>
+<tr><td>E3. SOTA 비교표</td><td>3벤치 × 경쟁 방법(프로토콜-정합 이중 보고: native-GT / resized-GT)</td><td>—</td><td>수치 확보분으로 초안 가능</td></tr>
+</tbody></table></div>
+
+<h3>3.2 Ablation (일부 완료)</h3>
+<div class="scroll"><table>
+<thead><tr><th>절제</th><th>무엇을 격리</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td>adaptive vs 고정팔 vs off</td><td>컨트롤러의 순기여 (각 벤치)</td><td><span class="pill p-good">고정팔 완료(H20 dose-response 2/2 적중)</span> · adaptive는 E1에서</td></tr>
+<tr><td>사전학습 init on/off</td><td>P50 기여</td><td><span class="pill p-good">DELIVER 완료 (+0.74 매칭 통제)</span> · MUSES/MCubeS는 EXT 후</td></tr>
+<tr><td>VICReg on/off</td><td>rank 복원 단독 기여</td><td><span class="pill p-good">학습 중 (N7, 곧)</span></td></tr>
+<tr><td>믹서 스윕</td><td>융합부 무용 실증 (mean/attn/coupling)</td><td><span class="pill p-good">완료 (H17/H19/H21)</span></td></tr>
+<tr><td>백본 스케일 (S+~7B 5점)</td><td>"큰 백본 덕" 반론 방어</td><td><span class="pill p-good">완료 (H12)</span></td></tr>
+<tr><td>LoRA 구조 (§4 제안)</td><td>per-modal vs shared+residual</td><td><span class="pill p-warn">미실시 — E-LoRA로 등재 제안</span></td></tr>
+<tr><td>동일백본 경쟁 재구현</td><td>MLE-SAM 평균융합(완) · CrossWeaver MIB(미)</td><td><span class="pill p-good">평균융합 완료</span> / MIB <span class="pill p-warn">선택</span></td></tr>
+</tbody></table></div>
+
+<h3>3.3 분석·정성 (논문 그림)</h3>
+<ul>
+<li>λ 궤적 그림(G4) — <b>이 논문의 시그니처 figure</b></li>
+<li>C3 전후 confusion matrix(RailTrack·rubber) + 예측맵 정성 패널 <span class="pill p-warn">N9 준비 중</span></li>
+<li>VICReg 전후 유효랭크 스펙트럼 <span class="pill p-warn">N9</span></li>
+<li>소거 체인 요약(오라클→anti-consensus→라우터 3종 음성) <span class="pill p-good">데이터 완비</span></li>
+<li>효율표(trainable params/FLOPs) · 시드 통계 프로토콜 명세</li>
+</ul>
+<p class="sub">제출 규율: MUSES Codabench는 val ≥ 82.62일 때만 1회(사전등록). 모든 legal 수치는 하네스 가드 통과 상태에서만.</p>
+
+<h2>4. 설계 고민 — 모달리티별 LoRA가 최선인가?</h2>
+<p><b>정직한 답: 최선이라고 증명된 적은 없다 — "검증된 기본값"일 뿐이다.</b> 우리 모든 실적이 per-modal LoRA 위에서 나왔지만, 구조 대안과의 통제 비교는 한 적이 없다. 선택지와 증거:</p>
+<div class="scroll"><table>
+<thead><tr><th>구조</th><th>장점</th><th>약점/위험</th><th>우리 증거와의 관계</th></tr></thead>
+<tbody>
+<tr><td><b>A. per-modal 독립 (현행)</b></td><td>모달 통계 이질성(희소 lidar vs 조밀 RGB) 흡수 · 실적 전부 이 위에서</td><td>모달 간 공유 구조를 학습으로만 획득 — <b>정렬이 안 돼 있음</b></td><td>P50(+0.74)이 바로 이 약점의 사후 보정이었다는 해석 가능</td></tr>
+<tr><td>B. 완전 공유 1개</td><td>파라미터 최소 · 정렬 공짜</td><td>모달 특이성 소실 위험(lidar 희소성 등)</td><td>미검 — 프로브 가치 있음</td></tr>
+<tr><td><b>C. 공유 + per-modal 잔차 (r8+r8)</b></td><td>공통 부분공간(정렬 내장) + 특이성 유지 — <b>P50과 같은 목표를 아키텍처로 달성</b></td><td>구현 복잡도 소폭 · rank 배분 새 하이퍼파라미터</td><td>문헌 선례(shared-specific 분해, MultiLoReFT류) · <b>가장 유망한 대안</b></td></tr>
+<tr><td>D. 입력-조건부 단일(라우팅형)</td><td>—</td><td>라우팅 계열 — 우리 원장에서 반증 인접(H1/H16)</td><td>재시도 비권고</td></tr>
+</tbody></table></div>
+<p><b>권고</b>: 본런(E1)은 A로 간다 — 검증된 레시피를 바꿔 본런을 도박으로 만들지 않는다. 대신 <b>E-LoRA ablation을 사전등록</b>한다: A vs B vs C, 파라미터 매칭·시드 매칭, DELIVER 프로브 1벤치. 예측 — C가 A와 동급 이상이면 "정렬을 아키텍처에 내장"으로 채택 검토(사전학습 P50과의 중복/시너지 해석 포함: C+P50 > A+P50이면 두 정렬 기제가 상보, 동급이면 중복). C의 이득이 없으면 A 유지가 실증으로 정당화된다 — 어느 쪽이든 논문 ablation 행.</p>
+
+<h2>5. 현황</h2>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td>컨트롤러 2종 구현</td><td><span class="pill p-good">완료·스모크 검증·develop 병합</span></td></tr>
+<tr><td>사전학습 코퍼스 500k(6모달)</td><td><span class="pill p-good">완성</span> · Phase2 사전학습은 A100 해방 대기</td></tr>
+<tr><td>UniBal 고정런(G2 기준)</td><td><span class="pill p-warn">학습 중 ~1.5일</span></td></tr>
+<tr><td>E1/E2 본런</td><td><span class="pill p-warn">미실시 — UniBal 판정 후 기동</span></td></tr>
+</tbody></table></div>
+
+<footer>원본 = repo <span class="mono">.claude_logs/meta/rxdino-p52.html</span> · 그림 원본(편집 가능 SVG) = <span class="mono">fig1-overview / fig2-c3 / fig3-unibal / fig4-pretrain .svg</span> · 수치 출처 = <span class="mono">hypothesis-ledger.md</span> · 자매 = 상황판(🛰️)·노벨티 맵(🧩)</footer>
+</div>
