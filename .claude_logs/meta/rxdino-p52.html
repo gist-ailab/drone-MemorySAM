@@ -1,0 +1,288 @@
+<title>RxDINO (P52) — 모델 카드</title>
+<style>
+  :root{
+    --bg:#faf9f7; --ink:#1e2228; --ink2:#454c56; --muted:#8a8f98; --line:#e3e0da;
+    --raise:#f1efeb; --accent:#3d6b8e; --good:#2e7d4f; --warn:#a8730a; --purple:#5b4a8a;
+    --cardbg:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15171b; --ink:#e8e6e1; --ink2:#b7bcc4; --muted:#7c828c; --line:#2c3038;
+      --raise:#1e2126; --accent:#7aa7c7; --good:#5cb884; --warn:#d9a441; --purple:#a393d1;
+      --cardbg:#1a1d22;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15171b; --ink:#e8e6e1; --ink2:#b7bcc4; --muted:#7c828c; --line:#2c3038;
+    --raise:#1e2126; --accent:#7aa7c7; --good:#5cb884; --warn:#d9a441; --purple:#a393d1;
+    --cardbg:#1a1d22;
+  }
+  body{background:var(--bg);color:var(--ink);font-family:'Pretendard',-apple-system,'Noto Sans KR',sans-serif;line-height:1.62;margin:0;font-size:15px}
+  .wrap{max-width:1000px;margin:0 auto;padding:44px 24px 80px}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  h1{font-size:30px;margin:0 0 4px;letter-spacing:-.01em;text-wrap:balance}
+  h2{font-size:20px;margin:44px 0 6px;padding-top:20px;border-top:1px solid var(--line)}
+  h3{font-size:15.5px;margin:20px 0 4px}
+  .stamp{font-size:13px;color:var(--muted);margin:0 0 18px}
+  .sub{font-size:13.5px;color:var(--ink2);margin:2px 0 12px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+  th{text-align:left;font-size:12px;letter-spacing:.05em;color:var(--muted);border-bottom:1.5px solid var(--line);padding:6px 10px 6px 0}
+  td{border-bottom:1px solid var(--line);padding:7px 10px 7px 0;vertical-align:top;color:var(--ink2)}
+  td b{color:var(--ink)}
+  .scroll{overflow-x:auto}
+  .note{background:var(--raise);border-radius:8px;padding:12px 16px;font-size:13.5px;color:var(--ink2);margin:12px 0}
+  .figwrap{background:#ffffff;border:1px solid var(--line);border-radius:10px;padding:8px;overflow-x:auto;margin:14px 0}
+  .figcap{font-size:12.5px;color:var(--muted);margin:6px 4px 2px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.88em;background:var(--raise);padding:1px 5px;border-radius:3px}
+  .mono{font-family:ui-monospace,Menlo,monospace;font-size:.9em}
+  .pill{display:inline-block;font-size:11.5px;padding:1px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+  .p-good{color:var(--good);border-color:var(--good)} .p-warn{color:var(--warn);border-color:var(--warn)} .p-acc{color:var(--accent);border-color:var(--accent)}
+  ul{margin:8px 0;padding-left:20px;color:var(--ink2);font-size:13.5px}
+  li{margin-bottom:5px}
+  footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<p class="eyebrow">drone-MemorySAM · P52 model card</p>
+<h1>RxDINO — 자기-적응 처방 멀티모달 세그멘테이션</h1>
+<p class="stamp">2026-09-01 · 개정 확정판(단일-config) · 근거 = 원장 H1~H22 + 개정문서 <span class="mono">decisions/2026-08-31-p52-rxdino-adaptive-amendment.md</span></p>
+
+<div class="note"><b>한 줄 정의</b> — 하나의 미니멀 frozen-VFM 아키텍처(추론 그래프 3벤치 동일) 위에서, <b>학습 중 계산되는 병리 지표가 학습-전용 처방의 강도를 스스로 조절</b>한다(클래스축 C3-adaptive · 모달축 UniBal-adaptive). 벤치별 config 차이 0 — 데이터셋별 거동은 λ 궤적으로 <b>창발</b>한다. 초기화는 500k pseudo-모달 정렬 사전학습(P50).</div>
+
+<h2>1. Motivation — 왜 이 구조인가 (소거가 설계를 도출)</h2>
+<p class="sub">이 구조는 취향이 아니라 3주 캠페인(가설 22개, 통제 실측)의 소거 결과다. 각 설계 결정이 어떤 반증/확인에서 나왔는지:</p>
+<div class="scroll"><table>
+<thead><tr><th>관찰 (실측)</th><th>결론</th><th>설계 귀결</th></tr></thead>
+<tbody>
+<tr><td>백본 교체(SAM2→DINOv3)가 계보 최대 단일 변수 <b>+11.6</b> (H6) · L 초과 스케일은 +0.18 포화 (H12)</td><td>표현력이 지배하되 L에서 충분</td><td><b>frozen DINOv3-L 고정</b>, 백본 학습 안 함</td></tr>
+<tr><td>믹서 4갈래 전부 무익: 선택/라우팅(H16, anti-consensus) · cross-attn −2.05 (H17) · 산술평균과 동급 (H21) · 저랭크 결합 −0.82 (H19)</td><td><b>믹서는 병목이 아니다</b> — 정교화는 무익~유해</td><td><b>융합부를 의도적으로 미니멀하게</b> (gated-MLP 유지, 정교 융합 모듈 배제)</td></tr>
+<tr><td>lidar 유효랭크 4.7 붕괴 → VICReg으로 78+ 복원, MUSES +0.76 (트렁크와 묶음)</td><td>표현 붕괴는 학습 정칙화로 고쳐진다</td><td><b>VICReg 정칙화 유지</b> (N7 격리 측정 중)</td></tr>
+<tr><td>C3 고정 적용: DELIVER +1.4 / MUSES <b>−0.77</b> / MCubeS 표적만 회복 — 효과가 병리 강도에 단조 (H20, 사전등록 예측 2/2 적중)</td><td>처방은 병리 있는 곳에만 — <b>단 사람이 벤치별로 켜고 끄면 단일 메서드가 아님</b> (user 지적)</td><td><b>처방 강도를 온라인 지표의 함수로</b> — 오프라인 진단 폐기, 컨트롤러로 전환</td></tr>
+<tr><td>MUSES 4모달&lt;3모달, radar drop +0.13 = modality laziness / DELIVER는 2모달 학습 시 −2.85(laziness 없음)</td><td>모달축 병리도 벤치별로 있고 없다</td><td><b>UniBal도 adaptive로</b> — 게으른 모달만 자동 감독</td></tr>
+<tr><td>어댑터는 타깃 3~4천 장 from-scratch였음 → 정렬 사전학습 <b>+0.74~+1.38</b> (H22, 매칭 통제)</td><td>정보 축(초기화)이 실제로 열려 있는 유일한 축</td><td><b>P50 정렬-사전학습 init 채택</b> (500k, 어댑터만)</td></tr>
+</tbody></table></div>
+
+<h2>2. 아키텍처</h2>
+<div class="figwrap">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" font-family="Helvetica, Arial, sans-serif" style="min-width:900px;width:100%;height:auto">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444444"/></marker>
+    <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6FA876"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1280" height="760" fill="#FFFFFF"/>
+  <g id="training-only-region">
+    <rect x="392" y="28" width="856" height="252" rx="10" fill="#FAFDF9" stroke="#6FA876" stroke-width="1.5" stroke-dasharray="7 5"/>
+    <text x="410" y="52" font-size="15" font-weight="bold" fill="#3E7A4C">Self-adaptive prescriptions — training-only, discarded at inference</text>
+    <text x="410" y="70" font-size="11.5" fill="#6B8F74">single config for all benchmarks · per-dataset behaviour emerges from online pathology indicators (train-batch statistics only)</text>
+  </g>
+  <g id="c3-adaptive">
+    <rect x="410" y="84" width="400" height="86" rx="8" fill="#EAF4EA" stroke="#6FA876" stroke-width="1.5"/>
+    <text x="426" y="106" font-size="13.5" font-weight="bold" fill="#2F5E3A">C3-adaptive · class-axis prescription</text>
+    <text x="426" y="126" font-size="11.5" fill="#333333">confusion EMA M (C×C, train batches) → collapse score</text>
+    <text x="426" y="142" font-size="11.5" fill="#333333">s_c = (1−recall_c) · top-1-confuser concentration_c</text>
+    <text x="426" y="158" font-size="11.5" font-weight="bold" fill="#333333">λ_c = λ_max · clip(s_c/τ, 0, 1)  → per-class prototype pull</text>
+  </g>
+  <g id="c3-loss">
+    <rect x="836" y="94" width="176" height="66" rx="8" fill="#EAF4EA" stroke="#6FA876" stroke-width="1.5"/>
+    <text x="852" y="118" font-size="12.5" font-weight="bold" fill="#2F5E3A">Prototype loss</text>
+    <text x="852" y="134" font-size="11" fill="#333333">per-class weighted CE</text>
+    <text x="852" y="149" font-size="11" fill="#333333">vs EMA class prototypes</text>
+  </g>
+  <line x1="810" y1="127" x2="834" y2="127" stroke="#6FA876" stroke-width="1.5" marker-end="url(#arrg)"/>
+  <g id="unibal-adaptive">
+    <rect x="410" y="182" width="400" height="84" rx="8" fill="#EAF4EA" stroke="#6FA876" stroke-width="1.5"/>
+    <text x="426" y="204" font-size="13.5" font-weight="bold" fill="#2F5E3A">UniBal-adaptive · modality-axis prescription</text>
+    <text x="426" y="224" font-size="11.5" fill="#333333">per-modality aux heads (GN→1×1) → uni-modal CE loss L_m</text>
+    <text x="426" y="240" font-size="11.5" fill="#333333">laziness g_m = clip(L_m/mean_k L_k − 1, 0, cap)</text>
+    <text x="426" y="256" font-size="11.5" font-weight="bold" fill="#333333">λ_u,m = λ_u_max · g_m/cap  → supervise lazy modalities harder</text>
+  </g>
+  <g id="unibal-loss">
+    <rect x="836" y="192" width="176" height="66" rx="8" fill="#EAF4EA" stroke="#6FA876" stroke-width="1.5"/>
+    <text x="852" y="216" font-size="12.5" font-weight="bold" fill="#2F5E3A">Uni-modal CE</text>
+    <text x="852" y="232" font-size="11" fill="#333333">same seg GT, per modality</text>
+    <text x="852" y="247" font-size="11" fill="#333333">heads dropped after training</text>
+  </g>
+  <line x1="810" y1="224" x2="834" y2="224" stroke="#6FA876" stroke-width="1.5" marker-end="url(#arrg)"/>
+  <g id="lambda-emergence">
+    <rect x="1032" y="94" width="196" height="164" rx="8" fill="#FFFFFF" stroke="#6FA876" stroke-width="1.2" stroke-dasharray="4 4"/>
+    <text x="1046" y="116" font-size="12" font-weight="bold" fill="#2F5E3A">Emergent behaviour (G4)</text>
+    <text x="1046" y="136" font-size="11" fill="#333333">DELIVER: λ(RailTrack) ↑</text>
+    <text x="1046" y="152" font-size="11" fill="#333333">MUSES: all λ_c ≈ 0,</text>
+    <text x="1046" y="166" font-size="11" fill="#333333">   λ_u(radar) ↑</text>
+    <text x="1046" y="182" font-size="11" fill="#333333">MCubeS: λ(rubber) ↑</text>
+    <text x="1046" y="204" font-size="10.5" fill="#6B8F74">identical config —</text>
+    <text x="1046" y="218" font-size="10.5" fill="#6B8F74">trajectories diverge by</text>
+    <text x="1046" y="232" font-size="10.5" fill="#6B8F74">dataset pathology alone</text>
+  </g>
+  <line x1="610" y1="268" x2="610" y2="428" stroke="#6FA876" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrg)"/>
+  <text x="618" y="330" font-size="10.5" fill="#3E7A4C">gradients only</text>
+  <line x1="924" y1="260" x2="924" y2="380" stroke="#6FA876" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrg)"/>
+  <g id="inputs">
+    <rect x="36" y="330" width="120" height="34" rx="6" fill="#F2F2F2" stroke="#888888" stroke-width="1.2"/>
+    <text x="96" y="352" font-size="12.5" text-anchor="middle" fill="#222222">RGB</text>
+    <rect x="36" y="372" width="120" height="34" rx="6" fill="#F2F2F2" stroke="#888888" stroke-width="1.2"/>
+    <text x="96" y="394" font-size="12.5" text-anchor="middle" fill="#222222">Depth</text>
+    <rect x="36" y="414" width="120" height="34" rx="6" fill="#F2F2F2" stroke="#888888" stroke-width="1.2"/>
+    <text x="96" y="436" font-size="12.5" text-anchor="middle" fill="#222222">Event</text>
+    <rect x="36" y="456" width="120" height="34" rx="6" fill="#F2F2F2" stroke="#888888" stroke-width="1.2"/>
+    <text x="96" y="478" font-size="12.5" text-anchor="middle" fill="#222222">LiDAR</text>
+    <text x="36" y="516" font-size="10.5" fill="#666666">modality set = dataset-provided</text>
+    <text x="36" y="530" font-size="10.5" fill="#666666">(MUSES: R·L·E·Radar / MCubeS: R·AoLP·DoLP·NIR)</text>
+  </g>
+  <line x1="156" y1="347" x2="196" y2="380" stroke="#444444" stroke-width="1.3" marker-end="url(#arr)"/>
+  <line x1="156" y1="389" x2="196" y2="400" stroke="#444444" stroke-width="1.3" marker-end="url(#arr)"/>
+  <line x1="156" y1="431" x2="196" y2="420" stroke="#444444" stroke-width="1.3" marker-end="url(#arr)"/>
+  <line x1="156" y1="473" x2="196" y2="440" stroke="#444444" stroke-width="1.3" marker-end="url(#arr)"/>
+  <g id="backbone">
+    <rect x="198" y="330" width="240" height="200" rx="10" fill="#E8EEF4" stroke="#8AA5BD" stroke-width="1.8"/>
+    <text x="318" y="356" font-size="14.5" font-weight="bold" text-anchor="middle" fill="#2C4A66">DINOv3-L ViT · 24 blocks</text>
+    <text x="318" y="374" font-size="12" text-anchor="middle" fill="#4A6A88">FROZEN — 304 M (shared)</text>
+    <g id="lora-adapters">
+      <rect x="216" y="392" width="94" height="26" rx="5" fill="#FDEBD3" stroke="#D69A45" stroke-width="1.3"/>
+      <text x="263" y="409" font-size="10.5" text-anchor="middle" fill="#7A4E0E">LoRA_rgb (Q/V, r16)</text>
+      <rect x="326" y="392" width="94" height="26" rx="5" fill="#FDEBD3" stroke="#D69A45" stroke-width="1.3"/>
+      <text x="373" y="409" font-size="10.5" text-anchor="middle" fill="#7A4E0E">LoRA_depth</text>
+      <rect x="216" y="426" width="94" height="26" rx="5" fill="#FDEBD3" stroke="#D69A45" stroke-width="1.3"/>
+      <text x="263" y="443" font-size="10.5" text-anchor="middle" fill="#7A4E0E">LoRA_event</text>
+      <rect x="326" y="426" width="94" height="26" rx="5" fill="#FDEBD3" stroke="#D69A45" stroke-width="1.3"/>
+      <text x="373" y="443" font-size="10.5" text-anchor="middle" fill="#7A4E0E">LoRA_lidar</text>
+    </g>
+    <text x="318" y="474" font-size="11" text-anchor="middle" fill="#4A6A88">one shared frozen encoder,</text>
+    <text x="318" y="489" font-size="11" text-anchor="middle" fill="#4A6A88">per-modality low-rank adaptation</text>
+    <text x="318" y="512" font-size="10.5" text-anchor="middle" fill="#8AA5BD">tokens: 4 × (B, N, 1024) @ stride 16</text>
+  </g>
+  <line x1="438" y1="430" x2="486" y2="430" stroke="#444444" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="462" y="420" font-size="10" text-anchor="middle" fill="#666666">per-modal</text>
+  <text x="462" y="447" font-size="10" text-anchor="middle" fill="#666666">tokens</text>
+  <g id="fusion-trunk">
+    <rect x="488" y="376" width="244" height="108" rx="10" fill="#FDEBD3" stroke="#D69A45" stroke-width="1.8"/>
+    <text x="610" y="402" font-size="14" font-weight="bold" text-anchor="middle" fill="#7A4E0E">Fusion trunk</text>
+    <text x="610" y="422" font-size="12" text-anchor="middle" fill="#333333">gated-MLP · γ = tanh(0.1)</text>
+    <text x="610" y="440" font-size="12" text-anchor="middle" fill="#333333">+ VICReg (var + cov)</text>
+    <text x="610" y="456" font-size="11" text-anchor="middle" fill="#8A6A2E">rank restoration: eff-rank 4.7 → 78+</text>
+    <text x="610" y="474" font-size="10.5" text-anchor="middle" fill="#8A6A2E">deliberately minimal — see elimination chain</text>
+  </g>
+  <line x1="732" y1="430" x2="780" y2="430" stroke="#444444" stroke-width="1.6" marker-end="url(#arr)"/>
+  <g id="decoder">
+    <rect x="782" y="376" width="212" height="108" rx="10" fill="#FDEBD3" stroke="#D69A45" stroke-width="1.8"/>
+    <text x="888" y="402" font-size="14" font-weight="bold" text-anchor="middle" fill="#7A4E0E">Decoder</text>
+    <text x="888" y="422" font-size="12" text-anchor="middle" fill="#333333">SimpleFPN (strides 4/8/16/32)</text>
+    <text x="888" y="440" font-size="12" text-anchor="middle" fill="#333333">+ pixel head</text>
+    <rect x="798" y="450" width="180" height="24" rx="5" fill="#FFFFFF" stroke="#D69A45" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="888" y="466" font-size="10.5" text-anchor="middle" fill="#8A6A2E">M2F-lite aux (deep-sup, train-only)</text>
+  </g>
+  <line x1="994" y1="430" x2="1042" y2="430" stroke="#444444" stroke-width="1.6" marker-end="url(#arr)"/>
+  <g id="output">
+    <rect x="1044" y="398" width="184" height="64" rx="8" fill="#F2F2F2" stroke="#888888" stroke-width="1.4"/>
+    <text x="1136" y="424" font-size="13" font-weight="bold" text-anchor="middle" fill="#222222">Semantic map</text>
+    <text x="1136" y="444" font-size="11" text-anchor="middle" fill="#555555">identical graph on all 3 benchmarks</text>
+  </g>
+  <g id="pretrain-init">
+    <rect x="36" y="580" width="520" height="128" rx="10" fill="#F6F3FB" stroke="#8E7CC3" stroke-width="1.5" stroke-dasharray="7 5"/>
+    <text x="54" y="606" font-size="13.5" font-weight="bold" fill="#5B4A8A">Alignment pretraining (P50) — initialization only</text>
+    <text x="54" y="628" font-size="11.5" fill="#333333">Places365 500 k × pseudo-modalities (depth · pseudo-LiDAR · event · AoLP · DoLP · NIR proxies)</text>
+    <text x="54" y="646" font-size="11.5" fill="#333333">masked cross-modal reconstruction → adapters + trunk learn modality correspondence</text>
+    <text x="54" y="664" font-size="11.5" fill="#333333">backbone stays frozen · reconstruction head discarded</text>
+    <text x="54" y="690" font-size="11" font-weight="bold" fill="#5B4A8A">measured gain: +0.74 ~ +1.38 legal test (matched-seed control)</text>
+  </g>
+  <path d="M 380 578 C 380 540, 330 540, 322 532" fill="none" stroke="#8E7CC3" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+  <text x="392" y="556" font-size="10.5" fill="#5B4A8A">initializes LoRA + trunk (weights only)</text>
+  <g id="legend">
+    <rect x="700" y="600" width="528" height="100" rx="8" fill="#FFFFFF" stroke="#CCCCCC" stroke-width="1"/>
+    <text x="716" y="624" font-size="12" font-weight="bold" fill="#222222">Legend</text>
+    <rect x="716" y="636" width="26" height="16" rx="3" fill="#E8EEF4" stroke="#8AA5BD" stroke-width="1.2"/>
+    <text x="750" y="649" font-size="11" fill="#333333">frozen (304 M, shared)</text>
+    <rect x="716" y="660" width="26" height="16" rx="3" fill="#FDEBD3" stroke="#D69A45" stroke-width="1.2"/>
+    <text x="750" y="673" font-size="11" fill="#333333">trainable (~50 M: LoRA · trunk · decoder)</text>
+    <rect x="946" y="636" width="26" height="16" rx="3" fill="#EAF4EA" stroke="#6FA876" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="980" y="649" font-size="11" fill="#333333">training-only (discarded at inference)</text>
+    <rect x="946" y="660" width="26" height="16" rx="3" fill="#F6F3FB" stroke="#8E7CC3" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="980" y="673" font-size="11" fill="#333333">initialization only (pretraining)</text>
+    <text x="716" y="692" font-size="10.5" fill="#777777">RxDINO (P52) — one architecture, one config; prescriptions self-calibrate to dataset pathology</text>
+  </g>
+</svg>
+</div>
+<p class="figcap">Fig. 1 — RxDINO 전체 구조. 실선 경로 = 추론 그래프(3벤치 동일), 점선 = 학습 전용/초기화 전용. 편집 가능한 원본 SVG는 repo <span class="mono">.claude_logs/meta/rxdino-arch.svg</span> (PowerPoint에 삽입 후 "도형으로 변환"으로 개별 편집 가능 — 필터·CSS 없이 순수 도형/텍스트로 제도됨).</p>
+
+<h2>3. 블록별 상세</h2>
+
+<h3>3.1 입력 — 모달리티 스택</h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td>구성</td><td>데이터셋 제공 센서 전부 사용: DELIVER = RGB·Depth·Event·LiDAR / MUSES = RGB·LiDAR·Event·Radar / MCubeS = RGB·AoLP·DoLP·NIR. 각 모달 3채널 정규화 후 동일 해상도(학습 768², 평가 1024²/native)</td></tr>
+<tr><td>설계 이유</td><td>모달 선택도 "설정"이 되지 않도록 전부 투입 — 어떤 모달을 얼마나 쓸지는 UniBal-adaptive와 융합이 학습으로 정함</td></tr>
+</tbody></table></div>
+
+<h3>3.2 공유 frozen 백본 + 모달별 LoRA</h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td>백본</td><td>DINOv3-L ViT (24블록, dim 1024, patch 16) — <b>완전 동결(304M)</b>. 모든 모달이 같은 백본을 통과</td></tr>
+<tr><td>LoRA</td><td>각 attention의 fused-qkv에서 <b>Q·V에만</b> 모달별 저랭크 어댑터(r=16): y_q += B_q^(m) A_q^(m) x. 모달 m은 forward마다 선택 — "하나의 눈, 모달별 보정 렌즈"</td></tr>
+<tr><td>왜 frozen인가</td><td>백본 교체가 +11.6(H6)으로 지배 변수였고, L 초과 스케일은 포화(H12) — 표현력은 사오되(pretrained) 파괴하지 않는다(fine-tune 시 붕괴 위험). 학습 파라미터 ~50M로 4090 학습 가능</td></tr>
+<tr><td>출력</td><td>모달별 토큰맵 M × (B, N, 1024) @ stride16</td></tr>
+</tbody></table></div>
+
+<h3>3.3 융합 트렁크 — 의도적으로 미니멀</h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td>구조</td><td>gated-MLP: fused = Σ_m γ_m ⊙ MLP(z_m), γ = tanh(0.1) init(gradient 즉시 흐름 — zero-init 5연속 사망의 교훈, 원장 키1)</td></tr>
+<tr><td>VICReg</td><td>모달별 토큰에 variance(차원별 최소분산 유지) + covariance(차원 간 탈상관) 항 — lidar 유효랭크 4.7→78+ 복원 실측. 학습 전용</td></tr>
+<tr><td>왜 미니멀인가</td><td>믹서 4갈래 통제 소거(선택 H16·attn H17·평균 H21·결합 H19)가 "정교한 융합은 무익~유해"를 실측 — 남은 보완정보는 anti-consensus(합의·신뢰도·결합 어느 신호로도 접근 불가)라 <b>믹서가 아니라 학습신호·초기화로 승부</b>한다는 것이 이 모델의 핵심 주장</td></tr>
+</tbody></table></div>
+
+<h3>3.4 디코더</h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td>SimpleFPN</td><td>단일 stride-16 맵에서 ViTDet 방식으로 4스케일(4/8/16/32) 피라미드 생성 → lateral conv 256ch</td></tr>
+<tr><td>픽셀 헤드</td><td>FPN 융합 → per-pixel 분류 (클래스 수는 데이터셋에서 자동)</td></tr>
+<tr><td>M2F-lite aux</td><td>Mask2Former-lite 보조 손실(deep supervision) — <b>학습 전용</b>, 추론 시 미사용</td></tr>
+</tbody></table></div>
+
+<h3>3.5 C3-adaptive 컨트롤러 (클래스축 처방) <span class="pill p-good">구현·스모크 검증 완료</span></h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td>병리</td><td><b>class-transfer 붕괴</b>: 희소 클래스의 픽셀이 지배 클래스로 통째 흡수(예: DELIVER RailTrack IoU 4 — 대부분 Road로 예측)</td></tr>
+<tr><td>지표 (온라인)</td><td>train 배치 argmax 혼동의 EMA M(C×C)에서 s_c = (1−recall_c) × conc_c, conc_c = 최다 혼동상대 집중도. "그냥 어려운" 클래스(오답 분산)와 "흡수되는" 클래스(오답 집중)를 구분</td></tr>
+<tr><td>처방</td><td>λ_c = λ_max·clip(s_c/τ) 로 <b>per-class 가중 prototype 손실</b> — 붕괴 클래스 특징만 자기 클래스 EMA prototype으로 당김. 건강 클래스는 압력 0. 전 클래스 붕괴 시 현행 균일 λ와 동일(고정팔이 상한의 특수 케이스)</td></tr>
+<tr><td>근거 실측</td><td>고정팔 dose-response(H20, 예측 2/2 적중): 붕괴 심함→+1.4(RailTrack 4→68) / 없음→−0.77 / 중간→표적만 +9.76(rubber)</td></tr>
+</tbody></table></div>
+
+<h3>3.6 UniBal-adaptive 컨트롤러 (모달축 처방) <span class="pill p-good">구현·스모크 검증 완료</span></h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td>병리</td><td><b>modality laziness</b>: 융합 손실만으로 학습 시 강한 모달(RGB)이 gradient를 지배 → 약한 모달 인코더가 안 배워진 채 무임승차 → 모달 추가가 오히려 손해(MUSES 4모달&lt;3모달)</td></tr>
+<tr><td>지표 (온라인)</td><td>모달별 보조 head(GN→1×1)의 uni-modal CE 손실 L_m의 EMA → g_m = clip(L_m/mean−1, 0, cap): "혼자서 유난히 못 푸는" 모달 = 게으른 모달</td></tr>
+<tr><td>처방</td><td>λ_u,m = λ_u_max·g_m/cap 로 그 모달에만 uni-modal CE 강화 — "radar도 혼자 세그를 시도하라"는 개인 숙제. head는 학습 후 폐기</td></tr>
+<tr><td>선례</td><td>학습-내 모달 기여 측정→변조는 OGM-GE(CVPR'22) 계열로 검증된 언어 — 우리 차별점은 클래스축과 함께 <b>"자기-진단 처방" 단일 프레임</b>으로 묶고 3벤치 창발을 게이트(G4)로 검증하는 것</td></tr>
+</tbody></table></div>
+
+<h3>3.7 정렬 사전학습 init (P50) <span class="pill p-good">게이트 통과 +0.74</span></h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td>데이터</td><td>Places365 500k × pseudo-모달 6종 — depth(추정) · pseudo-LiDAR(depth rasterize) · event(gradient proxy) · AoLP/DoLP(depth→normal→Fresnel proxy) · NIR(luminance+ExG proxy). 전부 유도 프록시임을 meta에 명시</td></tr>
+<tr><td>목적함수</td><td>MultiMAE식 cross-modal masked reconstruction — 한 모달을 가리고 다른 모달로 복원 → 어댑터+트렁크가 모달 대응 구조를 선학습</td></tr>
+<tr><td>산출</td><td>LoRA+트렁크+FPN 가중치만(226 텐서) — 본학습의 <b>초기화로만</b> 사용, 구조 무변경. 이득은 조기 수렴 국면에 집중(매칭 통제 +0.74~+1.38, H22)</td></tr>
+</tbody></table></div>
+
+<h2>4. 학습 vs 추론</h2>
+<div class="note">추론 시 남는 것 = <b>frozen 백본 + LoRA + 트렁크 + FPN/헤드뿐</b>. 컨트롤러 2종·prototype bank·uni-modal head·M2F-lite·VICReg·재구성 head는 전부 학습 시에만 존재. 따라서 <b>세 벤치의 추론 그래프가 완전히 동일</b>하고, 벤치별로 남는 차이는 학습된 가중치(그리고 λ 궤적 로그)뿐이다.</div>
+
+<h2>5. 검증 게이트 (사전등록) 현황</h2>
+<div class="scroll"><table>
+<thead><tr><th>게이트</th><th>기준</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td>G1 DELIVER</td><td>단일 config legal test ≥ 최선 고정팔(54.95, N8 최종화 중) − 0.3</td><td><span class="pill p-warn">본런 대기</span></td></tr>
+<tr><td>G2 MUSES</td><td>≥ 최선 고정팔(UniBal 고정런 판정 후 확정) − 0.3</td><td><span class="pill p-acc">UniBal 학습 중 (~1.5일)</span></td></tr>
+<tr><td>G3 MCubeS</td><td>≥ 58.07±0.49 − 0.3</td><td><span class="pill p-warn">본런 대기</span></td></tr>
+<tr><td>G4 창발 (정성·필수)</td><td>동일 config에서 λ 궤적이 벤치별 병리를 스스로 재현 (Fig.1 우상단)</td><td><span class="pill p-warn">본런 대기 — 핵심 논문 그림</span></td></tr>
+</tbody></table></div>
+
+<footer>원본 = repo <span class="mono">.claude_logs/meta/rxdino-p52.html</span> · 그림 원본 = <span class="mono">.claude_logs/meta/rxdino-arch.svg</span> (편집 가능) · 수치 출처 = <span class="mono">hypothesis-ledger.md</span>·분석 문서 · 자매 = 상황판(🛰️)·노벨티 맵(🧩)</footer>
+</div>
