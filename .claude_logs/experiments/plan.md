@@ -69,7 +69,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | EPOCHS | ETA | 목적 |
 |---|---|---|---|---|
-| **P47-2 UniBal** (MUSES 4모달) | hpca100 GPU2,3 (A100×2) | 300 | ~2.9일 (08-31 기동, 로그디렉토리 버그 픽스 후 재기동판) | modality-laziness 처방(모달별 aux CE, 학습전용·추론불변) — **4모달 역전 유일 레버**. 게이트: 4모달 val ≥82.62(3모달 역전) / test ≥79.788 / drop-radar ≥+0.5 / ep30 kill −1.0 |
+| **P47-2 UniBal** (MUSES 4모달) | ~~hpca100~~ → **yeon 2·3 (3090×2, 09-01 이전)** | 300 (ep175~ 재개) | 재산출 중 (126ep 잔여) — **사고: ep174 OOM 크래시(타테넌트 겹침 추정)+18h 방치 → yeon 무-GC 재개 성공**(config 완전불변, Resumed ep174 missing=0, 22.0GB/24GB 안정, ISSUE-027로 GC 불가 확인·전례 기반 복구). 통합 워치독 배포로 재발방지 | modality-laziness 처방(모달별 aux CE, 학습전용·추론불변) — **4모달 역전 유일 레버**. 게이트: 4모달 val ≥82.62(3모달 역전) / test ≥79.788 / drop-radar ≥+0.5 / ep30 kill −1.0 |
 
 **직전 완결(08-31)**: P50 파인튠 게이트 통과(+0.74, H22✓) · N2 믹서 판정(mean 55.45, H21✗) · N6 재선택 5/5(54.39±0.76) · MCubeS 3-seed(58.07±0.49) · MUSES 시드 3점(spread 0.66) · P51 페어2 완주(각주) — 전부 analysis/registry 반영됨.
 
