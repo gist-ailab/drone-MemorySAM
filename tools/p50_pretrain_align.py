@@ -98,10 +98,18 @@ class PseudoModalDataset(Dataset):
     어긋나면 정렬이 전이되지 않는다.
     """
 
-    def __init__(self, root: str, modals: Sequence[str], img_size: int,
+    def __init__(self, root, modals: Sequence[str], img_size: int,
                  norm_all_modals: bool = False, train: bool = True,
                  limit: int = 0):
-        self.root = Path(root)
+        # [P50-EXT] --data 다중 루트: 콤마 구분 문자열이나 리스트를 받아 각 루트의
+        # 완비 샘플을 합집합으로 연결한다. 단일 루트는 종전과 byte-동일하게 동작한다.
+        if isinstance(root, (list, tuple)):
+            root_strs = [str(r).strip() for r in root if str(r).strip()]
+        else:
+            root_strs = [r.strip() for r in str(root).split(',') if r.strip()]
+        if not root_strs:
+            raise ValueError(f"--data 로 넘어온 루트가 비었다: {root!r}")
+        self.roots = [Path(r) for r in root_strs]
         self.modals = list(modals)
         self.img_size = int(img_size)
         self.norm_all = bool(norm_all_modals)
@@ -110,60 +118,81 @@ class PseudoModalDataset(Dataset):
             if m not in MODAL_DIR and m not in QUANT_MODALS:
                 raise ValueError(f"P50 사전학습이 모르는 모달 '{m}' "
                                  f"(지원: {sorted(list(MODAL_DIR) + list(QUANT_MODALS))})")
-            for d in self._modal_dirs(m):
-                if not d.is_dir():
-                    raise FileNotFoundError(f"모달 디렉토리 없음: {d}")
-        idx = self.root / 'index.txt'
-        if idx.is_file():
-            stems = [s for s in idx.read_text().splitlines() if s.strip()]
-        else:
-            stems = sorted(p.stem for p in (self.root / 'rgb').glob('*.png'))
-        # 선택 모달 전부(원자 파일 포함)가 있는 stem 만 (생성 중단 잔여물 방어)
-        self.stems = [s for s in stems
-                      if all(p.is_file() for m in self.modals
-                             for p in self._modal_files(m, s))]
+        for r in self.roots:
+            for m in self.modals:
+                for d in self._modal_dirs(r, m):
+                    if not d.is_dir():
+                        raise FileNotFoundError(f"모달 디렉토리 없음: {d}")
+
+        # 루트별로 완비 stem 을 열거하고(생성 중단 잔여물 방어), (root, stem) 표본을
+        # 합집합으로 이어 붙인다. 루트 간 stem 이 겹치면 두 코퍼스가 disjoint 라는
+        # 설계 전제가 깨진 것이므로 조용히 넘기지 않고 에러로 세운다.
+        self.samples: List[tuple] = []          # (root: Path, stem: str)
+        self.root_counts: dict = {}             # str(root) -> 완비 샘플 수
+        seen: dict = {}                         # stem -> 먼저 등장한 root(충돌 판정)
+        multi = len(self.roots) > 1
+        for r in self.roots:
+            idx = r / 'index.txt'
+            if idx.is_file():
+                stems = [s for s in idx.read_text().splitlines() if s.strip()]
+            else:
+                stems = sorted(p.stem for p in (r / 'rgb').glob('*.png'))
+            complete = [s for s in stems
+                        if all(p.is_file() for m in self.modals
+                               for p in self._modal_files(r, m, s))]
+            if multi:      # 단일 루트는 종전 동작 유지 위해 충돌 검사를 건너뛴다
+                for s in complete:
+                    if s in seen:
+                        raise ValueError(
+                            f"루트 간 stem 충돌 '{s}': {seen[s]} 와 {r} 양쪽에 존재한다 "
+                            f"— 두 코퍼스는 disjoint 설계이므로 충돌은 버그 신호다")
+                    seen[s] = r
+            self.samples.extend((r, s) for s in complete)
+            self.root_counts[str(r)] = len(complete)
         if limit > 0:
-            self.stems = self.stems[:limit]
-        if not self.stems:
-            raise RuntimeError(f"사용 가능한 샘플이 0개다: {root}")
+            self.samples = self.samples[:limit]
+        if not self.samples:
+            raise RuntimeError(f"사용 가능한 샘플이 0개다: {root_strs}")
+        # 종전 코드·스모크가 참조하는 self.stems 를 표본과 나란히 유지한다
+        self.stems = [s for _, s in self.samples]
         self.mean = torch.tensor(IMAGENET_MEAN)[:, None, None]
         self.std = torch.tensor(IMAGENET_STD)[:, None, None]
 
     def __len__(self):
-        return len(self.stems)
+        return len(self.samples)
 
-    def _modal_dirs(self, m: str) -> List[Path]:
+    def _modal_dirs(self, root: Path, m: str) -> List[Path]:
         if m in QUANT_MODALS:
-            return [self.root / d for d in QUANT_MODALS[m]]
-        return [self.root / MODAL_DIR[m]]
+            return [root / d for d in QUANT_MODALS[m]]
+        return [root / MODAL_DIR[m]]
 
-    def _modal_files(self, m: str, stem: str) -> List[Path]:
+    def _modal_files(self, root: Path, m: str, stem: str) -> List[Path]:
         if m in QUANT_MODALS:
-            return [self.root / d / f"{stem}.png" for d in QUANT_MODALS[m]]
-        return [self.root / MODAL_DIR[m] / f"{stem}.png"]
+            return [root / d / f"{stem}.png" for d in QUANT_MODALS[m]]
+        return [root / MODAL_DIR[m] / f"{stem}.png"]
 
-    def _read_gray(self, subdir: str, stem: str) -> np.ndarray:
+    def _read_gray(self, root: Path, subdir: str, stem: str) -> np.ndarray:
         """uint8 단채널 PNG 원자 파일 → (H,W) uint8."""
-        return np.asarray(Image.open(self.root / subdir / f"{stem}.png"))
+        return np.asarray(Image.open(root / subdir / f"{stem}.png"))
 
-    def _read(self, m: str, stem: str) -> torch.Tensor:
+    def _read(self, root: Path, m: str, stem: str) -> torch.Tensor:
         if m == 'aolp':            # mcubes.py 관행: sin/cos 원자 2파일 → [sin,cos,sin]
-            s = dequant_u8(self._read_gray('aolp_sin', stem), -1.0, 1.0)
-            c = dequant_u8(self._read_gray('aolp_cos', stem), -1.0, 1.0)
+            s = dequant_u8(self._read_gray(root, 'aolp_sin', stem), -1.0, 1.0)
+            c = dequant_u8(self._read_gray(root, 'aolp_cos', stem), -1.0, 1.0)
             a = np.stack([s, c, s], axis=2)                  # H×W×3
             return torch.from_numpy(a).permute(2, 0, 1)      # (3,H,W) float32
         if m == 'dolp':            # 3채널 복제 (mcubes.py 관행)
-            d = dequant_u8(self._read_gray('dolp', stem), 0.0, 1.0)
+            d = dequant_u8(self._read_gray(root, 'dolp', stem), 0.0, 1.0)
             a = np.stack([d, d, d], axis=2)
             return torch.from_numpy(a).permute(2, 0, 1)
-        p = self.root / MODAL_DIR[m] / f"{stem}.png"
+        p = root / MODAL_DIR[m] / f"{stem}.png"
         # nir(단채널 저장)도 convert('RGB') 로 3채널 복제된다 — mcubes 관행과 동일
         a = np.array(Image.open(p).convert('RGB'), dtype=np.uint8)   # copy(쓰기 가능)
         return torch.from_numpy(a).permute(2, 0, 1)          # (3,H,W) uint8
 
     def __getitem__(self, i: int) -> torch.Tensor:
-        stem = self.stems[i]
-        imgs = [self._read(m, stem) for m in self.modals]
+        root, stem = self.samples[i]
+        imgs = [self._read(root, m, stem) for m in self.modals]
         h, w = imgs[0].shape[-2:]
         s = self.img_size
         if h < s or w < s:
@@ -296,7 +325,10 @@ def save_adapters(base: nn.Module, out: str, groups: Sequence[str], meta: dict):
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description='[P50-MAP] 정렬 사전학습')
     ap.add_argument('--cfg', required=True, help='파인튠과 동일한 MODEL 절을 가진 yaml')
-    ap.add_argument('--data', required=True, help='p50_gen_pseudomodal.py 출력 루트')
+    ap.add_argument('--data', required=True,
+                    help='p50_gen_pseudomodal.py 출력 루트. [P50-EXT] 콤마 구분 다중 루트 '
+                         '(예: /rootA,/rootB) 지정 시 각 루트의 완비 샘플을 합집합으로 '
+                         '연결한다(루트 간 stem 충돌은 에러). 단일 루트는 종전과 동일')
     ap.add_argument('--out', required=True, help='산출 어댑터 ckpt 경로(.pth)')
     ap.add_argument('--pretrain-modals', type=str, default='',
                     help="모달 강제 지정(쉼표 목록). 기본 '' = cfg DATASET.MODALS 그대로"
@@ -395,6 +427,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"[P50-MAP] trainable={n_train/1e6:.2f}M "
               f"(recon head {n_recon/1e6:.2f}M — 사전학습 후 폐기) "
               f"frozen={fz['frozen']/1e6:.1f}M | samples={len(dset)}")
+        if len(dset.roots) > 1:
+            per_root = ' '.join(f"{Path(k).name}={v}" for k, v in dset.root_counts.items())
+            print(f"[P50-MAP] 다중 루트 {len(dset.roots)}개 합집합 — {per_root}")
 
     params = [p for p in model.parameters() if p.requires_grad]
     optim = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd,
@@ -435,15 +470,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         'lr': args.lr, 'bs_per_rank': args.bs, 'world_size': world,
         'epochs': args.epochs, 'samples': len(dset),
         'backbone': base.encoder.backbone_name,
+        # [P50-EXT] 다중 루트: 루트 목록과 루트별 완비 샘플 수를 기록한다
+        'roots': [str(r) for r in dset.roots],
+        'root_samples': dset.root_counts,
     }
-    data_meta = Path(args.data) / 'meta.json'
-    if data_meta.is_file():
-        try:
-            dm = json.loads(data_meta.read_text())
-            meta_base['data_depth_backend'] = dm.get('depth_backend')
-            meta_base['data_num_complete'] = dm.get('num_complete')
-        except Exception:
-            pass
+    for r in dset.roots:                          # 첫 meta.json 에서 생성 출처를 회수
+        data_meta = r / 'meta.json'
+        if data_meta.is_file():
+            try:
+                dm = json.loads(data_meta.read_text())
+                meta_base['data_depth_backend'] = dm.get('depth_backend')
+                meta_base['data_num_complete'] = dm.get('num_complete')
+            except Exception:
+                pass
+            break
 
     # ── 루프 ───────────────────────────────────────────────────────────────
     model.train()
