@@ -1,0 +1,221 @@
+# ═══ P47-2 Uni-modal Balance × MUSES 4모달(+radar) — 구 D-2 (2026-08-04) ═══
+# 정본 설계: .claude_logs/decisions/2026-08-03-p47-mub-muses-proposal.md §3 D-2 / §4 게이트.
+#
+# 🔴 base = hpca100-muses_rgbelr_P39_1_rank_4modal_seed2.yaml (val 82.35 완주분) **그대로**.
+#    변경은 MODEL.P47_2 블록 + SAVE_DIR 둘뿐 = 1-변수 실험.
+#    ⚠️ D-1(projected_to_rgb_dgf 밀도화)은 **일부러 넣지 않았다** — DATASET.PROJ_DIR 미지정
+#       = SDK 기본 'projected_to_rgb'. D-1과 D-2를 분리해 각각의 순효과를 본다.
+#       합본(D-1+D-2)은 두 단독 실험이 끝난 뒤 별도 config로.
+#
+# 진단(§1): **우리 모델에서** 모달을 더할수록 성능이 떨어진다(4모달 82.35/79.571 <
+#    3모달 82.62/79.788, within-method 실측). ⚠️ 리더보드 역상관(camera-only 82.39 > C+L 81.07 >
+#   4모달 79.49; 우리 4모달 82.35 < 3모달 82.62, drop-radar +0.13). 기제 = modality laziness —
+#   융합 손실만으로 학습하면 지배 모달(RGB)의 uni-modal feature가 under-optimize 된다
+#   (2305.01233 UMT / 1905.12681 Gradient-Blending / 2202.05306 / 2203.12221 이론증명).
+#   자체 확증(§1.5): P46-C3의 손해가 clear/day(RGB 주도 조건)에 집중(val Δclear −1.72 / Δday −1.29,
+#   fog +0.16; 공식 test도 day −1.15, fog −0.07) = RGB 본류 표현력이 취약하다는 직접 증거.
+#
+# 처방: per-modal encoder(frozen ViT+LoRA) 출력에 **모달마다 독립인** 경량 head + 동일 GT CE.
+#   손실은 주 손실에 직접 합산(키1 — zero-init 잔차/0-게이트 아님). 추론 경로 불변(학습 전용).
+#   ⚠️ base에 이미 FUSION.AUX_CE_WEIGHT(0.5, 모달 평균)가 있지만 그 head는 reliability/router/
+#      calibration의 신호원이라 "정확도"와 "보정" 사이의 타협점으로 최적화된다. P47-2 head는
+#      uni-modal 정확도만 목표로 하고, 모달별 가중(MODALS/LAMBDA_U)을 줄 수 있다. 상세는
+#      semseg/models/reliadino/p47.py 상단.
+#
+# 판정 게이트(사전등록, §4):
+#   ep30 조기 kill: 4모달 base(seed2 4modal 동일 ep) 대비 −1.0 이하.
+#   ep30 즉검: [P47-2] per-modal acc가 모달별로 갈라지는가(전부 붙어 있으면 압력 미형성 = λ_u 상향).
+#   완주 Primary: val ≥ 82.62 (**4모달이 3모달 기록을 넘는 것** = modality laziness 가설의 직접 검증).
+#   Stretch: val ≥ 83.0.  실패 시 "radar는 실제로 정보가 없다"로 확정하고 3모달 회귀.
+#   부가: drop-radar dMIoU ≥ +0.5 (현 +0.13) = radar가 실제로 쓰이기 시작했는가.
+# 🔴 GRADIENT_CHECKPOINT: false (encoder active_modality 버그, ISSUE-027).
+#   torchrun --nproc_per_node=4 train_reliadino.py --cfg <this>
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/yeon_muses_rgbelr_P47_2_unibal_4modal'  # [사고복구] hpca100 crash(ep174 OOM, 09-01) → yeon 이관, config 완전 불변
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2]
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }
+  CLASS_TOKEN: { ENABLE: false }
+
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:
+    TRUNK_EXP       : true                  # ✅ ablation 검증: +2~7 기여 (2026-07-27 seed2 분석)
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:                                 # ✅ ablation 검증: lidar eff-rank 78~100 (VICReg on)
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25                         # img/event/radar 공통
+
+  # ── [P47-2] Uni-modal Balance (구 D-2) — 이 실험의 유일한 변수 ──────────────
+  P47_2:
+    ENABLE      : true
+    LAMBDA_U    : 0.4        # per-modal aux CE 가중(스윕 대상). REDUCE=mean이므로
+                             #   4모달이면 모달당 실효 0.1 (기존 aux_ce 0.5/4=0.125와 동급 추가).
+    MODALS      : all        # all | ['img'] 등. RGB 본류만 겨냥하려면 ['img'].
+    HEAD        : linear     # linear(LN+1×1) | conv1x1(LN+1×1→GELU→1×1)
+    HIDDEN      : 256        # HEAD=conv1x1일 때만 사용
+    WARMUP_EP   : 0          # 0 = 처음부터. 계단식 발동은 OOM/불안정 위험(P46 사례) — 기본 0 유지.
+    GT_DIV      : 4          # 라벨 해상도의 1/4에서 CE (fusion aux_ce·P39 deep-sup과 동일 규약).
+                             #   메모리가 빠듯하면 16(=feature 해상도)로. 실측 증분 52 → 33 MiB.
+    REDUCE      : mean       # mean(활성 모달 평균) | sum
+    OGM_GE:                  # on-the-fly gradient modulation (2203.15332) — 기본 off
+      ENABLE   : false
+      ALPHA    : 0.5
+      EMA      : 0.9
+      MIN_K    : 0.1
+      GE_NOISE : 0.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/SSDb/jemo_maeng/dset/MUSES'   # yeon 경로
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event', 'radar']   # 🔴 4모달 (radar 추가)
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : true                        # seed2와 동일 레시피
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # base(seed2 4modal) 그대로. 4모달 = modal encode 4회 → BS1.
+                                    # 🔴 P47-2 메모리 증분 **실측**(autograd saved-tensor 계측,
+                                    #   dim1024·1024²·4모달·BS1·bf16): **+51.7 MiB/스텝** + params
+                                    #   336 KiB(+AdamW state 1.0 MiB). 추가 forward가 없어서
+                                    #   (같은 forward의 feats 재사용) 증분은 head 활성화뿐이다.
+                                    #   A100 40GB 기준 0.13% — BS 조정 불필요. 기동 후 재확인.
+  EPOCHS        : 300
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # 3090 24GB 4모달: eval BS4 OOM(ep2 사망) → BS1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
