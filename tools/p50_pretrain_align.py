@@ -364,6 +364,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument('--seed', type=int, default=3407)
     ap.add_argument('--log-interval', type=int, default=20)
     ap.add_argument('--save-interval', type=int, default=1, help='에폭 단위')
+    ap.add_argument('--dump-grads', dest='dump_grads', type=str, default='',
+                    help='디버그: 첫 완성 accum 창의 누적 grad 를 저장 후 종료 (등가성 검사용)')
     ap.add_argument('--resume', type=str, default='')
     args = ap.parse_args(argv)
 
@@ -531,6 +533,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             micro += 1
             if micro < accum:           # 창이 덜 찼으면 다음 마이크로배치로
                 continue
+
+            # [debug seam] --dump-grads: 첫 완성 창의 누적 grad 를 optimizer 이전에
+            # 저장하고 종료 — accum 등가성의 정본 검사는 여기서 한다 (post-Adam
+            # 파라미터 비교는 v̂≈0 정규화가 FP 합산-순서 노이즈를 증폭해 부적합).
+            if getattr(args, 'dump_grads', ''):
+                if scaler.is_enabled():
+                    scaler.unscale_(optim)
+                g = {n: p.grad.detach().float().cpu() for n, p in model.named_parameters()
+                     if p.requires_grad and p.grad is not None}
+                torch.save(g, args.dump_grads)
+                if is_main:
+                    print(f"[P50-MAP][dump-grads] {len(g)} tensors -> {args.dump_grads} (exit)")
+                return 0
 
             if scaler.is_enabled():
                 scaler.step(optim)
