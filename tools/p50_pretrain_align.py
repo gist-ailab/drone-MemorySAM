@@ -63,7 +63,7 @@ from semseg.models.reliadino.p50 import (DEFAULT_ADAPTER_GROUPS,         # noqa:
                                          sample_modal_token_masks,
                                          token_mask_to_pixel_mask)
 
-SCRIPT_VERSION = '1.2.0'
+SCRIPT_VERSION = '1.3.0'
 MODAL_DIR = {'img': 'rgb', 'depth': 'depth', 'lidar': 'lidar', 'event': 'event',
              'nir': 'nir'}
 # [P50-EXT] uint8 PNG 양자화 원자 파일 모달 — mcubes.py 관행대로 로드 시 3채널로
@@ -337,7 +337,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                          "float 복원, mcubes 관행 stack), nir 는 PNG 3채널 복제. 지정 시 "
                          "모델 빌드의 DATASET.MODALS 도 같은 순서·이름으로 갈아끼운다")
     ap.add_argument('--epochs', type=int, default=30)
-    ap.add_argument('--bs', type=int, default=4, help='rank 당 배치')
+    ap.add_argument('--bs', type=int, default=4, help='rank 당 마이크로배치')
+    ap.add_argument('--accum', type=int, default=1,
+                    help='gradient accumulation: N 마이크로배치의 grad 를 누적한 뒤 '
+                         '1회 optimizer step (loss 는 1/N 스케일). eff-batch = '
+                         'bs × world × accum. 기본 1 은 종전과 완전 동일 경로. '
+                         'step·warmup·lr 스케줄·max-steps·save·로깅의 "step" 은 '
+                         '모두 optimizer step 기준이다')
     ap.add_argument('--lr', type=float, default=3e-4)
     ap.add_argument('--wd', type=float, default=0.05)
     ap.add_argument('--warmup-steps', type=int, default=500)
@@ -458,8 +464,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             find_unused_parameters=True)
     core = model.module if ddp else model
 
-    steps_per_epoch = max(len(loader), 1)
+    accum = max(int(args.accum), 1)
+    # "step" 은 전부 optimizer step 기준이다 — 등-스텝 설계와 정합하도록 accum 만큼
+    # 마이크로배치를 묶은 뒤 전진한다. 나누어떨어지지 않는 꼬리 창은 drop_last 처럼 버린다.
+    steps_per_epoch = max(len(loader) // accum, 1)
     total_steps = steps_per_epoch * args.epochs
+    eff_batch = args.bs * world * accum
     meta_base = {
         'script': 'tools/p50_pretrain_align.py', 'version': SCRIPT_VERSION,
         'arm': 'multimae_cross_modal_masked_reconstruction',
@@ -468,6 +478,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         'img_size': img_size, 'num_classes': num_classes, 'groups': groups,
         'mask_ratio': args.mask_ratio, 'dirichlet_alpha': args.dirichlet_alpha,
         'lr': args.lr, 'bs_per_rank': args.bs, 'world_size': world,
+        'accum': accum, 'eff_batch': eff_batch,
         'epochs': args.epochs, 'samples': len(dset),
         'backbone': base.encoder.backbone_name,
         # [P50-EXT] 다중 루트: 루트 목록과 루트별 완비 샘플 수를 기록한다
@@ -493,33 +504,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if sampler is not None:
             sampler.set_epoch(epoch)
         run_loss, seen = 0.0, 0
+        micro, win_loss = 0, 0.0        # 누적 창 내 마이크로배치 수 · 스케일된 loss 합
         for it, batch in enumerate(loader):
-            lr_now = lr_at(gstep, total_steps, args.lr, args.warmup_steps,
-                           args.min_lr_ratio)
-            for g in optim.param_groups:
-                g['lr'] = lr_now
+            if micro == 0:              # 창 시작에서만 lr 설정 + grad 초기화
+                lr_now = lr_at(gstep, total_steps, args.lr, args.warmup_steps,
+                               args.min_lr_ratio)
+                for g in optim.param_groups:
+                    g['lr'] = lr_now
+                optim.zero_grad(set_to_none=True)
             batch = batch.to(device, non_blocking=True)
-            optim.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, dtype=amp_dtype,
                                 enabled=(amp_dtype is not None and device.type == 'cuda')):
                 loss, per_modal, stats = model(batch)
+            # accum 만큼 나눠 누적하면 grad 는 창 전체의 평균이 된다 (accum=1 이면 loss/1
+            # = loss 로 종전과 byte-동일). DDP 는 매 backward 마다 all-reduce 하지만
+            # Σ_i avg(g_i) = avg(Σ_i g_i) 이므로 누적 결과는 수학적으로 동일하다.
+            loss = loss / accum
             if not torch.isfinite(loss):
                 raise RuntimeError(f"[P50-MAP] loss 가 유한하지 않다 (step {gstep}) — "
                                    f"조용히 넘기지 않는다. per_modal={stats['per_modal']}")
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
+            else:
+                loss.backward()
+            win_loss += float(loss.detach())
+            micro += 1
+            if micro < accum:           # 창이 덜 찼으면 다음 마이크로배치로
+                continue
+
+            if scaler.is_enabled():
                 scaler.step(optim)
                 scaler.update()
             else:
-                loss.backward()
                 optim.step()
-
-            run_loss += float(loss.detach())
+            micro = 0
+            run_loss += win_loss        # win_loss = 창 내 (loss/accum) 합 = 창 평균 loss
+            win_loss = 0.0
             seen += 1
             gstep += 1
             if is_main and (gstep % max(args.log_interval, 1) == 0 or gstep == 1):
                 pm = ' '.join(f"{m}={v:.4f}" for m, v in zip(modals, stats['per_modal']))
-                print(f"[P50-MAP] ep{epoch} it{it+1}/{steps_per_epoch} "
+                print(f"[P50-MAP] ep{epoch} it{seen}/{steps_per_epoch} "
                       f"step{gstep}/{total_steps} loss={run_loss/max(seen,1):.4f} "
                       f"({pm}) vis={stats['visible_frac']:.3f} lr={lr_now:.2e} "
                       f"{(time.time()-t0)/60:.1f}min", flush=True)
