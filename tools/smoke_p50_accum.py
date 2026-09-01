@@ -15,6 +15,9 @@
      grad 가 한 번에 큰 배치를 돌린 grad 와 수학적으로 같음을 확인한다
      (퍼뮤테이션 없이 같은 seed 로 데이터 순서를 고정해 비교)
 """
+
+from __future__ import annotations
+
 # 🔴 이 스모크는 **알고리즘 등가**(accum 창 분할의 수학 동일성)를 검증한다 —
 # GPU 수치 특성(A100 TF32: fp32 matmul을 10-bit 가수로 실행, 상대 ε≈5e-4 /
 # CUDA 커널 비결정성)이 섞이면 등가 판정이 불가능해지므로 CPU-fp32 결정적
@@ -22,8 +25,6 @@
 # 아래라 무해 — 여기서 재는 것은 코드의 수학이지 하드웨어 반올림이 아니다.)
 import os as _os
 _os.environ['CUDA_VISIBLE_DEVICES'] = ''
-
-from __future__ import annotations
 
 import shutil
 import sys
