@@ -9,6 +9,24 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+## 2026-08-17 ~ 09-02 — RxDINO 성립 아크 (세션 재시작용 종합 연대기)
+
+> **이 엔트리 하나로 8월 하순 캠페인 전체를 재구성할 수 있게 쓴다.** 정본 문서 링크 포함.
+
+**① 방향 전환 (08-17~21)**: P47-D1 공식 test 78.790 폐기(val 과적합 3례째) → P50-MAP(정렬 사전학습) 승인·Places365 200k pseudo-모달 생성 → user "모델 구조 노벨티" 요구 → 오라클 배터리(#13~15b)로 **spatial 선택 축 종결**(H16: 여지 +8.5는 anti-consensus·anti-confidence — 어떤 선택신호로도 도달 불가) → 유일 열린 축 = 인코딩-시간 결합 → **P51-CMLC**(LoRA 부분공간 결합) 하이브리드 승인·구현(GLM)·기동.
+
+**② 측정기 대정비 (08-25~26, ISSUE-033)**: N6 재선택 가드체크가 발단 — **측정 드라이버 이원화 발견**: ERC(리사이즈-GT, 낙관 +2.56) vs val.py(native-GT, 정본). 구 헤드라인 69.44/56.99는 낙관 드라이버 산으로 강등, **DELIVER 정본 = base 66.88/55.18**. H18 재정량화(base outlier +3.7→+1.9, 도구혼용이 과장). 재발방지 = **하네스 가드**(`tools/eval_harness_guard.py`, 8파일 SHA256, legal eval 전 `--check` 필수). BS1 규약. 과거 legal 수치 전수 무오염 확인.
+
+**③ 판정 러시 (08-26~31)**: P51 **반증**(H19: 매칭페어 Δ−0.82, 악조건 최악 → F 기각) — 융합기제 4갈래(선택/attn/평균/결합) 소거 완성. N6 완결(**DELIVER 5-seed 54.39±0.76, best=seed816 55.29**, 선택 아티팩트 2/5런). MCubeS 진입: N4 57.93 → 문헌검증(published 최고 54.65, split 코드검증) → **N4b dose-response 사전등록 예측 2/2 적중**(rubber +9.76·overall −0.10, H20 ✓ — 진단-구동 예측력 실증) → 3-seed **58.07±0.49 = 1등 확정**. MUSES 시드 안정 확정(공식 val {82.13, 81.79, 81.47} spread 0.66). **P50 게이트 통과**(H22: 54.95 = +0.74 매칭통제, N8 재선택 무변화로 최종) — 정보 축 첫 양성. N2 믹서판정(H21: 평균 55.45 ≥ gated-MLP → 트렁크 우위 주장 철회).
+
+**④ RxDINO 확정 (08-31~09-01)**: user "벤치별 토글 불가 — 모델이 자연 학습하거나 일괄 적용" → **P52 개정 = 단일-config 자기-적응**(C3-adaptive: 혼동EMA→λ_c / UniBal-adaptive: 손실갭→λ_u). 컨트롤러 구현·검수·병합(p52.py). 명명 **RxDINO**(user). MUSES 제출 게이트 사전등록(공식 val ≥82.62 시 1회). 게이트 G1~G4 사전등록. E-LoRA ablation 등재(공유+잔차 — 라우팅 아님 확인). UniBal 근거 서지 = UMT(2305.01233)·OGM-GE. 아티팩트: 노벨티맵 v2, **모델카드 논문구조판**(기존문제 P1~P3/방법/실험계획-미실시 명시/LoRA 설계고민 + 눈따라가는 SVG 도판 4장 — fig1-overview/fig2-c3/fig3-unibal/fig4-pretrain.svg, PPT 편집가능).
+
+**⑤ P50-EXT 스케일업 준비 (08-31~09-02)**: 생성기 6모달 확장(편광 = depth→normal→Fresnel proxy, 모델 0회 / NIR = luminance+ExG) → 디스크 캐치로 **uint8 PNG 전환**(450→60GB) → **500k 코퍼스 완성**(200k@SSDe+300k@SSDc, SHA256SUMS 기준선). multi-root 로더(labcode). hpca100 전송(283GB, 4모달만). **Phase2 기동 사고 3건 전부 규명**: (a) accum 등가검사가 post-Adam ill-conditioned → grad-레벨 정본 교체(`--dump-grads`) (b) peer 재현 FAIL의 정체 = **A100 TF32**(ε≈5e-4) → 스모크 CPU 고정 (c) OOM 3연발 = **`--img-size 448` 누락**(768 폴백, 활성화 2.9배). 09-02 기동 성공(19.6GB/rank, ETA 3.7일).
+
+**운영 사고·교훈 모음**: UniBal hpca100 ep174 OOM 크래시+18h 방치 → yeon 무-GC 재개(ISSUE-027 GC 금지, P39.1 4모달 22GB 전례) + **통합 워치독**(런별 수동등록 폐지). GLM 백그라운드 2회 중단 → labcode 포그라운드 전환. 검수 문화 실적: peer의 "보류·보고"가 GC 오지시(ISSUE-027)·BS4 오염·TF32를 각각 차단.
+
+**현 상태 스냅샷 → [current.md](current.md)** · 큐 정본 = [../experiments/plan.md](../experiments/plan.md) · 원장 = [../research/hypothesis-ledger.md](../research/hypothesis-ledger.md)(H1~H22) · 판정문서 = `../experiments/analysis/2026-08-{19,20,25,26,27,31}-*.md`
+
 ## 2026-08-12 — ProbeA2 완결: 7B 69.37(+0.18), 표현력 축 소진 확정 (H12 폐쇄)
 
 - 7B 실행 = 모니터링 세션(hpca100 GPU2-3, user 협의로 슬롯 확보) / §⑧ 축분리 게이트 판정 = discussion 세션(fable).

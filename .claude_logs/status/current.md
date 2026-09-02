@@ -29,44 +29,26 @@ moved: 2026-07-08
 | DELIVER | **P46 C3-only 5-seed 정본 최종(N6 legal-val 재선택 완료 2026-08-31)** test **54.39±0.76** (best **55.29**=seed816 재선택, base 55.18) / val ~67.0 | mean −2.96 / best −2.06 (MM-SA native) · **DGFusion 자로는 best 56.99 +0.28 상회 유지** | ✅ 통계 확정 — 재선택이 mean +0.57 회복(선택 아티팩트 2/5런). base는 더 이상 최고 단일런도 아님(seed816이 최고) → outlier 서사 완전 해소 |
 | MUSES | **P39.1-rank seed2 3모달** Codabench test **79.788** (val 82.13; day 80.246/night 76.818, fog_night 69.610 최악) | GtA(camera-only) −2.60 / **융합(4모달)계보 1위**(79.571 > DGFusion 79.5) | 정면 돌파 비현실 → 포지셔닝 전환(융합계보 1위 + adverse robustness 인과 실증) |
 | MUSES PQ | things 22.87 / All 35.55 (P47-D1 ep172) | SOTA(CAFuser) 59.26 −23점대 | PQ 축 비교 불가 — limitation 절 소재 |
+| **MCubeS** | **통일 레시피(C3-off) 3-seed: 58.07±0.49** {57.93, 57.67, 58.62} — 커뮤니티 표준 test split(102장, 로더 val→test.txt 검증) | published 최고 Mul-VMamba 54.65 대비 **+3.42 / min +3.02** | 🏆 **1등 확정** — 3번째 벤치 첫 진입(2026-08-25~31). C3-on(N4b) = rubber +9.76·overall −0.10(dose-response 적중) |
 | Det | D1-recovered(ViT-L) AP50 **0.9321**@ep6 | 목표 0.85 **+0.08** | 종결 국면 |
 | MULTIAQUA | P9 ep131 / P22 ep120 M-score **82.10** | (챌린지 종료, 고정) | 고정 |
 
-### 통일 아키텍처 확정 (2026-08-16, §6 규칙 집행)
+### 🔴 제안 모델 확정 = RxDINO (P52, 2026-08-31 개정·user 승인) — 세션 재시작 시 이 절이 정본
 
-**P49-AIR 계열 종결** (DELIVER P46 미달 + MUSES 공식 val 81.16 < 82.13 + G-4M 실패). **통일 = ReliaDINO 계보(P39.1-rank 추론 그래프) + 진단-짝 학습손실** — 양 벤치 현 최고(P46-CTR 56.99 / P39.1-rank 79.788)가 이미 동일 추론 그래프(C1/C2/C3 전부 학습 전용). 판정 상세 [experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md](../experiments/analysis/2026-08-16-p49-1-muses-official-verdict.md). ~~남은 결정전 = C2~~ → **C2 유해 확정(2026-08-16, Δ−1.67) — 캠페인 종결**: DELIVER 최종 56.99(SOTA −0.36)·MUSES 79.788. 잔여 = λ0.1 시드 통계뿐. **임계 경로 = RA-L 리라이트 단독.** [experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md](../experiments/analysis/2026-08-16-c2-mcc-ab-verdict.md)
+**RxDINO = 단일-config 자기-적응 처방 멀티모달 세그멘테이션.** 추론 그래프(3벤치 완전 동일) = frozen DINOv3-L + 모달별 LoRA(Q/V r16) + gated-MLP trunk(+VICReg) + SimpleFPN/픽셀헤드(+M2F-lite aux). 학습 전용: ① **C3-adaptive**(train 혼동 EMA→클래스 붕괴점수 s_c→per-class λ_c prototype 당김) ② **UniBal-adaptive**(모달별 aux head 손실갭→per-modal λ_u) ③ **P50 정렬-사전학습 init**(Places365 pseudo-모달, 어댑터만). 벤치별 config 차이 0 — 거동은 λ 궤적으로 창발(G4 게이트). 컨트롤러 구현·검수 완료(`semseg/models/reliadino/p52.py`, `MODEL.C3_ADAPTIVE`/`UNIBAL_ADAPTIVE`, 기본 off=byte-동일).
+- **개정 사유**: 구 P52(오프라인 진단이 벤치별 C3 on/off 결정)는 per-dataset 튜닝과 구분 불가(user 지적) → 진단의 온라인화. 정본 = [decisions/2026-08-31-p52-rxdino-adaptive-amendment.md](../decisions/2026-08-31-p52-rxdino-adaptive-amendment.md)
+- **게이트(사전등록)**: G1 DELIVER ≥54.95−0.3 · G2 MUSES ≥(UniBal 판정 후 확정)−0.3 · G3 MCubeS ≥58.07−0.3 · G4 λ 창발(DELIVER RailTrack↑/MUSES ≈0·radar λ_u↑/MCubeS rubber↑)
+- **노벨티 4축(P51 반증 후 재중심화)**: 자기-처방 학습(H20 dose-response 2/2 적중) · 어댑터-만 정렬 사전학습(H22 +0.74, 미점유) · 소거-증명 체인(믹서 4갈래: 선택 H16·attn H17·평균 H21·결합 H19 전부 폐쇄) · 통일 레시피 일반성(MCubeS +3.42)
+- **아티팩트 3부작**: 상황판 🛰️ `11924e8a` · 노벨티맵 🧩 `0a7113b8` · 모델카드 💊 `f396bfe9`(논문구조+SVG 도판4) — 원본 전부 `meta/*.html`(git)
+- **측정 정본 프로토콜(ISSUE-033 이후)**: legal = `val.py` native-GT·BS1·**하네스 가드 `tools/eval_harness_guard.py --check` 필수**(8파일 SHA256 동결). ERC(eval_reliadino_ckpt)는 리사이즈-GT 낙관(+2.56)이라 진단용. MUSES 공식 = `tools/eval_muses_official.py`. MUSES 제출 게이트 = 공식 val ≥ 82.62일 때만 1회
 
-### 활성 런 / 대기 (2026-08-08, 커밋 기준 — 실시간은 [experiments/plan.md](../experiments/plan.md)·registry)
+### 활성 런 / 대기 (2026-09-02 — 실시간은 plan.md)
 
-- 🔴 **P46 C3-only @1024² 학습 — 게이트 미달 확정 (2026-08-09 02:35, 잠정→확정 격상)**. elice-b200 val-best@ep70: val **69.79**(+0.35 vs 768² 본run) 인데 legal test **56.50**(−0.49 vs 내부최고 56.99, −0.85 vs SOTA 57.35) — **val↑/test↓ 역발산**.
-  yeon λ0.05 병행런도 동일 패턴(ep60→62 사이 val 68.72→69.03 소폭↑, test 56.58→**54.29** 급락 −2.29).
-  **확정 근거**: ep70 이후 24 epoch(ep90~94) 동안 val 이 69.79→69.73→69.51→69.23 로 **단조 하락** — 정체가
-  아니라 명백한 하락 국면. 동 구간 raw test 는 58.41@ep92 로 SOTA 를 크게 웃도는 값이 찍혔으나 **비legal**
-  (val 하락 중 발생) — val-test 상관이 낮다는 추가 증거이지 돌파 근거가 아니다.
-  **해석**: 1024² 학습이 val 은 밀어올리지만 test 는 별개로(과적합 방향으로) 움직인다 — 08-08 22시 리포트의
-  "1024² 가 정점을 밀어올린다" 잠정 해석은 **기각**. elice 잔여 epoch 는 참고용 관찰로 격하.
-  → **RA-L 포지셔닝("no-tradeoff 우위 + MUSES 융합계보 1위 + adverse robustness 인과") 이 현재 더 현실적 경로.**
-  ⚠️ 게이트 확정 미달로 3-seed 재현 확인의 실익이 낮아짐(이미 2개 독립런이 val↑/test↓ 재현) — jarvis 5장·
-  yeon 3장(6주기·12시간 미배치) 용도를 **C2(MCC) 순기여 측정(hpca100 A100×2 유휴) 또는 RA-L 소재 확보**로
-  전환 검토. (jarvis GPU6,7 분신은 08-08 새벽 ep18에서 사망 → 그 슬롯은 seedB로 전환, 아래.)
-- ✅ **P39.1-rank @1024² 대조 — 목적 달성, ep126/200 에서 조기 종료(2026-08-08 14:50, user 지시, GPU 4장 회수)**.
-  **해상도 순효과 확정** (양쪽 val.py@1024 직접 실측, 환산 없음):
-
-  | 학습 해상도 | ckpt (val-best) | val | test |
-  |---|---|---|---|
-  | 768² | P39.1-rank ep106 | 66.72 | 53.68 |
-  | 1024² | P39.1-rank ep54 | **67.87** | **55.69** |
-  | **순효과** | | **+1.15** | **+2.01** |
-
-  → 전 세대(P39.1~P47)가 768² 로 학습된 동안 **test 약 2점을 해상도만으로 손해**보고 있었다.
-  조기 종료 근거: val-best 가 ep54 이후 **70 epoch** 갱신 없음 + legal 값이 위 실측으로 확정 → 잔여 epoch 정보가치 없음.
-  부수 검증: 실측(67.87/55.69)이 학습로그 환산 추정과 소수점까지 일치 → 오프셋(val −2.58/test −1.79)이 **이 런에 대해** 정확. 런별 값이므로 외삽 금지.
-- 🔴 **P46 C3-only 진짜-시드 분산 확정 (2026-08-20) — "사정권" 주장 붕괴**: @768 진짜-시드 2런(seed815/816, config develop c4d5166, IMAGE_SIZE [768,768] 로그 확인=@1024 오염 아님) legal 재평가 → base 포함 3점 **test 54.44±2.21 / val 67.98±1.32**. base(56.99)가 두 축 모두 **최댓값**. 이전 "편차 0.59(SOTA −0.36보다 큼→사정권)"은 **가짜-시드(3407 하드코딩) GPU 비결정성만 잰 값**이라 반증됨 — 참 std는 그 3.7배. val·test 양의상관(낮은 시드가 둘 다 낮음)=런 품질 분산. **함의: DELIVER 근SOTA 헤드라인 불가, mean±std 보고 필수.** 미결: 분산이 seed-init인지 ckpt-선택(트레이너 val-best가 legal의 나쁜 대리)인지 — legal-val 기준 재선택으로 축소 가능성(미검). [experiments/analysis/2026-08-20-p46-seed-variance-verdict.md]
-- ⏸ **P47-2 UniBal** — 구현·스모크 완료, A100급 4장 대기. **4모달 역전의 유일한 남은 등록 레버**.
-- 🔴 **P47-D1(LiDAR 밀도화) 폐기 (2026-08-17 공식 test)**: val 82.58(4모달 역대최강)이었으나 공식 test **78.790** = 4모달 base 79.571 −0.781. val→test 낙차 3.79(계보 ~2.8 +1.0) = val 과적합. **MUSES에서 val 단독 이득은 제출 근거 불가** 3회째 확증. 판정: [experiments/analysis/2026-08-17-p47-d1-muses-official-test-verdict.md](../experiments/analysis/2026-08-17-p47-d1-muses-official-test-verdict.md)
-- 🔴 **CEA 프로브(조건-전문가 상한) — 폐기 확정 (2026-08-08 16:00, 제안 세션)**: 7런 완주, oracle Δ(fog_night) **+0.21 < 게이트 +1.0**(5배 미달), night가 주야갭 4.33 중 **+0.02만 회수** → "평균 최적성 함정" 가설까지 반증. **적응 가설 계열(융합 가중→추론 재가중→추출 전문화) 3단계 완결 폐쇄** — 남은 격차의 원인은 배분이 아니라 **정보**. 재제안 금지. canonical = **[research/hypothesis-ledger.md](../research/hypothesis-ledger.md)(가설 원장, 신설)** + [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §6·§7. 음성 결과는 MUSES 포지셔닝의 oracle 상계로 논문 회수.
-- ⚠️ **jarvis GPU2-5 완전 유휴 (08-08 15:13 실측)** — GPU-never-idle 규칙 위반 상태. 투입 후보(학습 0 우선): ① RGB-D 2모달 @1024 fair-eval(config e055aab 준비됨) ② elice ep28 val-best ckpt 회수 후 **조기 fair-eval**(게이트 조기 판정 가능 — val-best가 ep28에서 18ep째 정체 중이라 이미 확정됐을 수 있음).
-
+- 🔵 **P47-2 UniBal 고정런**(yeon 2,3, ep~230/300, ~반나절): 4모달 laziness 처방 — **G2 기준 확정 + λ_u 캘리브레이션 재료**. val-best 82.06@ep164(게이트 82.62 −0.56). 사고이력: hpca100 ep174 OOM 크래시(타테넌트)→yeon 무-GC 재개 성공(ISSUE-027로 GC 불가, 전례 기반 22GB 안착)
+- 🔵 **N7 VICReg-off 격리**(yeon 0,1, ep~90/200): 컴포넌트 표 마지막 행. 중간 궤적이 seed821(VICReg-on)과 동대역 = DELIVER에서 VICReg 순기여 ≈0 가능성
+- 🔵 **P50-EXT Phase2 사전학습**(hpca100 1,3, ~3.7일): 500k×등-스텝 375k, 448², 2×bs4×accum2=eff16, 19.6GB/rank. 게이트 = EXT-init 파인튠 vs 프로브 54.95, Δ≥+0.3→EXT 채택. 기동까지 사고 3건 규명·문서화(post-Adam ill-conditioned 검사→grad-레벨 정본 교체·`--dump-grads` 심 / A100 TF32 ε≈5e-4→스모크 CPU 고정 / **img-size 448 인자 누락**→768 폴백 OOM 3연발, 검증항목 추가)
+- ⏭ **P52 본런**(UniBal 판정 직후): 3벤치 × 단일 config × 시드2+ — 캠페인 최종 실험. config 3벌 작성 = discussion 세션
+- ⏸ E-LoRA ablation(A per-modal vs B 공유 vs C 공유+잔차, seed821 매칭 — 라우팅 아님·반증가족 무관 확인됨) / N9 정성패키지(rank 스펙트럼·confusion 전후) / N5 TTA
 ### 논문 트랙 (CVPR 2027 마감 ~2026-11 중순 / RA-L rolling)
 
 - **분기 게이트 = P46 @1024² 판정(08-09)**: 돌파 + 3-seed 재현 → CVPR 도전 / 미달 → RA-L 확정.
