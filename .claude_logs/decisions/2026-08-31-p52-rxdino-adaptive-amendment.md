@@ -1,7 +1,7 @@
 ---
 created: 2026-08-31
 author: fable (discussion 세션) — user 지적("벤치별 토글 불가, 모델이 자연스럽게 학습하거나 일괄 적용") 수용 개정, user 승인
-status: 🟢 개정 확정 — 컨트롤러 구현 위임 중. 본런은 UniBal 고정런 완주(~2일) 후
+status: 🟢 개정 확정 — UniBal 고정런 완주(2026-09-03 17:16, val-best 82.06@ep164) + 캘리브레이션 완료([experiments/analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md), G2=81.42 확정, CAP=0.7 반영). 본런은 P50-EXT Phase2 완료 대기
 ---
 
 # P52 개정 — RxDINO: 단일-config 자기-적응 처방 (2026-08-31)
@@ -21,7 +21,7 @@ status: 🟢 개정 확정 — 컨트롤러 구현 위임 중. 본런은 UniBal 
 | 게이트 | 기준 |
 |---|---|
 | **G1 DELIVER** | adaptive 단일-config legal test ≥ 최선 고정팔(P50init+C3on = 54.95, N8 최종치로 갱신) − 0.3 |
-| **G2 MUSES** | ≥ 최선 고정팔(UniBal 고정런 판정 후 확정; 현행 82.62 val 계열) − 0.3 |
+| **G2 MUSES** | ≥ 최선 고정팔 **81.42(확정, 공식 eval 81.72 기준)** − 0.3 |
 | **G3 MCubeS** | ≥ 최선 고정팔(C3-off 58.07±0.49) − 0.3 |
 | **G4 창발 (정성, 필수)** | λ 궤적이 벤치별 병리를 스스로 재현: DELIVER=RailTrack λ↑ / MUSES=전 클래스 λ≈0 & radar λ_u↑ / MCubeS=rubber λ↑ — **config는 동일한데 궤적이 갈라짐**이 "자기-진단" 주장의 직접 증거 |
 | 실패 조건 | 어느 벤치든 고정팔 대비 −0.3 초과 열세 → 컨트롤러 지표/시정수 1회 수정 재시도, 재실패 시 개정 철회(고정팔 결과로 정직 보고 + limitation) |
@@ -35,7 +35,7 @@ status: 🟢 개정 확정 — 컨트롤러 구현 위임 중. 본런은 UniBal 
 ## 4. 실행
 
 1. 컨트롤러 구현 = GLM 위임 + 이 세션 검수(기본 off byte-동일 가드·합성 스모크: 인위 붕괴/게으름 주입 시 λ 반응·eval 불변) — 즉시.
-2. UniBal 고정런 완주·판정(~2일) → G2 기준 확정.
+2. ✅ UniBal 고정런 완주·판정(2026-09-03 17:16) → G2 기준 확정(81.42) — [experiments/analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md).
 3. **P52 본런 = 3벤치 × 단일 config × (시드 2 이상)** — 슬롯: yeon/hpca100 해방분.
 
 관련: plan.md P52 행 · [research/hypothesis-ledger.md](../research/hypothesis-ledger.md) H20/H22 · [2026-08-21-p51-crossmodal-lora-coupling-proposal.md](2026-08-21-p51-crossmodal-lora-coupling-proposal.md)(§4 하이브리드 계보)

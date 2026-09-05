@@ -1713,3 +1713,26 @@ motorcycle 52.63 · rider 60.10 · pole 62.56 · night truck 41.44
 - val→test 낙차 −3.16(82.51→79.35)으로 seed2(−2.83)보다 큼.
 - 우리 test 최고는 여전히 **seed2 79.788** (P43도 못 넘음, 근소 차이 2위).
 - 상세 산출·원시 데이터는 `MUSES_TEST_RESULTS_INDEX.md` 및 제출 zip 아카이브(`/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/muses/`) 참조.
+
+---
+
+## 2026-08-03 hpca100_muses_rgbel_P46_c3only_lam02 완주 기록 (기록일 2026-09-04, 소급 반영)
+
+**배경**: hpca100 디스크 정리 작업 중 이 런이 registry.md에는 이미 기록돼 있었으나 log.md에는 미기록 상태로 발견되어, 사실만 소급 기록한다.
+
+**config**: `configs/hpca100-muses_rgbel_P46_c3only_lam02.yaml` (P46-CTR C3-only λ=0.2, MUSES 3모달 img/lidar/event) · 서버 hpca100 (GPU0-3, A100×4) · tmux 세션명 `musesc3`
+
+**산출 경로 (hpca100 절대경로)**:
+- 출력 디렉토리: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/outputs/ReliaDINO/hpca100_muses_rgbel_P46_c3only_lam02/MUSES_ReliaDINO-ViTL16_ile/`
+- Best ckpt (val 81.65@ep136): `.../MUSES_ReliaDINO-ViTL16_ile/epoch136_81.65_top1_checkpoint.pth`
+- 기타 top ckpt: `epoch140_81.51_top2_checkpoint.pth` · `epoch240_81.51_top3_checkpoint.pth` · `epoch190_81.46_top4_checkpoint.pth` · `epoch246_81.45_top5_checkpoint.pth` · `last_checkpoint.pth`
+- run.log: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100-muses_rgbel_P46_c3only_lam02/run.log`
+
+**run.log 확인 사실**:
+- 최종 epoch 300/300 도달 (완주), 완주 시각 2026-08-03 09:34 (KST)
+- Best Val mIoU 81.65 @ epoch136
+- 최종 epoch(300) val mIoU 81.21
+
+**공식 test**: 이미 별도로 평가·기록됨 — 공식 test mIoU **79.023** (제출 `muses_P46_c3only_lam02_3modal_ep136_submission.zip`, ep136 ckpt 기준). 상세는 [analysis/2026-08-03-muses-official-test-P46-c3only-lam02.md](analysis/2026-08-03-muses-official-test-P46-c3only-lam02.md), registry.md 해당 행 참조.
+
+**타 P46 계열과의 관계**: `configs/` 확인 결과 MUSES 트랙에는 P46 config가 이 `c3only_lam02` 하나뿐이다 — c1c3/c2c3 등 다른 C-조합 변형은 DELIVER 트랙(4모달) config로만 존재하고 MUSES 트랙 config는 없음.

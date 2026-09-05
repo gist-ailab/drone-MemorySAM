@@ -44,10 +44,10 @@ moved: 2026-07-08
 
 ### 활성 런 / 대기 (2026-09-02 — 실시간은 plan.md)
 
-- 🔵 **P47-2 UniBal 고정런**(yeon 2,3, ep~230/300, ~반나절): 4모달 laziness 처방 — **G2 기준 확정 + λ_u 캘리브레이션 재료**. val-best 82.06@ep164(게이트 82.62 −0.56). 사고이력: hpca100 ep174 OOM 크래시(타테넌트)→yeon 무-GC 재개 성공(ISSUE-027로 GC 불가, 전례 기반 22GB 안착)
+- ✅ **P47-2 UniBal 고정런 완주**(yeon 2,3, 2026-09-03 17:16, epoch 300/300): 4모달 laziness 처방 — val-best **82.06@ep164**(게이트 82.62 −0.56), **G2 = 81.42 확정**(공식 harness-guard 재평가 81.72 기준). λ_u 캘리브레이션 완료 — [analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md)(CAP 기본 2.0→0.7 권고). 사고이력: hpca100 ep174 OOM 크래시(타테넌트)→yeon 무-GC 재개 성공(ISSUE-027로 GC 불가, 전례 기반 22GB 안착)
 - 🔵 **N7 VICReg-off 격리**(yeon 0,1, ep~90/200): 컴포넌트 표 마지막 행. 중간 궤적이 seed821(VICReg-on)과 동대역 = DELIVER에서 VICReg 순기여 ≈0 가능성
 - 🔵 **P50-EXT Phase2 사전학습**(hpca100 1,3, ~3.7일): 500k×등-스텝 375k, 448², 2×bs4×accum2=eff16, 19.6GB/rank. 게이트 = EXT-init 파인튠 vs 프로브 54.95, Δ≥+0.3→EXT 채택. 기동까지 사고 3건 규명·문서화(post-Adam ill-conditioned 검사→grad-레벨 정본 교체·`--dump-grads` 심 / A100 TF32 ε≈5e-4→스모크 CPU 고정 / **img-size 448 인자 누락**→768 폴백 OOM 3연발, 검증항목 추가)
-- ⏭ **P52 본런**(UniBal 판정 직후): 3벤치 × 단일 config × 시드2+ — 캠페인 최종 실험. config 3벌 작성 = discussion 세션
+- ⏭ **P52 본런**(UniBal 판정 완료, **P50-EXT Phase2 완료만 대기**): 3벤치 × 단일 config × 시드2+ — 캠페인 최종 실험. UniBal 판정=[analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md)(G2=81.42, CAP=0.7 반영) 완료. config 3벌 작성 = discussion 세션
 - ⏸ E-LoRA ablation(A per-modal vs B 공유 vs C 공유+잔차, seed821 매칭 — 라우팅 아님·반증가족 무관 확인됨) / N9 정성패키지(rank 스펙트럼·confusion 전후) / N5 TTA
 ### 논문 트랙 (CVPR 2027 마감 ~2026-11 중순 / RA-L rolling)
 
