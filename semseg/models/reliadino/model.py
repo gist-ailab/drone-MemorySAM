@@ -79,6 +79,9 @@ class ReliaDINO(nn.Module):
                  img_size: int = 1024,
                  lora_r: int = 8,
                  lora_alpha: Optional[float] = None,
+                 lora_mode: str = 'per_modal',       # [E-LORA] per_modal | shared | shared_residual
+                 lora_shared_r: int = 8,             # [E-LORA] shared_residual 공유항 rank
+                 lora_residual_r: int = 8,           # [E-LORA] shared_residual 모달별 잔차항 rank
                  fpn_dim: int = 256,
                  fusion_layers: int = 2,
                  fusion_heads: int = 8,
@@ -263,6 +266,8 @@ class ReliaDINO(nn.Module):
             backbone=backbone, fallback=backbone_fallback, pretrained=pretrained,
             img_size=img_size, num_modalities=self.num_modalities,
             lora_r=lora_r, lora_alpha=lora_alpha,
+            lora_mode=lora_mode, lora_shared_r=lora_shared_r,      # [E-LORA]
+            lora_residual_r=lora_residual_r,
             num_taps=(int(p43_num_taps) if p43_lateral else 0))   # [P43-T2]
         dim = self.encoder.embed_dim
         self.fusion = ReliabilityGatedFusion(
@@ -709,6 +714,17 @@ class ReliaDINO(nn.Module):
                 cap=unibal_adaptive_cap, momentum=unibal_adaptive_momentum,
                 warmup_ep=unibal_adaptive_warmup_ep,
                 warmup_small=unibal_adaptive_warmup_small)
+
+        # [E-LORA] 학습가능 파라미터 수 보고(plan.md "파라미터 수 보고"). LoRA 항은
+        # qkv 래퍼 안의 어댑터 텐서(.base 제외)만 센다. rank0 에서 한 줄만 출력한다.
+        _rank0 = (not torch.distributed.is_initialized()
+                  or torch.distributed.get_rank() == 0)
+        if _rank0:
+            n_lora = sum(p.numel() for n, p in self.named_parameters()
+                         if p.requires_grad and '.attn.qkv.' in n and '.base.' not in n)
+            n_train = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print(f"[E-LORA] mode={self.encoder.lora_mode} "
+                  f"lora_trainable={n_lora:,} total_trainable={n_train:,}")
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -1562,6 +1578,9 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         img_size=img_size,
         lora_r=mc.get('LORA_R', 8),
         lora_alpha=mc.get('LORA_ALPHA', None),
+        lora_mode=mc.get('LORA_MODE', 'per_modal'),          # [E-LORA]
+        lora_shared_r=mc.get('LORA_SHARED_R', 8),            # [E-LORA]
+        lora_residual_r=mc.get('LORA_RESIDUAL_R', 8),        # [E-LORA]
         fpn_dim=mc.get('FPN_DIM', 256),
         fusion_layers=fus.get('NUM_LAYERS', 2),
         fusion_heads=fus.get('NUM_HEADS', 8),

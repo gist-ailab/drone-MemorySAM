@@ -299,8 +299,12 @@ def main(cfg, gpu, save_dir, logger):
     # [P35/T1 seam] LoRA up-projection(b_q/b_v) Frobenius norm cap — ep140 진단에서
     # blocks.1 depth-q ‖dW‖ 606(ep40 대비 36×) 폭주 관찰(리뷰 리스크). 기본 0=off.
     lora_norm_cap = float(train_cfg.get('LORA_NORM_CAP', 0) or 0)
+    # [E-LORA] arm A(per_modal)는 up-proj 이 .b_q/.b_v (3D (M,d,r)), arm B/C
+    # (shared/shared_residual)는 공유 .b_q_s/.b_v_s (2D (d,r)) + 잔차 .b_q_r/.b_v_r
+    # (3D (M,d,r)). 세 arm 모두 같은 cap 을 받도록 전부 수집한다(seed 매칭 공정성).
     _lora_up_params = [p for n, p in model.named_parameters()
-                       if n.endswith(('.b_q', '.b_v'))] if lora_norm_cap > 0 else []
+                       if n.endswith(('.b_q', '.b_v', '.b_q_s', '.b_v_s',
+                                      '.b_q_r', '.b_v_r'))] if lora_norm_cap > 0 else []
     scheduler = get_scheduler(sched_cfg['NAME'], optimizer,
                               int((epochs + 1) * updates_per_epoch), sched_cfg['POWER'],
                               updates_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
@@ -772,12 +776,18 @@ def main(cfg, gpu, save_dir, logger):
                     # 같은 파라미터 상태를 여러 번 평균해 실효 EMA 감쇠가 왜곡된다.
                     p46_teacher.update(global_update)
                 if lora_norm_cap > 0:
-                    # per-modality slice별 cap (b[m] (attn_dim,r)) — 방향 보존 renorm
+                    # per-modality slice별 cap (b[m] (attn_dim,r)) — 방향 보존 renorm.
+                    # [E-LORA] 3D (M,d,r): 모달 슬라이스별 cap(기존). 2D (d,r): 모달
+                    # 없는 공유 어댑터라 행렬 전체 Frobenius 를 하나로 cap 한다.
                     with torch.no_grad():
                         for p in _lora_up_params:
-                            nrm = p.flatten(1).norm(dim=1, keepdim=True).clamp(min=1e-12)
-                            factor = (lora_norm_cap / nrm).clamp(max=1.0)
-                            p.mul_(factor.view(-1, *([1] * (p.dim() - 1))))
+                            if p.dim() >= 3:
+                                nrm = p.flatten(1).norm(dim=1, keepdim=True).clamp(min=1e-12)
+                                factor = (lora_norm_cap / nrm).clamp(max=1.0)
+                                p.mul_(factor.view(-1, *([1] * (p.dim() - 1))))
+                            else:
+                                nrm = p.norm().clamp(min=1e-12)
+                                p.mul_((lora_norm_cap / nrm).clamp(max=1.0))
 
             train_loss += total.item()
             cal_accum += float(cal_loss)

@@ -101,6 +101,87 @@ class MultiModalLoRAQKV(nn.Module):
         return y
 
 
+class SharedLoRAQKV(nn.Module):
+    """[E-LORA] LoRA 구조 ablation의 arm B/C용 qkv 래퍼.
+
+    `MultiModalLoRAQKV`(arm A, per-modal)는 그대로 두고 옆에 새로 둔다 — arm A
+    경로·기존 체크포인트는 이 클래스가 존재해도 전혀 영향을 받지 않는다.
+
+    두 모드를 하나의 클래스가 담당한다(shared 는 residual_r=0 인 특수형):
+      · shared          : y += s_s · x @ A_s.T @ B_s.T          (전 모달 공유, 단일 어댑터)
+      · shared_residual : y += s_s · shared_delta(x)
+                              + s_r · x @ A_r[m].T @ B_r[m].T    (공유 + 모달별 잔차)
+    두 delta 모두 Q/V 슬라이스에만 additive 하며 K 는 건드리지 않는다(arm A 와
+    동일 규약). shared delta 는 모달 무관이므로 스칼라 `active_modality` 경로와
+    배치별 `modality_ids`(P51) 경로 모두에서 그대로 F.linear 로 계산된다. 잔차
+    delta 만 modality_ids 를 gather 한다(arm A 의 배치-모달 패턴 그대로 재사용).
+    """
+
+    def __init__(self, base: nn.Linear, num_modalities: int, shared_r: int,
+                 residual_r: int = 0, alpha: float = None):
+        super().__init__()
+        assert base.out_features % 3 == 0, "expected fused qkv linear (out = 3*attn_dim)"
+        self.base = base
+        self.in_features = base.in_features
+        self.out_features = base.out_features
+        self.attn_dim = base.out_features // 3
+        self.num_modalities = num_modalities
+        self.shared_r = shared_r
+        self.residual_r = residual_r
+        d = self.attn_dim
+        # 공유 어댑터(모달 무관) — Q/V 각각. b_*_s zero-init 이라 init 시 delta=0.
+        self.scale_s = (alpha if alpha is not None else float(shared_r)) / float(shared_r)
+        self.a_q_s = nn.Parameter(torch.empty(shared_r, self.in_features))
+        self.b_q_s = nn.Parameter(torch.zeros(d, shared_r))
+        self.a_v_s = nn.Parameter(torch.empty(shared_r, self.in_features))
+        self.b_v_s = nn.Parameter(torch.zeros(d, shared_r))
+        nn.init.kaiming_uniform_(self.a_q_s, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.a_v_s, a=math.sqrt(5))
+        # 모달별 잔차 어댑터(residual_r>0 일 때만) — arm A 와 같은 (M,r,in)/(M,d,r) 배열.
+        if residual_r > 0:
+            self.scale_r = (alpha if alpha is not None else float(residual_r)) / float(residual_r)
+            self.a_q_r = nn.Parameter(torch.empty(num_modalities, residual_r, self.in_features))
+            self.b_q_r = nn.Parameter(torch.zeros(num_modalities, d, residual_r))
+            self.a_v_r = nn.Parameter(torch.empty(num_modalities, residual_r, self.in_features))
+            self.b_v_r = nn.Parameter(torch.zeros(num_modalities, d, residual_r))
+            for m in range(num_modalities):
+                nn.init.kaiming_uniform_(self.a_q_r[m], a=math.sqrt(5))
+                nn.init.kaiming_uniform_(self.a_v_r[m], a=math.sqrt(5))
+        self.active_modality = 0
+        # [P51] 배치-모달 경로용 per-element 모달 인덱스. 잔차 항만 사용한다.
+        self.modality_ids: Optional[torch.Tensor] = None
+
+    @property
+    def weight(self):  # safety for code paths that touch qkv.weight directly
+        return self.base.weight
+
+    @property
+    def bias(self):
+        return self.base.bias
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.base(x)
+        # 공유 delta — 모달 무관이라 스칼라/배치 경로 공통(2D weight → F.linear).
+        dq = F.linear(F.linear(x, self.a_q_s), self.b_q_s) * self.scale_s
+        dv = F.linear(F.linear(x, self.a_v_s), self.b_v_s) * self.scale_s
+        if self.residual_r > 0:
+            if self.modality_ids is not None:
+                ids = self.modality_ids
+                aq, bq = self.a_q_r[ids], self.b_q_r[ids]      # (B, r, in), (B, d, r)
+                av, bv = self.a_v_r[ids], self.b_v_r[ids]
+                dq = dq + torch.einsum('bnr,bdr->bnd',
+                                       torch.einsum('bni,bri->bnr', x, aq), bq) * self.scale_r
+                dv = dv + torch.einsum('bnr,bdr->bnd',
+                                       torch.einsum('bni,bri->bnr', x, av), bv) * self.scale_r
+            else:
+                m = self.active_modality
+                dq = dq + F.linear(F.linear(x, self.a_q_r[m]), self.b_q_r[m]) * self.scale_r
+                dv = dv + F.linear(F.linear(x, self.a_v_r[m]), self.b_v_r[m]) * self.scale_r
+        d = self.attn_dim
+        y = torch.cat([y[..., :d] + dq, y[..., d:2 * d], y[..., 2 * d:] + dv], dim=-1)
+        return y
+
+
 class LayerNorm2d(nn.Module):
     """Channel-wise LayerNorm on (B, C, H, W) — ViTDet convention."""
 
@@ -170,6 +251,9 @@ class FrozenViTEncoder(nn.Module):
                  num_modalities: int = 4,
                  lora_r: int = 8,
                  lora_alpha: Optional[float] = None,
+                 lora_mode: str = 'per_modal',       # [E-LORA] per_modal | shared | shared_residual
+                 lora_shared_r: int = 8,             # [E-LORA] shared_residual 공유항 rank
+                 lora_residual_r: int = 8,           # [E-LORA] shared_residual 모달별 잔차항 rank
                  tap_layers: Optional[Sequence[int]] = None,
                  num_taps: int = 0):
         super().__init__()
@@ -182,10 +266,27 @@ class FrozenViTEncoder(nn.Module):
         self.num_prefix_tokens = getattr(self.backbone, 'num_prefix_tokens', 0)
         self.num_modalities = num_modalities
 
+        # [E-LORA] LoRA 구조 모드. per_modal(기본) 은 arm A = 기존 MultiModalLoRAQKV
+        # 와 byte-동일해야 하므로, 이 분기 밖에서는 어떤 RNG 도 소비하지 않는다.
+        self.lora_mode = lora_mode
+        if lora_mode not in ('per_modal', 'shared', 'shared_residual'):
+            raise ValueError(f"[E-LORA] unknown LORA_MODE '{lora_mode}' "
+                             "(per_modal | shared | shared_residual)")
+
+        def _make_lora(qkv: nn.Linear):
+            if lora_mode == 'per_modal':
+                return MultiModalLoRAQKV(qkv, num_modalities, lora_r, lora_alpha)
+            if lora_mode == 'shared':
+                # arm B: 전 모달이 하나의 공유 어댑터(rank=lora_r). 잔차 없음.
+                return SharedLoRAQKV(qkv, num_modalities, lora_r, 0, lora_alpha)
+            # arm C: 공유(rank=lora_shared_r) + 모달별 잔차(rank=lora_residual_r).
+            return SharedLoRAQKV(qkv, num_modalities, lora_shared_r,
+                                 lora_residual_r, lora_alpha)
+
         # Freeze everything, then inject trainable per-modality LoRA.
         for p in self.backbone.parameters():
             p.requires_grad = False
-        self.lora_layers: List[MultiModalLoRAQKV] = []
+        self.lora_layers: List[nn.Module] = []
         for blk in self.backbone.blocks:
             attn = blk.attn
             assert getattr(attn, 'qkv', None) is not None, \
@@ -194,7 +295,7 @@ class FrozenViTEncoder(nn.Module):
             # by F.linear(x, self.qkv.weight, bias) (see module docstring).
             if hasattr(attn, 'qkv_bias_separate') and getattr(attn, 'q_bias', None) is not None:
                 attn.qkv_bias_separate = True
-            wrapper = MultiModalLoRAQKV(attn.qkv, num_modalities, lora_r, lora_alpha)
+            wrapper = _make_lora(attn.qkv)
             attn.qkv = wrapper
             self.lora_layers.append(wrapper)
         # register so .parameters()/.state_dict() see the adapters exactly once
