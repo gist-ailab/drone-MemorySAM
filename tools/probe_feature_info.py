@@ -279,7 +279,9 @@ def extract_feature_sets(model, core, imgs, tap_indices, modal_names,
     enc = core.encoder
     sets = {}
 
-    with TapCapture(enc, tap_indices) as tc:
+    # [OOM fix 2026-09-07] 추출 전체를 no_grad 로 감싼다 — RAW/adapted 인코딩이 그래프를
+    # 들고 있어 이미지마다 누적돼 24GB 에서 OOM(bengio 실측). 프로브는 학습이 아니다.
+    with torch.no_grad(), TapCapture(enc, tap_indices) as tc:
         # 1) RAW — LoRA off, per-modal encode. try/finally 로 반드시 원복.
         enc.set_lora_enabled(False)
         try:
@@ -288,7 +290,7 @@ def extract_feature_sets(model, core, imgs, tap_indices, modal_names,
                 tc.buf.clear()
                 last = enc(imgs[i], i)                       # (1,C,h,w)
                 h, w = last.shape[-2:]
-                raw_taps.append([t[0].float().cpu() for t in tc.maps(h, w)])
+                raw_taps.append([t[0].detach().float().cpu() for t in tc.maps(h, w)])
         finally:
             enc.set_lora_enabled(True)
 
@@ -300,7 +302,7 @@ def extract_feature_sets(model, core, imgs, tap_indices, modal_names,
                 tc.buf.clear()
                 last = enc(imgs[i], i)
                 h, w = last.shape[-2:]
-                adapted_taps.append([t[0].float().cpu() for t in tc.maps(h, w)])
+                adapted_taps.append([t[0].detach().float().cpu() for t in tc.maps(h, w)])
 
     # 2)/3) full forward (LoRA on) → per-modal feats + fused_prehead 버퍼.
     with torch.no_grad():
