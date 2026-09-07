@@ -92,3 +92,10 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 ## 4. 등재
 - plan.md 대기열에 카드 행 추가(B0·E0·E7·E1·E2·E3·E4·E8 순), 각 행 EPOCHS 40 명시.
 - 카드 결과는 `experiments/analysis/2026-09-XX-daily-cards-<E>.md` 1건씩.
+
+## 5. 결과 기록
+
+| 카드 | 결과 | 판정 | 근거 |
+|---|---|---|---|
+| E9 τ=0 (재채점) | test 53.57 = 기존 정본(구 53.57) 일치 | 하네스 재동결 완료(636e490) | bengio `logs/e9_la_tau0_*.log` |
+| E0 특징 정보 프로브 | raw 27.8 < adapted 35.6 < fused 45.1 (test 선형 mIoU); depth 중간층 탭에 Water 47.6·RailTrack 23.9 잔존(fused 16.6·0.0) | 게이트(i) 미달(−8.2%p) → "어댑터가 버린다" 기각. **E5·E6 하향, E1·E3 유지**. 오라클 프로브 미실행 | [analysis/2026-09-08-daily-cards-E0-feature-probe.md](../experiments/analysis/2026-09-08-daily-cards-E0-feature-probe.md) |
