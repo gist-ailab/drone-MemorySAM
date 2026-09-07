@@ -1,7 +1,7 @@
 ---
 created: 2026-08-31
 author: fable (discussion 세션) — user 지적("벤치별 토글 불가, 모델이 자연스럽게 학습하거나 일괄 적용") 수용 개정, user 승인
-status: 🟢 개정 확정 — UniBal 고정런 완주(2026-09-03 17:16, val-best 82.06@ep164) + 캘리브레이션 완료([experiments/analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md), G2=81.42 확정, CAP=0.7 반영). P50-EXT Phase2 채택 게이트 기각(2026-09-07, legal test 53.10 < 55.25) → P52 init = Phase1(프로브) 채택 확정, 본런 착수 대기 없음
+status: 🟡 **P52.1 재설계 대기(2026-09-07 타당성 감사 — [2026-09-07-p52-validity-audit-and-bottleneck-program.md](2026-09-07-p52-validity-audit-and-bottleneck-program.md) §1.6 수정 6건, 본런 기동 보류 권고)**. 이전 상태: 🟢 개정 확정 — UniBal 고정런 완주(2026-09-03 17:16, val-best 82.06@ep164) + 캘리브레이션 완료([experiments/analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md), G2=81.42 확정, CAP=0.7 반영). P50-EXT Phase2 채택 게이트 기각(2026-09-07, legal test 53.10 < 55.25) → P52 init = Phase1(프로브) 채택 확정, 본런 착수 대기 없음
 ---
 
 # P52 개정 — RxDINO: 단일-config 자기-적응 처방 (2026-08-31)

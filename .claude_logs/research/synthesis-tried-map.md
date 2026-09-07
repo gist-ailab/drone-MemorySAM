@@ -101,7 +101,7 @@ P8→P31 전 버전의 불변식. 그러나:
 **근거**: vault가 "novelty 방어의 핵심 증거"로 반복 처방, 전부 미실행. 대부분 추론-시간 실험이라 저비용. **이것 없이는 RBMA 주장 자체가 리뷰에서 무너진다.**
 
 ### B. 🔴 Training-time 항-편향 레버 3종 — 전부 "제안됨, 미실행", 전부 Mode B 직격
-1. **Zheng functional-entropy regularization (2505.06635)**: parameter-free drop-in loss. relatedworks 로그가 **"#1 leverage"로 랭크해놓고 한 번도 실행 안 한** 항목. RBMA(추론)와 정확히 상보(학습).
+1. ~~**Zheng functional-entropy regularization (2505.06635)**~~ **[2026-09-07 원문 확인 후 폐기]** — 이득은 결측-모달 강건성이고 전모달 정확도는 경쟁작 이하(4모달 51.65 vs 68.25), double backward 필요; 근거 = decisions/2026-09-07-p52-validity-audit 축 5. 원문: **Zheng functional-entropy regularization (2505.06635)**: parameter-free drop-in loss. relatedworks 로그가 **"#1 leverage"로 랭크해놓고 한 번도 실행 안 한** 항목. RBMA(추론)와 정확히 상보(학습).
 2. **RGB-zeroed double-forward loss**: MULTIAQUA 논문 자체 레시피 (L_full + L_rgb-zero). aux 모달이 야간 의미를 스스로 지게 강제 — "missing RGB"는 이걸로, "noisy RGB"는 RBMA로 역할분담하면 스토리도 깔끔.
 3. **Modality dropout + REQUIRE_ALL_MODALITIES 폐지**: det에서 데이터 복원이 승부를 갈랐던 것의 seg 동형(5,862→13,712장).
 

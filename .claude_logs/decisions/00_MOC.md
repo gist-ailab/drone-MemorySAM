@@ -6,6 +6,7 @@
 
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
+| [2026-09-07-p52-validity-audit-and-bottleneck-program.md](2026-09-07-p52-validity-audit-and-bottleneck-program.md) | **P52 타당성 감사 + 병목 해소 실험 프로그램** — 게이트 마진 0.3 < 시드 σ, C3-adaptive 신호(train 혼동)↔병리(val→test 붕괴) 불일치, 노벨티 선행(Recall Loss·PMR/MLB) → P52.1 수정 6건; 축 0~4(측정 규약·P52.1·백본 적응 깊이 A1~A4·P50 재현+실패 진단·RGB-D fair-eval), 함수엔트로피 폐기. 딥리서치 3축 부록 | 🟡 user 검토 대기 |
 | [2026-08-17-p50-map-modal-alignment-pretraining-proposal.md](2026-08-17-p50-map-modal-alignment-pretraining-proposal.md) | **P50-MAP 제안** — 모달 정렬 사전학습(pseudo-모달 stage-1, 추론 그래프 무변경). 딥리서치 3축(VLM ablation·OmniSegmentor·센서 계보) 수렴 근거, 프로브 게이트 사전 등록 | 승인 대기 |
 | [2026-08-10-p49-air-asymmetric-injection-proposal.md](2026-08-10-p49-air-asymmetric-injection-proposal.md) | **P49-AIR 제안** — 비대칭 RGB-주경로 + 인코더-내부 주입(MM-SA 해부 기반), 딥리서치 3축, 게이트 사전 등록 | 승인 대기 |
 | [2026-08-08-probea2-backbone-scaling-request.md](2026-08-08-probea2-backbone-scaling-request.md) | **실험 의뢰서** — ProbeA2 백본 스케일링(S+/B/L/H+, RGB 단독): 상한=표현력 천장, 하한=Swin-T 용량정합 공정성 방어. 게이트 G-A2 사전 등록 | 승인됨·배정 대기 |
