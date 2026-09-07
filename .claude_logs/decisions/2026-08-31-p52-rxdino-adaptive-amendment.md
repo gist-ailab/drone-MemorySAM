@@ -1,7 +1,7 @@
 ---
 created: 2026-08-31
 author: fable (discussion 세션) — user 지적("벤치별 토글 불가, 모델이 자연스럽게 학습하거나 일괄 적용") 수용 개정, user 승인
-status: 🟢 개정 확정 — UniBal 고정런 완주(2026-09-03 17:16, val-best 82.06@ep164) + 캘리브레이션 완료([experiments/analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md), G2=81.42 확정, CAP=0.7 반영). 본런은 P50-EXT Phase2 완료 대기
+status: 🟢 개정 확정 — UniBal 고정런 완주(2026-09-03 17:16, val-best 82.06@ep164) + 캘리브레이션 완료([experiments/analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md), G2=81.42 확정, CAP=0.7 반영). P50-EXT Phase2 채택 게이트 기각(2026-09-07, legal test 53.10 < 55.25) → P52 init = Phase1(프로브) 채택 확정, 본런 착수 대기 없음
 ---
 
 # P52 개정 — RxDINO: 단일-config 자기-적응 처방 (2026-08-31)
@@ -11,7 +11,7 @@ status: 🟢 개정 확정 — UniBal 고정런 완주(2026-09-03 17:16, val-bes
 ## 1. 개정 정의
 
 **RxDINO (P52)** = frozen DINOv3-L + 모달별 LoRA + gated-MLP trunk(+VICReg) + FPN/M2F-lite (추론 그래프, 3벤치 동일 — 불변)
-- **+ P50 정렬-사전학습 init** (H22 ✓; MCubeS는 Phase2 EXT init 완성 시 적용, 그 전 런은 무-init으로 명기)
+- **+ P50 정렬-사전학습 init** (H22 ✓; **Phase1(프로브, 200k, 4모달: img/depth/event/lidar) DELIVER만 채택 확정** — Phase2 EXT는 채택 게이트 기각(2026-09-07, legal test 53.10 < 55.25=54.95+0.3). **MUSES는 config 작성 시 실측(2026-09-07, labcode)으로 로드 자체가 깨짐이 확인돼 무-init으로 전환** — Phase1 코퍼스가 25클래스(DELIVER) 기준이라 fusion 헤드의 class-종속 텐서가 MUSES(19클래스)와 shape mismatch → `load_state_dict` RuntimeError(LoRA/트렁크/FPN은 클래스 무관이라 문제없으나 로더가 부분 필터를 안 함). **MCubeS는 원 설계대로 무-init**(Phase2가 있어야 호환되는 폴라리제이션/NIR 모달, Phase2 자체가 기각돼 해당 없음). 결과: 3벤치 중 **DELIVER만 Phase1 init, MUSES·MCubeS는 무-init**)
 - **+ C3-adaptive**: per-class λ_c = f(온라인 붕괴 지표) — 학습 배치 혼동 EMA에서 클래스별 "흡수도" s_c(= (1−recall_c) × top-1 confuser 집중도)를 계산, λ_c = λ_max·clamp(s_c/τ, 0, 1). 붕괴 클래스만 prototype 당김을 받음.
 - **+ UniBal-adaptive**: per-modal λ_u,m = f(온라인 laziness 지표) — 모달별 unimodal-head 손실의 상대 갭(L_m/mean−1, clamp)으로 게으른 모달만 보조 CE 강화. (선례: OGM-GE CVPR'22 — 학습-내 모달 기여 측정→변조)
 - 두 컨트롤러 모두 **학습 전용·train-배치 통계만 사용(val 불사용)**·EMA 평활·warmup·λ 궤적 로깅(창발 증거 = 논문 그림).
