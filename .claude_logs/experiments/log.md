@@ -1736,3 +1736,27 @@ motorcycle 52.63 · rider 60.10 · pole 62.56 · night truck 41.44
 **공식 test**: 이미 별도로 평가·기록됨 — 공식 test mIoU **79.023** (제출 `muses_P46_c3only_lam02_3modal_ep136_submission.zip`, ep136 ckpt 기준). 상세는 [analysis/2026-08-03-muses-official-test-P46-c3only-lam02.md](analysis/2026-08-03-muses-official-test-P46-c3only-lam02.md), registry.md 해당 행 참조.
 
 **타 P46 계열과의 관계**: `configs/` 확인 결과 MUSES 트랙에는 P46 config가 이 `c3only_lam02` 하나뿐이다 — c1c3/c2c3 등 다른 C-조합 변형은 DELIVER 트랙(4모달) config로만 존재하고 MUSES 트랙 config는 없음.
+
+---
+
+## 2026-09-07 P50-EXT Phase2 채택 게이트 — 기각(REJECTED, user 결정)
+
+**배경**: P50-EXT Phase2(500k 코퍼스, 등-스텝 375k) 사전학습은 2026-09-05 완주(hpca100 1,3, step 375000/375000, 어댑터 226개 텐서 저장).
+
+**게이트 파인튠**: config `configs/hpca100-deliver_rgbdel_P46_c3only_p50ext_seed821.yaml`(hpca100 GPU1,3, seed20260821 매칭)로 DELIVER 채택 게이트 파인튠 착수. epoch30 체크포인트(트레이너 내부 val 65.41)를 조기 추출해 공식 legal test eval 실행 — yeon GPU0, harness-guard 통과 확인 후 `val.py --mode test`, 임시 경로치환 config `configs/_tmp_yeon_eval_p50ext_gate_ep30.yaml`(git 미커밋, yeon 로컬에만 존재)로 수행.
+
+**결과**: **legal test mIoU = 53.10.** 게이트 기준(Phase1 legal test 54.95 + 0.3 = 55.25) 대비 크게 미달, 무사전학습 seed821 베이스라인(53.57~54.21)보다도 낮음.
+
+**판정 근거**: 이 실험 계열은 항상 epoch30이 트레이너 val 최고점이고 이후 하락하는 패턴이 반복 확인됨(P50-MAP Phase1 게이트도 동일 패턴 → 그때는 ep30이 실제 최종 최고점이었음) → ep30 조기 판정으로 최종 판정을 갈음할 근거가 있다고 보고 user에게 확인, **user가 "Phase1(프로브) init으로 P52 바로 착수"를 승인(2026-09-07)**.
+
+**최종 결정**: P52는 Phase2(500k) init이 아니라 기존 Phase1(200k 프로브, legal test 54.95, H22 확정치) init을 그대로 채택한다. hpca100의 200-epoch 풀 파인튠 자체는 계속 두고 확인용으로 완주시킨다(배경 확인용, P52 착수를 막지 않음) — 나중에 결과가 다르게 나오면 그때 재검토.
+
+---
+
+## 2026-09-07 E-LoRA arm A r16 재런 착수 (yeon GPU0,1)
+
+**config**: `configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_permodal_r16.yaml` (develop 커밋 047e951), tmux 세션 `elora_a_r16`, 2026-09-07 착수.
+
+**기동검증 통과**: `[E-LORA] mode=per_modal lora_trainable=6,291,456 total_trainable=57,705,247`(r16 파라미터 수, 스모크에서 예측한 값과 일치), GPU0,1 정상 가동.
+
+**미착수 항목**: E-LoRA arm B(shared r16)·arm C(shared8+resid8)는 아직 미착수 — bengio/lecun은 develop 대비 각각 436·190커밋 뒤처지고 다른 세션 미커밋 WIP가 있어 보류 중, yeon/hpca100의 다음 해방 슬롯을 기다린다.
