@@ -82,6 +82,7 @@ class ReliaDINO(nn.Module):
                  lora_mode: str = 'per_modal',       # [E-LORA] per_modal | shared | shared_residual
                  lora_shared_r: int = 8,             # [E-LORA] shared_residual 공유항 rank
                  lora_residual_r: int = 8,           # [E-LORA] shared_residual 모달별 잔차항 rank
+                 lora_targets: Optional[Sequence[str]] = None,  # [E2] LoRA 타깃 확장(qkv|qkv_full|proj|fc1|fc2)
                  fpn_dim: int = 256,
                  fusion_layers: int = 2,
                  fusion_heads: int = 8,
@@ -185,6 +186,15 @@ class ReliaDINO(nn.Module):
                  p43_eval_head: bool = False,
                  p43_sem_source: str = 'pixel',
                  p43_thing_ids: Optional[Sequence[int]] = None,
+                 # [E1] DINOv3 다중 레벨 탭 읽기 — P43 lateral 을 M2F 헤드와 분리한
+                 # 단독 토글. taps_enable=False(기본)면 이 세 인자는 어떤 모듈도
+                 # 만들지 않고 RNG 도 소비하지 않아 forward·state_dict 가 byte-동일.
+                 # taps_layers 는 1-indexed 블록 번호(resolve_taps 규약: 24블록에서
+                 # 24=마지막). taps_mode='per_modal'(기본)은 센서별 탭 투영을 FPN
+                 # 레벨에서 합산, 'mean'은 P43 식 모달 평균 후 단일 투영.
+                 taps_enable: bool = False,
+                 taps_layers: Sequence[int] = (6, 12, 18, 24),
+                 taps_mode: str = 'per_modal',
                  p44_local_mask: bool = False,
                  p44_mask_mode: str = 'rect',
                  p44_mask_frac: float = 0.5,
@@ -261,14 +271,24 @@ class ReliaDINO(nn.Module):
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
         self.num_classes = num_classes
+        # [E1] 탭 토글 상태(off 기본 — 아래 블록이 모듈/RNG 를 건드리지 않는다).
+        self.taps_enable = bool(taps_enable)
+        self.taps_mode = 'mean'          # 실제 모드는 lateral 블록에서 확정
 
+        # [E1] 탭 수집 소스: explicit 1-indexed 블록(taps_layers, resolve_taps
+        # 규약으로 encoder 가 clamp·-1)이 있으면 그것을, 없고 P43.LATERAL 이면
+        # P43 의 등간격 num_taps 를 준다. 둘 다 아니면 탭 없음(byte-동일).
+        _e_tap_layers = list(taps_layers) if self.taps_enable else None
+        _e_num_taps = 0 if self.taps_enable else (int(p43_num_taps) if p43_lateral else 0)
         self.encoder = FrozenViTEncoder(
             backbone=backbone, fallback=backbone_fallback, pretrained=pretrained,
             img_size=img_size, num_modalities=self.num_modalities,
             lora_r=lora_r, lora_alpha=lora_alpha,
             lora_mode=lora_mode, lora_shared_r=lora_shared_r,      # [E-LORA]
             lora_residual_r=lora_residual_r,
-            num_taps=(int(p43_num_taps) if p43_lateral else 0))   # [P43-T2]
+            lora_targets=lora_targets,                             # [E2]
+            tap_layers=_e_tap_layers,                             # [E1]
+            num_taps=_e_num_taps)                                 # [P43-T2/E1]
         dim = self.encoder.embed_dim
         self.fusion = ReliabilityGatedFusion(
             dim=dim, num_classes=num_classes, num_modalities=self.num_modalities,
@@ -390,15 +410,49 @@ class ReliaDINO(nn.Module):
         # level (shallow tap -> highest resolution). NOT zero-init and NOT
         # gated: they sit on the primary path and must earn gradient from step
         # one (실패-키 1 — "잔차로 살짝 얹기"는 반증 완료).
+        #
+        # [E1] P43 lateral 과 공용 경로. 탭 수집·투영·주입은 P43.LATERAL 과
+        # MODEL.TAPS.ENABLE 어느 쪽이 켜져도 동일한 결선을 탄다.
+        #   · taps_mode == 'mean'      : 모달 평균 후 슬롯당 단일 투영(self.p43_lateral)
+        #                                — P43 기존 동작과 완전 동일(byte-identical).
+        #   · taps_mode == 'per_modal' : 센서×슬롯 투영(self.taps_proj_permodal)을
+        #                                각각 걸고 FPN 레벨에서 합산(모달별 탭 유지).
+        # off(둘 다 꺼짐)면 아래 블록이 모듈도 RNG 도 건드리지 않아 baseline byte-동일.
         self.p43_lateral = None
+        self.taps_proj_permodal = None
         self.p43_lateral_levels: List[int] = []
         n_taps = len(self.encoder.tap_layers)
-        if p43_lateral and n_taps > 0:
+        if (p43_lateral or self.taps_enable) and n_taps > 0:
             self.p43_lateral_levels = [min(i, 2) for i in range(n_taps)]
-            self.p43_lateral = nn.ModuleList(
-                nn.Sequential(LayerNorm2d(dim), nn.Conv2d(dim, fpn_dim, 1))
-                for _ in range(n_taps))
-        self._p43_taps = None          # per-forward, modality-averaged taps
+            # 모드: MODEL.TAPS 가 켜졌으면 그 MODE, 아니면 P43 는 항상 'mean'.
+            _tmode = str(taps_mode).lower() if self.taps_enable else 'mean'
+            if _tmode not in ('per_modal', 'mean'):
+                raise ValueError(f"MODEL.TAPS.MODE 는 per_modal|mean 이어야 한다 "
+                                 f"(got {taps_mode!r}).")
+            if _tmode == 'per_modal' and cmlc_enable:
+                # CMLC(forward_coupled)는 탭을 모달 평균으로만 돌려줘 per-modal
+                # 탭을 얻을 수 없다 → 조용한 오동작 대신 거부(ISSUE-024류).
+                raise ValueError("MODEL.TAPS.MODE: per_modal 은 MODEL.CMLC.ENABLE: "
+                                 "true 와 함께 쓸 수 없다 (CMLC 가 탭을 모달 평균으로 "
+                                 "합쳐 per-modal 탭이 사라진다). mean 을 쓰거나 CMLC 를 꺼라.")
+            self.taps_mode = _tmode
+            if _tmode == 'per_modal':
+                # [E1 검수 수정 2026-09-07] per_modal 은 4탭을 SimpleFPN 4레벨(stride 4/8/16/32)에
+                # 각각 배정한다 — 기존 min(i,2) 공식은 P43 mean 경로(byte-동일 유지)에만 둔다.
+                self.p43_lateral_levels = [min(i, 3) for i in range(n_taps)]
+            if _tmode == 'per_modal':
+                # 센서마다 독립 투영(non-zero init = Conv2d 기본 kaiming). 각 센서의
+                # 탭을 fpn_dim 으로 즉시 투영해 원본 dim 텐서를 들고 있지 않는다.
+                self.taps_proj_permodal = nn.ModuleList(
+                    nn.ModuleList(
+                        nn.Sequential(LayerNorm2d(dim), nn.Conv2d(dim, fpn_dim, 1))
+                        for _ in range(n_taps))
+                    for _ in range(self.num_modalities))
+            else:
+                self.p43_lateral = nn.ModuleList(
+                    nn.Sequential(LayerNorm2d(dim), nn.Conv2d(dim, fpn_dim, 1))
+                    for _ in range(n_taps))
+        self._p43_taps = None          # per-forward taps (mean=평균 raw / per_modal=투영·합산)
         self._last_p43_out = None      # eval-only, for panoptic_inference
         # [PQ] same stash for the P38/P39 M2F head. `_m2f_capture` is False
         # everywhere except inside _m2f_forward_out(), so the training and the
@@ -822,9 +876,15 @@ class ReliaDINO(nn.Module):
         cmlc_enable 이 False 면 아래 순차 루프가 **그대로** 돈다(기존 경로
         100% 불변 가드).
         """
-        collect = (self.p43_lateral is not None and not self.p43_lateral_off)
+        # [E1] mean(P43) 이든 per_modal 이든 어느 투영이라도 있으면 탭을 수집한다.
+        collect = ((self.p43_lateral is not None
+                    or self.taps_proj_permodal is not None)
+                   and not self.p43_lateral_off)
         self.encoder.collect_taps = collect     # don't pay for taps we discard
+        _permodal = (self.taps_mode == 'per_modal'
+                     and self.taps_proj_permodal is not None)
         if self.cmlc_enable and self.cmlc is not None:
+            # CMLC 는 per_modal 과 공존 불가(init 에서 거부) → 여기선 mean 만 온다.
             stack = torch.stack(list(x), dim=0)          # (M, B, C, H, W)
             feats = self.encoder.forward_coupled(
                 stack, self.cmlc, self.cmlc_layers)
@@ -838,9 +898,21 @@ class ReliaDINO(nn.Module):
             # (summing in place avoids materializing a stacked (M,B,C,h,w)).
             if collect and self.encoder.last_taps:
                 lt = self.encoder.last_taps
-                acc = list(lt) if acc is None else [a + b for a, b in zip(acc, lt)]
-        self._p43_taps = ([t / float(self.num_modalities) for t in acc]
-                          if acc is not None else None)
+                if _permodal:
+                    # [E1] 센서별 투영을 즉시 걸어 fpn_dim 으로 낮추고(원본 dim 미보유)
+                    # 슬롯별로 모달 합산 → 융합은 이 합산이 담당(트렁크는 최종 feats
+                    # 를 별도로 융합). raw 탭은 다음 모달 forward 에서 덮여 사라진다.
+                    proj_i = self.taps_proj_permodal[i]
+                    pj = [proj_i[j](lt[j]) for j in range(len(lt))]
+                    acc = pj if acc is None else [a + b for a, b in zip(acc, pj)]
+                else:
+                    acc = list(lt) if acc is None else [a + b for a, b in zip(acc, lt)]
+        if acc is None:
+            self._p43_taps = None
+        elif _permodal:
+            self._p43_taps = acc                      # 투영·합산 완료(fpn_dim)
+        else:
+            self._p43_taps = [t / float(self.num_modalities) for t in acc]
         return feats
 
     def _p43_lambda_now(self) -> float:
@@ -852,9 +924,22 @@ class ReliaDINO(nn.Module):
         return self.p43_lambda * (0.1 + 0.9 * r)
 
     def _apply_p43_lateral(self, pyramid: List[torch.Tensor]) -> List[torch.Tensor]:
-        """[P43-T2] inject the frozen-ViT multi-depth taps into the SimpleFPN."""
+        """[P43-T2/E1] inject the frozen-ViT multi-depth taps into the SimpleFPN.
+
+        per_modal: `self._p43_taps` 는 이미 fpn_dim 으로 투영·모달합산돼 있으니
+        레벨로 보간해 더하기만 한다. mean: raw 평균 탭을 슬롯 투영 후 더한다.
+        얕은 탭 → 고해상 레벨(p43_lateral_levels)은 두 모드 공통."""
         taps = self._p43_taps
-        if self.p43_lateral is None or self.p43_lateral_off or not taps:
+        if self.p43_lateral_off or not taps:
+            return pyramid
+        if self.taps_mode == 'per_modal':
+            out = list(pyramid)
+            for j, t in enumerate(taps):
+                lvl = self.p43_lateral_levels[j]
+                out[lvl] = out[lvl] + F.interpolate(
+                    t, size=out[lvl].shape[-2:], mode='bilinear', align_corners=False)
+            return out
+        if self.p43_lateral is None:
             return pyramid
         out = list(pyramid)
         for j, proj in enumerate(self.p43_lateral):
@@ -1546,6 +1631,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     fcr = (mc.get('P41', {}) or {}).get('FCR', {}) or {}   # [P41] Fused Class-alignment Regularizer
     p42 = (mc.get('P42', {}) or {}).get('MASK_IMG', {}) or {}   # [P42-M1] 조건부 img 마스킹
     p43 = mc.get('P43', {}) or {}                               # [P43] PanopticDual
+    taps = mc.get('TAPS', {}) or {}                             # [E1] 다중 레벨 탭 단독 토글
     p44 = mc.get('P44', {}) or {}                      # [P44-BMR]
     p44_lm = p44.get('LOCAL_MASK', {}) or {}           #   B-3 국소 마스킹
     p44_hp = p44.get('HARD_PIXEL_AUX', {}) or {}       #   M-3 hard-pixel aux
@@ -1581,6 +1667,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         lora_mode=mc.get('LORA_MODE', 'per_modal'),          # [E-LORA]
         lora_shared_r=mc.get('LORA_SHARED_R', 8),            # [E-LORA]
         lora_residual_r=mc.get('LORA_RESIDUAL_R', 8),        # [E-LORA]
+        lora_targets=mc.get('LORA_TARGETS', None),           # [E2] 기본 None=[qkv] byte-동일
         fpn_dim=mc.get('FPN_DIM', 256),
         fusion_layers=fus.get('NUM_LAYERS', 2),
         fusion_heads=fus.get('NUM_HEADS', 8),
@@ -1685,6 +1772,9 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         p43_eval_head=p43.get('EVAL_HEAD', False),
         p43_sem_source=p43.get('SEM_SOURCE', 'pixel'),
         p43_thing_ids=p43.get('THING_IDS', None),
+        taps_enable=taps.get('ENABLE', False),                      # [E1]
+        taps_layers=tuple(taps.get('LAYERS', (6, 12, 18, 24))),     # [E1] 1-indexed 블록
+        taps_mode=taps.get('MODE', 'per_modal'),                    # [E1] per_modal|mean
         p44_local_mask=p44_lm.get('ENABLE', False),
         p44_mask_mode=p44_lm.get('MODE', 'rect'),
         p44_mask_frac=p44_lm.get('FRAC', 0.5),

@@ -302,9 +302,12 @@ def main(cfg, gpu, save_dir, logger):
     # [E-LORA] arm A(per_modal)는 up-proj 이 .b_q/.b_v (3D (M,d,r)), arm B/C
     # (shared/shared_residual)는 공유 .b_q_s/.b_v_s (2D (d,r)) + 잔차 .b_q_r/.b_v_r
     # (3D (M,d,r)). 세 arm 모두 같은 cap 을 받도록 전부 수집한다(seed 매칭 공정성).
+    # [E2] 확장 타깃의 up-proj: qkv_full 의 key 슬라이스 .b_k (3D (M,d,r)) +
+    #      proj/fc1/fc2 의 MultiModalLoRALinear .b_lin (3D (M,out,r)) — 아래 cap
+    #      루프의 3D 분기(모달 슬라이스별 renorm)가 그대로 적용된다.
     _lora_up_params = [p for n, p in model.named_parameters()
-                       if n.endswith(('.b_q', '.b_v', '.b_q_s', '.b_v_s',
-                                      '.b_q_r', '.b_v_r'))] if lora_norm_cap > 0 else []
+                       if n.endswith(('.b_q', '.b_v', '.b_k', '.b_q_s', '.b_v_s',
+                                      '.b_q_r', '.b_v_r', '.b_lin'))] if lora_norm_cap > 0 else []
     scheduler = get_scheduler(sched_cfg['NAME'], optimizer,
                               int((epochs + 1) * updates_per_epoch), sched_cfg['POWER'],
                               updates_per_epoch * sched_cfg['WARMUP'], sched_cfg['WARMUP_RATIO'])
