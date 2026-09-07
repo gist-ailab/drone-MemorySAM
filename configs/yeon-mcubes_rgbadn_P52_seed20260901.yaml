@@ -1,0 +1,236 @@
+# ═══ [P52] RxDINO — 단일-config 자기-적응 처방 · MCubeS 4모달(image/aolp/dolp/nir) ═══
+# 캠페인 최종 본실험(3벤치 × 시드2). 이 파일 = MCubeS / seed 20260901.
+#
+# 정본 설계 : .claude_logs/decisions/2026-08-31-p52-rxdino-adaptive-amendment.md
+# UniBal 캘리브레이션(CAP=0.7 확정) : .claude_logs/experiments/analysis/2026-09-04-p52-unibal-calibration.md
+# init 결정(2026-09-07, user 승인) : MCubeS 는 🔴무-init🔴 (PRETRAINED_ADAPTERS 키 없음).
+#   이유 = 원 설계(§1)가 "MCubeS 는 Phase2(폴라리제이션/NIR pseudo-모달) 완성 시에만 init 적용, 그 전엔
+#   무-init"으로 이미 명기. Phase2 EXT 가 채택 게이트 기각(2026-09-07)되어 그 조건이 충족될 방법이 없다.
+#   Phase1 코퍼스 모달 ['img','depth','event','lidar'] 은 MCubeS 모달 ['image','aolp','dolp','nir'] 과
+#   이름이 거의 안 겹쳐 리맵 정당화도 불가 → 무-init 유지(승인된 기존 설계, 새 판단 아님).
+#
+# 🔴 3벤치 method-config byte-동일 : MODEL.P46.C3_PROTO · P47_2 · C3_ADAPTIVE · UNIBAL_ADAPTIVE.
+#   MCubeS 는 클래스축 병리(rubber 붕괴)라 G4 예측 = rubber λ_c↑ (DELIVER RailTrack↑ 와 같은 계열,
+#   MUSES λ≈0 과 대조). C1/C2 는 기존 관례대로 off, C3 만 on(N4b 계보).
+# ⚠️ MCubeS 로더는 transform 인자를 쓰지 않고 자체 aug 파이프라인을 쓴다(PHYSAUG 블록 inert).
+#   torchrun --standalone --nproc_per_node=2 train_reliadino.py --cfg <this>
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/yeon_mcubes_rgbadn_P52_seed20260901'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+  # 🔴 MCubeS = 무-init : PRETRAINED_ADAPTERS 키를 일부러 두지 않는다(위 헤더 참조).
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20) — off
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }
+  CLASS_TOKEN: { ENABLE: false }
+
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] C3 prototype (C3-adaptive 가 λ_c 를 지배) — 🔴 세 벤치 byte-동일 블록 #1 ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+    C2_MCC:
+      ENABLE        : false
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+    C3_PROTO:
+      ENABLE        : true
+      FEATURE       : mfeat
+      LAMBDA        : 0.1
+      TEMPERATURE   : 0.1
+      EMA           : 0.999
+      PIXELS        : 4096
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  # ═══ [P47-2] Uni-modal Balance head — UniBal-adaptive 신호원 — 🔴 세 벤치 byte-동일 블록 #2 ═══
+  P47_2:
+    ENABLE      : true
+    LAMBDA_U    : 0.4
+    MODALS      : all
+    HEAD        : linear
+    HIDDEN      : 256
+    WARMUP_EP   : 0
+    GT_DIV      : 4
+    REDUCE      : mean
+    OGM_GE:
+      ENABLE   : false
+      ALPHA    : 0.5
+      EMA      : 0.9
+      MIN_K    : 0.1
+      GE_NOISE : 0.0
+
+  # ═══ [P52] RxDINO 자기-적응 컨트롤러 — 🔴 세 벤치 byte-동일 블록 #3·#4 ═══
+  C3_ADAPTIVE:
+    ENABLE     : true
+    LAMBDA_MAX : 0.1
+    TAU        : 0.25
+    EMA_M      : 0.99
+    WARMUP_EP  : 5
+  UNIBAL_ADAPTIVE:
+    ENABLE       : true
+    LAMBDA_U_MAX : 0.4
+    CAP          : 0.7
+    EMA_M        : 0.99
+    WARMUP_EP    : 0
+    WARMUP_SMALL : 0.05
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : MCubeS
+  ROOT          : '/SSDe/jemo_maeng/dset/MCubeS/multimodal_dataset'
+  IGNORE_LABEL  : 255
+  MODALS        : ['image', 'aolp', 'dolp', 'nir']   # MCubeS 내부 dict 키와 정확히 일치해야 함
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : false   # MCubeS 로더는 transform 인자를 쓰지 않으므로 이 블록 전체가 inert
+
+TRAIN:
+  SEED          : 20260901          # [P52 seed1] — N4/N4b 매칭시드(3407)와 무관한 신규 시드
+  IMAGE_SIZE    : [1024, 1024]      # 실제로는 MCubeS 로더가 자체 1024 crop 강제(문서화 목적)
+  BATCH_SIZE    : 1
+  EPOCHS        : 200
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDe/jemo_maeng/dset/MCubeS/multimodal_dataset'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
