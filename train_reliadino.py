@@ -1023,6 +1023,22 @@ def main(cfg, gpu, save_dir, logger):
                 logger.info(f"[P46-C3] proto:{proto_accum / (it + 1):.4f} "
                             f"xview:{xview_accum / (it + 1):.4f} "
                             f"bank_cov:{float(_core.p46_proto._last_cov):.2f}")
+            if getattr(_core, 'p46_proto_permodal', None) is not None:
+                # [E3/C3-M] 센서별 prototype 손실 — proto_accum는 (센서평균 + agree)
+                # 합산의 epoch 평균, per-sensor·agree는 직전 스텝 스냅샷(진단용).
+                writer.add_scalar('train/p46_proto_permodal',
+                                  proto_accum / (it + 1), epoch)
+                log_extra['train/p46_proto_permodal'] = proto_accum / (it + 1)
+                _pm = getattr(_core, '_last_permodal_proto', None) or {}
+                _ag = float(getattr(_core, '_last_proto_agree', 0.0))
+                for _k, _v in _pm.items():
+                    writer.add_scalar(f'p46/proto_permodal_{_k}', float(_v), epoch)
+                    log_extra[f'p46/proto_permodal_{_k}'] = float(_v)
+                writer.add_scalar('p46/proto_agree', _ag, epoch)
+                log_extra['p46/proto_agree'] = _ag
+                _parts = ' '.join(f"{_k}={float(_v):.4f}" for _k, _v in _pm.items())
+                logger.info(f"[C3-M] {_parts} agree={_ag:.4f} "
+                            f"proto_sum:{proto_accum / (it + 1):.4f}")
             if p47_2_on:
                 # [P47-2] 게이트 진단: per-modal acc가 **모달별로 갈라지는지**.
                 # 전부 붙어 있으면 uni-modal 압력이 안 걸린 것(λ_u 상향 검토),

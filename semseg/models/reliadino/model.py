@@ -224,6 +224,7 @@ class ReliaDINO(nn.Module):
                  p46_proto_temp: float = 0.1,
                  p46_proto_pixels: int = 4096,
                  p46_proto_warmup_ep: int = 5,
+                 p46_proto_agree_lambda: float = 0.0,   # [E3] 센서 간 prototype 일치 항
                  p47_2_unibal: bool = False,
                  p47_2_lambda_u: float = 0.4,
                  p47_2_modals='all',
@@ -580,16 +581,33 @@ class ReliaDINO(nn.Module):
         # gradient가 전부 feature 경로로 흐른다(키1, zero-init 잔차 아님).
         self.p46_proto_lambda = float(p46_proto_lambda)
         self.p46_proto_warmup_ep = int(p46_proto_warmup_ep)
+        self.p46_proto_agree_lambda = float(p46_proto_agree_lambda)
         self.p46_proto_src = str(p46_proto_dim_src).lower()
-        if self.p46_proto_src not in ('mfeat', 'fused'):
-            raise ValueError(f"P46.C3_PROTO.FEATURE must be mfeat|fused, "
+        if self.p46_proto_src not in ('mfeat', 'fused', 'permodal'):
+            raise ValueError(f"P46.C3_PROTO.FEATURE must be mfeat|fused|permodal, "
                              f"got {p46_proto_dim_src!r}")
+        # [E3] permodal = 센서별 독립 bank. off/mfeat/fused 경로는 이 필드가 None이라
+        # 모듈·버퍼·RNG 를 전혀 건드리지 않는다(기존 config state_dict byte-불변).
         self.p46_proto = None
+        self.p46_proto_permodal = None
         if p46_proto:
-            _pdim = fpn_dim if self.p46_proto_src == 'mfeat' else dim
-            self.p46_proto = P46.PrototypeBank(
-                num_classes=num_classes, dim=_pdim, momentum=p46_proto_ema,
-                temperature=p46_proto_temp, pixels=p46_proto_pixels)
+            if self.p46_proto_src == 'permodal':
+                # 센서별 bank M개 — 각 bank의 특징원은 per-modal 백본 출력 feats[i]
+                # (채널 = 백본 dim=1024, m_feat/fused와 무관). PrototypeBank 그대로
+                # 재사용해 같은 prototype-contrastive CE를 센서마다 독립으로 건다.
+                self.p46_proto_permodal = nn.ModuleList([
+                    P46.PrototypeBank(
+                        num_classes=num_classes, dim=dim, momentum=p46_proto_ema,
+                        temperature=p46_proto_temp, pixels=p46_proto_pixels)
+                    for _ in range(self.num_modalities)])
+            else:
+                _pdim = fpn_dim if self.p46_proto_src == 'mfeat' else dim
+                self.p46_proto = P46.PrototypeBank(
+                    num_classes=num_classes, dim=_pdim, momentum=p46_proto_ema,
+                    temperature=p46_proto_temp, pixels=p46_proto_pixels)
+        # [E3] 로깅용 진단 스냅샷(학습 영향 0). 트레이너가 매 로그 주기에 읽는다.
+        self._last_permodal_proto = None     # dict{modal_name: float}
+        self._last_proto_agree = 0.0
         # [P46-C2/C3] 보조 branch(마스킹/스타일 2-view) forward가 주 forward와
         # **정확히 같은 파라미터 집합**을 쓰도록 P39 path-dropout 추첨을 재생한다.
         # 이유(DDP): find_unused_parameters=True는 마지막 forward의 그래프로
@@ -1368,6 +1386,43 @@ class ReliaDINO(nn.Module):
                 aux['p46_proto'] = self.p46_proto(
                     _pf, gt_mask, update=(not self._p46_replay_path),
                     class_weights=_cw)
+        if (self.p46_proto_permodal is not None and self.training
+                and gt_mask is not None
+                and self._current_epoch >= self.p46_proto_warmup_ep):
+            # [E3/C3-M] 센서별 prototype-contrastive CE. 각 센서의 per-modal 백본
+            # 특징 feats[i](그래디언트 有 — 학습 경로의 live 텐서, detach 캐시가
+            # 아님)에 자기 센서 bank로 같은 손실을 걸고 센서 평균을 낸다.
+            # bank 갱신은 주 forward에서만(보조 branch는 update=False).
+            _update = (not self._p46_replay_path)
+            _snap = {}
+            _terms = []
+            for i in range(self.num_modalities):
+                li = self.p46_proto_permodal[i](
+                    feats[i], gt_mask, update=_update)
+                _terms.append(li)
+                _snap[self.modalities[i]] = float(li.detach())
+            _proto = self.p46_proto_lambda * (sum(_terms) / len(_terms))
+            # [E3] 센서 간 prototype 일치 항(AGREE_LAMBDA>0에서만). 특징 f_i를 **타
+            # 센서** bank의 prototype으로 당긴다(같은 손실을 update=False로 재사용) —
+            # prototype은 detach EMA라 gradient가 없으므로, 특징↔타센서-prototype
+            # 당김이 "같은 클래스는 센서가 달라도 같은 prototype" 제약의 자연스러운
+            # gradient 경로다. 코사인 불일치 직접 항 대신 이 방향을 택했다.
+            _agree_snap = 0.0
+            if self.p46_proto_agree_lambda > 0.0 and self.num_modalities >= 2:
+                _pairs = []
+                for i in range(self.num_modalities):
+                    for j in range(self.num_modalities):
+                        if i == j:
+                            continue
+                        _pairs.append(self.p46_proto_permodal[j](
+                            feats[i], gt_mask, update=False))
+                _agree = sum(_pairs) / len(_pairs)
+                _agree_snap = float(_agree.detach())
+                _proto = _proto + self.p46_proto_agree_lambda * _agree
+            aux['p46_proto'] = _proto
+            if _update:
+                self._last_permodal_proto = _snap
+                self._last_proto_agree = _agree_snap
         if self.p47_2 is not None and self.training and gt_mask is not None:
             # [P47-2] uni-modal balance. **추가 forward 없음** — 이 forward가 이미
             # 만든 per-modal feats를 그대로 쓴다(ISSUE-028의 2-forward 문제 무관).
@@ -1798,12 +1853,14 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         p44_rc_mode=p44_rc.get('MODE', 'mse'),
         p44_rc_warmup_ep=p44_rc.get('WARMUP_EP', 10),
         p46_proto=p46_c3.get('ENABLE', False),
-        p46_proto_dim_src=p46_c3.get('FEATURE', 'mfeat'),
+        # [E3] SRC(신규 명칭) 우선, 없으면 기존 FEATURE 키 — 기존 config byte-불변.
+        p46_proto_dim_src=p46_c3.get('SRC', p46_c3.get('FEATURE', 'mfeat')),
         p46_proto_lambda=p46_c3.get('LAMBDA', 0.1),
         p46_proto_ema=p46_c3.get('EMA', 0.999),
         p46_proto_temp=p46_c3.get('TEMPERATURE', 0.1),
         p46_proto_pixels=p46_c3.get('PIXELS', 4096),
         p46_proto_warmup_ep=p46_c3.get('WARMUP_EP', 5),
+        p46_proto_agree_lambda=p46_c3.get('AGREE_LAMBDA', 0.0),   # [E3]
         p47_2_unibal=p47_2.get('ENABLE', False),
         p47_2_lambda_u=p47_2.get('LAMBDA_U', 0.4),
         p47_2_modals=p47_2.get('MODALS', 'all'),
