@@ -1156,6 +1156,112 @@ def _collate_fn(batch):
 
 
 # ============================================================================
+# [E9] Validation-prior logit adjustment (inference-only, τ=0 ⇒ 완전 무변경)
+# ============================================================================
+# 설계: .claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1 E9.
+# 가설 = 클래스 혼동의 일부는 클래스 사전(prior)의 도메인 이동(주간 val → 야간
+# test)이다. 추론 시 argmax 전에 `logits − τ·log(p_c)` 를 적용해 사전 편향을
+# 상쇄한다(logit adjustment; Menon et al. 2020). p_c 는 **검증셋 GT** 의 클래스
+# 픽셀 빈도로만 추정한다 — 테스트셋 GT 는 절대 쓰지 않는다.
+
+def _prior_json_path(save_dir, out_dir=None):
+    """class_prior_val.json 저장 위치 = --out(주면) 또는 SAVE_DIR."""
+    base = Path(out_dir) if out_dir else (Path(save_dir) if save_dir else Path('.'))
+    base.mkdir(parents=True, exist_ok=True)
+    return base / 'class_prior_val.json'
+
+
+def _compute_val_class_prior(cfg, n_classes, ignore_label, class_names):
+    """검증셋(split='val') GT 의 클래스별 픽셀 빈도 → 확률 벡터(길이 n_classes).
+
+    native GT(meta['orig_label']) 를 우선 쓰고, 없으면 변환된 label 을 쓴다.
+    빈도 = 픽셀 수 / 전체 유효 픽셀 수(ignore 제외). 반환: numpy float64 (n_classes,).
+    """
+    ds_cfg, eval_cfg = cfg['DATASET'], cfg['EVAL']
+    transform = get_val_augmentation(eval_cfg['IMAGE_SIZE'], dataset_cfg=ds_cfg)
+    dataset, _ = create_dataset(ds_cfg, 'val', transform, 'val', macvi=False, eval_day=False)
+    loader = DataLoader(dataset, batch_size=eval_cfg['BATCH_SIZE'], num_workers=4,
+                        pin_memory=False, collate_fn=_collate_fn)
+    counts = np.zeros(n_classes, dtype=np.float64)
+    for _images, labels, metas in tqdm(loader, desc='[E9] val prior'):
+        for b in range(len(metas)):
+            lab = metas[b].get('orig_label')
+            if lab is None:
+                lab = labels[b]
+            lab = lab.reshape(-1).long()
+            lab = lab[lab != ignore_label]
+            if lab.numel() == 0:
+                continue
+            lab = lab.clamp(0, n_classes - 1).cpu().numpy()
+            counts += np.bincount(lab, minlength=n_classes).astype(np.float64)
+    total = counts.sum()
+    prior = counts / total if total > 0 else np.full(n_classes, 1.0 / n_classes)
+    return prior
+
+
+def _load_prior_json(path, n_classes, class_names):
+    """--prior-json 로드. 두 포맷을 허용한다:
+      · 길이 n_classes 의 리스트(클래스 인덱스 순 확률)
+      · dict — 'prior'(리스트) 키가 있으면 그것을, 없으면 {클래스명|인덱스: 확률}.
+    합이 1 이 아니어도 정규화한다. 반환: numpy float64 (n_classes,)."""
+    obj = json.loads(Path(path).read_text())
+    vec = np.zeros(n_classes, dtype=np.float64)
+    if isinstance(obj, list):
+        if len(obj) != n_classes:
+            raise ValueError(f"[E9] --prior-json 리스트 길이 {len(obj)} != n_classes {n_classes}")
+        vec = np.asarray(obj, dtype=np.float64)
+    elif isinstance(obj, dict) and isinstance(obj.get('prior'), list):
+        if len(obj['prior']) != n_classes:
+            raise ValueError(f"[E9] --prior-json 'prior' 길이 {len(obj['prior'])} != {n_classes}")
+        vec = np.asarray(obj['prior'], dtype=np.float64)
+    elif isinstance(obj, dict):
+        name2idx = {nm: i for i, nm in enumerate(class_names)}
+        for k, v in obj.items():
+            if k in name2idx:
+                vec[name2idx[k]] = float(v)
+            else:
+                vec[int(k)] = float(v)   # 인덱스 문자열
+    else:
+        raise ValueError("[E9] --prior-json 포맷 인식 불가(list 또는 dict 필요)")
+    s = vec.sum()
+    return vec / s if s > 0 else np.full(n_classes, 1.0 / n_classes)
+
+
+def _build_logit_adjust(cfg, tau, prior_json, device, n_classes, ignore_label,
+                        class_names, save_dir, out_dir=None):
+    """[E9] τ>0 이면 argmax 보정 텐서 `τ·log(p_c)` (1,C,1,1) 를 만든다. τ=0 이면
+    None 을 돌려 기존 argmax 경로를 그대로 쓰게 한다(완전 무변경)."""
+    if tau is None or tau <= 0:
+        return None
+    if prior_json:
+        prior = _load_prior_json(prior_json, n_classes, class_names)
+        print(f"[E9] class prior loaded from {prior_json}")
+    else:
+        prior = _compute_val_class_prior(cfg, n_classes, ignore_label, class_names)
+        path = _prior_json_path(save_dir, out_dir)
+        path.write_text(json.dumps({
+            'source': 'val_gt_pixel_frequency',
+            'n_classes': int(n_classes),
+            'classes': list(class_names),
+            'prior': [float(x) for x in prior],
+        }, indent=2))
+        print(f"[E9] class prior computed from val GT → {path}")
+    logp = np.log(np.clip(prior, 1e-8, None))       # 빈 클래스 floor(로그 -inf 방지)
+    adj = tau * torch.as_tensor(logp, dtype=torch.float32, device=device)
+    return adj.view(1, n_classes, 1, 1)
+
+
+def _argmax_pred(preds, n_classes, logit_adjust):
+    """[E9] 클래스 채널 argmax. logit_adjust=None 이면 기존과 byte-동일하다.
+    τ>0 이면 log(softmax)=logits−logsumexp(픽셀별 상수) 에서 상수는 argmax 에
+    무영향이므로 `log(preds) − τ·log(p_c)` 의 argmax 가 `logits − τ·log(p_c)` 와 같다."""
+    logits_like = preds[:, :n_classes]
+    if logit_adjust is None:
+        return logits_like.argmax(dim=1)
+    return (logits_like.clamp_min(1e-12).log() - logit_adjust).argmax(dim=1)
+
+
+# ============================================================================
 # Evaluate (val with GT)
 # ============================================================================
 
@@ -1181,7 +1287,7 @@ def _pad_rows_to_same_width(row1, row2):
 
 @torch.no_grad()
 def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modals=None,
-             gamma_list=None, detailed=False, tta_flip=False):
+             gamma_list=None, detailed=False, tta_flip=False, logit_adjust=None):
     model.eval()
     ds = dataloader.dataset
     dataset_cls = _get_dataset_class(ds)
@@ -1242,7 +1348,7 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
         total_inference_time += time.perf_counter() - t0
         num_frames += images[0].shape[0]
 
-        pred_labels = preds[:, :n_classes].argmax(dim=1)
+        pred_labels = _argmax_pred(preds, n_classes, logit_adjust)
 
         for b in range(pred_labels.shape[0]):
             meta = metas[b]
@@ -1465,7 +1571,8 @@ def evaluate(model, dataloader, device, save_dir=None, macvi_format=False, modal
 
 @torch.no_grad()
 def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, modals=None,
-                       gamma_list=None, detailed=False, tta_flip=False, has_gt=False):
+                       gamma_list=None, detailed=False, tta_flip=False, has_gt=False,
+                       logit_adjust=None):
     model.eval()
     ds = dataloader.dataset
     dataset_cls = _get_dataset_class(ds)
@@ -1520,7 +1627,7 @@ def run_test_inference(model, dataloader, device, save_dir, macvi_format=False, 
             torch.cuda.synchronize()
         total_inference_time += time.perf_counter() - t0
 
-        pred_labels = preds[:, :n_classes].argmax(dim=1)
+        pred_labels = _argmax_pred(preds, n_classes, logit_adjust)
 
         for b in range(pred_labels.shape[0]):
             meta = metas[b]
@@ -1721,6 +1828,14 @@ def main():
                         help='MULTIAQUA test: use zed_day RGB')
     parser.add_argument('--blocks', type=int, nargs='+', default=None,
                         help='Representative block indices for routing map (default: 0, 9, 18)')
+    parser.add_argument('--logit-adjust-tau', type=float, default=0.0,
+                        help='[E9] τ>0 이면 argmax 전에 logits−τ·log(p_c) 적용(검증셋 사전 '
+                             '보정). 0(기본)=완전 무변경. p_c 는 --prior-json 또는 검증셋 GT.')
+    parser.add_argument('--prior-json', type=str, default=None,
+                        help='[E9] 클래스 사전 p_c JSON 경로(리스트 또는 dict). 없으면 검증셋 '
+                             'GT 빈도를 계산해 SAVE_DIR(또는 --out)/class_prior_val.json 에 저장.')
+    parser.add_argument('--out', type=str, default=None,
+                        help='[E9] class_prior_val.json 저장 디렉토리 override(기본=SAVE_DIR).')
     args = parser.parse_args()
 
     if args.blocks:
@@ -1789,10 +1904,14 @@ def main():
         default_name = (f"{ckpt_prefix}_eval_macvi{gamma_suffix}" if args.macvi
                         else f"{ckpt_prefix}_val_pred{detailed_suffix}{tta_suffix}{gamma_suffix}")
         save_dir = args.save_dir or (model_path.parent / default_name)
+        logit_adjust = _build_logit_adjust(
+            cfg, args.logit_adjust_tau, args.prior_json, device,
+            dataset.n_classes, dataset.ignore_label, dataset.CLASSES, save_dir, args.out)
         result = evaluate(
             model, dataloader, device, save_dir=save_dir,
             macvi_format=args.macvi, modals=modals,
             gamma_list=gamma_list, detailed=args.detailed, tta_flip=tta_flip,
+            logit_adjust=logit_adjust,
         )
         acc, macc, f1, mf1, ious, miou, fps = result
         table = {
@@ -1825,11 +1944,14 @@ def main():
         default_name = (f"{ckpt_prefix}_eval_macvi{gamma_suffix}" if args.macvi
                         else f"{ckpt_prefix}_test_pred{detailed_suffix}{tta_suffix}{gamma_suffix}")
         save_dir = args.save_dir or (model_path.parent / default_name)
+        logit_adjust = _build_logit_adjust(
+            cfg, args.logit_adjust_tau, args.prior_json, device,
+            dataset.n_classes, dataset.ignore_label, dataset.CLASSES, save_dir, args.out)
         result = run_test_inference(
             model, dataloader, device, save_dir,
             macvi_format=args.macvi, modals=modals,
             gamma_list=gamma_list, detailed=args.detailed, tta_flip=tta_flip,
-            has_gt=has_gt,
+            has_gt=has_gt, logit_adjust=logit_adjust,
         )
         # If GT available (e.g., DELIVER test), print metrics
         if result is not None:

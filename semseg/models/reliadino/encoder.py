@@ -66,6 +66,12 @@ class MultiModalLoRAQKV(nn.Module):
         # None 이면 기존 스칼라 active_modality 경로가 그대로 돈다(하위호환).
         # forward_coupled 가 심고 forward 후 반드시 None 으로 되돌린다.
         self.modality_ids: Optional[torch.Tensor] = None
+        # [E0] LoRA delta on/off 토글. 기본 True 에서 forward 는 기존과 byte-동일하다
+        # (아래 forward 첫 줄의 `if not self.enabled` 는 True 일 때 건너뛰므로 실행
+        # 경로가 그대로다). False 면 어댑터 delta 를 전혀 더하지 않아 frozen 원
+        # 백본 출력만 나온다 — 특징 정보 프로브(tools/probe_feature_info.py)의
+        # `raw_taps` 세트를 얻는 데 쓴다. 파라미터가 아니라 state_dict 에 영향 없다.
+        self.enabled: bool = True
 
     @property
     def weight(self):  # safety for code paths that touch qkv.weight directly
@@ -77,6 +83,9 @@ class MultiModalLoRAQKV(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.base(x)
+        if not self.enabled:
+            # [E0] 어댑터 비활성 — delta 없이 frozen 백본 qkv 출력을 그대로 반환.
+            return y
         # [P51] modality_ids 가 있으면 배치 원소별로 다른 모달 LoRA 를 적용:
         # (M, r, in) 파라미터를 ids 로 gather 해 (B, r, in) 배치 weight 를 만들고
         # einsum 이 배치 행렬곱으로 돌린다(F.linear 는 2D weight 만 받는다) —
@@ -150,6 +159,8 @@ class SharedLoRAQKV(nn.Module):
         self.active_modality = 0
         # [P51] 배치-모달 경로용 per-element 모달 인덱스. 잔차 항만 사용한다.
         self.modality_ids: Optional[torch.Tensor] = None
+        # [E0] LoRA delta on/off 토글 — MultiModalLoRAQKV 와 동일 규약. 기본 True.
+        self.enabled: bool = True
 
     @property
     def weight(self):  # safety for code paths that touch qkv.weight directly
@@ -161,6 +172,9 @@ class SharedLoRAQKV(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.base(x)
+        if not self.enabled:
+            # [E0] 어댑터 비활성 — 공유·잔차 delta 없이 frozen 백본 출력 그대로.
+            return y
         # 공유 delta — 모달 무관이라 스칼라/배치 경로 공통(2D weight → F.linear).
         dq = F.linear(F.linear(x, self.a_q_s), self.b_q_s) * self.scale_s
         dv = F.linear(F.linear(x, self.a_v_s), self.b_v_s) * self.scale_s
@@ -364,6 +378,14 @@ class FrozenViTEncoder(nn.Module):
     def set_modality(self, idx: int):
         for w in self.lora_layers:
             w.active_modality = idx
+
+    def set_lora_enabled(self, flag: bool):
+        """[E0] 전 블록의 LoRA 어댑터 delta 를 켜거나 끈다. flag=False 면 frozen
+        원 백본(어댑터 이전) 특징이 나온다. 기본 상태(True)로 되돌리지 않으면
+        이후 forward 가 오염되므로, 호출한 쪽이 반드시 원상복구해야 한다
+        (tools/probe_feature_info.py 는 try/finally 로 감싼다)."""
+        for w in self.lora_layers:
+            w.enabled = flag
 
     def set_grad_checkpointing(self, enable: bool = True):
         # ISSUE-027 가드: timm의 non-reentrant checkpoint는 backward 재계산
