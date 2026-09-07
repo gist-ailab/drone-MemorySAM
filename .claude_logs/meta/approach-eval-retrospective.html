@@ -1,0 +1,366 @@
+<title>MemorySAM 계보 회고</title>
+<style>
+  :root{
+    --paper:#f4f6f4; --card:#ffffff; --raise:#e9eeeb; --line:#d8e0dc;
+    --ink:#141a17; --ink2:#3d4c46; --muted:#66756e;
+    --accent:#0e6f62; --accent-soft:#d9ebe7;
+    --good:#1c7c46; --good-soft:#ddefe3;
+    --warn:#a3690e; --warn-soft:#f6ead3;
+    --dead:#b3372f; --dead-soft:#f6dfdc;
+    --hold:#5b6770; --hold-soft:#e5e9ec;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0d1412; --card:#141c19; --raise:#1b2521; --line:#28342f;
+      --ink:#e4ece8; --ink2:#a7b8b1; --muted:#7b8c85;
+      --accent:#57d0bd; --accent-soft:#123330;
+      --good:#67d494; --good-soft:#10291a;
+      --warn:#e5ab4e; --warn-soft:#2f2410;
+      --dead:#ef9088; --dead-soft:#331714;
+      --hold:#93a1aa; --hold-soft:#1d262b;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0d1412; --card:#141c19; --raise:#1b2521; --line:#28342f;
+    --ink:#e4ece8; --ink2:#a7b8b1; --muted:#7b8c85;
+    --accent:#57d0bd; --accent-soft:#123330;
+    --good:#67d494; --good-soft:#10291a;
+    --warn:#e5ab4e; --warn-soft:#2f2410;
+    --dead:#ef9088; --dead-soft:#331714;
+    --hold:#93a1aa; --hold-soft:#1d262b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
+    font-family:-apple-system,"Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px 80px}
+
+  header{padding:44px 0 20px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  .eyebrow{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  h1{font-size:clamp(24px,4vw,34px);margin:0 0 8px;letter-spacing:-.02em;font-weight:650;text-wrap:balance}
+  .stamp{font-size:12.5px;color:var(--muted)}
+  .stamp b{color:var(--ink2);font-weight:600}
+  .lede{font-size:15px;color:var(--ink2);max-width:72ch;margin:14px 0 0}
+
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:22px 0 0}
+  .vcard{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;border-left:3px solid var(--tone,var(--accent))}
+  .vcard .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:3px}
+  .vcard .v{font-size:15px;font-weight:650;color:var(--tone,var(--ink))}
+  .vcard .d{font-size:12.5px;color:var(--ink2);margin-top:3px}
+  .t-good{--tone:var(--good)} .t-warn{--tone:var(--warn)} .t-dead{--tone:var(--dead)} .t-hold{--tone:var(--hold)}
+
+  section{margin:40px 0 0}
+  h2{font-size:18px;margin:0 0 4px;font-weight:640;letter-spacing:-.01em}
+  h3{font-size:14.5px;margin:22px 0 8px;font-weight:640;color:var(--ink2)}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:80ch}
+  p{max-width:78ch}
+
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:720px}
+  th,td{padding:8px 11px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--raise);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.ver{font-weight:650;white-space:nowrap}
+  .pos{color:var(--good);font-weight:640}.neg{color:var(--warn);font-weight:640}.kill{color:var(--dead);font-weight:640}
+
+  .pill{display:inline-block;font-size:11px;font-weight:650;padding:2px 9px;border-radius:99px;white-space:nowrap}
+  .p-good{background:var(--good-soft);color:var(--good)}
+  .p-warn{background:var(--warn-soft);color:var(--warn)}
+  .p-dead{background:var(--dead-soft);color:var(--dead)}
+  .p-hold{background:var(--hold-soft);color:var(--hold)}
+  .p-acc{background:var(--accent-soft);color:var(--accent)}
+
+  /* era timeline */
+  .eras{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+  .era{padding:12px 12px 14px;border-right:1px solid var(--line);position:relative}
+  .era:last-child{border-right:none}
+  .era .num{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted);letter-spacing:.1em}
+  .era .name{font-weight:650;font-size:13.5px;margin:2px 0 2px}
+  .era .span{font-size:11.5px;color:var(--muted)}
+  .era .hyp{font-size:12px;color:var(--ink2);margin-top:8px;line-height:1.45}
+  .era .bar{height:4px;border-radius:2px;background:var(--tone,var(--hold));margin-top:10px}
+  @media (max-width:760px){.eras{grid-template-columns:1fr 1fr}.era{border-bottom:1px solid var(--line)}}
+
+  /* chart */
+  .chart{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px 8px;overflow-x:auto}
+  .chart svg{display:block;width:100%;height:auto;min-width:560px}
+  .chart text{font-family:-apple-system,"Pretendard","Noto Sans KR",system-ui,sans-serif;font-size:11.5px;fill:var(--ink2)}
+  .chart text.val{font-family:ui-monospace,Menlo,monospace;fill:var(--ink)}
+  .chart text.cap{fill:var(--muted);font-size:10.5px}
+  .chart .grid{stroke:var(--line);stroke-width:1}
+  .chart .axis{stroke:var(--muted);stroke-width:1}
+  .chart .band{fill:var(--dead);opacity:.13}
+  .chart .bandline{stroke:var(--dead);stroke-width:1;stroke-dasharray:3 3}
+
+  ol.steps{padding-left:20px;max-width:80ch}
+  ol.steps li{margin:0 0 10px}
+  ul.tight{padding-left:20px;max-width:80ch}
+  ul.tight li{margin:0 0 6px}
+  .note{border-left:3px solid var(--warn);background:var(--warn-soft);padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px;max-width:80ch;margin:14px 0 0}
+  a{color:var(--accent)}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">MemorySAM · 착안·평가 회고 · 2026-09-07</p>
+  <h1>45세대가 무엇을 풀려 했고, 무엇으로 판정했으며, 왜 SOTA 앞에서 멈춰 있는가</h1>
+  <p class="stamp">수치는 전부 <b>legal</b>(val-best 또는 final-iter)만. test-best 배제. 정본 = arch-evolution 표1·표2 / hypothesis-ledger H1~H22 / experiments/log. 리포 문서: <span class="mono">.claude_logs/research/approach-and-eval-retrospective.md</span></p>
+  <p class="lede">SOTA가 막힌 원인은 아이디어 고갈이 아니다. 쫓아온 효과 크기가 측정 노이즈보다 작았고, 45세대 중 30세대가 같은 가설의 변주였으며, 격차의 실체(RGB 표현력·정보량)를 겨냥한 축은 이제 한 번 성공했을 뿐이다. 측정 인프라가 갖춰지자 "한 걸음"으로 보였던 DELIVER 격차는 약 3점으로 드러났다.</p>
+
+  <div class="strip">
+    <div class="vcard t-hold"><div class="k">가설 원장 판정 (H1~H22)</div><div class="v">확인 7 · 반증 17 · 미결 1</div><div class="d">확인된 7개는 전부 표현·정보·학습신호 축. 반증 17개는 대부분 추론 경로 안의 배분 축</div></div>
+    <div class="vcard t-dead"><div class="k">효과 크기 vs 노이즈</div><div class="v">모듈 증분 +0.1~0.8 &lt; 시드 std 0.76~2.21</div><div class="d">08-20 이전 단일 런 판정 대부분이 노이즈 대역 안. val-best 이동 한 번에 test −2.76</div></div>
+    <div class="vcard t-warn"><div class="k">DELIVER 격차 (08-08 보고 → 정본)</div><div class="v">−0.36 → −2.96 mean / −2.06 best</div><div class="d">ISSUE-033 낙관 채점기 통일 후. MUSES는 융합계보 1위, MCubeS 1위</div></div>
+    <div class="vcard t-good"><div class="k">단일 변수로 미측정인 대형 레버</div><div class="v">백본 부분 파인튠 · P50 실패 원인</div><div class="d">unfreeze는 06-30부터 "유일 지렛대"로 지목됐으나 P31·P49에서 4~5개 변경과 묶여서만 실행</div></div>
+  </div>
+</header>
+
+<section>
+  <h2>1. 계보 지도 — 다섯 시대</h2>
+  <p class="sub">각 시대의 공통 가설과 그 판정. 막대 색은 시대 결과(빨강 반증 · 주황 혼합 · 초록 양성 자산 확보).</p>
+  <div class="eras">
+    <div class="era t-dead"><div class="num">Ⅰ · P8~P26</div><div class="name">학습형 융합/게이팅</div><div class="span">2026-02~04 · SAM2 · MULTIAQUA</div><div class="hyp">학습된 게이트·MoE·품질 예측기가 모달 가중을 맞춘다 (H1). 12세대 전원이 P9(사실상 상수 가중)을 못 넘음</div><div class="bar"></div></div>
+    <div class="era t-dead"><div class="num">Ⅱ · P27~P33</div><div class="name">RBMA attn-bias</div><div class="span">2026-04~07 · SAM2 · DELIVER</div><div class="hyp">무학습 신뢰도를 attention logit에 additive bias로 (H2). P32에서 순손해 p=4.5e-22</div><div class="bar"></div></div>
+    <div class="era t-warn"><div class="num">Ⅲ · P34~P39.1</div><div class="name">백본 전환 + 모듈 얹기</div><div class="span">2026-07-13~21 · DINOv3</div><div class="hyp">백본 교체 +11.6(H6). 얹은 모듈은 no-op 또는 유해(H3). P39.1 트렁크+VICReg이 기준선</div><div class="bar"></div></div>
+    <div class="era t-dead"><div class="num">Ⅳ · P40~P48</div><div class="name">약모달 강제·rank·쿼리</div><div class="span">2026-07-22~08-05</div><div class="hyp">마스킹 3변형·gradient 균형·η² 규제 전멸. "이중 중복 시스템에 얹은 모듈은 흡수된다" 발견</div><div class="bar"></div></div>
+    <div class="era t-good"><div class="num">Ⅴ · P46-C3~P52</div><div class="name">소거·프로브·정보 축</div><div class="span">2026-08-05~09</div><div class="hyp">양성 = C3 prototype(dose-response 2/2)·P50 사전학습 +0.74·MCubeS 1위. 반증 = 조건 oracle +0.2·7B +0.18·공간 선택·주입·LoRA 결합</div><div class="bar"></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>2. 버전별 착안 경위</h2>
+  <p class="sub">직전 문제 → 착안 → legal 결과 → 판정과 기록된 원인 → 검증 수단. MULTIAQUA는 M-score, DELIVER는 val/test, MUSES는 val / 공식 Codabench test.</p>
+
+  <h3>시대 Ⅰ — SAM2 + MULTIAQUA (P8~P26)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>버전</th><th>직전 문제</th><th>착안</th><th>결과</th><th>판정·원인</th><th>검증 수단</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">P8</td><td>기준선 부재</td><td>ConfidenceHeadV2 + sigmoid UAMM</td><td class="n">M 78.45</td><td>sigmoid 포화 → 가중 ~1.0, AMF uniform</td><td>M-score, gate 관찰</td></tr>
+      <tr><td class="ver">P9</td><td>sigmoid 포화</td><td>CrossModalFusionHead + max-norm UAMM</td><td class="n"><span class="pos">M 82.10</span></td><td>장기 최선. 가중치는 사실상 상수, 이득은 파라미터 증가분</td><td>per-token routing 분석</td></tr>
+      <tr><td class="ver">P10</td><td>게이트 감독 없음</td><td>ModalAuxHead + oracle KL</td><td class="n">79.27</td><td>oracle 주간 과적합, 순해악</td><td>M-score</td></tr>
+      <tr><td class="ver">P11</td><td>게이트 uniform으로 보임</td><td>MI routing loss</td><td class="n">77.09</td><td>"uniform"은 공간평균 artifact, 분화된 gate를 제약</td><td>per-token 분석</td></tr>
+      <tr><td class="ver">P12</td><td>입력 무관 라우팅</td><td>input-conditioned Soft-MoE LoRA</td><td class="n">80.80</td><td>cond_proj zero-init 무기여, expert collapse</td><td>expert usage</td></tr>
+      <tr><td class="ver">P13</td><td>확신 신호 부재</td><td>energy-score fusion + init fix</td><td class="n">81.21</td><td>energy=확신≠정답, LiDAR confidently wrong (ISSUE-009)</td><td>night-val</td></tr>
+      <tr><td class="ver">P14</td><td>모달별 근거 부재</td><td>per-modal aux decoder ×3</td><td class="n">74.27</td><td>frozen backbone 위 aux 부정확(ISSUE-008), Sky 붕괴</td><td>per-class IoU</td></tr>
+      <tr><td class="ver">P15/16</td><td>스칼라 신뢰도 한계</td><td>calibrated <b>spatial</b> entropy fusion</td><td class="n">71.05 / <span class="kill">68.42</span></td><td>부정확 신호의 공간 증폭, thermal 지배 → Sky 3.17</td><td>per-class, 가중 히스토그램</td></tr>
+      <tr><td class="ver">P17</td><td>aux 해상도</td><td>multi-scale FPN aux</td><td class="n">73.23</td><td>Sky 회복하나 aux 품질 천장</td><td>per-class</td></tr>
+      <tr><td class="ver">P19</td><td>신호 대신 학습</td><td>spatial head 직접 학습</td><td class="n">69.63</td><td>train-night 과적합, LiDAR 지배 0.992</td><td>night-val vs test</td></tr>
+      <tr><td class="ver">P21/22</td><td>구조 refinement 미실시</td><td>DeBA-FP 단일/멀티스케일</td><td class="n">81.77 / <span class="pos">82.10</span></td><td>구조 refinement 유효(Dynamic +15). fusion 상수수렴 미해결</td><td>M-score</td></tr>
+      <tr><td class="ver">P24</td><td>품질 신호 학습</td><td>SQG distill</td><td class="n">미제출</td><td>teacher sigmoid ep40 포화(ISSUE-013)</td><td>teacher 모니터</td></tr>
+      <tr><td class="ver">P25</td><td>스칼라→공간 품질맵</td><td>unified spatial quality fusion</td><td class="n">27ep 중단</td><td>predictor 용량 부족. lidar/thermal 단독 18/15% → RGB-first가 합리적</td><td>단독 모달 mIoU</td></tr>
+      <tr><td class="ver">P18·20·23·26</td><td colspan="5" style="color:var(--muted)">기록 없음 / OOM / 설계만 — 시도 지도 및 표1에 결과 없음</td></tr>
+    </tbody></table></div>
+
+  <h3>시대 Ⅱ — RBMA on SAM2, DELIVER (P27~P33)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>버전</th><th>직전 문제</th><th>착안</th><th>val / test</th><th>판정·원인</th><th>검증 수단</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">P27</td><td>학습형 가중 전멸</td><td>무학습 신뢰도를 memory-attn pre-softmax additive bias로</td><td class="n">기록 없음</td><td>기구만 성립</td><td>—</td></tr>
+      <tr><td class="ver">P28</td><td>신호 정의</td><td>bias = self-entropy</td><td class="n">57.87 / 50.61</td><td>geometry 모달 anti-calibrated (lidar AUROC .22)</td><td>per-modal AUROC</td></tr>
+      <tr><td class="ver">P29</td><td>조건 미반영</td><td>SDC 무감독 조건 latent → FiLM MoE gate</td><td class="n">63.20 / 54.34</td><td>gate 상수수렴. <b>class-transfer는 라우팅으로 불가</b> 실증</td><td>drop-modality, per-class·condition</td></tr>
+      <tr><td class="ver">P30</td><td>thin-class 사망</td><td>class-token decoder가 conv head 대체 + router</td><td class="n"><span class="kill">49.76 / 44.10</span></td><td>CTD 대체 단독 귀속. router는 hook 미호출로 미실행(ISSUE-022)</td><td>pred_agreement</td></tr>
+      <tr><td class="ver">P31</td><td>anti-calibration</td><td>calibration loss + CTD aux 강등 + 3블록 unfreeze(묶음)</td><td class="n">63.20 / 54.75</td><td>정체. calibration·router 실효, bias Δ≈0</td><td>on/off, AUROC</td></tr>
+      <tr><td class="ver">P32</td><td>자기확신 confound</td><td>bias = cross-modal corroboration + veto</td><td class="n">64.12 / 55.00</td><td><span class="kill">attn-bias 순손해 p=4.5e-22</span>. AUROC↑인데 drop Δ 0 → 신호 품질↑ ≠ 이득</td><td>Phase-0 AUROC 게이트, 1897장 4축 검증</td></tr>
+      <tr><td class="ver">P33</td><td>soft bias 한계</td><td>competence-gated hard fusion + modality dropout</td><td class="n">기록 없음</td><td>미완결(B200 마감)</td><td>—</td></tr>
+    </tbody></table></div>
+
+  <h3>시대 Ⅲ — DINOv3 전환 (P34~P39.1)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>버전</th><th>직전 문제</th><th>착안</th><th>결과</th><th>판정·원인</th><th>검증 수단</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">P34</td><td>SAM2 피쳐 rank-1 붕괴, 모달 비정렬</td><td>DINOv3-L frozen + per-modal LoRA + FPN</td><td class="n">DELIVER 68.19/56.62 (PhysAug ON) · MUSES 80.86/<b>78.979</b></td><td><span class="pos">계보 최대 성공</span>, 단 원천은 백본. 제안 모듈 toggle Δ≈0</td><td>ProbeA1 통제 프로브(+11.6), module_ablation</td></tr>
+      <tr><td class="ver">P35</td><td>증강 불공정</td><td>−bias −consistency −PhysAug</td><td class="n">67.61 / 55.52</td><td>공정선. physaug −1.12 = 제안 모듈 전체보다 큼</td><td>1-변수 config diff</td></tr>
+      <tr><td class="ver">P36</td><td>P31 router 유일 실효</td><td>+ per-class reliability-anchored router</td><td class="n"><b>67.74 / 55.62</b></td><td>유일 생존 모듈, 증분 +0.10은 노이즈 대역. router_off +40은 co-adaptation</td><td>P35 대비 A/B, 토글</td></tr>
+      <tr><td class="ver">P37a/b</td><td>클래스축 라우팅 명시화</td><td>CEFR 헤드 / ClassToken-lite</td><td class="n">MUSES 81.16 · seg 기록 없음</td><td>per-class 분화 0/19 no-op / 비미분 mask_proj 영구 random init(ISSUE-024)</td><td>라우팅 엔트로피, 토글</td></tr>
+      <tr><td class="ver">P38</td><td>PQ 불가, thin-class</td><td>Mask2Former-lite query head (β zero-init)</td><td class="n">MUSES <b>82.22 / 79.025</b></td><td>모듈 no-op(β 0.133). 부산물: deep-sup이 router 의존 +38→+2 해소, PQ 경로</td><td>m2f_off, thin-class 게이트</td></tr>
+      <tr><td class="ver">P39</td><td>실패-키 5개</td><td>DPC: rank 확장·modal-token·path dropout 경쟁</td><td class="n">MUSES 81.52 / 78.881</td><td>첫 non-no-op이나 성능 실패. <b>val↔test 순위 역전</b>, gate/calib 유해 재판정</td><td>조기 토글 즉검, 3-ckpt, 사전등록 게이트(0/3)</td></tr>
+      <tr><td class="ver">P39.1</td><td>lidar eff-rank 4.7</td><td>gated_mlp trunk(γ 0.1) + VICReg + gate off</td><td class="n">MUSES <span class="pos">82.62 / 79.788</span> · DELIVER 67.60/54.34</td><td><b>현행 기준선</b>. rank 20배 복구에 test +0.76. 5-seed 범위 0.92</td><td>사전등록 ep30 게이트, 5-seed, 공식 제출</td></tr>
+    </tbody></table></div>
+
+  <h3>시대 Ⅳ — 약모달 강제·rank·쿼리 (P40~P48)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>버전</th><th>직전 문제</th><th>착안</th><th>결과</th><th>판정·원인</th><th>검증 수단</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">P41</td><td>FUSED rank 병목 의심</td><td>Phase-0 η² 판별 → L_fcr = −λη²</td><td class="n">η² 0.35→0.94, mIoU 불변</td><td><span class="kill">가장 깨끗한 기각</span>: fusion rank는 레버 아님</td><td>학습0 Phase-0 → 사전등록 → 조기 확정</td></tr>
+      <tr><td class="ver">P42</td><td>img 과지배</td><td>학습 시 img 입력 마스킹 FRAC</td><td class="n">81.53 / 80.85 / 79.13</td><td>가릴수록 단조 열화. 게이트① 미측정</td><td>FRAC 스윕</td></tr>
+      <tr><td class="ver">P43</td><td>β 잔차 no-op</td><td>잔차 제거, 독립 주손실 두 헤드</td><td class="n">MUSES 82.51 / 79.351</td><td>결선을 고쳐도 −0.44 → <b>dense∥query 이중 중복</b> 첫 신호</td><td>공식 제출, 표준분석</td></tr>
+      <tr><td class="ver">P44</td><td>전역 마스킹 실패</td><td>MMPareto + peer 증류 + 국소 마스킹</td><td class="n">80.71 / 78.429, <span class="kill">fog_night −13.2</span></td><td>완패. "야간 lidar 편중 유리" test에서 정반대</td><td>사전등록 게이트 미달</td></tr>
+      <tr><td class="ver">P46</td><td>per-class 전이 붕괴(Wall 62→2)</td><td>학습 전용 C1 RCS / C2 MCC / <b>C3 prototype CE</b></td><td class="n">C3 +1.35~1.74 · 5-seed <b>54.39±0.76</b></td><td>혼합: RailTrack 4→68 게이트 통과, SOTA 미달. C1 유해, C2 −1.67. "57.05"는 test-best 철회</td><td>귀속 ablation, λ 스윕, seed, 매칭 A/B</td></tr>
+      <tr><td class="ver">P47-1</td><td>lidar 투영 희소</td><td>팽창+motion-comp (코드 0줄)</td><td class="n">82.58 (−0.04)</td><td>노이즈 봉우리</td><td>사전등록 val≥82.62</td></tr>
+      <tr><td class="ver">P47-2</td><td>modality laziness</td><td>모달별 aux head + uni-modal CE</td><td class="n">81.93 (−0.69)</td><td>실패 + <b>진단 반증</b>: RGB 3.2× 가중에도 acc 불변</td><td>2-arm, per-modal 로그</td></tr>
+      <tr><td class="ver">P48</td><td>쿼리 = dense 복제</td><td>인스턴스 단위 쿼리 감독</td><td class="n">미실행</td><td>폐기 → 게이트 시점 오류 → user 취소(PQ 비경쟁축)</td><td>사전등록 PQ 게이트</td></tr>
+      <tr><td class="ver">P40·P45</td><td colspan="5" style="color:var(--muted)">미기동 — 같은 목표의 P42·P44 전멸로 전제가 흔들림</td></tr>
+    </tbody></table></div>
+
+  <h3>시대 Ⅴ — 소거·프로브·정보 축 (2026-08-05~09-07)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>실험</th><th>직전 문제</th><th>착안</th><th>결과</th><th>판정·원인</th><th>검증 수단</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">CEA oracle</td><td>조건×모달 상호작용 실재(H5)</td><td>조건별 전문가 vs 공용 상계</td><td class="n">fog_night +0.21</td><td>적응 가설 3단계 완결 폐쇄. 격차는 배분 아닌 <b>정보</b></td><td>사전등록 G-P1/G-P2</td></tr>
+      <tr><td class="ver">ProbeA2</td><td>"격차 = RGB 표현력"</td><td>frozen S+/B/L/H+/7B</td><td class="n">59.85 → 68.67 → 69.19 → 69.37</td><td>L→7B +0.70: frozen 스케일업 소진(H12). L−S+ +8.82 = 대형 백본 전제</td><td>사전등록 상·하한</td></tr>
+      <tr><td class="ver">Spatial oracle</td><td>공간×모달 라우팅 여지</td><td>픽셀별 GT 상계 → no-GT 라우터 3종</td><td class="n">상계 +8.5 / no-GT −1.9·−2.0·−12.5</td><td>여지는 실재하나 <b>선택 불가</b>(anti-consensus·anti-confidence)</td><td>2단 게이트 + 실현성 통제</td></tr>
+      <tr><td class="ver">H17 xattn</td><td>cross-attn 트렁크 우위 가설</td><td>drop-in A/B</td><td class="n">54.94 &lt; 56.99</td><td>반증. 믹서 비병목</td><td>동일 시드 A/B</td></tr>
+      <tr><td class="ver">P49/49.1</td><td>MM-SA 해부: 비대칭 주입</td><td>DINOv3 <b>부분 FT</b> + ConvNeXt 보조 + γ 주입 (A1~A5 동시)</td><td class="n">DELIVER 56.19 &lt; 56.99 · MUSES 81.16 &lt; 82.13</td><td>H13·H14 반증. <span class="neg">A1 백본 FT 단독 기여 미분해</span></td><td>ep30 γ 게이트, 완주 게이트</td></tr>
+      <tr><td class="ver">P50-MAP</td><td>정렬 사전학습이 1차(VLM 교훈)</td><td>Places365 pseudo-모달로 어댑터만 사전학습</td><td class="n"><span class="pos">54.95 = +0.74</span> · Phase2 53.10 기각</td><td>정보 축 첫 양성(H22). Phase2 실패 <b>원인 분석 없음</b></td><td>유/무 매칭 시드 A/B</td></tr>
+      <tr><td class="ver">P51-CMLC</td><td>인코딩 시간 결합 미검</td><td>LoRA 코드 대칭 결합 + RGB 마스킹</td><td class="n">−0.82, fog −2.03</td><td>H19 반증. 융합-기제 4갈래 전부 소거</td><td>on/off 매칭 페어</td></tr>
+      <tr><td class="ver">N2 mean</td><td>트렁크 우위 검증</td><td>산술 평균 baseline</td><td class="n">55.45 ≥ 54.2~55.4</td><td>H21 반증: 트렁크 우위 철회</td><td>seed821 매칭</td></tr>
+      <tr><td class="ver">N4/N4b MCubeS</td><td>3번째 벤치, dose-response</td><td>통일 레시피 + C3-on 예측 등록</td><td class="n"><span class="pos">58.07±0.49 (1위 +3.42)</span> · rubber +9.76</td><td>H20 확인: 예측 2/2 적중 → 논문 기둥</td><td>3-seed, 사전등록 예측</td></tr>
+      <tr><td class="ver">N6/N8</td><td>ISSUE-033 통일</td><td>legal-val 재선택</td><td class="n">53.82 → 54.39±0.76</td><td>선택 아티팩트 2/5, outlier 서사 해소</td><td>하네스 가드</td></tr>
+      <tr><td class="ver">P52 RxDINO</td><td>벤치별 C3 토글 = per-dataset 튜닝</td><td>진단 온라인화: C3/UniBal-adaptive λ + P50 init, 단일 config</td><td class="n">본런 착수, 결과 없음</td><td><span class="pill p-hold">미판정</span> 캠페인 최종</td><td>G1~G3 벤치 게이트 + G4 λ 창발</td></tr>
+    </tbody></table></div>
+</section>
+
+<section>
+  <h2>3. 평가 방법 총정리</h2>
+  <p class="sub">무엇으로 채점했고, 무엇으로 "됐다/안 됐다"를 정했는가. 판정의 신뢰도가 곧 캠페인의 속도를 결정했다.</p>
+
+  <h3>3.1 벤치별 채점 프로토콜</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>벤치</th><th>현행 정본</th><th>변천·확정 계기</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">MULTIAQUA</td><td><b>M-score = (val+test)/2</b>. val 주간 145장 로컬, test 야간 챌린지 서버</td><td>⚠️ CLAUDE.md의 0.75/0.25는 낡은 표기(로그가 0.5/0.5로 정정). day-val은 야간 proxy 아님 → night-val ckpt(ISSUE-001) → 증강 오염 제거(ISSUE-007)</td></tr>
+      <tr><td class="ver">DELIVER</td><td><span class="mono">val.py</span> native 1042² GT · BS1 · val-best/final-iter · 학습 768²/평가 1024² · 하네스 가드 통과</td><td>07-15 test-best 철회 → legal · 08-14 트레이너 리사이즈 GT 낙관 발견 · 08-15 @1024 학습은 test 유해 · <b>08-26 ISSUE-033</b> ERC(+2.56 낙관) vs val.py → 69.44/56.99 → 66.88/55.18 · 08-31 8파일 SHA256 동결</td></tr>
+      <tr><td class="ver">MUSES</td><td><span class="mono">eval_muses_official.py</span>(CAFuser 평가기 동일) · Codabench test(GT 비공개) · 제출 게이트 공식 val ≥ 82.62</td><td>07-15 letterbox 81.02 ≠ native 80.86 · SOTA 오독 정정(82.39 = GtA camera-only) · val 이득의 test 미전이 3회(전이율 ~4%) → 제출 게이트</td></tr>
+      <tr><td class="ver">MUSES PQ</td><td><span class="mono">eval_pq.py</span>, 공식 AUPQ 스코어러와 일치</td><td>08-06 첫 측정 things 22.87. 경쟁 논문 전부 mIoU → 비경쟁축</td></tr>
+      <tr><td class="ver">MCubeS</td><td>커뮤니티 표준 test split 102장</td><td>08-25 CMNeXt·MMSFormer 로더와 동일 split 검증</td></tr>
+      <tr><td class="ver">공개표 정합</td><td>MM-SA = native GT(우리와 동일) · CMNeXt/CAFuser/DGFusion = 1024-리사이즈 GT(낙관)</td><td>08-14 3개 repo 1차 소스 확인. 이들 대비 우리 수치는 과소</td></tr>
+    </tbody></table></div>
+
+  <h3>3.2 판정 설계의 진화</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>단계</th><th>도입</th><th>방법</th><th>도입 계기</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">① 선택 proxy</td><td class="n">02~03</td><td>day-val → night-val → 증강 제거 night-val</td><td>day-val↑인데 test −2.21; night-val 오염 시 −19.5</td></tr>
+      <tr><td class="ver">② legal ckpt</td><td class="n">07-15</td><td>val-best 또는 final-iter만, 둘 병기</td><td>test-best 철회 3회. 규칙마다 λ 순위가 뒤집힘</td></tr>
+      <tr><td class="ver">③ 토글 ablation</td><td class="n">07-12~21</td><td>|Δ|&lt;0.5 &amp; agreement&gt;0.99 = no-op · +20↑ &amp; agreement&lt;0.8 = co-adaptation · agreement≈1 = 죽은 모듈</td><td>ISSUE-022 router 미실행 감지</td></tr>
+      <tr><td class="ver">④ 사전등록 게이트</td><td class="n">07-20</td><td>기동 전 기준 + 적용 시점 명기, ep30 조기 판정</td><td>P39 thin-class, P48 시점 오류</td></tr>
+      <tr><td class="ver">⑤ 학습0 Phase-0</td><td class="n">07-22</td><td>기존 ckpt로 병목 여부를 먼저 잰다</td><td>P41 즉시 기각</td></tr>
+      <tr><td class="ver">⑥ 매칭 시드 A/B</td><td class="n">07-15</td><td>동일 시드·레시피·측정기, 변수 1개</td><td>P34 vs P36 PhysAug 미통제</td></tr>
+      <tr><td class="ver">⑦ multi-seed</td><td class="n">08-20</td><td>3~5-seed mean±std, best 병기</td><td><b>가짜 시드</b>: 하드코딩 3407이라 "편차 0.59"는 GPU 비결정성뿐. 진짜 std 2.21</td></tr>
+      <tr><td class="ver">⑧ oracle 상계</td><td class="n">08-08</td><td>GT를 주고 얻는 상한 → 실현성 통제</td><td>CEA +0.2 폐쇄, spatial +8.5 → no-GT 음수</td></tr>
+      <tr><td class="ver">⑨ drop-modal 2종</td><td class="n">07-30</td><td>추론 zero-fill Δ + 학습부터 제거 Δ</td><td>추론 Δ≈0인 depth가 학습 제거 시 −2.85</td></tr>
+      <tr><td class="ver">⑩ 통제 프로브</td><td class="n">07-12 / 08-09</td><td>frozen 백본 + 동일 head로 백본만 교체</td><td>백본 +11.6 분리, 7B +0.18 소진</td></tr>
+      <tr><td class="ver">⑪ dose-response 예측</td><td class="n">08-25</td><td>기동 전 방향·크기 등록 → 실측 대조</td><td>N4b 2/2 적중</td></tr>
+      <tr><td class="ver">⑫ 하네스 가드</td><td class="n">08-31</td><td>채점기 8파일 SHA256 동결, FAIL 시 인용 금지</td><td>ISSUE-033</td></tr>
+    </tbody></table></div>
+
+  <h3>3.3 평가 사고 27건의 유형</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>유형</th><th>건수</th><th>대표 사례 → 조치</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">체크포인트 선택 오염</td><td class="n">5</td><td>test-best 인용 3회 철회 · 중간 ckpt "예비 도달" 철회 · val-best 이동 시 test −2.76</td></tr>
+      <tr><td class="ver">채점기·해상도</td><td class="n">6</td><td>트레이너 리사이즈 GT · ERC vs val.py · MUSES letterbox · 공개표 혼재 · 구 로그 혼용 · BS 오진</td></tr>
+      <tr><td class="ver">시드·재현성</td><td class="n">3</td><td>가짜 시드 · 모듈 중복 생성 · A100 TF32</td></tr>
+      <tr><td class="ver">게이트 스펙</td><td class="n">3</td><td>P48 적용 시점 · oracle 사전확률·널 부등호 역방향</td></tr>
+      <tr><td class="ver">비교 기준 오독</td><td class="n">4</td><td>SOTA 낡음 · DGFusion val/test 혼동 · 존재하지 않는 모델 쌍 67.74/56.62 · PhysAug 미통제</td></tr>
+      <tr><td class="ver">파이프라인 버그</td><td class="n">6</td><td>ISSUE-022 · 025 radar · 026 ColorAug · 029 HF offline RANDOM INIT · 032 no_grad · PQ 오보</td></tr>
+    </tbody></table></div>
+</section>
+
+<section>
+  <h2>4. 병목 진단 — 왜 SOTA 앞에서 멈춰 있나</h2>
+  <p class="sub">성능을 실제로 움직인 단일 변수와, 그 판정을 가린 노이즈 대역을 같은 자로 놓는다.</p>
+
+  <div class="chart">
+    <svg viewBox="0 0 760 330" role="img" aria-label="양성 단일 변수의 효과 크기와 시드 표준편차 대역">
+      <!-- scale: x = 190 + v * 44 (0..12) -->
+      <g class="gridlines">
+        <line class="grid" x1="190" y1="18" x2="190" y2="292"/>
+        <line class="grid" x1="278" y1="18" x2="278" y2="292"/>
+        <line class="grid" x1="366" y1="18" x2="366" y2="292"/>
+        <line class="grid" x1="454" y1="18" x2="454" y2="292"/>
+        <line class="grid" x1="542" y1="18" x2="542" y2="292"/>
+        <line class="grid" x1="630" y1="18" x2="630" y2="292"/>
+        <line class="grid" x1="718" y1="18" x2="718" y2="292"/>
+      </g>
+      <!-- noise band: seed std 0.76 ~ 2.21 → x 223.4 ~ 287.2 -->
+      <rect class="band" x="223" y="18" width="64" height="274"/>
+      <line class="bandline" x1="223" y1="18" x2="223" y2="292"/>
+      <line class="bandline" x1="287" y1="18" x2="287" y2="292"/>
+      <text class="cap" x="256" y="14" text-anchor="middle">시드 std 0.76~2.21</text>
+
+      <!-- bars: y rows 36px apart starting 30 -->
+      <g>
+        <text x="182" y="46" text-anchor="end">SAM2 → DINOv3-L (H6)</text>
+        <rect x="190" y="34" width="510" height="18" rx="2" fill="var(--good)"/>
+        <text class="val" x="706" y="47">+11.6</text>
+
+        <text x="182" y="82" text-anchor="end">백본 S+ → L (H12′)</text>
+        <rect x="190" y="70" width="388" height="18" rx="2" fill="var(--good)"/>
+        <text class="val" x="584" y="83">+8.82</text>
+
+        <text x="182" y="118" text-anchor="end">평가 해상도 768→1024 (H7)</text>
+        <rect x="190" y="106" width="88" height="18" rx="2" fill="var(--good)"/>
+        <text class="val" x="284" y="119">+1.08~2.01</text>
+
+        <text x="182" y="154" text-anchor="end">C3 prototype 손실, DELIVER (H8)</text>
+        <rect x="190" y="142" width="77" height="18" rx="2" fill="var(--good)"/>
+        <text class="val" x="273" y="155">+1.35~1.74</text>
+
+        <text x="182" y="190" text-anchor="end">PhysAug (공정선 밖)</text>
+        <rect x="190" y="178" width="49" height="18" rx="2" fill="var(--hold)"/>
+        <text class="val" x="245" y="191">+1.12</text>
+
+        <text x="182" y="226" text-anchor="end">P50 정렬 사전학습 (H22)</text>
+        <rect x="190" y="214" width="33" height="18" rx="2" fill="var(--good)"/>
+        <text class="val" x="229" y="227">+0.74</text>
+
+        <text x="182" y="262" text-anchor="end">P39.1 트렁크 rank 수리, test</text>
+        <rect x="190" y="250" width="33" height="18" rx="2" fill="var(--accent)"/>
+        <text class="val" x="229" y="263">+0.76</text>
+
+        <text x="182" y="298" text-anchor="end">P36 router (유일 생존 모듈)</text>
+        <rect x="190" y="286" width="5" height="18" rx="2" fill="var(--accent)"/>
+        <text class="val" x="201" y="299">+0.10</text>
+      </g>
+      <line class="axis" x1="190" y1="306" x2="718" y2="306"/>
+      <text class="cap" x="190" y="322" text-anchor="middle">0</text>
+      <text class="cap" x="278" y="322" text-anchor="middle">+2</text>
+      <text class="cap" x="366" y="322" text-anchor="middle">+4</text>
+      <text class="cap" x="454" y="322" text-anchor="middle">+6</text>
+      <text class="cap" x="542" y="322" text-anchor="middle">+8</text>
+      <text class="cap" x="630" y="322" text-anchor="middle">+10</text>
+      <text class="cap" x="718" y="322" text-anchor="middle">+12 mIoU</text>
+    </svg>
+  </div>
+  <p class="sub" style="margin-top:8px">초록 = 표현·정보·학습신호 축. 청록 = 배분/구조 축에서 살아남은 둘. 회색 = 공정선 밖. 빨간 대역이 DELIVER 진짜-시드 표준편차(08-20 판정 시 2.21, 드라이버 통일·재선택 후 0.76). 배분 축의 이득은 전부 대역 왼쪽에 있다.</p>
+
+  <h3>4.1 효과 크기가 노이즈 아래에 있었다</h3>
+  <p>08-20 이전의 단일 런 판정은 대부분 시드 편차 안에서 내려졌다. 쫓아온 이득이 편차보다 작았으므로 그 기간의 "미달/돌파" 판정 상당수는 원리적으로 판별 불가능했다. 정직한 측정이 갖춰진 뒤 DELIVER 격차는 한 걸음이 아니라 약 3점으로 확정됐다. 병목의 첫 번째 정체는 모델이 아니라 <b>측정 분해능</b>이었고, 이것은 지금은 해결됐다.</p>
+
+  <h3>4.2 가설 공간이 한 축에 편중됐다</h3>
+  <p>45세대 중 P8~P39의 30세대가 "추론 경로 안에서 모달 가중을 적응적으로 정하기"의 변주였다(학습 게이트 → attn-bias → 추론 재가중 → 조건 라우팅 → 클래스 라우팅). 07-08 시도 지도가 이미 fusion 축 이탈을 적시했고, 08-08 조건 oracle이 그 축의 상한을 +0.2로 확정했다. 위 차트의 초록 막대는 전부 다른 축이다.</p>
+
+  <h3>4.3 격차의 실체를 겨냥한 레버가 단일 변수로 측정되지 않았다</h3>
+  <ul class="tight">
+    <li><b>SOTA의 성격.</b> DELIVER SOTA(MM SAM-adapter)는 RGB-D 2모달, MUSES 상위 4위는 camera-only/2모달이다. 우리 융합은 상한 근처이고 남은 격차는 RGB 표현·정보량 쪽이다.</li>
+    <li><b>백본 부분 파인튠.</b> frozen 스케일업은 소진됐지만(H12), frozen 전제 자체를 깨는 부분 파인튠은 06-30 실패 분석이 "구조적 사망 클래스의 유일한 지렛대"로 지목한 이후 P31(SAM2)과 P49(DINOv3)에서 다른 변경 4~5개와 묶여서만 실행됐다. MM-SA 자체 표의 frozen 55.35 vs fine-tuned 57.14 차이(+1.8)는 현재 best 격차(−2.06)와 같은 자릿수다.</li>
+    <li><b>functional-entropy 정규화</b>(2505.06635)는 07-08 시도 지도가 미실행 1순위로 올렸으나 지금도 config가 없다.</li>
+    <li><b>정보 축</b>은 P50 한 번 성공 후 Phase2 스케일업이 실패했는데 원인 분석 기록이 없다. 유일한 양성 축의 실패 원인을 모른 채 P52로 넘어가면 P52 미달 시 무엇을 고칠지 알 수 없다.</li>
+  </ul>
+
+  <h3>4.4 val→test 전이가 약해 선택 자체가 노이즈원이다</h3>
+  <p>MUSES val 이득의 test 전이율은 약 4%, DELIVER는 val-best 에폭 하나가 test를 ±2.7 흔든다. val↔test 순위 역전이 두 벤치에서 독립적으로 재현됐다. "val-best 선택 → test 보고" 구조가 매 런에 ±1~2점의 추첨을 포함한다. final-iter 고정 + 3-seed 평균이 현재 완화책이고, 근본책은 아직 없다.</p>
+
+  <h3>4.5 세션 구조의 관성</h3>
+  <p>"새 P 구현 → 학습 → 미달 → 다음 P" 루프는 8월 소거 캠페인으로 상당히 교정됐다. 그러나 버전 번호가 안 올라가는 작업(사전학습 실패 원인 분석, 단일 변수 unfreeze, 데이터 축)이 여전히 뒷순위다.</p>
+</section>
+
+<section>
+  <h2>5. 이 회고가 시사하는 다음 순서</h2>
+  <p class="sub">판단이지 실행 지시가 아니다. 순서는 "판정 신뢰도 확보 → 미측정 대형 레버 → 유일 양성 축 이해" 순.</p>
+  <ol class="steps">
+    <li><b>P52는 예정대로 완주하되</b> G1~G4를 3-seed·하네스 가드 통과 수치로만 판정한다. 노이즈 아래 판정을 반복하지 않는 것이 이 캠페인의 가장 비싼 교훈이다.</li>
+    <li><b>백본 부분 파인튠을 단일 변수로 1회 측정한다.</b> 현행 P46-C3 레시피 + 층별 LR 감쇠 부분 unfreeze, 시드 매칭, 다른 변경 0. 두 달 넘게 "유일한 지렛대"로 지목됐으나 분리 측정이 없는 유일한 대형 레버다.</li>
+    <li><b>P50-EXT 실패 원인을 분석한다</b>(학습 0, 저장된 어댑터로 pseudo-모달 품질·정렬 지표 비교). 정보 축은 유일한 양성 축이다.</li>
+    <li><b>RGB-D 2모달 fair-eval</b>(학습 0)로 SOTA와 동일 구성 비교표를 확보한다.</li>
+    <li>포지셔닝은 확보된 것으로 간다: DELIVER "DGFusion 상회·MM-SA 미달" 정직 공개, MUSES 융합계보 1위 + adverse robustness 인과, MCubeS 1위, 소거 증명 체인, dose-response 예측력.</li>
+  </ol>
+  <div class="note"><b>정정 사항</b> — CLAUDE.md의 "M-score = 0.75×val + 0.25×test"는 낡은 표기다. 정본(experiments/log.md 상단)은 (val+test)/2. research/00_MOC.md의 가설 원장 설명 "H1~H11"도 H22까지 갱신했다.</div>
+</section>
+
+<footer>출처: models/arch-evolution.md 표1·표2·§0.5 · research/hypothesis-ledger.md · research/synthesis-tried-map.md · experiments/analysis/* · issues/issues-and-fixes.md · status/current.md · model_competitiveness_report.md(2026-08-08). 원본 HTML: .claude_logs/meta/approach-eval-retrospective.html</footer>
+</div>
