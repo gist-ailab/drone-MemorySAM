@@ -87,6 +87,51 @@ def evaluate(model, dataloader, device, dist_sync=False):
     return acc, macc, f1, mf1, ious, miou
 
 
+@torch.no_grad()
+def _compute_confusion_pairs(core, valloader, device, num_classes, k,
+                             max_images, is_rank0, ddp_enable):
+    """[E4] 검증셋으로 행-정규화 혼동행렬 → 대각 제외 top-k (GT c → 예측 j) 쌍.
+
+    계산은 **rank0 단독**(UNWRAPPED core, DDP collective 없음 — wrapper forward의
+    buffer-broadcast가 peers barrier와 어긋나 desync를 만드는 것을 피한다). 결과
+    (k,2) long을 전 rank에 broadcast해 모두 같은 쌍으로 arm한다. DDP에서 valloader는
+    DistributedSampler라 rank0은 자기 shard(스트라이드 표본)만 훑는다 — "앞
+    VAL_IMAGES장"의 근사이며 top-k 선택에는 충분하다(무효 행은 -1).
+
+    Returns (k,2) long tensor(-1 = 무효 행) on CPU.
+    """
+    pairs_buf = torch.full((k, 2), -1, dtype=torch.long, device=device)
+    if is_rank0:
+        was_training = core.training
+        core.eval()
+        ignore = valloader.dataset.ignore_label
+        cm = torch.zeros(num_classes * num_classes, dtype=torch.float64,
+                         device=device)
+        seen = 0
+        for images, labels in valloader:
+            images = [x.to(device, non_blocking=True) for x in images]
+            labels = labels.to(device, non_blocking=True)
+            out, _ = core(images, True)
+            pred = out.argmax(1)                               # (B,H,W)
+            valid = labels != ignore
+            t = labels[valid].reshape(-1)
+            p = pred[valid].reshape(-1)
+            cm += torch.bincount(t * num_classes + p,
+                                 minlength=num_classes * num_classes).double()
+            seen += images[0].shape[0]
+            if seen >= max_images:
+                break
+        if was_training:
+            core.train()
+        cm = cm.reshape(num_classes, num_classes).cpu().numpy()
+        for r, (c, j) in enumerate(P46.confusion_pairs_from_cm(cm, k)):
+            pairs_buf[r, 0] = c
+            pairs_buf[r, 1] = j
+    if ddp_enable:
+        dist.broadcast(pairs_buf, src=0)
+    return pairs_buf.cpu()
+
+
 def _atomic_save(obj, path):
     """[ISSUE-030 fix] torch.save는 대상 경로에 직접 쓴다 — 저장 도중 사망(preempt/
     OOM/SIGKILL)하면 파일이 잘린 채 남아 그 이름을 신뢰하는 코드(AUTO_RESUME 등)가
@@ -577,6 +622,27 @@ def main(cfg, gpu, save_dir, logger):
                         f"params={len(mmpareto.params)}")
     global_update = 0
 
+    # ── [E4] 혼동 쌍 margin: 명시 리스트(클래스 이름/인덱스) 즉시 해석·arm ──────
+    # auto_val_k<k>는 여기서 하지 않는다 — warmup 후 첫 epoch 종료 시(train loop 안)
+    # 검증셋 혼동행렬로 확정한다. 명시 리스트만 학습 시작 전에 고정할 수 있다.
+    if getattr(_core, 'p46_cm_enable', False):
+        if _core._cm_pair_names is not None:
+            _idx_pairs = []
+            for _a, _b in _core._cm_pair_names:
+                _ca = _a if isinstance(_a, int) else class_names.index(_a)
+                _cb = _b if isinstance(_b, int) else class_names.index(_b)
+                _idx_pairs.append((int(_ca), int(_cb)))
+            _core.set_confusion_pairs(torch.tensor(_idx_pairs, dtype=torch.long))
+            if is_rank0:
+                _nm = [f"{class_names[c]}→{class_names[j]}" for c, j in _idx_pairs]
+                logger.info(f"[E4] 명시 pairs={_nm} src={_core.p46_cm_source} "
+                            f"m={_core.p46_cm_margin} λ={_core.p46_cm_lambda} — arm 완료")
+        elif is_rank0 and not _core.p46_cm_armed():
+            logger.info(f"[E4] auto_val_k{_core._cm_auto_k} — warmup 후 첫 epoch "
+                        f"(ep{_core.p46_cm_warmup_ep + 1}) 종료 시 혼동행렬로 쌍 확정 예정 "
+                        f"(src={_core.p46_cm_source} m={_core.p46_cm_margin} "
+                        f"λ={_core.p46_cm_lambda} val_images={_core.p46_cm_val_images})")
+
     # ── train loop ──────────────────────────────────────────────────────────
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -598,6 +664,7 @@ def main(cfg, gpu, save_dir, logger):
         # [P46-CTR] C-2 consistency / C-3 prototype 손실 + pseudo-label 통과율
         mcc_accum = proto_accum = xview_accum = 0.0
         mcc_rate_sum = 0.0; mcc_rate_n = 0
+        cm_accum = 0.0                         # [E4] 혼동 쌍 margin 손실
         # [P47-2] uni-modal balance: 손실 + 모달별 CE/정확도 + OGM 계수
         uni_accum = 0.0
         uni_ce_sum = np.zeros(len(modals)); uni_acc_sum = np.zeros(len(modals))
@@ -650,13 +717,14 @@ def main(cfg, gpu, save_dir, logger):
                     p44_hard = aux.get('p44_hard_aux', _zero)   # [P44-M3] pre-scaled (model)
                     p45_sty = aux.get('p45_fogstyle', _zero)    # [P45-F1] pre-scaled (model)
                     p46_proto = aux.get('p46_proto', _zero)     # [P46-C3] pre-scaled (LAMBDA in model)
+                    p46_cm = aux.get('p46_confmargin', _zero)   # [E4] pre-scaled (LAMBDA in model)
                     p47_uni = aux.get('p47_2_uni', _zero)       # [P47-2] pre-scaled (LAMBDA_U in model)
                     total = (loss_seg + lambda_cal * cal_loss
                              + lambda_aux_ce * aux_ce + gate_ent + router_reg
                              + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
                              + vicreg + rca_ce + fcr + p43_mask
                              + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto
-                             + p47_uni)
+                             + p46_cm + p47_uni)
 
                     # ── [P46-C2/C3] 보조 branch (스타일 2-view → 패치 마스킹) ──
                     # ⚠️ DDP: 같은 iteration의 2번째 forward. 두 forward의
@@ -812,6 +880,7 @@ def main(cfg, gpu, save_dir, logger):
             mcc_accum += float(p46_cons)    # [P46-C2] pre-scaled
             proto_accum += float(p46_proto)  # [P46-C3] pre-scaled (주 view)
             xview_accum += float(p46_xv)    # [P46-C3] pre-scaled (2-view)
+            cm_accum += float(p46_cm)       # [E4] pre-scaled (LAMBDA in model)
             uni_accum += float(p47_uni)     # [P47-2] pre-scaled (LAMBDA_U in model)
             if p47_2_on:
                 for _mi, (_c, _a) in enumerate(zip(_core.p47_2.last_ce,
@@ -862,7 +931,7 @@ def main(cfg, gpu, save_dir, logger):
             # aux dict는 backward가 이미 saved tensor를 푼 그래프 노드들).
             # 여기서 명시적으로 끊는다 — 아래 통계는 전부 위에서 float로 뽑아 뒀다.
             del logits, m_feat, aux, total, loss
-            del p46_proto, p46_cons, p46_xv, p47_uni
+            del p46_proto, p46_cons, p46_xv, p46_cm, p47_uni
 
         train_loss /= (it + 1)
         avg_lr = scheduler.get_lr()
@@ -1039,6 +1108,18 @@ def main(cfg, gpu, save_dir, logger):
                 _parts = ' '.join(f"{_k}={float(_v):.4f}" for _k, _v in _pm.items())
                 logger.info(f"[C3-M] {_parts} agree={_ag:.4f} "
                             f"proto_sum:{proto_accum / (it + 1):.4f}")
+            if getattr(_core, 'p46_cm_enable', False):
+                # [E4] 혼동 쌍 margin — armed 뒤부터 손실이 실린다. 쌍은 확정 시
+                # 1회 로그(_last_cm_pairs)가 남았으므로 여기서는 손실만 추적한다.
+                _cm = cm_accum / (it + 1)
+                writer.add_scalar('train/p46_confmargin', _cm, epoch)
+                log_extra['train/p46_confmargin'] = _cm
+                _cp = getattr(_core, '_last_cm_pairs', None)
+                _pair_str = ("armed[" + ",".join(f"{class_names[c]}→{class_names[j]}"
+                                                  for c, j in _cp) + "]"
+                             if _cp else "pending")
+                logger.info(f"[E4] cm_loss:{_cm:.4f} src={_core.p46_cm_source} "
+                            f"m={_core.p46_cm_margin} {_pair_str}")
             if p47_2_on:
                 # [P47-2] 게이트 진단: per-modal acc가 **모달별로 갈라지는지**.
                 # 전부 붙어 있으면 uni-modal 압력이 안 걸린 것(λ_u 상향 검토),
@@ -1242,6 +1323,22 @@ def main(cfg, gpu, save_dir, logger):
             # (프래그멘테이션 완화일 뿐 근본책은 아니다 — eval **전**에도 이미
             #  empty_cache가 있고, 이건 그 짝이다.)
             torch.cuda.empty_cache()
+        # ── [E4] auto 혼동 쌍 확정 — warmup 후 첫 epoch 종료 시 1회 ────────────
+        # C-3 bank가 이 epoch에 처음 채워졌으므로 지금 검증셋 혼동행렬로 top-k를
+        # 고정한다(rank0 계산 → broadcast). 조건이 전 rank에서 동일해 collective가
+        # 대칭이다. arm 후에는 다음 epoch부터 margin 손실이 실린다.
+        if (getattr(_core, 'p46_cm_enable', False) and _core.p46_cm_needs_auto()
+                and not _core.p46_cm_armed() and epoch >= _core.p46_cm_warmup_ep):
+            _pairs_t = _compute_confusion_pairs(
+                _core, valloader, device, num_classes, _core._cm_auto_k,
+                _core.p46_cm_val_images, is_rank0, ddp_enable)
+            _core.set_confusion_pairs(_pairs_t)
+            if is_rank0:
+                _nm = [f"{class_names[c]}→{class_names[j]}"
+                       for c, j in _core._last_cm_pairs]
+                logger.info(f"[E4] pairs={_nm} (auto_val_k{_core._cm_auto_k}, "
+                            f"src={_core.p46_cm_source}, m={_core.p46_cm_margin}, "
+                            f"λ={_core.p46_cm_lambda}) armed@ep{epoch+1}")
         if ddp_enable:
             dist.barrier()
 

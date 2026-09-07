@@ -225,6 +225,13 @@ class ReliaDINO(nn.Module):
                  p46_proto_pixels: int = 4096,
                  p46_proto_warmup_ep: int = 5,
                  p46_proto_agree_lambda: float = 0.0,   # [E3] 센서 간 prototype 일치 항
+                 p46_cm_enable: bool = False,           # [E4] 혼동 쌍 margin 손실
+                 p46_cm_pairs='auto_val_k5',            # [E4] 'auto_val_k<k>' | [[a,b],...]
+                 p46_cm_margin: float = 0.5,
+                 p46_cm_lambda: float = 0.05,
+                 p46_cm_val_images: int = 200,
+                 p46_cm_source: str = 'proto',          # [E4] proto | logit
+                 p46_cm_warmup_ep: int = 5,
                  p47_2_unibal: bool = False,
                  p47_2_lambda_u: float = 0.4,
                  p47_2_modals='all',
@@ -608,6 +615,57 @@ class ReliaDINO(nn.Module):
         # [E3] 로깅용 진단 스냅샷(학습 영향 0). 트레이너가 매 로그 주기에 읽는다.
         self._last_permodal_proto = None     # dict{modal_name: float}
         self._last_proto_agree = 0.0
+        # ── [E4] 혼동 쌍 margin 손실 (confusion-pair margin) ─────────────────
+        # 카드 = decisions/2026-09-07-daily-cycle-experiment-cards.md §1 "E4".
+        # C-3(클래스별 "당김") 위에 얹는 혼동 쌍별 "밀어냄": DELIVER 붕괴가 특정
+        # 쌍(RailTrack→Sky/Static, Wall→Building 등)으로 흡수되므로, GT=c 픽셀에서
+        # 정답(c)과 혼동(j)의 prototype/로짓 마진을 hinge로 벌린다. 쌍은 학습 시작
+        # 시(auto: warmup 후 검증셋 혼동행렬 top-k, 명시: 클래스 이름/인덱스 리스트)
+        # 한 번 고정한다 — 확정·broadcast는 train_reliadino.py가 결선한다.
+        # 🔴 ENABLE=false면 버퍼조차 만들지 않는다 → state_dict byte-동일(off 계약).
+        self.p46_cm_enable = bool(p46_cm_enable)
+        self.p46_cm_source = str(p46_cm_source).lower()
+        self.p46_cm_margin = float(p46_cm_margin)
+        self.p46_cm_lambda = float(p46_cm_lambda)
+        self.p46_cm_val_images = int(p46_cm_val_images)
+        self.p46_cm_warmup_ep = int(p46_cm_warmup_ep)
+        self._cm_auto_k = None          # auto_val_k<k>이면 k(int), 명시 리스트면 None
+        self._cm_pair_names = None      # 명시 리스트면 [[a,b],...](이름/인덱스) — 트레이너 해석
+        self._last_cm_loss = 0.0        # 로깅 스냅샷(직전 스텝 손실)
+        self._last_cm_pairs = None      # 로깅 스냅샷(arm된 (c,j) 리스트)
+        if self.p46_cm_enable:
+            if self.p46_cm_source not in ('proto', 'logit'):
+                raise ValueError(f"[E4] CONFUSION_MARGIN.SOURCE must be proto|logit, "
+                                 f"got {p46_cm_source!r}")
+            if self.p46_cm_source == 'proto' and not p46_proto:
+                # SOURCE=proto의 margin 앵커는 C-3 prototype bank다 — 그게 없으면
+                # 조용히 no-op이 되므로 시끄럽게 막는다.
+                raise ValueError(
+                    "[E4] CONFUSION_MARGIN.SOURCE=proto는 P46.C3_PROTO.ENABLE=true가 "
+                    "필요하다(prototype bank가 margin 앵커다). SOURCE: logit을 쓰거나 "
+                    "C3_PROTO를 켜라.")
+            spec = p46_cm_pairs
+            if isinstance(spec, str):
+                s = spec.strip().lower()
+                if not s.startswith('auto_val_k'):
+                    raise ValueError(f"[E4] PAIRS 문자열은 'auto_val_k<k>' 형식이어야 "
+                                     f"한다, got {spec!r}")
+                self._cm_auto_k = int(s[len('auto_val_k'):])
+                if self._cm_auto_k < 1:
+                    raise ValueError(f"[E4] auto_val_k<k>의 k는 ≥1이어야 한다, "
+                                     f"got {spec!r}")
+                n_pairs = self._cm_auto_k
+            elif isinstance(spec, (list, tuple)) and len(spec) > 0:
+                self._cm_pair_names = [list(p) for p in spec]
+                n_pairs = len(self._cm_pair_names)
+            else:
+                raise ValueError(f"[E4] PAIRS는 'auto_val_k<k>' 또는 비지 않은 "
+                                 f"리스트여야 한다, got {spec!r}")
+            # 쌍 버퍼(고정 크기, -1=미확정 행) + armed 플래그. persistent=True:
+            # resume 시 재계산 없이 이어쓰도록 체크포인트에 남긴다.
+            self.register_buffer('_cm_pairs',
+                                 torch.full((n_pairs, 2), -1, dtype=torch.long))
+            self.register_buffer('_cm_armed', torch.zeros((), dtype=torch.long))
         # [P46-C2/C3] 보조 branch(마스킹/스타일 2-view) forward가 주 forward와
         # **정확히 같은 파라미터 집합**을 쓰도록 P39 path-dropout 추첨을 재생한다.
         # 이유(DDP): find_unused_parameters=True는 마지막 forward의 그래프로
@@ -1124,6 +1182,82 @@ class ReliaDINO(nn.Module):
                 f'없다). arb_lambda={"O" if self.arb_lambda is not None else "X"}, '
                 f'm2f={"O" if self.m2f is not None else "X"}.')
 
+    # ── [E4] 혼동 쌍 margin — 쌍 확정/조회 + 손실 ────────────────────────────
+    def p46_cm_needs_auto(self) -> bool:
+        """auto_val_k<k> 모드인가(트레이너가 혼동행렬로 쌍을 확정해야 하는가)."""
+        return bool(getattr(self, 'p46_cm_enable', False)
+                    and self._cm_auto_k is not None)
+
+    def p46_cm_armed(self) -> bool:
+        return bool(getattr(self, 'p46_cm_enable', False)
+                    and int(self._cm_armed) > 0)
+
+    @torch.no_grad()
+    def set_confusion_pairs(self, pairs: torch.Tensor) -> None:
+        """[E4] 혼동 쌍 (P,2) long을 버퍼에 심고 arm한다. 트레이너가 명시 리스트
+        해석 직후(setup) 또는 auto 혼동행렬 확정 직후(warmup 후 첫 epoch 종료)에
+        1회 호출한다. 전 rank가 **같은** 텐서로 호출해야 한다(auto는 rank0 계산 →
+        broadcast). 남는 행은 -1로 두어 손실 계산에서 제외한다."""
+        p = pairs.to(dtype=torch.long, device=self._cm_pairs.device)
+        n = min(int(p.shape[0]), int(self._cm_pairs.shape[0]))
+        self._cm_pairs[:n] = p[:n]
+        if n < self._cm_pairs.shape[0]:
+            self._cm_pairs[n:] = -1
+        self._cm_armed.fill_(1)
+        self._last_cm_pairs = [(int(a), int(b))
+                               for a, b in self._cm_pairs.tolist()
+                               if a >= 0 and b >= 0]
+
+    def _cm_valid_pairs(self) -> List[Tuple[int, int]]:
+        return [(int(a), int(b)) for a, b in self._cm_pairs.tolist()
+                if a >= 0 and b >= 0]
+
+    def _p46_confusion_margin(self, feats, m_feat, fused, logits, gt_mask):
+        """[E4] 혼동 쌍 margin 손실(pre-λ). armed·활성 조건은 호출부에서 검사한다."""
+        pairs = self._cm_valid_pairs()
+        if not pairs:
+            return None
+        if self.p46_cm_source == 'logit':
+            return self._cm_loss_logit(logits, gt_mask, pairs)
+        return self._cm_loss_proto(feats, m_feat, fused, gt_mask, pairs)
+
+    def _cm_loss_logit(self, logits, gt_mask, pairs):
+        """SOURCE=logit: GT=c 픽셀에서 (logit_c − logit_j) 마진을 hinge로 벌린다.
+        logits는 head 해상도(B,K,h,w) — gt를 그 해상도로 nearest 다운샘플한다."""
+        Hq, Wq = logits.shape[-2:]
+        gt_q = F.interpolate(gt_mask.unsqueeze(1).float(), size=(Hq, Wq),
+                             mode='nearest').squeeze(1).long()
+        with torch.autocast(device_type=logits.device.type, enabled=False):
+            lg = logits.float()
+            g = gt_q.reshape(-1)
+            losses = []
+            for c, j in pairs:
+                sel = g == c
+                if not bool(sel.any()):
+                    continue
+                # 컬럼 c,j만 먼저 취해 (B,h,w) 차분 → mask (n,K) 사본을 피한다.
+                diff = (lg[:, c] - lg[:, j]).reshape(-1)[sel]        # (n,)
+                losses.append(F.relu(self.p46_cm_margin - diff).mean())
+            if not losses:
+                return logits.new_zeros(())
+            return sum(losses) / len(losses)
+
+    def _cm_loss_proto(self, feats, m_feat, fused, gt_mask, pairs):
+        """SOURCE=proto: C-3 bank prototype을 앵커로 pair_margin. permodal이면
+        센서별 bank로 각각 계산해 유효 센서 평균, 단일 bank면 그 bank 하나."""
+        if self.p46_proto_permodal is not None:
+            per = []
+            for i in range(self.num_modalities):
+                li, n = self.p46_proto_permodal[i].pair_margin(
+                    feats[i], gt_mask, pairs, self.p46_cm_margin)
+                if n > 0:
+                    per.append(li)
+            return (sum(per) / len(per)) if per else None
+        _pf = m_feat if self.p46_proto_src == 'mfeat' else fused
+        li, n = self.p46_proto.pair_margin(
+            _pf, gt_mask, pairs, self.p46_cm_margin)
+        return li if n > 0 else None
+
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
                 gt_mask: Optional[torch.Tensor] = None):
         # `multimask_output` kept for call-site compatibility with the SAM2 fleet.
@@ -1423,6 +1557,21 @@ class ReliaDINO(nn.Module):
             if _update:
                 self._last_permodal_proto = _snap
                 self._last_proto_agree = _agree_snap
+        if (getattr(self, 'p46_cm_enable', False) and self.training
+                and gt_mask is not None and self.p46_cm_armed()):
+            # [E4] 혼동 쌍 margin. proto 소스는 C-3 bank가 채워진 뒤(warmup gate)에만
+            # 의미가 있다 — 미초기화 prototype이 낀 쌍은 pair_margin이 건너뛰지만,
+            # warmup 전에는 대부분 미초기화라 항이 사실상 0이다. logit 소스는 bank
+            # 무관이라 armed 시점부터 바로 유효하다. `logits`는 interpolate 이전
+            # head 해상도(아래 F.interpolate 전) — logit 소스가 gt와 정합한다.
+            _cm_ok = (self._current_epoch >= self.p46_proto_warmup_ep
+                      if self.p46_cm_source == 'proto' else True)
+            if _cm_ok:
+                _cm = self._p46_confusion_margin(feats, m_feat, fused, logits,
+                                                 gt_mask)
+                if _cm is not None:
+                    aux['p46_confmargin'] = self.p46_cm_lambda * _cm
+                    self._last_cm_loss = float(_cm.detach())
         if self.p47_2 is not None and self.training and gt_mask is not None:
             # [P47-2] uni-modal balance. **추가 forward 없음** — 이 forward가 이미
             # 만든 per-modal feats를 그대로 쓴다(ISSUE-028의 2-forward 문제 무관).
@@ -1696,6 +1845,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     p45_fs = (mc.get('P45', {}) or {}).get('FOGSTYLE', {}) or {}   # [P45-F1]
     p46 = mc.get('P46', {}) or {}                      # [P46-CTR] class-transfer recovery
     p46_c3 = p46.get('C3_PROTO', {}) or {}             #   C-3 prototype consistency
+    p46_cm = p46.get('CONFUSION_MARGIN', {}) or {}     #   [E4] 혼동 쌍 margin 손실
     #   C-1(RCS 샘플러)·C-2(EMA teacher masked consistency)는 모델이 아니라
     #   학습 루프의 결선이다 → train_reliadino.py가 MODEL.P46.C1_RCS/C2_MCC를 읽는다.
     p47_2 = mc.get('P47_2', {}) or {}                  # [P47-2] Uni-modal Balance (구 D-2)
@@ -1861,6 +2011,15 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         p46_proto_pixels=p46_c3.get('PIXELS', 4096),
         p46_proto_warmup_ep=p46_c3.get('WARMUP_EP', 5),
         p46_proto_agree_lambda=p46_c3.get('AGREE_LAMBDA', 0.0),   # [E3]
+        # [E4] 혼동 쌍 margin — WARMUP_EP 미지정 시 C3 proto warmup을 계승한다
+        # (auto 쌍은 그 시점 = "bank가 채워진 뒤"에 확정하는 것이 맞다).
+        p46_cm_enable=p46_cm.get('ENABLE', False),
+        p46_cm_pairs=p46_cm.get('PAIRS', 'auto_val_k5'),
+        p46_cm_margin=p46_cm.get('MARGIN', 0.5),
+        p46_cm_lambda=p46_cm.get('LAMBDA', 0.05),
+        p46_cm_val_images=p46_cm.get('VAL_IMAGES', 200),
+        p46_cm_source=p46_cm.get('SOURCE', 'proto'),
+        p46_cm_warmup_ep=p46_cm.get('WARMUP_EP', p46_c3.get('WARMUP_EP', 5)),
         p47_2_unibal=p47_2.get('ENABLE', False),
         p47_2_lambda_u=p47_2.get('LAMBDA_U', 0.4),
         p47_2_modals=p47_2.get('MODALS', 'all'),
