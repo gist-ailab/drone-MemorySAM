@@ -465,3 +465,25 @@ tgt2 = self.cross_attn_image(
 
 **확인 불가**: DGFusion per-sensor(radar) 수치 없음. CMNeXt/CAFuser 원표 PDF는 CVF 403 → arXiv HTML+abstract 교차확인.
 출처: DGFusion 2509.09828 v3 / CAFuser 2410.10791 v2 Table IX / MUSES 2401.12761 v4 Table 3 / CMNeXt 2303.01480.
+
+
+---
+
+## 2026-09-07 — 멀티모달 세그 구조 지형 조사 2축 (user 요청: "다른 벤치·Mamba 계열 등이 어떻게 접근했나") — 요지
+
+> 원시 표(방법 × 백본/frozen × 읽는 층 × 비RGB 경로 × 융합 위치 × 신뢰도 출처 × ablation 수치 × 레시피)는 세션 transcript. 인용은 전부 arXiv 1차 출처. 판정은 [decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md](../decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md) §3.6.
+
+### 규칙성 5개
+1. **5개 벤치(DELIVER·MUSES·MCubeS·NYUDv2·FMB) 1위 어느 것도 "Q/V LoRA + 마지막 층만 읽기 + 후기 융합"이 아니다.** 전부 (i) 매 블록/스테이지 주입·교환 어댑터, (ii) 4레벨 다중스케일 헤드, (iii) 모달별 파라미터·별도 경량 인코더·멀티모달 사전학습 중 둘 이상. 같은 SAM2에서 Q/V LoRA만 쓴 SARTM(2505.01950)은 매블록 어댑터 SHIFNet(2503.02581) 대비 FMB −6.2.
+2. **어댑터 깊이·접점의 문헌 이득**: Q/V→attn+MLP LoRA +1.5(SoMA 2412.04077 T8) · Q/V LoRA→주입형 어댑터 +1.4(MM SAM-adapter 2509.10408 T9) · 마지막 층→4탭: frozen 백본에서 +2~4(SHIFNet T7, DINOv2 2304.07193 T11 depth), 백본 전체 FT면 0(ViTDet 2203.16527) · 1스테이지만→전 스테이지 주입 +0.5~1.3(DPLNet 2312.00360, StitchFusion 2408.01343, CrossWeaver 2604.02948, GeminiFusion 2406.01210) · 상위 절반 블록 부분 FT +1.4~1.8(SpectraDINO 2605.02258 T8: full FT는 −9.4 붕괴) · 비RGB 별도 경량 인코더: RGB-hard +7~11, 전체 +1~2(MM-SA T9/T12).
+3. **가장 큰 레버는 여전히 백본·사전학습**: GeminiFusion B3→Swin-L +3.4, StitchFusion B4→Swin-L +2.0, OmniSegmentor(2509.15096) 정렬 사전학습 +2.4~5.1, DFormer(2309.09668) depth 사전학습 +15.2(depth 단독).
+4. **자기파생 신뢰도의 clean 이득은 백본 ≤30M에서 ≤1.5(RSGMamba 2604.12319 +1.5, MAGIC 2407.11344, CrossWeaver), Swin-T급 이상에서 ≈0~0.4(CAFuser 텍스트 지도 없으면 0, 함수엔트로피 +0.3).** 외부 신호(깊이 GT·텍스트)가 붙어야 +0.4~1.3(DGFusion·CAFuser). 우리 30세대 실패와 정합.
+5. **Mamba는 답이 아니다**: 동일 백본 융합 이득 0.6~1.1(CM-SSM 2506.17869, MambaSeg 2512.24243), 순수 Cross-Mamba ≈ Add(RSGMamba); 대형 백본 벤치는 attention/어댑터 계열이 1위. 이득의 실체는 FLOPs.
+
+### 레시피
+조사한 논문 전부 표준 증강(scale 0.5~2, flip, jitter, blur)뿐. **물리 열화 증강(PhysAug류) 사용 사례 0** — MUSES PhysAug-on은 공정선 밖(user 지적 확인). CAFuser만 모달 20% 랜덤 드롭.
+
+### 우리 계보와의 대조 (주의)
+- StitchFusion-MoA/CrossWeaver-MIB식 "인코딩 중 모달 간 교환"은 우리 P51-CMLC(LoRA 부분공간 대칭 결합, −0.82)와 정신이 같다. 재시도하려면 차이(블록마다 attn 뒤·FFN 뒤 양방향 저랭크 MLP 교환 vs LoRA 코드 결합)를 먼저 써야 한다.
+- MM-SA식 "별도 경량 인코더 + 비대칭 주입"은 P49/P49.1에서 실패(−0.8/−0.97). 단 P49는 **DINOv3 전체 FT(RGB_FT)**를 동반했고, SpectraDINO T8은 소량 데이터 전체 FT가 −9.4 붕괴·상위 절반만 FT가 최선임을 보인다 → P49 실패의 원인이 주입이 아니라 전체 FT였을 가능성(재해석 후보).
+- 미확인: MUSES 리더보드 GtA 82.39(camera-only)는 두 조사 모두 웹에서 찾지 못함(Codabench 로그인 페이지). 세션 메모리 값 — 제출 전 재확인 필요.
