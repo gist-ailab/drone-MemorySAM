@@ -91,6 +91,7 @@
   - 변경 파일 목록 및 핵심 내용 기록
   - 디자인 가이드 대비 의도적 차이가 있으면 사유 기록
 - 모델 아키텍처 변경이 있었으면 `models/arch-evolution.md`도 함께 업데이트해라.
+- 🔴 **노션 논문 페이지 동기화 (user 지정 2026-09-08, 상시규칙)**: 실험 판정이 바뀌거나(카드 통과/폐기, 게이트 판정, 헤드라인 수치 갱신), `experiments/plan.md`의 "실행 중"·"대기열"이 바뀌면 **같은 날** 노션 논문 페이지 `Drone Object Detection for RGB-IR Fusion`(`33d05310-a165-408a-b0b8-ec4427d1fe2c`)의 §4(일일 카드)·§6(한 것/할 것)을 함께 갱신한다. 방법 = `.claude/skills/notion-experiment-log/paper_page_builder.py`의 절 함수(`sec_cards`/`sec_plan` 등)를 고친 뒤 실행(`conda run -n MMSS_SAM python .claude/skills/notion-experiment-log/paper_page_builder.py`; 차트는 `paper_page_charts.py` 선실행) — 헬퍼 `replace_section`으로 **절 단위 교체**(멱등)되므로 페이지를 새로 만들거나 절 제목을 바꾸지 말 것. 노션 본문에는 코드·config·도구 경로와 커밋만 적고 `.claude_logs/` 경로는 적지 않는다(`audit()` 통과 필수). 실험 약어(E7, P52 등)는 반드시 "어떤 문제에 어떤 가설을 세워 무엇을 바꿨고 결과가 어땠나"를 같은 행에 풀어 쓴다. 정량 수치는 시각화(차트 PNG 업로드)를 곁들인다. 레포 문서(plan.md·카드 문서 §5·registry)가 정본이고 노션은 같은 날짜 스냅샷이다 — 한쪽만 갱신하지 마라.
 
 ### 4. 세션 종료 시 (Wrap-up)
 

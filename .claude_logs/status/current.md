@@ -13,6 +13,7 @@ moved: 2026-07-08
 
 > 최종 업데이트: **2026-08-08** (스냅샷 전면 재작성 — 문서 정리 경위는 history 2026-08-08 엔트리 참조)
 > 📊 **사용자용 상황판(artifact)**: https://claude.ai/code/artifact/11924e8a-12fc-4dbc-a174-ead7259b0228 — 갱신 규약 [meta/conventions.md](../meta/conventions.md) §4 (판정 변화 시 `meta/status-report.html` 갱신 + 동일 URL 재배포)
+> 📓 **노션 논문 페이지(랩 공용, 2026-09-08 리팩토링)**: https://app.notion.com/p/gistailab/Drone-Object-Detection-for-RGB-IR-Fusion-33d05310a165408ab0b8ec4427d1fe2c — §4(일일 카드)·§6(한 것/할 것)은 [experiments/plan.md](../experiments/plan.md)와 같은 날 동기화(CLAUDE.md §3 상시규칙). 빌더 = `.claude/skills/notion-experiment-log/paper_page_builder.py`(절 단위 교체, 멱등) + `paper_page_charts.py`(차트 7종).
 
 ---
 

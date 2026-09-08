@@ -124,3 +124,5 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | E2 전 선형층 LoRA (hpca100, 진행) | 트레이너 val ep10/15/20/25/30/35 = 63.44/60.09/62.40/65.25/66.91/**67.85** | 🔵 초반 하락 후 회복. 17:26 KST 완주 → hpca100 GPU1 legal 재채점(E2 학습 config 기반 eval config) | hpca100 감시 세션 |
 | E7 MUSES PhysAug-off (완주) | 트레이너 val **80.29**@ep40 | 🔵 E7c(PhysAug-on, ep23/40) 완주(20:26 KST) 후 두 val-best ckpt를 `tools/eval_muses_official.py`로 페어 재채점해야 PhysAug 효과 확정 | hpca100 `logs/hpca100_E7_launch.log` |
 | MCubeS P52 seed1 (완주) | val-best 58.18@ep174 / final 57.96; 3시드 58.07±0.49 | P46과 동률 — P52 컨트롤러 이득 없음(감사 결론 재확인) | yeon |
+
+> 🔗 **노션 동기화(2026-09-08)**: 이 표는 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, 33d05310) §4.2 카드 표와 같은 내용이다. 판정이 바뀌면 둘을 같은 날 갱신한다(CLAUDE.md §3, 빌더 `.claude/skills/notion-experiment-log/paper_page_builder.py`).

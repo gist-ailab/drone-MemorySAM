@@ -198,6 +198,9 @@ ENV*/
 # mypy
 .mypy_cache/
 
+# 노션 논문 페이지 차트 출력(재생성 가능)
+.claude/skills/notion-experiment-log/_paper_figs/
+
 
 # https://github.com/github/gitignore/blob/master/Global/macOS.gitignore -----------------------------------------------
 

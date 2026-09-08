@@ -9,6 +9,8 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+📝 2026-09-08 — **노션 논문 페이지 대대적 리팩토링 + 레포 동기화** (user 지시: "약어 대신 문제·가설·결과를 풀어 쓰고 정량 시각화, related works 보강, plan과 동기화, 항상 최신화 규칙을 CLAUDE.md에"). 노션 `Drone Object Detection for RGB-IR Fusion`(`33d05310…`)을 10절(한눈에 보기 / 문제·목표·프로토콜 / 계보+가설 원장 / 캠페인 실험 노트 3.1~3.8 / 일일 카드 / Related Works 6묶음+정독 TODO / 한 것·할 것 / 검출 / 규약 / 출처)로 재구성, 기존 DB 뷰는 부록으로 보존. 차트 7종(SOTA 격차·DELIVER 캠페인·MUSES 리더보드·E0 프로브·검정력·가설 맵·카드 궤적) 업로드, `audit()` 통과. 수치 출처 = 학습 모니터링·인계중·생각정리 세션 실측(B0 legal test 53.78/val 64.97, E1 ep30 66.88, E2 ep35 67.85, E3 ep20 65.44, E4 ep20 65.70, E7 80.29@40). 레포: plan.md "실행 중" 표 실상태 교체, 카드 문서 §5 결과 표 7행 추가(E4b 신설 포함), CLAUDE.md §3에 노션 동기화 상시규칙 추가. 빌더 = 세션 작업본 `build_notion.py`(절 단위 교체, 재실행 멱등).
+
 📝 2026-09-08 — **DGFusion·CAFuser DELIVER 베이스라인 직접 학습 착수** (user 지시: "통계적으로 확실하게 뽑아 한계분석 후 우리 것에 반영"). DGFusion 공개 저장소는 학습 코드가 의도적으로 빠져 있어(train_net.py 부재, forward 학습 분기 예외 차단, criterion 학습 유틸 4종 미정의) CAFuser 공개 학습 코드를 대조해 복원 — 킷 = `third_party/dgfusion_train_restore/`(복원 train_net.py + 패치 + 실전 검증 셋업 스크립트). jarvis(GPU1,2,4,5)에서 공식 설정 그대로(bs8·LR 1e-4·200k) 기동검증 통과(loss_depth 반영 확인), lecun(GPU0,1,2)에서 CAFuser 대조군(bs6·LR 0.75e-4·266,667 iter=총 샘플 동일 보정) 기동. jarvis 환경 이슈 4종(빌드 격리·gcc12·setuptools·natten SSL 만료) 해결 기록 포함. DELIVER config에선 양 모델 LR 동일 → 아키텍처만의 대조.
 
 📝 2026-09-07 — 일일 사이클 카드 착수: 회고(approach-and-eval-retrospective) → P52 감사(§1~§3.6) → 카드 문서. bengio 신규 클론(/SSDe …-daily)에 B0·E1 학습, E0·E9 학습0 실행. 코드 develop 7d83c11(E0/E9/E1/E2). MUSES PhysAug 공정성 정정(E7) 등재.
