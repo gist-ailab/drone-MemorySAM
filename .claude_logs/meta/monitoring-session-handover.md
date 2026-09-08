@@ -92,6 +92,19 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 **완주한 실험의 자리에 재채점·후속 세션을 만들 때 이름이 겹치기 쉬우므로**(`<실험>_eval` 이 자연스러운 작명이다)
 이 함정은 반복된다. `=` 를 붙이거나, 후속 세션 이름을 접두어가 겹치지 않게 짓는다. 둘 다 하는 편이 안전하다.
 
+⑦ 🔴 **첫 평가 전에 감시를 걸 때의 오탐 두 가지(2026-09-08 실제 발생).** 기동 직후, 즉 로그에 `[Val]` 줄이
+아직 하나도 없는 런에 감시를 걸면 `val` 이 빈 문자열이 된다. 그 상태에서 초판 로직은 두 곳에서 잘못 동작한다.
+
+- **`WATCH_START` 무한 반복**: 시작 알림 여부를 `[ -z "$PREV" ]` 로 판단하는데, 빈 `val` 을 `PREV` 에 넣어도
+  `PREV` 가 여전히 비어 있어 조건이 계속 참이다. 매 주기 시작 알림이 반복된다. → **`STARTED` 플래그를 따로 둔다.**
+- **`STALLED_VAL` 오탐**: 빈 `val` 이 매 주기 `PREV` 와 같다고 판정되어 정체 카운터가 올라간다. 첫 평가가
+  `CYCLES × POLL` 보다 늦게 오는 런이면 **아직 정상인데 정체 알림이 뜬다.** → **`val` 이 비어 있지 않을 때만 센다.**
+
+2026-09-08 E1M 기동 때 첫 증상이 났다(첫 평가 ep5 = 약 78분 뒤, 임계 6주기 = 150분이라 두 번째 증상은
+아슬아슬하게 비껴갔다). `EVAL_INTERVAL` 이 크거나 epoch 이 느린 런이면 정체 오탐까지 났을 것이다.
+**이미 `[Val]` 이 쌓인 런에 거는 경우에는 두 증상 모두 드러나지 않으므로**, 기동 직후에 감시를 거는 자리에서만
+문제가 된다 — 그래서 늦게 발견됐다. §1-2·§1-3 스크립트에는 수정이 반영돼 있다.
+
 ### 1-1. 감시 넷의 대상과 임계
 
 `persistent: true`로 걸고, `SESSION_ENDED`가 뜨면 단일 대상 감시는 루프를 끝낸다(1-a는 두 런이 모두
@@ -122,7 +135,7 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 SRV=yeon; S=elora_a_r16
 log=/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log
 STALE=900; CYCLES=8; POLL=1500
-PREV=""; CYC=0; FS=0; FV=0; FAIL=0
+PREV=""; CYC=0; FS=0; FV=0; FAIL=0; STARTED=0
 while true; do
   out=$(ssh -o ConnectTimeout=10 $SRV "
 echo PING
@@ -154,11 +167,11 @@ tail -c 4000 $log 2>/dev/null | tr '\r' '\n' | grep -aE 'Traceback|CUDA out of m
     fi
   else
     FS=0
-    if [ -z "$PREV" ]; then
-      echo "[$S] WATCH_START — 감시를 시작했습니다. last=${val:-없음(첫 평가 전)}"; PREV="$val"; CYC=0; FV=0
+    if [ "$STARTED" = "0" ]; then
+      echo "[$S] WATCH_START — 감시를 시작했습니다. last=${val:-없음(첫 평가 전)}"; STARTED=1; PREV="$val"; CYC=0; FV=0
     elif [ "$val" = "$PREV" ]; then
       CYC=$(( CYC + 1 ))
-      if [ "$CYC" -ge "$CYCLES" ] && [ "$FV" = "0" ]; then
+      if [ -n "$val" ] && [ "$CYC" -ge "$CYCLES" ] && [ "$FV" = "0" ]; then
         echo "[$S] STALLED_VAL — [Val] 값이 ${CYC}주기(약 $(( CYC * POLL / 60 ))분) 동안 그대로입니다. 로그는 갱신되고 있으니 학습 지연이나 평가 구간 장기화를 확인하십시오. last=${val:-unknown}"; FV=1
       fi
     else
