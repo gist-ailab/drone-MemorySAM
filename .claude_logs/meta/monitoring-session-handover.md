@@ -58,16 +58,23 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 - 감시 로그 절대경로: `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log`
 - 크래시/진행 판정: 1-a와 동일 패턴(단일 세션 버전 — `SESSION_ENDED` 시 `break`로 루프 종료).
 - 폴링 주기: 1500초.
+- 🔴 **2026-09-08 버그 수정 이력**: 최초 설치판은 `tmux has-session ... 2>&1`로 원격 stderr를 stdout에 합류시킨 뒤 `[ -z "$alive" ]`로 판정했다 — 세션이 죽으면 `alive`가 `can't find session: ...` 에러 문구를 담아 **빈 문자열이 아니게 되므로 SESSION_ENDED가 영원히 안 찍히는 치명적 버그**였다(discussion 세션이 발견, `bsl6xtt9w` 실측으로 확인됨 — arm A는 최대 며칠간 크래시 무방비 상태였을 수 있음). 2026-09-08 `2>/dev/null` + `case ... *ALIVE*)` 매칭으로 재설치·검증 완료. 아래는 **수정된 버전**이다 — 재설치 시 반드시 이 버전을 쓸 것.
 - 재설치 스크립트 골격(Monitor 도구, `persistent:true`):
   ```bash
   while true; do
-    alive=$(ssh -o ConnectTimeout=10 yeon "tmux has-session -t elora_a_r16 2>&1 && echo ALIVE" 2>/dev/null)
+    alive=$(ssh -o ConnectTimeout=10 yeon "tmux has-session -t elora_a_r16 2>/dev/null && echo ALIVE" 2>/dev/null)
     tail_out=$(ssh -o ConnectTimeout=10 yeon "tail -c 3000 /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log 2>/dev/null | tr '\r' '\n'" 2>/dev/null)
     last_val=$(echo "$tail_out" | grep -oE '\[Val\] epoch:[0-9]+  mIoU: [0-9.]+  Best: [0-9.]+ \(ep[0-9]+\)' | tail -1)
     err=$(echo "$tail_out" | grep -E 'Traceback|CUDA out of memory|Killed|RuntimeError' | tail -3)
-    if [ -z "$alive" ]; then echo "SESSION_ENDED last=${last_val:-unknown}"; echo "$tail_out" | tail -15; break; fi
-    [ -n "$err" ] && echo "ERROR_DETECTED (still alive) last=${last_val:-unknown}: $err"
-    [ -n "$last_val" ] && echo "PROGRESS: $last_val"
+    case "$alive" in
+      *ALIVE*)
+        if [ -n "$err" ]; then echo "ERROR_DETECTED (still alive) last=${last_val:-unknown}: $err";
+        elif [ -n "$last_val" ]; then echo "PROGRESS: $last_val"; fi
+        ;;
+      *)
+        echo "SESSION_ENDED last=${last_val:-unknown}"; echo "$tail_out" | tail -15; break
+        ;;
+    esac
     sleep 1500
   done
   ```
