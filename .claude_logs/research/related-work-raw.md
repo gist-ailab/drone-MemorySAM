@@ -553,3 +553,34 @@ tgt2 = self.cross_attn_image(
 3. 검출 P-Det 스토리에 M²D-LIF의 Fusion Degradation 진단(linear probing)을 우리 poongsan ablation에 적용해 볼 것 — "RGB-only ≥ 3-modal"의 원인 규명 도구로 적합.
 4. MemorySAM venue 추적 유지(현 preprint) — 학회 게재 확정 시 인용 갱신.
 5. 결손·노이즈 강건성 프로토콜(2503.18445) 채택 여부 결정 — DELIVER 신작 관행이 됐으므로 리뷰어 요구 가능성 높음.
+
+---
+
+## 2026-09-08 (추가) — missing/noisy-modality 평가 프로토콜 상세 (user 질의: "우리도 결측 실험 하려면 세팅 파악" — 논문 HTML + 코드 repo 확인)
+
+> 배경 판단(세션): "training-free reliability → memory-attn additive bias" 셀이 비어 있는 이유의 절반은 **clean-set에서 자기파생 신뢰도 이득이 작다는 것을 분야가 경험적으로 알기 때문**일 수 있다(09-07 규칙성 4와 정합). RBMA 주장 형태는 "clean 동급 + 결측·열화에서 training-free 강건"이어야 하며, 아래 프로토콜이 그 입증 무대다.
+
+### 프로토콜 정의 (벤치마크 = arXiv 2503.18445, CVPRW'25 Best Paper; 코드 `Chenfei-Liao/Multi-Modal-Semantic-Segmentation-Robustness-Benchmark`)
+
+- **EMM(Entire-Missing)**: 4모달에서 결측 0~3개의 **15개 조합을 열거**(전부-결측 제외, 전부-존재 포함). 결측 모달은 **정규화 후 배치 텐서에 `images[index].zero_()`** (브랜치는 그대로 통과). 지표 = ① 15조합 단순평균 `mIoU^Avg_EMM` ② 모달별 독립 Bernoulli 고장확률 p∈{0.2,0.1,0.05}로 조합 가중한 기대값 `mIoU^E_EMM`(`p^k(1-p)^(n-k)` 가중, 총확률 정규화).
+- **RMM(Random-Missing)**: 같은 15조합 루프에서 대상 모달에 **픽셀×채널 독립** `torch.rand(shape) < r` 마스크로 0 주입. ⚠️ README는 "retention ratio"라 부르지만 **코드상 r = 드롭 비율**(r∈{0.25,0.5,0.75}; 릴리스 스크립트는 0.25만 하드코딩). 집계는 EMM과 동일 2종.
+- **NM(Noisy)**: 결측 없이 노이즈 3단계 — salt-and-pepper density {0.05,0.1,0.2}(min/max 픽셀 치환, 4모달 전부) + Gaussian σ {0.1,0.2,0.5}(Event 제외). 🔴 **릴리스 코드에서 Gaussian 호출부가 주석 처리돼 있어 그대로 돌리면 S&P만 적용** — 논문 식(Eq.7)은 합산 명시. 우리 보고 시 어느 정의인지 반드시 명시.
+- **MAGIC 계열(modality-agnostic) 프로토콜은 별개**: 15조합 전수 평가 + Mean은 같지만 결측 브랜치를 **아예 건너뜀**(weight-shared 인코더, zero-fill 아님). MAGIC repo는 **코드 미공개**(README뿐).
+- **CAFuser 학습 시 드롭**: 샘플 단위·모달별 독립 p=0.2(RGB 포함), **정규화 전 raw 이미지를 `np.zeros`로 대체**. 최소-1-모달 보장 로직은 코드에서 미발견. test 시 `missing_mod` 리스트로 EMM식 평가 내장.
+- **DELIVER 내장 corner case와의 관계**: MB/OE/UE(RGB)·LJ(LiDAR)·EL(Event) 5개 파티션은 시뮬레이션 단계에서 구워진 "저품질로 존재"이고, EMM/RMM/NM은 사후 주입 "부재/합성열화" — 보완 관계.
+
+### 대표 수치 (벤치마크 README, DELIVER 4모달)
+
+- EMM 15조합 평균: CMNeXt 37.90 · GeminiFusion 37.07 · MAGIC 44.97 · **MAGIC++ 44.85**(E(p=0.2) 59.18로 최고) · StitchFusion 41.98.
+- RMM 평균(MAGIC++): 53.92(r=.25)/49.31(r=.5)/47.06(r=.75). NM: 전 모델 붕괴(High에서 CMNeXt 2.31, MAGIC++ 8.70).
+- 🔴 **수치 계열 혼용 금지**: 같은 CMNeXt가 벤치마크 EMM 평균 37.90 vs MAGIC계 논문 15조합 Mean 25.25로 크게 다름(원인 미확인 — zero-fill 위치·해상도·ckpt 차이 추정). Any2Seg "+19.79"는 후자 계열(CMNeXt 25.25 대비). 비교는 같은 프로토콜 계열 안에서만.
+
+### 우리(SAM2 4모달) 재현 체크리스트
+
+1. val 루프에 15조합 열거 + **정규화 후 `zero_()`**(raw-zero 아님) → 조합별 mIoU + 평균 + Bernoulli 기대값 3종.
+2. RMM: 픽셀×채널 rand 마스크 r 3단계. NM: S&P 3단계(+Gaussian 여부 명시).
+3. **우리 고유 세팅 2종 보고 가능**: (a) zero 프레임을 memory attention에 그대로 통과(벤치마크 정합) vs (b) 결측 모달 프레임을 memory에서 제외(MAGIC식) — (b)는 memory 구조의 강점 어필 + RBMA가 (a)에서 zero-프레임 기여를 자동 억제하는지가 핵심 가설.
+4. 학습 강건화 시: CAFuser식 p=0.2 샘플 단위 드롭 또는 AnySeg식 최소-1-모달 마스킹 — 학습·평가의 zero 주입 위치(정규화 전/후)를 통일할 것.
+5. 검증 순서: 벤치마크 `val_mm_*.py`를 DELIVER 코드베이스에 얹어 CMNeXt 37.90 근처 재현 확인 → 우리 모델 적용.
+
+미확인: MAGIC 실제 코드, 벤치마크의 MAGIC 재평가 방법, NM 논문 수치의 Gaussian 포함 여부, 37.90 vs 25.25 괴리 원인, AnySeg 드롭 확률값.

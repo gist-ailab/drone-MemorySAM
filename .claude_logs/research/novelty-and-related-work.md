@@ -170,7 +170,7 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 5. **(P29) MoE-LoRA 조건-라우팅 선행연구 스캔** — MoE-Adapters4CL(NeurIPS'24, task/domain id embedding), Mod-Squad(CVPR'23), VLMo/BEiT-3(MoME), LD-MoLE/DynMoLE 등에서 **무감독 image-derived 조건 latent로 LoRA expert를 라우팅**한 전례가 있는지 확정(SDC 노벨티 방어).
 6. **(P29) FiLM 라우터 변조 + prototype/VQ 조건 공간** 선행연구(FiLM, VQ-VAE codebook, SwAV/online-clustering)와의 구분 — "조건 prototype을 라우터 FiLM에 쓰는" 조합의 비점유 확인.
 7. **DFormerv2 (CVPR 2025, 2504.04701) GSA 수식 정독** — depth 기하 prior로 self-attention 가중을 변조하는 구조라 "모달을 attention 변조로 주입" 축에서 RBMA의 최근접 CVPR급 이웃. additive/multiplicative 여부 확정 후 §2 비교표에 행 추가 + must-cite. (2026-09-08 스윕 발견.)
-8. **결손·노이즈 강건성 프로토콜(2503.18445, CVPRW 2025 Best Paper) 채택 여부 결정** — 이 벤치마크 이후 DELIVER 신작 대부분이 missing-modality 수치를 병기하므로 리뷰어 요구 가능성 높음.
+8. **결손·노이즈 강건성 프로토콜(2503.18445, CVPRW 2025 Best Paper) 채택 여부 결정** — 이 벤치마크 이후 DELIVER 신작 대부분이 missing-modality 수치를 병기하므로 리뷰어 요구 가능성 높음. ✅ **2026-09-08 프로토콜 상세 확보**(`related-work-raw.md` §"2026-09-08 (추가)": EMM 15조합+Bernoulli 기대값, RMM 픽셀 드롭 r 3단계, NM S&P — 정규화 후 zero_() 주입, 수치 계열 2종 혼용 금지, 우리 memory 구조 고유 세팅 2종 제안 포함). 잔여 = 채택 판정 + val 루프 구현. **RBMA 주장 형태도 이 축으로**: clean 동급 + 결측·열화 training-free 강건(빈 셀의 가치는 이 실험으로만 입증됨 — clean 이득이 작다는 건 분야 공통 관찰이라 "왜 아무도 안 했나" 되치기 위험).
 
 ---
 
