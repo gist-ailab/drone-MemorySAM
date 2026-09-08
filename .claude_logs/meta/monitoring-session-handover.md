@@ -24,7 +24,7 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 
 ## 1. 활성 감시 4건 — 재설치 명세
 
-### 1-a. `bx6x2n7x2` — yeon P52 DELIVER seed1·seed2 크래시/진행 감지
+### 1-a. `bzq3i0os7` — yeon P52 DELIVER seed1·seed2 크래시/진행 감지 (2026-09-08 세션 재기동으로 재설치, 구 `bx6x2n7x2`)
 
 - 대상 서버: `yeon` (ssh alias)
 - 대상 tmux 세션(각각 독립): `p52_deliver_s1`, `p52_deliver_s2` (window `main`)
@@ -51,7 +51,7 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
   done
   ```
 
-### 1-b. `bp3mb0w0q` — yeon E-LoRA arm A(r16) 크래시/진행 감지 (구 `bsl6xtt9w` 버그판을 교체한 수정판)
+### 1-b. `b5eu8gyfe` — yeon E-LoRA arm A(r16) 크래시/진행 감지 (2026-09-08 세션 재기동으로 재설치, 구 `bp3mb0w0q`/`bsl6xtt9w`)
 
 - 대상 서버: `yeon`
 - 대상 tmux 세션: `elora_a_r16` (window `main`)
@@ -79,14 +79,14 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
   done
   ```
 
-### 1-c. `b3ed3wvps` — hpca100 E2 크래시/완주 감지 (2026-09-08 신설)
+### 1-c. `bkuv9oisq` — hpca100 E2 크래시/완주 감지 (2026-09-08 신설, 같은 날 세션 재기동으로 재설치, 구 `b3ed3wvps`)
 
 - 대상 서버: `hpca100`, tmux 세션 `hpca100_E2`
 - 감시 로그: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E2_launch.log`
 - 판정 로직은 1-b 수정판과 동일(`case ... *ALIVE*)`), 폴링 1500초.
 - 완주 예정 2026-09-08 ~08:20 UTC(§2) — **완주 감지 시 GPU1,3이 비니 즉시 다음 배치를 정할 것**(`gpu-never-idle` 원칙).
 
-### 1-d. `bmhf79on7` — hpca100 E7c 크래시/완주 감지 (2026-09-08 신설)
+### 1-d. `b00kqnkg8` — hpca100 E7c 크래시/완주 감지 (2026-09-08 신설, 같은 날 세션 재기동으로 재설치, 구 `bmhf79on7`)
 
 - 대상 서버: `hpca100`, tmux 세션 `hpca100_E7c`
 - 감시 로그: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E7c_launch.log`
@@ -146,6 +146,8 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 6건 전부 `TaskStop` 호출 시 성공 응답을 받음 — 즉 단순 stale 메타데이터가 아니라 실제로 살아있는 프로세스였고(대상이 끝났는데도 안 죽고 도는 좀비), 전부 목적을 다한 뒤였다. **"감시가 죽은 줄 모르고 지나가는" 위험한 케이스는 없었다.**
 
 ## 4. 인계받는 쪽이 알아야 할 함정
+
+- 🔴 **세션이 재기동되면 그 세션이 만든 감시(Monitor task)는 전부 "stopped"로 표시된다 — 그러나 원격 서버의 tmux 세션·학습 프로세스 자체는 영향을 받지 않는다.** 2026-09-08에 이 세션이 재기동되면서 활성 감시 4건(1-a~1-d)이 전부 이렇게 끊겼다. 그때마다 **당황하지 말고**: ① 각 대상 서버에 직접 ssh로 `tmux ls`를 쳐서 실제 세션 생존을 먼저 확인 ② 살아있으면(거의 항상 살아있다) 최신 로그를 읽어 진행상황 파악 ③ 위 1-a~1-d 골격으로 감시를 다시 건다 ④ 이 문서의 task id를 새 것으로 갱신. **"stopped" 알림 = 크래시로 오판하지 말 것** — 이번에도 실제로는 5개 런 전부 정상 진행 중이었다.
 
 - **hpca100 origin = GitHub(`gist-ailab/drone-MemorySAM`), 로컬 허브(`local` remote) 없음.** `CLAUDE.md` §1.7이 전제하는 "서버는 로컬 허브를 pull"이 hpca100엔 적용 안 됨 — develop 갱신 후 hpca100은 `git fetch origin develop && git merge origin/develop --ff-only`로 직접 동기화해야 한다(이 세션이 매번 이렇게 했음). yeon도 마찬가지로 origin 직접 사용 확인됨.
 - **jarvis가 `2f14dae`로 크게 뒤처져 있다**(다른 세션 확인 사항, 전달만 함) — P52 관련 config가 아예 없다. jarvis에서 뭔가 돌리려면 먼저 동기화 필요.
