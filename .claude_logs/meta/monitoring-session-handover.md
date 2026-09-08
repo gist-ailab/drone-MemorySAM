@@ -58,7 +58,7 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 - 감시 로그 절대경로: `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log`
 - 크래시/진행 판정: 1-a와 동일 패턴(단일 세션 버전 — `SESSION_ENDED` 시 `break`로 루프 종료).
 - 폴링 주기: 1500초.
-- 🔴 **2026-09-08 버그 수정 이력**: 최초 설치판은 `tmux has-session ... 2>&1`로 원격 stderr를 stdout에 합류시킨 뒤 `[ -z "$alive" ]`로 판정했다 — 세션이 죽으면 `alive`가 `can't find session: ...` 에러 문구를 담아 **빈 문자열이 아니게 되므로 SESSION_ENDED가 영원히 안 찍히는 치명적 버그**였다(discussion 세션이 발견, `bsl6xtt9w` 실측으로 확인됨 — arm A는 최대 며칠간 크래시 무방비 상태였을 수 있음). 2026-09-08 `2>/dev/null` + `case ... *ALIVE*)` 매칭으로 재설치·검증 완료. 아래는 **수정된 버전**이다 — 재설치 시 반드시 이 버전을 쓸 것.
+- 🔴 **2026-09-08 버그 수정 이력**: 최초 설치판은 `tmux has-session ... 2>&1`로 원격 stderr를 stdout에 합류시킨 뒤 `[ -z "$alive" ]`로 판정했다 — 세션이 죽으면 `alive`가 `can't find session: ...` 에러 문구를 담아 **빈 문자열이 아니게 되므로 SESSION_ENDED가 영원히 안 찍히는 치명적 버그**였다("mmsam session merge" 세션이 발견, `bsl6xtt9w` 실측으로 확인됨 — arm A는 최대 며칠간 크래시 무방비 상태였을 수 있음). 2026-09-08 `2>/dev/null` + `case ... *ALIVE*)` 매칭으로 재설치·검증 완료. 아래는 **수정된 버전**이다 — 재설치 시 반드시 이 버전을 쓸 것.
 - 재설치 스크립트 골격(Monitor 도구, `persistent:true`):
   ```bash
   while true; do
@@ -79,7 +79,24 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
   done
   ```
 
-**hpca100의 E2·E7c는 현재 감시가 안 걸려 있다** (이 세션이 만든 감시 목록에 없었음 — 필요하면 새 세션이 위 패턴을 hpca100용으로 변형해 새로 걸 것. 로그 경로는 §2 표 참고).
+### 1-c. `b3ed3wvps` — hpca100 E2 크래시/완주 감지 (2026-09-08 신설)
+
+- 대상 서버: `hpca100`, tmux 세션 `hpca100_E2`
+- 감시 로그: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E2_launch.log`
+- 판정 로직은 1-b 수정판과 동일(`case ... *ALIVE*)`), 폴링 1500초.
+- 완주 예정 2026-09-08 ~08:20 UTC(§2) — **완주 감지 시 GPU1,3이 비니 즉시 다음 배치를 정할 것**(`gpu-never-idle` 원칙).
+
+### 1-d. `bmhf79on7` — hpca100 E7c 크래시/완주 감지 (2026-09-08 신설)
+
+- 대상 서버: `hpca100`, tmux 세션 `hpca100_E7c`
+- 감시 로그: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E7c_launch.log`
+- 판정 로직·폴링 동일. 완주 예정 2026-09-08 ~08:50 UTC(§2) — **완주 감지 시 GPU2가 비니 즉시 다음 배치를 정할 것.**
+
+이 두 감시는 원래 §1 끝에 "안 걸려 있다"고만 적었으나(초판 인계 시점 판단 보류), discussion 세션("mmsam session merge")이 "완주가 몇 시간 내인데 인계 타이밍이 사용자 조작에 달려 불확실하다"고 지적해 **이 세션이 직접 지금 걸었다** — 인계 대상이 2건에서 4건으로 늘었다. 새 세션은 1-a~1-d 넷 다 재설치 대상으로 볼 것.
+
+### 1-e. 세션 내부 정기 실행 — 없음 확인(2026-09-08)
+
+`CronCreate`로 만든 크론, `/loop` 반복 등 이 세션 안에서 돈 정기 실행 장치는 `CronList` 조회 결과 **없다**("No scheduled jobs."). 세션이 죽어도 같이 사라질 숨은 루틴은 없다는 뜻 — 위 1-a~1-d 넷이 이 세션이 책임지는 것의 전부다.
 
 ## 2. 현재 활성 런 현황 (2026-09-08 02:00~02:05 UTC 실측)
 
@@ -130,6 +147,7 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 - **registry.md/current.md 편집 시 병합 충돌 주의** — discussion 세션("MMSAM | 생각정리")도 같은 파일을 자주 고친다. 편집 전 반드시 `git pull`(fast-forward 시도), 안 되면 `git merge`로 받아서 양쪽 내용 다 보존하는 방식으로 충돌 해결(오늘 실제로 한 번 겪음, 커밋 `cddc319` 참고).
 - **P52 MUSES seed1/seed2(hpca100)는 보류 중, 체크포인트 보존됨** — `hpca100_muses_rgbelr_P52_seed20260901`(last_checkpoint epoch54, best val 79.63@ep54) / `_seed20260902`(last_checkpoint epoch34, best val 78.81@ep30). AUTO_RESUME:true라 GPU 여유 생기면 그대로 이어 돌릴 수 있음. 재개 여부는 discussion 세션의 P52.1 재설계 정리 후 판단.
 - **discussion 세션("MMSAM | 생각정리")과 "mmsam session merge" 세션이 실질적인 판단·설계 주체다.** 이 세션(구 p30-det)은 그쪽 지시를 실행·검증·기동하는 역할이었다 — 새 세션도 그 관계를 그대로 이어받으면 된다. `ListAgents`로 두 세션의 현재 이름/상태를 재확인할 것(이름이 바뀔 수 있음).
+- **세션과 무관하게 도는 사용자 크론탭 3건이 있다**(이 세션 소관 아님, `CronList`에도 안 잡힘 — OS 크론탭이라 그런 것으로 추정, "mmsam session merge"가 전달): 5분마다 `watchdog.sh scan`, 10분마다 `gpu_slot_watch.sh scan`, 매주 월요일 05:17 체크포인트 백업. 🔴 **이 크론들의 로그 출력 경로가 워크트리 `logs-reorg-0808/.watchdog/` 아래로 하드코딩돼 있다** — 그 워크트리를 지우면 로그 출력만 조용히 깨진다(스크립트 실행 자체는 리포 루트 경로를 우선 참조해서 안전). **워크트리 정리 전 이 경로를 먼저 확인·이관할 것.**
 
 ## 5. 다음에 판단해야 할 것 (런 종료 시점 기준)
 
