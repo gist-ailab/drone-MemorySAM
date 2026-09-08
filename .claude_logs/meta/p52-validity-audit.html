@@ -69,7 +69,7 @@
 <div class="page">
   <div class="cover">🔬</div>
   <h1>P52 타당성 감사와 병목 해소 실험 프로그램</h1>
-  <p class="meta"><span>2026-09-07</span><span>상태: 검토 대기</span><span>원본: <code>.claude_logs/decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md</code></span></p>
+  <p class="meta"><span>2026-09-07</span><span>상태: 검토 대기 · 2026-09-08 실험 결과 절 추가</span><span>원본: <code>.claude_logs/decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md</code></span></p>
 
   <div class="callout conc"><div class="ic">📌</div><div class="tx">
     <span class="lbl">이 문서의 결론</span>
@@ -1311,5 +1311,40 @@ z
   <h2>7. 이 문서의 근거는 얼마나 믿을 수 있나</h2>
   <div class="callout"><div class="ic">✅</div><div class="tx"><span class="lbl">인용 검증</span><p>딥리서치 세 갈래(백본 적응 · 컨트롤러 노벨티 · 사전학습 스케일과 시드 노이즈)가 인용한 arXiv 논문 97건을 arXiv 데이터베이스에 대조했습니다. <b>97건 모두 실존하며 제목이 인용 맥락과 일치</b>합니다. 별칭 두 건(LingBot = 2607.05247, EQUISeg = 2509.24505)은 제목에 없는 본문 명칭입니다. 각 근거의 원문 인용은 리포 문서 부록에 arXiv ID와 함께 있습니다.</p></div></div>
   <div class="callout"><div class="ic">🗂️</div><div class="tx"><span class="lbl">등재 상태</span><p>리포 develop 브랜치(fc291e4)에 병합됐습니다. 실험 대기열(plan.md)에 네 행(P52 감사·P50 재현·백본 A1·P50 진단), P52 개정 문서 상태 "P52.1 재설계 대기", 가설 원장에 H22 강등과 H23~H25 예약, 시도 지도에 함수엔트로피 폐기 주석이 함께 들어갔습니다.</p></div></div>
+
+  <h2>8. 하루 실험 사이클 결과 (2026-09-08 오전 기준)</h2>
+  <div class="callout conc"><div class="ic">🧪</div><div class="tx">
+    <span class="lbl">결론</span>
+    <p>어제 세운 실험 프로그램을 "하루에 한 결과"가 나오는 40 epoch 스크린으로 돌리기 시작했습니다. 지금까지 결론이 난 것은 둘, 방향이 보이는 것은 둘입니다. <b>결론이 난 것</b>: ① "어댑터가 얕아서 백본이 가진 정보를 버린다"는 가설은 <b>기각</b>. ② 검증셋의 클래스 빈도로 예측을 보정하는 방법은 <b>폐기</b>. <b>방향이 보이는 것</b>: ③ 백본의 <b>중간층을 함께 읽는</b> 변경이 전 구간에서 기준선을 앞섭니다(+2~4점, 트레이너 검증 기준). ④ LoRA를 <b>더 크게·더 많은 층에</b> 거는 변경은 기준선보다 낮게 갑니다. 즉 "얼마나 큰 어댑터인가"보다 "백본의 어느 층을 읽는가"가 중요합니다.</p>
+  </div></div>
+
+  <h3>실험 방식</h3>
+  <p>모든 실험은 같은 시드, 같은 데이터(DELIVER, 4센서), 같은 학습 규약에서 <b>변수 하나만</b> 바꾸고 40 epoch만 학습합니다. 학습 중 찍히는 검증 점수(트레이너 검증)는 참고용이고, 정식 판정은 40 epoch 완주 후 고정 채점기로 테스트셋을 다시 재서 기준선과의 차이가 +1.0점 이상일 때 통과로 봅니다. 기준선은 지금 우리 최선 모델의 레시피를 40 epoch만 돌린 것입니다.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th style="width:24%">무엇을 시험했나</th><th style="width:18%">상태</th><th>결과</th><th style="width:22%">해석</th></tr></thead>
+    <tbody>
+      <tr><td class="k">기준선 (변경 없음)</td><td>완주. 정식 테스트 재채점 진행 중</td><td class="n">검증 최고 65.40 (40 epoch)</td><td>모든 실험의 대조군</td></tr>
+      <tr><td class="k">백본 원 특징에 클래스 정보가 남아 있는가 (선형 프로브)</td><td>완료</td><td>토큰 단위 선형 분류 mIoU(테스트): 백본 원 특징 27.8 &lt; 어댑터 후 35.6 &lt; 융합 후 45.1. 단, <b>depth 센서의 중간층</b>에는 융합 출력이 잃는 붕괴 클래스 근거가 남아 있음 (Water 47.6 vs 16.6, RailTrack 23.9 vs 0.0)</td><td><span class="tag red">기각</span> "어댑터가 정보를 버린다"는 전역 가설은 틀렸음. 잃는 지점은 어댑터가 아니라 <b>마지막 층만 읽는 구조</b>. 대규모 구조 개편(블록 간 교환·별도 인코더) 우선순위 하향</td></tr>
+      <tr><td class="k">검증셋 클래스 빈도로 예측 확률 보정 (학습 없음)</td><td>완료</td><td class="n">보정 강도 0 / 0.5 / 1.0 → 테스트 53.57 / 53.45 / 51.89</td><td><span class="tag red">폐기</span> 재현율은 오르지만 정밀도를 더 잃음. 클래스 혼동은 "사전 확률 이동" 문제가 아님</td></tr>
+      <tr><td class="k"><b>백본 중간층 4곳(6·12·18·24번 블록)을 함께 읽기</b></td><td>20/40 epoch, 오늘 저녁 완주</td><td>같은 epoch의 기준선 대비 +2.3 / +0.4 / +4.1 / <b>+2.7</b> (5·10·15·20 epoch). 20 epoch에서 66.57, 기준선의 40 epoch 최고(65.40)도 넘음</td><td><span class="tag green">양성 방향</span> 위 프로브가 예측한 대로 depth 중간층 근거를 살리는 변경. 정식 판정은 완주 후</td></tr>
+      <tr><td class="k">센서별로 독립된 클래스 prototype 손실</td><td>10/40 epoch</td><td>기준선 대비 +0.6 / +0.6 (5·10 epoch)</td><td><span class="tag yel">약한 양성</span> 아직 노이즈 대역. 사용자가 제안한 "센서마다 다른 클래스 근거를 학습시키자"의 직접 검증</td></tr>
+      <tr><td class="k">LoRA를 전 선형층(Q/K/V/O + MLP)·rank 32로 확장</td><td>20/40 epoch (hpca100)</td><td>기준선 대비 +0.3 / −2.1 / <b>−1.5</b> (10·15·20 epoch)</td><td><span class="tag red">음성 방향</span> 어댑터 용량을 키우는 것은 답이 아님. 문헌(Rein)의 "rank 32 이상은 하락"과 일치. 정식 비교용으로 완주는 시킴</td></tr>
+      <tr><td class="k">혼동되는 클래스 쌍을 벌리는 margin 손실</td><td>막 시작</td><td>—</td><td>미정</td></tr>
+      <tr><td class="k">MUSES를 물리 열화 증강 없이 학습 (공정성 정정)</td><td>40 epoch 완주, 검증 80.29</td><td>같은 길이의 "증강 있음" 대조군이 없어 아직 비교 불가 → 대조군을 방금 기동 요청</td><td><span class="tag">보류</span> 대조군이 끝나면 증강이 MUSES 점수를 몇 점 부풀렸는지 확정</td></tr>
+      <tr><td class="k">평가 채점기 무결성 재확인</td><td>완료</td><td class="n">기존 체크포인트 재채점 53.57 = 과거 기록과 일치</td><td>채점기 변경(보정 옵션 추가)이 수치를 바꾸지 않음을 확인하고 매니페스트 재동결</td></tr>
+    </tbody></table></div>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 900 300" role="img" aria-label="40 epoch 스크린 실험의 트레이너 검증 mIoU 궤적: 중간층 4탭 읽기가 전 구간에서 기준선을 앞서고, LoRA 전 선형층 확장은 15 epoch 이후 기준선 아래로 내려간다">
+<g font-family="inherit"><line x1="60" y1="239.1" x2="680" y2="239.1" stroke="currentColor" stroke-opacity=".12"/><text x="52" y="243.1" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">58</text><line x1="60" y1="197.3" x2="680" y2="197.3" stroke="currentColor" stroke-opacity=".12"/><text x="52" y="201.3" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">60</text><line x1="60" y1="155.5" x2="680" y2="155.5" stroke="currentColor" stroke-opacity=".12"/><text x="52" y="159.5" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">62</text><line x1="60" y1="113.6" x2="680" y2="113.6" stroke="currentColor" stroke-opacity=".12"/><text x="52" y="117.6" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">64</text><line x1="60" y1="71.8" x2="680" y2="71.8" stroke="currentColor" stroke-opacity=".12"/><text x="52" y="75.8" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">66</text><line x1="60" y1="30.0" x2="680" y2="30.0" stroke="currentColor" stroke-opacity=".12"/><text x="52" y="34.0" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">68</text><line x1="60" y1="260" x2="680" y2="260" stroke="currentColor" stroke-opacity=".5"/><line x1="60" y1="30" x2="60" y2="260" stroke="currentColor" stroke-opacity=".5"/><text x="60.0" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">0</text><text x="137.5" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">5</text><text x="215.0" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">10</text><text x="292.5" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">15</text><text x="370.0" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">20</text><text x="447.5" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">25</text><text x="525.0" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">30</text><text x="602.5" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">35</text><text x="680.0" y="280" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">40</text>
+<text x="370" y="296" text-anchor="middle" font-size="12" fill="currentColor" fill-opacity=".8">epoch (40 epoch 스크린)</text>
+<text x="14" y="145" transform="rotate(-90 14 145)" text-anchor="middle" font-size="12" fill="currentColor" fill-opacity=".8">트레이너 검증 mIoU</text>
+<polyline points="137.5,224.2 215.0,131.0 292.5,151.7 370.0,115.5 447.5,113.0 525.0,90.0 602.5,99.6 680.0,84.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="137.5" cy="224.2" r="3" fill="currentColor"/><circle cx="215.0" cy="131.0" r="3" fill="currentColor"/><circle cx="292.5" cy="151.7" r="3" fill="currentColor"/><circle cx="370.0" cy="115.5" r="3" fill="currentColor"/><circle cx="447.5" cy="113.0" r="3" fill="currentColor"/><circle cx="525.0" cy="90.0" r="3" fill="currentColor"/><circle cx="602.5" cy="99.6" r="3" fill="currentColor"/><circle cx="680.0" cy="84.4" r="3" fill="currentColor"/><text x="686.0" y="88.4" fill="currentColor" font-size="12">기준선 (변경 없음) 65.4</text><polyline points="137.5,176.8 215.0,122.8 292.5,65.5 370.0,59.9" fill="none" stroke="#0b6e99" stroke-width="2.4"/><circle cx="137.5" cy="176.8" r="3" fill="#0b6e99"/><circle cx="215.0" cy="122.8" r="3" fill="#0b6e99"/><circle cx="292.5" cy="65.5" r="3" fill="#0b6e99"/><circle cx="370.0" cy="59.9" r="3" fill="#0b6e99"/><text x="376.0" y="63.9" fill="#0b6e99" font-size="12">중간층 4탭 읽기 66.6</text><polyline points="137.5,210.9 215.0,119.5" fill="none" stroke="#0f7b6c" stroke-width="2.0"/><circle cx="137.5" cy="210.9" r="3" fill="#0f7b6c"/><circle cx="215.0" cy="119.5" r="3" fill="#0f7b6c"/><text x="221.0" y="123.5" fill="#0f7b6c" font-size="12">센서별 클래스 prototype 63.7</text><polyline points="215.0,125.3 292.5,195.4 370.0,147.1" fill="none" stroke="#e03e3e" stroke-width="2.0"/><circle cx="215.0" cy="125.3" r="3" fill="#e03e3e"/><circle cx="292.5" cy="195.4" r="3" fill="#e03e3e"/><circle cx="370.0" cy="147.1" r="3" fill="#e03e3e"/><text x="376.0" y="151.1" fill="#e03e3e" font-size="12">LoRA 전 선형층 확장 62.4</text></g></svg>
+    <figcaption><b>그림 3. 40 epoch 스크린 실험의 검증 궤적.</b> 세로축은 학습 중 트레이너가 찍는 검증 mIoU(참고용, 정식 채점기 아님). 중간층 4탭 읽기(파랑)는 5·10·15·20 epoch 모두 기준선(검정)을 앞서고, LoRA 전 선형층 확장(빨강)은 15 epoch부터 기준선 아래입니다. 센서별 prototype(초록)은 아직 두 점뿐입니다.</figcaption>
+  </figure>
+
+  <div class="callout warn"><div class="ic">⚠️</div><div class="tx"><span class="lbl">읽을 때 주의</span><p>그림과 표의 "+2.7" 같은 값은 학습 중 검증 점수의 차이이고, 시드 하나·40 epoch 스크린입니다. 어제 문서 §2에서 정한 대로 정식 판정은 완주 후 고정 채점기 테스트 재채점 Δ ≥ +1.0이며, 통과한 변경만 200 epoch·3페어로 확정합니다. 지금 시점의 결론은 "다음에 무엇을 먼저 돌릴지"를 정하는 근거이지, 논문 수치가 아닙니다.</p></div></div>
+
   <p class="small">관련 문서: 회고 <code>research/approach-and-eval-retrospective.md</code> · 가설 원장 <code>research/hypothesis-ledger.md</code> · P52 개정 <code>decisions/2026-08-31-p52-rxdino-adaptive-amendment.md</code></p>
 </div>
