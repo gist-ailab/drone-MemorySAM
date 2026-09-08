@@ -584,3 +584,44 @@ tgt2 = self.cross_attn_image(
 5. 검증 순서: 벤치마크 `val_mm_*.py`를 DELIVER 코드베이스에 얹어 CMNeXt 37.90 근처 재현 확인 → 우리 모델 적용.
 
 미확인: MAGIC 실제 코드, 벤치마크의 MAGIC 재평가 방법, NM 논문 수치의 Gaussian 포함 여부, 37.90 vs 25.25 괴리 원인, AnySeg 드롭 확률값.
+
+---
+
+## 2026-09-08 (추가 2) — CVPR 2026 본회의 + ECCV 2026 채택작 표적 전수 스캔 (user 질의: "2026 CVPR/ECCV에는 관련 연구 없었나")
+
+> 조사 방법 = 리스트 전수 스캔이라 근거 수준이 높다: **CVPR 2026** = openaccess.thecvf.com 본회의 4,042편 제목 전수 + 후보 ~30편 abstract 확인(워크숍은 PBVS·URVIS·MaCVi·DriveX 등 9개만) / **ECCV 2026** = 공식 예비 accepted 리스트(eccv.ecva.net, ~2,864건) 통째 다운로드 후 키워드 전수 검색(1차 출처; SFEDet 존재로 교차검증).
+
+### 🔴 노벨티 판정 (두 학회 공통)
+
+- **RBMA 직접 충돌 논문 = 0건.** CVPR 본회의 SAM 계열 16편 전수 확인: "SAM2 memory attention의 모달리티 축 전용" 없음, "신뢰도→attention logit additive bias" 없음. ECCV 리스트에서 "memory attention" 문자열 포함 제목 0건. → **전칭부정("셀 미점유") 주장의 2026 양대 학회 커버리지 확보**(제목 기반 스캔이므로 제목에 단서 없는 논문 누락 가능성은 잔존).
+- 단, **"신뢰도/품질로 불량 모달을 억제"라는 상위 스토리는 이미 혼잡한 채택 클러스터가 됐다**: RAF·InfraNet·RA-SOD·GIML(ECCV) + CoRiM·UMFNet·ACR(CVPR). 전부 학습형 gating/weighting/quality-map이며 logit bias·training-free 아님 → 논문에서는 스토리가 아니라 **메커니즘(pre-softmax logit-additive, training-free, SAM2 memory 무대)** 차별화를 전면에.
+
+### 구분 인용 필수 이웃 (신규 must-cite 후보)
+
+- **M4-SAM** (CVPR 본회의): SAM2+멀티모달(RGB-D VSOD)+memory 키워드 전부 겹침. 실제로는 융합=인코더 Modality-Aware MoE-LoRA, memory attention=시간축 유지(pseudo-mask로 bank 초기화). 기존 기록의 arXiv 2605.11760(M⁴-SAM)이 CVPR 2026 본회의로 확정된 것.
+- **RobustSeg** (CVPR 본회의) = RMMSS(2505.12861)의 확장판 게재 확정. **DELIVER 명시 사용 유일 본회의 세그 논문**: teacher-student + Hybrid Prototype Distillation로 missing-modality +2.40%, full-modality −0.1%. 백본 AnySeg·CMNeXt. 코드 github.com/RobustSeg/RobustSeg. **우리 결측 실험(EMM/RMM)의 직접 비교 대상.**
+- **SENTRY** (ECCV, 2606.24449): **training-free plug-and-play로 SAM2 메모리를 조작하는 유일한 채택작** — 쓰기 전 시간 일관성 검증(refine-before-write) 게이트. 시간축·단일 RGB라 충돌 아님, "training-free SAM2 memory 개입" 선례로 인용.
+- **RAF** (ECCV, 2607.04587, KAIST 윤국진랩, 코드 공개): per-pixel **학습형** reliability map으로 악천후 3D 검출에서 불신 카메라 특징 억제(+6.5 AP_BEV). / **InfraNet** (ECCV, 2607.03795): QualGate 품질 게이트로 저품질 RGB 가이던스 억제(LLVIP·FLIR·M³FD·DroneVehicle). / **GIML** (ECCV, 2607.06943): 모달 통째 결손과 부분 열화를 연속 품질 저하로 통합, noise-aware quality estimator — UAMM 문제의식과 최근접.
+- **CoRiM** (CVPR 본회의): per-sample 동적 융합을 Modality Conflict Risk 최소화(Frank-Wolfe)로 정식화, **scalar confidence 가중의 이론적 한계 지적** — 신뢰도 가중 계열 포지셔닝 시 이론 인용. / **UMFNet** (CVPR 본회의): 픽셀별 Gaussian 불확실성→confidence map으로 feature 변조(unaligned RGB-T SOD).
+
+### CVPR 2026 그 외 (주제별)
+
+- 세그: MM-OVSeg(optical+SAR OV, 코드), SkySense-VITA(원격탐사 파운데이션), REL-SF4PASS(2601.16788, 파노라마 RGB-D), MARSS/RAVEN(radar 세그). MUSES·MCubeS·FMB 명시 본회의 논문 없음. **URVIS 워크숍에 MUSES 기반 멀티모달 판옵틱 챌린지 리포트(2604.16984)** — MUSES 동향 필독.
+- 검출: **Distribution-Aligned Multimodal Fusion**(융합 특징을 frozen 검출기의 사전학습 분포에 정렬 — 미지 열화 일반화 우월 주장), DyFCLT(RGBT tiny, 주파수 분리), **DSERT-RoLL**(2604.03685, KAIST: stereo event+RGB+thermal+4D radar+dual LiDAR 주행 데이터셋), **MMVIP**(최초 대규모 해양 VIS-IR 페어 128K — MULTIAQUA 관련연구 인용 후보), SEATrack(Oral, RGB-T/D/E 통합 트래커, LoRA+계층 MoE). radar-camera 2D 검출 없음(전부 3D).
+- missing/강건성: Missing No More(2603.08018, 공유 dictionary 계수 도메인에서 VIS→pseudo-IR 추론 후 융합, 코드), ACR(2603.02200, 융합 confidence가 단일모달보다 낮아지는 confidence degradation 벌점화), SCDT·CodeAlign·DCTrack(워크숍).
+- SAM: 비RGB 센서 적응 본회의 0건, SAM3 downstream은 워크숍 벤치 1편뿐. evidential 센서 융합 본회의 0건.
+- InfoCalib(URVIS 워크숍): 정적 주파수 attention의 분포이동 붕괴를 정보이론 진단 + 융합 가중 온라인 재보정.
+
+### ECCV 2026 그 외 (주제별)
+
+- 세그: **SegFly**(2603.17920, 항공 RGB-T — 2D→3D→2D 라벨 리프팅으로 대규모 pseudo GT, 데이터셋 20.6K RGB+15K 정렬 RGB-T 공개; 드론 도메인이라 우리와 인접), **UMSS**(2607.12372, 비지도 멀티모달 세그 최초 정식화, DINOv3 기반, fusion degradation 해결), HyperRadar(멀티뷰 radar), Dark-Scenes dense depth(LiDAR+event+RGB, 프리프린트 미공개). **DELIVER/MUSES 정면 supervised 경쟁작 부재.**
+- 검출: SFEDet(재확인), **"DETR is Secretly a Multispectral Detector"**(zero-parameter adaptation — training-free 계열, 프리프린트 공개 시 추적 필수), RA-SOD(신뢰도 RGB-T SOD, 프리프린트 미공개), 회전등변 multispectral.
+- SAM/파운데이션: SAM+D(2607.29033, depth-routed LoRA로 2D→3D 승격, 의료), **REALM**(2605.00271, Toronto STARS: 이벤트 스트림을 frozen RGB 파운데이션 latent에 LoRA 투영해 RGB 디코더 zero-shot 재사용 — "비RGB를 RGB 파운데이션에 태운다" 철학 유사, 코드 예정), X2SAM(RGB 전용). **비RGB 센서 SAM 적응은 ECCV에도 0건 — 선점 여지 유지.**
+- missing: MARS(2606.30355, 완전-불완전 표현 residual로 MoE expert를 결손 패턴별 특화), BIP(프롬프팅).
+- venue 부정 확인: EQUISeg·MM SAM-adapter·EGFormer·CBC-SLP·Frequency-Guided RGB-T(2605.26273=CVPR PBVS 워크숍이 맞음)는 **ECCV 2026 리스트에 없음**.
+
+### 후속 TODO
+
+1. 프리프린트 미공개 채택작 추적: RA-SOD, DETR-multispectral(zero-parameter), BIP, Dark-Scenes depth, MMVIP, CoRiM, DyFCLT.
+2. RobustSeg 코드로 우리 EMM/RMM 결과와 직접 비교(같은 DELIVER·같은 프로토콜 계열인지 확인 후).
+3. M4-SAM venue를 기존 기록(arXiv 2605.11760)에 CVPR 2026 본회의로 반영 — 완료(이 절). MemorySAM은 여전히 양대 학회 리스트에 없음(preprint 유지).
