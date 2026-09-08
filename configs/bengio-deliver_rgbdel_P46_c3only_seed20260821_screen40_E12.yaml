@@ -1,3 +1,6 @@
+# [bengio판 E12] hpca100-…_screen40_E12.yaml 과 레시피 동일, 변경 = ROOT·SAVE_DIR 만. 3090 24GB: BS1·r32 전 선형층 LoRA + 4탭 — 기동 시 P46_MEM_LOG=1 로 메모리 확인 권장(E1 16.2GiB + E2 추가분 미실측)
+# [E12] E1(4탭) + E2(전 선형층 LoRA r32) 결합 40ep 스크린, 시드 20260821 — E2 legal 판정이 양성일 때만 기동. EVAL.BATCH_SIZE 4
+# [hpca100 파생] E2 전 선형층 LoRA 40ep 스크린 — 원본 bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml, 변경 = ROOT·SAVE_DIR 만(레시피 동일)
 # [DAILY-CARDS E2] LoRA 타깃 확장 — Q/V(현행) → Q/K/V + O(proj) + MLP(fc1/fc2)
 # 파생: bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_B0.yaml (40ep 스크린 기준선)
 # 변경 = LORA_TARGETS [qkv_full, proj, fc1, fc2] · LORA_R 8→32 · LORA_ALPHA null→64(=2r) · SAVE_DIR
@@ -11,11 +14,15 @@
 # ═══ P46-CTR — bengio DELIVER 4모달(img/depth/event/lidar): C3-only ablation ═══
 # 진단·처방·게이트·공정선은 B0 헤더와 동일. 추론 경로는 P39.1과 완전히 동일.
 DEVICE          : cuda
-SAVE_DIR        : './outputs/ReliaDINO/bengio_deliver_rgbdel_P46_c3only_seed20260821_screen40_E2'  # [DAILY-CARDS E2]
+SAVE_DIR        : './outputs/ReliaDINO/bengio_deliver_rgbdel_P46_c3only_seed20260821_screen40_E12'  # [DAILY-CARDS E2]
 
 # Trainer = train_reliadino.py.
 #   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
 MODEL:
+  TAPS:                                   # [E12] E1 4탭 읽기 + E2 전 선형층 LoRA 결합
+    ENABLE : true
+    LAYERS : [6, 12, 18, 24]
+    MODE   : per_modal
   NAME          : ReliaDINO
   BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
   BACKBONE_TIMM     : vit_large_patch16_dinov3
@@ -205,7 +212,7 @@ SCHEDULER:
 EVAL:
   MODEL_PATH    : ''
   IMAGE_SIZE    : [768, 768]
-  BATCH_SIZE    : 1
+  BATCH_SIZE    : 4
   EVAL_DAY      : false
   MSF:
     ENABLE      : false

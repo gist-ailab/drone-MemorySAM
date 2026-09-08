@@ -4,8 +4,7 @@
 # 근거 = MLP(fc1 1024→4096, fc2 4096→1024)가 가장 큰 선형층이라 rank 절반으로 파라미터·
 #        optimizer state 절감이 가장 크다. scale(α/r)=2 는 전 타깃 균일 유지(타깃별 α=2·r_t,
 #        encoder 가 자동 계산) — fc1/fc2 는 r16·α32, 나머지는 r32·α64.
-# 🔴 model.py 배선 필요: E2 헤더와 동일 — MODEL.LORA_TARGETS 를 인코더로 넘기는 3줄이 있어야
-#    LORA_TARGETS 가 반영된다(그 전에는 B0 로 돈다).
+# ✅ model.py 배선 완료(develop 7d83c11 검수 시 추가): MODEL.LORA_TARGETS → FrozenViTEncoder. 기동 로그의 `[E2] lora_targets=[...]` 라인으로 확인(PYTHONUNBUFFERED=1 필요).
 # ═══ P46-CTR — bengio DELIVER 4모달: C3-only ablation (진단·게이트·공정선은 B0/E2 동일) ═══
 DEVICE          : cuda
 SAVE_DIR        : './outputs/ReliaDINO/bengio_deliver_rgbdel_P46_c3only_seed20260821_screen40_E2b'  # [DAILY-CARDS E2b]

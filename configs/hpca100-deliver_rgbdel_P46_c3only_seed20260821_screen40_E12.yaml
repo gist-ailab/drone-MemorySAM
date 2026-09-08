@@ -7,10 +7,7 @@
 #        구조 사다리 S2 = …p52-validity-audit-and-bottleneck-program.md §3.6
 # 근거 = SoMA(2412.04077) 표 8 attn만 < MLP만 < 둘 다(+1.5) · "LoRA Learns Less and
 #        Forgets Less"(2405.09673) MLP 가 학습 주 loci, α=2r.
-# 🔴 model.py 배선 필요: MODEL.LORA_TARGETS 를 ReliaDINO→FrozenViTEncoder 로 넘기는
-#    3줄(build 팩토리·생성자 시그니처·encoder 생성)이 아직 없다 — 워커 보고서의
-#    "model.py 후속 diff" 참고. 그 배선 전에는 이 config 를 기동해도 LORA_TARGETS 가
-#    무시되고 B0(qkv Q/V, r8)로 돈다.
+# ✅ model.py 배선 완료(develop 7d83c11 검수 시 추가): MODEL.LORA_TARGETS → FrozenViTEncoder. 기동 로그의 `[E2] lora_targets=[...]` 라인으로 확인(PYTHONUNBUFFERED=1 필요).
 # ⚠️ 메모리: E2 는 LoRA up/down 파라미터가 B0 대비 크게 는다(타깃 6배 슬라이스 + r 4배).
 #    24GB BS1 여유가 빠듯하면 fc1/fc2 를 r16 으로 낮춘 …_E2b.yaml 을 쓸 것.
 # ═══ P46-CTR — bengio DELIVER 4모달(img/depth/event/lidar): C3-only ablation ═══
