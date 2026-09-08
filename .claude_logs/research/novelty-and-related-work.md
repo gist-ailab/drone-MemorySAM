@@ -169,10 +169,13 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 4. **(P29) CAFuser/DGFusion 조건화 메커니즘 원문 확인** — CAFuser가 정확히 CLIP-text 임베딩을 어디(CA²/CAA)에 주입하는지, DGFusion이 depth-GT를 어떤 loss로 reliability로 변환하는지 원문 대조(우리 §2.7 차별 주장 방어용).
 5. **(P29) MoE-LoRA 조건-라우팅 선행연구 스캔** — MoE-Adapters4CL(NeurIPS'24, task/domain id embedding), Mod-Squad(CVPR'23), VLMo/BEiT-3(MoME), LD-MoLE/DynMoLE 등에서 **무감독 image-derived 조건 latent로 LoRA expert를 라우팅**한 전례가 있는지 확정(SDC 노벨티 방어).
 6. **(P29) FiLM 라우터 변조 + prototype/VQ 조건 공간** 선행연구(FiLM, VQ-VAE codebook, SwAV/online-clustering)와의 구분 — "조건 prototype을 라우터 FiLM에 쓰는" 조합의 비점유 확인.
+7. **DFormerv2 (CVPR 2025, 2504.04701) GSA 수식 정독** — depth 기하 prior로 self-attention 가중을 변조하는 구조라 "모달을 attention 변조로 주입" 축에서 RBMA의 최근접 CVPR급 이웃. additive/multiplicative 여부 확정 후 §2 비교표에 행 추가 + must-cite. (2026-09-08 스윕 발견.)
+8. **결손·노이즈 강건성 프로토콜(2503.18445, CVPRW 2025 Best Paper) 채택 여부 결정** — 이 벤치마크 이후 DELIVER 신작 대부분이 missing-modality 수치를 병기하므로 리뷰어 요구 가능성 높음.
 
 ---
 
 ## 5. 근거 / 더 읽기
+- **최신 지형 전수 스윕 (2026-09-08)**: `related-work-raw.md` §"2026-09-08" — 세그 27편·검출 24편·SAM/메모리 축 웹 병렬 조사. 헤드라인: ① MemorySAM(2503.06700)은 여전히 preprint(ICCV 게재 표기 1차 출처 미확인), ② "training-free 신뢰도→memory-attn additive bias" 셀 점유자 이번에도 미발견(단 PRIMED/SAE 위협 유효), ③ 신규 must-cite DFormerv2(depth를 attention 변조로 주입), ④ 검출 쪽 신뢰도-가중 융합 급증(전부 게이팅, logit bias 아님), ⑤ Fusion Degradation(M²D-LIF) 등 융합 회의론 실증화 — poongsan RGB-only 관찰과 수렴.
 - **차세대 아키텍처 브레인스토밍 + 신규 deep-research (2026-07-08)**: `research_vault/material/brainstorm_next_arch_20260708.md` — VFM 후보(DINOv3/SAM3/C-RADIOv4/V-JEPA2.1/Mamba) × adaptive fusion 신규 문헌(MG-MTTA/AECF/CLoE/PCDF/DAMSDet 등), 후보 카드 5개+추천 top-2(DINOv3-RBMA, SAM2-RBMA v2)+검증 실험. **RBMA 4축 셀 미점유 재확인 + det-head additive-bias 빈 셀 재확인** (near-miss 워치: UGDDL 2605.09600, MG-MTTA 2604.24602).
 - **옵시디언 리서치 볼트 (외부 사전조사, 2026-07-02 동기화)**: `/nas_jm/Research/26_MultimodalSeg/` — relatedworks 30노트(논문별 synthesis, Priority-A PDF 원문표 추출), 벤치마크 canonical = `relatedworks/09_benchmark_tables_deliver_muses_mcubes.md`, 노벨티 방어 = `relatedworks/42_attention_logit_bias_novelty_defense.md`, 병렬 리서치 프롬프트 = `sources/07_parallel_research_prompts_2026-07-02.md`. 정량 인용은 볼트 `09`를 우선 참조.
 - RBMA 신규성 deep-research 원문·판정: `10_related_work.md` §"신규성 조사 A vs B"(L329~), §"A 신호 신규성 확정"(L367~).
