@@ -133,6 +133,24 @@ disk=$(echo "$out" | sed -n '/^DFSTART$/,/^ERRSTART$/p' | sed -n '2p' | awk '{pr
 실패한 일이 있었다. 그때 감시는 원인을 모른 채 `STALLED_LOG`("데드락 의심")만 냈다. 에러 패턴에
 `No space left` 를 넣고 알림마다 `df` 결과를 붙이면 같은 상황에서 원인이 즉시 드러난다.
 
+⑩ 🔴 **체크포인트를 자동 회수·정리할 때 `test_` 접두어를 반드시 제외하라(2026-09-09 실사고).**
+학습 코드는 val 기준과 test 기준 체크포인트를 **같은 `*_top1_checkpoint.pth` 이름**으로 저장한다.
+
+```
+epoch5_61.04_top1_checkpoint.pth        ← val-best (판정 대상)
+test_epoch5_52.28_top1_checkpoint.pth   ← test-best (메모리 seg-report-sota-gap 이 사용 금지)
+```
+
+`/tmp` 휘발 대책으로 만든 회수 스크립트가 `*_top1_checkpoint.pth` 로만 찾은 탓에 **test-best 까지 받아 갔고**,
+거기에 "같은 런의 이전 회수본은 지운다"는 규칙이 겹쳐 **먼저 받아 둔 val-best 를 밀어냈다.** 결과적으로
+NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌다(원본이 `/tmp` 에 있어 실손실은 없었다).
+
+**고침**: 찾을 때 `! -name 'test_*'` 를 붙이고, 이전본 정리 대상에서도 `test_*` 를 뺀다.
+
+이 함정은 **이미 알고 있던 것을 다른 스크립트에 옮기지 못해** 생겼다 — E2 재채점 때 ckpt 목록을 뽑으며
+`grep -E '^epoch.*top1_checkpoint'` 로 `test_` 를 걸러낸 적이 있는데, 회수 장치를 새로 만들 때 그 지식을
+적용하지 않았다. **체크포인트를 이름으로 다루는 코드를 새로 쓸 때마다 이 두 계열을 먼저 떠올려라.**
+
 ### 1-1. 감시 넷의 대상과 임계
 
 `persistent: true`로 걸고, `SESSION_ENDED`가 뜨면 단일 대상 감시는 루프를 끝낸다(1-a는 두 런이 모두
