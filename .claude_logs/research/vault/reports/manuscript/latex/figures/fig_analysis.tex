@@ -1,0 +1,39 @@
+% ============================================================
+% fig:analysis — 2-panel analysis figure (PLACEHOLDER, plots TODO)
+% BODY-ONLY: \input inside a two-column {figure*} environment.
+% Panel (a): per-class DELIVER test IoU audit (25 classes, 5-condition
+%   mean), dead classes (Other/Wall/Bridge) highlighted.
+%   Data: /drone_nas/drone/analysis_logs/P34_eval_20260713/per_domain_analysis.md
+%   (tools/analyze_per_domain.py output).
+% Panel (b): reliability AUROC per modality at night + drop-modality
+%   ΔmIoU per condition.
+%   Data: /drone_nas/drone/analysis_logs/P34_eval_20260713/module_diag.json
+%   (tools/module_diagnostics.py / tools/eval_reliability_auroc.py).
+% Export script TODO: _paper_submission/figures/scripts/ (matplotlib → PDF).
+% ============================================================
+\centering
+\setlength{\fboxsep}{0pt}%
+\framebox{\parbox[c][5.2cm][c]{0.48\textwidth}{\centering\scriptsize
+  (a) per-class DELIVER \emph{test} IoU audit\\[2pt]
+  \todo{horizontal bar chart: 25 classes sorted by 5-condition-mean IoU;\\
+  Other/Wall/Bridge hatched red with ``dead for official CMNeXt too'' bracket}}}%
+\hfill
+\framebox{\parbox[c][5.2cm][c]{0.48\textwidth}{\centering\scriptsize
+  (b) reliability AUROC (night) + drop-modality $\Delta$mIoU\\[2pt]
+  \todo{top: 4 bars, AUROC .85/.78/.87/.70 (RGB/depth/event/LiDAR),\\
+  chance line at 0.5; bottom: grouped bars per condition,\\
+  depth $\approx{+}9.5$--$11.4$, event $\approx 0$ annotated}}}
+\caption{Analysis on the DELIVER test split. (a)~Per-class audit
+(five-condition mean IoU): the residual gap to the validation split is
+concentrated in a small set of classes; \emph{Other}, \emph{Wall}, and
+\emph{Bridge} remain near zero for our model, for a linear probe on the
+frozen backbone, and for the official CMNeXt model
+\todo{per-class CMNeXt test numbers (M0-a audit)}, indicating a benchmark
+ceiling rather than a fusion failure. (b)~Left: per-modality reliability
+AUROC at night (0.85/0.78/0.87/0.70 for RGB/depth/event/LiDAR) --- the
+calibrated signals rank correctness well for all four modalities. Right:
+drop-modality $\Delta$mIoU per condition; depth is the dominant complement
+(${\approx}{+}9.5$--$11.4$), whereas event contributes ${\approx}0$ in all
+five conditions. Diagnostics computed on the no-router variant's audited
+checkpoint; \todo{regenerate for the final full model if time permits}.}
+\label{fig:analysis}

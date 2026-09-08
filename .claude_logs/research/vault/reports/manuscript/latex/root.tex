@@ -1,0 +1,133 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% root.tex — ReliaDINO RA-L submission (assembled 2026-07-15)
+% Build: pdflatex root && bibtex root && pdflatex root && pdflatex root
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[letterpaper, 10pt, conference]{ieeeconf}
+
+\IEEEoverridecommandlockouts  % needed for \thanks
+\overrideIEEEmargins          % needed to meet printer requirements
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+\usepackage{url}
+\usepackage{cite}
+
+% ---- TODO marker (every unknown/missing item) ----
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TITLE — option (1) chosen; alternatives kept below, commented.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{\LARGE \bf
+ReliaDINO: Frozen Vision Foundation Models with Per-Modality Low-Rank
+Adaptation and Reliability-Anchored Fusion for Multimodal Semantic
+Segmentation
+}
+% Alternative titles:
+% \title{\LARGE \bf One Frozen Backbone, Four Sensors: Reliability-Anchored
+%   Multimodal Semantic Segmentation with DINOv3 and Per-Modality LoRA}
+% \title{\LARGE \bf Where Should Sensor Reliability Act? Calibrated Competence
+%   Gating and Per-Class Routing for Multimodal Semantic Segmentation}
+
+\author{\todo{Author names}% <-this % stops a space
+\thanks{\todo{Funding / project support footnote.}}%
+\thanks{\todo{$^{1}$Authors' affiliation, address, and e-mail (RA-L requires
+full author block).}}%
+}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\pagestyle{empty}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\input{sections/0_abstract}
+
+% ---------------- Fig. 1: teaser (supervision budget vs. test mIoU) --------
+\begin{figure}[t]
+  \centering
+  \resizebox{0.98\linewidth}{!}{\input{figures/fig_teaser}}
+  \caption{Extra supervision vs.\ DELIVER test accuracy (mIoU, all four
+  modalities). Prior condition- and depth-guided fusion methods buy
+  robustness with additional supervision: DGFusion uses ground-truth
+  log-depth and condition meta-text, CAFuser uses condition annotations
+  with CLIP. ReliaDINO is trained with segmentation labels only and
+  surpasses the previous best test result (56.71). The open circle is our
+  no-router ablation variant under test-best checkpoint selection; see
+  Sec.~\ref{sec:setup} for the val-only selection protocol.
+  \todo{Update star and margin once the final run completes.}}
+  \label{fig:teaser}
+\end{figure}
+
+\input{sections/1_intro}
+\input{sections/2_related}
+
+% ---------------- Fig. 2: architecture overview (two-column) ---------------
+\begin{figure*}[t]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/fig_arch}}
+  \caption{ReliaDINO. All four modalities are encoded by a single frozen
+  DINOv3 ViT-L/16; modality identity enters only through independent
+  low-rank adapters (color-coded, rank~8 on Q/V of all 24 blocks).
+  Per-modality auxiliary decoders provide the class posteriors from which
+  calibrated reliability $r_m$ and the veto signal $v_m$ are computed
+  (purple; detached). Modalities exchange information through two shared
+  cross-modal attention layers; the fused map is produced by a calibrated
+  competence gate with a training-free veto floor, decoded by a SimpleFPN
+  head. The per-class reliability-anchored router adds a residual routed
+  prediction scaled by a zero-initialized $\alpha$. Reliability acts only
+  at the gate and router: the attention-logit bias site is removed
+  (struck out; Sec.~\ref{sec:method:negative}). Dashed gray parts are
+  training-only.}
+  \label{fig:arch}
+\end{figure*}
+
+\input{sections/3_method}
+
+% ---------------- Fig. 3: router detail (single-column) --------------------
+\begin{figure}[t]
+  \centering
+  \resizebox{0.98\linewidth}{!}{\input{figures/fig_router}}
+  \caption{Per-class reliability-anchored router. A zero-initialized
+  per-modality head $g_m$ on the pre-fusion features is anchored by the
+  detached calibrated reliability $r_m$; a softmax over modalities yields
+  per-class, per-pixel routing weights that mix the per-modality
+  posteriors $z_m$ into a residual correction scaled by a
+  zero-initialized $\alpha$. At initialization the model is exactly the
+  no-router variant, and routing follows reliability alone
+  (collapse-safe). Motivation: the scalar competence gate anti-selects per
+  class---e.g.\ for road lines at night the per-modality competence is
+  0.80 (RGB) vs.\ 0.00 (depth), yet the scalar gate assigns depth a weight
+  of 0.43; a per-class router lets each class route to the modality that
+  sees it.}
+  \label{fig:router}
+\end{figure}
+
+\input{sections/4_experiments}
+
+% ---------------- Fig. 4: qualitative grid (two-column, placeholder) -------
+\begin{figure*}[t]
+  \input{figures/fig_qual}
+\end{figure*}
+
+% ---------------- Fig. 5: analysis panels (two-column, placeholder) --------
+\begin{figure*}[t]
+  \input{figures/fig_analysis}
+\end{figure*}
+
+\input{sections/5_conclusion}
+
+% \addtolength{\textheight}{-2cm} % balance last-page columns before submission
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

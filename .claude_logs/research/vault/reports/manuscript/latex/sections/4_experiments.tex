@@ -1,0 +1,278 @@
+% =====================================================================
+% Section IV — Experiments (body-only; \input into root.tex)
+% All numbers sourced from notes/fact_experiments.md (2026-07-15).
+% Internal version codes must never appear here.
+% =====================================================================
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Setup}
+\label{sec:setup}
+
+\textbf{Dataset and metric.}
+We evaluate on DELIVER~\cite{cmnext2023}, a synthetic driving benchmark
+with four spatially aligned modalities (RGB, depth, event, LiDAR),
+25 semantic classes, and 3{,}983 / 2{,}005 / 1{,}897 images for
+training / validation / test at $1042\times1042$ resolution. The data
+cover five environmental conditions (cloudy, foggy, night, rainy,
+sunny) as well as partial sensor-failure corruption cases. We report
+mean Intersection-over-Union (mIoU) on both the validation and test
+splits, and use the four-modality (camera--LiDAR--depth--event)
+protocol throughout. MUSES~\cite{muses2024} results are planned:
+\todo{MUSES official-protocol numbers (test-server submission pending;
+only a non-comparable internal letterbox evaluation exists)}.
+
+\textbf{Implementation details.}
+The backbone is a single frozen DINOv3 ViT-L/16~\cite{dinov3_2025}
+shared by all modalities; only the per-modality LoRA adapters
+(rank~8), the fusion stack, the auxiliary decoders, and the
+segmentation head are trained (46.8\,M trainable of 349.9\,M total,
+13.4\%; the router adds ${\approx}0.27$\,M, \todo{exact full-model
+parameter count from its training log}). Inputs are $1024^2$ crops.
+We train for 200 epochs with AdamW (learning rate $6\times10^{-4}$,
+weight decay 0.01), a warmup-poly schedule (power 0.9, 10-epoch
+warmup), batch size 4 per GPU on 4 GPUs (effective batch 16 with
+gradient accumulation), and bfloat16 mixed precision. The loss is
+OHEM cross-entropy~\cite{ohem2016} plus the auxiliary
+($\lambda_{\mathrm{aux}}{=}0.5$), calibration
+($\lambda_{\mathrm{cal}}{=}0.1$), and router
+($\lambda_{\mathrm{reg}}{=}0.01$, full model only) terms of
+Sec.~\ref{sec:method}. Inference is single-scale without flipping or
+any test-time augmentation. All experiments use a single seed (3407);
+we therefore refrain from building claims on sub-1-point differences.
+
+\textbf{Checkpoint-selection protocol.}
+Both splits are evaluated every two epochs during training, which
+creates a subtle risk of implicit test-set peeking when the reported
+checkpoint is chosen post hoc. We adopt a strict protocol: all
+headline numbers use the checkpoint with the best \emph{validation}
+mIoU, and any test-selected (oracle) number is explicitly labeled as
+such and excluded from state-of-the-art claims. Under this protocol
+the no-router variant scores 68.19 val / 56.64 test (epoch~120); its
+oracle test-best checkpoint reaches 57.60 (epoch~140) and is disclosed
+only for completeness. One asymmetry remains: the no-router variant
+was trained with a physics-based augmentation (PhysAug) that
+competitors do not use, whereas the full model was trained without it;
+\todo{PhysAug-free no-router re-run (T1) for a fully harmonized
+ablation pair}.
+
+\subsection{Comparison with State of the Art}
+\label{sec:sota}
+
+Table~\ref{tab:sota} compares ReliaDINO with published DELIVER
+results. Following the protocol audit of Sec.~\ref{sec:related}, we
+strictly separate the official \emph{test}-split cluster from
+validation-only results and never mix the two; the ``extra
+supervision'' column lists everything each method requires beyond
+segmentation labels.
+
+\begin{table}[t]
+\centering
+\caption{Comparison on DELIVER (four modalities: camera, LiDAR, depth,
+event; 25 classes). ``Extra sup.''\ = supervision or data beyond
+segmentation labels. Val and test columns are the official splits;
+``--'' = not reported. $\dagger$: oracle test-selected checkpoint,
+disclosed but excluded from claims (Sec.~\ref{sec:setup}).}
+\label{tab:sota}
+\setlength{\tabcolsep}{2.5pt}
+\scriptsize
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Method & Backbone & Extra sup. & Val & Test \\
+\midrule
+CMNeXt~\cite{cmnext2023}          & MiT-B2       & none                & 66.3  & 53.0 \\
+GeminiFusion~\cite{geminifusion2024} & MiT-B2    & none                & 66.9  & 54.5 \\
+MAGIC~\cite{magic2024}            & SegFormer-B2 & none                & 67.66 & --   \\
+StitchFusion~\cite{stitchfusion2024} & MiT-B2    & none                & 68.18 & 53.4 \\
+OmniSegmentor~\cite{omnisegmentor2025} & DFormer-L & mm.\ pretraining  & 68.0  & --   \\
+CAFuser-CA$^2$~\cite{cafuser2025} & Swin-T       & cond.\ text (CLIP)  & 67.8  & 55.6 \\
+CAFuser-CAA~\cite{cafuser2025}    & Swin-T       & cond.\ text (CLIP)  & 68.6  & 55.2 \\
+DGFusion~\cite{dgfusion2026}      & Swin-T       & depth GT + cond.\ text & \todo{val n/a} & 56.7 \\
+\midrule
+ReliaDINO (no router)             & frozen DINOv3-L & none & 68.19 & 56.64\,/\,57.60$^\dagger$ \\
+\textbf{ReliaDINO (full)}         & frozen DINOv3-L & none & \todo{67.74} & \todo{$\geq$57.14} \\
+\midrule
+\multicolumn{5}{@{}l@{}}{\todo{MUSES block (planned): DGFusion 79.5, CAFuser-CAA 78.5, ReliaDINO t.b.d.}}\\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+On the test split, the full model reaches
+\todo{57.14 (best checkpoint at the time of writing; training
+completes on schedule and the final val-selected pair will replace
+this number)}, exceeding the strongest published test result,
+DGFusion at 56.7~\cite{dgfusion2026}, and the no-router variant's
+oracle checkpoint reaches 57.60. Crucially, this is achieved with
+segmentation labels \emph{only}: DGFusion additionally consumes
+ground-truth log-depth supervision and CLIP-encoded condition
+meta-text, and CAFuser requires condition annotations with
+verbo-visual contrastive training. On the validation split, the
+no-router variant (68.19) is within 0.41 of the best published result
+(CAFuser-CAA, 68.6) while surpassing it by $+1.4$ on test. We note the
+concurrent MM SAM-adapter~\cite{mmsamadapter2025}, which reports
+strong DELIVER numbers (e.g., 57.35 RGB-D) under a \emph{two-modality}
+protocol with a fine-tuned side network; our claims are scoped to the
+four-modality, supervision-minimal setting. A residual caveat: an
+eval-time resize-convention parity check against DGFusion is
+outstanding, \todo{confirm eval-protocol parity (G0d) before quoting
+head-to-head margins below ${\sim}2$ points as definitive}.
+
+\subsection{Ablation Study}
+\label{sec:ablation}
+
+Table~\ref{tab:ablation} groups the ablations into training-time
+variants (top) and inference-time module toggles applied to a fixed
+checkpoint (bottom).
+
+\begin{table}[t]
+\centering
+\caption{Ablations on DELIVER. Top: trained variants (val-selected
+unless noted; $\dagger$ = oracle test-selected). Bottom:
+inference-time toggles on the no-router test-best checkpoint,
+full-resolution full test set. $^a$trained with PhysAug (see
+Sec.~\ref{sec:setup}); $^b$run terminated by a system event at epoch
+120/200; $^c$attention biases were active during this variant's
+training but are inert at inference (toggle $\Delta{\approx}0$).}
+\label{tab:ablation}
+\setlength{\tabcolsep}{3pt}
+\scriptsize
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Trained variant & Val & Test \\
+\midrule
+ReliaDINO (full: router + gate + calibration) & \todo{67.74} & \todo{57.14} \\
+\;\;no router, harmonized recipe$^b$ & 67.61 & 56.14 \\
+\;\;no router, original recipe$^{a,c}$ & 68.19 & 56.64\,/\,57.60$^\dagger$ \\
+\midrule
+Inference toggle (base: test 56.64) & \multicolumn{2}{c}{$\Delta$ test mIoU} \\
+\midrule
+$-$ attention-logit reliability bias ($\lambda_1 B^{\mathrm{cal}}$) & \multicolumn{2}{c}{$|\Delta|\leq0.03$ (dead)} \\
+$-$ consistency bias ($\lambda_2 B^{\mathrm{cons}}$) & \multicolumn{2}{c}{$|\Delta|\leq0.03$ (dead)} \\
+$-$ competence gate + calibration & \multicolumn{2}{c}{$-0.26$ (56.64$\rightarrow$56.38)} \\
+$-$ veto floor & \multicolumn{2}{c}{$+0.02$\,--\,$+0.23$ (below claim thresh.)} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\textbf{Router.}
+The per-class reliability-anchored router is the difference between
+the full model and the harmonized-recipe no-router variant
+(same recipe, incomplete run): $+0.13$ val / $+1.00$ test at the
+respective best checkpoints so far
+(\todo{final router pair after training completes}). The router's
+benefit concentrates on the test split and appears early: at matched
+epochs it led the no-router model by $+2.0$ to $+2.4$ test mIoU
+(epochs 30--46) and crossed the DGFusion test mark at epoch 58 versus
+epoch 116 without the router. The comparison against the
+original-recipe no-router variant is confounded by its PhysAug
+training (footnote $a$), which is why we report both rows.
+
+\textbf{Competence gate and calibration.}
+Disabling the calibrated competence gate at inference costs $-0.26$
+test mIoU on the full test set at full resolution. The veto floor
+contributes only within our single-seed noise band and we do not claim
+it. The train-time calibration loss is not separable by an inference
+toggle; we claim only its diagnostic effect (balanced per-modality
+reliability AUROC, Sec.~\ref{sec:analysis}), not an mIoU gain.
+
+\textbf{Attention-logit reliability biasing: a negative result.}
+Across five model generations spanning two backbone families (SAM2
+memory attention and the present cross-modal attention), injecting
+reliability as a pre-softmax additive bias on attention logits never
+helped: on the current architecture the toggle changes test mIoU by at
+most $0.03$ with fused-feature cosine similarity of $1.0$ (the bias is
+functionally inert), and on the strongest SAM2-generation variant it
+was a statistically significant net \emph{harm}
+($p=4.5\times10^{-22}$, paired per-image test). We report this
+placement finding as a contribution rather than hiding it: once
+per-modality LoRA absorbs modality adaptation, reliability information
+is useful where class decisions are formed (output gate and per-class
+router), not inside the attention operator. Removing the bias also
+restores the fused attention kernel at inference.
+
+\textbf{Frozen-backbone choice.}
+A controlled linear-probe on frozen backbones (identical head and
+data) gives DINOv3 ViT-L 40.51 test mIoU on RGB versus 28.90 for the
+SAM2 Hiera-B+ encoder ($+11.6$), and 35.48 versus 25.34 on depth
+($+10.1$); on thin structures the gap is starker (TrafficLight IoU
+32.2 vs.\ 8.27). Consistently, our four generations of SAM2-based
+reliability designs gained only $+0.7$ val mIoU in total, whereas the
+backbone swap alone contributed $+4.1$: fused-feature effective rank
+rises from 1.26 to 10.18 and cross-modal CKA from 0.02--0.16 to
+0.80--0.91, i.e., the frozen VFM removes the feature collapse that
+earlier reliability mechanisms were implicitly compensating for.
+
+\textbf{Per-modality LoRA.}
+Disabling a modality's LoRA adapters (frozen-backbone features
+instead) drops that modality's auxiliary pixel accuracy in all five
+conditions: by $+0.157$ to $+0.202$ for LiDAR and $+0.110$ to $+0.153$
+for depth (the modalities farthest from the RGB pretraining
+distribution), and by $+0.032$ to $+0.064$ (RGB) and $+0.020$ to
+$+0.050$ (event). All 48 adapter pairs (24 blocks $\times$ 2
+projections) remain active for every modality (0/48 dead), confirming
+that the single frozen encoder is genuinely multiplexed rather than
+defaulting to its RGB prior.
+
+\subsection{Per-Class and Per-Condition Analysis}
+\label{sec:analysis}
+
+\textbf{Per-condition test audit.}
+On the no-router test-best checkpoint, per-condition test mIoU is
+55.64 (cloud), 56.32 (fog), 54.56 (night), 56.31 (rain), and 55.41
+(sun) --- a spread of only 1.76 points. The large val--test gap of
+DELIVER is therefore \emph{not} an adverse-condition effect but a
+per-class transfer effect. To our knowledge this is the first
+published per-class, per-condition audit of the DELIVER \emph{test}
+split; competitors publish only aggregate test numbers, so
+Table~\ref{tab:sota} has no external per-condition column.
+
+\textbf{Benchmark ceiling.}
+Three classes are effectively dead for \emph{all} methods we could
+audit: Other (max IoU 5.6 across conditions), Wall (8.7), and Bridge
+(0.5) score near zero for our model, for the frozen DINOv3 linear
+probe, and for the official CMNeXt checkpoint
+(\todo{exact official CMNeXt per-class test numbers from the M0-a
+audit artifact}). We flag these as a benchmark ceiling: no fusion
+mechanism can be credited or blamed for them. Conversely, classes that
+were dead in our SAM2-generation models are recovered by the present
+design: Water $0.0\rightarrow5.4$, TrafficLight $12.4\rightarrow36.6$,
+Static $29.4\rightarrow39.1$ (five-condition means).
+
+\textbf{Reliability quality.}
+The calibration objective yields \emph{balanced} per-modality
+reliability: at night, the AUROC of the calibrated confidence as a
+correctness predictor is 0.85 / 0.78 / 0.87 / 0.70 for RGB / depth /
+event / LiDAR. Earlier generations either collapsed on non-RGB
+modalities (e.g., 0.84 / 0.63 / 0.26 / 0.38) or repaired non-RGB
+geometry at the cost of RGB (0.43 / 0.92 / 0.55 / 0.97); ours is the
+only generation with all four modalities above 0.70 without repair.
+
+\textbf{Modality contributions.}
+Drop-modality deltas (mIoU loss when a modality is removed at
+inference) show depth as the dominant complement ($+9.5$ to $+11.4$
+across conditions) and RGB rising from $+2.8$ (cloud) to $+8.0$
+(night); LiDAR adds ${\leq}1.2$, and event contributes ${\approx}0$ in
+all five conditions --- a known, lineage-wide limitation that fusion
+alone does not fix. Qualitative results under adverse conditions are
+shown in Fig.~\ref{fig:qual}, and the per-class audit, AUROC balance,
+and gating behavior are visualized in Fig.~\ref{fig:analysis}.
+
+\subsection{Fairness Protocol}
+\label{sec:fairness}
+
+For a clean reading of Table~\ref{tab:sota} we disclose all known
+asymmetries. \emph{Ours:} a larger frozen backbone (349.9\,M total
+parameters), though our 46.8\,M trainable parameters are fewer than
+the ${\sim}58.7$\,M \emph{total} of CMNeXt-B2 and comparable to
+trainable Swin-T pipelines (${\sim}79$\,M); the no-router variant used
+PhysAug (Sec.~\ref{sec:setup}, \todo{harmonized re-run}); the full
+model does not. \emph{Theirs:} DGFusion trains with ground-truth
+log-depth supervision and CLIP condition meta-text, and CAFuser with
+condition annotations; both use roughly a $2\times$ longer effective
+training schedule (ours: 200 epochs). \emph{Both directions:} no
+test-time augmentation on our side, matched input modalities, and
+val-only checkpoint selection for every headline claim.

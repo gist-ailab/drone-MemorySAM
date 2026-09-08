@@ -1,0 +1,292 @@
+% ============================================================
+% references.bib — ReliaDINO RA-L submission
+% Sources: vault relatedworks/ notes (verified-draft) + repo novelty doc.
+% Entries with "% TODO verify" lack full bibliographic verification
+% in the vault notes — check authors/venue/pages before camera-ready.
+% ============================================================
+
+% ---------- Benchmarks / datasets ----------
+
+@inproceedings{cmnext2023,
+  author    = {Zhang, Jiaming and Liu, Ruiping and Shi, Hao and Yang, Kailun and Rei{\ss}, Simon and Peng, Kunyu and Fu, Haodong and Wang, Kaiwei and Stiefelhagen, Rainer},
+  title     = {Delivering Arbitrary-Modal Semantic Segmentation},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2023},
+  note      = {arXiv:2303.01480}
+}
+
+@inproceedings{muses2024,
+  author    = {Br{\"o}dermann, Tim and Bruggemann, David and Sakaridis, Christos and Ta, Kevin and Liagouris, Odysseas and Corkill, Jason and Van Gool, Luc},
+  title     = {{MUSES}: The Multi-Sensor Semantic Perception Dataset for Driving under Uncertainty},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  year      = {2024},
+  note      = {arXiv:2401.12761}
+} % TODO verify — author list and arXiv id not in vault notes (dataset note lists official-paper extraction as pending)
+
+@inproceedings{mcubes2022,
+  author    = {Liang, Yupeng and Wakaki, Ryosuke and Nobuhara, Shohei and Nishino, Ko},
+  title     = {Multimodal Material Segmentation},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2022}
+} % TODO verify — MCubeS official paper not yet extracted in vault (06_deliver_muses_mcubes_dataset_note flags verification pending)
+
+% ---------- Multimodal / arbitrary-modal segmentation methods ----------
+
+@article{memorysam2025,
+  author  = {Liao, Chenfei and Zheng, Xu and Lyu, Yuanhuiyi and Xue, Haiwei and Cao, Yihong and Wang, Jiawen and Yang, Kailun and Hu, Xuming},
+  title   = {{MemorySAM}: Memorize Modalities and Semantics with Segment Anything Model 2 for Multi-modal Semantic Segmentation},
+  journal = {arXiv preprint arXiv:2503.06700},
+  year    = {2025}
+}
+
+@article{dgfusion2026,
+  author  = {Br{\"o}dermann, Tim and Sakaridis, Christos and Van Gool, Luc},
+  title   = {{DGFusion}: Depth-Guided Sensor Fusion for Robust Semantic Perception},
+  journal = {IEEE Robotics and Automation Letters},
+  year    = {2026},
+  note    = {arXiv:2509.09828}
+} % TODO verify — full author list / volume / pages (vault note has "Br{\"o}dermann et al., accepted RA-L 2026")
+
+@article{cafuser2025,
+  author  = {Br{\"o}dermann, Tim and Sakaridis, Christos and Fu, Yuqian and Van Gool, Luc},
+  title   = {{CAFuser}: Condition-Aware Multimodal Fusion for Robust Semantic Perception of Driving Scenes},
+  journal = {IEEE Robotics and Automation Letters},
+  year    = {2025},
+  note    = {arXiv:2410.10791}
+} % TODO verify — full author list / volume / pages
+
+@article{stitchfusion2024,
+  author  = {Li, Bingyu and Zhang, Da and Zhao, Zhiyuan and Gao, Junyu and Li, Xuelong},
+  title   = {{StitchFusion}: Weaving Any Visual Modalities to Enhance Multimodal Semantic Segmentation},
+  journal = {arXiv preprint arXiv:2408.01343},
+  year    = {2024}
+}
+
+@inproceedings{geminifusion2024,
+  author    = {Jia, Ding and Guo, Jianyuan and Han, Kai and Wu, Han and Zhang, Chao and Xu, Chang and Chen, Xinghao},
+  title     = {{GeminiFusion}: Efficient Pixel-wise Multimodal Fusion for Vision Transformer},
+  booktitle = {Proceedings of the International Conference on Machine Learning (ICML)},
+  year      = {2024},
+  note      = {arXiv:2406.01210}
+} % TODO verify — authors/venue/arXiv id filled from model knowledge, not present in vault notes
+
+@inproceedings{magic2024,
+  author    = {Zheng, Xu and Lyu, Yuanhuiyi and Zhou, Jiazhou and Wang, Lin},
+  title     = {Centering the Value of Every Modality: Towards Efficient and Resilient Modality-Agnostic Semantic Segmentation},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  year      = {2024}
+} % TODO verify — MAGIC original paper; vault verified only MAGIC++ (arXiv:2412.16876)
+
+@article{magicpp2024,
+  author  = {Zheng, Xu and Lyu, Yuanhuiyi and Zhou, Jiazhou and Wang, Lin},
+  title   = {{MAGIC++}: Efficient and Resilient Modality-Agnostic Semantic Segmentation via Hierarchical Modality Selection},
+  journal = {arXiv preprint arXiv:2412.16876},
+  year    = {2024}
+} % TODO verify — author list (vault has "Zheng et al.")
+
+@article{anyseg2024,
+  author  = {Zheng, Xu and Lyu, Yuanhuiyi and Zhou, Jiazhou and Wang, Lin},
+  title   = {Learning Robust Anymodal Segmentor with Unimodal and Cross-modal Distillation},
+  journal = {arXiv preprint arXiv:2411.17141},
+  year    = {2024}
+} % TODO verify — author list (vault has "Zheng et al.")
+
+@inproceedings{omnisegmentor2025,
+  author    = {Yin, Bowen and Cao, Jiao-Long and Zhang, Yuxuan and Chen, Zhaozhu and Cheng, Ming-Ming and Hou, Qibin},
+  title     = {{OmniSegmentor}: A Flexible Multi-Modal Learning Framework for Semantic Segmentation},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2025},
+  note      = {arXiv:2509.15096}
+} % TODO verify — exact title wording and author order (vault: "Yin, Cao, Zhang, Chen, Cheng, Hou (VCIP/Nankai)")
+
+@article{mmsamadapter2025,
+  author  = {Curti, Iacopo and Zama Ramirez, Pierluigi and Petrelli, Alioscia and Di Stefano, Luigi},
+  title   = {{MM SAM-Adapter}: Multimodal Adapter Injection into the Segment Anything Model for {RGB-X} Semantic Segmentation},
+  journal = {arXiv preprint arXiv:2509.10408},
+  year    = {2025}
+} % TODO verify — exact title (vault note gives authors + arXiv id; title paraphrased from note header)
+
+@article{mlesam,
+  author  = {Zhu, Chenyang and Xiao, Bin and Shi, Lin and Xu, Shoukun and Zheng, Xu},
+  title   = {Customize Segment Anything Model for Multi-Modal Semantic Segmentation with Mixture of {LoRA} Experts},
+  journal = {arXiv preprint arXiv:2412.04220},
+  year    = {2024}
+} % TODO verify — first names of authors (vault: "Zhu, C., Xiao, B., Shi, L., Xu, S., and Zheng, X.")
+
+@article{cmx2023,
+  author  = {Zhang, Jiaming and Liu, Huayao and Yang, Kailun and Hu, Xinxin and Liu, Ruiping and Stiefelhagen, Rainer},
+  title   = {{CMX}: Cross-Modal Fusion for {RGB-X} Semantic Segmentation with Transformers},
+  journal = {IEEE Transactions on Intelligent Transportation Systems},
+  year    = {2023},
+  note    = {arXiv:2203.04838}
+} % TODO verify — volume/pages
+
+@inproceedings{tokenfusion2022,
+  author    = {Wang, Yikai and Chen, Xinghao and Cao, Lele and Huang, Wenbing and Sun, Fuchun and Wang, Yunhe},
+  title     = {Multimodal Token Fusion for Vision Transformers},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2022},
+  note      = {arXiv:2204.08721}
+} % TODO verify — author list filled from model knowledge
+
+% ---------- Condition / reliability / uncertainty-aware fusion ----------
+
+@inproceedings{hyperdum2025,
+  author    = {Sanchez Aimar, Emanuel and others},
+  title     = {{HyperDUM}: Deterministic Uncertainty via Hyperdimensional Computing for Multimodal Fusion},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2025},
+  note      = {arXiv:2503.20011}
+} % TODO verify — authors and exact title missing from vault note 44 (only arXiv id + venue verified)
+
+@article{utfnet2023,
+  author  = {Wang, Qingwang and Yin, Cheng and Song, Haochen and Shen, Tao and Gu, Yanfeng},
+  title   = {{UTFNet}: Uncertainty-Guided Trustworthy Fusion Network for {RGB}-Thermal Semantic Segmentation},
+  journal = {IEEE Geoscience and Remote Sensing Letters},
+  volume  = {20},
+  year    = {2023}
+} % TODO verify — author list and article number filled from model knowledge
+
+@inproceedings{tmc2021,
+  author    = {Han, Zongbo and Zhang, Changqing and Fu, Huazhu and Zhou, Joey Tianyi},
+  title     = {Trusted Multi-View Classification},
+  booktitle = {Proceedings of the International Conference on Learning Representations (ICLR)},
+  year      = {2021},
+  note      = {arXiv:2102.02051}
+} % TODO verify — author list filled from model knowledge
+
+@article{relifusion2025,
+  author  = {Sadeghian, Reza and others},
+  title   = {{ReliFusion}: Reliability-Aware {LiDAR}-Camera Fusion for Robust {3D} Object Detection},
+  journal = {arXiv preprint arXiv:2502.01856},
+  year    = {2025}
+} % TODO verify — authors and exact title not in vault notes (only arXiv id + mechanism verified)
+
+@inproceedings{read2024,
+  author    = {Yang, Mouxing and Li, Yunfan and Zhang, Changqing and Hu, Peng and Peng, Xi},
+  title     = {Test-Time Adaptation against Multi-modal Reliability Bias},
+  booktitle = {Proceedings of the International Conference on Learning Representations (ICLR)},
+  year      = {2024}
+} % TODO verify — authors/title filled from model knowledge (vault has only "READ, ICLR'24, OpenReview TPZRq4FALB")
+
+@inproceedings{zheng2025entropy,
+  author    = {Zheng, Xu and others},
+  title     = {Reducing Unimodal Bias in Multi-Modal Semantic Segmentation with Multi-Scale Functional Entropy Regularization},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+  year      = {2025},
+  note      = {arXiv:2505.06635}
+} % TODO verify — authors and exact title not fully recorded in vault (note 03/08: "multi-scale functional entropy/Fisher regularization")
+
+% ---------- Near-occupants of reliability-in-attention (negative-result contrasts) ----------
+
+@article{primed2026,
+  author  = {{PRIMED authors}},
+  title   = {{PRIMED}: Modality-Prior-Guided Referring Audio-Visual Segmentation},
+  journal = {arXiv preprint arXiv:2605.07154},
+  year    = {2026}
+} % TODO verify — authors and exact title missing from vault note 60 (mechanism/equation verified only)
+
+@article{sae2026,
+  author  = {{SAE authors}},
+  title   = {Entropy-Driven Additive Attention Modulation for Mitigating {LVLM} Hallucination},
+  journal = {arXiv preprint arXiv:2603.16558},
+  year    = {2026}
+} % TODO verify — authors and exact title missing from vault note 45/58 (Eq. 7 mechanism verified only)
+
+@article{sam2long2024,
+  author  = {Ding, Shuangrui and Qian, Rui and Dong, Xiaoyi and Zhang, Pan and Zang, Yuhang and Cao, Yuhang and Guo, Yuwei and Lin, Dahua and Wang, Jiaqi},
+  title   = {{SAM2Long}: Enhancing {SAM 2} for Long Video Segmentation with a Training-Free Memory Tree},
+  journal = {arXiv preprint arXiv:2410.16268},
+  year    = {2024}
+} % TODO verify — author list filled from model knowledge
+
+% ---------- Foundation models ----------
+
+@inproceedings{sam2023,
+  author    = {Kirillov, Alexander and Mintun, Eric and Ravi, Nikhila and Mao, Hanzi and Rolland, Chloe and Gustafson, Laura and Xiao, Tete and Whitehead, Spencer and Berg, Alexander C. and Lo, Wan-Yen and Doll{\'a}r, Piotr and Girshick, Ross},
+  title     = {Segment Anything},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+  year      = {2023},
+  note      = {arXiv:2304.02643}
+}
+
+@article{sam2_2024,
+  author  = {Ravi, Nikhila and Gabeur, Valentin and Hu, Yuan-Ting and Hu, Ronghang and Ryali, Chaitanya and Ma, Tengyu and Khedr, Haitham and R{\"a}dle, Roman and Rolland, Chloe and Gustafson, Laura and Mintun, Eric and Pan, Junting and Alwala, Kalyan Vasudev and Carion, Nicolas and Wu, Chao-Yuan and Girshick, Ross and Doll{\'a}r, Piotr and Feichtenhofer, Christoph},
+  title   = {{SAM 2}: Segment Anything in Images and Videos},
+  journal = {arXiv preprint arXiv:2408.00714},
+  year    = {2024}
+}
+
+@article{dinov3_2025,
+  author  = {Sim{\'e}oni, Oriane and Vo, Huy V. and Seitzer, Maximilian and Baldassarre, Federico and Oquab, Maxime and Jose, Cijo and others},
+  title   = {{DINOv3}},
+  journal = {arXiv preprint arXiv:2508.10104},
+  year    = {2025}
+} % TODO verify — full author list and arXiv id filled from model knowledge (not in vault notes)
+
+@inproceedings{clip2021,
+  author    = {Radford, Alec and Kim, Jong Wook and Hallacy, Chris and Ramesh, Aditya and Goh, Gabriel and Agarwal, Sandhini and Sastry, Girish and Askell, Amanda and Mishkin, Pamela and Clark, Jack and Krueger, Gretchen and Sutskever, Ilya},
+  title     = {Learning Transferable Visual Models From Natural Language Supervision},
+  booktitle = {Proceedings of the International Conference on Machine Learning (ICML)},
+  year      = {2021}
+}
+
+% ---------- Parameter-efficient adaptation ----------
+
+@inproceedings{lora2022,
+  author    = {Hu, Edward J. and Shen, Yelong and Wallis, Phillip and Allen-Zhu, Zeyuan and Li, Yuanzhi and Wang, Shean and Wang, Lu and Chen, Weizhu},
+  title     = {{LoRA}: Low-Rank Adaptation of Large Language Models},
+  booktitle = {Proceedings of the International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+  note      = {arXiv:2106.09685}
+}
+
+@inproceedings{vitadapter2023,
+  author    = {Chen, Zhe and Duan, Yuchen and Wang, Wenhai and He, Junjun and Lu, Tong and Dai, Jifeng and Qiao, Yu},
+  title     = {Vision Transformer Adapter for Dense Predictions},
+  booktitle = {Proceedings of the International Conference on Learning Representations (ICLR)},
+  year      = {2023},
+  note      = {arXiv:2205.08534}
+}
+
+@article{samed2023,
+  author  = {Zhang, Kaidong and Liu, Dong},
+  title   = {Customized Segment Anything Model for Medical Image Segmentation},
+  journal = {arXiv preprint arXiv:2304.13785},
+  year    = {2023}
+}
+
+% ---------- Segmentation architectures / heads ----------
+
+@inproceedings{segformer2021,
+  author    = {Xie, Enze and Wang, Wenhai and Yu, Zhiding and Anandkumar, Anima and Alvarez, Jose M. and Luo, Ping},
+  title     = {{SegFormer}: Simple and Efficient Design for Semantic Segmentation with Transformers},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2021},
+  note      = {arXiv:2105.15203}
+}
+
+@inproceedings{maskformer2021,
+  author    = {Cheng, Bowen and Schwing, Alexander G. and Kirillov, Alexander},
+  title     = {Per-Pixel Classification is Not All You Need for Semantic Segmentation},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2021},
+  note      = {arXiv:2107.06278}
+}
+
+@inproceedings{mask2former2022,
+  author    = {Cheng, Bowen and Misra, Ishan and Schwing, Alexander G. and Kirillov, Alexander and Girdhar, Rohit},
+  title     = {Masked-Attention Mask Transformer for Universal Image Segmentation},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2022},
+  note      = {arXiv:2112.01527}
+}
+
+% ---------- Training details ----------
+
+@inproceedings{ohem2016,
+  author    = {Shrivastava, Abhinav and Gupta, Abhinav and Girshick, Ross},
+  title     = {Training Region-Based Object Detectors with Online Hard Example Mining},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2016}
+} % TODO verify — include only if OHEM loss is actually cited in the final training-details section

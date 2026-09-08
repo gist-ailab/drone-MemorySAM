@@ -1,0 +1,41 @@
+% ============================================================
+% Section 5 — Conclusion (body-only; \input from root.tex)
+% Numbers: fact_experiments.md (P36 final = TODO until run completes)
+% ============================================================
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented ReliaDINO, a multimodal semantic segmentation model that
+multiplexes a \emph{single frozen} DINOv3 ViT-L/16 across four sensing
+modalities through per-modality LoRA adapters, exchanges information with two
+cross-modal attention layers, and fuses the modalities with a calibrated
+competence gate and a per-class reliability-anchored router. Trained with
+segmentation labels only---no depth supervision, no condition
+annotations---ReliaDINO exceeds the previous best test-set result on
+DELIVER~\cite{cmnext2023} held by the more heavily supervised
+DGFusion~\cite{dgfusion2026}
+(\todo{final full-model test mIoU after training completes; best observed
+57.14 vs.\ 56.71, and 57.60 for the no-router variant under test-side
+selection / 56.64 under val-only selection}). Beyond the benchmark numbers,
+our controlled five-generation audit yields a placement lesson for
+reliability-aware fusion: self-derived reliability signals are actionable
+\emph{where class decisions are formed}---at the output gate and the
+per-class router---whereas injecting the same signals as pre-softmax
+attention-logit biases becomes a no-op, or a measurable harm, once
+per-modality low-rank adaptation of a strong frozen backbone has already
+aligned the modality representations.
+
+Limitations remain. Our evidence is so far confined to a single benchmark
+and a single seed, so we refrain from claims below one mIoU point; and the
+frozen-backbone recipe inherits a per-class ceiling that official baselines
+share (Wall, Bridge, and Other stay near zero for our model, for a linear
+probe of the backbone, and for the official CMNeXt
+model~\cite{cmnext2023}\todo{confirm official per-class test source (M0-a)
+before final wording}). Future work extends the recipe to
+MUSES~\cite{muses2024} and to aquatic scenes (MULTIAQUA), adds multi-seed
+verification, and transfers reliability-routed fusion from dense
+segmentation to multimodal detection.
+
+\section*{Acknowledgments}
+\todo{Funding sources and acknowledgments.}

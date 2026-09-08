@@ -1,0 +1,38 @@
+% ============================================================
+% fig:qual — qualitative comparison grid (PLACEHOLDER, assets TODO)
+% BODY-ONLY: \input inside a two-column {figure*} environment.
+% Planned grid: rows = conditions (night / fog / rain / corruption),
+% cols = RGB input / GT / baseline (CMNeXt or CAFuser) / ReliaDINO.
+% Asset sources (see figures/figure_plan.md, Fig. 4):
+%  - ours: tools/eval_per_domain.py masks; existing no-router masks at
+%    /drone_nas/drone/analysis_logs/P34_eval_20260713/per_domain/masks_best_<cond>/
+%  - baseline predictions: \todo (no local baseline checkpoint yet)
+% ============================================================
+\centering
+\setlength{\fboxsep}{0pt}%
+\providecommand{\qcell}{}\renewcommand{\qcell}[1]{\framebox{\parbox[c][2.2cm][c]{0.225\textwidth}{\centering\scriptsize #1}}}%
+\begin{tabular}{@{}c@{\;}c@{\,}c@{\,}c@{\,}c@{}}
+ & {\scriptsize RGB input} & {\scriptsize Ground truth} &
+   {\scriptsize \todo{CMNeXt or CAFuser}} & {\scriptsize ReliaDINO (ours)} \\
+\rotatebox{90}{\scriptsize night} &
+ \qcell{\todo{night RGB}} & \qcell{\todo{night GT}} &
+ \qcell{\todo{night baseline}} & \qcell{\todo{night ours}} \\
+\rotatebox{90}{\scriptsize fog} &
+ \qcell{\todo{fog RGB}} & \qcell{\todo{fog GT}} &
+ \qcell{\todo{fog baseline}} & \qcell{\todo{fog ours}} \\
+\rotatebox{90}{\scriptsize rain} &
+ \qcell{\todo{rain RGB}} & \qcell{\todo{rain GT}} &
+ \qcell{\todo{rain baseline}} & \qcell{\todo{rain ours}} \\
+\rotatebox{90}{\scriptsize corrupt.} &
+ \qcell{\todo{corruption RGB}} & \qcell{\todo{corruption GT}} &
+ \qcell{\todo{corruption baseline}} & \qcell{\todo{corruption ours}} \\
+\end{tabular}
+\caption{Qualitative results on the DELIVER test split under adverse
+conditions (rows: night, fog, rain, and a sensor-corruption case). Columns
+show the RGB input, ground truth, the prediction of
+\todo{CMNeXt/CAFuser baseline with checkpoint provenance}, and ReliaDINO.
+ReliaDINO preserves thin structures (poles, road lines, traffic lights) and
+remains stable where the RGB signal degrades, consistent with the
+reliability-driven gate and per-class router.
+\todo{Insert final-checkpoint predictions; add class-color legend strip.}}
+\label{fig:qual}

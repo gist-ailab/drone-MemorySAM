@@ -412,3 +412,77 @@ arXiv 2512.17450, dataset public (lmi.fe.uni-lj.si/en/multiaqua/), used by a MaC
 - CMNeXt Tab.2 / HyperDUM Tab.4 failure-case row alignment → visual PDF check pending.
 - MLE-SAM MUSES 74.8 split unstated; MCubeS resolution discrepancy (1224×1024 vs "1920×1080"); MUSES leaderboard login-gated (possible unseen server entries).
 - MAGIC/GeminiFusion/MemorySAM captions never literally print "val" — assignments rest on number-cluster consistency + repo code.
+
+## 2026-09-08 update (Track 4 — 전수 스윕 편입: venue 확정 · RobustSeg · 결측 강건성 표 · RGB-T 보조표)
+
+> 출처 = repo `.claude_logs/research/related-work-raw.md` 2026-09-08 절 3개(기본 스윕 / 결측 프로토콜 / CVPR·ECCV 2026 전수 스캔, develop 8f473d2·7a75468·d80d9dc). 편입 원칙(user 지시 "나중에 논문에서 빼더라도 비교는 하라"): **자체 보고치는 그대로 적고 원문 대조가 안 된 것은 [보류]로 남긴다. 지어내지 않는다.** 태그: [VERIFIED-PDF] 원문표 확인 · [PEER-REPORTED] 조사 세션 보고치(원문 미대조) · [보류] 수치 미확인 또는 표 포함 여부 미결.
+
+### U10. U3/U4/U5 기존 행의 venue·상태 갱신 (행 추가 아님, 주석 갱신)
+
+| 기존 행 | 갱신 내용 | 태그 |
+|---|---|---|
+| StitchFusion (U3a 68.18 / 70.34) | venue **ACM MM 2025 확정**. Swin-L 70.34의 split 미확인은 그대로(U9) | [VERIFIED-VENUE] |
+| OmniSegmentor (U3a 68.0) | NeurIPS 2025 확정 — 스텁이 아니라 정식 행으로 취급 | [VERIFIED-PDF] |
+| EQUISeg (U3a 67.90) | arXiv 2509.24505, 값은 val-cluster와 일치하나 표 렌더 미확인 → 유지 | [ABSTRACT-ONLY] |
+| MM-SAM-adapter (U3c / U4) | **IEEE 게재 확정**(Xplore 11162503). DELIVER·FMB·MUSES SOTA 주장. DELIVER RGB-D 57.35 / MUSES RGB-L 81.07은 U3c·U4대로. 게재본 수치가 arXiv와 같은지 **원문 대조 잔여** | [VERIFIED-PDF, 게재본 대조 보류] |
+| MLE-SAM (U3b 64.08 / U4 74.8) | DELIVER 64.08은 MemorySAM Tab.1과 같은 프로토콜(val 추정), MUSES 74.8은 split 미표기 유지 | 변동 없음 |
+| RobustSeg/RMMSS (U3b 60.16) | **CVPR 2026 본회의 게재 확정**(RMMSS 2505.12861의 확장). 코드 github.com/RobustSeg/RobustSeg. 결측 수치는 U11 | [VERIFIED-VENUE] |
+| GeminiFusion (U3a 66.9) | venue ICML 2024로 알려짐, 1차 출처 미확인. CVPRW'25 강건성 벤치에서 노이즈 급락 판정 → U11 | 변동 없음 |
+| MemorySAM (U3b 65.38) | **여전히 preprint**(@misc). "ICCV 2025" 표기는 1차 출처 확인 불가 → 미확인 | [VERIFIED-VENUE-NEGATIVE] |
+| EGFormer (U3b 59.53) | venue 미확인(ECCV 2026 리스트에 없음). 수치 변동 없음 | 변동 없음 |
+
+### U11. 결측·열화 강건성 표 (신설) — DELIVER 4모달, **프로토콜 계열별로 분리**
+
+⚠️ 두 계열의 "15조합 Mean"은 같은 이름이라도 **정의가 다르다**(벤치마크 계열 = 정규화 후 `zero_()`로 브랜치 통과; MAGIC 계열 = 결측 브랜치를 건너뜀). 같은 CMNeXt가 37.90 vs 25.25(또는 20.77)로 갈리므로 **한 표에 섞지 않는다.** 우리 EMM/RMM 실험은 (a) 계열에 맞춘다.
+
+**(a) 벤치마크 계열 — arXiv 2503.18445 (CVPRW'25 Best Paper, 코드 공개), EMM 15조합 단순평균 mIoU**
+
+| Method | Backbone | EMM avg | 비고 | 태그 |
+|---|---|---:|---|---|
+| MAGIC | SegFormer-B0 | 44.97 | | [VERIFIED-PDF] |
+| MAGIC++ | SegFormer-B0 | 44.85 | Bernoulli 기대값 E(p=0.2) **59.18**로 최고; RMM r=.25/.5/.75 = 53.92/49.31/47.06; NM High 8.70 | [VERIFIED-PDF] |
+| StitchFusion | MiT-B2 | 41.98 | | [VERIFIED-PDF] |
+| CMNeXt | MiT-B2 | 37.90 | NM High에서 2.31로 붕괴 | [VERIFIED-PDF] |
+| GeminiFusion | MiT-B2 | 37.07 | 과도한 모달 교환이 노이즈 전파 | [VERIFIED-PDF] |
+| **RobustSeg** (CVPR 2026) | AnySeg·CMNeXt 백본 | — | 자체 보고: missing-modality **+2.40%** / full-modality **−0.1%**(상대치, 절대 EMM avg 미기재) | [PEER-REPORTED] [보류: 절대치·계열 확인 후 행 확정] |
+
+- NM(노이즈) 주의: 릴리스 코드는 Gaussian 호출이 주석 처리돼 S&P만 적용 — 보고 시 정의 명시(raw 절 참조).
+
+**(b) MAGIC 계열 — modality-agnostic 15조합 Mean (결측 브랜치 건너뜀; 이 문서 §4.3/§6.2/§7.2 값과 같은 계열)**
+
+| Method | Backbone | 15조합 Mean | 출처 | 태그 |
+|---|---|---:|---|---|
+| RobustSeg/RMMSS | MiT-B0 | 49.89 (robustness mean) | U3b | [VERIFIED-PDF] |
+| FunEntropy-Reg (Reducing Unimodal Bias) | B0 line | 48.29 | §4.3 | [VERIFIED-PDF] |
+| MAGIC++ | SegFormer-B0 | 47.74 (anymodal-trained) | §7.2 | [VERIFIED-PDF] |
+| AnySeg | SegFormer-B0 | 46.64 | §6.2 | [VERIFIED-PDF] |
+| MAGIC | SegFormer-B0 | 40.49 | §4.3 | [VERIFIED-PDF] |
+| Any2Seg | — | CMNeXt 25.25 대비 "+19.79" 주장 | raw 절 | [PEER-REPORTED] [보류: 절대치 원문 대조] |
+| CMNeXt | B0 | 20.77 (§4.3) / 25.25 (Any2Seg 계열 인용) | 출처별 상이 | [VERIFIED-PDF, 괴리 원인 미확인] |
+| BiXFormer | — | "+2.75" 주장(무엇 대비인지 미확인) | 조사 세션 보고 | [보류: 원문 미대조] |
+
+### U12. MUSES · MCubeS 추가
+
+- MUSES: **URVIS 2026 워크숍(CVPR 2026) 멀티모달 판옵틱 챌린지 리포트 arXiv 2604.16984** — 리더보드 동향 각주 출처로 채택. GtA 82.39(camera-only) 웹 재확인은 이번에도 실패(Codabench 로그인) → 각주 유지, 제출 전 재확인 의무.
+- MUSES: MM-SAM-adapter 2모달 test 우위(81.07 RGB-L)는 U4대로. MLE-SAM 74.8 split 미표기 유지.
+- MCubeS: U5 순위 변동 없음(StitchFusion Swin-L 55.9 > MMSFormer 53.11(IEEE OJSP 2024) > MemorySAM 52.88 > U3M 51.69). MAGIC++·StitchFusion B4 값 원문 대조 필요 [보류].
+- 신규 후보 CHARM: 수치·venue 미확인 → **스텁 행 없이 이름만 기록** [보류].
+
+### U13. RGB-T 보조표 (FMB / MFNet / PST900) — 논문에 실을지 미결, 비교 기록용 [전부 보류]
+
+| Method | venue | FMB | MFNet | PST900 | 태그 |
+|---|---|---:|---:|---:|---|
+| SHIFNet | IROS 2025 | 67.8 | — | 89.8 | [PEER-REPORTED] |
+| Frequency-Guided RGB-T Fusion (2605.26273) | CVPR 2026 **PBVS 워크숍**(본회의 아님) | — | 61.73 | 86.24 | [PEER-REPORTED] [워크숍 포함 여부 미결] |
+| RSGMamba (2604.12319) | arXiv | — | 61.1 | 88.9 | [VERIFIED-PDF, raw 절] |
+| Sigma (2404.04256) | WACV 2025 | — | 61.3? | 88.6? | [보류: 출처 간 불일치, 원문 재확인] |
+| SARTM | — | — | — | — | [보류: 수치 미확인] |
+
+- 우리 벤치(DELIVER/MUSES/MCubeS)가 아니므로 본표 편입 대상이 아니다. RGB-T 보조표를 쓸 경우에만 원문 대조 후 승격.
+
+### U14. 편입 판정 요약 (조사 세션 회신용)
+
+- **채택(주석 갱신)**: StitchFusion venue, OmniSegmentor 정식 행, MM-SAM-adapter IEEE 게재, RobustSeg CVPR 2026, MemorySAM preprint 유지.
+- **채택(신설)**: U11(a) 벤치마크 계열 5행, U11(b) 계열 분리 표, U12 URVIS 리포트 각주.
+- **보류**: RobustSeg 절대 EMM 값, BiXFormer +2.75, Any2Seg 절대치, CHARM, MAGIC++/StitchFusion MCubeS 원문 대조, U13 RGB-T 전부, Sigma 수치, SARTM.
+- **미편입(근거 없음)**: 없음 — 조사 세션이 제시한 후보 전부 채택 또는 보류로 기록됨.

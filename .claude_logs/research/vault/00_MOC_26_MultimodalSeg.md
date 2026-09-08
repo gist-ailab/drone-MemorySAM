@@ -10,6 +10,24 @@ status: active
 
 # 26_MultimodalSeg — Map of Content
 
+<!-- HERMES:CANONICAL-STRUCTURE:START -->
+## Canonical vault layout — 2026-07-22
+
+> 이 절이 아래의 과거 folder-layout 설명보다 우선한다. 배치 규칙은 [[../_meta/structure|Research Vault Structure]]를 따른다. 기존 MOC 파일명은 링크 안정성을 위해 유지한다.
+
+| 영역 | 현재 진입점 / 용도 |
+|---|---|
+| Sources | [[sources/00_MOC_sources|source MOC]] · raw/DB/PDF |
+| Related works | [[relatedworks/00_relatedworks_index|related-work index]] |
+| Reports | [[reports/manuscript/00_PAPER_INDEX|manuscript index]] · `reports/products/`, `reports/novelty/`, `reports/design/`, `reports/experiments/`, `reports/presentations/` |
+| Project concepts | [[concepts/08_rf_detr_ko|RF-DETR KO]] · [[concepts/08_rf_detr_en|RF-DETR EN]] |
+| Shared concepts | [[../_concepts/00_moc_concepts|global concept MOC]] |
+| Videos | `videos/notebooklm/` = NotebookLM 산출물, `videos/demos/` = demo |
+| Archive | `_archive/`는 현행 연구 경로가 아니며 검색·링크 감사의 기본 대상에서 제외 |
+<!-- HERMES:CANONICAL-STRUCTURE:END -->
+
+> 🤖 AI 에이전트(헤르메스 등)는 작업 전 [[../00_AGENT_PROTOCOL_HERMES|에이전트 프로토콜]]을 먼저 읽고 준수할 것 (기록 규약·금지사항·격리 폴더).
+
 ## Research goal
 
 Write a paper on **semantic segmentation using multimodal sensor data** — RGB, thermal, event, LiDAR/depth — with an applied emphasis on solving object-detection/perception tasks using multiple sensors.
@@ -43,9 +61,11 @@ Sub-project(P32, P33 …) 문서는 전용 폴더 대신 **위 타입 폴더에 
 - [[PROJECT_TRACKING_26_MultimodalSeg]] — live project status board
 - [[issues/P32_정량검증_실패분석_20260708|P32 정량검증+실패분석 (2026-07-08)]] — **P32 최종 성적 + 4축 독립 검증** (misalloc=증상, event/lidar=잉여, CoRB attn-bias 순손해, sun 하드씬 NEW)
 - [[architecture/P33_v2_설계개정_20260708|P33-v2 설계 개정 (2026-07-08)]] — CG-MoD 적대적 비판 + 문헌 3축: class-transfer 복구 1순위, dropout+distillation, soft gate(corr_veto), CoRB 제거
+- [[architecture/P33_v2_설계확장_구현상세_20260710|P33-v2 설계확장 구현상세 (2026-07-10)]] — 미구현 모듈(M0 절차/M1 class-transfer/M2 KD/M3 완전형 게이트) 코드-seam 수준 상세 설계 + ablation 사다리 재정렬
 - [[ideas/brainstorm_next_arch_20260708|차세대 백본 브레인스토밍 (Cowork, 검증됨)]] — 카드 A(DINOv3-RBMA)/B(SAM2 v2) 릴레이; P33-v2의 global escape가 카드 A 전환 트리거
 - [[00_P32_CoRB_index\|P32_CoRB index]] — P32-B CoRB folder MOC (reports, PDF, figures)
-- [[products/P32_CoRB_리포트\|P32_CoRB 리포트 (그림판)]] — our-method report: why P28 failed and what P32-B changes (self-entropy → corroboration), with figures
+- [[00_P34_ReliaDINO_index\|P34_ReliaDINO index]] — P34/P35/P36 ReliaDINO 세대 + MUSES 진출 (노벨티 정산: 제안 모듈 ≈0, 기여는 백본+per-modal LoRA)
+- [[26_MultimodalSeg/reports/products/P32_CoRB_리포트|P32_CoRB 리포트 (그림판)]] — our-method report: why P28 failed and what P32-B changes (self-entropy → corroboration), with figures
 - [[synthesis/P32_CoRB_novelty_risk_register]] — consolidated novelty risk register across RBMA-mechanism / RBMA-signal / CoRB (most-dangerous-first threat table)
 - [[relatedworks/49_corb_novelty_defense]] — CoRB (P32-B) novelty defense: 4-pillar claim, RSGMamba/MAGIC++ near-misses, posterior-Bhattacharyya discriminator
 

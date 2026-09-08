@@ -1,0 +1,20 @@
+% ------------------------------------------------------------------
+% 0_abstract.tex — body-only (\input into root.tex)
+% ------------------------------------------------------------------
+% TITLE OPTIONS (pick one in root.tex):
+% (1) ReliaDINO: Frozen Vision Foundation Models with Per-Modality
+%     Low-Rank Adaptation and Reliability-Anchored Fusion for
+%     Multimodal Semantic Segmentation
+% (2) One Frozen Backbone, Four Sensors: Reliability-Anchored
+%     Multimodal Semantic Segmentation with DINOv3 and Per-Modality LoRA
+% (3) Where Should Sensor Reliability Act? Calibrated Competence Gating
+%     and Per-Class Routing for Multimodal Semantic Segmentation
+% ------------------------------------------------------------------
+
+\begin{abstract}
+Semantic segmentation for robots operating in adverse conditions must fuse complementary sensors whose reliability varies with the environment, yet current state-of-the-art fusion methods depend on supervision beyond segmentation labels---ground-truth depth or condition annotations paired with text encoders---and on fusion backbones trained from scratch. We present \emph{ReliaDINO}, which instead multiplexes a single \emph{frozen} DINOv3 ViT-L/16 across RGB, depth, event, and LiDAR inputs through independent per-modality low-rank adapters ($\approx$3.1M parameters), exchanges information with two cross-modal attention layers, and applies self-derived reliability where class decisions are formed: a calibrated competence gate over modality features and a per-class reliability-anchored router over per-modality posteriors. Trained with segmentation labels only, ReliaDINO reaches \todo{final: currently 57.14, training in progress} mIoU on the DELIVER test benchmark, surpassing the strongest published four-modality method, DGFusion (56.71), which requires ground-truth log-depth supervision and condition meta-text. We further report a systematic negative result: across five model generations, injecting the same reliability signals as pre-softmax attention-logit biases is ineffective or harmful once per-modality adaptation aligns the representations---locating the output gate and router, not the attention logits, as the effective site for reliability. We also contribute the first per-class audit of the DELIVER test split and a strictly validation-based checkpoint-selection protocol.
+\end{abstract}
+
+% \begin{IEEEkeywords}
+% Sensor Fusion, Semantic Scene Understanding, Deep Learning for Visual Perception, Computer Vision for Transportation
+% \end{IEEEkeywords}

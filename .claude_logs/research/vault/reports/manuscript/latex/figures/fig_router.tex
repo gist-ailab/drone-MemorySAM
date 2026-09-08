@@ -1,0 +1,106 @@
+% ============================================================
+% fig:router — Per-class Reliability-anchored Router (PRR) detail
+% BODY-ONLY: \input inside a single-column {figure}.
+% Preamble needs: \usepackage{tikz, xcolor, amsmath, amssymb}
+%   \usetikzlibrary{positioning, arrows.meta, calc}
+% Structure source: notes/fact_method.md §6.
+% Suggested caption (place in the figure env):
+%   \caption{Per-class reliability-anchored router. A zero-initialized
+%   per-modality head $g_m$ on the pre-fusion features is anchored by the
+%   detached calibrated reliability $r_m$; a softmax over modalities yields
+%   per-class, per-pixel routing weights that mix the per-modality
+%   posteriors $z_m$ into a residual correction scaled by a
+%   zero-initialized $\alpha$. At initialization the model is exactly the
+%   no-router variant, and routing follows reliability alone (collapse-safe).
+%   Motivation: the scalar competence gate anti-selects per class --- e.g.\
+%   for road lines at night the per-modality competence is 0.80 (RGB) vs.\
+%   0.00 (depth), yet the scalar gate assigns depth a weight of 0.43; a
+%   per-class router lets each class route to the modality that sees it.}
+% ============================================================
+\definecolor{cRGB}{RGB}{213,94,0}
+\definecolor{cDep}{RGB}{0,114,178}
+\definecolor{cEvt}{RGB}{230,159,0}
+\definecolor{cLid}{RGB}{0,158,115}
+\definecolor{cRel}{RGB}{136,78,160}
+\definecolor{cGray}{RGB}{120,120,120}
+\definecolor{OursBlue}{RGB}{0,90,181}
+\begin{tikzpicture}[font=\scriptsize, >={Stealth[length=1.5mm]}, line cap=round,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              minimum height=7mm},
+  card/.style={draw, fill=white, minimum width=5.5mm, minimum height=4.5mm,
+              inner sep=0pt},
+  note/.style={draw=cGray, fill=cGray!8, rounded corners=2pt, text=cGray,
+              align=left, inner sep=3pt, font=\tiny},
+  opn/.style={circle, draw, thick, inner sep=0.5pt, font=\footnotesize},
+  flow/.style={->, thick},
+  sig/.style={->, cRel, thick}]
+
+  % ---------- inputs (labels above the tokens) ----------
+  \foreach \i/\c in {3/cLid,2/cEvt,1/cDep,0/cRGB}
+    \node[card, draw=\c] (F\i) at (0.6+\i*0.09, 6.0+\i*0.09) {};
+  \node[align=center, font=\tiny] at (0.75,6.75) {$F_m$ (pre-fusion)\\$(1024,64^2)$};
+
+  \node[card, draw=cRel, fill=cRel!12] (rm) at (2.8,6.05) {};
+  \node[align=center, font=\tiny, text=cRel] at (2.8,6.75)
+    {$r_m$ calibrated\\reliability $(1,64^2)$};
+
+  \foreach \i/\c in {3/cLid,2/cEvt,1/cDep,0/cRGB}
+    \node[card, draw=\c] (z\i) at (4.5+\i*0.09, 6.0+\i*0.09) {};
+  \node[align=center, font=\tiny] at (4.65,6.75) {$z_m$ aux logits\\$(C,64^2)$};
+
+  % ---------- router head ----------
+  \node[box, minimum width=34mm] (gm) at (0.9,4.5)
+    {$g_m$: Conv$1{\times}1$ $1024{\to}64$\\
+     $\to$ ReLU $\to$ Conv$1{\times}1$ $64{\to}C$\\
+     \tiny last conv \textbf{zero-init}};
+  \draw[flow] (F0.south) -- (gm.north);
+
+  % ---------- anchor add ----------
+  \node[opn] (add1) at (2.4,3.4) {$+$};
+  \draw[flow] (gm.south) |- (add1.west);
+  \draw[sig] (rm.south) -- (2.8,3.4) -- (add1.east)
+    node[pos=0.35, right, font=\tiny, text=cRel]
+    {$\lambda_{\mathrm{anc}}\,\mathrm{sg}[r_m]$};
+
+  % ---------- softmax over modalities ----------
+  \node[box, minimum width=28mm] (smax) at (2.4,2.55)
+    {softmax over modalities $m$};
+  \draw[flow] (add1.south) -- (smax.north);
+  \node[font=\tiny, anchor=west, text=OursBlue] at (smax.east)
+    {\;$w^{r}\in\mathbb{R}^{M\times C\times h\times w}$};
+  \node[font=\tiny, anchor=north, text=OursBlue] at (smax.south)
+    {per-class, per-pixel modality weights};
+
+  % ---------- routed mixture ----------
+  \node[opn] (mul) at (2.4,1.35) {$\times$};
+  \draw[flow] ($(smax.south)+(0,-0.3)$) -- (mul.north);
+  \draw[flow] (z0.south) -- (4.5,1.35) -- (mul.east)
+    node[pos=0.8, above, font=\tiny] {$z_m$};
+  \node[font=\tiny, anchor=north west] at ($(mul.south)+(0.05,0)$) {$\sum_m$};
+  \node[box] (zroute) at (0.7,1.35) {$z^{\mathrm{route}}$\\$(C,64^2)$};
+  \draw[flow] (mul.west) -- (zroute.east);
+
+  % ---------- residual add ----------
+  \node[box, minimum width=16mm] (alpha) at (0.7,0.3)
+    {$\times\,\alpha$\\ \tiny learnable, \textbf{zero-init}};
+  \draw[flow] (zroute.south) -- (alpha.north);
+  \node[opn] (add2) at (3.1,0.3) {$+$};
+  \draw[flow] (alpha.east) -- (add2.west)
+    node[midway, above, font=\tiny] {up$\times 4$};
+  \node[box, draw=cGray, text=cGray] (headstub) at (3.1,-0.75)
+    {Head(FPN($F^{\mathrm{fused}}$))};
+  \draw[flow, cGray] (headstub.north) -- (add2.south);
+  \node[font=\normalsize, anchor=west] (yhat) at (4.2,0.3) {$\hat y$};
+  \draw[flow] (add2.east) -- (yhat.west);
+
+  % ---------- side notes ----------
+  \node[note, text width=25mm, anchor=north west] at (5.0,4.9)
+    {\textbf{at init:} $g_m{\equiv}0$, $\alpha{=}0$\\
+     $\Rightarrow$ $w^r=\mathrm{softmax}(\lambda_{\mathrm{anc}} r_m)$,\\
+     output = no-router model\\ (collapse-safe start)};
+  \node[note, text width=25mm, anchor=north west] at (5.0,2.9)
+    {\textbf{decisive regularizer}\\
+     $\mathcal{L}_{\mathrm{route}}=\lambda_{\mathrm{reg}}(H_{\mathrm{pix}}-H_{\mathrm{bar}})$\\
+     commit per pixel/class,\\ stay diverse on average\\
+     ($\lambda_{\mathrm{reg}}{=}0.01$)};
+\end{tikzpicture}

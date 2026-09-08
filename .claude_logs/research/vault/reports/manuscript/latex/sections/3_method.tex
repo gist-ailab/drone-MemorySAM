@@ -1,0 +1,271 @@
+% ============================================================
+% Section 3 — Method (body-only; \input from root.tex)
+% Model naming: ReliaDINO (full = with PRR router);
+% "ReliaDINO (no router)" = ablation variant. No internal codes.
+% All numbers from notes/fact_method.md; missing items marked \todo{}.
+% ============================================================
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Overview}
+\label{sec:method:overview}
+
+Fig.~\ref{fig:arch} gives an overview of ReliaDINO. Let
+$\mathcal{M}=\{\mathrm{rgb},\mathrm{depth},\mathrm{event},\mathrm{lidar}\}$
+denote the modality set with $M=|\mathcal{M}|=4$, and let $C$ be the number of
+semantic classes ($C{=}25$ on DELIVER). Each modality is rendered as a
+three-channel image $x_m\in\mathbb{R}^{B\times 3\times H\times W}$
+($H{=}W{=}1024$) and encoded by a \emph{single shared frozen} DINOv3
+ViT-L/16 backbone~\cite{dinov3_2025} $E(\cdot;\theta_0)$, whose attention
+projections carry independent per-modality low-rank adapters
+$\Delta\theta_m$ (Sec.~\ref{sec:method:lora}). This yields one stride-16
+token map $F_m\in\mathbb{R}^{B\times d\times h\times w}$ per modality
+($d{=}1024$, $h{=}w{=}64$). A light auxiliary decoder $D_m$ produces
+per-modality class logits $z_m=D_m(F_m)$, from which all reliability signals
+are derived: a calibrated self-entropy reliability $r_m$, and a
+corroboration-based veto signal $v_m$ (Sec.~\ref{sec:method:fusion}).
+The modalities exchange information through two shared cross-modal attention
+layers, producing attended maps $\tilde F_m$, which are fused by a calibrated
+competence gate with weights $w^{g}_m$ and a training-free veto floor. The
+fused map passes through a ViTDet-style feature
+pyramid\todo{cite ViTDet} and a simple FPN segmentation head. Finally, the
+Per-class Reliability-anchored Router (PRR, Sec.~\ref{sec:method:router};
+Fig.~\ref{fig:router}) computes per-class, per-pixel modality weights
+$w^{r}$ that mix the per-modality logits $z_m$ into a routed prediction,
+added to the head output as a zero-initialized residual:
+\begin{equation}
+\hat y \;=\; \mathrm{Head}\big(\mathrm{FPN}(F^{\mathrm{fused}})\big)
+\;+\; \alpha\cdot \mathrm{up}_{\times 4}\!\big(z^{\mathrm{route}}\big),
+\label{eq:overview}
+\end{equation}
+where $\alpha$ is a learnable scalar initialized to zero. Reliability thus
+enters the model at exactly two places---the output-level competence gate and
+the per-class router---and, deliberately, \emph{not} inside the attention
+logits (Sec.~\ref{sec:method:negative}).
+
+\subsection{Frozen Backbone with Per-Modality Low-Rank Adaptation}
+\label{sec:method:lora}
+
+All $\theta_0$ backbone parameters remain frozen; modality identity enters the
+encoder \emph{only} through the active LoRA~\cite{lora2022} adapter, which is
+switched per forward pass ($M$ sequential forwards per step). For every one of
+the 24 attention blocks, LoRA is injected on the fused query--key--value
+projection $W^{qkv}_{\ell}$, restricted to the query and value output slices
+(the key slice is untouched), following the LoRA-on-promptable-segmenter
+convention~\cite{samed2023}. For block $\ell$ and active modality $m$, with
+token input $x\in\mathbb{R}^{d}$,
+\begin{equation}
+\begin{aligned}
+{}[q;\,k;\,v] &= W^{qkv}_{\ell}x + b^{qkv}_{\ell},\\
+q &\mathrel{+}= \tfrac{\alpha_L}{r}\, B^{q}_{m,\ell} A^{q}_{m,\ell}\, x,
+\qquad
+v \mathrel{+}= \tfrac{\alpha_L}{r}\, B^{v}_{m,\ell} A^{v}_{m,\ell}\, x,
+\end{aligned}
+\label{eq:lora}
+\end{equation}
+with $A\in\mathbb{R}^{r\times d}$, $B\in\mathbb{R}^{d\times r}$, rank $r=8$,
+and $\alpha_L=r$ so that the effective scale is $1$. The $B$ matrices are
+zero-initialized, so every modality branch starts as the identity mapping of
+the pretrained backbone. This design \emph{multiplexes} one visual foundation
+model across four heterogeneous sensors: each modality receives its own
+low-rank subspace for input-statistics adaptation, while the frozen weights
+prevent catastrophic forgetting of the pretrained representation. The
+adapters total $4\times r\,d$ parameters per (block, modality), i.e.\
+$\approx$3.1\,M parameters for all $24\times 4$ adapters---roughly $1\%$ of
+the frozen backbone's parameters. The no-router variant totals 349.9\,M
+parameters of which 46.8\,M (13.4\%) are trainable (adapters, fusion,
+decoders, head); the router adds only $\approx$0.27\,M
+(\todo{exact full-model parameter count from its training log}).
+
+\subsection{Cross-Modal Attention Fusion}
+\label{sec:method:fusion}
+
+\subsubsection{Cross-modal attention}
+Tokens of modality $m$, $t_m\in\mathbb{R}^{B\times N\times d}$ ($N{=}hw$),
+attend to the concatenated tokens of the other $M{-}1$ modalities through two
+pre-norm attention blocks whose weights are shared across modalities
+($n_h{=}8$ heads, MLP ratio $4$):
+\begin{equation}
+\mathrm{Attn}(t_m) = \mathrm{softmax}\!\Big(\tfrac{QK^{\top}}{\sqrt{d/n_h}}\Big)V,
+\label{eq:xattn}
+\end{equation}
+\begin{equation}
+t_m \leftarrow t_m + W_{\mathrm{proj}}\,\mathrm{Attn}(t_m),\quad
+t_m \leftarrow t_m + \mathrm{MLP}\big(\mathrm{LN}(t_m)\big),
+\end{equation}
+where $Q$ derives from $t_m$ and $K,V$ from
+$\mathrm{concat}\{t_j\}_{j\neq m}$. This generalizes memory
+attention over video frames~\cite{sam2_2024,memorysam2025} to
+``frames''\,$=$\,modalities, but---unlike our earlier
+designs---the attention in Eq.~\eqref{eq:xattn} is \emph{pure}: no
+reliability bias is added to its logits (Sec.~\ref{sec:method:negative}),
+which also permits fused attention kernels. The output tokens are reshaped
+back to per-modality maps $\tilde F_m$.
+
+\subsubsection{Calibrated reliability}
+Each auxiliary decoder ($\mathrm{Conv}3{\times}3\!\to\!\mathrm{GN}\!\to\!
+\mathrm{GELU}\!\to\!\mathrm{Conv}1{\times}1$) predicts per-modality class
+logits $z_m$ at token resolution. With a learned per-modality temperature
+$T_m=\exp(\theta^{T}_m)$ (clamped to $[0.05,20]$, initialized to $1$), the
+calibrated self-entropy reliability is
+\begin{equation}
+\hat p_m = \mathrm{softmax}(z_m/T_m),\qquad
+r_m = 1-\frac{H(\hat p_m)}{\log C},
+\label{eq:relcal}
+\end{equation}
+with $H(\hat p)=-\sum_{k=1}^{C}\hat p_k\log\hat p_k$; $r_m$ is a per-pixel
+map in $[0,1]$. All signals are computed from detached logits, so the
+decision path does not back-propagate into the decoders through them.
+
+\subsubsection{Competence gate with veto floor}
+The attended maps are fused by a softmax gate over modalities,
+\begin{equation}
+w^{g} = \mathrm{softmax}_{m}\!\big(r_m/\tau\big),\qquad \tau=0.25,
+\label{eq:gate}
+\end{equation}
+computed pixel-wise. The gate consumes only the \emph{calibrated}
+self-reliability $r_m$; cross-modal corroboration is intentionally excluded
+here, since agreement with the consensus mis-ranks degraded sensors as
+reliable in easy regions. Corroboration instead drives a training-free
+\emph{veto}: with uncalibrated confidences $s_m=1-H(\mathrm{softmax}(z_m))/\log C$,
+leave-one-out consensus $c_m=\frac{1}{M-1}\big(\sum_j p_j-p_m\big)_{+}$, and
+Bhattacharyya corroboration
+$\mathrm{corr}_m=\sum_{k}\sqrt{p_{m,k}\,c_{m,k}}$, the veto signal blends in
+a unique-confidence guard $g_m=\mathrm{clamp}(s_m-\max_{j\neq m}s_j,0,1)$
+that protects a modality that is alone-confident where the consensus is
+blind:
+\begin{equation}
+v_m = \mathrm{clamp}\big(g_m s_m + (1-g_m)\,\mathrm{corr}_m,\ 0,\ 1\big).
+\label{eq:veto}
+\end{equation}
+Wherever $v_m<\delta$ (the modality is both consensus-contradicted and
+self-unconfident) its gate weight is capped and the weights renormalized:
+\begin{equation}
+w^{g}_m \leftarrow \min\!\big(w^{g}_m,\kappa\big)\ \text{if}\ v_m<\delta,
+\qquad
+w^{g} \leftarrow w^{g}\big/\textstyle\sum_m w^{g}_m,
+\label{eq:vetofloor}
+\end{equation}
+with $\delta=0.10$, $\kappa=0.05$. The fused representation is the gated sum
+$F^{\mathrm{fused}}=\sum_m w^{g}_m\odot\tilde F_m$; the final configuration
+uses this gated fusion (rather than an equal average), which contributes
+$+0.26$ test mIoU at full resolution (Sec.~\ref{sec:experiments}). A single
+feature pyramid then expands $F^{\mathrm{fused}}$ to strides
+$\{4,8,16,32\}$, and a query-free head sums all levels at stride~4, applies
+two $3{\times}3$ convolution blocks and a $1{\times}1$ classifier.
+
+\subsection{Per-Class Reliability-Anchored Router}
+\label{sec:method:router}
+
+The scalar gate of Eq.~\eqref{eq:gate} assigns one weight per pixel to each
+modality---the same weight for every class. This provably anti-selects for
+classes whose best sensor is globally weak: e.g., at night we measure
+per-modality competence for road lines of $0.798$ (RGB) versus $0.001$
+(depth), yet the scalar gate still allocates $0.432$ of the mixture to depth.
+The PRR (Fig.~\ref{fig:router}) therefore routes \emph{per class}: for each
+class $k$ and pixel it produces modality weights
+\begin{equation}
+w^{r} = \mathrm{softmax}_{m}\!\Big(g_m(F_m) + \lambda_{\mathrm{anc}}\,
+\mathrm{sg}[r_m]\Big)\in\mathbb{R}^{M\times B\times C\times h\times w},
+\label{eq:router}
+\end{equation}
+with $\lambda_{\mathrm{anc}}=1$, where $g_m$ is a two-layer $1{\times}1$
+convolutional head ($1024\!\to\!64\!\to\!C$) on the \emph{pre-fusion}
+features, $\mathrm{sg}[\cdot]$ is the stop-gradient operator, and $r_m$
+broadcasts over the $C$ class channels. The routed prediction is a mixture of
+the per-modality logits, $z^{\mathrm{route}}=\sum_m w^{r}_m\odot z_m$, added
+to the head output as in Eq.~\eqref{eq:overview}; the router is part of the
+inference graph.
+
+Two design choices make this router trainable where purely learned gates were
+not. First, the last convolution of $g_m$ is \emph{zero-initialized} (weights
+and bias) and $\alpha$ in Eq.~\eqref{eq:overview} starts at zero: at
+initialization the model is exactly the no-router model and the routing, once
+$\alpha$ grows, is initially driven purely by the calibrated reliability
+anchor. In our experience, learned fusion gates trained from random
+initialization on this task repeatedly collapsed to a constant,
+input-independent mixture; anchoring the softmax logits to a training-free
+reliability signal removes the flat-gradient start that causes this collapse,
+while the learned term retains the capacity to correct the anchor per class.
+Second, a \emph{decisive} regularizer replaces the naive diversity reward
+(which provably pushes the router \emph{toward} uniformity): with per-pixel
+mixing entropy
+$H_{\mathrm{pix}}=\mathbb{E}_{b,k,s}\big[-\sum_m w^{r}_m\log w^{r}_m\big]$
+and batch-marginal entropy $H_{\mathrm{bar}}$ computed on
+$\bar w_m=\mathbb{E}_{b,s}[w^{r}_m]$ per class and then averaged,
+\begin{equation}
+\mathcal{L}_{\mathrm{route}} =
+\lambda_{\mathrm{reg}}\big(H_{\mathrm{pix}} - H_{\mathrm{bar}}\big),
+\qquad \lambda_{\mathrm{reg}}=0.01,
+\label{eq:routereg}
+\end{equation}
+i.e., the router is rewarded for committing per pixel and class (low local
+entropy) while keeping all modalities in use on average (high marginal
+entropy), preventing global single-modality collapse.
+
+\subsection{Training-Only Reliability Supervision}
+\label{sec:method:training}
+
+The auxiliary decoders are trained with two objectives that shape the
+reliability signals; at inference they remain in the graph only as the signal
+source for the gate and router (and as router mixture inputs). First, deep
+supervision: each $z_m$ is bilinearly resized to quarter label resolution and
+supervised with cross-entropy,
+$\mathcal{L}_{\mathrm{auxCE}}=\frac{1}{M}\sum_m
+\mathrm{CE}\big(\mathrm{up}(z_m),\,y{\downarrow_4}\big)$.
+Second, a correctness-contrastive calibration loss drives the temperatures
+$T_m$ and the decoders so that confidence \emph{ranks} correctness: with
+normalized entropy $e_m = H(\mathrm{softmax}(z_m/T_m))/\log C$ and calibrated
+prediction $\hat k=\arg\max_k \hat p_{m,k}$,
+\begin{equation}
+\mathcal{L}_{\mathrm{cal}} = \frac{1}{M}\sum_{m}\Big[
+\mathbb{E}_{\hat k\neq y}\big[\,1-e_m\,\big]
++\mathbb{E}_{\hat k = y}\big[\,e_m\,\big]\Big],
+\label{eq:calib}
+\end{equation}
+raising entropy on wrong pixels and lowering it on correct ones, which
+directly optimizes the reliability signal's correctness-ranking (AUROC). The
+total objective is
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\mathrm{OHEM}}(\hat y, y)
++ \lambda_{\mathrm{aux}}\,\mathcal{L}_{\mathrm{auxCE}}
++ \lambda_{\mathrm{cal}}\,\mathcal{L}_{\mathrm{cal}}
++ \mathcal{L}_{\mathrm{route}},
+\label{eq:total}
+\end{equation}
+with online hard-example-mined cross-entropy~\cite{ohem2016} as the main
+term, $\lambda_{\mathrm{aux}}=0.5$, and $\lambda_{\mathrm{cal}}=0.1$
+($\mathcal{L}_{\mathrm{route}}$ only in the full model). No supervision
+beyond the segmentation labels is used---no ground-truth depth, no condition
+annotations, and no text encoders (contribution C3).
+
+\subsection{Where Reliability Injection Fails}
+\label{sec:method:negative}
+
+An apparently natural alternative---and the design we pursued across five
+model generations---injects reliability \emph{inside} the cross-modal
+attention, as an additive pre-softmax bias on the key logits:
+\begin{equation}
+\mathrm{Attn}(t_m) = \mathrm{softmax}\!\Big(\tfrac{QK^{\top}}{\sqrt{d/n_h}}
++ \lambda_1 B^{\mathrm{cal}} + \lambda_2 B^{\mathrm{cons}}\Big)V,
+\label{eq:attnbias}
+\end{equation}
+where a key token at location $s$ of modality $j$ carries the per-token
+scalar $\lambda_1 B^{\mathrm{cal}}_j(s)+\lambda_2 B^{\mathrm{cons}}_j(s)$,
+built from the modality-centered signals
+$B^{\mathrm{cal}}_m=r_m-\frac{1}{M}\sum_j r_j$ and
+$B^{\mathrm{cons}}_m=\mathrm{corr}_m-\frac{1}{M}\sum_j \mathrm{corr}_j$,
+with learnable scales $\lambda_1,\lambda_2$. The intuition---down-weight
+unreliable keys while preserving their values---is appealing, and
+neighboring placements exist in the
+literature~\cite{primed2026,sae2026,sam2long2024}. Yet on strong per-modality
+LoRA features this bias is a no-op or a net harm: toggling it on trained
+checkpoints changes test mIoU by $|\Delta|\le 0.03$ with fused-feature
+cosine similarity of $1.0$, and on an earlier backbone generation the bias
+was a statistically significant net loss ($p=4.5\times10^{-22}$). We
+therefore \emph{remove} it from the final model, keeping reliability only at
+the output gate and the per-class router, where class decisions are actually
+formed. Sec.~\ref{sec:experiments} quantifies this negative result and its
+interpretation: once per-modality adaptation aligns the modalities in feature
+space, logit-level suppression inside attention has nothing left to fix.

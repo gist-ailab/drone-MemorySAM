@@ -1,0 +1,145 @@
+% ============================================================
+% fig:arch — ReliaDINO full architecture overview
+% BODY-ONLY: \input inside a two-column {figure*} environment.
+% Preamble needs: \usepackage{tikz, xcolor, amsmath}
+%   \usetikzlibrary{positioning, arrows.meta, calc, shapes.geometric}
+% Recommended wrapping: \resizebox{\textwidth}{!}{\input{figures/fig_arch}}
+% Structure source: notes/fact_method.md §0–§9 (no numbers to update).
+% Suggested caption (place in the figure* env):
+%   \caption{ReliaDINO. All four modalities are encoded by a single frozen
+%   DINOv3 ViT-L/16; modality identity enters only through independent
+%   low-rank adapters (color-coded, rank~8 on Q/V of all 24 blocks).
+%   Per-modality auxiliary decoders provide the class posteriors from which
+%   calibrated reliability $r_m$ and the veto signal $v_m$ are computed
+%   (purple; detached). Modalities exchange information through two shared
+%   cross-modal attention layers; the fused map is produced by a calibrated
+%   competence gate with a training-free veto floor, decoded by a SimpleFPN
+%   head. The per-class reliability-anchored router adds a residual routed
+%   prediction scaled by a zero-initialized $\alpha$. Reliability acts only
+%   at the gate and router: the attention-logit bias site is removed
+%   (struck out; Sec.~\todo{ref}). Dashed gray parts are training-only.}
+% ============================================================
+\definecolor{cRGB}{RGB}{213,94,0}
+\definecolor{cDep}{RGB}{0,114,178}
+\definecolor{cEvt}{RGB}{230,159,0}
+\definecolor{cLid}{RGB}{0,158,115}
+\definecolor{cRel}{RGB}{136,78,160}
+\definecolor{cGray}{RGB}{120,120,120}
+\definecolor{OursBlue}{RGB}{0,90,181}
+\begin{tikzpicture}[font=\scriptsize, >={Stealth[length=1.5mm]}, line cap=round,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              minimum height=9mm},
+  mod/.style={draw, very thick, minimum width=7.5mm, minimum height=6mm,
+              inner sep=1pt, align=center, font=\tiny},
+  lorachip/.style={draw, very thick, rounded corners=1.5pt, minimum width=14mm,
+              minimum height=3.6mm, inner sep=1pt, font=\tiny, fill=white},
+  card/.style={draw, fill=white, minimum width=6.5mm, minimum height=5mm,
+              inner sep=0pt},
+  loss/.style={draw, dashed, rounded corners=2pt, text=cGray, draw=cGray,
+              align=center, inner sep=2.5pt, font=\tiny},
+  sig/.style={->, cRel, thick},
+  flow/.style={->, thick},
+  opn/.style={circle, draw, thick, inner sep=0.5pt, font=\footnotesize}]
+
+  % ================= inputs =================
+  \node[mod, draw=cRGB] (in1) at (0,3.9)  {RGB};
+  \node[mod, draw=cDep] (in2) at (0,3.0)  {Depth};
+  \node[mod, draw=cEvt] (in3) at (0,2.1)  {Event};
+  \node[mod, draw=cLid] (in4) at (0,1.2)  {LiDAR};
+  \node[font=\tiny, text=cGray, align=center] at (0,0.55) {$x_m$: $4{\times}(3,1024^2)$};
+
+  % ================= shared frozen encoder =================
+  \node[box, minimum width=32mm, minimum height=34mm, anchor=west]
+    (enc) at (1.1,2.55) {};
+  \node[align=center, anchor=north] at (2.7,4.15)
+    {\textbf{Frozen DINOv3 ViT-L/16}\\shared, 24 blocks};
+  \node[font=\tiny, text=cGray] at (2.7,3.0) {LoRA adapters ($r{=}8$, Q/V only):};
+  \node[lorachip, draw=cRGB] at (2.7,2.55) {LoRA$_{\mathrm{rgb}}$};
+  \node[lorachip, draw=cDep] at (2.7,2.05) {LoRA$_{\mathrm{depth}}$};
+  \node[lorachip, draw=cEvt] at (2.7,1.55) {LoRA$_{\mathrm{event}}$};
+  \node[lorachip, draw=cLid] at (2.7,1.05) {LoRA$_{\mathrm{lidar}}$};
+  \foreach \i in {1,2,3,4}{ \draw[flow] (in\i.east) -- (in\i.east -| enc.west); }
+  \node[font=\tiny, text=cGray, align=center] at (2.7,0.2)
+    {one pass per modality;\\identity = active LoRA};
+
+  % ================= feature stack F_m =================
+  \foreach \i/\c in {3/cLid,2/cEvt,1/cDep,0/cRGB}
+    \node[card, draw=\c] (F\i) at (5.35+\i*0.09, 2.45+\i*0.09) {};
+  \node[font=\scriptsize] at (5.5,1.8) {$F_m$};
+  \node[font=\tiny, text=cGray] at (5.5,1.45) {$(1024,64^2)$};
+  \draw[flow] (enc.east) -- (5.0,2.55);
+
+  % ================= cross-modal attention (top row) =================
+  \node[box, minimum width=26mm, anchor=west] (attn) at (6.4,3.3)
+    {cross-modal attn $\times 2$\\ \tiny Q: own tokens; K,V: others};
+  \draw[flow] (F3.north) |- ($(attn.west)+(0,0.05)$);
+  % struck-out removed bias
+  \node[font=\tiny, text=cGray, align=center, anchor=north] (nobias)
+    at ($(attn.south)+(0,-0.08)$) {reliability logit bias};
+  \draw[cGray, thick] ($(nobias.west)+(0.05,0)$) -- ($(nobias.east)+(-0.05,0)$);
+  \node[font=\tiny, text=cGray, anchor=north, inner sep=1pt]
+    at (nobias.south) {removed (negative result)};
+
+  % ================= competence gate =================
+  \node[box, minimum width=27mm, anchor=west] (gate) at (9.6,3.3)
+    {competence gate\\ $\mathrm{softmax}_m(r_m/\tau)$ + veto floor};
+  \draw[flow] (attn.east) -- (gate.west) node[midway, above, font=\tiny] {$\tilde F_m$};
+
+  % ================= FPN + head =================
+  \node[box, anchor=west] (fpn) at (13.7,3.3) {Simple\\FPN};
+  \draw[flow] (gate.east) -- (fpn.west)
+    node[midway, below, font=\tiny] {$F^{\mathrm{fused}}$};
+  \node[box, anchor=west] (head) at (15.4,3.3) {seg\\head};
+  \draw[flow] (fpn.east) -- (head.west);
+  \node[opn] (plus) at (17.0,3.3) {$+$};
+  \draw[flow] (head.east) -- (plus.west);
+  \node[font=\normalsize, anchor=west] (yhat) at (17.5,3.3) {$\hat y$};
+  \draw[flow] (plus.east) -- (yhat.west);
+
+  % ================= bottom row: aux decoders + signals =================
+  \node[box, minimum width=20mm, anchor=west] (aux) at (6.4,0.9)
+    {aux decoders\\$D_m\times 4$};
+  \draw[flow] (F0.south) |- (aux.west);
+  \foreach \i/\c in {3/cLid,2/cEvt,1/cDep,0/cRGB}
+    \node[card, draw=\c, minimum width=5mm, minimum height=4mm]
+      (z\i) at (9.05+\i*0.08, 0.85+\i*0.08) {};
+  \node[font=\scriptsize] at (9.15,0.35) {$z_m$};
+  \draw[flow] (aux.east) -- (8.75,0.9);
+  \node[box, draw=cRel, text=cRel, minimum width=24mm, anchor=west]
+    (relsig) at (9.9,0.9)
+    {reliability signals\\ $r_m$ (calibrated), $v_m$ (veto)};
+  \draw[flow] (9.55,0.9) -- (relsig.west);
+  \draw[sig] (relsig.north) |- ($(gate.south)+(0,-0.15)$) -- (gate.south)
+    node[pos=0.15, right, font=\tiny, text=cRel] {$r_m, v_m$};
+
+  % ================= router =================
+  \node[box, draw=OursBlue, text=OursBlue, minimum width=30mm, anchor=west]
+    (router) at (13.4,0.9)
+    {\textbf{per-class reliability-}\\\textbf{anchored router (PRR)}};
+  \draw[sig] (relsig.east) -- (router.west)
+    node[midway, above, font=\tiny, text=cRel] {$\mathrm{sg}[r_m]$};
+  \draw[flow] (z0.south) -- (9.05,0.15) -- (14.0,0.15) -- (14.0,0.45)
+    node[pos=0.5, above, font=\tiny] {$z_m$};
+  % thin F_m bus into the router
+  \draw[->, cGray, thin] (F0.east) -- (6.1,2.45) -- (6.1,1.7) -- (12.9,1.7)
+    -- (12.9,1.35) -- ($(router.north)+(-0.6,0)$)
+    node[pos=0.5, above, font=\tiny, text=cGray] {$F_m$};
+  \draw[flow, OursBlue] (router.east) -| (plus.south)
+    node[pos=0.9, right, font=\tiny, text=OursBlue]
+    {$\alpha\, z^{\mathrm{route}}$ ($\alpha$ zero-init)};
+
+  % ================= training-only losses =================
+  \node[loss, anchor=north] (laux) at (7.4,-0.15)
+    {$\mathcal{L}_{\mathrm{aux}}$, $\mathcal{L}_{\mathrm{cal}}$};
+  \draw[<-, cGray, dashed] (aux.south) -- (laux.north);
+  \node[loss, anchor=north] (lroute) at (14.9,-0.15) {$\mathcal{L}_{\mathrm{route}}$};
+  \draw[<-, cGray, dashed] (router.south) -- (lroute.north);
+  \node[loss, anchor=south] (lohem) at (17.6,3.9) {$\mathcal{L}_{\mathrm{OHEM}}$};
+  \draw[<-, cGray, dashed] (yhat.north) -- (lohem.south);
+
+  % ================= legend =================
+  \node[font=\tiny, anchor=west, align=left] at (0.0,-0.5)
+    {\tikz{\draw[->, thick] (0,0)--(0.35,0);}\; inference graph\quad
+     \tikz{\draw[->, cGray, dashed] (0,0)--(0.35,0);}\; {\color{cGray}training-only}\quad
+     \tikz{\draw[->, cRel, thick] (0,0)--(0.35,0);}\; {\color{cRel}reliability signals (detached)}};
+\end{tikzpicture}
