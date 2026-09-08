@@ -9,6 +9,8 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+📝 2026-09-08 — **DGFusion·CAFuser DELIVER 베이스라인 직접 학습 착수** (user 지시: "통계적으로 확실하게 뽑아 한계분석 후 우리 것에 반영"). DGFusion 공개 저장소는 학습 코드가 의도적으로 빠져 있어(train_net.py 부재, forward 학습 분기 예외 차단, criterion 학습 유틸 4종 미정의) CAFuser 공개 학습 코드를 대조해 복원 — 킷 = `third_party/dgfusion_train_restore/`(복원 train_net.py + 패치 + 실전 검증 셋업 스크립트). jarvis(GPU1,2,4,5)에서 공식 설정 그대로(bs8·LR 1e-4·200k) 기동검증 통과(loss_depth 반영 확인), lecun(GPU0,1,2)에서 CAFuser 대조군(bs6·LR 0.75e-4·266,667 iter=총 샘플 동일 보정) 기동. jarvis 환경 이슈 4종(빌드 격리·gcc12·setuptools·natten SSL 만료) 해결 기록 포함. DELIVER config에선 양 모델 LR 동일 → 아키텍처만의 대조.
+
 📝 2026-09-07 — 일일 사이클 카드 착수: 회고(approach-and-eval-retrospective) → P52 감사(§1~§3.6) → 카드 문서. bengio 신규 클론(/SSDe …-daily)에 B0·E1 학습, E0·E9 학습0 실행. 코드 develop 7d83c11(E0/E9/E1/E2). MUSES PhysAug 공정성 정정(E7) 등재.
 
 ## 2026-08-17 ~ 09-02 — RxDINO 성립 아크 (세션 재시작용 종합 연대기)
