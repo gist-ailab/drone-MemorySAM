@@ -168,7 +168,7 @@ def sec_cards():
             ["B0 기준선", "—", "—", "없음 (EPOCHS 40)", "완주 (bengio GPU0-3)", "legal test 53.78 / val 64.97", "대조군 고정"],
             ["E0 특징 정보 프로브", "어댑터가 백본 정보를 버리는가", "클래스·센서 정보가 DINOv3 원 특징에는 있는데 어댑터·헤드가 버린다", "학습 = 선형 헤드만 (tools/probe_feature_info.py)", "완료", "선형 프로브 test mIoU: 원 특징 27.8 < 어댑터 후 35.6 < 융합 45.1. depth 중간층 탭에 Water 47.6·RailTrack 23.9 잔존(융합 16.6·0.0)", "전역 가설 기각 → E5·E6 하향, E1·E3 유지"],
             ["E9 로짓 사전 보정", "클래스 사전의 도메인 이동", "추론 시 logit − τ·log p_val", "val.py --logit-adjust-tau", "완료", "τ=0/0.5/1.0 → 53.57/53.45/51.89 (mAcc는 상승)", "폐기 (mIoU 단조 하락)"],
-            ["E1 중간층 4탭 읽기", "기하 센서의 클래스 근거가 중간층에 있음", "블록 6/12/18/24 출력을 SimpleFPN 레벨별로 투입하면 depth·lidar 의존 클래스가 회복", "MODEL.TAPS per_modal [6,12,18,24]", "ep33/40 (bengio GPU6,7), 완주 ETA 20:31 KST", "트레이너 val ep5~30: 60.98/63.56/66.30/66.57/66.43/66.88 vs B0 58.71/63.17/62.18/63.91/64.03/65.13 (B0 ep35 64.67·ep40 65.40)", "보류 — 완주 후 legal test 1회로 판정 (양성 방향)"],
+            ["E1 중간층 4탭 읽기", "기하 센서의 클래스 근거가 중간층에 있음", "블록 6/12/18/24 출력을 SimpleFPN 레벨별로 투입하면 depth·lidar 의존 클래스가 회복", "MODEL.TAPS per_modal [6,12,18,24]", "ep33/40 (bengio GPU6,7), 완주 ETA 20:24 KST", "트레이너 val ep5~30: 60.98/63.56/66.30/66.57/66.43/66.88 vs B0 58.71/63.17/62.18/63.91/64.03/65.13 (B0 ep35 64.67·ep40 65.40)", "보류 — 완주 후 legal test 1회로 판정 (양성 방향)"],
             ["E2 전 선형층 LoRA", "Q/V만으로는 센서별 클래스 근거를 담을 용량이 없음", "LoRA를 Q/K/V/O + MLP fc1/fc2, r32·α64로 확장", "LORA_TARGETS [qkv_full, proj, fc1, fc2]", "ep38/40 (hpca100 GPU1,3), 완주 ETA 17:26 KST", "ep5~35: 62.54/63.44/60.09(ep15 하락)/62.40/65.25/66.91/67.85", "보류"],
             ["E3 센서별 클래스 prototype", "user 가설 직접 검증", "클래스 정체성을 센서마다 독립으로 지지하면 RGB가 헷갈리는 클래스를 lidar·depth 근거가 붙잡음", "P46.C3_PROTO.SRC permodal + AGREE_LAMBDA", "ep25/40 (bengio GPU4,5), 완주 ETA 23:45 KST", "ep5~25: 59.35/63.72/62.23/65.44/65.97 (B0 ep25 64.03)", "보류"],
             ["E4 혼동 쌍 margin", "붕괴가 특정 쌍으로 흡수됨", "검증셋 혼동행렬 top-k 쌍에 prototype/로짓 margin", "CONFUSION_PAIRS auto_k5", "ep21/40 (bengio GPU1-3), 완주 ETA 22:30 KST", "ep5~20: 59.77/63.17/65.92/65.70", "보류. auto 쌍에 RailTrack 누락 → 명시 쌍판 E4b config 추가(RailTrack→Sky/Static/Terrain, Wall→Building, Water→Terrain), 미기동"],
@@ -267,7 +267,7 @@ def sec_plan():
         table([
             ["서버 / GPU", "실험", "데이터셋", "진행", "ETA · 비고"],
             ["bengio 0-3", "B0 기준선 스크린", "DELIVER 4모달", "완주 → legal test 53.78 / val 64.97", "카드 대조군 고정"],
-            ["bengio 6,7", "E1 중간층 4탭 읽기", "DELIVER 4모달", "ep33/40, 트레이너 val 66.88@30", "20:31 KST 완주 → 재채점(bengio GPU0 비어 있음)"],
+            ["bengio 6,7", "E1 중간층 4탭 읽기", "DELIVER 4모달", "ep33/40, 트레이너 val 66.88@30", "20:24 KST 완주 → val-best legal 재채점(GPU0 조기 재채점은 타 사용자 점유로 취소)"],
             ["bengio 4,5", "E3 센서별 prototype", "DELIVER 4모달", "ep25/40, 65.97@25", "23:45 KST 완주"],
             ["bengio 1-3", "E4 혼동 쌍 margin(auto)", "DELIVER 4모달", "ep21/40, 65.70@20", "22:30 KST 완주. E4b(명시 쌍) config 추가, 미기동"],
             ["hpca100 1,3", "E2 전 선형층 LoRA r32", "DELIVER 4모달", "ep38/40, 67.85@35", "17:26 KST 완주 → 재채점"],
