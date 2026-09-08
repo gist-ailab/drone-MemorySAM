@@ -1185,7 +1185,7 @@
   "title": "[Drone-Card] E7 — MUSES PhysAug-off 공정 기준선 (MUSES)",
   "period": "2026-09-08",
   "track": "card-MUSES",
-  "status": "완주(40ep 스크린), 공식 재채점 대기",
+  "status": "완주(트레이너 val 80.29@40) — 첫 공식 test 재채점 진행 중(E7c와 페어)",
   "summary": {
    "change": "MUSES 3모달(img/lidar/event) 레시피에서 PHYSAUG를 off로 전환함(공정성 정합, user 지적 대응)",
    "result": "트레이너 val 80.29@ep40",
@@ -1219,12 +1219,22 @@
    "gate": "게이트 없음(헤드라인 교체용)",
    "table": [
     [
-     "ckpt",
-     "트레이너 val"
+     "구성",
+     "트레이너 val 궤적 ep5~40",
+     "val-best",
+     "비고"
     ],
     [
-     "E7 ep40",
-     "80.29"
+     "E7 PhysAug-off",
+     "73.84 / 75.39 / 77.06 / 77.41 / 79.16 / 79.84 / 79.69 / 80.29",
+     "80.29@40",
+     "학습 로그 Best Test = N/A → 공식 재채점이 첫 test 수치"
+    ],
+    [
+     "E7c PhysAug-on (짝)",
+     "73.18 / 75.52 / 75.97 / 77.68 / 79.54 / 79.52 / 79.96 / 80.18",
+     "80.18@40",
+     "Δ 8지점 ±1.1 안, 부호 교대"
     ]
    ],
    "per_condition": [],
@@ -1255,10 +1265,10 @@
   "title": "[Drone-Card] E7c — MUSES PhysAug-on 대조군 (MUSES)",
   "period": "2026-09-08",
   "track": "card-MUSES",
-  "status": "진행 중(ep24/40)",
+  "status": "완주(2026-09-08 20:25 KST) — E7과 페어 공식 재채점 진행 중(tools/eval_muses_official.py, hpca100 GPU2)",
   "summary": {
    "change": "E7과 PHYSAUG만 상이함(on), 나머지는 B0(정본 레시피) 대비 변경 없음",
-   "result": "트레이너 val ep5 73.18 / ep10 75.52 / ep15 75.97 / ep20 77.68 (ep24/40 진행)",
+   "result": "트레이너 val 80.18@ep40(val-best). 짝 E7(PhysAug-off) 80.29@ep40. 8지점 차이 −0.66/+0.13/−1.09/+0.27/+0.38/−0.32/+0.27/−0.11 — 부호 교대, 폭 ±1.1 안(트레이너 val, 공식 test 아님)",
    "verdict": "판정 전(완주 후 E7과 공식 페어 재채점 필요)"
   },
   "background": [
@@ -1290,24 +1300,28 @@
    "gate": "판정 전",
    "table": [
     [
-     "epoch",
-     "트레이너 val"
+     "구성",
+     "트레이너 val 궤적 ep5~40",
+     "val-best",
+     "비고"
     ],
     [
-     "5",
-     "73.18"
+     "E7c PhysAug-on",
+     "73.18 / 75.52 / 75.97 / 77.68 / 79.54 / 79.52 / 79.96 / 80.18",
+     "80.18@40",
+     "ckpt epoch40_80.18_top1"
     ],
     [
-     "10",
-     "75.52"
+     "E7 PhysAug-off (짝)",
+     "73.84 / 75.39 / 77.06 / 77.41 / 79.16 / 79.84 / 79.69 / 80.29",
+     "80.29@40",
+     "ckpt epoch40 val-best"
     ],
     [
-     "15",
-     "75.97"
-    ],
-    [
-     "20",
-     "77.68"
+     "Δ (E7c − E7)",
+     "−0.66 / +0.13 / −1.09 / +0.27 / +0.38 / −0.32 / +0.27 / −0.11",
+     "−0.11",
+     "공식 재채점 대기"
     ]
    ],
    "per_condition": [],
@@ -1325,7 +1339,9 @@
   ],
   "sources": [
    "configs/hpca100-muses_rgbel_P39_1_seed2_physaugon_screen40_E7c.yaml",
-   "tools/eval_muses_official.py"
+   "tools/eval_muses_official.py",
+   "ckpt outputs/ReliaDINO/hpca100_muses_rgbel_P39_1_seed2_physaugon_screen40_E7c/MUSES_ReliaDINO-ViTL16_ile/epoch40_80.18_top1_checkpoint.pth",
+   "공식 재채점 출력 ~/SSDb/jemo_maeng/muses_official_eval_20260908/{E7,E7c}, logs/muses_official_E7{,c}.log"
   ],
   "_internal_refs": [
    ".claude_logs/experiments/registry.md 카드 E7c 행",
@@ -1337,7 +1353,7 @@
   "title": "[Drone-Card] E1 — 중간층 4탭 읽기(S1) (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "진행 중(ep33/40, legal 재채점 대기)",
+  "status": "진행 중(ep38/40, 완주 20:28 KST 전후) — 트레이너 val 67.25@ep35(카드 중 최고, legal 아님)",
   "summary": {
    "change": "블록 6/12/18/24 출력을 SimpleFPN 레벨별로 투입함(P43 lateral을 M2F 헤드와 분리해 단독 토글)",
    "result": "트레이너 val ep5~30 = 60.98/63.56/66.30/66.57/66.43/66.88 (B0 동epoch 58.71/63.17/62.18/63.91/64.03/65.13)",
@@ -1437,11 +1453,11 @@
   "title": "[Drone-Card] E2 — 전 선형층 LoRA(S2, r32/α64) (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "완주(2026-09-08 17:24 KST, 총 18:26:55) — 정본 재채점 진행 중(20시 KST 예정)",
+  "status": "완주(2026-09-08 17:24 KST) + 정본 재채점 완결 — Δtest +0.72는 통과선(+1.0)과 폐기선(+0.5) 사이, 판정 보류(생각정리 세션)",
   "summary": {
    "change": "LoRA 타깃을 Q/V에서 Q/K/V/O(proj) + MLP(fc1/fc2)로 확장하고 rank 8→32, alpha null→64(=2r)로 변경함",
-   "result": "트레이너 val ep40 68.65(val-best, ckpt epoch40_68.65_top1). legal test·val은 val.py 1024 재채점 진행 중(20시 KST) — 판정 전",
-   "verdict": "판정 전(17:26 KST 완주 후 legal 재채점 예정)"
+   "result": "legal test 54.50 (mAcc 63.31) / legal val 68.38 (mAcc 75.83), val-best ckpt epoch40_68.65_top1, 1024 BS1 native GT. B0 대비 Δtest +0.72 / Δval +3.41",
+   "verdict": "판정 보류 — Δtest +0.72가 사전 등록 통과선 +1.0 미달·폐기선 +0.5 초과(회색지대). RailTrack +15.77·TrafficLight +12.49 회복, Wall −6.40·Water −5.47·Static −5.44 손실"
   },
   "background": [
    "가설: Q/V만으로는 센서별 클래스 근거를 담을 용량이 부족하다는 것",
@@ -1470,29 +1486,43 @@
    ]
   },
   "results": {
-   "gate": "통과선 Δtest≥+1.0. ep20 RGB-only −0.5면 조기 kill",
+   "gate": "통과선 Δtest ≥ +1.0 / 폐기선 < +0.5 — 실측 +0.72 = 회색지대, 판정 보류(생각정리 세션 담당). 악조건(night·fog·rain) −0.5 조건은 조건별 수치 미수신",
    "table": [
     [
      "구성/ckpt",
-     "트레이너 val",
+     "legal val",
      "legal test",
      "비고"
     ],
     [
-     "E2 트레이너 궤적 ep5~40",
-     "62.54 / 63.44 / 60.09 / 62.40 / 65.25 / 66.91 / 67.85 / 68.65",
-     "재채점 중",
-     "ep15 하락 후 회복, ep40이 val-best"
+     "E2 val-best ep40 (epoch40_68.65_top1)",
+     "68.38 (mAcc 75.83)",
+     "54.50 (mAcc 63.31)",
+     "val.py 1024×1024 BS1 native GT, FPS 0.79"
     ],
     [
-     "B0 기준선(같은 규약)",
-     "65.40@ep40 (정본 val 64.97)",
+     "B0 val-best ep40 (epoch40_65.4_top1)",
+     "64.97",
      "53.78",
-     "통과선 test ≥ 54.78"
+     "같은 규약"
+    ],
+    [
+     "Δ (E2 − B0)",
+     "+3.41",
+     "+0.72",
+     "통과선 +1.0 / 폐기선 +0.5 사이"
+    ],
+    [
+     "E2 트레이너 val 궤적 ep5~40",
+     "62.54 / 63.44 / 60.09 / 62.40 / 65.25 / 66.91 / 67.85 / 68.65",
+     "—",
+     "트레이너 val − 공식 val = +0.27 (B0는 +0.43): 트레이너가 0.3~0.4 높은 경향 2례"
     ]
    ],
    "per_condition": [],
-   "per_class": [],
+   "per_class": [
+    "test 클래스별 Δ(E2 − B0), 큰 순: RailTrack +15.77, TrafficLight +12.49, TrafficSign +2.89, Truck +2.68, Pedestrian +1.37, Wall −6.40, Water −5.47, Static −5.44, Ground −1.20, Terrain −0.87, Mean +0.72"
+   ],
    "invalid": [
     "legal test 수치 아직 없음",
     "로그 말미 'Best Test mIoU 55.57 (epoch 30)'은 test-best ckpt 수치 — 규약상 무효, 정본 대상은 val-best ep40"
@@ -1500,7 +1530,9 @@
   },
   "analysis": [
    "초반 하락 후 회복함 — B0/E1과 다른 궤적 형태(변동 큼)",
-   "config 헤더에 '🔴 model.py 배선 필요' 경고가 명시되어 있음: MODEL.LORA_TARGETS를 ReliaDINO→FrozenViTEncoder로 넘기는 배선 3줄이 워커 보고서 시점에 '아직 없다'고 기록되어 있어, 배선 전에는 이 config를 기동해도 LORA_TARGETS가 무시되고 B0(qkv Q/V, r8)로 돌 수 있음"
+   "config 헤더에 '🔴 model.py 배선 필요' 경고가 명시되어 있음: MODEL.LORA_TARGETS를 ReliaDINO→FrozenViTEncoder로 넘기는 배선 3줄이 워커 보고서 시점에 '아직 없다'고 기록되어 있어, 배선 전에는 이 config를 기동해도 LORA_TARGETS가 무시되고 B0(qkv Q/V, r8)로 돌 수 있음",
+   "클래스별 test: 회복 = RailTrack +15.77(31.98→47.75)·TrafficLight +12.49·TrafficSign +2.89·Truck +2.68 / 손실 = Wall −6.40(12.17→5.77)·Water −5.47(6.46→0.99)·Static −5.44 — 얇은 구조물 클래스(RailTrack·신호등)는 오르고 공통 붕괴 클래스(Wall·Water)는 더 내려감(수치 관측, 해석은 판정 문서에서)",
+   "val +3.41 vs test +0.72: val 이득의 21%만 test로 전이 — 전 선형층 LoRA 확장이 주간 val에 더 과적합할 가능성(판정 보류 사유 중 하나)"
   ],
   "verdict": {
    "worked": "판정 보류",
@@ -1517,7 +1549,9 @@
    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2b.yaml",
    "ckpt outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E2/DELIVER_ReliaDINO-ViTL16_idel/epoch40_68.65_top1_checkpoint.pth",
    "eval config configs/eval/hpca100-deliver_rgbdel_P46_E2_eval1024_legal.yaml",
-   "hpca100 logs/hpca100_E2_launch.log"
+   "hpca100 logs/hpca100_E2_launch.log",
+   "hpca100 logs/hpca100_E2_eval_test_20260908_083859.log · logs/hpca100_E2_eval_val_20260908_083859.log",
+   "결과 파일 outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E2/DELIVER_ReliaDINO-ViTL16_idel/eval_val_epoch40_68.65_top1_20260908_112841.txt"
   ],
   "_internal_refs": [
    ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§3-6/§5"
@@ -1528,7 +1562,7 @@
   "title": "[Drone-Card] E3 — 센서별 클래스 prototype(C3-M) (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "진행 중(ep25/40, legal 재채점 대기)",
+  "status": "진행 중(ep30/40) — 트레이너 val ep30 65.51, best 65.97@ep25",
   "summary": {
    "change": "prototype bank를 센서별로 분리하고(K×D×M) 센서 간 prototype 일치 항 λ_agree를 추가함",
    "result": "트레이너 val ep5~25 = 59.35/63.72/62.23/65.44/65.97(B0 동epoch 64.03@25)",
@@ -1628,7 +1662,7 @@
   "title": "[Drone-Card] E4 — 혼동 쌍 margin 손실(자동 top-5 쌍) (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "진행 중(ep21/40)",
+  "status": "진행 중(ep30/40) — 트레이너 val ep25 65.79, best 65.92@ep15",
   "summary": {
    "change": "학습 시작 시 검증셋 혼동행렬에서 top-k(자동 k=5) 클래스쌍을 고정해 쌍별 prototype/로짓 margin 손실을 추가함",
    "result": "트레이너 val ep5~20 = 59.77/63.17/65.92/65.70. auto 쌍(ep6 검증 200장 top-5) = Ground→SideWalk, Water→Terrain, Other→Fence, Other→SideWalk, Static→Building",
@@ -1775,7 +1809,7 @@
   "title": "[Drone-Card] E1M — 카드 E1(4탭 읽기)의 MUSES 이식 (MUSES)",
   "period": "2026-09-08",
   "track": "card-MUSES",
-  "status": "진행 중(hpca100 GPU3, 2026-09-08 17:37 KST 기동, ep1, 1.61 it/s, 완주 ETA 09-09 13시 KST 전후)",
+  "status": "진행 중(hpca100 GPU3, ep10/40) — 트레이너 val ep5 71.73 · ep10 75.55 vs 짝 E7 73.84 · 75.39 (ep5 −2.11 → ep10 +0.16). warmup 15ep라 ep15·20이 실질 비교점",
   "summary": {
    "change": "카드 E1(중간층 4탭 읽기)을 MUSES로 이식함(PhysAug off, E7 기준선 위에 TAPS on)",
    "result": "기동 직후 — 수치 없음. E7(PhysAug-off, 트레이너 val 80.29@40)과 매칭 페어",
@@ -1807,7 +1841,26 @@
   },
   "results": {
    "gate": "Δ(E1M − E7) 공식 val ≥ +1.0 이면 DELIVER E1과 함께 '공통 한 단계' 후보",
-   "table": [],
+   "table": [
+    [
+     "구성",
+     "ep5",
+     "ep10",
+     "비고"
+    ],
+    [
+     "E1M (4탭 on)",
+     "71.73",
+     "75.55",
+     "완주 09-09 04시 KST 예정"
+    ],
+    [
+     "E7 (짝, 4탭 off)",
+     "73.84",
+     "75.39",
+     "—"
+    ]
+   ],
    "per_condition": [],
    "per_class": [],
    "invalid": []

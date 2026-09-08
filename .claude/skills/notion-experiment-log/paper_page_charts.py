@@ -191,10 +191,10 @@ def fig_cards():
     ep = [5, 10, 15, 20, 25, 30, 35, 40]
     series = [
         ("B0 기준선 (변경 0)", [58.71, 63.17, 62.18, 63.91, 64.03, 65.13, 64.67, 65.40], INK2, "-"),
-        ("E1 중간층 4탭 읽기", [60.98, 63.56, 66.30, 66.57, 66.43, 66.88, None, None], C[0], "-"),
-        ("E2 전 선형층 LoRA r32 (hpca100)", [62.54, 63.44, 60.09, 62.40, 65.25, 66.91, 67.85, None], C[2], "-"),
-        ("E3 센서별 클래스 prototype", [59.35, 63.72, 62.23, 65.44, 65.97, None, None, None], C[3], "-"),
-        ("E4 혼동 쌍 margin (auto 쌍)", [59.77, 63.17, 65.92, 65.70, None, None, None, None], C[4], "-"),
+        ("E1 중간층 4탭 읽기", [60.98, 63.56, 66.30, 66.57, 66.43, 66.88, 67.25, None], C[0], "-"),
+        ("E2 전 선형층 LoRA r32 (hpca100, legal test 54.50)", [62.54, 63.44, 60.09, 62.40, 65.25, 66.91, 67.85, 68.65], C[2], "-"),
+        ("E3 센서별 클래스 prototype", [59.35, 63.72, 62.23, 65.44, 65.97, 65.51, None, None], C[3], "-"),
+        ("E4 혼동 쌍 margin (auto 쌍)", [59.77, 63.17, 65.92, 65.70, 65.79, None, None, None], C[4], "-"),
     ]
     fig, (a, b) = plt.subplots(1, 2, figsize=(13, 4.6), gridspec_kw=dict(width_ratios=[1.35, 1]))
     for lab, ys, c, ls in series:
@@ -209,8 +209,8 @@ def fig_cards():
     b.axis("off")
     rows = [["구분", "값"], ["B0 legal test (val.py native-GT)", "53.78"], ["B0 legal val", "64.97"],
             ["B0 트레이너 val@ep40 (참고)", "65.4 (+0.43)"], ["카드 통과선 (Δtest ≥ +1.0)", "test ≥ 54.78"],
-            ["카드 폐기선", "test < 54.28 또는 악조건 -0.5"], ["E7 MUSES PhysAug-off (완주)", "val 80.29@40 (재채점 대기)"],
-            ["E7c MUSES PhysAug-on 대조군", "ep20 77.68, 진행 중"]]
+            ["카드 폐기선", "test < 54.28 또는 악조건 -0.5"], ["E2 legal (val-best ep40)", "test 54.50 / val 68.38 (Δ +0.72 회색지대)"], ["E7 / E7c MUSES PhysAug off/on", "val 80.29 / 80.18 @40 (공식 재채점 중)"],
+            ["E1M MUSES 4탭 (E7 짝)", "ep10 75.55 vs E7 75.39"]]
     t = b.table(cellText=rows[1:], colLabels=rows[0], loc="center", cellLoc="left", colWidths=[0.6, 0.4])
     t.auto_set_font_size(False); t.set_fontsize(8.5); t.scale(1, 1.55)
     for (r, c_), cell in t.get_celld().items():

@@ -69,8 +69,8 @@ def bul_list(items):
     return [bul(rt(_clip(i))) for i in _lst(items)]
 
 def find_existing(key):
-    # key 앞뒤가 영숫자·점·하이픈이 아니어야 함 (P29 ≠ P29-Det, E4 ≠ E4b, P32 ≠ P32-B)
-    pat = re.compile(rf"(?<![\w.\-])(?:{re.escape(key)})(?![\w.\-])")
+    # 제목 접두어 "[…] KEY" 위치에서만 매칭 (본문 언급 "E1(4탭)" 같은 것에 걸리지 않게), key 뒤는 영숫자·점·하이픈 금지
+    pat = re.compile(rf"^\[[^\]]*\]\s*(?:{re.escape(key)})(?![\w.\-])")
     for ti, pid in find_rows(DB):
         if pat.search(ti):
             return pid, ti
