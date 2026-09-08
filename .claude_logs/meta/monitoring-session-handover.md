@@ -1,7 +1,7 @@
 ---
 created: 2026-09-08
 author: 이 세션(worktree `.claude/worktrees/p30-det`, background job — EnterWorktree 아님, 작업폴더가 잡 생성 시 고정된 세션이라 ExitWorktree로 못 나감)
-status: ✅ 인계 완료 (2026-09-08) — 🔴 감시 주체는 세션 **이름**이 아니라 아래 감시 task id 로 특정한다. 같은 이름을 다른 세션이 가질 수 있어 이름으로 지목하면 혼선이 난다(2026-09-08 실제로 발생: 구 p30-det 세션이 그 이름을 쥔 채 구식 로직 감시 4건을 겹쳐 걸었다가 정리됨). 현재 감시 = bra3thfme(yeon P52 seed1·seed2) · b6kocwysa(yeon E-LoRA arm A r16) · bwsc1xofh(hpca100 E2) · bz6goimur(hpca100 E7c), 크론 = c0aba5c9. 세션이 재기동되면 id 가 바뀌므로 이 줄도 함께 갱신할 것.
+status: ✅ 인계 완료 (2026-09-08) — 🔴 감시 주체는 세션 **이름**이 아니라 아래 감시 task id 로 특정한다. 같은 이름을 다른 세션이 가질 수 있어 이름으로 지목하면 혼선이 난다(2026-09-08 실제로 발생: 구 p30-det 세션이 그 이름을 쥔 채 구식 로직 감시 4건을 겹쳐 걸었다가 정리됨). 현재 감시(2026-09-08 18:30 KST 기준) = bra3thfme(yeon P52 seed1·seed2) · b6kocwysa(yeon E-LoRA arm A r16) · b1g0vla8o(hpca100 E7c, 정확일치판) · bbr0mchq0(hpca100 E1M) · byyvs2cj4(hpca100 E2 legal 재채점), 크론 = c0aba5c9. 구 bwsc1xofh(E2 학습)은 E2 완주로 역할을 다해 정지했고, 구 bz6goimur(E7c)은 ⑥ 의 `=` 정확일치판으로 교체했다. 세션이 재기동되면 id 가 바뀌므로 이 줄도 함께 갱신할 것.
 revised: 2026-09-08 — §1 감시 명세를 개정판으로 교체(진행 판정 방식 변경, 정체 감지 추가, PING 가드), §1-5 크론 생성 반영
 ---
 
@@ -39,7 +39,7 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 | 신호 | 원격에서 얻는 방법 | 쓰임 |
 |---|---|---|
 | `PING` | 무조건 `echo PING` | 원격 조회 성공 여부 |
-| `ALIVE` | `tmux has-session -t <세션> 2>/dev/null && echo ALIVE` | 세션 생존 |
+| `ALIVE` | `tmux has-session -t =<세션> 2>/dev/null && echo ALIVE` (🔴 `=` 필수, 아래 ⑥) | 세션 생존 |
 | `AGE` | `$(date +%s) - $(stat -c %Y <로그>)` | 로그 무갱신 경과 초 |
 | `VAL` | `grep -a '\[Val\]' <로그> \| tail -1` | 최신 평가 결과 |
 | `ERR` | `tail -c 4000 <로그> \| tr '\r' '\n' \| grep -aE '<에러패턴>' \| tail -2` | 크래시 흔적 |
@@ -72,6 +72,25 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 정확히 한 번). `STALLED_LOG`·`STALLED_VAL`은 플래그를 세워 한 번만 알리고, 진전이 재개되면 플래그를
 푼다. 첫 주기에는 `WATCH_START`를 한 번 내보내 **설치 직후 정상 동작을 즉시 확인할 수 있게 한다**
 (초판은 설치 후 몇 시간 동안 아무 출력이 없어 살아 있는지 확인할 방법이 없었다).
+
+⑥ 🔴 **`tmux has-session -t` 앞에 `=` 를 반드시 붙인다(2026-09-08 실제 사고).** `tmux` 의 대상 세션 해석은
+**접두어 매칭**이라, `-t hpca100_E2` 는 `hpca100_E2_eval` 같은 **다른 세션에도 걸린다.** 그래서 감시 대상이
+끝났는데도 이름이 겹치는 새 세션이 있으면 계속 `ALIVE` 로 판정되어 **`SESSION_ENDED` 가 영영 안 나온다.**
+
+2026-09-08 에 그대로 재현됐다. E2 학습이 08:35 UTC 에 끝났는데 재채점을 위해 만든 `hpca100_E2_eval` 세션이
+접두어에 걸려 감시가 완주를 놓쳤고, 40분 뒤 로그 무갱신 임계에 걸려 **"데드락 의심"이라는 엉뚱한 알림**이 왔다.
+별도 감지기를 따로 걸어 둔 덕에 완주는 13분 만에 알았지, 감시에만 의존했다면 GPU 가 그만큼 더 놀았다.
+
+서버에서 직접 검증한 결과다.
+
+| 명령 | 결과 |
+|---|---|
+| `tmux has-session -t hpca100_E2` | MATCH (그 이름의 세션은 이미 없는데도) |
+| `tmux has-session -t =hpca100_E2` | NOMATCH (정확) |
+| `tmux has-session -t =hpca100_E2_eval` | MATCH |
+
+**완주한 실험의 자리에 재채점·후속 세션을 만들 때 이름이 겹치기 쉬우므로**(`<실험>_eval` 이 자연스러운 작명이다)
+이 함정은 반복된다. `=` 를 붙이거나, 후속 세션 이름을 접두어가 겹치지 않게 짓는다. 둘 다 하는 편이 안전하다.
 
 ### 1-1. 감시 넷의 대상과 임계
 
