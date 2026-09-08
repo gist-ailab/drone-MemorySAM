@@ -582,6 +582,75 @@ class PrototypeBank(nn.Module):
                 self._update(f.detach(), g)
             return loss
 
+    def pair_margin(self, feat: torch.Tensor, gt: torch.Tensor,
+                    pairs: Sequence[Tuple[int, int]], margin: float
+                    ) -> Tuple[torch.Tensor, int]:
+        """[E4] 혼동 쌍 (c, j)별 hinge margin — prototype 소스.
+
+        GT=c 픽셀 feature f에 대해 ``max(0, margin − (cos(f, p_c) − cos(f, p_j)))``의
+        평균을 낸다. p는 detach된 EMA prototype이라 gradient는 전부 **feature 쪽**으로
+        흐른다 — C-3의 "당김"과 같은 계약이되, 이 항은 혼동 클래스 j에서 **밀어내는**
+        방향이다(정답 유사도가 혼동 유사도 + margin 을 넘어서면 손실 0). bank는
+        여기서 **갱신하지 않는다**(읽기 전용) — 갱신은 C-3 주 forward가 담당한다.
+
+        건너뛰는 쌍: (i) prototype이 아직 초기화 안 됨(inited<0.5)  (ii) 이번 서브샘플에
+        클래스 c 픽셀이 없음. 둘 다 NaN 없이 조용히 제외한다("쌍 클래스 미출현 배치").
+
+        서브샘플은 C-3와 **같은** ``_sample``(PIXELS 노브)을 재사용한다.
+
+        Returns
+          (mean_loss, n_valid_pairs) — n_valid=0이면 손실 0(호출부에서 무시).
+        """
+        with torch.autocast(device_type=feat.device.type, enabled=False):
+            f, g = self._sample(feat, gt)
+            if f is None:
+                return feat.new_zeros(()), 0
+            fn = F.normalize(f, dim=1)
+            pn = F.normalize(self.proto.float(), dim=1).detach()      # (K,D)
+            live = self.inited > 0.5
+            losses = []
+            for c, j in pairs:
+                c, j = int(c), int(j)
+                if not (bool(live[c]) and bool(live[j])):
+                    continue
+                sel = g == c
+                if not bool(sel.any()):
+                    continue
+                fc = fn[sel]                                          # (n,D)
+                sc = fc @ pn[c]                                       # (n,) cos(f,p_c)
+                sj = fc @ pn[j]                                       # (n,) cos(f,p_j)
+                losses.append(F.relu(margin - (sc - sj)).mean())
+            if not losses:
+                return feat.new_zeros(()), 0
+            return sum(losses) / len(losses), len(losses)
+
+
+def confusion_pairs_from_cm(cm: np.ndarray, k: int) -> List[Tuple[int, int]]:
+    """[E4] 행-정규화 혼동행렬에서 대각 제외 상위 k개 (GT c → 예측 j) 쌍을 고른다.
+
+    cm[c, j] = GT가 c인데 j로 예측된 픽셀 수(정수 누적으로 넘겨도 무방하다 — 여기서
+    행별로 정규화한다). 행합이 0인 클래스(검증셋에 GT가 없던 클래스)는 후보에서
+    빠지고, 혼동 비율이 0(≤0)인 항도 선택하지 않는다.
+
+    Returns
+      혼동 비율 내림차순 (c, j) 리스트(길이 ≤ k).
+    """
+    cm = np.asarray(cm, dtype=np.float64).copy()
+    K = cm.shape[0]
+    row = cm.sum(axis=1, keepdims=True)
+    rn = np.divide(cm, np.maximum(row, 1.0))          # 행-정규화(행합 0 → 0)
+    np.fill_diagonal(rn, -1.0)                         # 대각(정답)은 후보에서 제외
+    order = np.argsort(-rn.reshape(-1))                # 혼동 비율 내림차순
+    pairs: List[Tuple[int, int]] = []
+    for flat in order:
+        c, j = int(flat // K), int(flat % K)
+        if rn[c, j] <= 0.0:
+            break                                      # 남은 것은 전부 혼동 없음(0/음수)
+        pairs.append((c, j))
+        if len(pairs) >= int(k):
+            break
+    return pairs
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 공통 스케줄

@@ -41,7 +41,7 @@ author: fable (MMSAM discussion 세션)
 | H23 | 백본 적응 깊이(LoRA 전층·MLP 확장 / 부분·전체 FT)가 frozen+LoRA Q/V 대비 이득 | E-BB A1~A4 3페어 매칭 | 🟡 예약(2026-09-07) | — | [decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md](../decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md) 축 2 |
 | H24 | C3-adaptive의 train 혼동 신호가 val→test 붕괴 클래스(RailTrack)에서 발화한다 | 학습0 프로브(기존 ckpt, train 1ep) | 🟡 예약(2026-09-07) | — | 동상 §1.3·축 1-a |
 | H25 | P50 스케일업(500k·6모달) 역전의 원인 = pseudo-모달=f(RGB) / 망각 / 용량 경쟁 중 하나로 수렴 | 학습0 진단 D1~D5 | 🟡 예약(2026-09-07) | — | 동상 축 3 |
-| H26 | DINOv3 고정 특징에 패치별 센서 라우팅을 학습할 수 있는 단서가 존재한다 (user 제안: 공유 전문가 LoRA + 패치·클래스별 가중) | 오라클 지도 라우터 프로브(라우터 헤드만 학습, val 정확도 vs 우연) | 🟡 예약(2026-09-07) | — | [decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md](../decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md) §3.5-3 · H16 반증 직접 반박용 |
+| H26 | DINOv3 고정 특징에 패치별 센서 라우팅을 학습할 수 있는 단서가 존재한다 (user 제안: 공유 전문가 LoRA + 패치·클래스별 가중) | 오라클 지도 라우터 프로브(라우터 헤드만 학습, val 정확도 vs 우연) | 🟡 예약 — **E0 부분 결과(2026-09-08)**: 원 특징 선형 판독이 어댑터·융합 후보다 열세(test 27.8 vs 45.1)라 "원 특징에 단서가 풍부" 기대 하향; 오라클 선택 프로브 자체는 미실행 | — | [decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md](../decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md) §3.5-3 · H16 반증 직접 반박용 |
 
 ## 종합 — 계보가 확립한 명제 (2026-08-09 갱신)
 

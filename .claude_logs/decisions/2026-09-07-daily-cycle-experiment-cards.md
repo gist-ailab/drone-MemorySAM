@@ -85,9 +85,18 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 
 1. 아침: 전날 스크린 결과를 `val.py`로 재채점 → 카드 표에 Δtest 기입 → 통과/폐기.
 2. 통과 카드는 확정 큐(200ep 3페어)로, 폐기 카드는 원장에 1줄.
-3. 빈 GPU에 다음 카드 기동(sonnet: `remote_exp.sh status` → `run ... auto:N`, 기동 검증 5항목).
+3. 빈 GPU에 다음 카드 기동(sonnet: `remote_exp.sh status` → `run ... auto:N`, 기동 검증 5항목). **환경변수 `PYTHONUNBUFFERED=1` 필수** — tee 파이프 시 파이썬 stdout 블록 버퍼링으로 `[E2] lora_targets=…` 같은 1회성 기동 로그가 flush 전까지 로그 파일에 안 보인다(2026-09-07 hpca100 E2·bengio E0 실측). `remote_exp.sh`가 git을 부르는 환경(worktree 격리 세션)에서는 `ssh <host>` 직접 실행.
+   1일차 실측 속도: DELIVER 40ep — bengio 3090×4 ≈12.5분/ep(8.3h), 3090×2 ≈26분/ep(17.5h), hpca100 A100×2 ≈22분/ep(14.8h) · MUSES 40ep — A100×1 ≈14.5분/ep(9.7h).
 4. 구현 워커: 카드별 지시문을 이 문서에서 복사해 `labcode -p` / `glmcode -p`로 위임, 이 세션이 diff 검수 + 스모크(기본 off byte-동일).
 
 ## 4. 등재
 - plan.md 대기열에 카드 행 추가(B0·E0·E7·E1·E2·E3·E4·E8 순), 각 행 EPOCHS 40 명시.
 - 카드 결과는 `experiments/analysis/2026-09-XX-daily-cards-<E>.md` 1건씩.
+
+## 5. 결과 기록
+
+| 카드 | 결과 | 판정 | 근거 |
+|---|---|---|---|
+| E9 τ=0 (재채점) | test 53.57 = 기존 정본(구 53.57) 일치 | 하네스 재동결 완료(636e490) | bengio `logs/e9_la_tau0_*.log` |
+| **E9 검증셋 사전 로짓 보정** | τ=0 53.57 / τ=0.5 53.45 / τ=1.0 51.89 (mAcc 63.8→67.1→69.2) | **폐기** — mIoU 단조 하락, 게이트 +0.5 미달. 혼동은 클래스 사전 이동이 아니라 재현율↔정밀도 교환으로만 반응 | bengio `logs/e9_la_tau{0.5,1.0}_*.log` |
+| E0 특징 정보 프로브 | raw 27.8 < adapted 35.6 < fused 45.1 (test 선형 mIoU); depth 중간층 탭에 Water 47.6·RailTrack 23.9 잔존(fused 16.6·0.0) | 게이트(i) 미달(−8.2%p) → "어댑터가 버린다" 기각. **E5·E6 하향, E1·E3 유지**. 오라클 프로브 미실행 | [analysis/2026-09-08-daily-cards-E0-feature-probe.md](../experiments/analysis/2026-09-08-daily-cards-E0-feature-probe.md) |
