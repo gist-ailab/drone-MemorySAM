@@ -86,6 +86,29 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 **직전 완결(09-07~08)**: **B0 기준선 스크린 완주 → legal test 53.78 / val 64.97**(트레이너 val 65.4, 정본 대비 +0.43 — 판정은 정본으로만) · E0 특징 프로브(기각: raw 27.8 < adapted 35.6 < fused 45.1, depth 중간층에 Water 47.6·RailTrack 23.9 잔존 → E1·E3 유지, E5·E6 하향) · E9 로짓 보정 폐기(53.57/53.45/51.89) · E7 MUSES PhysAug-off 완주(트레이너 val 80.29@40, 공식 재채점 대기) · P52 MCubeS seed1 완주 58.18@174(final 57.96, 3-seed 정본 대역 안 = 동률) · P50-EXT 게이트 기각(ep30 53.10) · N7 VICReg-off 완주(val-best 66.56@32).
 **직전 완결(08-31)**: P50 파인튠 게이트 통과(+0.74, H22✓) · N2 믹서 판정(mean 55.45, H21✗) · N6 재선택 5/5(54.39±0.76) · MCubeS 3-seed(58.07±0.49) · MUSES 시드 3점(spread 0.66) · P51 페어2 완주(각주) — 전부 analysis/registry 반영됨.
 
+## ⏸ bengio 중단 런 — 재개 대기 (2026-09-09 04:20 KST)
+
+> **왜 껐나**: bengio 를 후배에게 넘겨야 해서 user 지시로 **미리** 중단했다(09-09 04:18 KST, SIGTERM).
+> **버린 것 없음** — 셋 다 `AUTO_RESUME: true` 이고 체크포인트가 `outputs/` 에 남아 있다. 같은 서버든
+> 다른 서버든 **SAVE_DIR 의 산출물만 있으면 그 자리에서 이어 돌아간다.**
+> 🔴 **bengio 의 `/SSDe/jemo_maeng/src/drone-MemorySAM-daily/outputs/` 를 지우지 마라.** 지우면 재개가 아니라 재시작이 된다.
+
+| 런 | 중단 시점 | 재개 지점(ckpt) | 산출물 | config | GPU |
+|---|---|---|---|---|---|
+| **E4b** 혼동쌍 명시(RailTrack→Sky/Static/Terrain, Wall→Building, Water→Terrain) | ep14 의 79% | `epoch10_62.83_top1` / `last_checkpoint.pth` | 8.7G | `bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b.yaml` | 3장 |
+| **B0s2** 기준선 시드2 | ep10 의 19% | `epoch5_59.71_top1` / `last_checkpoint.pth` | 5.3G | `bengio-…_seed20260902_screen40_B0s2.yaml` | 2장 |
+| **E1s2** 4탭 시드2 | ep6 의 37% | `epoch5_61.75_top1` / `last_checkpoint.pth` | 5.4G | `bengio-…_seed20260902_screen40_E1s2.yaml` | 2장 |
+
+**중단 시점의 트레이너 val**: E4b ep5 59.66 · ep10 62.83 / B0s2 ep5 59.71 / E1s2 ep5 **61.75**
+(E1s2 의 ep5 61.75 는 E1 본판 60.98 보다 +0.77 — 시드 판별의 첫 표본)
+
+**재개 방법**
+1. 같은 서버(bengio 반환 후)면 원래 명령 그대로 다시 띄우면 `AUTO_RESUME` 이 `last_checkpoint.pth` 를 잡는다.
+2. **다른 서버로 옮기면** ① `outputs/ReliaDINO/<SAVE_DIR명>/` 을 그 서버로 복사 ② config 사본에서 `SAVE_DIR`·`DATASET.ROOT`·`TEST.FILE` 을 그 서버 경로로 고침 ③ 같은 명령으로 기동. hpca100 E1M 을 이 방식으로 되살린 전례가 있다(2026-09-08, `/tmp` 우회).
+3. 기동 검증: 로그에 `Resumed weights from … (epoch N) missing=0 unexpected=0` 과 `[SEED] fix_seeds(...)` 가 찍히는지 확인.
+
+**남겨 둔 것**: E4 ep15 legal test 재채점(GPU0, PID 2506380)은 **끄지 않고 계속 돌린다**(04:14 시점 69%, 04:45 전후 완료 예정). 이것만 GPU 한 장을 쓴다.
+
 ## 📋 대기열 (우선순위 순) — 2026-08-24 전면 재설계 (논문-가치 필터)
 
 > **재설계 기준**: ①논문(accept) 기여 — A(P51 확장)·B(진단-프레임워크) 어느 분기에서도 쓰이는가 ②24GB(yeon 3090/jarvis 4090)에서 도는가 ③원장 반증 경로가 아닌가. 옛 대기열 대부분은 계보 사망·중복으로 종결 처리(하단 🗑).
