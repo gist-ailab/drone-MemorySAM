@@ -95,6 +95,8 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 - plan.md 대기열에 카드 행 추가(B0·E0·E7·E1·E2·E3·E4·E8 순), 각 행 EPOCHS 40 명시.
 - 카드 결과는 `experiments/analysis/2026-09-XX-daily-cards-<E>.md` 1건씩.
 
+- 🔴 **`--gpu` 함정(2026-09-08 두 번째 사고)**: `tools/eval_muses_official.py`(49행)와 `tools/probe_feature_info.py`는 `--gpu N`으로 `CUDA_VISIBLE_DEVICES`를 통째로 덮어쓴다. 셸에서 `CUDA_VISIBLE_DEVICES=2`를 주고 `--gpu 0`을 겹쳐 주면 **절대 인덱스 0(타 사용자 GPU)**에 올라간다. 둘 중 하나만, 그리고 `--gpu`에는 절대 인덱스를 준다.
+
 ### 3-6. 2026-09-08 저녁 배치 계획 (분담: bengio = 이 세션, hpca100 = 감시 세션)
 
 | 시각(KST) | 서버·GPU | 작업 | config |
@@ -125,8 +127,9 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | E3 센서별 prototype (진행) | 트레이너 val ep5~35 = 59.35/63.72/62.23/65.44/**65.97**/65.51/65.61 vs B0 …/64.03/65.13 | 🔵 보류(ep30 +0.4, 단일 시드 잡음 범위 안) | bengio `logs/e3_permodal_screen40_*.log` |
 | **E4 혼동 쌍 margin auto (완주, 재채점 중)** | 트레이너 val ep5~40 = 59.77/63.17/**65.92**/65.70/65.79/65.62/65.70/**64.99**(B0 ep40 65.4). val-best **ep15 65.92**, 이후 정체 뒤 ep40에서 하락 | 🟡 보류(트레이너 val 기준 이득 0.5 이내, 후반 하락 — margin 항이 후기 학습을 방해했을 가능성, 판정은 ep15 ckpt legal test로). **auto 쌍에 RailTrack 누락** → 명시 쌍판 E4b를 같은 GPU1-3에 기동 | bengio `logs/e4_confmargin_screen40_20260908_085306.log`, `logs/e4_eval_{test,val}_ep15_*.log` |
 | **E2 전 선형층 LoRA (완주·재채점 완료)** | 트레이너 val ep40 **68.65**(궤적 62.54/63.44/60.09/62.40/65.25/66.91/67.85/68.65). **legal val 68.38 / test 54.50** (ckpt `epoch40_68.65_top1`, 1024·BS1). Δ vs B0: val **+3.41**, test **+0.72**. 클래스별 test: RailTrack 31.98→**47.75**(+15.77), TrafficLight 30.23→**42.72**(+12.49), TrafficSign +2.89, Truck +2.68 / Wall 12.17→5.77(−6.40), Water 6.46→0.99(−5.47), Static 28.63→23.19(−5.44) | 🟡 **회색지대(+0.5 ≤ Δ < +1.0) → 판정 보류, 시드2 페어(E2s2)로 판별**. 해석: 용량 확장이 진짜 격차 클래스 RailTrack을 실제로 풀지만(DGFusion 64.47과의 격차 60→17), 이득 전부가 RailTrack·TrafficLight 두 클래스(+1.13 mIoU 기여)에서 나오고 Wall·Water·Static(−0.69 기여)이 절반을 되받아간 상쇄 결과. val→test 전이율 21%. 트레이너 val − 공식 val = 0.27(B0 0.43과 같은 방향, 보정값 안정). 후속: E12(E1+E2 결합)로 축 가산성 확인, E2s2로 시드 판별 | hpca100 `logs/hpca100_E2_eval_{test,val}_20260908_083859.log` |
-| E7 vs E7c MUSES PhysAug 대조 (둘 다 완주) | 트레이너 val ep5~40 페어 차이(켬−끔) = −0.66/+0.13/−1.09/+0.27/+0.38/−0.32/+0.27/**−0.11**(ep40: E7 80.29 vs E7c 80.18) | 🟡 **PhysAug 효과 = 진동(부호 4:4 교대, 전부 ±1.1 이내) → 트레이너 val 기준 이득 없음**. 확정은 `tools/eval_muses_official.py` 페어 재채점(hpca100 GPU2 진행 중). 확정 시 MUSES 레시피는 공정성 위해 PhysAug-off로 통일 | hpca100 `logs/muses_official_{E7,E7c}.log` |
+| E7 vs E7c MUSES PhysAug 대조 (둘 다 완주) | 트레이너 val ep5~40 페어 차이(켬−끔) = −0.66/+0.13/−1.09/+0.27/+0.38/−0.32/+0.27/**−0.11**(ep40: E7 80.29 vs E7c 80.18) | ✅ **확정: PhysAug 효과 없음(근소 손해)** — 공식 native(250장, 1080×1920) E7 **80.0756** vs E7c **79.9417**(−0.13), letterbox 1024 80.29 vs 80.18(−0.11), 트레이너 val −0.11로 세 축 일치. 클래스별: E7c가 train +0.31·bicycle +1.30·terrain +0.70에서 앞서고 rider −1.53·motorcycle −2.10·pole −0.75·person −0.63·traffic light −0.53에서 뒤짐(작은 객체에서 오히려 손해). → **MUSES 레시피 PhysAug-off 통일**(공정성 문제 §3.5-1 해소, 성능 손실 없음) | hpca100 `~/SSDb/jemo_maeng/muses_official_eval_20260908/{E7,E7c}`, `logs/muses_official_{E7,E7c}.log` |
 | E7 MUSES PhysAug-off (완주) | 트레이너 val **80.29**@ep40 | 🔵 E7c(PhysAug-on, ep23/40) 완주(20:26 KST) 후 두 val-best ckpt를 `tools/eval_muses_official.py`로 페어 재채점해야 PhysAug 효과 확정 | hpca100 `logs/hpca100_E7_launch.log` |
+| E1M MUSES 4탭 (hpca100 GPU3, 사망) | 트레이너 val ep5/10/15 = …/…/**77.57**(E7 같은 시점 77.06) → **ep18에서 로그 중단(Traceback·Killed 없음)** | ❌ **hpca100 디스크 100%(SSDb 2.0T/2.0T)로 ckpt·로그 쓰기 실패 추정**. 재개·E12·E2s2 기동 전부 불가(tee 파일조차 못 엶). 삭제는 사용자 승인 사항 → 승인 요청(21:xx KST 푸시). 승인 전 조치: 다른 마운트 여분 확인, 완주 런 정본 ckpt(E2 ep40·E7 ep40·E7c ep40) NAS 보존, 용량 조사 | 감시 세션 보고 |
 | MCubeS P52 seed1 (완주) | val-best 58.18@ep174 / final 57.96; 3시드 58.07±0.49 | P46과 동률 — P52 컨트롤러 이득 없음(감사 결론 재확인) | yeon |
 
 > 🔗 **노션 동기화(2026-09-08)**: 이 표는 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, 33d05310) §4.2 카드 표와 같은 내용이다. 판정이 바뀌면 둘을 같은 날 갱신한다(CLAUDE.md §3, 빌더 `.claude/skills/notion-experiment-log/paper_page_builder.py`).
