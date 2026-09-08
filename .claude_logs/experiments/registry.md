@@ -98,7 +98,7 @@ updated: 2026-08-08 (상태셀 자기모순 4건 수정, 1024² 런 3건 등재)
 | bengio_deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b | seg | DELIVER 4모달 | **E4b 혼동 쌍 명시**(RailTrack→Sky/Static/Terrain, Wall→Building, Water→Terrain) | `configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b.yaml` | bengio GPU1-3(E4 완주 후) | — | ⏳ 대기(config 805e1fa) | — | 카드 §1 E4b·§3-6 |
 | bengio_deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2 / E1s2 | seg | DELIVER 4모달 | 시드 20260902 매칭 페어(B0·E1) | `configs/bengio-…seed20260902_screen40_{B0s2,E1s2}.yaml` | bengio GPU6,7(E1 완주 후) / GPU4,5(E3 완주 후) | — | ⏳ 대기 | — | 카드 §3-6 |
 | B0_legal_rescore_seed821 | 평가(학습 0) | DELIVER | **B0 legal 재채점** ckpt `epoch40_65.4_top1` | `configs/eval/bengio-…_eval1024_E0.yaml` | bengio | `logs/b0_eval_{val,test}_20260908_*.log` | ✅ val 64.97 / test **53.78** → 통과선 54.78 확정 | — | 카드 §5 |
-| daily_cards_early_eval_bengio_gpu0 | 평가(학습 0) | DELIVER | E1 ep30·E3 ep25·E4 ep15 ckpt 조기 legal test 재채점(방향 확인, 판정 아님) | `configs/eval/bengio-…_eval1024_{E1,E3,E4}.yaml` | bengio GPU0, tmux `jemo:early_eval` | `logs/e{1,3,4}_early_eval_test_*.log` | 🔵 기동 중(2026-09-08 16:3x) | — | 카드 §3-6 |
+| daily_cards_early_eval_bengio_gpu0 | 평가(학습 0) | DELIVER | E1 ep30·E3 ep25·E4 ep15 ckpt 조기 legal test 재채점(방향 확인, 판정 아님) | `configs/eval/bengio-…_eval1024_{E1,E3,E4}.yaml` | bengio GPU0, tmux `jemo:early_eval` | `logs/e{1,3,4}_early_eval_test_*.log` | ❌ 취소(2026-09-08 16:3x) — GPU0을 다른 사용자가 점유(5.6GiB·12%), 빈 GPU 기준 미충족 | — | 카드 §3-6 |
 
 ## Det — poongsan indoor (국가 R&D, 목표 mAP50 0.85)
 

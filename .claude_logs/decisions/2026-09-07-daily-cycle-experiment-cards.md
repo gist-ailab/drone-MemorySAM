@@ -99,10 +99,10 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 
 | 시각(KST) | 서버·GPU | 작업 | config |
 |---|---|---|---|
-| 지금 | bengio GPU0 | E1 ep30·E3 ep25·E4 ep15 ckpt 조기 legal test 재채점(방향 확인용) | `configs/eval/bengio-…_eval1024_{E1,E3,E4}.yaml` |
-| E1 완주(18시 이후) | bengio GPU0 / GPU6,7 | E1 val-best legal 재채점 / **B0s2**(시드 20260902 매칭 페어) | `bengio-…seed20260902_screen40_B0s2.yaml` |
-| E3 완주 | bengio GPU4,5 | **E1s2**(bengio판) | `bengio-…seed20260902_screen40_E1s2.yaml` |
-| E4 완주 | bengio GPU1-3 | **E4b**(RailTrack 명시 쌍) | `bengio-…seed20260821_screen40_E4b.yaml` |
+| ~~지금~~ | ~~bengio GPU0~~ | ~~조기 legal test 재채점~~ **취소** — 16:3x 다른 사용자가 GPU0 점유(빈 자리 즉시 상실, gpu-never-idle 실증) | — |
+| E1 완주 **20:24**(실측 33.1분/ep) | bengio GPU6 → GPU6,7 | E1 val-best legal 재채점(GPU6 1장) → 끝나면 **B0s2**(시드 20260902 매칭 페어) | `bengio-…seed20260902_screen40_B0s2.yaml` |
+| E3 완주(≈00:00) | bengio GPU4,5 | **E1s2**(bengio판) | `bengio-…seed20260902_screen40_E1s2.yaml` |
+| E4 완주(≈22:30) | bengio GPU1-3 | **E4b**(RailTrack 명시 쌍) | `bengio-…seed20260821_screen40_E4b.yaml` |
 | 17:26 | hpca100 GPU1 / GPU3 | E2 legal 재채점 / **E1M**(MUSES 4탭) | `hpca100-muses_…_taps_screen40_E1M.yaml` |
 | 20:26 | hpca100 GPU2 | E7·E7c 공식 재채점 → 이후 E1s2(hpca100판) | `hpca100-…seed20260902_screen40_E1s2.yaml` |
 | E2 판정 후 | hpca100 GPU1 | 통과면 **E12**(E1+E2), 아니면 E1s2 이동 | `hpca100-…seed20260821_screen40_E12.yaml` |
@@ -118,7 +118,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | **E9 검증셋 사전 로짓 보정** | τ=0 53.57 / τ=0.5 53.45 / τ=1.0 51.89 (mAcc 63.8→67.1→69.2) | **폐기** — mIoU 단조 하락, 게이트 +0.5 미달. 혼동은 클래스 사전 이동이 아니라 재현율↔정밀도 교환으로만 반응 | bengio `logs/e9_la_tau{0.5,1.0}_*.log` |
 | E0 특징 정보 프로브 | raw 27.8 < adapted 35.6 < fused 45.1 (test 선형 mIoU); depth 중간층 탭에 Water 47.6·RailTrack 23.9 잔존(fused 16.6·0.0) | 게이트(i) 미달(−8.2%p) → "어댑터가 버린다" 기각. **E5·E6 하향, E1·E3 유지**. 오라클 프로브 미실행 | [analysis/2026-09-08-daily-cards-E0-feature-probe.md](../experiments/analysis/2026-09-08-daily-cards-E0-feature-probe.md) |
 | B0 기준선 40ep | legal val **64.97**(mAcc 74.73) / test **53.78**(mAcc 63.87), ckpt `epoch40_65.4_top1` | 통과선 test **54.78**, 폐기선 54.28 확정. 트레이너 val(65.4)이 공식 val보다 **+0.43** 높다(보정값). 클래스별: val→test 낙차 11.19 중 61%가 Wall(71.7→12.2)·Bridge(58.4→0.0)·Water(59.6→6.5) — 단, 이 셋은 DGFusion도 test 0~4로 공통 붕괴(2026-07-28 §68)라 SOTA 격차 원인이 아님. 진짜 격차 = RailTrack(19.4→32.0, DGFusion보다 낮음) | bengio `logs/b0_eval_{val,test}_20260908_*.log` (감시 세션 재채점) |
-| E1 4탭 읽기 (진행) | 트레이너 val ep5/10/15/20/25/30 = 60.98/63.56/66.30/66.57/66.43/**66.88** vs B0 58.71/63.17/62.18/63.91/64.03/65.13 | 🔵 뚜렷한 양성 궤적(+1.7@ep30). 판정은 완주 후 val-best legal test 하나로만. ep30 ckpt 조기 test 재채점을 GPU0에서 선행(방향 확인용, 판정 아님) | bengio `logs/e1_taps_screen40_*.log` |
+| E1 4탭 읽기 (진행) | 트레이너 val ep5/10/15/20/25/30 = 60.98/63.56/66.30/66.57/66.43/**66.88** vs B0 58.71/63.17/62.18/63.91/64.03/65.13 | 🔵 뚜렷한 양성 궤적(+1.7@ep30). 판정은 완주 후 val-best legal test 하나로만. 조기 재채점은 GPU0 상실로 취소. 완주 ETA 20:24 KST(33.1분/ep 실측) | bengio `logs/e1_taps_screen40_*.log` |
 | E3 센서별 prototype (진행) | 트레이너 val ep5/10/15/20/25 = 59.35/63.72/62.23/65.44/**65.97** vs B0 …/64.03 | 🔵 보류(+1.9@ep25, 단일 시드 잡음 범위 경계) | bengio `logs/e3_permodal_screen40_*.log` |
 | E4 혼동 쌍 margin auto (진행) | 트레이너 val ep5/10/15/20 = 59.77/63.17/**65.92**/65.70; auto 쌍 = Ground→SideWalk, Water→Terrain, Other→Fence, Other→SideWalk, Static→Building | 🔵 보류. **auto 쌍에 RailTrack 누락** → 명시 쌍판 E4b 추가(E4 완주 후 같은 GPU에 기동) | bengio `logs/e4_confmargin_screen40_*.log` |
 | E2 전 선형층 LoRA (hpca100, 진행) | 트레이너 val ep10/15/20/25/30/35 = 63.44/60.09/62.40/65.25/66.91/**67.85** | 🔵 초반 하락 후 회복. 17:26 KST 완주 → hpca100 GPU1 legal 재채점(E2 학습 config 기반 eval config) | hpca100 감시 세션 |
