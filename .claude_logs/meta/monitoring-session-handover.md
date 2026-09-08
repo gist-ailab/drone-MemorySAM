@@ -1,7 +1,7 @@
 ---
 created: 2026-09-08
 author: 이 세션(worktree `.claude/worktrees/p30-det`, background job — EnterWorktree 아님, 작업폴더가 잡 생성 시 고정된 세션이라 ExitWorktree로 못 나감)
-status: ✅ 인계 완료 (2026-09-08) — 감시 주체는 `MMSAM | learning status monitoring` 세션 하나다.
+status: ✅ 인계 완료 (2026-09-08) — 🔴 감시 주체는 세션 **이름**이 아니라 아래 감시 task id 로 특정한다. 같은 이름을 다른 세션이 가질 수 있어 이름으로 지목하면 혼선이 난다(2026-09-08 실제로 발생: 구 p30-det 세션이 그 이름을 쥔 채 구식 로직 감시 4건을 겹쳐 걸었다가 정리됨). 현재 감시 = bra3thfme(yeon P52 seed1·seed2) · b6kocwysa(yeon E-LoRA arm A r16) · bwsc1xofh(hpca100 E2) · bz6goimur(hpca100 E7c), 크론 = c0aba5c9. 세션이 재기동되면 id 가 바뀌므로 이 줄도 함께 갱신할 것.
 revised: 2026-09-08 — §1 감시 명세를 개정판으로 교체(진행 판정 방식 변경, 정체 감지 추가, PING 가드), §1-5 크론 생성 반영
 ---
 
