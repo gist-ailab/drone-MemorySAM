@@ -100,12 +100,15 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | 시각(KST) | 서버·GPU | 작업 | config |
 |---|---|---|---|
 | ~~지금~~ | ~~bengio GPU0~~ | ~~조기 legal test 재채점~~ **취소** — 16:3x 다른 사용자가 GPU0 점유(빈 자리 즉시 상실, gpu-never-idle 실증) | — |
-| E1 완주 **20:24**(실측 33.1분/ep) | bengio GPU6 → GPU6,7 | E1 val-best legal 재채점(GPU6 1장) → 끝나면 **B0s2**(시드 20260902 매칭 페어) | `bengio-…seed20260902_screen40_B0s2.yaml` |
+| E1 완주 **20:28**(실측 33.1분/ep) | bengio GPU6,7 | 즉시 **B0s2**(시드 20260902 매칭 페어; 재채점은 GPU0이 맡음) | `bengio-…seed20260902_screen40_B0s2.yaml` |
 | E3 완주(≈00:00) | bengio GPU4,5 | **E1s2**(bengio판) | `bengio-…seed20260902_screen40_E1s2.yaml` |
 | E4 완주(≈22:30) | bengio GPU1-3 | **E4b**(RailTrack 명시 쌍) | `bengio-…seed20260821_screen40_E4b.yaml` |
 | 17:26 | hpca100 GPU1 / GPU3 | E2 legal 재채점 / **E1M**(MUSES 4탭) | `hpca100-muses_…_taps_screen40_E1M.yaml` |
 | 20:26 | hpca100 GPU2 | E7·E7c 공식 재채점 → 이후 E1s2(hpca100판) | `hpca100-…seed20260902_screen40_E1s2.yaml` |
-| E2 판정 후 | hpca100 GPU1 | 통과면 **E12**(E1+E2), 아니면 E1s2 이동 | `hpca100-…seed20260821_screen40_E12.yaml` |
+| 20:35 (E2 판정 후) | hpca100 GPU1 | **E12**(E1+E2 결합) — E2 회색지대(+0.72)지만 val +3.41·E1 val 신기록이라 축 가산성 확인이 최우선 | `hpca100-…seed20260821_screen40_E12.yaml` |
+| MUSES 페어 재채점 후(≈22:00) | hpca100 GPU2 | **E2s2**(E2 시드2 페어, 회색지대 판별) — E1s2(hpca100판)는 yeon으로 이관 | `hpca100-…seed20260902_screen40_E2s2.yaml` |
+| 지금 | yeon GPU7(4시간 유휴) | **E1s2(yeon판)** 단일 GPU ≈17h | `yeon-…seed20260902_screen40_E1s2.yaml` |
+| 20:28 | bengio GPU0(다시 빔) | E1 val-best legal 재채점 → 이어서 E3·E4 완주 재채점 전용 | `configs/eval/bengio-…_eval1024_{E1,E3,E4}.yaml` |
 
 - hpca100은 E7c 완주(20:26)까지 pull 금지(§1.5). 코드가 이미 develop과 동일(cddc319)함을 감시 세션이 md5로 확인했고, config 4벌은 파일 복사로 배치됨.
 - 재채점 규약: 각 카드의 **학습 config를 기반**으로 EVAL/TEST 네 항목(IMAGE_SIZE 1024, BATCH 1, TEST.FILE)만 바꾼 eval config를 쓴다(MODEL 블록 동일 → strict load). B0 블록용 `hpca100-deliver_rgbdel_P46_eval1024_legal.yaml`은 B0 계열에만.
@@ -118,10 +121,11 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | **E9 검증셋 사전 로짓 보정** | τ=0 53.57 / τ=0.5 53.45 / τ=1.0 51.89 (mAcc 63.8→67.1→69.2) | **폐기** — mIoU 단조 하락, 게이트 +0.5 미달. 혼동은 클래스 사전 이동이 아니라 재현율↔정밀도 교환으로만 반응 | bengio `logs/e9_la_tau{0.5,1.0}_*.log` |
 | E0 특징 정보 프로브 | raw 27.8 < adapted 35.6 < fused 45.1 (test 선형 mIoU); depth 중간층 탭에 Water 47.6·RailTrack 23.9 잔존(fused 16.6·0.0) | 게이트(i) 미달(−8.2%p) → "어댑터가 버린다" 기각. **E5·E6 하향, E1·E3 유지**. 오라클 프로브 미실행 | [analysis/2026-09-08-daily-cards-E0-feature-probe.md](../experiments/analysis/2026-09-08-daily-cards-E0-feature-probe.md) |
 | B0 기준선 40ep | legal val **64.97**(mAcc 74.73) / test **53.78**(mAcc 63.87), ckpt `epoch40_65.4_top1` | 통과선 test **54.78**, 폐기선 54.28 확정. 트레이너 val(65.4)이 공식 val보다 **+0.43** 높다(보정값). 클래스별: val→test 낙차 11.19 중 61%가 Wall(71.7→12.2)·Bridge(58.4→0.0)·Water(59.6→6.5) — 단, 이 셋은 DGFusion도 test 0~4로 공통 붕괴(2026-07-28 §68)라 SOTA 격차 원인이 아님. 진짜 격차 = RailTrack(19.4→32.0, DGFusion보다 낮음) | bengio `logs/b0_eval_{val,test}_20260908_*.log` (감시 세션 재채점) |
-| E1 4탭 읽기 (진행) | 트레이너 val ep5/10/15/20/25/30 = 60.98/63.56/66.30/66.57/66.43/**66.88** vs B0 58.71/63.17/62.18/63.91/64.03/65.13 | 🔵 뚜렷한 양성 궤적(+1.7@ep30). 판정은 완주 후 val-best legal test 하나로만. 조기 재채점은 GPU0 상실로 취소. 완주 ETA 20:24 KST(33.1분/ep 실측) | bengio `logs/e1_taps_screen40_*.log` |
-| E3 센서별 prototype (진행) | 트레이너 val ep5/10/15/20/25 = 59.35/63.72/62.23/65.44/**65.97** vs B0 …/64.03 | 🔵 보류(+1.9@ep25, 단일 시드 잡음 범위 경계) | bengio `logs/e3_permodal_screen40_*.log` |
-| E4 혼동 쌍 margin auto (진행) | 트레이너 val ep5/10/15/20 = 59.77/63.17/**65.92**/65.70; auto 쌍 = Ground→SideWalk, Water→Terrain, Other→Fence, Other→SideWalk, Static→Building | 🔵 보류. **auto 쌍에 RailTrack 누락** → 명시 쌍판 E4b 추가(E4 완주 후 같은 GPU에 기동) | bengio `logs/e4_confmargin_screen40_*.log` |
-| E2 전 선형층 LoRA (hpca100, 진행) | 트레이너 val ep10/15/20/25/30/35 = 63.44/60.09/62.40/65.25/66.91/**67.85** | 🔵 초반 하락 후 회복. 17:26 KST 완주 → hpca100 GPU1 legal 재채점(E2 학습 config 기반 eval config) | hpca100 감시 세션 |
+| E1 4탭 읽기 (진행) | 트레이너 val ep5~35 = 60.98/63.56/66.30/66.57/66.43/66.88/**67.25** vs B0 58.71/63.17/62.18/63.91/64.03/65.13 (내부 최고 67.74와 0.49 차) | 🔵 뚜렷한 양성 궤적(+1.7@ep30). 판정은 완주 후 val-best legal test 하나로만. 조기 재채점은 GPU0 상실로 취소. 완주 ETA 20:24 KST(33.1분/ep 실측) | bengio `logs/e1_taps_screen40_*.log` |
+| E3 센서별 prototype (진행) | 트레이너 val ep5/10/15/20/25/30 = 59.35/63.72/62.23/65.44/**65.97**/65.51 vs B0 …/64.03/65.13 | 🔵 보류(ep30 +0.4, 단일 시드 잡음 범위 안) | bengio `logs/e3_permodal_screen40_*.log` |
+| E4 혼동 쌍 margin auto (진행) | 트레이너 val ep5/10/15/20/25/30 = 59.77/63.17/**65.92**/65.70/65.79/65.62(B0 ep30 65.13); auto 쌍 = Ground→SideWalk, Water→Terrain, Other→Fence, Other→SideWalk, Static→Building | 🔵 보류. **auto 쌍에 RailTrack 누락** → 명시 쌍판 E4b 추가(E4 완주 후 같은 GPU에 기동) | bengio `logs/e4_confmargin_screen40_*.log` |
+| **E2 전 선형층 LoRA (완주·재채점 완료)** | 트레이너 val ep40 **68.65**(궤적 62.54/63.44/60.09/62.40/65.25/66.91/67.85/68.65). **legal val 68.38 / test 54.50** (ckpt `epoch40_68.65_top1`, 1024·BS1). Δ vs B0: val **+3.41**, test **+0.72**. 클래스별 test: RailTrack 31.98→**47.75**(+15.77), TrafficLight 30.23→**42.72**(+12.49), TrafficSign +2.89, Truck +2.68 / Wall 12.17→5.77(−6.40), Water 6.46→0.99(−5.47), Static 28.63→23.19(−5.44) | 🟡 **회색지대(+0.5 ≤ Δ < +1.0) → 판정 보류, 시드2 페어(E2s2)로 판별**. 해석: 용량 확장이 진짜 격차 클래스 RailTrack을 실제로 풀지만(DGFusion 64.47과의 격차 60→17), 이득 전부가 RailTrack·TrafficLight 두 클래스(+1.13 mIoU 기여)에서 나오고 Wall·Water·Static(−0.69 기여)이 절반을 되받아간 상쇄 결과. val→test 전이율 21%. 트레이너 val − 공식 val = 0.27(B0 0.43과 같은 방향, 보정값 안정). 후속: E12(E1+E2 결합)로 축 가산성 확인, E2s2로 시드 판별 | hpca100 `logs/hpca100_E2_eval_{test,val}_20260908_083859.log` |
+| E7 vs E7c MUSES PhysAug 대조 (둘 다 완주) | 트레이너 val ep5~40 페어 차이(켬−끔) = −0.66/+0.13/−1.09/+0.27/+0.38/−0.32/+0.27/**−0.11**(ep40: E7 80.29 vs E7c 80.18) | 🟡 **PhysAug 효과 = 진동(부호 4:4 교대, 전부 ±1.1 이내) → 트레이너 val 기준 이득 없음**. 확정은 `tools/eval_muses_official.py` 페어 재채점(hpca100 GPU2 진행 중). 확정 시 MUSES 레시피는 공정성 위해 PhysAug-off로 통일 | hpca100 `logs/muses_official_{E7,E7c}.log` |
 | E7 MUSES PhysAug-off (완주) | 트레이너 val **80.29**@ep40 | 🔵 E7c(PhysAug-on, ep23/40) 완주(20:26 KST) 후 두 val-best ckpt를 `tools/eval_muses_official.py`로 페어 재채점해야 PhysAug 효과 확정 | hpca100 `logs/hpca100_E7_launch.log` |
 | MCubeS P52 seed1 (완주) | val-best 58.18@ep174 / final 57.96; 3시드 58.07±0.49 | P46과 동률 — P52 컨트롤러 이득 없음(감사 결론 재확인) | yeon |
 
