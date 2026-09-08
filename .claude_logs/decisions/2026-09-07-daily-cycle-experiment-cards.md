@@ -100,15 +100,15 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | 시각(KST) | 서버·GPU | 작업 | config |
 |---|---|---|---|
 | ~~지금~~ | ~~bengio GPU0~~ | ~~조기 legal test 재채점~~ **취소** — 16:3x 다른 사용자가 GPU0 점유(빈 자리 즉시 상실, gpu-never-idle 실증) | — |
-| E1 완주 **20:28**(실측 33.1분/ep) | bengio GPU6,7 | 즉시 **B0s2**(시드 20260902 매칭 페어; 재채점은 GPU0이 맡음) | `bengio-…seed20260902_screen40_B0s2.yaml` |
+| ✅ 20:5x 기동 | bengio GPU6,7 | **B0s2** 기동 검증 통과(peak 13.9GiB, 1.34it/s, RANDOM INIT 없음) | `bengio-…seed20260902_screen40_B0s2.yaml` |
 | E3 완주(≈00:00) | bengio GPU4,5 | **E1s2**(bengio판) | `bengio-…seed20260902_screen40_E1s2.yaml` |
-| E4 완주(≈22:30) | bengio GPU1-3 | **E4b**(RailTrack 명시 쌍) | `bengio-…seed20260821_screen40_E4b.yaml` |
+| ✅ 20:5x 기동 | bengio GPU1-3 | **E4b** 기동 검증 통과(`[E4] 명시 pairs=[RailTrack→Sky, RailTrack→Static, RailTrack→Terrain, Wall→Building, Water→Terrain]` 확인) | `bengio-…seed20260821_screen40_E4b.yaml` |
 | 17:26 | hpca100 GPU1 / GPU3 | E2 legal 재채점 / **E1M**(MUSES 4탭) | `hpca100-muses_…_taps_screen40_E1M.yaml` |
 | 20:26 | hpca100 GPU2 | E7·E7c 공식 재채점 → 이후 E1s2(hpca100판) | `hpca100-…seed20260902_screen40_E1s2.yaml` |
 | 20:35 (E2 판정 후) | hpca100 GPU1 | **E12**(E1+E2 결합) — E2 회색지대(+0.72)지만 val +3.41·E1 val 신기록이라 축 가산성 확인이 최우선 | `hpca100-…seed20260821_screen40_E12.yaml` |
 | MUSES 페어 재채점 후(≈22:00) | hpca100 GPU2 | **E2s2**(E2 시드2 페어, 회색지대 판별) — E1s2(hpca100판)는 yeon으로 이관 | `hpca100-…seed20260902_screen40_E2s2.yaml` |
-| 지금 | yeon GPU7(4시간 유휴) | **E1s2(yeon판)** 단일 GPU ≈17h | `yeon-…seed20260902_screen40_E1s2.yaml` |
-| 20:28 | bengio GPU0(다시 빔) | E1 val-best legal 재채점 → 이어서 E3·E4 완주 재채점 전용 | `configs/eval/bengio-…_eval1024_{E1,E3,E4}.yaml` |
+| ~~지금~~ | ~~yeon GPU7~~ | ~~E1s2(yeon판)~~ **취소** — 기동 직전 타 사용자 프로세스(openpi, 17.2GiB)가 점유. config는 develop에 유지, 빈 자리 생기면 재시도 | `yeon-…seed20260902_screen40_E1s2.yaml` |
+| ✅ 20:5x 기동 | bengio GPU0 | E1 ep35 test→val→E4 ep15 test→val 순차 legal 재채점(분할당 ≈1h35, E1 test ≈22:15, 전체 ≈03:00) | `configs/eval/bengio-…_eval1024_{E1,E3,E4}.yaml` |
 
 - hpca100은 E7c 완주(20:26)까지 pull 금지(§1.5). 코드가 이미 develop과 동일(cddc319)함을 감시 세션이 md5로 확인했고, config 4벌은 파일 복사로 배치됨.
 - 재채점 규약: 각 카드의 **학습 config를 기반**으로 EVAL/TEST 네 항목(IMAGE_SIZE 1024, BATCH 1, TEST.FILE)만 바꾼 eval config를 쓴다(MODEL 블록 동일 → strict load). B0 블록용 `hpca100-deliver_rgbdel_P46_eval1024_legal.yaml`은 B0 계열에만.
