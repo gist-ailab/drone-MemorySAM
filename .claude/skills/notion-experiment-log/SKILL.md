@@ -28,6 +28,16 @@ import sys; sys.path.insert(0, ".claude/skills/notion-experiment-log")
 from notion_api import *
 ```
 
+### 0.5 일괄 생성기 3종 (2026-09-08 추가 — 손으로 블록을 짜지 말고 이걸 고쳐서 돌린다)
+
+| 스크립트 | 대상 | 동작 |
+|---|---|---|
+| `paper_page_charts.py` | 논문 페이지(`My Paper`)용 차트 PNG 7종 | `_paper_figs/`에 저장. 수치는 스크립트 안 리터럴 — 레포 정본과 함께 갱신 |
+| `paper_page_builder.py` | 논문 페이지 = **바깥(요약·목차·핵심 그림 2장) + 하위 페이지 8개(상세)** | 절 함수(`sec_cards`, `sec_plan` …)를 고친 뒤 실행. 하위 페이지는 제목으로 찾아 본문 전체 교체(멱등), 바깥은 `replace_section("0. 한눈에 보기")`. 바깥 페이지에 상세 h1을 다시 넣지 말 것(길이 불만이 발단) |
+| `exp_pages_builder.py` | `실험노트` DB 실험당 1페이지 | `EXP_JSON_DIR`의 `exp_*.json`(실험별 구조화 JSON: key/title/summary/background/architecture/results/analysis/verdict/todo/sources)을 읽어 제목의 key로 기존 행을 찾고 본문 전체 교체, 없으면 행 생성(My Paper·Project Pages 관계 자동). `--only=P46,P50` 부분 실행, `--dry` 확인. mermaid는 자동 렌더·업로드, 실패 시 소스 토글만 |
+
+실행: `conda run -n MMSS_SAM python .claude/skills/notion-experiment-log/<스크립트>` (레포 루트에서). 세 스크립트 모두 끝에 `audit()`를 돌려 내부 경로·금지 어투가 있으면 출력한다. 새 실험은 **레포 정본 문서에 먼저 적고**, JSON 원소를 추가해 생성기로 페이지를 만든다.
+
 ---
 
 ## 1. 무엇을 기록하는가 — 항목 체크리스트

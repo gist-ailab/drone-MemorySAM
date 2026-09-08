@@ -32,7 +32,7 @@ def sec_summary():
         CO([B("캠페인 결론(2026-06~09) "),
             T("추론 경로 안에서 모달을 적응적으로 가중하는 기제(학습 게이트 · 신뢰도→attention logit bias · 추론 재가중 · 패치별 라우팅 · cross-attention 트렁크 · 인코딩-시간 결합)는 전부 반증됨. 성능을 실제로 움직인 축 = 백본 표현력(SAM2→DINOv3 +11.6) · 학습 해상도(768→1024 test +2.0) · 학습 전용 클래스 prototype 손실(C3, DELIVER +1.4) · 어댑터 정렬 사전학습(+0.74, 재현 대기).")], "🧭", "yellow_background"),
         CO([B("지금 하는 것(2026-09-07~) "),
-            T("일일 사이클 실험 카드: 카드 1개 = 변수 1개 = 하루, 40ep 스크린 후 통과 카드만 200ep×3페어 확정. 기준선 B0 legal test 53.78. E1(중간층 4탭 읽기) 트레이너 val ep30 66.88 vs B0 65.13, E2(전 선형층 LoRA r32) ep35 67.85, E3·E4 진행 중, E7(MUSES PhysAug-off 공정 기준선) 완주. 병행: DGFusion·CAFuser 공식 설정 직접 재학습(재현 수치 확보 후 한계 분석).")], "🔬", "orange_background"),
+            T("일일 사이클 실험 카드: 카드 1개 = 변수 1개 = 하루, 40ep 스크린 후 통과 카드만 200ep×3페어 확정. 기준선 B0 legal test 53.78. E1(중간층 4탭 읽기) 트레이너 val ep30 66.88 vs B0 65.13, E2(전 선형층 LoRA r32) 완주 트레이너 val 68.65@40(legal 재채점 중), E3·E4 진행 중, E1M(MUSES 4탭) 기동, E7(MUSES PhysAug-off 공정 기준선) 완주. 병행: DGFusion·CAFuser 공식 설정 직접 재학습(재현 수치 확보 후 한계 분석).")], "🔬", "orange_background"),
         P(B("페이지 갱신 규칙 "), T(f"이 페이지는 레포 실험 계획 문서(experiments/plan)과 같은 날짜로 동기화한다. 마지막 동기화 {TODAY}. 절 제목은 고정이고 본문만 교체된다.")),
     ]
 
@@ -169,12 +169,13 @@ def sec_cards():
             ["E0 특징 정보 프로브", "어댑터가 백본 정보를 버리는가", "클래스·센서 정보가 DINOv3 원 특징에는 있는데 어댑터·헤드가 버린다", "학습 = 선형 헤드만 (tools/probe_feature_info.py)", "완료", "선형 프로브 test mIoU: 원 특징 27.8 < 어댑터 후 35.6 < 융합 45.1. depth 중간층 탭에 Water 47.6·RailTrack 23.9 잔존(융합 16.6·0.0)", "전역 가설 기각 → E5·E6 하향, E1·E3 유지"],
             ["E9 로짓 사전 보정", "클래스 사전의 도메인 이동", "추론 시 logit − τ·log p_val", "val.py --logit-adjust-tau", "완료", "τ=0/0.5/1.0 → 53.57/53.45/51.89 (mAcc는 상승)", "폐기 (mIoU 단조 하락)"],
             ["E1 중간층 4탭 읽기", "기하 센서의 클래스 근거가 중간층에 있음", "블록 6/12/18/24 출력을 SimpleFPN 레벨별로 투입하면 depth·lidar 의존 클래스가 회복", "MODEL.TAPS per_modal [6,12,18,24]", "ep33/40 (bengio GPU6,7), 완주 ETA 20:24 KST", "트레이너 val ep5~30: 60.98/63.56/66.30/66.57/66.43/66.88 vs B0 58.71/63.17/62.18/63.91/64.03/65.13 (B0 ep35 64.67·ep40 65.40)", "보류 — 완주 후 legal test 1회로 판정 (양성 방향)"],
-            ["E2 전 선형층 LoRA", "Q/V만으로는 센서별 클래스 근거를 담을 용량이 없음", "LoRA를 Q/K/V/O + MLP fc1/fc2, r32·α64로 확장", "LORA_TARGETS [qkv_full, proj, fc1, fc2]", "ep38/40 (hpca100 GPU1,3), 완주 ETA 17:26 KST", "ep5~35: 62.54/63.44/60.09(ep15 하락)/62.40/65.25/66.91/67.85", "보류"],
+            ["E2 전 선형층 LoRA", "Q/V만으로는 센서별 클래스 근거를 담을 용량이 없음", "LoRA를 Q/K/V/O + MLP fc1/fc2, r32·α64로 확장", "LORA_TARGETS [qkv_full, proj, fc1, fc2]", "완주 17:24 KST (hpca100 GPU1,3), legal 재채점 진행 중(20시 KST)", "트레이너 val ep5~40: 62.54/63.44/60.09/62.40/65.25/66.91/67.85/68.65(val-best). 로그의 Best Test 55.57@ep30은 test-best라 무효", "보류 — legal test로만 판정"],
             ["E3 센서별 클래스 prototype", "user 가설 직접 검증", "클래스 정체성을 센서마다 독립으로 지지하면 RGB가 헷갈리는 클래스를 lidar·depth 근거가 붙잡음", "P46.C3_PROTO.SRC permodal + AGREE_LAMBDA", "ep25/40 (bengio GPU4,5), 완주 ETA 23:45 KST", "ep5~25: 59.35/63.72/62.23/65.44/65.97 (B0 ep25 64.03)", "보류"],
             ["E4 혼동 쌍 margin", "붕괴가 특정 쌍으로 흡수됨", "검증셋 혼동행렬 top-k 쌍에 prototype/로짓 margin", "CONFUSION_PAIRS auto_k5", "ep21/40 (bengio GPU1-3), 완주 ETA 22:30 KST", "ep5~20: 59.77/63.17/65.92/65.70", "보류. auto 쌍에 RailTrack 누락 → 명시 쌍판 E4b config 추가(RailTrack→Sky/Static/Terrain, Wall→Building, Water→Terrain), 미기동"],
             ["E7 MUSES PhysAug-off", "공정선 정합", "헤드라인 교체용 기준선(게이트 없음)", "PHYSAUG off", "완주 (hpca100 GPU2)", "트레이너 val 80.29@ep40 (공식 재채점 전)", "E7c 완주 후 페어 재채점"],
             ["E7c MUSES PhysAug-on 대조군", "PhysAug 효과 크기 격리", "—", "E7과 PHYSAUG만 상이", "ep23/40 (hpca100 GPU2), 20:23 완주 예정", "ep5 73.18 · ep10 75.52 · ep15 75.97 · ep20 77.68", "보류"],
-            ["E1M / E12 / B0s2·E1s2", "E1의 MUSES 이식 / E1+E2 결합 / 시드2 매칭 페어", "E1 양성이면 공통 상승·결합·재현 검증", "config 준비됨(develop f34c0a8·25eda09)", "미기동", "—", "E1·E2 legal 판정 후"],
+            ["E1M MUSES 4탭 이식", "E1의 MUSES 공통 상승 검증", "중간층 4탭이 MUSES에서도 오르면 공통 한 단계", "E7(PhysAug-off) + MODEL.TAPS on", "ep1/40 (hpca100 GPU3, 17:37 KST 기동), ETA 09-09 13시", "—", "E7 매칭 페어, 공식 val Δ ≥ +1.0"],
+            ["E12 / B0s2·E1s2", "E1+E2 결합 / 시드2 매칭 페어", "결합·재현 검증", "config 준비됨(develop f34c0a8·25eda09)", "미기동", "—", "E1·E2 legal 판정 후"],
             ["E8 / E5 / E6 / E10", "표적 copy-paste / deformable 픽셀 디코더 / 매 블록 교환 어댑터 / 상위 절반 FT", "—", "구현 2~5일", "미착수 (E5·E6은 E0 결과로 하향)", "—", "—"],
         ]),
         IMG("fig7_daily_cards.png", "DELIVER 카드의 트레이너 val 궤적(판정용 아님)과 사전 등록 판정 기준."),
@@ -270,14 +271,15 @@ def sec_plan():
             ["bengio 6,7", "E1 중간층 4탭 읽기", "DELIVER 4모달", "ep33/40, 트레이너 val 66.88@30", "20:24 KST 완주 → val-best legal 재채점(GPU0 조기 재채점은 타 사용자 점유로 취소)"],
             ["bengio 4,5", "E3 센서별 prototype", "DELIVER 4모달", "ep25/40, 65.97@25", "23:45 KST 완주"],
             ["bengio 1-3", "E4 혼동 쌍 margin(auto)", "DELIVER 4모달", "ep21/40, 65.70@20", "22:30 KST 완주. E4b(명시 쌍) config 추가, 미기동"],
-            ["hpca100 1,3", "E2 전 선형층 LoRA r32", "DELIVER 4모달", "ep38/40, 67.85@35", "17:26 KST 완주 → 재채점"],
+            ["hpca100 1,3", "E2 전 선형층 LoRA r32", "DELIVER 4모달", "완주(17:24 KST), 트레이너 val 68.65@40", "legal 재채점(val.py 1024, test 84분+val) → 20시 KST 결과"],
+            ["hpca100 3", "E1M MUSES 4탭 이식(E7 매칭 페어)", "MUSES 3모달", "ep1/40 (17:37 KST 기동)", "09-09 13시 KST 완주 예정"],
             ["hpca100 2", "E7c MUSES PhysAug-on 대조군", "MUSES 3모달", "ep24/40, 77.68@20", "20:26 KST 완주 → E7과 공식 페어 재채점"],
             ["yeon 2,3 / 4,5", "P52 RxDINO DELIVER seed1 / seed2", "DELIVER 4모달", "ep38/200, val 66.25 / 66.19", "게이트 G1 54.65(재등록 예정)"],
             ["yeon 0,1", "E-LoRA arm A (per-modal r16 재런)", "DELIVER 4모달", "ep38/200, val 66.64@26", "arm B(공유)·C(공유+잔차) 슬롯 대기"],
             ["hpca100 0,2 / 1,3", "P52 MUSES seed1 / seed2", "MUSES 4모달", "보류(ep54 79.63 / ep30 78.81, ckpt 보존)", "감사 §1.5 기준선 문제 적용 후 재개"],
             ["jarvis 1,2,4,5", "DGFusion Swin-T 재학습(공식 설정 bs8·LR 1e-4·200k)", "DELIVER CLDE", "iter 19,979/200,000 · iter 10k 평가 mIoU 60.31 (depth abs_rel 10.99)", "ETA ~1.3일 (2026-09-09~10). 공개값 val 66.51/test 56.71"],
             ["lecun 0,1,2", "CAFuser Swin-T 대조군(bs6·LR 0.75e-4·266,667 iter)", "DELIVER CLDE", "iter 11,039/266,667 · iter 10k 평가 mIoU 55.74", "로그 ETA 4일 17시간 (2026-09-13경). 공개값 val 68.12/test 55.80"],
-            ["미기동(config만)", "B0s2 · E1s2(bengio판·hpca100판) · E12(E1+E2) · E4b(RailTrack 명시 쌍)", "DELIVER 4모달", "develop f34c0a8·25eda09", "E1·E2 legal 판정 후 기동"],
+            ["미기동(config만)", "B0s2 · E1s2(bengio판·hpca100판) · E12(E1+E2) · E4b(RailTrack 명시 쌍) — E1M은 17:37 기동으로 제외", "DELIVER 4모달", "develop f34c0a8·25eda09", "E1·E2 legal 판정 후 기동"],
         ]),
         h2("6.2 완료·판정 (최근, 재실행 금지)"),
         table([
@@ -347,7 +349,6 @@ def sec_sources():
     )], "📎", "gray_background")]
 
 SECTIONS = [
-    ("0. 한눈에 보기", sec_summary),
     ("1. 문제 정의 · 목표 · 평가 프로토콜", sec_problem),
     ("2. 계보 요약과 가설 원장 (무엇을 시도했고 무엇이 남았나)", sec_lineage),
     ("3. 실험 노트 — 2026-08~09 캠페인 (문제 → 가설 → 실험 → 결과 → 판정)", sec_campaign),
@@ -355,51 +356,98 @@ SECTIONS = [
     ("5. Related Works", sec_related),
     ("6. 한 것 / 할 것 (레포 실험 계획 문서 동기화)", sec_plan),
     ("7. 검출 트랙 (국가 R&D) 요약", sec_det),
-    ("8. 재현성 · 판정 규약", sec_rules),
-    ("출처", sec_sources),
+    ("8. 재현성 · 판정 규약 · 출처", lambda: sec_rules() + sec_sources()),
 ]
+OUTER = "0. 한눈에 보기"
 APPENDIX = "부록 — 기존 실험 DB 뷰 · 서버 세팅 (원본 유지)"
+OLD_OUTER_TITLES = ["출처", "1. 문제 정의", "2. 계보 요약", "3. 실험 노트", "4. 일일 사이클", "5. Related", "6. 한 것", "7. 검출 트랙", "8. 재현성"]  # 바깥 페이지에 남은 구 상세 h1(접두어 매칭) — 발견 시 제거
 
-def existing_headings():
+def existing_headings(pid):
     out = {}
-    for b in page_blocks(PID):
+    for b in page_blocks(pid):
         if b["type"] in ("heading_1", "heading_2", "heading_3"):
             out.setdefault(text_of(b), b["id"])
     return out
 
-def chunked_append(after_id, blocks):
+def child_pages(pid):
+    return {b["child_page"]["title"]: b["id"] for b in page_blocks(pid) if b["type"] == "child_page"}
+
+def chunked_append(pid, blocks, after_id=None):
     last = after_id
     for i in range(0, len(blocks), 100):
-        r = call("PATCH", f"/blocks/{PID}/children", {"children": blocks[i:i+100], "after": last})
+        body = {"children": blocks[i:i+100]}
+        if last: body["after"] = last
+        r = call("PATCH", f"/blocks/{pid}/children", body)
         if not ok(r):
             print("append failed", r); sys.exit(1)
         last = r["results"][-1]["id"]
         time.sleep(0.4)
     return last
 
+def ensure_child(title, after_id=None):
+    """바깥 페이지의 하위 페이지(제목 일치)를 찾거나 만든다. 반환 = 페이지 id."""
+    kids = child_pages(PID)
+    if title in kids:
+        return kids[title]
+    r = call("POST", "/pages", {"parent": {"page_id": PID},
+                                "properties": {"title": {"title": [rt(title)]}}, "children": []})
+    if not ok(r):
+        print("create child failed", r); sys.exit(1)
+    return r["id"]
+
+def set_page_content(pid, blocks):
+    """하위 페이지 본문 전체 교체(멱등)."""
+    for b in page_blocks(pid):
+        call("DELETE", f"/blocks/{b['id']}")
+    chunked_append(pid, blocks)
+
+def remove_outer_section(title):
+    hid, body = section_range(PID, title, "heading_1")
+    if hid is None:
+        return
+    for bid in body:
+        call("DELETE", f"/blocks/{bid}")
+    call("DELETE", f"/blocks/{hid}")
+
+def outer_blocks(child_ids):
+    b = sec_summary()
+    b.append(h2("상세 페이지 (목차)"))
+    for title, _ in SECTIONS:
+        b.append(link_page(child_ids[title]))
+    b.append(h2("핵심 그림 2장 (나머지 그림은 각 상세 페이지)"))
+    b.append(IMG("fig1_sota_gap.png", "3개 벤치에서 SOTA 대비 현재 위치. 양수 = 우리가 앞섬."))
+    b.append(IMG("fig7_daily_cards.png", "일일 카드 40ep 스크린 궤적(트레이너 val, 판정용 아님)과 사전 등록 판정 기준."))
+    return b
+
 def main():
-    heads = existing_headings()
-    blocks_top = page_blocks(PID)
-    anchor = blocks_top[0]["id"]           # 첫 블록 = 📌 Contribution synced block
-    fresh = not any(t in heads for t, _ in SECTIONS)
-    if fresh:
-        print("fresh build")
-        allb = []
-        for title, fn in SECTIONS:
-            allb.append(h1(title)); allb += fn()
-        allb.append(h1(APPENDIX))
-        allb.append(P("아래는 리팩토링 이전부터 있던 실험 DB 뷰와 서버 세팅 페이지. 손대지 않고 그대로 둔다."))
-        chunked_append(anchor, allb)
+    # 1) 상세 절 → 하위 페이지 (없으면 생성, 있으면 본문 교체)
+    child_ids = {}
+    for title, fn in SECTIONS:
+        cid = ensure_child(title)
+        set_page_content(cid, fn())
+        child_ids[title] = cid
+        print("child ok:", title)
+        time.sleep(0.3)
+    # 2) 바깥 페이지에 남아 있는 구 상세 절 제거
+    for title, _ in SECTIONS:
+        remove_outer_section(title)
+    for t in OLD_OUTER_TITLES:
+        remove_outer_section(t)
+    # 3) 바깥 페이지 요약 절 교체(없으면 첫 블록 뒤에 생성)
+    heads = existing_headings(PID)
+    if OUTER in heads:
+        r = replace_section(PID, OUTER, outer_blocks(child_ids), level="heading_1")
+        print("outer replaced", "ok" if ok(r) else r)
     else:
-        for title, fn in SECTIONS:
-            if title in heads:
-                r = replace_section(PID, title, fn(), level="heading_1")
-                print("replaced", title, "ok" if ok(r) else r)
-            else:
-                print("missing heading, append at end:", title)
-                chunked_append(page_blocks(PID)[-1]["id"], [h1(title)] + fn())
-            time.sleep(0.4)
-    hits = audit(PID) if "audit" in globals() else None
+        anchor = page_blocks(PID)[0]["id"]
+        chunked_append(PID, [h1(OUTER)] + outer_blocks(child_ids), after_id=anchor)
+        print("outer created")
+    if APPENDIX not in existing_headings(PID):
+        print("WARNING: appendix heading missing")
+    # 4) 하위 페이지 목차 블록이 요약 절 안에 있으므로 child_page 블록 자체는 바깥 페이지 끝에 남는다 — 부록 위로 정렬은 노션이 자동 처리하지 않음(수동 이동 가능)
+    hits = {"src": [], "tone": []}
+    for pid in [PID] + list(child_ids.values()):
+        h = audit(pid); hits["src"] += h["src"]; hits["tone"] += h["tone"]
     print("audit:", hits)
 
 if __name__ == "__main__":

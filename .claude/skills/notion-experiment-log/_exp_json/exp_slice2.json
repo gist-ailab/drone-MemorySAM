@@ -1,0 +1,711 @@
+[
+  {
+    "key": "P17",
+    "title": "[Drone] P17 — Multi-Scale FPN Aux Decoder + Calibrated Spatial Entropy (MULTIAQUA)",
+    "period": "구현 완료 2026-02-27, 실험 결과 2026-03-01경(night_epoch35 기준)",
+    "track": "seg-MULTIAQUA",
+    "status": "완주 (P9 미달)",
+    "summary": {
+      "change": "모달리티별 aux decoder(ModalAuxDecoder)가 backbone_fpn[0](32ch)만 쓰던 것을 fpn[0,1,2](32+64+256ch)를 전부 쓰는 MultiScaleModalAuxDecoder로 교체(파라미터 ~290/modality → ~53K/modality)",
+      "result": "night_epoch35(night-val best) 체크포인트 기준 Val mIoU 92.60 / Test mIoU 53.86 / M-score 73.23(챌린지 제출 #16107)",
+      "verdict": "Sky IoU가 3.17→33.35(+30.18pp)로 부분 회복했지만 M-score는 P9 hardaug4(81.47) 대비 -8.24로 여전히 미달 — P12~P17까지 이어진 adaptive fusion 계열 실패 패턴이 지속"
+    },
+    "background": [
+      "P13~P16의 aux decoder가 backbone_fpn[0](32ch,256×256) 하나만 사용하고 SAM2 Hiera B+가 이미 계산하는 fpn[1](64ch,128×128)/fpn[2](256ch,64×64)는 미활용 — ISSUE-011(Fusion Head multi-scale 미활용)로 지목됨",
+      "ISSUE-008: frozen SAM2 Hiera backbone feature가 야간·멀티모달 도메인에 특화되지 않아 aux mask 품질이 GT 대비 부정확 — Energy/Entropy 기반 confidence 계산의 전제가 흔들림",
+      "P16(Calibrated Spatial Entropy, fpn[0]만 사용) M-score 68.42로 P9(고정 상수 fusion, M 81.47) 대비 -13.05, thermal AMF 0.923으로 지배 편향",
+      "P12(80.80)~P16(68.42)까지 5개 adaptive fusion 실험 전부 P9(81.47)보다 낮음 — P17은 aux decoder의 정보량 부족 자체를 multi-scale로 보강하려는 시도"
+    ],
+    "architecture": {
+      "one_liner": "fpn[0,1,2] 3개 레벨을 project+concat+conv로 결합한 MultiScaleModalAuxDecoder로 모달리티별 4-class aux mask를 만들어 aux decoder 정보량을 약 11배 늘림",
+      "components": [
+        ["MultiScaleModalAuxDecoder", "fpn[0](32ch,256²)/fpn[1](64ch,128²)/fpn[2](256ch,64²)를 각각 1×1 Conv+BN+ReLU로 32ch로 project, fpn[0] 해상도로 upsample 후 concat(96ch) → 3×3 Conv(96→48)+BN+ReLU → 1×1 Conv(48→4class). 모달리티당 ~53K, 3모달 합계 ~159K", "sam_lora_image_encoder_seg.py (LoRA_Sam_P17)"],
+        ["Calibrated Spatial Entropy Fusion", "P16과 동일한 calibrated entropy 기반 confidence를 유지하되 입력만 multi-scale aux logits로 교체. UAMM/AMF는 (B,m,H,W) spatial, aux 경로는 .detach()로 gradient 격리, warmup 10ep+5ep ramp", "sam_lora_image_encoder_seg.py"]
+      ],
+      "mermaid": "flowchart LR\n  ENC[모달별 SAM2 encode] --> F0[fpn0 32ch 256sq]\n  ENC --> F1[fpn1 64ch 128sq]\n  ENC --> F2[fpn2 256ch 64sq]\n  F0 --> MSAUX[MultiScaleModalAuxDecoder]\n  F1 --> MSAUX\n  F2 --> MSAUX\n  MSAUX --> ENT[Calibrated Spatial Entropy]\n  ENT --> UAMM[Spatial UAMM]\n  UAMM --> TRACK[SAM2 track_step]\n  TRACK --> AMF[Spatial AMF]\n  AMF --> OUT[융합 출력]\n  class MSAUX new",
+      "rationale": [
+        "P16까지의 aux decoder가 fpn[0]만 사용한 것이 ISSUE-011로 지목되어, 추가 backbone 연산 없이 이미 계산되는 fpn[1,2]를 활용하는 것이 direct한 개선 경로였음",
+        "Sky 클래스가 P16에서 3.17%로 붕괴했던 것에 대해, fpn[2](256ch, 저해상도지만 semantic context 강함)가 sky/static 구분에 기여할 것으로 기대"
+      ],
+      "setting": ["LoRA_Sam_P17 (sam_lora_image_encoder_seg.py)", "MULTIAQUA RGB+LiDAR+Thermal(RGBTL), 3모달", "configs/bengio-multiaqua_rgbtl_P17_hardaug5.yaml(학습, 실행은 levine 서버) / configs/eval_config/bengio-multiaqua_rgbtl_P17_hardaug5.yaml(평가)", "levine 서버(결과 디렉터리명 levine_multiaqua_rgbtl_P17_hardaug5)", "hardaug5 augmentation, night_epoch35(night-val best 90.34)와 epoch28(day-val best 93.77) 두 체크포인트 비교"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "M-score/비고"],
+        ["night_epoch35 (night-val best)", "92.60", "53.86", "M-score 73.23, Val Obstacle 76.29/Test Obstacle 17.98, #16107 제출"],
+        ["epoch28 (day-val best)", "92.99", "52.69", "M-score 72.84, Val Obstacle 77.72/Test Obstacle 28.36, #16108 제출"]
+      ],
+      "per_condition": ["Night-val(ep35) 체크포인트: Sky 33.35 우세 / Static 61.46 / Dynamic 19.44", "Day-val(ep28) 체크포인트: Sky 20.83 / Static 63.99 우세 / Dynamic 27.62 우세 — mIoU는 유사하나 Sky vs Static+Dynamic 트레이드오프"],
+      "per_class": [
+        ["Static", "P9 81.30 → P16 58.19 → P17 61.46 (P16 대비 +3.27)"],
+        ["Dynamic", "P9 21.86 → P16 20.76 → P17 19.44 (P16 대비 -1.32)"],
+        ["Water", "P9 94.61 → P16 92.24 → P17 93.54 (P16 대비 +1.30)"],
+        ["Sky", "P9 76.54 → P16 3.17 → P17 33.35 (P16 대비 +30.18)"]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "Sky=0 프레임: P16 157/200 → P17 62/200(60% 감소) — multi-scale FPN의 fpn[2](256ch) semantic context가 sky/static 구분에 기여한 것으로 해석",
+      "UAMM(test): img=0.864±0.030 / lidar=0.787±0.032 / thermal=0.864±0.029, thermal 지배가 P16(0.923)보다 완화(0.864)",
+      "CV(변동계수) 0.03~0.04로 P16(<0.02) 대비 2배 수준의 adaptivity — 여전히 낮은 수준",
+      "P14→P17까지 종합: P9(81.47, 기준) → P12(80.80) → P13(81.21) → P14(74.27) → P15(71.05) → P16(68.42) → P17(73.23) — 모든 adaptive fusion이 P9의 고정 상수보다 낮음"
+    ],
+    "verdict": {
+      "worked": "부분 — Sky IoU가 뚜렷이 회복(+30.18pp)했으나 M-score 기준으로는 여전히 no-op에 가까움(P9 대비 -8.24)",
+      "why": "multi-scale로 정보량을 늘려도 frozen backbone feature의 근본적 정보 한계(ISSUE-008)는 해소되지 않음 — aux mask가 여전히 GT 대비 부정확",
+      "handoff": "P19(aux decoder 자체를 제거하고 backbone feature에서 직접 spatial fusion을 학습하는 방향)로 전환"
+    },
+    "todo": [],
+    "sources": [
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P17, MultiScaleModalAuxDecoder)",
+      "configs/bengio-multiaqua_rgbtl_P17_hardaug5.yaml",
+      "configs/eval_config/bengio-multiaqua_rgbtl_P17_hardaug5.yaml",
+      "outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch35_90.34_top1_checkpoint.pth",
+      "outputs/MMSamP17/levine_multiaqua_rgbtl_P17_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch28_93.77_top1_checkpoint.pth",
+      "levine 서버",
+      "MACVi 챌린지 제출 #16107, #16108"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P17: Multi-Scale FPN Aux Decoder + Calibrated Spatial Entropy Fusion",
+      ".claude_logs/models/explain/p17-multi-scale-aux.md",
+      ".claude_logs/experiments/log.md ### P17 Experiments, ### P14~P17 종합 분석, ## 전체 결과 요약(M-score 순) 표",
+      ".claude_logs/issues/issues-and-fixes.md ISSUE-008, ISSUE-011"
+    ]
+  },
+  {
+    "key": "P18",
+    "title": "[Drone] P18 — 학습 가능 ResNet-18 Aux 백본 + 설정형 융합 (MULTIAQUA, 미학습)",
+    "period": "구현 완료 2026-03-01, 이후 학습 실행 기록 없음",
+    "track": "seg-MULTIAQUA",
+    "status": "구현만 (학습 대기 상태로 남음, 재개·폐기 선언 없음)",
+    "summary": {
+      "change": "frozen SAM2 FPN 대신 ImageNet 사전학습 ResNet-18을 trainable aux backbone으로 추가해 MULTIAQUA 4-class에 직접 fine-tune하고, P18-A(P9식 scalar fusion)/P18-B(P17식 spatial entropy fusion) 두 변형을 구현",
+      "result": "기록 없음 — 문서 어디에도 학습 실행·수치 기록이 없음",
+      "verdict": "기록 없음(구현 완료 상태로만 남아 있고 학습이 실행되었는지, 왜 보류되었는지 확인되지 않음)"
+    },
+    "background": [
+      "P13~P17이 모두 frozen SAM2 Hiera B+ FPN feature로 aux decoder를 학습(ISSUE-008) — P17이 3개 FPN 레벨을 다 써도(M-score 73.23, P9 81.47 대비 -8.24) feature 자체가 MULTIAQUA 도메인에 특화되지 않는 한계가 지속",
+      "해결책으로 MULTIAQUA 4-class에 직접 fine-tune 가능한 도메인 특화 trainable aux backbone(ResNet-18) 도입을 결정"
+    ],
+    "architecture": {
+      "one_liner": "모달리티별 stem + 공유 body(layer1~3)로 구성된 trainable ResNet-18에서 aux feature를 뽑아 ResNetAuxDecoder가 4-class aux mask를 생성하고, use_entropy_fusion 플래그로 P18-A(P9식 scalar)/P18-B(P17식 spatial entropy) 중 하나로 UAMM/AMF에 반영",
+      "components": [
+        ["ResNetAuxBackbone", "모달리티별 Conv7×7+BN+ReLU stem(pretrained conv1 복제 초기화) 3개 + 공유 body(maxpool+layer1+layer2+layer3, layer4는 해상도 32×32로 너무 낮아 미사용). 약 11.2M 파라미터", "sam_lora_image_encoder_seg.py (LoRA_Sam_P18)"],
+        ["ResNetAuxDecoder", "layer2(128ch)+layer3(256ch) → proj(32ch×2) → concat(64ch) → 3×3 conv → 4ch logits, 모달리티당 ~53K", "sam_lora_image_encoder_seg.py"],
+        ["P18-A/P18-B 분기(use_entropy_fusion)", "A: P9식 scalar CrossModalFusionHead(UAMM max-norm/AMF softmax), ResNet은 aux CE loss로만 학습되고 fusion에는 영향 없음. B: P17식 spatial entropy(UAMM/AMF가 (B,m,H,W), warmup 10ep+5ep ramp)", "train_sam2_lora_paper.py (use_entropy_fusion dispatch)"]
+      ],
+      "mermaid": "flowchart LR\n  IN[모달 입력] --> STEM[모달별 ResNet stem]\n  STEM --> BODY[공유 ResNet body l1-l3]\n  BODY --> RAUX[ResNetAuxDecoder]\n  RAUX --> BRANCH{use_entropy_fusion}\n  BRANCH -->|False P18-A| SCAL[P9식 scalar CrossModalFusionHead]\n  BRANCH -->|True P18-B| SPAT[P17식 spatial entropy]\n  SCAL --> OUT[UAMM/AMF]\n  SPAT --> OUT\n  class STEM new\n  class BODY new\n  class RAUX new",
+      "rationale": [
+        "P17까지 frozen backbone feature의 정보량 한계(ISSUE-008)가 개선의 병목으로 반복 확인되어, 학습 가능한 도메인 특화 backbone을 별도로 두는 것이 다음 논리적 시도였음"
+      ],
+      "setting": ["LoRA_Sam_P18 (sam_lora_image_encoder_seg.py)", "MULTIAQUA RGBTL 3모달", "configs/levine-multiaqua_rgbtl_P18_hardaug5.yaml(학습)/configs/eval_config/levine-multiaqua_rgbtl_P18_hardaug5.yaml(평가)", "서버 미배정(학습 미실행)", "hardaug5, trainable aux 파라미터 ~11.4M, 전체 trainable ~20M(P9 ~8.7M 대비 약 2.3배)"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [["구성/ckpt", "val", "test", "비고"], ["학습 미실행", "기록 없음", "기록 없음", "P18-A/P18-B 모두 학습 결과 문서 없음"]],
+      "per_condition": [],
+      "per_class": [],
+      "invalid": []
+    },
+    "analysis": ["학습 실행 기록이 .claude_logs 전 범위(status/history, experiments/log.md, experiments/registry.md)에 없음 — 구현 완료 이후 세션에서 언급되지 않음"],
+    "verdict": {
+      "worked": "기록 없음(학습되지 않아 판정 불가)",
+      "why": "기록 없음",
+      "handoff": "기록 없음 — P19가 P18을 건너뛰고 aux decoder 자체를 제거하는 방향(SpatialCrossModalFusionHead)으로 전환한 것으로 보임"
+    },
+    "todo": ["P18 학습이 실제로 실행되었는지, 실행되지 않았다면 왜 보류·폐기되었는지 확인 필요"],
+    "sources": [
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P18, ResNetAuxBackbone, ResNetAuxDecoder)",
+      "configs/levine-multiaqua_rgbtl_P18_hardaug5.yaml",
+      "configs/eval_config/levine-multiaqua_rgbtl_P18_hardaug5.yaml"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P18: Trainable ResNet-18 Aux Backbone + Configurable Fusion",
+      ".claude_logs/status/history-2026H1.md 12. P18(Trainable ResNet-18 Aux Backbone) 구현 완료 절 + #### 실험 D: P18",
+      ".claude_logs/issues/issues-and-fixes.md P18-A CrossModalFusionHead 표 언급"
+    ]
+  },
+  {
+    "key": "P19",
+    "title": "[Drone] P19 — 학습형 SpatialCrossModalFusionHead, aux decoder 제거 (MULTIAQUA)",
+    "period": "구현 완료 2026-03-01, 실험 완료 2026-03-03",
+    "track": "seg-MULTIAQUA",
+    "status": "완주 (실패)",
+    "summary": {
+      "change": "P9의 CrossModalFusionHead(GAP 기반 (B,m) scalar)를 aux decoder 없이 backbone FPN feature(fpn[0,1,2])에서 직접 DWConv로 (B,m,H,W) spatial 가중치를 학습하는 SpatialCrossModalFusionHead로 교체",
+      "result": "hardaug5 epoch36(day-val best, day-val 94.23) 기준 Val mIoU 93.44 / Test mIoU 45.82 / M-score 69.63(#16313 제출)",
+      "verdict": "aux mask 품질 문제(ISSUE-008)를 우회했음에도 spatial fusion이 LiDAR 편향 상수로 수렴하며 Sky를 거의 완전히 잃음 — P12~P19까지 8개 adaptive fusion 실험 전원 실패로, scoring 개선 방향 자체를 포기하는 계기가 됨"
+    },
+    "background": [
+      "P14~P17(aux decoder 기반 adaptive fusion)이 전부 실패 — ISSUE-008(frozen backbone feature 정보량 부족)이 반복 원인으로 지목됨",
+      "P9의 CrossModalFusionHead는 GAP으로 공간 정보를 소실해 (B,m) scalar만 생성. P10(GAP+GMP+Std 변형)도 실패(M -2.2), P17(aux entropy 기반 spatial)은 aux mask 품질에 의존하는 한계가 남음",
+      "hardaug5 augmentation 자체도 문제가 있는 것으로 추후 확인됨(P9+hardaug6에서도 M=75.95로 hardaug4 대비 하락)"
+    ],
+    "architecture": {
+      "one_liner": "fpn[0,1,2]를 32ch로 project+concat한 뒤 DWConv 기반 Cross-Modal Spatial Comparison으로 (B,m,H,W) softmax 가중치를 직접 학습, aux decoder 없이 UAMM/AMF에 바로 사용",
+      "components": [
+        ["Phase A: Multi-Scale FPN Projection", "fpn[0](32ch,256²)/fpn[1](64ch,128², ×2 upsample)/fpn[2](256ch,64², ×4 upsample)를 각각 Conv1×1+BN+ReLU로 32ch project 후 concat(96ch), 모달리티 간 공유", "sam_lola_utils.py (SpatialCrossModalFusionHead)"],
+        ["Phase B: Per-Modality Spatial Context", "DWConv3×3(96,groups=96)+BN+ReLU → Conv1×1(96→32)+BN+ReLU로 LiDAR 밀도/Thermal padding/RGB 조도 같은 모달리티별 local context 추출, 모달리티 간 공유", "sam_lola_utils.py"],
+        ["Phase C: Cross-Modal Spatial Comparison", "m개 모달리티 context concat(96ch) → Conv1×1(96→64)+BN+ReLU → DWConv3×3(64,groups=64)+BN+ReLU → Conv1×1(64→3, zero-init) → softmax(dim=1) → (B,3,H,W)", "sam_lola_utils.py"]
+      ],
+      "mermaid": "flowchart LR\n  ENC[모달별 encode] --> F0[fpn0]\n  ENC --> F1[fpn1]\n  ENC --> F2[fpn2]\n  F0 --> PROJ[Multi-Scale FPN Projection]\n  F1 --> PROJ\n  F2 --> PROJ\n  PROJ --> CTX[Per-Modality Spatial Context]\n  CTX --> CMP[Cross-Modal Spatial Comparison]\n  CMP --> SOFT[spatial softmax B m H W]\n  SOFT --> UAMM[Spatial UAMM]\n  SOFT --> AMF[Spatial AMF]\n  class PROJ new\n  class CTX new\n  class CMP new",
+      "rationale": [
+        "P14~P17의 실패가 aux decoder 경로(품질 낮은 별도 mask)에서 비롯됐다는 진단에 따라, aux decoder를 아예 제거하고 backbone feature에서 직접 학습하는 것이 다음 시도로 채택됨"
+      ],
+      "setting": ["LoRA_Sam_P19 (sam_lora_image_encoder_seg.py) + SpatialCrossModalFusionHead(sam_lola_utils.py)", "MULTIAQUA RGBTL 3모달", "configs/levine-multiaqua_rgbtl_P19_hardaug5.yaml(학습)/configs/eval_config/levine-multiaqua_rgbtl_P19_hardaug5.yaml(평가)", "levine 서버", "hardaug5, epoch36(day-val 94.23 기준 체크포인트), Fusion Head 파라미터 ~23K(P9 ~15K 대비 소폭 증가), 전체 trainable ~8.5M(P9와 동일)"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "비고"],
+        ["hardaug5 epoch36(day-val best)", "93.44", "45.82", "M-score 69.63, Val Obstacle 79.24/Test Obstacle 23.50, #16313 제출"],
+        ["night_epoch49(미제출)", "93.04", "—", "night finetuning, thermal UAMM +0.100(0.750→0.850), test 불확실성도 증가"]
+      ],
+      "per_condition": [],
+      "per_class": [
+        ["Static", "P9 81.30 → P19 60.75 (Δ-20.55)"],
+        ["Dynamic", "P9 21.86 → P19 23.39 (Δ+1.53)"],
+        ["Water", "P9 94.61 → P19 94.36 (Δ-0.25)"],
+        ["Sky", "P9 76.54 → P19 3.77 (Δ-72.77)"]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "Sky 완전 붕괴: Sky=0 프레임 169/200(84.5%), Sky<10% 프레임 191/200(95.5%)",
+      "UAMM(test): img=0.741±0.011 / lidar=0.992±0.003(거의 독점) / thermal=0.750±0.034 — P9(lidar 0.355)와 대조적으로 LiDAR 편향으로 수렴",
+      "AMF(test): img=0.298 / lidar=0.403 / thermal=0.299 — P9(img=0.275/lidar=0.355/thermal=0.370, thermal 우세)의 균형이 lidar 우세로 이동",
+      "CV<0.02 수준으로 사실상 고정 비율 — adaptive fusion으로 작동하지 않고, P9과 다른(더 나쁜) 고정점으로 수렴"
+    ],
+    "verdict": {
+      "worked": "아니오 — LiDAR 편향 상수로 수렴, 입력에 대해 adaptive하게 작동하지 않음",
+      "why": "(1) hardaug5 자체 문제(P9+hardaug6도 하락) (2) 학습된 spatial pattern이 train(주간)→real(야간) 전이 실패 (3) zero-init에서 LiDAR 중심으로 수렴해 P9의 thermal 우세 균형이 파괴됨 (4) aux decoder에 있던 CRM/ZERO 강제 학습 신호가 부재",
+      "handoff": "P20(MoE 구조 개선)·P21(DeBA-FP feature refinement)로 scoring 개선 방향을 포기하고 다른 축으로 전환"
+    },
+    "todo": [],
+    "sources": [
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P19)",
+      "sam_lola_utils.py (SpatialCrossModalFusionHead)",
+      "configs/levine-multiaqua_rgbtl_P19_hardaug5.yaml",
+      "configs/eval_config/levine-multiaqua_rgbtl_P19_hardaug5.yaml",
+      "outputs/MMSamP19/levine_multiaqua_rgbtl_P19_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch36_94.23_top1_checkpoint.pth",
+      "levine 서버",
+      "MACVi 챌린지 제출 #16313"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P19: Learned Spatial Cross-Modal Fusion (SpatialCrossModalFusionHead)",
+      ".claude_logs/models/explain/p19-spatial-fusion-head.md",
+      ".claude_logs/experiments/log.md ### P19 Experiments, ## 전체 결과 요약(M-score 순) 표"
+    ]
+  },
+  {
+    "key": "P20",
+    "title": "[Drone] P20 — 공유 MLP 게이트 + Rank 상향 MoE (실험 J-A, MULTIAQUA, 미완주)",
+    "period": "구현 2026-03-05, gate 공유 결함 확인 후 per-layer 독립 게이트로 수정 — 이후 재학습 기록 없음",
+    "track": "seg-MULTIAQUA",
+    "status": "미완주 (gate-공유판 ep47 중간 결과만 존재, 수정판 학습 기록 없음)",
+    "summary": {
+      "change": "P9 MoE LoRA의 gate를 단일 Linear(C→3)에서 2-layer MLP(SharedGateMLP)로 바꾸고 rank를 4→8로 상향; 처음엔 동일 차원 블록끼리 게이트를 공유(48개→4개)했다가, 공유가 uniform 수렴을 유발함을 확인하고 레이어별 독립 MLP 게이트(96개)로 재수정",
+      "result": "gate-공유판 ep47 기준 Val mIoU 85.82(MoE entropy_ratio Q/V 0.93~0.95로 uniform 수렴, P9 ep47대응 Val 93.32 대비 대폭 하락) — Test mIoU/M-score 기록 없음. 게이트 독립화 수정판의 재학습 결과 문서 없음",
+      "verdict": "gate 공유가 38개 레이어를 게이트 1개가 담당하게 만들어 성능을 크게 해쳤음을 확인(원인 규명은 완료)했으나, 수정 이후 실제 학습이 진행됐는지 결과 기록이 없어 최종 판정 불가"
+    },
+    "background": [
+      "P12~P19: UAMM/AMF scoring 개선 8개 실험 전부 P9(고정 상수, M 81.47)보다 낮은 성능 — scoring이 아니라 MoE LoRA 자체를 강화하는 방향으로 전환",
+      "P9 MoE의 한계로 지목된 것: (1) gate가 Linear(C→3) 단일 선형이라 비선형 결정경계 학습 불가 (2) rank=4로 낮아 expert 간 specialization 여지 부족 (3) 48개 독립 gate가 파라미터 비효율이라는 판단(이 판단은 이후 실험에서 반박됨)"
+    ],
+    "architecture": {
+      "one_liner": "동일 차원(Stage 0~3, dim 112/224/448/896) 블록들이 SharedGateMLP 1개씩(총 4개)을 공유하는 구조로 최초 설계했으나, uniform 붕괴가 확인되어 레이어별 독립 MLP 게이트(96개) 구조로 수정",
+      "components": [
+        ["SharedGateMLP(최초 설계)", "Linear(C→C//4)→ReLU→Linear(C//4→num_experts), kaiming(첫 레이어)+normal(0.01, 마지막 레이어 weight)+zeros(bias) 초기화. Stage0(blocks0-1)/Stage1(blocks2-4)/Stage2(blocks5-20)/Stage3(blocks21-23)가 각각 1개 공유 MLP를 사용(총 4개, ~268K)", "sam_lola_utils.py (SharedGateMLP)"],
+        ["SoftMoE_LoRA_Layer_V2(최초 설계)", "외부 공유 gate를 참조하는 구조(_shared_gate는 Python attribute라 state_dict 미포함), rank 4→8로 expert capacity 2배", "sam_lola_utils.py"],
+        ["게이트 독립화(수정판)", "ep47 분석에서 entropy_ratio가 0.93~0.95로 uniform 수렴함을 확인 → SoftMoE_LoRA_Layer_V2가 내부에 독립 2-layer MLP 게이트(레이어당 Q/V 각 1개, 총 96개, ~2.8M)를 직접 보유하도록 재수정", "sam_lola_utils.py"]
+      ],
+      "mermaid": "flowchart LR\n  X[block 입력 x] --> G1[SharedGateMLP 4개 dim별 공유]\n  G1 --> UNI[uniform 붕괴 entropy 0.93 to 0.95]\n  X --> G2[독립 MLP 게이트 96개 수정판]\n  G2 --> EXP[SoftMoE experts rank8]\n  EXP --> OUT[MoE LoRA 출력]\n  class G1 new\n  class G2 new",
+      "rationale": [
+        "P9(48개 독립 Linear gate, entropy_ratio Q 0.52/V 0.64)의 gradient 신호가 rank=4로 낮아 expert 분화 여지가 부족했다는 진단에서, 게이트 표현력(MLP)과 expert capacity(rank8) 두 축을 동시에 강화하려 함"
+      ],
+      "setting": ["LoRA_Sam_P20 (sam_lora_image_encoder_seg.py)", "MULTIAQUA RGBTL 3모달", "configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml(학습)/configs/eval_config/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml(평가)", "levine 서버", "hardaug8_physaug(CRM 0.35→0.20 완화 + PhysAug + shot noise), rank 8, gate 파라미터 최초 설계 ~268K → 수정판 ~2.8M"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "비고"],
+        ["gate-공유판 ep47", "85.82", "기록 없음", "MoE entropy_ratio Q/V 0.93~0.95(uniform 수렴), P9 대응 ep47 Val 93.32 대비 큰 폭 하락. Test/M-score 미기록"],
+        ["gate-독립판(수정 후)", "기록 없음", "기록 없음", "재학습 실행 여부가 문서에 없음"]
+      ],
+      "per_condition": [],
+      "per_class": [],
+      "invalid": []
+    },
+    "analysis": [
+      "gate 공유 원인: Stage2(dim 448, block 5~20, 16블록×Q/V=32레이어)가 게이트 1개를 공유 → 1:38 비율로 게이트가 모든 레이어에 타협하며 uniform compromise",
+      "P9의 48개 독립 Linear 게이트(entropy_ratio Q 0.52/V 0.64)가 P20의 공유 MLP(0.93~0.95)보다 오히려 분화가 컸음 — 단순 구조라도 레이어별 독립성이 핵심이라는 반례로 기록됨",
+      "수정 후 구조: gate 수 4→96, gate 파라미터 268K→2.8M, MLP의 비선형 표현력은 유지하되 공유만 제거"
+    ],
+    "verdict": {
+      "worked": "판정 불가 — gate 공유판은 명백히 해로웠음이 확인됐으나(entropy 0.93~0.95 uniform 수렴, val 85.82로 급락) 수정판(gate 독립화)의 학습 결과가 문서에 없음",
+      "why": "gate 공유가 다수 레이어의 라우팅 신호를 평균화해 uniform으로 무너짐(38개 레이어:1개 게이트 비율이 특히 심함)",
+      "handoff": "기록 없음 — P21이 P9 구조(MoE는 P9 원형 유지)에 별도 축(DeBA-FP)을 추가하는 방향으로 진행됨. gate 설계 논의는 이후 P23(MoE DeBA-BB)의 GAP-gating 선택에서 다시 참조됨"
+    },
+    "todo": ["gate-독립판(SoftMoE_LoRA_Layer_V2 수정본)이 실제로 학습됐는지, M-score가 얼마인지 확인 필요", "P20이 폐기된 시점과 사유 확인 필요"],
+    "sources": [
+      "sam_lola_utils.py (SharedGateMLP, SoftMoE_LoRA_Layer_V2)",
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P20)",
+      "configs/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml",
+      "configs/eval_config/levine-multiaqua_rgbtl_P20_hardaug8_physaug.yaml",
+      "levine 서버"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P20: Shared MLP Gate + Higher Rank MoE (실험 J-A)",
+      ".claude_logs/models/explain/p20-shared-mlp-gate.md",
+      ".claude_logs/experiments/log.md ### P20 MLP Gate + Rank 8 실험",
+      ".claude_logs/status/history-2026H1.md ### P20 구현 완료 (2026-03-05)"
+    ]
+  },
+  {
+    "key": "P21",
+    "title": "[Drone] P21 — DeBA-FP 변형 가능 병목 어댑터로 FPN feature refine (실험 K, MULTIAQUA)",
+    "period": "구현 완료 2026-03-09, 학습 완료 2026-03-12",
+    "track": "seg-MULTIAQUA",
+    "status": "완주 (P9 미달, 공동 3위권)",
+    "summary": {
+      "change": "P9 구조를 그대로 유지한 채, fpn[0]와 CrossModalFusionHead 사이에 DeBA-FP(Deformable Bottleneck Adapter, 3개 모달리티가 W_d/DCM/LN/W_u를 공유하고 α만 모달리티별로 학습되는 deformable conv 병목 어댑터)를 삽입",
+      "result": "ep94(best) 기준 Val mIoU 93.17 / Test mIoU 70.36 / M-score 81.77(#16792 제출)",
+      "verdict": "P9(81.98/82.10) 대비 -0.21~-0.33으로 미달했으나 Dynamic 클래스에서 P9 대비 +15pp 개선을 보임 — DeBA-FP 자체는 feature를 개선하지만 CrossModalFusionHead(GAP→softmax 상수 수렴)의 scoring 병목을 우회하지 못해 전체 이득이 소실"
+    },
+    "background": [
+      "P9의 FPN feature(fpn[0])는 SAM2 encoder 출력을 그대로 GAP→CrossModalFusionHead에 입력 — spatial refinement 없이 global average만으로 모달리티 중요도를 산출",
+      "Day→Night domain gap에서 경계/형태 같은 구조적 정보는 domain-invariant인데 이를 명시적으로 포착하는 메커니즘이 없었음",
+      "DeBA(CVPR 2026, \"Rethinking Deformable Convolution as an Adapter with Cross-layer Weight Sharing\")가 deformable convolution으로 domain-invariant structural information을 포착하며 특히 LaRS(수면 환경) 벤치마크에서 SOTA — MULTIAQUA(수상 드론)와 직접 관련되는 것으로 채택",
+      "P12~P20까지 UAMM/AMF scoring 개선 축(8개 실험)이 전부 실패해, scoring이 아니라 그 입력이 되는 feature 자체를 개선하는 방향(orthogonal axis)으로 전환"
+    ],
+    "architecture": {
+      "one_liner": "fpn[0]을 3개 모달리티가 공유하는 deformable bottleneck adapter(DeBA-FP)로 refine한 뒤 CrossModalFusionHead에 입력, α=0 초기화로 학습 시작 시점엔 P9과 동일한 출발점을 보장",
+      "components": [
+        ["DeBA-FP", "feat' = feat + α_m·W_u(GELU(LN(DCM(W_d(feat))))). W_d: Conv2d(256→64,1×1), offset_mask_conv: Conv2d(64→27,3×3, DCNv2 offset+mask), dcm_weight: (64,64,3,3), LN: LayerNorm(64), W_u: Conv2d(64→256,1×1) — W_d/DCM/LN/W_u는 3개 모달리티가 공유, α만 모달리티별(init=0). 추가 파라미터 ~85K(P9 LoRA ~700K 대비 12%)", "sam_lola_utils.py (DeBAFP)"],
+        ["적용 위치", "P9: fpn[0] → CrossModalFusionHead(그대로). P21: fpn[0] → DeBA-FP(shared) → CrossModalFusionHead → UAMM/AMF. Phase 2에서만 적용되어 vision_feats(tracking/memory attention용)는 raw FPN 그대로", "sam_lora_image_encoder_seg.py (LoRA_Sam_P21)"]
+      ],
+      "mermaid": "flowchart LR\n  ENC[모달별 SAM2 encode] --> F0[fpn0 32ch 256sq]\n  F0 --> DEBA[DeBA-FP 모달공유 alpha init0]\n  DEBA --> HEAD[CrossModalFusionHead GAP]\n  HEAD --> UAMM[scalar UAMM]\n  UAMM --> TRACK[SAM2 track_step vision_feats는 raw]\n  TRACK --> AMF[scalar AMF]\n  AMF --> OUT[융합 출력]\n  class DEBA new",
+      "rationale": [
+        "DeBA가 DINOv2 ViT 기반이라 SAM2 Hiera(계층적 stage 구조)에 DeBA-BB(블록 사이 삽입)를 바로 이식하기 어려워, FPN 출력 단(DeBA-FP)에만 우선 적용",
+        "MULTIAQUA와 유사한 수면 환경(LaRS)에서 원본 DeBA가 SOTA를 기록한 것을 채택 근거로 삼음",
+        "cross-modal weight sharing(2,952장의 적은 학습 샘플에서 regularization 목적)과 α=0 init(안전한 identity 출발)을 설계 원칙으로 채택"
+      ],
+      "setting": ["LoRA_Sam_P21 (sam_lora_image_encoder_seg.py) + DeBAFP(sam_lola_utils.py)", "MULTIAQUA RGBTL 3모달", "configs/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml(학습)/configs/eval_config/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml(평가)", "levine 서버", "hardaug8_physaug, MoE LoRA/UAMM/AMF는 P9과 동일, 전체 trainable ~785K"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "M-score/비고"],
+        ["ep90 (periodic)", "92.98", "69.79", "M-score 81.38"],
+        ["ep94 (best)", "93.17", "70.36", "M-score 81.77, #16792 제출"],
+        ["ep95 (periodic)", "92.93", "68.12", "M-score 80.52"],
+        ["ep101", "93.14", "70.25", "M-score 81.69, #16798"],
+        ["night_ep112", "93.09", "69.88", "M-score 81.49, #16812"],
+        ["ep115", "93.36", "68.85", "M-score 81.11, #16814"],
+        ["ep133", "93.50", "67.95", "M-score 80.73, #16832"]
+      ],
+      "per_condition": [],
+      "per_class": [
+        ["Static", "ep94: 75.67 (P9 ep131 대비 -5.6대)"],
+        ["Dynamic", "ep94: 37.05 (P9 21.86 대비 +15pp)"],
+        ["Water", "ep94: 95.10"],
+        ["Sky", "ep94: 69.03 (P9 대비 -7.5대)"]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "UAMM/AMF는 전 체크포인트에서 상수(std≈0): UAMM img≈0.82/lidar≈0.93/thermal=1.0(P9의 img=0.615보다 RGB 억제가 약함), AMF img≈0.297/lidar≈0.340/thermal≈0.363(거의 균등, P9의 thermal 우세 파괴)",
+      "MoE routing: entropy_ratio Q≈0.47/V≈0.59로 P9과 유사 — DeBA-FP가 MoE routing에 간섭하지 않음",
+      "ep51 중간분석(explain 문서, 학습 진행 중 시점): Val mIoU 93.94(P9 ep131의 93.54보다 높음), Dynamic -8.35pp(45.06 vs P9 53.41) — 최종 ep94 결과와는 다른 중간 시점 수치이며 최종 수렴 후 Dynamic은 오히려 P9 대비 +15pp로 역전됨",
+      "ep94 이후 test mIoU는 하락 추세(Val은 계속 상승) — val-test 오버피팅 패턴",
+      "P9 대비 두 제출(#16683 vs #16710) 간 Dynamic/Sky per-class 수치가 달라 제출 방식(eval_macvi 생성 경로) 차이가 있었음이 이후(P22 분석) 확인됨 — P21 ep94 비교는 #16683/#16710 어느 쪽과 비교하느냐에 따라 미세하게 달라질 수 있음"
+    ],
+    "verdict": {
+      "worked": "부분 — DeBA-FP는 feature refinement로서 무해하게 작동(MoE routing 간섭 없음)하고 Dynamic class에 뚜렷한 개선(+15pp)을 냈으나, CrossModalFusionHead의 GAP→softmax 상수 수렴 구조를 그대로 통과하며 전체 M-score 이득으로 전환되지 않음",
+      "why": "DeBA-FP가 refine한 feature도 결국 GAP(공간 정보 소실)→softmax(zero-init 고정점)를 거치며 품질 차이가 소실되고, 새로운(더 uniform한) 고정점으로 수렴해 P9이 우연히 찾은 유리한 thermal 우세 비율을 잃음",
+      "handoff": "P22(DeBA-FP를 fpn[0,1,2] 전부·Phase 1에 적용해 vision_feats에도 영향이 도달하도록 확장)로 이어짐"
+    },
+    "todo": [],
+    "sources": [
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P21)",
+      "sam_lola_utils.py (DeBAFP)",
+      "configs/archive/levine-multiaqua_rgbtl_P21_hardaug8_physaug.yaml",
+      "outputs/MMSamP21/ (ep94 best)",
+      "levine 서버",
+      "MACVi 챌린지 제출 #16792, #16798, #16812, #16814, #16832"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P21: DeBA-FP (Deformable Bottleneck Adapter for Feature Pyramid) (실험 K)",
+      ".claude_logs/models/explain/p21-deba-fp.md",
+      ".claude_logs/experiments/log.md ### P21 DeBA-FP 실험(실험 K), #### P21 실험 결과(2026-03-12 최종), ## 전체 결과 요약 표",
+      ".claude_logs/experiments/registry.md Seg — MULTIAQUA 표 P21 행"
+    ]
+  },
+  {
+    "key": "P22",
+    "title": "[Drone] P22 — Multi-Scale DeBA-FP, 전 FPN 레벨을 Phase 1에서 refine (실험 L, MULTIAQUA)",
+    "period": "구현 완료 2026-03-09, 평가 완료 2026-03-18",
+    "track": "seg-MULTIAQUA",
+    "status": "완주 (P9와 M-score 공동 1위)",
+    "summary": {
+      "change": "P21이 fpn[0]만 Phase 2(CrossModalFusionHead 직전)에서 refine하던 것을, fpn[0,1,2] 전부를 Phase 1(_prepare_backbone_features 이전)에서 DeBAFP_MultiScale로 refine하도록 확장 — refined feature가 vision_feats(tracking/memory attention/decoder)까지 전체 파이프라인에 전파",
+      "result": "ep120(day-val 94.41 기준) Val mIoU 93.42 / Test mIoU 70.77 / M-score 82.10(#16932 제출) — P9 재제출(#16710, M 82.10)과 동률 공동 1위",
+      "verdict": "Static/Sky 같은 큰 영역의 feature refinement에는 효과적(+2~3pp)이나 Dynamic은 오히려 하락(-5.4pp, P9 #16710 대비) — DeBA-FP 확장이 M-score를 P9 수준까지는 끌어올렸지만 넘어서지는 못함, scoring 병목(UAMM/AMF 상수 수렴)은 여전히 미해결"
+    },
+    "background": [
+      "P21은 fpn[0]만 Phase 2에서 DeBA-FP 적용 → CrossModalFusionHead와 m_feat에만 영향, vision_feats(tracking/memory attention에 사용)는 raw FPN에서 생성되어 DeBA-FP 효과가 도달하지 않음",
+      "P21 결과(ep94, M 81.77)가 P9(81.98/82.10)에 소폭 미달했고, Dynamic +15pp의 개선이 있었으나 Static/Sky는 하락 — refinement 효과가 국소적이라는 진단",
+      "vision_feats까지 refined feature가 전파되면 tracking/memory attention이 더 정확한 feature를 사용할 것이라는 기대로 적용 범위를 Phase 1으로 확장"
+    ],
+    "architecture": {
+      "one_liner": "DeBAFP_MultiScale이 fpn[0,1,2] 전부를 Phase 1(encode 직후, _prepare_backbone_features 이전)에서 refine — DCM/LayerNorm은 모달리티+FPN레벨 간 공유, W_d/W_u는 레벨별, α는 모달리티별(레벨 간 공유)",
+      "components": [
+        ["DeBAFP_MultiScale", "feat'_l = feat_l + α_m·W_u_l(GELU(LN(DCM(W_d_l(feat_l))))). W_d_list: [Conv2d(32→64), Conv2d(64→64), Conv2d(256→64)] / W_u_list: [Conv2d(64→32), Conv2d(64→64), Conv2d(64→256)](레벨별) / offset_mask_conv·dcm_weight·LayerNorm은 레벨+모달리티 간 공유 / α는 모달리티별(레벨 공유, init=0). 추가 파라미터 ~98K(P9 대비 14%, P21 대비 +42K)", "sam_lola_utils.py (DeBAFP_MultiScale)"],
+        ["Phase 1 적용", "각 모달리티 forward_image 직후 backbone_fpn의 3개 레벨 전부를 deba_fp_ms로 refine한 뒤 _prepare_backbone_features(bb_out, v_feats, v_pos, f_sizes)를 호출 → vision_feats 자체가 refined됨. Phase 2의 CrossModalFusionHead 입력(fpn[0])도 이미 refined 상태", "sam_lora_image_encoder_seg.py (LoRA_Sam_P22)"]
+      ],
+      "mermaid": "flowchart LR\n  ENC[모달별 SAM2 encode] --> F0[fpn0]\n  ENC --> F1[fpn1]\n  ENC --> F2[fpn2]\n  F0 --> MS[DeBAFP_MultiScale 레벨+모달 공유]\n  F1 --> MS\n  F2 --> MS\n  MS --> PREP[_prepare_backbone_features]\n  PREP --> VF[refined vision_feats]\n  VF --> TRACK[track_step]\n  MS --> HEAD[CrossModalFusionHead]\n  HEAD --> AMF[scalar AMF]\n  TRACK --> AMF\n  AMF --> OUT[융합 출력]\n  class MS new\n  class VF new",
+      "rationale": [
+        "P21의 국소적 효과(CrossModalFusionHead에만 영향)를 P9의 tracking/memory attention 경로까지 확장하면 구조적 정보(경계/형태)가 더 넓게 활용될 것이라는 가설",
+        "cross-layer sharing을 FPN 레벨 간으로 확장해도 파라미터 증가는 +42K로 제한적(W_d/W_u만 레벨별)"
+      ],
+      "setting": ["LoRA_Sam_P22 (sam_lora_image_encoder_seg.py) + DeBAFP_MultiScale(sam_lola_utils.py)", "MULTIAQUA RGBTL 3모달", "configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml(학습)/configs/eval_config/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml(평가)", "levine 서버", "hardaug8_physaug(P9 h8과 동일), 전체 trainable ~P9+98K"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "M-score/비고"],
+        ["P9 ep131(원본, #16683)", "93.54", "70.41", "M-score 81.98"],
+        ["P9 ep131(재제출, #16710)", "93.29", "70.91", "M-score 82.10"],
+        ["P22 ep120(#16932)", "93.42", "70.77", "M-score 82.10, Val Obstacle 79.36/Test Obstacle 30.17"],
+        ["P21 ep94(#16792, 비교용)", "93.17", "70.36", "M-score 81.77"]
+      ],
+      "per_condition": [],
+      "per_class": [
+        ["Static", "P9#16683 76.64 / P9#16710 76.65 / P22 79.15 / P21 75.67"],
+        ["Dynamic", "P9#16683 33.50 / P9#16710 36.10 / P22 30.71 / P21 37.05"],
+        ["Water", "P9#16683 94.48 / P9#16710 95.25 / P22 94.86 / P21 95.10"],
+        ["Sky", "P9#16683 73.75 / P9#16710 71.70 / P22 74.33 / P21 69.03"],
+        ["mIoU(frames_test.csv)", "P9#16683 69.59 / P9#16710 69.92 / P22 69.76 / P21 69.21"]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "P22 vs P9#16710(동일 M-score 82.10, 공정 비교): Static +2.50, Dynamic -5.39, Water -0.39, Sky +2.64 — DeBA-FP Multi-Scale이 큰 영역(Static/Sky) refinement에 효과적이나 작은 객체(Dynamic)에는 불리",
+      "P22 vs P21 best: Static +3.48, Dynamic -6.34, Water -0.23, Sky +5.30 — Multi-Scale FPN이 Single FPN(P21)보다 Static/Sky에 유리하지만 Dynamic은 P21이 더 강함(fpn[0] only가 작은 객체에 유리한 것으로 해석)",
+      "UAMM/AMF는 여전히 상수 수렴(std<0.001)이나 P9과 다른 고정점: UAMM img 0.614→0.841(+0.23), AMF img 0.239→0.300(+0.06) — DeBA-FP가 FPN feature를 변형해 CrossModalFusionHead가 RGB 비중이 더 높은 고정점으로 수렴",
+      "MoE Routing 변화: LiDAR Block20_Q entropy_ratio 0.434→0.147(극도로 집중, max_weight 0.803→0.945), Thermal Block9_V entropy_ratio 0.320→0.669(분화 감소) — DeBA-FP가 이미 modal 특화를 일부 수행한 것으로 해석",
+      "Test prediction confidence: uncertainty 35.3%→13.5%로 대폭 향상 — feature 품질 자체는 개선됨",
+      "P9 두 제출(#16683 vs #16710) 간에도 Dynamic +2.61/Sky -2.05/mIoU +0.33 차이가 있어, 동일 모델도 제출(eval_macvi 생성) 방식에 따라 per-class 분포가 달라질 수 있음이 확인됨 — 과거 기록된 P9 per-class(Static 81.30/Dynamic 21.86/Sky 76.54)는 val_multiaqua.py의 eval_val 출력이며 frames_test.csv의 MACVi 계산과 다를 수 있음"
+    ],
+    "verdict": {
+      "worked": "부분 — Static/Sky는 개선되었으나 Dynamic이 하락해 상쇄, 결과적으로 P9과 동일한 M-score(82.10)에 도달했을 뿐 이를 넘어서지 못함",
+      "why": "UAMM/AMF의 scoring 병목(CrossModalFusionHead GAP→softmax 상수 수렴)이 여전히 해결되지 않아, DeBA-FP가 아무리 좋은 feature를 만들어도 fusion 단계에서 차이가 소실되거나 다른(때로는 불리한) 고정점으로 수렴",
+      "handoff": "DeBA-FP 계열은 P22를 마지막으로 추가 확장 기록이 없음. 이후 P24/P25가 CrossModalFusionHead 자체를 교체(Quality-aware Memory Gating, Spatial Quality Fusion)하는 방향으로 전환 — scoring 병목을 직접 공략"
+    },
+    "todo": [],
+    "sources": [
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P22)",
+      "sam_lola_utils.py (DeBAFP_MultiScale)",
+      "configs/levine-multiaqua_rgbtl_P22_hardaug8_physaug.yaml",
+      "outputs/MMSamP22/levine_multiaqua_rgbtl_P22_hardaug8_physaug/",
+      "levine 서버",
+      "MACVi 챌린지 제출 #16932"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P22: Multi-Scale DeBA-FP (all FPN levels, Phase 1) (실험 L)",
+      ".claude_logs/experiments/log.md ### P22 Multi-Scale DeBA-FP 실험(실험 L), #### P22 실험 결과(2026-03-18, 정정)",
+      ".claude_logs/experiments/registry.md Seg — MULTIAQUA 표 P22 행"
+    ]
+  },
+  {
+    "key": "P23",
+    "title": "[Drone] P23 — MoE DeBA-BB, 백본 내부 deformable conv adapter (실험 M, MULTIAQUA, OOM 폐기)",
+    "period": "구현 완료 2026-03-10, 이후 학습 불가 판정",
+    "track": "seg-MULTIAQUA",
+    "status": "구현 완료, 학습 불가(A100 80GB OOM, ISSUE-012 미해결)",
+    "summary": {
+      "change": "P9의 Linear 기반 MoE LoRA(Linear_down→Linear_up)를 ConvLoRA(ICLR 2024)+DeBA(CVPR 2026) 결합 구조인 deformable conv bottleneck adapter(DeBA-BB)로 교체하고, GAP 기반 per-image gating으로 expert(스케일 ×1/×2)를 라우팅",
+      "result": "batch=1로도 A100 80GB에서 OOM 발생(ISSUE-012) — M-score/Test mIoU 기록 없음",
+      "verdict": "설계 자체는 완료(파라미터 ~340K, P9 MoE LoRA ~538K 대비 37% 감소)되었으나 deformable conv activation 메모리가 Linear 대비 훨씬 커 학습이 원천적으로 불가능했고, gradient checkpointing 등 해결책이 문서상 실행된 기록이 없음"
+    },
+    "background": [
+      "P9의 MoE LoRA는 Linear adapter(Linear_down→Linear_up)만 사용 — ConvLoRA(Zhong et al., ICLR 2024, \"Convolution Meets LoRA\")는 LoRA bottleneck에 conv를 삽입해 local inductive bias를 주입, DeBA(CVPR 2026)는 backbone layer 사이에 deformable conv bottleneck adapter를 삽입",
+      "P21/P22의 DeBA-FP(FPN 레벨 adapter)와 보완적으로, DeBA-BB(backbone 내부 adapter)를 MoE expert로 결합하는 설계로 제안됨",
+      "gating 방식 비교(P9 Linear per-token/P20 MLP per-token 대비 GAP per-image를 채택): 145장으로 per-token spatial routing은 overfitting 위험이 크고, P9의 AMF/UAMM가 상수로 수렴(std≈0)한 것도 모델이 per-image global decision을 선호함을 시사"
+    ],
+    "architecture": {
+      "one_liner": "Hiera 블록 사이(Q/V)에 deformable conv bottleneck adapter를 2개 expert(원본 해상도 ×1, ×2 업샘플)로 두고 GAP 기반 per-image gate로 라우팅하는 MoE_DeBA_BB를 24개 블록이 stage별로 공유",
+      "components": [
+        ["MoE_DeBA_BB(단일 공유 모듈, ~325K)", "2×DCM(per-expert, 24블록 간 공유): offset_mask_conv+dcm_weight / 1×LayerNorm(전체 공유) / 4×W_d,W_u(stage별: dim→64, 64→dim) / 4×Gate(stage별 GAP+Linear(dim→E)) / 3×α(모달리티별, init=0)", "sam_lola_utils.py (MoE_DeBA_BB, _MoE_DeBA_BB_qkv)"],
+        ["Expert 차별화(Multi-scale upsampling)", "Expert1: W_d(공유)→×1→DCM_1(3×3)→W_u(공유). Expert2: W_d(공유)→upsample×2→DCM_2(3×3)→downsample→W_u(공유). Dilation은 DCM의 learned offset이 흡수하므로 무의미하다고 판단해 채택하지 않고, kernel 개수 차이 대신 해상도 차이로 expert를 구분", "sam_lola_utils.py"],
+        ["Block-to-Stage mapping(Hiera-B+)", "Blocks 0-2→Stage0(dim112,3블록) / 3-5→Stage1(dim224,3블록) / 6-21→Stage2(dim448,16블록) / 22-23→Stage3(dim896,2블록)", "sam_lora_image_encoder_seg.py (LoRA_Sam_P23)"]
+      ],
+      "mermaid": "flowchart LR\n  X[block Q/V 입력] --> GATE[GAP + Linear stage별 gate]\n  GATE --> E1[Expert1 scale x1 DCM]\n  GATE --> E2[Expert2 scale x2 DCM]\n  X --> WD[Wd 공유 bottleneck]\n  WD --> E1\n  WD --> E2\n  E1 --> WU[Wu 공유 up-projection]\n  E2 --> WU\n  WU --> DELTA[adapter delta]\n  DELTA --> QV[Q,V에 가산]\n  class GATE new\n  class E1 new\n  class E2 new\n  class WD new\n  class WU new",
+      "rationale": [
+        "DeBA-BB가 LoRA와 정확히 같은 위치(backbone layer 사이)에 적용되는 adapter라 drop-in replacement가 가능하고, Hiera 토큰이 2D spatial grid를 유지하고 있어 DCM 적용이 자연스럽다는 점(DINOv2에서 DeBA-BB가 이미 성공)을 근거로 채택",
+        "GAP gating 선택 근거: P9의 AMF/UAMM가 상수로 수렴(std≈0.0000)한 것이 모델이 per-modality global decision을 선호한다는 신호로 해석되었고, 145장으로 per-token spatial routing을 학습하면 overfitting 위험이 큼",
+        "W_d/W_u를 expert 간 완전 공유하고 DCM만 per-expert로 두어 파라미터 효율을 확보(설계 결정 기록, 2026-03-10 논의)"
+      ],
+      "setting": ["LoRA_Sam_P23 (sam_lora_image_encoder_seg.py) + MoE_DeBA_BB(sam_lola_utils.py)", "MULTIAQUA RGBTL 3모달", "configs/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml(학습)/configs/eval_config/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml(평가)", "levine 서버(설계) → 학습은 A100 80GB 필요", "hardaug8_physaug, 전체 trainable ~340K(P9 MoE LoRA ~538K 대비 37% 감소)"]
+    },
+    "results": {
+      "gate": "게이트 없음(학습 자체가 OOM으로 불가)",
+      "table": [["구성/ckpt", "val", "test", "비고"], ["batch=1, A100 80GB", "OOM", "OOM", "4 expert(scale [0.5,1,2,4])에서도, 2 expert(scale [1,2])로 축소해도 동일하게 OOM"]],
+      "per_condition": [],
+      "per_class": [],
+      "invalid": []
+    },
+    "analysis": [
+      "P9(Linear 기반 SoftMoE-LoRA)은 동일 환경(A100 80GB)에서 정상 학습 — Conv activation이 Linear보다 훨씬 큰 메모리를 차지하는 것이 원인으로 지목됨(LoRA: (B,H,W,r) 형태의 매우 작은 activation, r=4 / DeBA-BB: (B,bottleneck_dim,H,W) conv activation + deformable offset 저장, 24블록×expert수×모달리티3개가 누적)",
+      "frozen encoder라도 inject된 trainable adapter의 gradient 계산을 위해 전체 중간 activation을 보관해야 하며, 현재 encoder에 gradient checkpointing이 적용되어 있지 않음(SAM head 일부에만 적용)",
+      "해결 방안으로 encoder gradient checkpointing(가장 효과적, ~40-50% VRAM 절약 추정), frozen encoder torch.no_grad() 분리(DeBA-BB가 encoder 내부에 inject되어 단순 적용 불가), expert 수/bottleneck dim 추가 축소(근본 해결 아님)가 제시됨"
+    ],
+    "verdict": {
+      "worked": "판정 불가 — 학습이 시작되지 못해 구조 자체의 유효성을 확인할 수 없음",
+      "why": "ISSUE-012: deformable conv adapter의 activation 메모리가 Linear LoRA 대비 훨씬 커, encoder gradient checkpointing 없이는 A100 80GB에서도 batch=1로 OOM",
+      "handoff": "기록 없음 — ISSUE-012는 issues-and-fixes.md 인덱스에서 미해결(🖥 하드웨어) 상태로 남아 있고, 이후 세션에서 P23이 재시도된 기록이 없음. 이후 P24가 P9 base로 별도 축(memory quality gating)을 시도"
+    },
+    "todo": ["encoder gradient checkpointing 적용 후 P23 재시도 여부 확인 필요", "ISSUE-012가 최종적으로 어떻게 정리(폐기/보류)되었는지 확인 필요"],
+    "sources": [
+      "sam_lola_utils.py (MoE_DeBA_BB, _MoE_DeBA_BB_qkv)",
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P23)",
+      "configs/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml",
+      "configs/eval_config/levine-multiaqua_rgbtl_P23_hardaug8_physaug.yaml",
+      "A100 80GB 서버"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P23: MoE DeBA-BB (구현 완료, 학습 대기) (실험 M)",
+      ".claude_logs/status/history-2026H1.md ### P23 구현 완료 (2026-03-10)",
+      ".claude_logs/issues/issues-and-fixes.md ISSUE-012 (P23 A100 80GB OOM, 상단 이슈 상태 인덱스 표 포함)"
+    ]
+  },
+  {
+    "key": "P24",
+    "title": "[Drone] P24 — 모달별 Decoder 증류 기반 Quality-aware Memory Gating (실험 N, MULTIAQUA, 버그로 미완주)",
+    "period": "구현 완료 2026-03-11, ep36 평가 2026-03-13(sigmoid 버그 확인)",
+    "track": "seg-MULTIAQUA",
+    "status": "미완주(ISSUE-013 버그로 test 미제출, CE 기반 수정 후 재학습 기록 없음)",
+    "summary": {
+      "change": "모달리티별로 memory에 저장되는 maskmem_features 자체를 spatial quality map으로 변조(modulate)하는 SpatialQualityGating을 추가 — teacher(모달별 SAM2 decoder의 per-pixel CE로 만든 quality target)를 student(SpatialQualityGating)가 증류받도록 설계",
+      "result": "sigmoid 버그가 있는 ep36 체크포인트에서 Val mIoU 93.89(Dynamic 47.17로 P9 대비 -32.61 확인) — UAMM/AMF std<0.001로 완전 상수 수렴, gating이 사실상 작동하지 않음. Test는 버그로 인해 미제출",
+      "verdict": "teacher target을 sigmoid confidence로 구현한 것이 ISSUE-013(ep40 근처 decoder 수렴으로 confidence≈1.0 포화, uniform target)의 원인으로 확인되었고, 4-class CE 기반으로 수정이 필요하다는 처방까지만 남고 재학습 결과가 없음"
+    },
+    "background": [
+      "P9의 memory attention은 모든 모달리티의 memory를 동일하게 취급 — UAMM이 vision_feats를 scalar로 modulate하지만 memory bank에 저장되는 maskmem_features는 무조건 원본 그대로 저장됨",
+      "야간에 RGB encoder가 생성한 저품질 feature가 memory에 그대로 저장되면 이후 모달리티의 memory attention이 오염된 memory를 참조한다는 문제의식",
+      "P12~P23의 scoring/adapter 개선 축(모두 실패 또는 미완주)과 별개로, memory bank 저장 시점의 quality 제어라는 새 축을 시도"
+    ],
+    "architecture": {
+      "one_liner": "각 모달리티의 SAM2 decoder(memory 없이 단독 추론)의 per-pixel CE로 teacher quality target을 만들고, SpatialQualityGating이 이를 증류해 memory bank 저장 시 maskmem_features를 quality map으로 modulate",
+      "components": [
+        ["Teacher signal", "모달별 vision_feats → SAM2 decoder(memory 미사용) → teacher_logits(B,C,H,W) → CE(teacher_logits, gt_mask, reduction=none) → ce_map(B,H,W) → quality_target=exp(-CE)∈(0,1] → FPN 크기로 downsample. 학습 시에만 torch.no_grad()로 계산", "sam_lora_image_encoder_seg.py (LoRA_Sam_P24), 최초 구현은 sigmoid confidence(버그)"],
+        ["SpatialQualityGating(student)", "Conv2d(in,64,3)+ReLU→Conv2d(64,64,3)+ReLU→Conv2d(64,1,1)의 quality logit head(~12.5K), kaiming+마지막 bias=+1.0(sigmoid≈0.73 optimistic start), logits_to_quality(x)=sigmoid(x)·(1-min_quality)+min_quality (min_quality=0.1)", "sam_lola_utils.py (SpatialQualityGating)"],
+        ["Memory Modulation(Phase 3)", "track_step 후 maskmem_features(B,C,H_mem,W_mem)에 q_map을 interpolate해 곱함 — quality 높은 영역은 memory 유지(×1.0 근접), quality 낮은 영역은 억제(×min_quality=0.1까지)", "sam_lora_image_encoder_seg.py"]
+      ],
+      "mermaid": "flowchart LR\n  FEAT[모달별 vision_feats] --> TDEC[Teacher SAM2 decoder no memory]\n  TDEC --> CE[per-pixel CE map]\n  CE --> TARGET[quality target exp -CE]\n  FEAT --> SQG[SpatialQualityGating student]\n  SQG --> QLOGIT[quality logits]\n  TARGET --> BCE[BCE loss]\n  QLOGIT --> BCE\n  QLOGIT --> QMAP[quality map min_quality 0.1]\n  QMAP --> MEM[maskmem_features modulate]\n  MEM --> TRACK[track_step]\n  class SQG new\n  class QMAP new\n  class MEM new",
+      "rationale": [
+        "P12~P21의 scoring 개선(CrossModalFusionHead 계열)이 계속 실패하는 동안, memory bank 저장이라는 다른 지점을 조절하면 scoring 병목을 우회할 수 있다는 가설",
+        "CE 기반 target이 decoder가 수렴해도 모달리티별 구조적 약점(LiDAR→하늘, RGB→암전 등)이 남아 epoch에 걸쳐 신호가 소멸하지 않을 것이라는 설계 의도(ISSUE-013)"
+      ],
+      "setting": ["LoRA_Sam_P24 (sam_lora_image_encoder_seg.py) + SpatialQualityGating(sam_lola_utils.py)", "MULTIAQUA RGBTL 3모달", "configs/hpca100-multiaqua_rgbtl_P24_hardaug8_physaug.yaml, configs/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml", "bengio 서버(ep36 평가분)", "hardaug8_physaug, LAMBDA_GATE=0.5, GRADIENT_CHECKPOINT=true, AMP=false, QUALITY_GATE.MIN_QUALITY=0.1"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [["구성/ckpt", "val", "test", "비고"], ["P24-M1 epoch36(sigmoid 버그)", "93.89", "미제출(버그로 의미 없음)", "ISSUE-013: teacher target이 sigmoid confidence로 구현되어 ep40 근처 decoder 포화로 target이 uniform white화, gating이 상수 출력을 학습"]],
+      "per_condition": [],
+      "per_class": [
+        ["Static", "94.41 (P9 대비 +0.87)"],
+        ["Dynamic", "47.17 (P9 대비 -32.61)"],
+        ["Water", "98.15 (P9 대비 +3.54)"],
+        ["Sky", "97.27 (P9 대비 +5.97)"]
+      ],
+      "invalid": ["epoch36(sigmoid 버그) 체크포인트의 mIoU/per-class 수치는 gating이 사실상 비활성(상수 수렴)인 상태에서 나온 값으로, Quality-aware Memory Gating의 효과를 반영하지 않음 — 버그 수정 전 수치라 P24 아키텍처 판정에 사용 불가"]
+    },
+    "analysis": [
+      "UAMM(mean±std): img 0.6591±0.0004 / lidar 0.9995±0.0000 / thermal 1.0000±0.0000 (val), test도 거의 동일값 — 완전 상수 수렴",
+      "AMF(mean±std): img 0.2479±0.0001 / lidar 0.3760±0.0001 / thermal 0.3761±0.0001 — std<0.001로 gating이 작동하지 않음",
+      "Prediction confidence: Val mean_entropy=0.14(high_uncertainty 7.0%), Test mean_entropy=0.38(high_uncertainty 33.5%) — 야간 불확실성이 높음",
+      "실패 원인(ISSUE-013): (1) teacher target이 `|sigmoid(logit)-0.5|*2` 기반 confidence로 구현됨 (2) epoch 40 시점 decoder가 충분히 학습되어 거의 모든 위치에서 confidence≈1.0 → target이 uniform white (3) gating network에 의미 있는 supervision이 없어 상수 출력을 학습"
+    ],
+    "verdict": {
+      "worked": "아니오 — sigmoid 기반 teacher target 버그로 gating이 상수로 수렴, memory modulation이 사실상 identity에 가깝게 작동",
+      "why": "teacher target 구현이 sigmoid confidence였고 학습 후반 decoder가 수렴하며 target이 uniform화되어 supervision 신호가 소멸(ISSUE-013)",
+      "handoff": "4-class CE 기반 `exp(-CE(logits_4class, gt))` teacher target으로 수정하는 처방(및 `_teacher_decode_single()`을 4-class logits 출력으로 수정)이 P25의 teacher signal로 그대로 계승됨"
+    },
+    "todo": ["CE 기반 teacher target으로 수정한 P24 재학습이 실제 실행되었는지, 결과가 있는지 확인 필요(문서에 없음 — P25가 곧바로 CE 기반으로 설계·학습되어 P24 자체의 수정판 결과는 남지 않은 것으로 보임)"],
+    "sources": [
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P24)",
+      "sam_lola_utils.py (SpatialQualityGating)",
+      "configs/hpca100-multiaqua_rgbtl_P24_hardaug8_physaug.yaml",
+      "configs/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml",
+      "outputs/MMSamP24/bengio_multiaqua_rgbtl_P24_hardaug8_physaug/.../epoch36_93.89_top1_checkpoint.pth",
+      "bengio 서버",
+      "MISC/analyze_detailed_log.py"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P24: P9 + Quality-aware Memory Gating via Per-Modality Decoder Distillation (실험 N)",
+      ".claude_logs/experiments/log.md ### P24 Quality-aware Memory Gating 실험(실험 M), #### P24-M1: sigmoid 기반(ISSUE-013 버그)",
+      ".claude_logs/status/history-2026H1.md ### P24 sigmoid 기반 ep36 평가 완료 (2026-03-13)",
+      ".claude_logs/issues/issues-and-fixes.md ISSUE-013"
+    ]
+  },
+  {
+    "key": "P25",
+    "title": "[Drone] P25 — Unified Spatial Quality Fusion, CrossModalFusionHead 제거 (MULTIAQUA, MACVi 미제출)",
+    "period": "구현 완료 2026-03-14, 학습 2026-03-16 시작~27ep, 진단 2026-06-14",
+    "track": "seg-MULTIAQUA",
+    "status": "학습됨(27ep) — MACVi test 미제출, M-score 없음, 사후 진단으로 구조적 실패 확인",
+    "summary": {
+      "change": "P24의 SpatialQualityGating(quality map)을 UAMM+AMF+Memory 3곳에 모두 사용(triple-duty)하도록 통합하고 CrossModalFusionHead(P9~P24까지 8번 상수 수렴으로 실패)를 완전히 제거 — UAMM은 spatial max-norm, AMF는 spatial softmax, teacher는 P24와 동일한 CE 기반 relative quality",
+      "result": "epoch27(hpca100_multiaqua_rgbtl_P25_hardaug8_physaug) 체크포인트 기준 Val mIoU 92.38~92.69, night-val best 86.10@ep8, Dynamic IoU ~77 — MACVi test 제출·M-score 산출 기록은 없음",
+      "verdict": "야간 Pred Q 진단(2026-06-14) 결과 RGB만 공간적으로 분화(std 0.173)하고 lidar/thermal은 거의 평탄(std 0.048~0.057)해 사실상 RGB 단일 지배로 수렴 — teacher target은 야간을 인지하지만(std 0.24→0.31) 예측기(SpatialQualityGating)가 이를 못 따라가는(std 0.05로 붕괴) 것이 원인으로 확정됨"
+    },
+    "background": [
+      "P24는 SpatialQualityGating으로 memory modulation만 수행하고 UAMM/AMF는 여전히 P9의 CrossModalFusionHead(GAP→MLP→softmax)를 사용",
+      "CrossModalFusionHead는 P9~P21까지 모든 variant에서 학습된 상수로 수렴(std≈0.0000) — GAP이 spatial 정보를 소실하고 frozen SAM2 encoder가 모달리티 간 분포를 정규화해 입력 의존성이 사라짐",
+      "P24에 이미 spatial quality map이 존재(teacher-supervised, \"각 모달리티가 각 픽셀에서 얼마나 정확한가\"를 spatial하게 표현)하는데 memory modulation에만 쓰는 것은 과소활용이라는 판단"
+    ],
+    "architecture": {
+      "one_liner": "CrossModalFusionHead를 제거하고 SpatialQualityGating의 quality map(모달리티당 1개, spatial)이 UAMM(spatial max-norm)·AMF(spatial softmax)·Memory modulation 3곳을 모두 담당",
+      "components": [
+        ["CrossModalFusionHead 제거", "P9~P24까지 8회 연속 상수 수렴 실패 이력을 근거로 구조 자체를 제거", "sam_lora_image_encoder_seg.py (LoRA_Sam_P25)"],
+        ["Spatial UAMM", "quality_maps(모달별 (B,1,H_fpn,W_fpn))를 stack→pixel별 max-norm(q_norm = q/q_max.clamp(min=1e-6))→각 vision_feats 레벨에 interpolate 후 곱함", "sam_lora_image_encoder_seg.py"],
+        ["Spatial AMF", "quality_maps를 출력 해상도로 interpolate→pixel별 softmax(across modalities)→seg_output 가중합", "sam_lora_image_encoder_seg.py"],
+        ["Memory Modulation", "P24와 동일(maskmem×quality_map)", "sam_lora_image_encoder_seg.py"],
+        ["Teacher Signal", "P24와 동일한 CE 기반 exp(-CE) → BCE(quality_logits, target), 4-class CE 기반(ISSUE-013 수정 반영)", "sam_lora_image_encoder_seg.py"]
+      ],
+      "mermaid": "flowchart LR\n  FEAT[모달별 fpn feature] --> SQG[SpatialQualityGating 1개 공유]\n  SQG --> QMAP[quality map B1HW]\n  QMAP --> UAMM[Spatial UAMM max-norm]\n  QMAP --> AMF[Spatial AMF softmax]\n  QMAP --> MEM[Memory modulation]\n  UAMM --> TRACK[track_step]\n  TRACK --> AMF\n  AMF --> OUT[융합 출력]\n  class SQG new\n  class QMAP new\n  class UAMM new\n  class AMF new",
+      "rationale": [
+        "CrossModalFusionHead 8연패(P9~P24)를 구조적 실패로 판단, 상수 수렴하는 모듈을 유지할 이유가 없다는 결론",
+        "Teacher supervision(quality target)이 P12~P19 계열의 실패 원인이던 'GT 없는 scoring' 문제를 근본적으로 해결한다는 논리",
+        "구현 시점 논리적 타당성 평가는 80~85%로 자체 기록됨 — 리스크로 quality map 하나가 3곳을 동시 결정해 예측 오류가 동시에 영향을 미칠 수 있다는 점(min_quality=0.1, optimistic bias+1.0으로 완화 시도)이 명시됨"
+      ],
+      "setting": ["LoRA_Sam_P25 (sam_lora_image_encoder_seg.py)", "MULTIAQUA RGBTL 3모달", "configs/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml", "hpca100 서버(A100)", "hardaug8_physaug + NIGHT_TRANSLATION + LAMBDA_GATE=0.5, CrossModalFusionHead ~3K 파라미터 제거, SpatialQualityGating ~12.5K만 유지"]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "비고"],
+        ["epoch27(진단 시점 체크포인트)", "92.38~92.69", "MACVi 미제출", "night-val best 86.10@ep8, Dynamic IoU ~77. M-score 산출 기록 없음"]
+      ],
+      "per_condition": [
+        ["UAMM/AMF 주야간 비교(detailed_log.json 집계)", "TEST(야간) img/lidar/thermal: UAMM 1.000/0.583/0.541, AMF 0.460/0.280/0.260 / VAL(주간): UAMM 1.000/0.554/0.518, AMF 0.469/0.275/0.256 — UAMM 승자=img 100%(주야 동일), 이미지 간 std 0.00~0.01로 사실상 상수 수렴"],
+        ["야간 Pred Q 공간 통계(200장, tmp/p25_predq/dump_predq.py)", "img(RGB) 공간 std 0.173(mean 0.533) / lidar 공간 std 0.057(mean 0.311) / thermal 공간 std 0.048(mean 0.288) — RGB만 공간 분화, lidar/thermal은 거의 평탄"],
+        ["Teacher/Pred Q day→night(val n=145, tmp/p25_predq/diag_teacher.py)", "img standalone mIoU 82.9%→59.2%, TargetQ std 0.236→0.307, PredQ std 0.212→0.149(반대 방향) / lidar standalone mIoU 18.3%(불변), TargetQ std 0.402, PredQ std 0.057 / thermal standalone mIoU 14.7%(불변), TargetQ std 0.402, PredQ std 0.048"]
+      ],
+      "per_class": [],
+      "invalid": []
+    },
+    "analysis": [
+      "진단1(모달리티 가중치 정적): 주야간 UAMM/AMF가 거의 동일하고 RGB가 야간에도 항상 1순위 — 입력별 적응이 없는 상수 수렴, P9의 정적 UAMM 문제가 재현됨",
+      "진단2(공간 분포): RGB만 공간 분화(std 3배), lidar/thermal은 공간적으로 무정보 — 야간에도 RGB raw quality가 최고(mean 0.533)라 정규화에서 항상 승자가 됨. quality gating이 RGB 중심이며 lidar/thermal엔 공간 적응이 실패",
+      "진단3(teacher vs 예측기): teacher는 환경을 인지함(RGB Target Q 야간에 mean↓·std↑ 0.236→0.307), lidar/thermal Target std 0.402로 구조적 variation 존재. 그러나 예측기(SpatialQualityGating)의 Pred std는 0.05 수준으로 붕괴(RGB도 야간에 teacher std↑인데 Pred std는 오히려 ↓) — 범인은 예측기이며, frozen 인코더 FPN feature(quality 정보가 정규화되어 소실)를 입력으로 쓰는 tiny conv head의 입력·용량 부족이 원인으로 지목됨",
+      "처방(문서에 명시): teacher는 유지하고 예측기를 강화 — raw-input 단서(RGB 밝기/lidar density/thermal coverage) 주입, multi-scale feature + 용량 증가. 핵심 레버는 RGB 야간 quality가 teacher를 추종하도록 만드는 것"
+    ],
+    "verdict": {
+      "worked": "부분/실패에 가까움 — CrossModalFusionHead 제거 및 quality-map 통합 자체는 구조적으로 구현되었으나, quality 예측기가 lidar/thermal에서 공간 적응에 실패하고 RGB 단일 지배로 수렴해 애초 목표(모달리티별 spatial 적응)를 달성하지 못함",
+      "why": "예측기(SpatialQualityGating)의 입력이 frozen encoder FPN feature로 quality 정보가 이미 정규화되어 있고, tiny conv head의 표현력이 부족(teacher는 정상 신호를 갖고 있음에도 학습이 이를 따라가지 못함)",
+      "handoff": "ISSUE-015로 P25의 구조적 문제 7가지(SQG 가중치 공유·triple-duty·teacher target 분포 편향·pixel-wise max-norm 불연속·memory modulation 이중 페널티·shared decoder 충돌·MoE gate 상수 수렴)가 정리되어 P26(v5) 설계로 계승됨 — P26/P27은 이 인계 문서의 대상 범위 밖(이미 노션에 등록)"
+    },
+    "todo": ["P25가 실제로 MACVi test에 제출되었는지, M-score가 존재하는지 재확인 필요(현재까지 확인된 문서에는 없음)", "예측기 강화(raw-input 단서 주입) 처방이 P25 자체에 반영되어 재학습되었는지, 아니면 P26으로 바로 넘어갔는지 확인 필요"],
+    "sources": [
+      "sam_lora_image_encoder_seg.py (LoRA_Sam_P25)",
+      "configs/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml",
+      "outputs/MMSamP25/hpca100_multiaqua_rgbtl_P25_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch27_92.38_top1_checkpoint.pth",
+      "hpca100 서버(A100)",
+      "tmp/p25_predq/dump_predq.py, tmp/p25_predq/diag_teacher.py"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md ## P25: Unified Spatial Quality Fusion — Quality Map으로 UAMM + AMF + Memory 통합 (설계 중)",
+      ".claude_logs/experiments/log.md ## [진단] P25 Spatial Quality Gating — 야간 Pred Q 분석 (2026-06-14), ## P25 구현 완료 + 학습 시작 (2026-03-16)",
+      ".claude_logs/status/history-2026H1.md ### P25 구현 완료: Unified Spatial Quality Fusion (2026-03-14)",
+      ".claude_logs/issues/issues-and-fixes.md ISSUE-015"
+    ]
+  },
+  {
+    "key": "SAM3-RBMA",
+    "title": "[Drone] SAM3-RBMA — RBMA를 SAM3로 이식 + SAM mask decoder class-token repurpose (DELIVER 25cls)",
+    "period": "포팅 시작 2026-06-16, 마지막 진행 기록 2026-06-21(ep22), 이후 갱신 없음",
+    "track": "seg-DELIVER",
+    "status": "학습/디버깅 중(마지막 기록 val 16.27@ep22, 상승 중) — 이후 문서에 갱신·종료 선언 없음",
+    "summary": {
+      "change": "SAM2 기반 RBMA(P28)를 SAM3 tracker(Sam3TrackerBase)로 이식 — ViT 트렁크에 plain LoRA(32블록 qkv) + modality-as-frame forward + RoPEAttention SDPA 패치로 memory cross-attention logit에 reliability bias를 가산하고, 초기 conv 기반 semantic head를 SAM3 mask decoder를 25-class로 repurpose한 semantic decoder로 교체",
+      "result": "decoder repurpose(2026-06-21) 이후 val mIoU 궤적 ep2 7.10 → ep8 11.02 → ep14 13.03 → ep22 16.27(test 15.12), 상승 중(plateau 도달 전) — 직전 conv head 베이스라인(ep8 val 8.49)의 약 2배",
+      "verdict": "SAM mask decoder의 class-token cross-attention repurpose가 class-collapse(Road/Sky/Building 등 소수 지배 클래스만 학습되고 나머지는 IoU=0)를 깨는 데 명확히 기여했음이 확인됐으나, 같은 DELIVER 25cls 세팅의 SAM2 P28(val~55, ep10 기준 Day 55.26)에 비해 여전히 큰 격차가 남아 있고 이는 SAM3 ViT의 single-scale 구조 한계로 추정(문서상 확정 아님)"
+    },
+    "background": [
+      "P28(RBMA, SAM2 기반)이 \"SAM2/SAM3 memory cross-attention logit에 training-free reliability를 additive bias로 가산\"한다는 노벨티 주장을 SAM3에도 성립시키기 위한 포팅",
+      "초기 conv 기반 semantic head(Conv3×3→Conv1×1 1개)만 사용했을 때 val mIoU가 2%대로 붕괴 — 원인은 sam3.pt 로드가 접두사 불일치(tracker./detector.)로 0/773 매칭되어 ViT 백본이 100% random init 상태였던 것(ISSUE-020, prefix remap+90% 미만 로드 시 RuntimeError 가드로 수정)",
+      "백본 로드 수정 후에도 sem_head의 BatchNorm이 standalone(reliability)+memory-conditioned(출력)×4모달 = 분포가 다른 8회 호출로 공유 running stats를 오염시켜 eval만 붕괴하는 문제 발견(ISSUE-021) — BatchNorm→GroupNorm으로 수정(train==eval, diff 0.0 검증)",
+      "두 버그 수정 후에도 rank16+강화 conv head(3M)+reliability-gated fusion 구조에서 ep14 val 7.77/test 6.83로 Road/Sky/Building 3개만 잡고 22개 클래스 IoU=0인 class-collapse 확인(2026-06-20) — conv head가 클래스별로 능동적 영역을 찾지 못하는 것이 원인으로 진단됨"
+    ],
+    "architecture": {
+      "one_liner": "SAM3 ViT 트렁크에 plain LoRA를 주입하고 각 모달리티를 SAM3 tracker의 프레임으로 취급해 memory attention을 태운 뒤, reliability 신호를 RoPEAttention SDPA 로짓에 bias로 가산하고, 최종 출력은 SAM3 mask decoder를 25-class로 repurpose한 semantic decoder에서 얻음",
+      "components": [
+        ["Plain LoRA on ViT", "backbone.vision_backbone.trunk.blocks[*].attn.qkv(32블록, dim 1024)에 shape-무관 _LoRA_qkv 주입, encoder frozen, trainable = LoRA 128 + lambda_bias = 129", "semseg/models/sam3/sam3_lora_rbma.py (inject_plain_lora, LoRA_Sam3_RBMA)"],
+        ["Modality-as-frame forward", "모달리티별 forward_image → _prepare_backbone_features → memory bank(cond=frame0, non_cond=나머지) → track_step 프레임 루프로 SAM2 P25/P27 forward를 미러링", "semseg/models/sam3/sam3_lora_rbma.py"],
+        ["RBMA bias 주입(RoPEAttention SDPA 패치)", "sam3/sam/transformer.py의 RoPEAttention SDPA에 _rbma_attn_bias 경로 추가. per-modality predictive entropy(1-정규화엔트로피)를 memory 키의 모달 블록 컬럼에 매핑해 (B,1,1,Sk) bias로 cross-attn logit에 가산(모달리티 간 per-pixel 센터링, λ=lambda_bias 학습)", "semseg/models/sam3/sam3/sam/transformer.py, sam3_lora_rbma.py (_rbma_bias_fn)"],
+        ["SemanticHead(초기 conv head, 폐기됨)", "conv 256→128→num_classes, standalone(reliability)+memory-conditioned(출력) 각각 사용 — class-collapse 원인으로 진단되어 아래 decoder repurpose로 교체", "sam3_lora_rbma.py"],
+        ["SAM mask decoder repurpose(핵심, class-token decoding)", "MaskDecoder(num_multimask_outputs=25, use_high_res_features=False, pred_obj_scores=False)를 prompt-free(empty point label -1, no-mask)로 직접 호출해 class query cross-attention으로 클래스별 영역을 능동적으로 localize. pretrained sam_mask_decoder에서 shape이 맞는 키(transformer+upscaling+iou_token)만 warm-start, mask_tokens/iou_head는 fresh", "sam3_lora_rbma.py (_semantic_decode)"],
+        ["reliab_head + reliability-gated fusion", "작은 SemanticHead(GroupNorm, standalone f_low@72)로 reliability를 분리 산출(aux CE로 학습), naive mean 대신 softmax_i(lambda_fuse·reliability_i) 가중합으로 모달리티 융합", "sam3_lora_rbma.py"]
+      ],
+      "mermaid": "flowchart LR\n  MOD[모달별 입력 프레임화] --> VIT[SAM3 ViT + plain LoRA]\n  VIT --> MEM[memory attention RoPEAttention]\n  MEM --> BIAS[RBMA bias entropy 기반]\n  BIAS --> MEM\n  MEM --> DEC[SAM mask decoder repurpose 25class]\n  MEM --> REL[reliab_head]\n  REL --> FUSE[reliability-gated fusion]\n  DEC --> FUSE\n  FUSE --> OUT[semantic 출력]\n  class BIAS new\n  class DEC new\n  class REL new",
+      "rationale": [
+        "SAM2 MemorySAM(P9/P28)이 이미 SAM mask decoder를 num_classes로 repurpose하고 학습된 UAMM/AMF fusion으로 성공했던 패턴을 SAM3에도 이식 — 이 decoder-repurpose 아이디어는 이후 P30의 ClassTokenDecoder(SAM2 계열)로도 인용됨",
+        "초기엔 SAM3 mask decoder가 object mask 전용이라는 우려로 conv head+naive mean을 택했으나, ep14 val 7.77의 class-collapse(22/25 클래스 IoU=0)가 이 설계의 한계로 확인되어 repurpose로 전환"
+      ],
+      "setting": ["semseg/models/sam3/sam3_lora_rbma.py (LoRA_Sam3_RBMA), train_sam3_rbma.py(전용 트레이너)", "DELIVER 25class(img/depth/event/lidar를 모달리티-as-frame으로 처리)", "configs/b200-deliver_rgbdel_SAM3RBMA_physaug.yaml(IMAGE_SIZE 1008, gated CHECKPOINT_PATH), configs/b200-multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug.yaml(4cls, MULTIAQUA)", "B200(SAM3 가중치 승인 후 실행 — 로컬 GPU는 메모리 부족으로 컴포넌트 검증만 가능)", "AMP bf16, DDP(torchrun), LORA_R 4→16(디코더 강화 단계에서 상향), reliab_head는 aux CE로 학습"]
+    },
+    "results": {
+      "gate": "게이트 없음(사전 등록된 정량 게이트 없이 관찰 진행)",
+      "table": [
+        ["구성/시점", "val", "test", "비고"],
+        ["conv head 베이스라인 ep8", "8.49", "기록 없음", "Road/Sky/Building/Vegetation 4개 클래스만, 나머지 IoU=0"],
+        ["decoder repurpose ep2", "7.10", "기록 없음", "-"],
+        ["decoder repurpose ep8", "11.02", "기록 없음", "-"],
+        ["decoder repurpose ep14", "13.03", "기록 없음", "-"],
+        ["decoder repurpose ep22(최종 관측)", "16.27", "15.12", "상승 중(plateau 도달 전), 하드-0 클래스 다수 이탈 시작"],
+        ["SAM2 P28 비교기준(같은 DELIVER 25cls, ep10)", "Day-Val 55.26", "49.41", "SAM2 RBMA. SAM3-RBMA와 큰 격차 — SAM3 ViT single-scale 한계로 추정"]
+      ],
+      "per_condition": [],
+      "per_class": [
+        "decoder repurpose ep22 기준 하드-0 이탈: Cars 0→41.7, SideWalk 0→32.7, Vegetation 0→47.6, Wall 0→11.3, Terrain 0→13.2, Pole/Truck도 0 이탈 시작",
+        "ep22 시점까지 여전히 0에 머문 클래스로 기록된 것: Pedestrian/Pole/sign/Dynamic/Water"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "ISSUE-020(sam3.pt 백본 로드 0개, prefix mismatch로 100% random init) — prefix remap + 90% 미만 로드 시 RuntimeError 가드로 해결, val mIoU 2.05→정상화",
+      "ISSUE-021(sem_head BatchNorm이 standalone+memory-conditioned×4모달의 분포가 다른 8회 호출로 running stats 오염) — GroupNorm 교체로 train==eval 검증(diff 0.0)",
+      "디코더 강화(hidden 128→256, smooth block 깊이 증가, head 0.34M→3.05M) + reliability-gated fusion(naive mean→softmax 가중합) + LORA_R 4→16을 conv head 경로에 적용한 실험(2026-06-20)이 진행되었으나, 문서상 이 변경의 fresh 재학습 결과가 명시적으로 분리 기록되지 않고 곧이어 decoder repurpose(2026-06-21)로 전환됨",
+      "decoder repurpose가 class-collapse를 깬 메커니즘은 SAM mask decoder의 class-token cross-attention이 각 클래스가 이미지에서 자기 영역을 능동적으로 찾게 하는 것으로 진단됨(conv head는 pixel-wise 방식이라 지배 클래스에 밀리는 구조)"
+    ],
+    "verdict": {
+      "worked": "부분 — decoder repurpose는 class-collapse를 깨는 데 명확히 작동(val 8.49→16.27, 하드-0 클래스 다수 이탈). RBMA bias 자체의 순수 기여도를 분리 측정(on/off ablation)한 기록은 없음",
+      "why": "SAM2 P28(val~55) 대비 여전히 큰 격차가 남아 있으며 문서는 이를 SAM3 ViT의 single-scale 구조 한계 '가능성'으로만 기록(확정 아님). Pedestrian/Pole/sign/Dynamic/Water는 ep22 시점까지 IoU=0로 남음",
+      "handoff": "use_high_res_features=True(FPN skip)가 후속 실험 후보로 제안되었으나 실행 기록 없음. decoder-repurpose 아이디어 자체는 P30의 ClassTokenDecoder(SAM2 계열, m_feat에 class query cross-attention)로 다시 인용됨"
+    },
+    "todo": [
+      "2026-06-21 이후 SAM3-RBMA 학습이 계속됐는지, 최종 수렴값이 얼마인지 문서에 없음 — B200 마감(2026-07-15)으로 중단된 것으로 추정되나 명시적 종료 선언을 찾지 못함",
+      "RBMA bias의 순수 기여도(bias on/off ablation) 결과 없음",
+      "use_high_res_features=True 실험 실행 여부 확인 필요"
+    ],
+    "sources": [
+      "semseg/models/sam3/sam3_lora_rbma.py (LoRA_Sam3_RBMA)",
+      "semseg/models/sam3/sam3/sam/transformer.py (RoPEAttention SDPA 패치)",
+      "train_sam3_rbma.py",
+      "configs/b200-deliver_rgbdel_SAM3RBMA_physaug.yaml",
+      "configs/b200-multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug.yaml",
+      "B200 서버"
+    ],
+    "_internal_refs": [
+      ".claude_logs/decisions/2026-06-16-sam3-porting-plan.md",
+      ".claude_logs/status/history-2026H1.md SAM3 관련 절(2026-06-16~06-21, ### SAM3-RBMA val 붕괴 진짜 원인, ### SAM3-RBMA: SAM mask decoder를 num_classes로 repurpose, ### SAM3-RBMA 디코더 강화, ### SAM3-RBMA multi-scale FPN semantic head, ### SAM3-RBMA val mIoU ~2% 디버그, ### SAM3 포팅 진행 시작)",
+      ".claude_logs/status/history-2026H2.md 구 current.md 스냅샷 이관분(진행 중 트랙 표 SAM3 RBMA 행, 열린 블로커, 다음 마일스톤)",
+      ".claude_logs/experiments/registry.md Seg — DELIVER 표 SAM3-RBMA (DELIVER 25cls) 행",
+      ".claude_logs/issues/issues-and-fixes.md ISSUE-020, ISSUE-021",
+      ".claude_logs/models/arch-evolution.md P30 절(class-token decoder가 SAM3-RBMA 결과를 인용하는 부분)"
+    ]
+  }
+]

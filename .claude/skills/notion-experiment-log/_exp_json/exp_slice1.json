@@ -1,0 +1,1054 @@
+[
+  {
+    "key": "P9",
+    "title": "[Drone] P9 — CrossModalFusionHead + Max-Norm UAMM (MULTIAQUA)",
+    "period": "기록 없음 (hardaug4 최초 결과, 분석일 2026-02-25 기준 역산) ~ 2026-03-09(hardaug8_physaug ep131) ~ 2026-03-18(재제출 M=82.10, #16710)",
+    "track": "seg-MULTIAQUA",
+    "status": "완료 (현재 최선 계보의 시작점, 이후 P22와 M=82.10 공동 1위)",
+    "summary": {
+      "change": "P8의 독립 sigmoid 평가 대신, 전 모달리티 feature를 concat하여 비교하는 CrossModalFusionHead(softmax)로 상대적 가중치를 산출하고, UAMM을 max-norm(최고 모달리티=1.0 보존, 나머지 상대적 억제) 방식으로 바꿈.",
+      "result": "hardaug8_physaug ep131 checkpoint 기준 Val 93.54 / Test 70.41 / M-score 81.98 (Submission #16683). 동일 체크포인트 재제출(#16710)에서 Val 93.29 / Test 70.91 / M-score 82.10.",
+      "verdict": "P9~P16 중 유일하게 P8 대비 개선을 달성했고, 이후 P10~P21까지 8개 이상의 adaptive fusion 시도가 전부 P9의 '학습된 상수' 가중치를 넘지 못함."
+    },
+    "background": [
+      "P8(ConfidenceHeadV2+sigmoid UAMM)은 각 모달리티를 독립적으로 0~1 평가함 → 로짓이 학습 중 전부 양수로 이동해 sigmoid saturation 발생, 모든 score가 ~1.0으로 수렴함",
+      "AMF가 uniform(1/3씩) 분배로 퇴화함 → UAMM도 사실상 무의미(모든 feature에 ~1.0 곱)",
+      "P8 hardaug 최선 M-score 78.45 (val 92.96/test 63.93)",
+      "해결 방향: 모달리티 간 상대 비교가 없는 것이 근본 원인 → concat 후 비교하는 head가 필요함"
+    ],
+    "architecture": {
+      "one_liner": "GAP된 3-모달 feature를 concat해 softmax로 상대 비교하고, max-norm으로 최고 모달리티 feature는 보존·나머지는 상대적으로 억제함",
+      "components": [
+        [
+          "CrossModalFusionHead",
+          "GAP(AdaptiveAvgPool2d(1)) → compress(Linear(C,64)) → 3모달 concat(64*3) → compare(Linear→64→Linear→3) → softmax(logits/τ). compare 마지막 층 zero-init → 학습 시작 시 [1/3,1/3,1/3]",
+          "semseg/models/sam2/sam2/lora_sam/p09.py"
+        ],
+        [
+          "Max-Norm UAMM",
+          "max_w=cross_weights.max(dim=1); uamm_scores=cross_weights/(max_w+1e-8) → 최선 모달리티 feature 완전 보존, 나머지는 상대적으로 억제",
+          "semseg/models/sam2/sam2/lora_sam/p09.py"
+        ],
+        [
+          "AMF",
+          "amf_weights = cross_weights(softmax 출력 그대로) 사용, output별 가중합",
+          "semseg/models/sam2/sam2/lora_sam/p09.py"
+        ],
+        [
+          "Soft-MoE LoRA (공통, 변경 없음)",
+          "48개 SoftMoE_LoRA_Layer(24 block × Q/V), rank=4, num_experts=3(모달리티 수와 동일), softmax gating",
+          "semseg/models/sam2/sam2/sam_lola_utils.py"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  ENC[Phase1: 모달별 SAM2 인코딩 + MoE LoRA] --> CMFH[CrossModalFusionHead: concat+softmax]\n  CMFH --> MAXNORM[Max-Norm UAMM]\n  MAXNORM --> MOD[Feature 변조]\n  MOD --> TRACK[Phase3: SAM2 track_step]\n  TRACK --> AMFN[AMF 가중합]\n  AMFN --> OUT[최종 seg 출력]\n  class CMFH,MAXNORM new",
+      "rationale": [
+        "P8의 실패 원인이 '독립 평가'였으므로, concat 기반 상대 비교로 구조를 바꿈(가설 검증형 변경)",
+        "max-norm은 sigmoid saturation을 원천적으로 피함 — 최고 모달리티가 항상 1.0이 되도록 정규화하므로 saturation 문제가 재발하지 않음"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/p09.py, 클래스 LoRA_Sam_P9",
+        "MULTIAQUA(RGB+LiDAR+Thermal), NIGHT_AUG hardaug4/hardaug6/hardaug8_physaug 등 다수 변형",
+        "configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml 외 다수",
+        "levine/bengio 서버",
+        "hardaug4: 47 epoch; hardaug8_physaug: 131 epoch(비단조, ep131이 sweet spot, ep188은 과적합)"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug4 (epoch47, day-val best)",
+          "93.32",
+          "69.62",
+          "81.47 (Submission #15635)"
+        ],
+        [
+          "hardaug8_physaug (epoch131, day-val best, 역대 peak)",
+          "93.54",
+          "70.41",
+          "81.98 (Submission #16683, 학습궤적 비단조: ep83=80.57→ep94=80.75→ep131=81.98→ep188=80.84 과적합)"
+        ],
+        [
+          "hardaug8_physaug ep131 재제출",
+          "93.29",
+          "70.91",
+          "82.10 (Submission #16710, P22 ep120과 공동 1위)"
+        ],
+        [
+          "hardaug8 (epoch94)",
+          "93.36",
+          "68.13",
+          "80.75 (#16640)"
+        ],
+        [
+          "hardaug8 (epoch83)",
+          "93.21",
+          "67.94",
+          "80.57 (#16624)"
+        ],
+        [
+          "hardaug6 (epoch85, day-val best)",
+          "93.40",
+          "57.63",
+          "75.51 (#16339)"
+        ],
+        [
+          "hardaug6 (epoch20, periodic)",
+          "92.00",
+          "59.91",
+          "75.95 (#16340, 긴 학습이 Sky를 깎는 패턴 확인)"
+        ],
+        [
+          "hardaug4 + Day-Trans(I2I night→day, TTA 성격 실험)",
+          "93.30",
+          "64.50",
+          "78.90 (#16478)"
+        ],
+        [
+          "hardaug4 + Gamma TTA[1.0,1.5,2.0,2.5]",
+          "93.30",
+          "58.89",
+          "76.10 (#16412, 실패 실험)"
+        ],
+        [
+          "hardaug4 + Night2 aug",
+          "92.91",
+          "53.18",
+          "73.04 (#16482)"
+        ]
+      ],
+      "per_condition": [],
+      "per_class": [
+        "hardaug8_physaug ep131 기준(Submission #16683): Static 76.64 / Dynamic 33.50 / Water 94.80 / Sky 73.75",
+        "hardaug4 ep47 기준: Static 81.30 / Dynamic 21.86 / Water 94.61 / Sky 76.54"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "M-score 실측 공식은 (val_mIoU+test_mIoU)/2 — CLAUDE.md에 기재된 '0.75×val+0.25×test'와 다름. archive/result-analysis-p9-p12.md에서 P9/P12/P10/P8 4개 값 모두 (val+test)/2로 정확히 일치함을 역산 검증함",
+      "UAMM/AMF가 완전한 학습된 상수로 수렴함: 345장(val+test) 전체에서 소수점 4자리까지 img=0.275/lidar=0.355/thermal=0.370(AMF), std≈0.0000 — 입력에 무관",
+      "MoE gate는 spatial mean 기준으로는 uniform처럼 보이나, per-token 분석에서는 entropy_ratio=0.55, max_weight=0.72로 정상 분화 확인됨(P11 이후 진단에서 확정) — 'uniform'은 CLT(중심극한정리) artifact",
+      "Cross-modal weight 패턴: thermal≈1.0 > lidar≈0.96 > img≈0.74 (val/test 동일값 반복)",
+      "Dynamic 클래스가 M-score 변동의 핵심 driver임 — ep47→ep131 학습 연장으로 Dynamic 21.86→33.50(+11.64pp), Sky/Static은 소폭 하락(-2.79/-4.66pp)",
+      "hardaug6(넓은 밝기범위 + CRM/ZERO 제거 + gamma>1.0)은 M 75.95로 hardaug4/8 대비 크게 열세 — 야간에 없는 '밝은 야간' 구간에 capacity를 낭비함"
+    ],
+    "verdict": {
+      "worked": "작동함 — UAMM/AMF는 학습된 상수로 수렴했지만 이 상수 자체(thermal>lidar>img 비율)가 야간 조건에서 우연히 합리적인 값이었고, SAM2 memory attention이 내부적으로 cross-modal 정보를 선택적으로 활용하는 것으로 추정됨(P26 시점 memory attention 진단에서 부분 검증 시도, 결론 미확정)",
+      "why": "no-op은 아니지만 'adaptive'는 아님 — 이후 P10~P21이 이 상수를 adaptive하게 바꾸려 시도했으나 전부 실패함",
+      "handoff": "CrossModalFusionHead 상수 수렴 문제(ISSUE-003)를 P10(oracle KL)→P12(input-conditioning)→P13(energy score, parameter-free)으로 순차 해결 시도하는 계보의 출발점이 됨"
+    },
+    "todo": [
+      "P9-1(hardaug4) 결과가 처음 생성된 정확한 날짜 기록 없음(분석일 2026-02-25로 역산)",
+      "P26 memory attention 진단 결과(RGB 95% 암화해도 attention 변화 ≤7%)가 P9의 implicit adaptation 가설을 지지하는지 반박하는지 결론 미확정"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/p09.py",
+      "semseg/models/sam2/sam2/sam_lola_utils.py",
+      "configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml",
+      "configs/multiaqua/ (hardaug6/hardaug8_physaug 등 다수 변형)",
+      "configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml",
+      "configs/eval/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml",
+      "outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch47_94.18_checkpoint.pth",
+      "outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch131_94.41_top1_checkpoint.pth",
+      "levine/bengio 서버",
+      "Submission #15635, #16683, #16710"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P9",
+      ".claude_logs/models/explain/p09-cross-modal-fusion-head.md",
+      ".claude_logs/experiments/log.md#P9-Experiments",
+      ".claude_logs/archive/result-analysis-p9-p12.md",
+      ".claude_logs/status/history-2026H1.md (P9 ep131/ep188/재제출 섹션)",
+      ".claude_logs/issues/issues-and-fixes.md#ISSUE-002, #ISSUE-003"
+    ]
+  },
+  {
+    "key": "P10",
+    "title": "[Drone] P10 — CrossModalFusionHeadV2 + ModalAuxHead + Oracle KL (MULTIAQUA, 취소)",
+    "period": "2026-02-25 (분석일 기준, 정확 학습일 기록 없음)",
+    "track": "seg-MULTIAQUA",
+    "status": "취소 (test 성능 하락)",
+    "summary": {
+      "change": "P9의 CrossModalFusionHead를 GAP+GMP+Std 멀티풀 기반 CrossModalFusionHeadV2로 교체하고, 모달리티별 ModalAuxHead로 GT 대비 IoU를 계산해 oracle weight를 만들어 AMF weight를 KL loss로 지도학습함.",
+      "result": "hardaug4 기준(epoch107, day-val best) Val 93.23 / Test 65.30 / M-score 79.27 (Submission #15731, P9 대비 -2.20).",
+      "verdict": "취소 — oracle supervision이 주간(val) 데이터에 과적합되어 야간(test) 일반화에 실패했고, 구조 복잡도 증가만큼의 효과가 없음."
+    },
+    "background": [
+      "P9의 CrossModalFusionHead가 near-constant weight로 수렴함(ISSUE-003) — GAP만으로는 품질 정보가 부족하다는 가설",
+      "P9 UAMM: img=0.745/lidar=0.961/thermal=1.000, std<0.001로 완전 상수(val·test 소수점4자리 동일)",
+      "가설 두 가지: (1) multi-pool(GAP+GMP+Std)로 통계 풍부화 (2) scoring에 GT 기반 직접 supervision(oracle KL) 부여"
+    ],
+    "architecture": {
+      "one_liner": "GAP+GMP+Std 멀티풀 + per-modality 압축 헤드로 상대비교하고, 모달리티별 aux segmentation의 GT IoU를 oracle weight로 삼아 AMF를 KL loss로 지도학습함",
+      "components": [
+        [
+          "CrossModalFusionHeadV2",
+          "GAP+GMP(AdaptiveMaxPool2d)+channel-wise Std 3종 통계 추출 → per-modality independent compress(Linear(C*3,C/4)) → compare(Linear(C/4*3,3)) → softmax",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1301"
+        ],
+        [
+          "ModalAuxHead",
+          "모달리티별 경량 seg head: conv1x1→BN→ReLU→conv1x1→num_classes, GT와 비교해 per-modal IoU 산출",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1301"
+        ],
+        [
+          "Oracle KL Loss",
+          "oracle_weights=softmax(per_modal_iou/τ); kl_loss=KL(amf_weights‖oracle_weights); total=seg_loss+λ_gate·kl_loss(LAMBDA_GATE=0.5)",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1301"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  ENC[Phase1 인코딩] --> CMFHV2[CrossModalFusionHeadV2: GAP+GMP+Std]\n  CMFHV2 --> UAMM[Max-Norm UAMM]\n  UAMM --> TRACK[Phase3 track_step]\n  TRACK --> AMF[AMF]\n  AMF --> OUT[출력]\n  ENC --> AUXH[ModalAuxHead x m]\n  AUXH --> ORACLE[Oracle weight = softmax GT IoU]\n  ORACLE --> KL[KL loss]\n  KL --> CMFHV2\n  class CMFHV2,AUXH,ORACLE,KL new",
+      "rationale": [
+        "P9 상수수렴의 원인가설이 'GAP의 정보 소실'이었으므로 GMP/Std를 더함 — 그러나 frozen encoder 출력 자체의 quality 차이가 미미해 효과가 없었음(사후 확인)",
+        "GT 기반 oracle supervision은 학습 시에만 GT가 있다는 train-test 비대칭을 내포함 — 사후적으로 이것이 실패 원인으로 확인됨"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/legacy.py, 클래스 LoRA_Sam_P10 (베이스=P9)",
+        "MULTIAQUA(RGB+LiDAR+Thermal)",
+        "configs/archive/levine-multiaqua_rgbtl_P10_hardaug4.yaml, ...hardaug3.yaml",
+        "levine 서버(문서상 명시 없음, hardaug3/4 구성만 확인됨)",
+        "hardaug4: epoch107(94.22, day-val best) / hardaug3: epoch29(94.02)"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug4 (epoch107, day-val best)",
+          "93.23",
+          "65.30",
+          "79.27 (Submission #15731, P9 대비 -2.20)"
+        ],
+        [
+          "hardaug3 (epoch29, day-val best)",
+          "93.18",
+          "58.93",
+          "76.05 (Submission #15757, P8 basic-aug보다 낮음)"
+        ]
+      ],
+      "per_condition": [],
+      "per_class": [
+        "기록 없음 — 문서에 global val/test mIoU만 기재되어 있고 per-class(Static/Dynamic/Water/Sky) 세부 수치는 없음"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "Val mIoU는 P9와 거의 동일(93.23 vs 93.32)한데 Test만 -4.3 하락함 → 전형적인 주간 과적합 패턴",
+      "학습 시 oracle이 정확한 가중치를 제공해 scoring이 잘 학습되지만, 추론 시 oracle이 없어 학습 분포(주간)의 패턴만 기억한 상태로 야간에 적용됨 — train-test 불일치가 근본 원인",
+      "hardaug3 조합이 최악(M 76.05) — P8 basic-aug(M 77.82)보다도 낮음"
+    ],
+    "verdict": {
+      "worked": "작동 안 함 — near-constant 문제(목표1)와 oracle 지도학습(목표2) 모두 해결하지 못함",
+      "why": "(1) multi-pool을 더해도 frozen encoder 출력의 quality 차이가 여전히 미미함 (2) oracle supervision이 주간 데이터에 과적합되어 야간 일반화 실패함 (3) per-modality compress + aux head + KL loss로 파라미터가 늘어 MULTIAQUA의 작은 데이터셋(2,952장)에서 과적합이 가속됨",
+      "handoff": "P11(MI routing loss)로 진행됨 — 다만 이후 MoE gate 자체는 정상이었음이 밝혀져, P10/P11 계보의 gate 진단 가설은 근본적으로 잘못된 진단이었음이 P11 이후 확정됨"
+    },
+    "todo": [
+      "P10 학습 정확 날짜 기록 없음",
+      "per-class(Static/Dynamic/Water/Sky) test IoU 세부 수치가 log.md/explain 문서 어디에도 없음 — global mIoU만 존재"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/legacy.py",
+      "configs/archive/levine-multiaqua_rgbtl_P10_hardaug4.yaml",
+      "configs/archive/levine-multiaqua_rgbtl_P10_hardaug3.yaml",
+      "configs/eval/levine-multiaqua_rgbtl_P10_hardaug4.yaml",
+      "outputs/MMSamP10/levine_multiaqua_rgbtl_P10_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch107_94.22_checkpoint.pth",
+      "outputs/MMSamP10/levine_multiaqua_rgbtl_P10_hardaug3/MULTIAQUA_CMNeXt-B2_ilt/epoch29_94.02_checkpoint.pth",
+      "Submission #15731, #15757"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P10",
+      ".claude_logs/models/explain/p10-cross-modal-fusion-head-v2.md",
+      ".claude_logs/experiments/log.md#P10-Experiments",
+      ".claude_logs/archive/result-analysis-p9-p12.md"
+    ]
+  },
+  {
+    "key": "P11",
+    "title": "[Drone] P11 — P10 + MI Routing Loss (MULTIAQUA, 취소)",
+    "period": "2026-02-25 (분석일 기준, 정확 학습일 기록 없음)",
+    "track": "seg-MULTIAQUA",
+    "status": "취소 (MoE gate 진단 결과 불필요 판명)",
+    "summary": {
+      "change": "P10 구조에 Mutual Information(MI) routing loss를 추가해 MoE expert 분화를 gradient로 강제하고, UAMM을 max-norm에서 temperature-scaled softmax(τ=2.0)로 변경함.",
+      "result": "hardaug4 기준(epoch34, day-val best) Val 93.17 / Test 61.01 / M-score 77.09 (Submission #15851, P9 대비 -4.38, P10 대비 -2.18).",
+      "verdict": "취소 — 사후 진단 결과 MoE gate는 이미 token 수준에서 정상 분화(entropy_ratio=0.55, max_weight=0.72)되어 있었고, spatial mean 측정의 CLT artifact를 'uniform'으로 오진단한 것이 출발점이었음이 확인됨. loss 추가가 오히려 정상 routing을 방해함."
+    },
+    "background": [
+      "MoE gate weight를 spatial mean 기준으로 보면 uniform(~1/3씩)하게 보임 → 당시 이를 expert 분화 실패로 오진단함",
+      "지도교수 피드백: 'loss를 넣어볼게 아니라 왜 gating이 안되는지 분석이 먼저'",
+      "P10까지의 결과: P9 M=81.47이 최선, P10은 M=79.27로 이미 하락한 상태"
+    ],
+    "architecture": {
+      "one_liner": "P10 구조(CrossModalFusionHeadV2+ModalAuxHead+KL)를 그대로 유지한 채, gate distribution의 H(gate|input)-H(gate_marginal) 형태 MI loss를 추가하고 UAMM을 temperature softmax로 변경함",
+      "components": [
+        [
+          "MI Routing Loss",
+          "gate_distributions(batch,layers,experts)를 gradient 유지한 채 수집(_grad_gate_collector) → MI_loss=H(gate|input)-H(gate_marginal) → total=seg_loss+λ_gate·kl_loss+λ_mi·MI_loss(LAMBDA_MI=1.0)",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1572"
+        ],
+        [
+          "Temperature-scaled UAMM",
+          "P9/P10의 max-norm(cross_weights/max) 대신 softmax(logits/τ)*m, τ=2.0, m=3",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1572"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  ENC[Phase1 인코딩 + MoE LoRA] --> CMFHV2[CrossModalFusionHeadV2]\n  CMFHV2 --> TUAMM[Temperature-Softmax UAMM tau=2.0]\n  TUAMM --> TRACK[Phase3 track_step]\n  TRACK --> AMF[AMF]\n  AMF --> OUT[출력]\n  ENC --> GATECOL[Gate distribution 수집]\n  GATECOL --> MILOSS[MI loss]\n  MILOSS --> ENC\n  class TUAMM,GATECOL,MILOSS new",
+      "rationale": [
+        "'uniform처럼 보인다'는 관찰에서 곧바로 loss를 추가함 — 사후적으로 이것이 잘못된 접근이었다고 문서가 스스로 명시함(핵심 교훈 1번)"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/legacy.py, 클래스 LoRA_Sam_P11 (베이스=P10)",
+        "MULTIAQUA(RGB+LiDAR+Thermal)",
+        "configs/archive/levine-multiaqua_rgbtl_P11_hardaug4.yaml",
+        "levine 서버(명시적 기재 없음)",
+        "epoch34(93.95, day-val best)"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug4 (epoch34, day-val best)",
+          "93.17",
+          "61.01",
+          "77.09 (Submission #15851, P9 대비 -4.38 / P10 대비 -2.18)"
+        ]
+      ],
+      "per_condition": [],
+      "per_class": [
+        "기록 없음 — 문서에 per-class 세부 없음, global mIoU만 기재됨"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "diagnose_moe_gate.py 정밀분석(P11 이후) 결과: spatial mean 기준 uniform(~1/3)은 CLT(중심극한정리) artifact — 수천 토큰 평균이라 uniform처럼 보였을 뿐임",
+      "per-token 분석 결과 entropy_ratio=0.55, max_weight=0.72로 이미 정상 분화되어 있었음",
+      "MI loss가 이미 정상 작동하던 routing을 인위적으로 방해함 → 성능이 추가로 하락함"
+    ],
+    "verdict": {
+      "worked": "작동 안 함(오히려 역효과) — MI loss가 정상 routing을 파괴함",
+      "why": "문제 진단 자체가 틀렸음(측정 artifact를 실제 collapse로 오인함) — loss는 해결책이 아니라 이미 정상인 메커니즘에 대한 불필요한 개입이었음",
+      "handoff": "MoE gate 관련 실험 방향을 'loss 추가'에서 'gate 구조 개선'(P20의 SharedGateMLP+rank8)으로 전환함. 진단 없이 loss부터 추가하지 않는다는 교훈이 이후 세션 규칙(코드리뷰 파이프라인)으로 흡수됨"
+    },
+    "todo": [
+      "P11 학습 정확 날짜 기록 없음",
+      "MI loss 수식(H(gate|input)-H(gate_marginal))의 세부 구현이 문서에 요약 형태로만 있고, 정확한 엔트로피 추정 방법은 코드 확인이 필요함"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/legacy.py",
+      "configs/archive/levine-multiaqua_rgbtl_P11_hardaug4.yaml",
+      "configs/eval/levine-multiaqua_rgbtl_P11_hardaug4.yaml",
+      "outputs/MMSamP11/levine_multiaqua_rgbtl_P11_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch34_93.95_checkpoint.pth",
+      "diagnose_moe_gate.py",
+      "Submission #15851"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P11",
+      ".claude_logs/models/explain/p11-mi-routing-loss.md",
+      ".claude_logs/experiments/log.md#P11-Experiments"
+    ]
+  },
+  {
+    "key": "P12",
+    "title": "[Drone] P12 — Input-Conditioned Soft MoE LoRA (MULTIAQUA)",
+    "period": "2026-02-25 (분석일 기준, 정확 학습일 기록 없음)",
+    "track": "seg-MULTIAQUA",
+    "status": "완료 (P9 미달)",
+    "summary": {
+      "change": "P9 구조로 복귀한 뒤(P10/P11 취소), RGB 채널의 raw 통계(mean+std, cond_dim=6)를 MoE gate와 CrossModalFusionHead 양쪽에 조건으로 주입해 입력 품질에 따른 routing 분화를 시도함.",
+      "result": "hardaug4 기준(epoch40, day-val best) Val 93.23 / Test 68.37 / M-score 80.80 (Submission #15949, P9 대비 -0.67).",
+      "verdict": "부분 성공/부분 실패 — Dynamic 클래스는 개선(+4.02pp)했지만 Sky 클래스가 대폭 하락(-6.81pp)해 순손해."
+    },
+    "background": [
+      "P10/P11(oracle KL, MI loss)이 모두 P9보다 나빠 취소됨",
+      "P11 이후 MoE gate 진단에서 gate가 이미 정상 분화됨을 확인했으나, 모달리티별로 동일한 routing 패턴이 관찰됨",
+      "가설: 모달리티의 입력 품질(특히 야간 RGB 밝기)에 따라 routing을 달리해야 함"
+    ],
+    "architecture": {
+      "one_liner": "RGB 채널의 mean/std 6차원 통계를 MoE gate와 CrossModalFusionHead에 조건으로 더해, 입력에 따라 gate/scoring이 달라지도록 함",
+      "components": [
+        [
+          "Input Conditioning (MoE gate)",
+          "condition=[ch0_mean,ch1_mean,ch2_mean,ch0_std,ch1_std,ch2_std](B,6, RGB raw input에서 추출) → gate(x)+cond_proj(condition)→softmax; cond_proj=Linear(6,3) zero-init; LiDAR/Thermal은 condition=None",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1027"
+        ],
+        [
+          "Input Conditioning (CrossModalFusionHead)",
+          "logits=compare(concat)+cond_compare(condition) (condition이 있을 때만 bias 추가)",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1027"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  RGB[RGB raw input] --> COND[condition: mean+std 6dim]\n  COND --> GATE[MoE Gate + cond_proj]\n  GATE --> ENC[Phase1 인코딩]\n  ENC --> CMFH[CrossModalFusionHead + cond_compare]\n  CMFH --> UAMM[Max-Norm UAMM]\n  UAMM --> TRACK[Phase3 track_step]\n  TRACK --> AMF[AMF]\n  AMF --> OUT[출력]\n  class COND,GATE,CMFH new",
+      "rationale": [
+        "P11 이후 진단에서 gate가 정상 분화됨이 확인됐으므로, '분화 강제(loss)' 대신 '분화 신호 제공(condition)' 방향으로 전환함 — 진단 이후의 첫 시도"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/legacy.py, 클래스 LoRA_Sam_P12 (베이스=P9, P10/P11 접근 포기)",
+        "MULTIAQUA(RGB+LiDAR+Thermal)",
+        "configs/archive/levine-multiaqua_rgbtl_P12_hardaug4.yaml",
+        "levine 서버(명시 없음)",
+        "epoch40(94.02, day-val best)"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug4 (epoch40, day-val best)",
+          "93.23",
+          "68.37",
+          "80.80 (Submission #15949, P9 대비 -0.67)"
+        ]
+      ],
+      "per_condition": [],
+      "per_class": [
+        [
+          "클래스",
+          "P9",
+          "P12",
+          "Delta"
+        ],
+        [
+          "Static",
+          "81.30",
+          "78.47",
+          "-2.83"
+        ],
+        [
+          "Dynamic",
+          "21.25(log.md) / 21.86(explain·result-analysis 문서)",
+          "25.27",
+          "+4.02(문서 표기 그대로, 21.86 기준으로는 산술상 +3.41)"
+        ],
+        [
+          "Water",
+          "94.61",
+          "94.36",
+          "-0.25"
+        ],
+        [
+          "Sky",
+          "76.54",
+          "69.73",
+          "-6.81"
+        ]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "Dynamic IoU=0 프레임이 38→17장으로 절반 이상 감소함(입력 조건이 완전 미탐지 완화에 기여) — 다만 mean Dynamic IoU 자체는 여전히 낮은 수준(result-analysis 문서 기준 P9 test 21.86→P12 test 25.59)",
+      "Sky IoU<30 프레임이 12→18장으로 악화됨 — 야간 하늘이 매우 어두워 water/static과 텍스처 혼동이 있고, input-conditioned gating이 이 혼동을 증폭시킨 것으로 추정",
+      "UAMM/AMF 변동성이 std 0.0001→0.01로 소폭 증가했으나 여전히 near-constant(range 0.07 수준)",
+      "Expert collapse가 P9보다 심화됨(collapse rate 15%→20%): Block0 lidar E0=E2=0%(2개 expert 완전 미사용), Block18 lidar E0=1.6%/E1=0.4%",
+      "Test LiDAR routing이 48/48 블록에서 완전 고정됨",
+      "mIoU<55 프레임(tail-end failure)이 P9 5장→P12 18장으로 3.6배 증가함, 최악 하락 프레임(lj4_1_061980)은 Δ=-30.9pp"
+    ],
+    "verdict": {
+      "worked": "부분 작동 — Dynamic class에는 조건 신호가 유효했으나 Sky class에서는 역효과를 냄. UAMM/AMF 상수 수렴 자체는 해결하지 못함",
+      "why": "RGB mean/std 6차원은 모달리티 품질을 판별하기에 신호가 너무 약함. cond_dim=6 zero-init이 학습 중 Dynamic 쪽으로만 유리하게 증폭되고 Sky 쪽에는 부적절하게 작용함",
+      "handoff": "CrossModalFusionHead(학습 파라미터 기반) 대신 학습 파라미터 없는 computed signal(Energy Score)로 fusion weight를 만드는 방향으로 P13에서 전환됨"
+    },
+    "todo": [
+      "P12 학습 정확 날짜 기록 없음",
+      "Dynamic IoU 수치가 log.md(P9=21.25→P12=25.27)와 explain·result-analysis 문서(P9=21.86)에서 서로 다름 — 원문 그대로 두 값을 병기했으니 노션 반영 시 원본 재대조 필요"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/legacy.py",
+      "configs/archive/levine-multiaqua_rgbtl_P12_hardaug4.yaml",
+      "configs/eval/levine-multiaqua_rgbtl_P12_hardaug4.yaml",
+      "outputs/MMSamP12/levine_multiaqua_rgbtl_P12_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/epoch40_94.02_checkpoint.pth",
+      "Submission #15949"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P12",
+      ".claude_logs/models/explain/p12-input-conditioned-moe.md",
+      ".claude_logs/experiments/log.md#P12-Experiments",
+      ".claude_logs/archive/result-analysis-p9-p12.md"
+    ]
+  },
+  {
+    "key": "P13",
+    "title": "[Drone] P13 — Energy Score Fusion + Expert Collapse Fix (MULTIAQUA)",
+    "period": "2026-02-26 (분석일 기준, epoch39 crash 분석 포함)",
+    "track": "seg-MULTIAQUA",
+    "status": "완료 (P9에 근접, 이후 P14~P19 전부 P13보다 낮음)",
+    "summary": {
+      "change": "학습 파라미터 기반 CrossModalFusionHead를 제거하고, 공유 ConfidenceAuxHead의 aux logit에서 계산한 Energy Score(parameter-free)로 fusion weight를 산출함. SoftMoE의 experts_b를 kaiming*0.01로 재초기화해 expert collapse 해소를 시도함.",
+      "result": "hardaug4 night-val 기준 checkpoint(epoch17) Val 92.45 / Test 69.98 / M-score 81.21 (Submission #15997, P9 대비 -0.26). 동일 학습의 epoch39 checkpoint는 Test 50.48/M=71.67로 붕괴(#16044).",
+      "verdict": "Energy Score 방향(야간 적응)은 실제로 작동했으나 val mIoU 하락으로 M-score는 P9 근접에 그침. Expert collapse 해결은 실패. epoch39에서 CRM/ZERO overfitting에 의한 test 붕괴를 발견함(ISSUE-007)."
+    },
+    "background": [
+      "ISSUE-003: P9 CrossModalFusionHead가 상수 출력(GAP+LayerNorm 정규화로 입력 무관 벡터 산출)",
+      "ISSUE-002: SoftMoE_LoRA_Layer의 experts_b zero-init → Block 6-20에서 E1 사용률 <3%(expert collapse), P8~P12 전 버전에서 발생",
+      "P12까지 Dynamic-Sky 트레이드오프가 반복됨(P12: Dynamic+4.02/Sky-6.81)"
+    ],
+    "architecture": {
+      "one_liner": "학습 파라미터 없는 Energy Score(logsumexp 기반)로 모달리티 confidence를 계산해 fusion weight를 만들고, SoftMoE expert 초기화를 kaiming*0.01로 변경함",
+      "components": [
+        [
+          "ConfidenceAuxHead (공유 1개)",
+          "Conv2d(in_ch,in_ch/4,1)→BN→ReLU→Conv2d(mid_ch,num_classes,1), 모든 모달리티가 동일 head 공유, raw logits(B,C,H,W) 출력",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1874"
+        ],
+        [
+          "Energy Score Fusion",
+          "energy=-T·logsumexp(aux_logits/T,dim=1)(B,H,W); conf=-energy.mean(dim=[1,2])(B,); cross_weights=softmax(stack(confs)/T,dim=1) — 학습 가능 파라미터 없음, 학습/추론 동일 메커니즘",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1874"
+        ],
+        [
+          "Expert Collapse Fix",
+          "P13 __init__에서 experts_b를 kaiming_uniform_(a=sqrt(5)) 후 *0.01로 재초기화(대칭 깨기 시도)",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:1874"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  ENC[Phase1 인코딩 + MoE LoRA] --> AUXH[ConfidenceAuxHead 공유 1개]\n  AUXH --> ENERGY[Energy Score -T logsumexp]\n  ENERGY --> UAMM[Max-Norm UAMM]\n  UAMM --> TRACK[Phase3 track_step]\n  TRACK --> AMF[AMF]\n  AMF --> OUT[출력]\n  class AUXH,ENERGY new",
+      "rationale": [
+        "P10(oracle KL)의 train-test 불일치, P12(input-conditioning)의 미약한 신호 문제를 모두 우회하기 위해 '계산된 신호(computed signal)'로 전환함 — 학습 가능 파라미터가 없으므로 상수 수렴이 구조적으로 불가능하다는 논리",
+        "expert collapse 원인이 experts_b zero-init에서 gate gradient=0으로 이어지는 rich-get-richer라는 진단(ISSUE-002)에 기반해 비대칭 초기화를 도입함"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/legacy.py, 클래스 LoRA_Sam_P13 (베이스=P9)",
+        "MULTIAQUA(RGB+LiDAR+Thermal)",
+        "configs/archive/bengio-multiaqua_rgbtl_P13_hardaug4.yaml",
+        "bengio 서버",
+        "17 epochs(이전 런에서 resume), 참고로 P9는 47 epochs"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug4 (night-val best, epoch17)",
+          "92.45",
+          "69.98",
+          "81.21 (Submission #15997, P9 대비 -0.26)"
+        ],
+        [
+          "hardaug4 (night-val best, epoch39, test crash)",
+          "92.86",
+          "50.48",
+          "71.67 (Submission #16044, P9 대비 -9.80)"
+        ]
+      ],
+      "per_condition": [
+        "Night-Val(야간 시뮬레이션 val): epoch17=87.71, epoch39=89.53"
+      ],
+      "per_class": [
+        [
+          "클래스",
+          "P9",
+          "P13(ep17)",
+          "Delta"
+        ],
+        [
+          "Static",
+          "81.30",
+          "79.80",
+          "-1.50"
+        ],
+        [
+          "Dynamic",
+          "21.86",
+          "27.41",
+          "+5.55"
+        ],
+        [
+          "Water",
+          "94.61",
+          "94.27",
+          "-0.34"
+        ],
+        [
+          "Sky",
+          "76.54",
+          "75.12",
+          "-1.42"
+        ],
+        [
+          "Sky(ep39, 참고)",
+          "-",
+          "23.36",
+          "-51.76 vs ep17"
+        ]
+      ],
+      "invalid": [
+        "epoch39 checkpoint(Val 92.86/Test 50.48/M=71.67, #16044)는 CRM/ZERO overfitting으로 인한 test 붕괴 사례 — 모델 품질 비교용으로는 부적절하며, 실패 원인 분석 자료로만 유효"
+      ]
+    },
+    "analysis": [
+      "UAMM CV(변동계수)가 P12 대비 img 22배, thermal 무한대(0→0.042) 증가함 — Energy Score가 실제로 이미지별 다른 fusion weight를 생성함을 확인(ISSUE-003 부분 해결)",
+      "Val/Test AMF가 P9처럼 동일하지 않고 실제로 달라짐: img val0.404→test0.289(-28%), lidar val0.429→test0.517(+20%) — 밤에 RGB↓·LiDAR↑ 적응을 실제로 수행함",
+      "그러나 test LiDAR UAMM=1.000(CV=0.000, 200장 전부 고정) — aux head가 LiDAR를 항상 최고 confident로 오판정함. 실제 LiDAR 품질은 가장 낮음에도 불구",
+      "Expert collapse rate 17.4%(P12: 16.0%)로 개선 없음 — kaiming*0.01 init이 resume 학습으로 무력화되고 스케일도 zero-init과 실질적 차이가 미미함. 근본 원인은 init이 아니라 soft-MoE softmax의 winner-take-all 특성(ISSUE-002 결론)",
+      "P9 epoch17 val=93.57, epoch46까지 +0.61pp만 추가 상승함 — P9도 조기 포화, P13의 17epoch도 유사 포화로 추정됨",
+      "epoch39 crash 원인 = CRM/ZERO overfitting(ISSUE-007): 학습 샘플 44%에 exact-zero RGB 패턴(CRM p=0.35 + ZERO p=0.09) → 실제 센서에 없는 artifact를 shortcut으로 학습함. night-val에도 동일 오염이 적용되어 shortcut이 night-val까지 개선시키지만 real test에는 무효함. Sky가 crash의 67% 기여(80/200 프레임 Sky=0)",
+      "M-score 실측 공식은 (val+test)/2 — P13: (92.45+69.98)/2=81.215≈81.21로 검증됨"
+    ],
+    "verdict": {
+      "worked": "Energy Score 부분 작동 — 상수 수렴 문제(ISSUE-003)는 해결했으나 '정확도'가 새 병목으로 등장함(confident but wrong)",
+      "why": "expert collapse는 미해결(init 방식이 근본원인이 아니었음), val mIoU 하락이 M-score 공식상 불리하게 작용, LiDAR aux head가 confidence를 부정확하게 추정함(Sky에서 LiDAR를 맹신)",
+      "handoff": "공유 aux head(모든 모달리티 동일)를 모달리티별 독립 decoder로 분리하면 confidence 추정이 정확해질 것이라는 기대로 P14로 이어짐. CRM/ZERO overfitting 발견으로 hardaug5(CRM/ZERO 제거) 도입의 계기가 됨"
+    },
+    "todo": [
+      "P13 최초 학습 시작일 기록 없음(분석일 2026-02-26으로 역산)",
+      "Energy Score의 temperature T 값이 fusion 단계와 aux CE loss 단계에서 동일한지 문서상 불명확함"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/legacy.py",
+      "configs/archive/bengio-multiaqua_rgbtl_P13_hardaug4.yaml",
+      "configs/eval/bengio-multiaqua_rgbtl_P13_hardaug4.yaml",
+      "outputs/MMSamP13/bengio_multiaqua_rgbtl_P13_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/night_epoch17_87.71_checkpoint.pth",
+      "outputs/MMSamP13/bengio_multiaqua_rgbtl_P13_hardaug4/MULTIAQUA_CMNeXt-B2_ilt/night_epoch39_89.53_checkpoint.pth",
+      "bengio 서버",
+      "Submission #15997, #16044"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P13",
+      ".claude_logs/models/explain/p13-energy-score.md",
+      ".claude_logs/experiments/log.md#P13-Experiments",
+      ".claude_logs/archive/result-analysis-p13.md",
+      ".claude_logs/issues/issues-and-fixes.md#ISSUE-002,#ISSUE-003,#ISSUE-007"
+    ]
+  },
+  {
+    "key": "P14",
+    "title": "[Drone] P14 — Per-Modality Separate Aux Decoders (MULTIAQUA)",
+    "period": "2026-02-27 (분석일 기준, 정확 학습일 기록 없음)",
+    "track": "seg-MULTIAQUA",
+    "status": "완료 (심각한 하락)",
+    "summary": {
+      "change": "P13의 공유 ConfidenceAuxHead를 모달리티별 독립 ModalAuxDecoder×3(3×3 conv)로 분리하고, augmentation을 hardaug4→hardaug5(CRM/ZERO 완전 제거)로 변경함.",
+      "result": "hardaug5 night-val 기준 checkpoint(night_epoch47) Val 93.18 / Test 55.36 / M-score 74.27 (Submission #16062, P9 대비 -7.20).",
+      "verdict": "실패 — 독립 decoder로도 aux mask 품질이 근본적으로 개선되지 않았고, CRM/ZERO 제거에도 Sky collapse가 지속됨(ISSUE-007이 Sky 문제의 일부 원인이었을 뿐 유일 원인은 아님을 확인)."
+    },
+    "background": [
+      "P13의 ConfidenceAuxHead가 공유 1개 → 모든 모달리티가 동일 decoder를 사용함. RGB 텍스처/LiDAR 점군/Thermal gradient는 특성이 완전히 다름",
+      "P13 epoch39에서 CRM/ZERO overfitting에 의한 test 붕괴를 발견함(ISSUE-007) — RGB에 exact-zero 마스킹(CRM p=0.35, ZERO p=0.09)이 학습 샘플 44%에 존재, 실제 센서 데이터에 없는 shortcut을 학습",
+      "P13 epoch17이 sweet spot이며 추가 학습은 역효과라는 결론"
+    ],
+    "architecture": {
+      "one_liner": "ConfidenceAuxHead(공유, 1×1 conv)를 모달리티별 독립 ModalAuxDecoder×3(3×3 conv)로 교체하고 CRM/ZERO를 제거한 hardaug5로 학습함",
+      "components": [
+        [
+          "ModalAuxDecoder ×3 (독립)",
+          "Conv2d(in_ch,mid_ch,3,padding=1)→BN→ReLU→Conv2d(mid_ch,num_classes,1). 3×3 conv로 텍스처/경계 패턴 특화. 각 모달리티가 고유 파라미터를 가져 inter-modality gradient interference 제거",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2140"
+        ],
+        [
+          "hardaug5 augmentation",
+          "CRM_P 0.35→0.0, ZERO_P 0.09→0.0(완전 제거), NIGHT_SIM_P 0.45→0.60, BRIGHTNESS [0.03,0.45]→[0.02,0.20](test 실측 밝기 분포 정렬)",
+          "학습 config 내 augmentation 설정, 코드 외부"
+        ],
+        [
+          "Energy Score / Max-Norm UAMM / AMF (P13 유지)",
+          "P13과 동일한 Energy Score fusion + max-norm UAMM 사용",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2140"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  ENC[Phase1 인코딩] --> AUXD[ModalAuxDecoder x3 독립 3x3conv]\n  AUXD --> ENERGY[Energy Score]\n  ENERGY --> UAMM[Max-Norm UAMM]\n  UAMM --> TRACK[Phase3 track_step]\n  TRACK --> AMF[AMF]\n  AMF --> OUT[출력]\n  class AUXD new",
+      "rationale": [
+        "P13의 실패 원인 후보 중 'aux head 공유'를 제거하면 confidence 추정이 정확해질 것이라는 가설. 다만 두 가지 변경(독립화+aug변경)을 동시에 적용해 원인 분리가 어려워짐(문서가 스스로 지적한 한계)"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/legacy.py, 클래스 LoRA_Sam_P14 (베이스=P13)",
+        "MULTIAQUA(RGB+LiDAR+Thermal)",
+        "configs/archive/bengio-multiaqua_rgbtl_P14_hardaug5.yaml",
+        "bengio 서버",
+        "night_epoch47(day-val best은 동일 epoch47=94.06이지만 night-val 기준 90.75로 체크포인트 선택)"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug5 (night_epoch47, night-val best)",
+          "93.18",
+          "55.36",
+          "74.27 (Submission #16062, P9 대비 -7.20)"
+        ]
+      ],
+      "per_condition": [
+        "Night-Val=90.75(선택 기준)",
+        "Obstacle IoU: Val 78.69 / Test 23.60",
+        "Model uncertainty: test mean_entropy 0.570(val 0.178의 3.2배), high_uncertainty_ratio 63.4%(val 13.5%의 4.7배)"
+      ],
+      "per_class": [
+        [
+          "클래스",
+          "Val",
+          "Test",
+          "Gap"
+        ],
+        [
+          "Static",
+          "96.65",
+          "62.57",
+          "-34.08"
+        ],
+        [
+          "Dynamic",
+          "78.80",
+          "22.87",
+          "-55.93"
+        ],
+        [
+          "Water",
+          "98.93",
+          "92.92",
+          "-6.01"
+        ],
+        [
+          "Sky",
+          "98.44",
+          "36.47",
+          "-61.97 (최악)"
+        ]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "LiDAR UAMM=1.000 고정(test 200장 전부, stdev=0.000) — P13과 동일한 문제가 독립 decoder로도 해소되지 않음",
+      "RGB 억제: test UAMM img=0.555(val 0.752 대비 절반 수준) — Sky 인식의 핵심인 RGB 정보가 크게 감소함",
+      "Sky IoU 36.47%: 73/200 프레임 Sky<10%, 56/200 프레임 Sky<1%",
+      "CRM/ZERO 완전 제거(hardaug5)에도 Sky collapse가 지속됨 → ISSUE-007은 Sky 문제의 일부 원인이었을 뿐 유일 원인은 아님이 확인됨",
+      "MoE routing은 val/test 간 거의 동일(entropy_ratio stdev<0.02)하나 고정된 lookup table 수준 — 입력 적응형이 아니라 학습 중 고정된 패턴으로 퇴화함",
+      "MoE Q projection expert collapse: 16개 block-modality 조합에서 argmax<5%, 특히 B12/B20에서 lidar 2개 expert가 사실상 사망함",
+      "aux mask 품질: 시각화 확인 결과 lidar aux는 거의 전체를 Water로 예측(Sky/Static 구분 불가), img aux는 Sky/Dynamic 경계가 부정확함 — 독립화해도 GT 대비 크게 부정확하며 모달리티 간 비교가 무의미한 수준"
+    ],
+    "verdict": {
+      "worked": "작동 안 함 — 독립 decoder가 aux mask 품질을 소폭 개선했지만, frozen backbone feature 위의 경량 decoder라는 한계가 구조 변경보다 본질적임",
+      "why": "1차 원인: LiDAR UAMM=1.0 고정+RGB 억제(Energy Score의 confident-but-wrong). 2차 원인: aux mask 품질 부족(ISSUE-008, frozen backbone feature 정보량 한계). 3차 원인: image-level scalar fusion이 Sky/Water 영역별 최적 모달리티 차이를 반영 못함",
+      "handoff": "image-level scalar (B,m) → spatial-wise (B,m,H,W) 가중치로 전환하는 P15 설계의 직접 동기가 됨"
+    },
+    "todo": [
+      "P14 학습 시작일 기록 없음",
+      "eval config가 log.md에 'P14 전용 eval config 확인 TODO'로 남아 있어(levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml을 임시 사용) 실제 사용된 정확한 eval config가 미확정"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/legacy.py",
+      "configs/archive/bengio-multiaqua_rgbtl_P14_hardaug5.yaml",
+      "configs/eval/bengio-multiaqua_rgbtl_P14_hardaug5.yaml",
+      "outputs/MMSamP14/bengio_multiaqua_rgbtl_P14_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch47_90.75_top1_checkpoint.pth",
+      "bengio 서버",
+      "Submission #16062"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P14",
+      ".claude_logs/models/explain/p14-separate-aux-decoders.md",
+      ".claude_logs/experiments/log.md#P14-Experiments",
+      ".claude_logs/archive/result-analysis-p14.md",
+      ".claude_logs/issues/issues-and-fixes.md#ISSUE-007,#ISSUE-008"
+    ]
+  },
+  {
+    "key": "P15",
+    "title": "[Drone] P15 — Spatial Energy Fusion (MULTIAQUA, 당시 역대 최악)",
+    "period": "기록 없음 (P16 구현일 2026-02-27 이전으로 추정, 정확한 학습일은 문서에 없음)",
+    "track": "seg-MULTIAQUA",
+    "status": "완료 (당시 역대 최악 M-score 71.05, 이후 P16이 경신)",
+    "summary": {
+      "change": "P14 구조에서 Energy Score fusion의 weight 형태를 image-level scalar (B,m)에서 spatial-wise (B,m,H,W)로 바꿈. 설계 문서가 제안한 4개 Fix 중 Fix 3(spatial-wise)만 단독 적용함.",
+      "result": "hardaug5 day-val best(epoch46) checkpoint 기준 Val 93.17 / Test 48.94 / M-score 71.05 (Submission #16087, P9 대비 -10.42).",
+      "verdict": "실패 — spatial-wise 가중치가 부정확한 aux mask의 pixel-level 오차를 그대로 증폭시켜(Spatial Amplification Effect) P14보다도 나빠짐."
+    },
+    "background": [
+      "P14에서 image-level scalar fusion의 근본 한계를 확인함: Sky/Water 영역별로 최적 모달리티가 다른데 이미지 전체에 동일 가중치를 적용",
+      "P14 결과: Sky IoU 36.47%, LiDAR UAMM=1.0 고정, RGB 억제(0.555)",
+      "설계 문서(P15 설계 단계)는 4개 Fix를 제안함: (1).detach() gradient 격리 (2)Energy→Calibrated Entropy (3)scalar→spatial (4)Aux Warmup Schedule. 그러나 실제 구현(P15)에서는 Fix 3만 적용됨"
+    ],
+    "architecture": {
+      "one_liner": "Energy Score를 spatial 평균 없이 pixel-level (B,m,H,W)로 유지하고, UAMM/AMF 모두 F.interpolate로 해상도를 맞춰 픽셀 단위로 적용함",
+      "components": [
+        [
+          "Spatial Energy Confidence",
+          "conf_map=-energy(B,H,W) per-pixel, spatial 평균 없이 유지; cross_weights=softmax(stack(conf_maps),dim=1)→(B,m,H,W). .detach() 미적용(gradient 오염 그대로)",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2403"
+        ],
+        [
+          "Spatial UAMM/AMF",
+          "F.interpolate로 uamm_scores/amf_weights를 각 level/output 해상도에 맞춰 픽셀별 곱셈·가중합 적용(P14의 scalar broadcast를 대체)",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2403"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  ENC[Phase1 인코딩] --> AUXD[ModalAuxDecoder x3]\n  AUXD --> SENERGY[Spatial Energy Score B,m,H,W]\n  SENERGY --> SUAMM[Spatial UAMM interpolate]\n  SUAMM --> TRACK[Phase3 track_step]\n  TRACK --> SAMF[Spatial AMF interpolate]\n  SAMF --> OUT[출력]\n  class SENERGY,SUAMM,SAMF new",
+      "rationale": [
+        "P14 결론이 'Sky/Water 영역별 최적 모달리티 반영 불가'였으므로, 위치별(spatial) 가중치가 논리적으로 다음 단계였음 — 그러나 aux mask 품질 문제(Fix1/2/4)를 먼저 해결하지 않고 spatial만 단독 적용한 것이 사후적으로 설계 실수였음이 확인됨"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/legacy.py, 클래스 LoRA_Sam_P15 (베이스=P14)",
+        "MULTIAQUA(RGB+LiDAR+Thermal)",
+        "configs/archive/levine-multiaqua_rgbtl_P15_hardaug5.yaml",
+        "levine 서버",
+        "epoch46(day-val best, 93.92); night-val best(epoch45, 90.39)는 미평가"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug5 (epoch46, day-val best, night-val best 미사용)",
+          "93.17",
+          "48.94",
+          "71.05 (Submission #16087, P9 대비 -10.42, 당시 역대 최악)"
+        ]
+      ],
+      "per_condition": [
+        "Obstacle IoU: Val 78.31 / Test 24.96",
+        "Night-val best(night_epoch45_90.39) checkpoint는 미평가 상태로 남음"
+      ],
+      "per_class": [
+        [
+          "클래스",
+          "P9",
+          "P14",
+          "P15",
+          "P15 vs P14"
+        ],
+        [
+          "Static",
+          "81.30",
+          "62.57",
+          "60.94",
+          "-1.63"
+        ],
+        [
+          "Dynamic",
+          "21.86",
+          "22.87",
+          "26.58",
+          "+3.71"
+        ],
+        [
+          "Water",
+          "94.61",
+          "92.92",
+          "92.27",
+          "-0.65"
+        ],
+        [
+          "Sky",
+          "76.54",
+          "36.47",
+          "16.66",
+          "-19.81"
+        ]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "UAMM 적응은 실제로 발생함: img val0.716→test0.566(-21%, 야간 RGB 억제), lidar val0.834→test0.956(+15%), thermal val0.554→test0.630(+14%) — LiDAR도 1.0에 고정되지 않음(P14와 다름)",
+      "'Spatial Amplification Effect' 확인: P14(scalar, Sky 36.47%)→P15(spatial, Sky 16.66%)로 -19.81pp 추가 악화 — 부정확한 energy score가 pixel-level로 그대로 전파되어 aux mask의 모든 local error가 증폭됨(scalar는 이미지 평균으로 error가 smooth됨)",
+      "Sky=0 프레임 111/200(55.5%), Sky<10% 프레임 152/200(76%)",
+      "핵심 교훈: Fix 3(spatial)만 단독 적용하면 역효과 — aux mask 정확도 개선(Fix 1,2,4)이 선행되어야 spatial이 효과를 낼 수 있음"
+    ],
+    "verdict": {
+      "worked": "부분 작동(적응 방향은 맞음) — LiDAR가 1.0에 고정되지 않고 실제 val/test 적응을 수행했으나, 최종 성능은 P14보다도 악화됨",
+      "why": "Energy Score의 'confident but wrong' 문제가 spatial 적용에서 더 치명적으로 작용함 — pixel-level 전파가 noise amplifier로 작동함",
+      "handoff": "4가지 Fix(detach·entropy·spatial·warmup)를 모두 동시 적용해야 spatial-wise가 효과를 낸다는 가설 하에 P16(4 Fix 통합) 설계로 이어짐"
+    },
+    "todo": [
+      "P15 학습 시작/종료일 기록 없음",
+      "night-val best(night_epoch45_90.39) checkpoint는 문서상 '미평가'로 남아 있어 실제 평가 여부 확인 필요"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/legacy.py",
+      "configs/archive/levine-multiaqua_rgbtl_P15_hardaug5.yaml",
+      "configs/eval/levine-multiaqua_rgbtl_P15_hardaug5.yaml",
+      "outputs/MMSamP15/levine_multiaqua_rgbtl_P15_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/epoch46_93.92_top1_checkpoint.pth",
+      "outputs/MMSamP15/levine_multiaqua_rgbtl_P15_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch45_90.39_top1_checkpoint.pth (미평가)",
+      "levine 서버",
+      "Submission #16087"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P15",
+      ".claude_logs/models/explain/p15-spatial-energy.md",
+      ".claude_logs/experiments/log.md#P15-Experiments",
+      ".claude_logs/issues/issues-and-fixes.md#ISSUE-004,#ISSUE-008,#ISSUE-009"
+    ]
+  },
+  {
+    "key": "P16",
+    "title": "[Drone] P16 — Calibrated Spatial Entropy Fusion, 4-Fix 통합 (MULTIAQUA, 역대 최악 경신)",
+    "period": "2026-02-27 (구현 완료일 기록, 학습 시작일은 이후로 추정되나 정확한 기록 없음)",
+    "track": "seg-MULTIAQUA",
+    "status": "완료 (당시 역대 최악 M-score 68.42)",
+    "summary": {
+      "change": "P15 설계 문서의 4가지 Fix(gradient 격리 .detach(), Energy Score→Calibrated Entropy, spatial-wise 유지, Aux Warmup Schedule)를 모두 통합 구현함. P15 코드를 직접 수정하지 않고 별도 버전(P16)으로 분리해 P15 학습 결과를 보존함.",
+      "result": "hardaug5 night-val 기준 checkpoint(night_epoch31) Val 93.14 / Test 43.70 / M-score 68.42 (Submission #16106, P9 대비 -13.05, 당시 역대 최악).",
+      "verdict": "실패 — 4가지 Fix를 모두 통합해도 aux mask 품질 자체의 근본 한계(ISSUE-008)는 해결되지 않았고, thermal 편향이라는 새로운 실패 모드로 Sky가 완전 붕괴함(3.17%)."
+    },
+    "background": [
+      "P15(Fix 3만 단독 적용)가 M=71.05로 역대 최악을 기록함",
+      "P15의 교훈: Fix 3(spatial)은 Fix 1(.detach)+2(entropy)+4(warmup)와 함께 적용해야 효과가 있을 것으로 추정됨",
+      "P12~P14 실패 분석에서 도출된 4가지 Fix는 P15 설계 문서에서 이미 제시됐었으나, P15 구현은 그중 1개(Fix 3)만 반영했었음"
+    ],
+    "architecture": {
+      "one_liner": "Energy Score를 gradient 격리(.detach())된 Calibrated Entropy로 교체하고, spatial-wise 가중치를 유지한 채 10epoch uniform + 5epoch linear ramp의 warmup schedule을 추가함",
+      "components": [
+        [
+          "Fix1: Gradient 격리",
+          "cross_weights=compute_entropy([z.detach() for z in aux_logits_list]) — aux head가 자기 CE loss만으로 학습되고, main loss가 aux head를 왜곡하지 않음",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2691"
+        ],
+        [
+          "Fix2: Calibrated Entropy",
+          "probs=softmax(z/T); entropy=-(probs·log_probs).sum(dim=1); confidence=1-entropy/log(num_classes); weights=softmax(stack(conf_maps)/T,dim=1)(B,m,H,W). Energy(logit magnitude 기반, '자신있게 틀리면' 고득점)와 달리 분포 균등도 기반(불확실하면 저득점)",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2691"
+        ],
+        [
+          "Fix3: Spatial-wise (P15에서 유지)",
+          "(B,m,H,W) 가중치, P15와 동일",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2691"
+        ],
+        [
+          "Fix4: Aux Warmup Schedule",
+          "epoch<10: uniform(1/m). 10≤epoch<15: (1-ramp)*uniform+ramp*entropy, ramp=(epoch-10)/5. epoch≥15: full entropy. train script에서 _current_epoch 속성을 매 epoch 설정",
+          "semseg/models/sam2/sam2/lora_sam/legacy.py:2691, train_sam2_lora_paper.py"
+        ]
+      ],
+      "mermaid": "flowchart LR\n  ENC[Phase1 인코딩] --> AUXD[ModalAuxDecoder x3]\n  AUXD --> DETACH[.detach gradient 격리]\n  DETACH --> ENTROPY[Calibrated Spatial Entropy B,m,H,W]\n  ENTROPY --> WARMUP[Aux Warmup: uniform to ramp to entropy]\n  WARMUP --> SUAMM[Spatial UAMM]\n  SUAMM --> TRACK[Phase3 track_step]\n  TRACK --> SAMF[Spatial AMF]\n  SAMF --> OUT[출력]\n  class DETACH,ENTROPY,WARMUP new",
+      "rationale": [
+        "P15의 교훈(4 Fix 동시 적용 필요)을 직접 검증하는 실험 — P15 대비 통제된 추가변수 도입"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/lora_sam/legacy.py, 클래스 LoRA_Sam_P16 (베이스=P14/P15 설계 통합)",
+        "MULTIAQUA(RGB+LiDAR+Thermal)",
+        "configs/archive/bengio-multiaqua_rgbtl_P16_hardaug5.yaml",
+        "bengio 서버",
+        "night_epoch31(night-val 기준 90.56로 선택), AUX_WARMUP_EPOCHS=10"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        [
+          "구성/ckpt",
+          "val",
+          "test",
+          "M-score(비고)"
+        ],
+        [
+          "hardaug5 (night_epoch31, night-val best)",
+          "93.14",
+          "43.70",
+          "68.42 (Submission #16106, P9 대비 -13.05, 당시 역대 최악)"
+        ]
+      ],
+      "per_condition": [
+        "Night-Val=90.56(선택 기준) / Obstacle IoU: Val 78.68 / Test 20.56"
+      ],
+      "per_class": [
+        [
+          "클래스",
+          "P9",
+          "P15",
+          "P16",
+          "P16 vs P15"
+        ],
+        [
+          "Static",
+          "81.30",
+          "60.94",
+          "58.19",
+          "-2.75"
+        ],
+        [
+          "Dynamic",
+          "21.86",
+          "26.58",
+          "20.76",
+          "-5.82"
+        ],
+        [
+          "Water",
+          "94.61",
+          "92.27",
+          "92.24",
+          "-0.03"
+        ],
+        [
+          "Sky",
+          "76.54",
+          "16.66",
+          "3.17",
+          "-13.49 (완전 붕괴)"
+        ]
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "Sky 완전 붕괴: 157/200 프레임 Sky=0(78.5%), 191/200 프레임 Sky<10%(95.5%)",
+      "UAMM(test): img=0.758±0.012, lidar=0.819±0.014, thermal=0.923±0.011 — thermal이 지배함. CV<0.02로 거의 고정 비율이지만 P9의 '좋은' 고정비율과 달리 '나쁜' 고정비율(thermal 과다의존)",
+      "실패 원인: (1).detach()+entropy로 바꿔도 aux mask 품질 자체가 부족함(ISSUE-008 확정) (2)thermal이 전반적으로 낮은 entropy(=confident)로 나타나 과도한 가중치를 받음 (3)Sky 영역에서 thermal은 실제로는 무의미한데 thermal 기반 예측이 이뤄짐 (4)warmup이 10epoch 동안 uniform을 유지했지만 이미 그 기간에 aux head가 thermal 편향으로 학습되어 ramp 이후에도 편향이 유지됨",
+      "P16이 P15보다 나빴던 이유: P15는 UAMM 적응을 수행했으나(img -21%, lidar +15%) 방향이 맞았던 반면, P16은 entropy 기반이 thermal 편향으로 수렴해 P15보다 더 나쁜 고정점에 도달함",
+      "P13→P14→P15→P16 순서로 scoring 접근의 모든 가능한 개선(energy scalar→독립 decoder→spatial→4 fixes)을 순차 시도했으나 aux mask 품질이라는 근본 병목을 해결하지 못함(ISSUE-008 최종 확정)"
+    ],
+    "verdict": {
+      "worked": "작동 안 함 — 4가지 Fix를 모두 적용해도 실패함. 오히려 P15보다 더 나쁜 고정점(thermal 편향)으로 수렴함",
+      "why": "4가지 Fix가 모두 'aux mask의 집계 방법'을 다뤘을 뿐, aux mask 자체의 품질(frozen backbone 위 경량 decoder의 근본적 한계, ISSUE-008)은 건드리지 못했음",
+      "handoff": "aux decoder의 정보량 문제로 원인을 재규정함: fpn[0](32ch,256×256) 하나만 사용 중 → fpn[0,1,2] 3개 레벨(352ch, 11배 정보량, 추가 backbone 연산 0)을 활용하는 MultiScaleModalAuxDecoder로 P17 설계"
+    },
+    "todo": [
+      "P16 학습 시작일 기록 없음(구현일 2026-02-27 이후로 추정)",
+      "AUX_WARMUP_EPOCHS=10/ramp 5epoch 설정이 최종값인지, 튜닝 여지가 있었는지 문서에 근거 없음"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/lora_sam/legacy.py",
+      "train_sam2_lora_paper.py",
+      "configs/archive/bengio-multiaqua_rgbtl_P16_hardaug5.yaml",
+      "configs/eval/bengio-multiaqua_rgbtl_P16_hardaug5.yaml",
+      "outputs/MMSamP16/bengio_multiaqua_rgbtl_P16_hardaug5/MULTIAQUA_CMNeXt-B2_ilt/night_epoch31_90.56_top1_checkpoint.pth",
+      "bengio 서버",
+      "Submission #16106"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md#P16",
+      ".claude_logs/models/explain/p16-calibrated-entropy.md",
+      ".claude_logs/experiments/log.md#P16-Experiments",
+      ".claude_logs/experiments/log.md#P14~P17-종합분석",
+      ".claude_logs/issues/issues-and-fixes.md#ISSUE-004,#ISSUE-008,#ISSUE-009"
+    ]
+  }
+]

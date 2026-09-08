@@ -1,0 +1,670 @@
+[
+  {
+    "key": "P28",
+    "title": "[Drone] P28 — RBMA: 무학습 신뢰도를 SAM2 memory attention logit에 additive bias로 주입 (DELIVER)",
+    "period": "2026-06-15 (설계). 완주 로그의 정확한 완료 일시는 문서에 없음 — 최초 시도(RUN-1)는 2026-06-24 ep16에 사망(P29로 대체)했고, 이후 별도 재개로 200ep가 완주된 것으로 보임(재개 경로 미기록)",
+    "track": "seg-DELIVER",
+    "status": "완주(200ep) — 단 최초 RUN-1은 ep16 사망, 재개 기록 없음(todo 참조)",
+    "summary": {
+      "change": "P27의 SAM2 memory attention pre-softmax additive logit bias 배관을 그대로 두고, bias 신호를 SpatialQualityGating(SQG) quality_logits에서 모달리티별(per-modal) decoder의 training-free 예측 불확실성(1−entropy)으로 교체함",
+      "result": "완주(200ep) 기준 Day-Val 63.40@ep100 / Test 55.27@ep178. 최초 RUN-1(ep16 사망) 시점은 Val 57.87@ep12 / Test 50.61@ep12",
+      "verdict": "출력 융합(AMF_MODE=uniform)은 등가중 고정한 채 bias 단독 효과를 측정했는데, event/lidar reliability AUROC가 .30/.22로 anti-calibrated — RGB/depth에서만 유효한 신호로 판정됨(Mode C: event/lidar 사실상 미사용)"
+    },
+    "background": [
+      "P27까지의 pre-softmax additive memory-attention bias 배관은 유지 대상으로 상속됨",
+      "P27 bias 신호(SQG quality_logits)는 frozen-feature 예측기 underfit·lidar/thermal 평탄·정적 RGB-붕괴 진단(B-2 병목)으로 교체 필요성이 제기됨"
+    ],
+    "architecture": {
+      "one_liner": "P27의 pre-softmax additive memory-attention bias 배관을 유지하고, bias 신호만 SQG quality logits에서 per-modality decoder의 training-free 예측 불확실성(1−H)으로 교체함",
+      "components": [
+        ["신호 교체", "per-modal decoder aux_logits_i = _auxiliary_decode_single(per_modal_decoders[i], vision_feats[i], ...)(모달리티 단독 디코드, memory 융합 이전) → H_i = -Σ_c softmax(aux_logits_i) log softmax(aux_logits_i) / log C(per-pixel, [0,1]) → reliability_i = 1 - H_i, 모달리티 간 per-pixel 평균 0 센터링 → bias 신호. torch.no_grad()로 detach, per_modal_decoders는 aux-CE로만 학습", "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py — LoRA_Sam_P28(LoRA_Sam_P27), _compute_bias_source override"],
+        ["attn bias 주입", "attn = softmax(QK^T/√d + λ·B)V, B[memory_token] = 그 토큰 source-modality의 신뢰도 맵을 memory grid에 대응, λ = 학습 스칼라(self.lambda_bias). P27 배관 그대로", "RoPEAttention._p27_attn_bias(SDPA attn_mask), memory_attention forward_pre_hook"],
+        ["출력 융합 고정", "AMF_MODE: uniform — 적응은 오직 RBMA bias뿐이 되도록 출력 융합은 등가중으로 고정, 순수 bias 효과 측정용", "config AMF_MODE"]
+      ],
+      "mermaid": "flowchart LR\n  IMG[img] --> ENC[SAM2 Hiera encoder]\n  DEP[depth] --> ENC\n  EVT[event] --> ENC\n  LID[lidar] --> ENC\n  ENC --> AUX[per-modal aux decoder 단독디코드]\n  AUX --> ENT[entropy reliability 1-H]\n  ENT --> BIAS[additive attn bias lambda*B]\n  ENC --> MEM[cross-modal memory attention]\n  BIAS --> MEM\n  MEM --> FUSE[AMF uniform fusion]\n  FUSE --> OUT[segmentation output]\n  class AUX new\n  class ENT new\n  class BIAS new",
+      "rationale": [
+        "P27 bias 신호(SQG)의 B-2 병목(frozen-feature 예측기 underfit)을 bias 경로에서 제거하려는 목적",
+        "노벨티 축 = attention LOGIT additive bias(선행연구는 feature-multiply/output-scale/loss 위주, 전례 0으로 문서화됨)",
+        "training-free 신호(학습형 evidential/HD head 불필요, UTFNet/HyperDUM 대비 차별점)",
+        "데이터셋 무관 신호(uncertainty는 보편적 → DeLiVER/MUSES/MCubeS 공통 적용 가능, coverage mask 불필요)"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py: LoRA_Sam_P28(LoRA_Sam_P27)",
+        "DELIVER 4모달(img/depth/event/lidar). MULTIAQUA(RGB+Thermal+Lidar)용 config도 존재하나 미실행(train.log 0 byte로 기록됨)",
+        "configs/deliver/b200-deliver_rgbdel_P28_physaug.yaml (+ configs/multiaqua/b200-multiaqua_rgbtl_P28_hardaug8_physaug.yaml, 미실행)",
+        "B200 서버 GPU4-7",
+        "200ep 완주, AMF_MODE=uniform"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "비고"],
+        ["RUN-1(ep16 사망)", "57.87@ep12", "50.61@ep12", "최초 시도, 조기 사망"],
+        ["완주(200ep)", "63.40@ep100", "55.27@ep178", "val-best/test-best 각각 다른 epoch, ep178이 test 운용점(전 도메인 ep100 상회)"]
+      ],
+      "per_condition": [
+        "ep178(test-best): cloud 53.99 / fog 54.11 / night 51.56(최약) / rain 54.25 / sun 52.13, spread 2.69",
+        "ep100(val-best): cloud 52.96 / fog 50.51 / night 50.13 / rain 53.75 / sun 51.66, spread 3.62",
+        "per-domain spread가 2.7~3.6에 불과함 — Val(~63)→Test(~55) 갭은 weather/condition 도메인 시프트가 아니라 특정 class의 day→test 전이 실패(Mode B)로 판정됨"
+      ],
+      "per_class": [
+        "도메인-불변 사망(전 조건 collapse, ep178): Bridge 0.0, Water 0.1~0.2, Wall 0.3~6.1(day 61.8), Other 2.1~4.8",
+        "day→test 전이 붕괴(대표 ep196, mIoU55.10): Wall 61.8→2.1(−60), TrafficLight 81.3→30.2(13~42 불안정, −51), Bridge 29.2→0.0(−29), Dynamic 30.8→7.1(−24), Other 0.00(양쪽 사망), Ground 7.3(양쪽 저조), Static 23.8(저조)",
+        "도메인-민감(condition별 큰 편차): RailTrack spread 43.6(ep178)/51.6(ep100, fog5.8 붕괴), TwoWheeler spread 32.5, Fence 16.9(night 33.1↔sun 50.0), TrafficSign 14.1(night 32.1 최약), Ground 13.3",
+        "역전(test>day): RailTrack 24.7→60.1(+35), Pedestrian 76→81",
+        "modal_competence(per-class recall, per-modal 단독예측): TrafficLight [img.24, depth.62, event.64, lidar.18] misalloc 0.37; Ground event.37 misalloc 0.34; Wall RGB.30 misalloc 0.27; RailTrack 전모달~.6 misalloc 0.40",
+        "구조적 바닥: Bridge/Other modal_competence [0,0,0,0](어느 모달도 예측 0), Water [.07,0,0,0]→Sky 혼동"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "drop-modality ΔmIoU(cloud): drop-depth −0.224, drop-RGB −0.097, drop-event −0.000, drop-LiDAR +0.001 — 융합이 RGB+Depth 2-모달로 퇴화, event/LiDAR는 빼도 성능 불변",
+      "reliability AUROC(모달순 img/depth/event/lidar): [0.77, 0.62, 0.30, 0.22] — RGB/depth는 정보성 있으나 event/lidar는 0.5 미만(anti-calibrated, 틀린 곳에서 더 확신)",
+      "UAMM 평균가중치: [0.27, 0.28, 0.23, 0.23] — 거의 uniform, 죽은 event/lidar에 ~45% 낭비, workhorse depth는 28%만 할당",
+      "per-pixel argmax가 지배 class에 밀리는 구조 + frozen SAM2 backbone feature에 rare class가 애초에 약하게만 인코딩(ISSUE-008 ceiling) + 융합이 class-agnostic per-pixel scalar(q_uamm_norm, (B,1,H,W))라 class별 모달 선택 불가"
+    ],
+    "verdict": {
+      "worked": "부분작동 — RGB/depth에서는 신뢰도 신호가 유의미하나 event/lidar에서는 무의미(anti-calibrated), 출력융합이 uniform으로 고정돼 있어 bias가 살아도 최종 결정에 못 미침(2-모달 퇴화)",
+      "why": "reliability AUROC event/lidar<0.5(anti-calibrated) — bias 신호가 정답과 역상관, per-modal decoder가 event/lidar에서 underfit",
+      "handoff": "P29(SDC 조건 라우팅)로 라우팅 재설계 시도; P31에서 재보정(calibration loss)·backbone unfreeze로 처방; P30에서 class-token decoder + reliability-anchored router로 rare-class/dead-modality 직격"
+    },
+    "todo": [
+      "P28 RUN-1(ep16 사망) 이후 재개된 경로·일자가 문서에 없음 — 200ep 완주 최종 수치(63.40/55.27)가 어느 재시작에서 나왔는지 불명",
+      "MULTIAQUA용 P28 config는 미실행(train.log 0 byte)으로만 기록됨, 후속 재시도 여부 확인 필요"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py",
+      "semseg/models/sam2/sam2/sam_lola_utils.py",
+      "configs/deliver/b200-deliver_rgbdel_P28_physaug.yaml",
+      "configs/multiaqua/b200-multiaqua_rgbtl_P28_hardaug8_physaug.yaml",
+      "B200 서버 GPU4-7",
+      "outputs/MMSamP28/b200_deliver_rgbdel_P28_physaug/"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md §P28",
+      ".claude_logs/experiments/analysis/2026-06-30-p28-p29-failure-analysis.md",
+      ".claude_logs/experiments/registry.md (P28 RBMA seg B200 RUN-1)",
+      ".claude_logs/experiments/monitor-log.md RUN-1",
+      ".claude_logs/status/history-2026H2.md (2026-07-08 이전 진행중 트랙 표)"
+    ]
+  },
+  {
+    "key": "P29",
+    "title": "[Drone] P29 — SDC: label-free 조건 latent + prototype bank → FiLM Soft-MoE LoRA 게이트 (DELIVER)",
+    "period": "2026-06-27(설계). 실제 학습(P28+SDC FiLM gate로 기록됨)은 2026-06-30 11:03에 ep150에서 종료",
+    "track": "seg-DELIVER",
+    "status": "구현+학습 완료(ep150 종료, 완주 아님) — 단 arch-evolution.md는 '설계 완료(구현 대기)'로 표기되어 있어 문서 간 상태 불일치가 있음(todo 참조)",
+    "summary": {
+      "change": "Soft-MoE LoRA의 라우팅(gate) 조건화를 재설계 — 기존에는 gate 조건이 modal_embed(어느 모달리티냐)뿐이었으나, RGB backbone feature에서 label-free 조건 latent(SDC, GAP+채널 mean/std)를 뽑아 학습되는 K개 condition prototype에 soft-assign하고, gate logit에 FiLM(scale+shift) 변조로 주입(기존 zero-init 가산 cond_proj 대체)",
+      "result": "최종 best Val 63.20@ep100 / Test 54.34@ep146(ep150에서 종료, P28 대비 val −0.20/test −0.93)",
+      "verdict": "라우팅/조건화 재설계로도 Test 미개선, 오히려 일부 악화 — day 과적합만 키워 day→test class-transfer 갭을 벌림"
+    },
+    "background": [
+      "P28 완주 실측: rare/thin class 붕괴(Bridge/Water/Wall/Other/Dynamic/Ground/TrafficLight IoU<10)가 mIoU 갭의 거의 전부",
+      "P28의 gate 조건은 modal_embed(어느 모달리티냐)뿐 — 환경 조건(day/night/snow-rain)이 라우터에 구조적으로 안 보임, 존재하는 조건화도 zero-init 가산이라 초기 기여 0",
+      "P28에서 Soft-MoE Block9 argmax E1≈0~10%(img)/~0.5%(lidar) = E1 dead expert 관측(ISSUE-002)"
+    ],
+    "architecture": {
+      "one_liner": "RGB feature에서 뽑은 label-free 조건 latent를 학습되는 condition prototype bank에 soft-assign하고, 그 결과를 Soft-MoE LoRA gate에 FiLM 변조로 주입하는 조건 라우팅 재설계",
+      "components": [
+        ["SDC 모듈", "RGB/초기 backbone feature(fpn[0])에서 GAP + 채널 mean/std → projection으로 조건 latent z_c(latent_dim) 산출", "문서상 코드 라인 미명시(설계 문서 기준)"],
+        ["Condition-prototype bank", "학습되는 K개(K≈4~8) prototype에 z_c를 cosine/VQ로 soft-assign(label-free), entropy/contrastive clustering term + 본 seg loss로만 학습(조건 라벨 불사용)", "config MODEL.SDC{ENABLE,K,LATENT_DIM,CLUSTER_WEIGHT}"],
+        ["FiLM 라우터 주입", "gate 입력을 [modal_embed ⊕ z_c]로 구성, gate logit에 FiLM(scale+shift) 변조 — 기존 zero-init 가산 cond_proj 대체", "SoftMoE_LoRA_Layer.set_condition 확장(sam_lola_utils.py), config gate COND_MODE: film(vs add/none)"],
+        ["P29-B(확장, 실행 기록 불명)", "RBMA training-free 신뢰도를 라우터 prior로 재사용 — 하나의 reliability field가 memory-attn bias와 LoRA expert routing 두 곳을 구동", "설계 문서 기준, 코드 반영 여부 미확인"]
+      ],
+      "mermaid": "flowchart LR\n  RGB[RGB backbone feat] --> SDC[SDC latent GAP+std]\n  SDC --> PROTO[condition prototype bank]\n  PROTO --> FILM[FiLM modulation]\n  MODAL[modal_embed] --> GATE[SoftMoE LoRA gate]\n  FILM --> GATE\n  GATE --> EXPERTS[LoRA experts blend]\n  EXPERTS --> OUT[segmentation output]\n  class SDC new\n  class PROTO new\n  class FILM new",
+      "rationale": [
+        "라우팅 비특화 진단: 조건(day/night/snow-rain)이 라우터에 구조적으로 안 보이는 문제를 직격",
+        "무감독 prototype 학습으로 day/night/snow가 자연 출현하도록 설계(라벨 미사용 — 무라벨 야간 드론 배치 전제)",
+        "FiLM(multiplicative)이 zero-init 가산 방식의 no-op 취약점을 회피"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py: LoRA_Sam_P29(LoRA_Sam_P28) 계보(RBMA 상속, Soft-MoE 라우팅만 재설계)",
+        "DELIVER 4모달(img/depth/event/lidar)",
+        "configs/deliver/b200-deliver_rgbdel_P29_physaug.yaml",
+        "B200 서버",
+        "실제 학습은 ep150에서 종료(P30 기동을 위해 수동 중단)"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음",
+      "table": [
+        ["P28 baseline(완주)", "63.40@ep100", "55.27@ep178", "비교 기준선"],
+        ["P29(SDC FiLM gate)", "63.20@ep100", "54.34@ep146", "ep150 종료(P30 기동 위해 수동 중단), val −0.20/test −0.93"]
+      ],
+      "per_condition": [
+        "P29 ep122 기준(module_diagnostics 상대분석): cloud 53.24 / fog 52.02 / night 50.89 / rain 53.82 / sun 50.70, mean 52.13(P28 ep178 mean 53.21 대비 −1.08, 전 도메인 P28 이하)"
+      ],
+      "per_class": [
+        "P29 이득(조건평균): Static +9.5, Wall +2.8, Water +2.2(여전히 ~2), Building +1.5",
+        "P29 손실(조건평균): TrafficLight 41.3→9.6(−31.7), RailTrack 39.4→32.8(−6.7), TrafficSign −2.1, TwoWheeler −2.0, Pole −1.9",
+        "Day-Val rare class는 개선(Water 1~7→16~23, Bridge 29→39~53)했으나 Test는 그대로 사망(Water 0.07~0.97, Bridge 0.00~0.04, Wall 1.99~3.27)"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "drop-modality ΔmIoU(P29): [img5.7, depth19.3, event0.05, lidar0.05] — P28([8.4,23.5,0.02,0.01]) 대비 RGB 의존도는 낮췄으나 event/lidar는 여전히 사실상 사망",
+      "reliability AUROC(P29): [0.80, 0.63, 0.28, 0.26] — P28([.77,.62,.30,.22])과 거의 동일, event/lidar는 여전히 anti-calibrated(SDC가 reliability miscalibration을 안 건드림)",
+      "SDC가 reliability 재보정은 건드리지 않고 모달 의존만 분산시켜, event/depth가 유능하던 TrafficLight를 붕괴시킴 — 소수 rare-class 미세이득 < TrafficLight 대붕괴로 net −1.08",
+      "per-condition mIoU는 타이트(night 0.526/rain 0.561)한데 per-class는 양극화 — 갭의 실체는 weather 도메인 시프트가 아니라 특정 class의 day→test 전이 실패(Mode B)로 재확인됨"
+    ],
+    "verdict": {
+      "worked": "라우팅/조건화가 day 과적합만 키워 day→test class-transfer 갭을 오히려 벌림 — net Test −0.93(vs P28)",
+      "why": "day→test class-transfer 갭(Mode B)의 원인은 배분(routing) 문제가 아니라 정보 문제 — 라우팅 재설계로는 안 풀림(직접 실증)",
+      "handoff": "P30에서 class-token decoder + reliability-anchored router로 rare-class/dead-modality를 재공략, P29의 SDC 경로 자체는 보류(TrafficLight 붕괴 리스크로 재시도 금지 취급)"
+    },
+    "todo": [
+      "arch-evolution.md 헤더 상태='설계 완료(구현 대기)'인데 registry/monitor-log/failure-analysis 문서에는 학습 완주 로그(ep150 종료, Test 54.34@ep146)가 있음 — 두 문서 간 상태 불일치, 실제 구현이 Proposal A(SDC+FiLM)와 정확히 일치하는지, 혹은 그 단순화 버전인지 코드 근거 문서에 명시 안 됨",
+      "P29-B(reliability-routed experts), Proposal C(pruning) 실행 여부 기록 없음"
+    ],
+    "sources": [
+      "configs/deliver/b200-deliver_rgbdel_P29_physaug.yaml",
+      "B200 서버",
+      "outputs/MMSamP29/b200_deliver_rgbdel_P29_physaug/"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md §P29",
+      ".claude_logs/experiments/analysis/2026-06-30-p28-p29-failure-analysis.md",
+      ".claude_logs/experiments/registry.md (SAM2 RBMA seg P29, B200)",
+      ".claude_logs/experiments/monitor-log.md RUN-2",
+      ".claude_logs/research/hypothesis-ledger.md H1"
+    ]
+  },
+  {
+    "key": "P30",
+    "title": "[Drone] P30 — Class-token decoder + Reliability-anchored learned modality router (DELIVER)",
+    "period": "2026-06-28",
+    "track": "seg-DELIVER",
+    "status": "완주(200ep) — dead(회귀 확정)",
+    "summary": {
+      "change": "① 융합 memory feature m_feat에 C개 학습 class query가 cross-attention하여 per-class mask를 직접 생성하는 class-token decoder(SAM3-RBMA decoder repurpose의 SAM2 근사 이식) ② 고정 UAMM scalar 대신 reliability로 anchor된 학습형 modality router(zero-init, per-class 옵션)로 출력 융합 교체",
+      "result": "완주(200ep) 기준 Val 49.76@ep136 / Test 44.10@ep146(P29 대비 val −13.4/test −10.2)",
+      "verdict": "두 모듈의 메커니즘은 실패모드 A(rare-class collapse)·C(dead modality)·D(라우팅 collapse)를 정확히 겨냥했으나, 학습 결과는 P29 대비 대폭 회귀(dead, 회귀 확정)"
+    },
+    "background": [
+      "P28 완주: rare/thin class 붕괴(Bridge/Water/Wall/Other/Dynamic/Ground/TrafficLight IoU<10)가 mIoU 갭의 거의 전부",
+      "Day-Val↔Test 갭은 weather가 아니라 특정 class의 day→test 전이 실패(Mode B)",
+      "drop-modality Δ: event≈0.00/lidar≈0.01 — event/LiDAR 미사용(Mode C), 고정 UAMM scalar는 class-agnostic per-pixel scalar라 class별 모달 선택 불가",
+      "P29(SDC)는 라우팅/조건화로 Test 개선 실패(net −1.08, Mode B는 라우팅으로 안 풀린다는 직접 증거로 확정됨)"
+    ],
+    "architecture": {
+      "one_liner": "융합 memory feature 위에 C개 class query가 cross-attend하는 class-token decoder + reliability로 anchor된 학습형 modality router로 P28/P29의 uniform 고정 UAMM을 대체함",
+      "components": [
+        ["Class-token decoder", "C개 학습 class query가 self+cross-attention으로 m_feat에 질의 → per-class mask (B,C,H,W) 직접 생성, dynamic-kernel dot-product. 근사 구현(경량 transformer-decoder block, 실제 sam_mask_decoder 가중치 수술 아님)", "sam_lola_utils.py ClassTokenDecoder; LoRA_Sam_P30.forward에서 super 반환의 grad-attached m_feat에 post-hoc 적용"],
+        ["Reliability-anchored router", "w = softmax_modality(learned_logits(feat_i) + λ·reliability_i), reliability = 1 − H(softmax(output_i))/logC(training-free). 학습 conv head zero-init(초기 reliability-구동, 붕괴 방지), per_class=true 옵션으로 class별 모달 가중(B,C,H,W), 선택적 diversity reg(모달-mixing entropy)", "sam_lola_utils.py ReliabilityAnchoredRouter; LoRA_Sam_P30._fuse_outputs override"],
+        ["fusion hook 추출", "P26 fusion 로직을 overridable _fuse_outputs hook으로 추출(기본 byte-identical → P26~P29 불변, P30만 override)", "sam_lora_image_encoder_seg.py"]
+      ],
+      "mermaid": "flowchart LR\n  ENC[cross-modal memory feature m_feat] --> CTD[class-token decoder]\n  CTD --> MASK[per-class mask B,C,H,W]\n  DEC[per-modal decoder output] --> REL[reliability 1-H]\n  REL --> ROUTER[reliability-anchored router]\n  ENC --> ROUTER\n  ROUTER --> FUSE[fused output]\n  MASK --> FUSE\n  FUSE --> OUT[segmentation output]\n  class CTD new\n  class MASK new\n  class ROUTER new",
+      "rationale": [
+        "P28 실패분석이 직접 지목: rare-class collapse(finding1) + dead modality(finding2)",
+        "SAM3-RBMA에서 decoder repurpose가 class-collapse를 깨는 것(val 8.49→16.27)의 SAM2 이식",
+        "reliability-anchor의 zero-init 설계는 P9~P27 12세대 '게이트 상수수렴'(ISSUE-002/015) 재발 방지 목적"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py: LoRA_Sam_P30(LoRA_Sam_P29)",
+        "DELIVER 4모달(img/depth/event/lidar)",
+        "configs/deliver/b200-deliver_rgbdel_P30_physaug.yaml",
+        "B200 GPU 2,3(P28 종료 후)",
+        "200ep"
+      ]
+    },
+    "results": {
+      "gate": "사전 실패모드 커버리지 판정(GPU 학습 전 코드 근거 기준): Mode A 부분(메커니즘 O, 효과 GPU 미검증) · Mode B 미해결 · Mode C 메커니즘만 확인(효과 GPU 미검증) · Mode D 부분. 학습 후 별도 게이트 통과 여부 기록 없음",
+      "table": [
+        ["구성/ckpt", "val", "test", "비고"],
+        ["P29 baseline", "63.20@ep100", "54.34@ep146", "비교 기준선"],
+        ["P30(완주 200ep)", "49.76@ep136", "44.10@ep146", "dead, P29 대비 val−13.4/test−10.2"]
+      ],
+      "per_condition": [],
+      "per_class": [],
+      "invalid": []
+    },
+    "analysis": [
+      "B200 ep188 실측: Day-Val best 49.76@ep136 / Test best 44.10@ep146 = P29 대비 −13.4/−10.2",
+      "det 계보 동일 패턴 재현(같은 ckpt에서 query head 0.256 vs FCOS-aux 0.431) → 경량 class-token decoder가 최종 출력을 대체하는 P30 구조가 회귀 주범 후보로 지목됨",
+      "router reliability anchor centering이 no-op임을 CPU 스모크로 확인(Δ=0.0000) — softmax(over modality)는 per-pixel 상수 shift에 불변이므로 anchor의 절대 레벨은 상대 신뢰도 사용에 영향 없음, 설계 자체는 건전하다고 판정됨"
+    ],
+    "verdict": {
+      "worked": "구현 자체는 sound(anchor centering이 절대신뢰 편향 아님을 확인)하나 end-to-end 성능은 대폭 회귀 — 최종 출력 경로를 class-token decoder가 대체하는 구조가 원인으로 지목됨",
+      "why": "P31.1 수정에서 class-token decoder를 training-only aux loss로 강등(ctd_aux_only, 최종 출력=SAM decoder 복원)한 것이 처방으로 채택됨 — class-token decoder가 최종 출력 경로를 차지한 것이 붕괴 원인으로 추정(확정 ablation은 없음)",
+      "handoff": "P31에서 class-token decoder를 training-only aux CE로 강등(CTD aux-only), router는 계승·decisive reg 추가, SDC는 OFF로 전환"
+    },
+    "todo": [
+      "P30 회귀의 정확한 원인이 class-token decoder인지 router인지를 분리한 ablation 기록이 없음(P31.1의 '주범 후보' 표현은 확정 판정이 아님)"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py",
+      "semseg/models/sam2/sam2/sam_lola_utils.py",
+      "configs/deliver/b200-deliver_rgbdel_P30_physaug.yaml",
+      "B200 서버 GPU2-3",
+      "outputs/MMSamP30/b200_deliver_rgbdel_P30_physaug/"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md §P30",
+      ".claude_logs/experiments/analysis/2026-06-30-p28-p29-failure-analysis.md §2 P30 커버리지 판정",
+      ".claude_logs/experiments/registry.md (b200_deliver_rgbdel_P30_physaug)",
+      ".claude_logs/experiments/monitor-log.md RUN-4",
+      ".claude_logs/decisions/2026-07-02-p31-redesign-proposal.md §0 (P30 실측 붕괴 인용)"
+    ]
+  },
+  {
+    "key": "P31",
+    "title": "[Drone] P31 — Calibrated Dual-Reliability RBMA + Multi-scale HR Class-Token Decoding (DELIVER)",
+    "period": "2026-07-02(설계) / P31.1 수정 2026-07-03 / 완주 2026-07-05 22:37",
+    "track": "seg-DELIVER",
+    "status": "완주(200ep) — 당시 기준 최선 DELIVER seg로 P32에 승계",
+    "summary": {
+      "change": "① per-modal 학습 temperature + correctness-contrastive calibration loss로 RBMA reliability 재보정 ② class-token decoder를 training-only aux CE로 강등(P31.1, 최종 출력은 SAM decoder 복원) ③ simple-FPN 기반 multi-scale HR pixel-embed(ClassTokenDecoderMS) ④ Hiera backbone 마지막 3블록 unfreeze ⑤ router 'decisive' reg 추가, SDC는 OFF",
+      "result": "완주(200ep) 기준 Day-Val 63.20@ep106 / Test 54.85@ep182(P29 Day-Val 동률, Test +0.51)",
+      "verdict": "완주·P29 소폭 상회. 후속 모듈 A/B 분석(2026-07-12)에서 learned router만 대형 유효 모듈(+10.7~13.8)로 확인됐고, RBMA attn-bias 자체는 no-op(≈0)"
+    },
+    "background": [
+      "P30 실측 붕괴 확인: Val 49.76@ep136 / Test 44.10@ep146(P29 대비 −13.4/−10.2)",
+      "doc16 §7 정량진단: reliability AUROC event/lidar .30/.22(anti-calibrated), UAMM 거의 uniform[.27,.28,.23,.23]인데 drop-Δ[8.4,23.5,0.02,0.01]=~45% 질량 낭비, m_feat 단일 저해상 질의로 thin-class 경계 muffle, frozen-backbone ceiling(Bridge/Other modal_competence[0,0,0,0])"
+    ],
+    "architecture": {
+      "one_liner": "P30(class-token decoder+router)+P29(SDC)+RBMA 상속 위에 reliability 재보정(calibration loss)·class-token decoder를 training-only aux로 강등·multi-scale HR pixel-embed·backbone 일부 unfreeze·router decisive reg를 추가",
+      "components": [
+        ["[Seg-A] RBMA reliability 재보정", "per-modal 학습 temperature T_i로 rel_i = 1−H(softmax(D_i(f_i)/T_i))/logC + correctness-contrastive calibration loss(틀린 픽셀 entropy↑·맞은 픽셀 entropy↓, 1/4 해상도, weight 0.1) — reliability의 정답 AUROC를 직접 최적화, 추론 bias는 여전히 GT-free training-free", "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py, gate_loss_data['rbma_cal_loss'](RBMA_CALIB.ENABLE)"],
+        ["[Seg-C] Multi-scale HR class-token decoder", "m_feat(s4)에서 simple-FPN {4,8,16,32} 피라미드(ViTDet 레시피) → class token이 coarse→fine cross-attend(scale embed) + 학습형 ConvTranspose HR pixel-embed + training-only aux per-pixel CE @H/4(weight 0.4, 추론비용 0)", "sam_lola_utils.py ClassTokenDecoderMS(ClassTokenDecoder)"],
+        ["[레버①] backbone 부분 unfreeze", "Hiera trunk 마지막 stage(blocks 21-23) unfreeze, optimizer가 UNFREEZE_LR_SCALE=0.1 감쇠 LR 그룹으로 분리", "semseg/optimizers.py get_optimizer(backbone_lr_scale, backbone_prefix)"],
+        ["[레버②] Router 'decisive' reg", "reg = batch-marginal entropy − per-pixel entropy(uniform 방향으로 미는 diversity reg의 결함을 해소, per-pixel commit + 전역 다양성)", "sam_lola_utils.py ReliabilityAnchoredRouter reg_mode(config LEARNED_ROUTER.REG_MODE: decisive)"],
+        ["P31.1 CTD 강등", "CLASS_TOKEN_DECODER.AUX_ONLY: true(ctd_aux_only) — 최종 출력=SAM decoder 융합(m_output) 복원, CTD(MS)는 ctd_seg_ce(full-res)+ctd_aux_ce(@H/4)로만 rare-class gradient 공급, 추론 경로에서 CTD 완전 제거", "config CLASS_TOKEN_DECODER.AUX_ONLY"],
+        ["P31.1 AUROC 게이트 로깅", "_calibration_loss가 per-modal reliability AUROC(Mann-Whitney)·μ·σ를 stash → epoch마다 tb+wandb 기록", "trainer p31/rel_auroc_*, p31/rel_std_*, p31/router_w_*, p31/cal_loss"],
+        ["P31.1 SDC OFF", "doc16 실증 net −1.08(P29) → P31 기본 config에서 제거, P28식 add 게이트로 복귀", "config"]
+      ],
+      "mermaid": "flowchart LR\n  DEC[per-modal decoder logits] --> TEMP[learned temperature T_i]\n  TEMP --> CAL[calibration loss]\n  CAL --> REL[reliability rel_i]\n  REL --> BIAS[RBMA attn bias]\n  MFEAT[m_feat s4] --> FPN[simple-FPN 4/8/16/32]\n  FPN --> CTDMS[ClassTokenDecoderMS aux-only]\n  CTDMS --> AUXCE[aux CE H/4 training-only]\n  ROUTER[router decisive reg] --> FUSE[SAM decoder output]\n  BIAS --> FUSE\n  UNFREEZE[Hiera last3 blocks unfreeze] --> ENC[encoder]\n  FUSE --> OUT[segmentation output]\n  class TEMP new\n  class CAL new\n  class FPN new\n  class CTDMS new\n  class AUXCE new\n  class ROUTER new\n  class UNFREEZE new",
+      "rationale": [
+        "doc16 §7 실측이 지목한 두 근본 지렛대(reliability 재보정+backbone unfreeze)를 직격",
+        "SAM3-RBMA class-collapse break(val 8.49→16.27)의 이식을 multi-scale HR pixel-embed로 확장",
+        "P30 실측 붕괴(비판 리뷰 검증 반영)에 대응해 class-token decoder를 aux-only로 강등"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py: LoRA_Sam_P31(LoRA_Sam_P30)",
+        "DELIVER 4모달(img/depth/event/lidar)",
+        "configs/deliver/b200-deliver_rgbdel_P31_physaug.yaml",
+        "B200 GPU4-7",
+        "200ep 완주"
+      ]
+    },
+    "results": {
+      "gate": "사전 성공기준(문서 기재): event/lidar AUROC>0.5, router `_last_w_mean` 비uniform, Water/Wall/Bridge/Pole Test IoU 상승 — 개별 통과 여부가 별도로 명시적으로 정리된 문서는 없음(analysis 문서에서 간접 확인, todo 참조)",
+      "table": [
+        ["구성/ckpt", "val", "test", "비고"],
+        ["P29 baseline", "63.20@ep100", "54.34@ep146", "비교 기준"],
+        ["P30", "49.76@ep136", "44.10@ep146", "dead"],
+        ["P31(완주 최종)", "63.20@ep106", "54.85@ep182", "Day-Val P29 동률, Test +0.51"]
+      ],
+      "per_condition": [
+        "표준분석(2026-07-12, test_ep182=54.85 ckpt 기준): cloud 53.28 / fog 53.72 / night 51.48 / rain 53.53 / sun 52.07, mean 52.82"
+      ],
+      "per_class": [
+        "표준분석(2026-07-12): Water는 SAM2 계열 전 모델(P29/P31/P32) 공통 0.0~0.2 유지(DINOv3 전환 이후 P34에서야 부활 12.0)",
+        "P29 대비 P31의 클래스 이동: RailTrack +7~10, TrafficSign +6 / Ground −4, Pedestrian∼"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "표준분석(2026-07-12) 항목3 모듈 A/B: P31에서 learned router +10.7~+13.8 mIoU(유일한 대형 기여 모듈) — 끄면 Bus−74/RoadLine−70/TwoWheeler−45 붕괴. RBMA bias ≈0(no-op), temperature ≈0, CTD(aux-only)/SDC(off)=설계 그대로 no-op 확인. ISSUE-022 수정으로 router가 실제 학습된 P31에서 router가 융합의 중추가 됨",
+      "reliability AUROC(night, 동일 프로토콜): P31 [img.43, depth.92, event.55, lidar.97] — calibration loss만이 geometry 모달의 reliability를 실제로 수리(대가: img 역보정 .43). 단, 수리된 신호조차 성능 기여는 router 경유로만 실현(직접 bias는 no-op)",
+      "P32 Phase 0 재측정(P31 test-ep182 ckpt, rbma_calibrate ON): selfent [img.322, depth.904, event.634, lidar.850] — depth workhorse가 0.90까지 보정됐으나 img는 0.77→0.32로 붕괴(over-rotate, 보정이 workhorse를 depth로 이동시킴)",
+      "corroboration(corr_veto 신호형) 측정 결과: img/event는 개선되나 depth를 0.90→0.28로 크게 훼손, lidar도 0.85→0.55로 하락 — 순수 corroboration은 P31 depth를 penalize하는 부작용이 확인됨(P32-B의 unique-info veto 설계 필요성의 근거)"
+    ],
+    "verdict": {
+      "worked": "router는 대형 유효기전, calibration도 AUROC 실측 수리(geometry 모달) — 단 RBMA attn-bias 자체와 CTD(aux-only)는 no-op",
+      "why": "pre-softmax additive bias 계열(P28→P31→P32→P34까지)이 3세대 이상 연속 no-op — 신호가 보정돼도 attention logit bias 경로로는 최종 결정에 못 미침(hypothesis-ledger H2 반증의 근거 일부)",
+      "handoff": "router는 P32/P34~P36까지 계승(P36에서 DINOv3 계보로 재이식), calibration 개념은 P32 corr_veto 설계에 영향을 줌"
+    },
+    "todo": [
+      "사전 등록 성공기준(Water/Wall/Bridge/Pole Test IoU 상승)의 개별 달성 여부가 명시적으로 정리된 표는 없음(2026-07-12 표준분석 문서는 P29/P31/P32/P34 비교 중심으로만 기록)",
+      "P31.1 img reliability 붕괴(0.77→0.32)의 최종 완화 여부(예: corr_veto 결합 등) 실행 기록 없음"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py",
+      "semseg/models/sam2/sam2/sam_lola_utils.py",
+      "semseg/optimizers.py",
+      "train_sam2_lora_paper.py",
+      "configs/deliver/b200-deliver_rgbdel_P31_physaug.yaml",
+      "B200 서버 GPU4-7",
+      "outputs/MMSamP31/b200_deliver_rgbdel_P31_physaug/"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md §P31",
+      ".claude_logs/decisions/2026-07-02-p31-redesign-proposal.md",
+      ".claude_logs/experiments/analysis/2026-06-30-p28-p29-failure-analysis.md §4 P31 프로토타입",
+      ".claude_logs/experiments/analysis/2026-07-12-p29-p34-standard-analysis.md",
+      ".claude_logs/experiments/analysis/p32-phase0-results.md 결과 B",
+      ".claude_logs/experiments/monitor-log.md RUN-9",
+      ".claude_logs/experiments/registry.md (b200_deliver_rgbdel_P31_physaug)"
+    ]
+  },
+  {
+    "key": "P32-B",
+    "title": "[Drone] P32-B — CoRB: 상호검증(corroboration) 기반 신뢰도로 memory attention bias 신호 교체 (DELIVER)",
+    "period": "2026-07-05(Phase 0) ~ 2026-07-08(4축 독립 검증 완료)",
+    "track": "seg-DELIVER",
+    "status": "완주 — 계보 Val 최고(64.12), Test는 P28에 −0.27 미달. corr_veto attn-bias는 4축 검증에서 유의한 순손해로 확정",
+    "summary": {
+      "change": "RBMA bias 신호를 self-entropy에서 cross-modal corroboration(leave-one-out 합의 기반 Bhattacharyya 계수)으로 교체하되, 홀로 확신하는 workhorse 모달을 보호하는 threshold-free unique-info veto를 결합(corr_veto). λ만 학습, P27/P31 attn-bias 배관은 그대로 유지",
+      "result": "완주 최종 Day-Val 64.12@ep98(계보 최고) / Test 55.00(P28 55.27 대비 −0.27 미달). 07-07 중간 검증 스냅샷 ep108 기준은 Test 54.79",
+      "verdict": "완주하되 목표 미달. 4축 독립 재계산 검증(1897장)에서 CoRB attn-bias는 유의한 순손해(ΔmIoU −0.013, Wilcoxon p=4.5e-22, flip 0.046%) — 신호(corr_veto AUROC)는 유효하나 pre-softmax attn-bias 주입 경로는 무효"
+    },
+    "background": [
+      "P31 실측: reliability AUROC event/lidar anti-calibrated([img.77, depth.62, event.30, lidar.22]) — self-entropy 신호가 per-modal decoder 용량과 confound",
+      "Phase 0 진단(2026-07-05, P28 ckpt 기준): corroboration이 무학습으로 event/lidar AUROC를 .30/.22→.54/.81(신호형에 따라 상이)로 반전, 단 순수 corroboration은 P31 depth(workhorse) AUROC를 .90→.28로 훼손 → unique-info veto 필요성이 실증됨",
+      "corr_veto가 두 모델(P28/P31) 모두에서 worst-modality AUROC 최고(P28 .543, P31 .603)로 신호형이 확정됨"
+    ],
+    "architecture": {
+      "one_liner": "P27/P28의 pre-softmax additive memory-attention bias 배관을 그대로 두고, bias 신호만 self-entropy에서 threshold-free unique-info veto가 결합된 cross-modal corroboration(corr_veto)으로 교체",
+      "components": [
+        ["신호 정의", "p_i=softmax(D_i(f_i)), p̄_{-i}=mean_{j≠i}p_j(leave-one-out 합의), corr_i=Σ_c√(p_i·p̄_{-i})(Bhattacharyya 계수), selfent_i=1-H(p_i)/logC, g_i=clamp(selfent_i-max_{j≠i}selfent_j,0,1)(unique-info veto gate, threshold-free), rel_i=g_i·selfent_i+(1-g_i)·corr_i(veto blend)", "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py LoRA_Sam_P32(LoRA_Sam_P31)._compute_bias_source override"],
+        ["attn bias 주입", "bias_i=λ·(rel_i-mean_j rel_j), RBMA 배관 그대로(P27/P28과 동일), λ만 학습", "P27 배관 상속(RoPEAttention._p27_attn_bias). config CORROBORATION.ENABLE/VETO(OFF→P31 byte-identical). P31의 consistency_bias(2차 항)를 1차 신호로 승격한 것"],
+        ["Phase 0 검증 도구", "무학습 진단: selfent vs corr_bc/corr_js/corr_veto/corr_max의 correctness AUROC 비교", "tools/eval_reliability_auroc.py"]
+      ],
+      "mermaid": "flowchart LR\n  DEC[per-modal decoder posterior p_i] --> LOO[leave-one-out consensus p_bar]\n  LOO --> CORR[Bhattacharyya corr_i]\n  DEC --> SELF[self-entropy selfent_i]\n  SELF --> VETO[unique-info veto gate g_i]\n  CORR --> BLEND[rel_i veto blend]\n  SELF --> BLEND\n  VETO --> BLEND\n  BLEND --> BIAS[additive attn bias lambda*rel]\n  BIAS --> MEM[cross-modal memory attention]\n  MEM --> FUSE[AMF uniform fusion]\n  FUSE --> OUT[segmentation output]\n  class LOO new\n  class CORR new\n  class VETO new\n  class BLEND new",
+      "rationale": [
+        "corroboration은 self-entropy가 깨진 raw 모달에서 강하나, '다수가 못 보는 곳에서 홀로 confident한 workhorse'를 벌하는 부작용이 있어 veto가 필수(선택 아님)로 설계됨",
+        "RSGMamba의 consistency gate(learned MLP)와 차별화 — 우리는 무학습 통계 + attention logit bias 주입"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py: LoRA_Sam_P32(LoRA_Sam_P31)",
+        "DELIVER 4모달(img/depth/event/lidar)",
+        "configs/deliver/b200-deliver_rgbdel_P32_physaug.yaml",
+        "B200 서버",
+        "200ep(완주로 기록됨, 정확한 완료 일시 미기재)"
+      ]
+    },
+    "results": {
+      "gate": "Phase 0 무학습 GATE(event/lidar corroboration>0.5): PASS(신호형별로 event .543~.692, lidar .551~.839)",
+      "table": [
+        ["P28 baseline(완주)", "63.40@ep100", "55.27@ep178", "비교 기준"],
+        ["P31(완주)", "63.20@ep106", "54.85@ep182", "비교 기준"],
+        ["P32 ep30~40(07-06 시점 학습중 plateau)", "61.65@ep30", "53.45@ep40", "당시 미달 판정 시점"],
+        ["P32 ep98/108(07-07 중간 검증 스냅샷)", "64.12@ep98", "54.79@ep108", "per-image 분석 기준(1897장)"],
+        ["P32 최종(완주)", "64.12@ep98", "55.00", "완주 최종, P28 대비 −0.27"]
+      ],
+      "per_condition": [
+        "ep108 스냅샷 기준(1897장 전체): rain 53.65 / fog 53.58 / cloud 52.15 / sun 50.31 / night 48.98(최약), spread 4.67 — 도메인시프트보다 per-class transfer가 지배적"
+      ],
+      "per_class": [
+        "ep108 기준(1897장): Bridge 0.0 / Water 0.02 / Wall 0.88(val 56) / RailTrack 3.5 / Dynamic 3.84 / Ground 6.35 / Other 7.2 — 완전·거의 사망",
+        "val 생존/test 사망 클래스: Wall(val56)·Bridge(val46)·Water(val33)·TrafficLight(val79) — train log상 val에선 생존, test에선 붕괴(0.9/0.0/0.0/15.4)"
+      ],
+      "invalid": [
+        "구 정정 대상: 이전 문서(doc25)의 'ep108이 P31을 처음 추월'은 stale 기준(당시 P31 test=54.75로 인용)이었음 — 실제 P31 최종 test는 54.85로 확정 정정되어, 그 비교는 재계산 과정에서 폐기됨",
+        "misalloc 수치 '993/1897'은 초기 오기로, 재확인 값 '979/1897'(51.6%)이 정정본"
+      ]
+    },
+    "analysis": [
+      "4축 독립 재계산 검증(1897장 CSV): misalloc 51.6%는 비용이 아니라 증상(misalloc=1인 이미지가 mIoU +6.5pt 높음, p=2e-34) — 레버는 argmax 교정이 아니라 가중치 진폭 적응화 방향으로 재해석됨",
+      "event/lidar는 정보부재가 아니라 depth와의 잉여로 재해석(어댑터는 작동하며, 현재 competence는 anymodal SOTA 천장 부근)",
+      "CoRB attn-bias = 유의한 순손해(ΔmIoU −0.013, median −0.007, Wilcoxon p=4.5e-22, flip 0.046%): helped(>+0.1) 61 / hurt(<-0.1) 136 / neutral 1700(89.6% 무변화, 손해가 이득의 2배)",
+      "modal competence(ep108): depth 43.73 ≫ img 26.15 > event 16.94 ≈ lidar 15.25. reliability는 depth를 정확히 매김(0.94)이나 UAMM 가중치는 균일(0.27/0.27/0.23/0.23)이라 competence·reliability가 출력 융합에 반영 안 됨 → best_modal은 depth 1892/1897인데 top_uamm은 img 982 vs depth 915(misalloc 51.6%)",
+      "지배 원인 = per-class 전이 붕괴(Wall/Bridge/Water/TrafficLight val생존/test사망, 복구 상한 +7.9pt). 신규 발견: sun 하드씬(worst-50 최다 28%, Pedestrian −35pt)"
+    ],
+    "verdict": {
+      "worked": "신호(corr_veto)는 무학습으로 event/lidar AUROC를 유의미하게 반전시켜 작동하나, pre-softmax attention bias 경로로의 주입은 no-op을 넘어 순손해로 확정됨",
+      "why": "반환 융합 피처 m_feat는 corroboration ON/OFF에 완전 동일(max|Δ|=0) — 제안 모듈이 디코더 출력 logit에만 작용하는데, (a) 균일 UAMM 출력융합에 눌리고 (b) event/LiDAR feature가 비어 살릴 정보가 부족",
+      "handoff": "P33(CG-MoD)로 신호 소비 지점을 attn-bias(soft)에서 fusion gate 입력(hard)으로 승격 시도"
+    },
+    "todo": [
+      "P32의 정확한 완주 일자·최종 epoch(200 도달 여부)가 명시적으로 기록되지 않음 — ep98/ep108 스냅샷 날짜만 명시됨",
+      "MULTIAQUA 버전 P32 실행 여부 기록 없음"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py",
+      "tools/eval_reliability_auroc.py",
+      "tools/viz_features_full.py",
+      "configs/deliver/b200-deliver_rgbdel_P32_physaug.yaml",
+      "B200 서버",
+      "/home/gm_huis/p32_best_ep108.pth"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md §P32",
+      ".claude_logs/experiments/analysis/p32-phase0-results.md",
+      ".claude_logs/experiments/analysis/2026-07-07-p32-perimage-analysis.md",
+      ".claude_logs/experiments/analysis/p32-verification-p33v2.md",
+      ".claude_logs/decisions/2026-07-05-p32-seg-arch-proposals.md",
+      ".claude_logs/status/history-2026H2.md (2026-07-08 표)",
+      ".claude_logs/research/hypothesis-ledger.md H2"
+    ]
+  },
+  {
+    "key": "P33",
+    "title": "[Drone] P33 — CG-MoD: Competence-Gated Hard Fusion + Modality Dropout, P33.1/P33.2 조기중단 (DELIVER)",
+    "period": "2026-07-07(설계) / P33.1 2026-07-09~07-11(조기중단) / P33.2 2026-07-11~07-12(조기중단)",
+    "track": "seg-DELIVER",
+    "status": "P33.1 조기중단(val~60 천장, 이득 0) / P33.2 조기중단(ep56 부근, 무효과) → P34로 피벗. 🔴 arch-evolution.md는 'P33.1 완주 수치·판정 기록 없음'으로 명시하나 monitor-log.md에는 조기중단 시점 수치가 실재함(문서 간 모순, todo 참조)",
+    "summary": {
+      "change": "P32의 corroboration(corr_veto) 신호는 유지한 채, 신호 소비 지점을 attention-bias(soft)에서 출력 융합 게이트(hard)로 승격. C1 competence-gated hard fusion(top-k/sharpened, τ0.25) + C3 calibration 복원(P33.1) + C2 stochastic modality dropout(img/depth 확률적 제거, P33.2에서 추가) + C4 thin-class 강건화(미실행)",
+      "result": "P33.1(C1+C3): 조기중단 시점 Day-Val 60.47@ep52 / Test 53.31@ep118(ep120에서 수동 종료). P33.2(P33.1+C2): 조기중단 Day-Val 59.83@ep46 / Test 51.96@ep44(ep56 부근에서 대체 종료)",
+      "verdict": "둘 다 P32(val64.12/test55.00) 미달 확정 — val~60 천장이 P33 계열 공통으로 재확인됨. competence-fusion+RBMA calib 이득 0, modality dropout도 천장을 못 올림 → P34(DINOv3 backbone 전환)로 피벗"
+    },
+    "background": [
+      "P32 4축 독립 검증: misalloc 51.6%는 증상(비용 아님), CoRB attn-bias는 유의한 순손해(Wilcoxon p=4.5e-22)",
+      "P32 per-image 분석(ep108): competence depth43.7 ≫ event16.9≈lidar15.3인데 UAMM은 균일(0.27/0.27/0.23/0.23)=misalloc51.6%, corroboration Δlogit0.25인데 flip0.046%=결정에 못 미침",
+      "val 생존/test 사망 클래스(Wall/Bridge/Water/TrafficLight)는 frozen-backbone ceiling이 아니라 day→night/test class-transfer 문제로 재해석됨"
+    ],
+    "architecture": {
+      "one_liner": "P32의 corroboration(corr_veto) 신호를 유지한 채, 소비 지점을 attn-bias에서 competence-gated hard fusion(C1)·modality dropout(C2)·calibration 복원(C3)으로 확장한 LoRA_Sam_P33(LoRA_Sam_P32)",
+      "components": [
+        ["C1 Competence-Gated Fusion", "per-pixel per-modal 융합가중 w_i(x) = softmax(g(reliability, corroboration, feature summary)/τ), τ<1 sharpening + entropy 정규화 또는 top-k(k=2) hard selection, uniform에서 시작해 competence 방향으로 학습", "sam_lora_image_encoder_seg.py LoRA_Sam_P33, config AMF_MODE: competence_gate / GATE.TAU / GATE.TOPK / GATE.ENTROPY_REG"],
+        ["C2 Stochastic Modality Dropout(PruneMem)", "학습 스텝마다 확률 p_drop로 img/depth 중 1개를 memory/입력에서 제거(0→0.3 warmup), event/LiDAR는 드롭 안 함, eval은 전모달", "config MODAL_DROPOUT.ENABLE / P / TARGETS:[img,depth] / WARMUP_EP"],
+        ["C3 Calibration 복원", "P31 calibration loss 부활(per-modal decoder logit shaping) + corroboration을 gate 입력으로 승격(soft attn-bias는 보조 유지 또는 제거)", "config CALIBRATION.ENABLE:true, CORROBORATION.CONSUME: gate(기존 bias에서 변경)"],
+        ["C4 Thin-class 강건화(설계만, 실행 기록 없음)", "class-balanced/focal loss, night-consistency reg, (옵션·고위험) backbone 마지막 stage unfreeze", "config LOSS.CLASS_BALANCED, LOSS.FOCAL_GAMMA, NIGHT_CONSISTENCY.ENABLE, UNFREEZE_LAST_N_BLOCKS — P33.4 단계, 실행 안 됨"]
+      ],
+      "mermaid": "flowchart LR\n  CORR[corroboration signal from P32] --> GATE[C1 competence-gated fusion]\n  RELI[per-modal reliability] --> GATE\n  GATE --> FUSE[hard sharpened output fusion]\n  IMGD[img and depth input] --> DROPOUT[C2 stochastic modality dropout]\n  DROPOUT --> ENC[SAM2 encoder]\n  CAL[C3 calibration loss restored] --> RELI\n  FUSE --> OUT[segmentation output]\n  class GATE new\n  class FUSE new\n  class DROPOUT new\n  class CAL new",
+      "rationale": [
+        "F1(misalloc51.6%)→C1, F2(event/lidar competence≈16)→C2, F3(corroboration flip0.046%)→C3, F4(val/test class-transfer)→C4의 1:1 대응 설계",
+        "출력-fusion-gate 지점은 선행연구가 더 많이 점유한 셀 — 노벨티는 조합·비대칭·진단주도로만 방어 가능하다고 vault relatedworks(97노트) 마이닝으로 명시됨"
+      ],
+      "setting": [
+        "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py: LoRA_Sam_P33(LoRA_Sam_P32)",
+        "DELIVER 4모달(img/depth/event/lidar)",
+        "configs/deliver/b200-deliver_rgbdel_P33_1_physaug.yaml, _P33_2_physaug.yaml, _P33_3_physaug.yaml(구현 없는 config placeholder)",
+        "B200 GPU2-5",
+        "EPOCHS200 목표(둘 다 조기중단)"
+      ]
+    },
+    "results": {
+      "gate": "단계별 설계 게이트: (a) test mIoU > P28 55.27, (b) misalloc%↓, (c) event/lidar competence↑, (d) corroboration flip%↑ — 조기중단으로 실측 게이트 통과 기록 없음",
+      "table": [
+        ["P32 baseline", "64.12@ep98", "55.00", "비교 기준"],
+        ["P33.1(C1+C3, 조기중단 ep120)", "60.47@ep52", "53.31@ep118", "P32 대비 val−3.65/test−1.7"],
+        ["P33.2(P33.1+C2, 조기중단 ~ep56)", "59.83@ep46", "51.96@ep44", "P32 대비 val−4.29/test−3.04, P33.1 대비도 소폭 열세"]
+      ],
+      "per_condition": [],
+      "per_class": [],
+      "invalid": []
+    },
+    "analysis": [
+      "P33.1 초반(ep36~46)에는 P32 val 궤도를 거의 따라잡음(ep40 val −0.04로 사실상 동률)이나 이후 정체 — Day-Val 60.47@ep52 이후 68ep 미갱신(plateau)",
+      "P33.2 초반(ep18)엔 P33.1 대비 val+1.1/test+1.9로 앞섰으나 중반(ep46~52)에 리드가 소멸, P33.1과 동일한 val~60 천장 재확인",
+      "P33 계열 공통: val~60 천장, competence-fusion+RBMA calib 이득 0(P32 대비 순손해) — 조기중단 판정문에 명시됨"
+    ],
+    "verdict": {
+      "worked": "미완결(기록 소실) — arch-evolution.md는 '완주 수치·판정 기록 없음, 성능 판정 불가'로 명시. 단 monitor-log.md에는 두 단계 모두 조기중단 시점 수치가 남아있어(P33.1 val60.47/test53.31, P33.2 val59.83/test51.96) 문서 간 불일치가 있음(todo 참조)",
+      "why": "arch-evolution.md 기준으로는 미기록/원인 불명. monitor-log.md 판정문 기준으로는 'competence-fusion+RBMA calib 이득 0'(P32 대비 val/test 모두 미달), modal-dropout도 천장을 못 올림",
+      "handoff": "무조건(unconditional) modality dropout은 이후 P39.1/P40/P42 제안서에서 no-op으로 재인용되며 재시도 금지 항목으로 등재됨(단 1차 근거 로그가 미확인이라는 단서가 병기됨). P33-v2의 CLIP-text anchor는 '내부신호만' 방침으로 폐기됨(P46 제안서 §노벨티). B200 마감(2026-07-15) 임박으로 우선순위가 P34-ReliaDINO(백본 교체)로 전환됨"
+    },
+    "todo": [
+      "🔴 arch-evolution.md는 'P33.1 완주 수치·판정 기록 없음'이라 명시하나, monitor-log.md RUN-16/RUN-19에는 조기중단 시점의 수치가 실재함(P33.1 val60.47@ep52/test53.31@ep118, P33.2 val59.83@ep46/test51.96@ep44) — 두 원천 문서가 모순됨. 어느 쪽을 canonical로 볼지 확인 필요",
+      "P33.3(=+C3 완전형, corroboration을 gate입력으로 완전 승격) 실행 기록 없음 — config만 존재(고유 구현 없는 placeholder로 기록됨)",
+      "P33.4(C4 thin-class 강건화) 실행 기록 없음"
+    ],
+    "sources": [
+      "semseg/models/sam2/sam2/sam_lora_image_encoder_seg.py",
+      "semseg/models/sam2/sam2/sam_lola_utils.py",
+      "configs/deliver/b200-deliver_rgbdel_P33_1_physaug.yaml",
+      "configs/deliver/b200-deliver_rgbdel_P33_2_physaug.yaml",
+      "configs/deliver/b200-deliver_rgbdel_P33_3_physaug.yaml",
+      "B200 서버 GPU2-5",
+      "tools/viz_features_full.py",
+      "tools/module_diagnostics.py",
+      "tools/eval_reliability_auroc.py"
+    ],
+    "_internal_refs": [
+      ".claude_logs/models/arch-evolution.md §P33",
+      ".claude_logs/decisions/2026-07-07-p33-cgmod-design.md",
+      ".claude_logs/experiments/analysis/2026-07-07-p32-perimage-analysis.md",
+      ".claude_logs/experiments/analysis/p32-verification-p33v2.md",
+      ".claude_logs/experiments/monitor-log.md RUN-16, RUN-19, RUN-20",
+      ".claude_logs/experiments/log.md (P33.2 후속 스테이지 언급)"
+    ]
+  },
+  {
+    "key": "ProbeA1",
+    "title": "[Drone] ProbeA1 — SAM2 vs DINOv3 frozen backbone 통제 프로브, +11.6 (DELIVER)",
+    "period": "2026-07-12",
+    "track": "probe",
+    "status": "완료",
+    "summary": {
+      "change": "SAM2-Hiera와 DINOv3 frozen backbone 각각에 동일한 경량 seg head를 얹어(모듈 개입 0) 선형 분리성만 통제 비교",
+      "result": "img test mIoU 40.51(DINOv3) vs 28.90(SAM2) = +11.6, depth 35.48 vs 25.34 = +10.1, TrafficLight class 32.2 vs 8.27(3.9배)",
+      "verdict": "백본 피쳐의 선형 분리성 자체가 DINOv3 압승 — 계보 최대 단일 변수로 채택됨(hypothesis-ledger H6 확인)"
+    },
+    "background": [
+      "P28~P32 표준분석(2026-07-12)의 결정적 발견: SAM2 계열 피쳐가 rank-1 수준으로 붕괴(depth eff.rank 1.1, 융합 후 1.26) + 모달 간 비정렬(cross-modal CKA ~0.02~0.16)",
+      "SAM2 계열 4세대(P28~P32)의 fusion 모듈 반복 개선이 val~64/test~55 천장에서 정체"
+    ],
+    "architecture": {
+      "one_liner": "frozen backbone feature 위에 모듈 개입 없는 동일한 경량 head를 얹어 SAM2-Hiera와 DINOv3의 선형 분리성만 비교하는 통제 probe",
+      "components": [
+        ["A-1 frozen linear probe", "SAM2/DINOv3 각각 frozen feature 추출 후 동일 경량 seg head로 DELIVER 25-class 학습, fusion/RBMA 등 모듈 개입 0", "tools/probe_frozen_backbone.py(커밋 682fa9e, DELIVER/25-class/CASES 전용 — MUSES 등에 그대로 재사용 불가함이 후속 ProbeA2 문서에서 확인됨)"]
+      ],
+      "mermaid": "flowchart LR\n  SAM2[SAM2-Hiera frozen] --> FEAT1[frozen feature]\n  DINO[DINOv3 frozen] --> FEAT2[frozen feature]\n  FEAT1 --> HEAD1[동일 경량 seg head]\n  FEAT2 --> HEAD2[동일 경량 seg head]\n  HEAD1 --> M1[SAM2 mIoU]\n  HEAD2 --> M2[DINOv3 mIoU]\n  M1 --> DELTA[Delta plus11.6]\n  M2 --> DELTA\n  class DELTA new",
+      "rationale": [
+        "엔드투엔드 비교(P34 vs SAM2 최고)는 구조·학습레시피가 전부 다르므로, 백본 자체의 순수 기여를 분리하려면 모듈 개입 없는 통제 실험이 필요함"
+      ],
+      "setting": [
+        "tools/probe_frozen_backbone.py",
+        "DELIVER 25-class(img/depth 확인, event/lidar 결과는 repo 문서에 인용 없음)",
+        "원 산출 디렉토리로 알려졌던 analysis_logs/ProbeA1_dinov3_20260712/는 2026-08-09 재확인 결과 비어 있었음(코드는 repo tools/에 보존)",
+        "실행 서버 명시 없음"
+      ]
+    },
+    "results": {
+      "gate": "게이트 없음(비교 프로브)",
+      "table": [
+        ["구성/ckpt", "val", "test", "비고"],
+        ["img — SAM2", "기록 없음", "28.90", "동일 head, DINOv3 대비 −11.6"],
+        ["img — DINOv3", "기록 없음", "40.51", "동일 head, SAM2 대비 +11.6"],
+        ["depth — SAM2", "기록 없음", "25.34", "동일 head, DINOv3 대비 −10.1"],
+        ["depth — DINOv3", "기록 없음", "35.48", "동일 head, SAM2 대비 +10.1"]
+      ],
+      "per_condition": [],
+      "per_class": [
+        "TrafficLight: DINOv3 32.2 vs SAM2 8.27(3.9배) — 그 외 클래스별 수치는 vault 리포트에만 있고 repo 문서에는 인용되지 않음"
+      ],
+      "invalid": []
+    },
+    "analysis": [
+      "해석: SAM2-Hiera 사전학습은 promptable mask/객체성 중심(semantic 구분·비RGB 전이 약함), DINOv3는 self-supervised dense semantic 표현(모달을 이미지로 렌더한 입력에도 의미 정렬)",
+      "공통 한계: Wall/Bridge/Water는 DINOv3 probe에서도 0 — 데이터셋 고유 문제(M0-a에서 공식 CMNeXt도 동일하게 0으로 확인됨)",
+      "이 프로브의 +11.6 수치는 hypothesis-ledger H6(표현력이 지배 변수)의 핵심 근거로 채택됨"
+    ],
+    "verdict": {
+      "worked": "확인(H6 채택) — 백본 표현력이 계보 최대 단일 변수",
+      "why": "SAM2-Hiera 사전학습 목적(promptable mask)이 dense semantic 구분에 약함",
+      "handoff": "P34(DINOv3 ViT-L/16 frozen + per-modal LoRA)로 백본 전환을 결정하는 직접 근거가 됨. ProbeA2(스케일링 프로브)로 후속 확장"
+    },
+    "todo": [
+      "ProbeA1의 원 실행 스크립트가 NAS analysis_logs 산출 디렉토리에 있다고 알려졌으나 2026-08-09 확인 결과 비어 있었음 — 코드는 repo tools/probe_frozen_backbone.py(커밋 682fa9e)로 사후 특정됐고, 원 실행 당시 실제로 이 스크립트를 썼는지 1:1 확인은 안 됨",
+      "vault 리포트(2026-07-12_A1probe_M0a_backbone_benchmark_verdict.md) 원문은 이 조사에서 열람하지 않음 — repo 문서에 인용된 수치만 반영"
+    ],
+    "sources": [
+      "tools/probe_frozen_backbone.py"
+    ],
+    "_internal_refs": [
+      ".claude_logs/experiments/analysis/2026-07-12-p29-p34-standard-analysis.md §백본 계보 비교 (1. 통제 비교 A-1 frozen linear probe)",
+      ".claude_logs/research/hypothesis-ledger.md H6",
+      ".claude_logs/decisions/2026-08-08-probea2-backbone-scaling-request.md §① (ProbeA1 인용)"
+    ]
+  },
+  {
+    "key": "ProbeA2",
+    "title": "[Drone] ProbeA2 — DINOv3 S+/B/L/H+/7B 백본 스케일링 프로브, RGB 단독 (MUSES)",
+    "period": "2026-08-08(의뢰) ~ 2026-08-12(7B 종결)",
+    "track": "probe",
+    "status": "완료(G-A2-상한/하한/7B 축분리 전부 종결, hypothesis-ledger H12/H12′ 확정)",
+    "summary": {
+      "change": "DINOv3 S+(29M)/B(86M)/L(300M)/H+(840M)/7B(6.7B) 5종 frozen backbone에 4종 완전 동일한 경량 head(conv1x1, non-learnable channel-LN)를 얹어 MUSES RGB 단독으로 스케일링 곡선을 측정",
+      "result": "val mIoU(best): S+ 59.85 / B 62.82 / L 68.67 / H+ 69.19 / 7B 69.37@ep9(final 69.16). 구간별: S+→B +2.97, B→L +5.85(최대구간), L→H+ +0.52, H+→7B +0.18",
+      "verdict": "L 이상 스케일링은 급격한 수확체감(hypothesis-ledger H12 반증 확정, 2026-08-12) — '더 큰 고정 백본'은 다음 이득 축이 아님. 단 S+→L 구간(+8.82)은 여전히 지배적 변수(H12′도 반증: 방법 기여는 대형 백본 전제라는 정직한 공개가 필요)"
+    },
+    "background": [
+      "ProbeA1: SAM2→DINOv3-L 통제비교에서 +11.6(계보 최대 단일 변수)로 확인됨",
+      "적응 가설 계열(H1~H4) 전부 폐쇄 후 남은 이득 축이 표현력·해상도·학습신호로 좁혀짐",
+      "경쟁군 Swin-T(28M) 용량 정합 방어 Table 필요성 제기됨"
+    ],
+    "architecture": {
+      "one_liner": "5종 DINOv3 백본(S+/B/L/H+/7B) frozen feature 위에 4종 완전 동일한 경량 head를 얹어 RGB 단독으로 스케일링 곡선만 측정하는 2단 분리(feature 추출 bf16 → 캐시 feature 위 head 학습) 통제 프로브",
+      "components": [
+        ["백본 4~5종 로더", "S+(384dim)/B(768dim)/L(1024dim)/H+(1280dim)/7B(6716.0M params), HF_HUB_OFFLINE=1 사용 금지(fresh 로드가 RANDOM INIT되는 사고 방지)", "tools/probe_backbone_scaling.py(develop 6b33a2b/2511b61)"],
+        ["경량 head", "conv1x1 + non-learnable channel-LN, 4종 백본 전부 동일 사양, 40epoch·batch16·cosine·seed0·LR 3개 동시 스윕(headline만 표기)", "동 스크립트"],
+        ["§⑧ 축분리 게이트", "헤드라인 mIoU가 조건 상쇄로 오염됨이 실측되어, adverse(night+fog/rain/snow) 서브셋 Δ로 재판정하도록 사후 등록됨", "decisions/2026-08-08-probea2-backbone-scaling-request.md §⑧"]
+      ],
+      "mermaid": "flowchart LR\n  SPLUS[DINOv3 S plus 29M] --> EXTRACT[bf16 frozen feature 추출]\n  BMOD[DINOv3 B 86M] --> EXTRACT\n  LMOD[DINOv3 L 300M] --> EXTRACT\n  HPLUS[DINOv3 H plus 840M] --> EXTRACT\n  SEVENB[DINOv3 7B] --> EXTRACT\n  EXTRACT --> HEAD[동일 경량 head 40ep]\n  HEAD --> CURVE[스케일링 곡선]\n  CURVE --> GATE[축분리 게이트 G-A2]\n  class SEVENB new\n  class GATE new",
+      "rationale": [
+        "ProbeA1과 데이터셋·head·프로토콜이 전부 달라 직접 비교 불가함을 명시(DELIVER/25-class 전용 코드를 MUSES에 재사용 불가 → head 사양 신규 고정, §⑤ 폴백 적용)",
+        "eval_res=512는 비공식 프로토콜 — 절대치 비교 금지, 백본 간 Δ만 유효하도록 스크립트가 강제함"
+      ],
+      "setting": [
+        "tools/probe_backbone_scaling.py",
+        "MUSES RGB 단독(train 1500 전체·val 250)",
+        "코드 = develop 6b33a2b/2511b61",
+        "jarvis GPU1(S+/B/L/H+ 4종) → hpca100 GPU2-3(7B 최종)",
+        "40 epoch, batch16, cosine, seed0, LR 3개 스윕(헤드라인만 표기), eval_res 512(비공식 경량 프로토콜)"
+      ]
+    },
+    "results": {
+      "gate": "G-A2-상한(1차): mIoU(H+)-mIoU(L)=+0.52 → 중간대역(+0.5~1.5 판정기준에 근접 미달) → 7B 추가측정 진행. G-A2-하한: mIoU(L)-mIoU(S+)=+8.82(>3.0) → 본런 없이 대형 백본 전제 정직 공개. G-A2-7B-악조건(최종): adverse 7조건 평균 +0.28(<+0.5), 야간 4조건 평균 −0.57 → H+의 야간집중 이득이 7B로 연장 안 됨 → 표현력 축 소진 최종 확정",
+      "table": [
+        ["구성/ckpt", "val(best)", "val(final)", "비고"],
+        ["DINOv3-S+", "59.85", "59.82", "params 28.7M, dim384, lr1e-3"],
+        ["DINOv3-B", "62.82", "62.79", "params 85.6M, dim768"],
+        ["DINOv3-L", "68.67", "68.32", "params 303.1M, dim1024 — ProbeA1과 접점"],
+        ["DINOv3-H+", "69.19", "68.99", "params 840.5M, dim1280"],
+        ["DINOv3-7B", "69.37@ep9", "69.16", "params 6716.0M, hpca100 GPU2-3, protocol parity 확인됨"]
+      ],
+      "per_condition": [
+        "L vs H+(best-lr, MUSES 8조건): clear_day 63.60→60.54(−3.06), clear_night 57.74→58.44(+0.70), fog_day 75.11→75.10(−0.01), fog_night 56.39→60.07(+3.68), rain_day 49.06→50.01(+0.95), rain_night 53.33→58.00(+4.67), snow_day 63.99→64.47(+0.48), snow_night 56.89→61.13(+4.24)",
+        "7B 최종 §⑧ 축분리(Δ=7B−H+, best-lr): clear_day +2.82 · clear_night +0.95 · fog_day −0.81 · fog_night +0.37 · rain_day +4.55 · rain_night −2.72 · snow_day +0.49 · snow_night −0.89"
+      ],
+      "per_class": [],
+      "invalid": [
+        "eval_res=512 절대치는 MUSES 공식 벤치마크(tools/eval_muses_official.py)·리더보드·ProbeA1과 비교 금지 — 백본 간 Δ만 유효(스크립트가 강제)",
+        "clear_day의 H+ −3.06(1차 결과)은 7B 재측정에서 +2.82로 반등 → 프로브 노이즈(단일 seed·40ep head, 노이즈밴드 ±1~3)로 재해석됨. §4의 '악조건 집중' 서술은 정황(단일 구간 관찰)으로 격하됨"
+      ]
+    },
+    "analysis": [
+      "스케일링 곡선: S+→B +2.97, B→L +5.85(계보 최대구간), L→H+ +0.52(급격한 수확체감, 4배 파라미터에 이득이 1/10 수준)",
+      "L vs H+ 조건별(1차): 헤드라인 Δ(+0.52)는 조건간 상쇄의 결과 — H+는 야간·악천후 3종(fog/rain/snow_night)에서 +3.7~4.7의 뚜렷한 이득을 보이나 clear_day에서는 −3.06 손해",
+      "7B 최종: H+의 야간집중 이득(+3.7~4.7)이 7B로 연장되지 않음(adverse 7조건 평균 +0.28<+0.5, 야간 4조건 평균 −0.57) → 악조건 축을 포함해 표현력 축 소진(H12 완전 폐쇄)",
+      "CEA(조건-전문가 적응) 프로브 폐기, P46@1024 게이트 미달과 같은 방향으로 수렴 — 배분·해상도·순수 스케일 확대 세 축 모두 정체 근처"
+    ],
+    "verdict": {
+      "worked": "L까지는 표현력이 지배 변수로 작동(S+→L +8.82), L 이상(H+/7B)에서는 소진됨",
+      "why": "L 부근에서 표현력 축이 이미 상당히 포화 — 8배 파라미터(H+→7B)를 늘려도 +0.18에 불과함",
+      "handoff": "hypothesis-ledger H12(반증, 2026-08-12 확정)·H12′(반증) 갱신. 스케일링 곡선 5점은 논문 그림 자산으로 회수, 백본 승급 본설계는 차기 방향에서 제외됨"
+    },
+    "todo": [
+      "단일 시드(seed=0 1회)만 측정 — 시드 분산 미측정",
+      "S+/B/L/H+ 4종은 jarvis, 7B만 hpca100에서 측정됨 — 동일 서버·환경 통제 여부가 문서에 명시되지 않음",
+      "DELIVER 반복 측정은 '시간 남으면' 선택사항으로 의뢰됐으나 실행 여부 기록 없음"
+    ],
+    "sources": [
+      "tools/probe_backbone_scaling.py",
+      "jarvis GPU1",
+      "hpca100 GPU2-3",
+      "develop 6b33a2b",
+      "develop 2511b61"
+    ],
+    "_internal_refs": [
+      ".claude_logs/experiments/analysis/2026-08-09-probea2-backbone-scaling.md",
+      ".claude_logs/decisions/2026-08-08-probea2-backbone-scaling-request.md",
+      ".claude_logs/research/hypothesis-ledger.md H12, H12′"
+    ]
+  }
+]

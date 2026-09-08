@@ -1,0 +1,2448 @@
+[
+ {
+  "key": "P29-Det",
+  "title": "[Drone-Det] P29-Det — 라벨 수리(v2)·LiDAR egofill 데이터로 mAP50 0.85 달성 (poongsan)",
+  "period": "2026-06-30 ~ 2026-07-08",
+  "track": "det",
+  "status": "완주(egofill 데이터로 목표 달성)",
+  "summary": {
+   "change": "SAM2 Hiera-B+ + SoftMoE-LoRA + RBMA 백본에 FPN+FCOS 검출 헤드(mean fusion)를 얹고, poongsan 실내 데이터 라벨 버그를 수리(v2 clean split)한 뒤 LiDAR egofill 데이터로 재학습함",
+   "result": "v2 clean-label 기준 mAP50 0.446@ep9(공식 v2 test) → egofill(train 11,799) 기준 mAP50 0.8501@ep9(동일 v2 test 1772장, 공식) → 목표 0.85 달성",
+   "verdict": "데이터(라벨 결손·LiDAR 결측) 문제였음이 확정됨. 동일 시기 YOLO RGB-only도 0.821→0.864로 개선돼 스택 문제가 아니라 데이터 문제였음이 교차 확인됨"
+  },
+  "background": [
+   "구 라벨셋(v1) 학습 시 COCO AP≈0(ep4 AP 0.0032), 원인 = 전체 step의 53.1%가 n_pos=0(FCOS positive 타겟 0개)",
+   "빈 프레임이 실제 배경이 아니라 사람·문·창문·비상구·소화기 등 객체가 있는데 라벨만 없는 미레이블(false negative) 프레임으로 확인됨",
+   "새 라벨셋(260618_poongsan, 8 captures, empty 0%)으로 교체하고 v2(캡처 holdout)/v3(캡처 내 시간분할) split을 생성함",
+   "v2 clean 재학습 결과 mAP50 0.446@ep9(피크 후 하락)",
+   "LiDAR는 RGB 15Hz vs LiDAR 10Hz 주기 차이로 라벨 프레임의 37%가 depth_map_lidar 없음 → ego-motion 보정 최근접 스캔 재투영(egofill)으로 LiDAR 커버리지 56%→98.6%, train 5,862→11,799(2.01배)로 확대",
+   "egofill 데이터로 재학습 시 mAP50 0.4455→0.8501@ep9로 목표 0.85 달성"
+  ],
+  "architecture": {
+   "one_liner": "SAM2 Hiera-B+ 인코더(SoftMoE-LoRA+RBMA) → extract_det_features(fpn0 s4/fpn1 s8/mem s16, mean fusion) → FPNNeck → FCOS 3-scale(stride 4/8/16) + ATSS",
+   "components": [
+    [
+     "mean fusion",
+     "3모달(RGB/LiDAR/Thermal) FPN feature를 단순 평균",
+     "MODALITY_FUSE: mean, AMF_MODE: uniform"
+    ],
+    [
+     "FCOS head",
+     "stride[4,8,16] dense head + ATSS",
+     "FPNNeck + FCOS"
+    ],
+    [
+     "egofill LiDAR",
+     "ego-motion 보정 최근접 스캔 재투영으로 LiDAR 결측 보완",
+     "depth_map_lidar_egofill/"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> D[SAM2 encoder]\n  B[LiDAR egofill] --> D\n  C[Thermal] --> D\n  D --> E[mean fusion FPN]\n  E --> F[FCOS head]\n  F --> G[boxes]\n  class B new",
+   "rationale": [
+    "P29 seg(RBMA)를 그대로 상속해 detection으로 확장함",
+    "라벨 버그(빈 프레임 미레이블) 진단 후 모델 변경보다 데이터 수리를 우선함",
+    "egofill = RGB/LiDAR 주기 불일치를 ego-motion 보정 재투영으로 해소해 학습 데이터를 2.01배 확보"
+   ],
+   "setting": [
+    "sam_lora_image_encoder_seg.py LoRA_Sam_P29_Det",
+    "poongsan indoor RGB+LiDAR+Thermal, v2 capture-holdout split / egofill 통합 split",
+    "configs/det/det_P29_egofill_bengio.yaml, configs/det/det_P29_event_bengio.yaml",
+    "jarvis(v2 clean 재학습) / bengio(egofill, 5×3090 DDP)",
+    "50 epoch, LR 2e-4, batch1/GPU, AMP"
+   ]
+  },
+  "results": {
+   "gate": "목표 mAP50 0.85 — egofill 런에서 통과(0.8501)",
+   "table": [
+    [
+     "구성/ckpt",
+     "mAP",
+     "mAP50",
+     "mAP75",
+     "비고"
+    ],
+    [
+     "v1 구라벨(초기)",
+     "0.0020@ep9",
+     "기록 없음",
+     "기록 없음",
+     "n_pos=0 53.1%, 사실상 미학습"
+    ],
+    [
+     "v2 clean label(재학습) ep9",
+     "0.269",
+     "0.446",
+     "0.283",
+     "AP_small 0.120, ep9 피크 후 하락"
+    ],
+    [
+     "egofill(train 11,799) ep9",
+     "기록 없음",
+     "0.8501",
+     "기록 없음",
+     "공식 v2 test 1772장, 목표 0.85 달성"
+    ],
+    [
+     "event ablation(img+event+thermal) ep14",
+     "0.5174",
+     "0.8427",
+     "0.5600",
+     "event ≈ egofill-lidar(−0.008)"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "P30-Det과의 비교(대형 근접·소형 붕괴)는 P30-Det 항목에 별도 기록",
+   "egofill 자체의 동적 객체(사람 3클래스) 오차는 별도 clean-lidar 셋으로 통제됨(datasets/lidar-egofill.md)"
+  ],
+  "verdict": {
+   "worked": "예 — 데이터 수리로 목표 달성",
+   "why": "라벨 결손(빈 프레임 미레이블)과 LiDAR 결측이 근본 원인이었고, 데이터 수리로 해소됨",
+   "handoff": "v2 clean-label + egofill 조합이 이후 P30/P31.1/P34 등 모든 후속 det 실험의 기준 데이터셋이 됨"
+  },
+  "todo": [
+   "det_P29_final_full(최종 annotation 재학습)이 egofill split과 스케일이 다른 이유(캡처 구성 상이)가 문서에 상세 설명되어 있지 않음"
+  ],
+  "sources": [
+   "configs/det/det_P29_egofill_bengio.yaml",
+   "configs/det/det_P29_event_bengio.yaml",
+   "scripts/build_det_splits.py",
+   "sam_lora_image_encoder_seg.py"
+  ],
+  "_internal_refs": [
+   ".claude_logs/det/p29det-data-fix.md",
+   ".claude_logs/datasets/lidar-egofill.md",
+   ".claude_logs/det/diagnosis-plan.md §0/§9",
+   ".claude_logs/experiments/registry.md Det"
+  ]
+ },
+ {
+  "key": "P30-Det",
+  "title": "[Drone-Det] P30-Det — reliability-router+object-query decoder, 소형객체 붕괴로 폐기 (poongsan)",
+  "period": "2026-06-30 ~ 2026-07-28",
+  "track": "det",
+  "status": "폐기(dead — 소물체 붕괴)",
+  "summary": {
+   "change": "P29-Det에 reliability-anchored router(모달 융합)와 object-query decoder(DETR류 primary head)를 추가하고 FCOS는 보조(aux)로 유지함",
+   "result": "v2 test 기준 mAP50 0.256@ep39(최종, P29 ep9 0.446 대비 −0.190). 대형객체는 대등(−0.02~0.07)하나 소형 붕괴(AP_small 0.015, AR_small 0.041)",
+   "verdict": "모듈(RBMA/router)이 아니라 object-query decoder(head)의 소형객체 미검출이 하락 원인으로 판정됨(E0.1 FCOS aux 단독 eval로 확정)"
+  },
+  "background": [
+   "P29-Det의 mean fusion이 RBMA/신뢰도 기반 융합을 사용하지 않아 P30에서 이식을 시도함",
+   "P30 ep24 중간 스냅샷 mAP50 0.2285(P29 대비 −0.217), 대형 근접·소형 붕괴 양상이 조기에 관측됨",
+   "ep39 최종에도 동일 패턴 유지(전체 −0.19, 소형 클래스에서 −0.35~−0.42)"
+  ],
+  "architecture": {
+   "one_liner": "ReliabilityAnchoredRouter(per-FPN-level 모달 융합) + ObjectQueryDecoder(DETR류 100query, Hungarian set loss) + FCOS aux",
+   "components": [
+    [
+     "ReliabilityAnchoredRouter",
+     "w=softmax(learned_logits+λ·reliability), zero-init conv head",
+     "sam_lola_utils.py ReliabilityAnchoredRouter"
+    ],
+    [
+     "ObjectQueryDecoder",
+     "N개 query가 fused mem(RBMA bias 보유)에 cross-attend, Hungarian set loss",
+     "objdet/models/heads/query_decoder.py"
+    ],
+    [
+     "FCOS aux",
+     "보조 dense head, 조기수렴 안정화용",
+     "USE_FCOS_AUX: true"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> D[SAM2 mem feature]\n  B[LiDAR] --> D\n  C[Thermal] --> D\n  D --> E[ReliabilityAnchoredRouter]\n  E --> F[ObjectQueryDecoder]\n  F --> G[boxes]\n  D --> H[FCOS aux]\n  class E new\n  class F new",
+   "rationale": [
+    "P30 seg의 두 노벨티(class-token decoder→object-query, reliability router)를 detection으로 번역함",
+    "RBMA memory attention 활용을 헤드라인 기제로 삼음(사용자 지시)"
+   ],
+   "setting": [
+    "LoRA_Sam_P30_Det(objdet/models/det_model.py MemorySAMDetectorP30)",
+    "poongsan_v2 capture-holdout split",
+    "configs/det/det_P30_indoor.yaml",
+    "jarvis",
+    "40 epoch, AMP off(NaN 회피), batch4"
+   ]
+  },
+  "results": {
+   "gate": "판정 전(진단 목적 모듈 검증) — mAP50 목표 0.85 미달",
+   "table": [
+    [
+     "ckpt",
+     "AP(.50:.95)",
+     "AP50",
+     "AP75",
+     "AP_small",
+     "비고"
+    ],
+    [
+     "P29-Det ep9(대조)",
+     "0.269",
+     "0.446",
+     "0.283",
+     "0.120",
+     "대조군"
+    ],
+    [
+     "P30-Det ep24(중간)",
+     "0.108",
+     "0.2285",
+     "0.088",
+     "0.006",
+     "학습 중 스냅샷"
+    ],
+    [
+     "P30-Det ep39(최종)",
+     "0.129",
+     "0.256",
+     "0.116",
+     "0.015",
+     "최종 best"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [
+    "대형(Casualties/Allies/Obstacles/Enemies) AP50 −0.02~−0.07(P29 대비 근접)",
+    "소형(EmergencyExits −0.40/FireExt −0.35/Lighting −0.42) AP50 0.03~0.05로 붕괴",
+    "AR_small 0.041(작은 객체 96% 미검출)"
+   ],
+   "invalid": []
+  },
+  "analysis": [
+   "E0.1(P30 ckpt의 FCOS aux 단독 eval): aux AP50 0.431≈P29 0.446 → router 무죄, query head 유죄로 확정",
+   "RBMA(reliability bias): λ-on/off mem cos=1.000(|Δmem|≈0) → 무효과(inert). per-modal reliability가 img/lidar/thermal 모두 ≈0.99999로 포화되어 zero-mean 센터링 후 bias≈0",
+   "Router 융합: P5(query decoder 입력) 레벨 가중치 img 0.879/lidar 8.7e-9/thermal 0.121, 24장에 걸쳐 CV 3%(P5 img) — 입력과 무관한 고정 배정(non-adaptive). P3=LiDAR 0.99/P4=thermal 0.77/P5=RGB 0.88로 레벨별 상수 수렴",
+   "LiDAR feature: fpn0 L2 norm은 최대(2.92)이나 mem PCA top1=0.62로 저차원 퇴화(depth map 희소) — router가 LiDAR를 0으로 드롭하는 것 자체는 타당하나 신뢰도 기반이 아니라 학습된 고정 가중치임",
+   "실제 작동하는 모듈은 SAM2 memory-attention 자체(before/after cos≈0.04, 큰 변환)뿐"
+  ],
+  "verdict": {
+   "worked": "아니오(전체 지표 하락). 단 모듈(RBMA/router) 자체가 하락 원인은 아님",
+   "why": "object-query decoder(DETR류)가 소형 indoor 객체에서 미수렴/미검출함(P30 seg의 class-token decoder 이식이 검출에서는 head 교체를 동반한 confound). RBMA/router는 reliability 포화로 inert",
+   "handoff": "B1(COCO-pretrained head 이식) 방향을 지지함 → P37-Det family(RF-DETR head)로 이어짐"
+  },
+  "todo": [],
+  "sources": [
+   "objdet/models/det_model.py",
+   "objdet/models/heads/query_decoder.py",
+   "sam_lola_utils.py",
+   "tools/probe_det_features.py",
+   "configs/det/det_P30_indoor.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/det/diagnosis-plan.md §1 E0.1/§6/§9",
+   ".claude_logs/det/p29-vs-p30-comparison.md",
+   ".claude_logs/det/p30-statistics-and-feature-analysis.md",
+   ".claude_logs/models/arch-evolution.md P30-Det"
+  ]
+ },
+ {
+  "key": "P31.1-Det",
+  "title": "[Drone-Det] P31.1-Det — calibrated reliability+decisive router+FCOS, v3clip split (poongsan)",
+  "period": "2026-07-03",
+  "track": "det",
+  "status": "완료(v2와 직접 비교 불가로 검증 보류)",
+  "summary": {
+   "change": "calibrated dual-reliability + decisive router 정규화 + FCOS(primary, P30 교훈 반영 — object-query decoder 대신 FCOS로 복귀)",
+   "result": "v3clip split(비공식, 캡처 내 시간분할) mAP50 0.4724",
+   "verdict": "v2 split 재평가(taskboard 태스크 D2)가 수행되지 않아 P29(0.446) 대비 우열이 미확정임"
+  },
+  "background": [
+   "P30 실측 붕괴(seg Val 49.76@ep136/Test 44.10@ep146, P29 대비 −13.4/−10.2) 확인 후 P31.1로 수정됨",
+   "class-token decoder를 aux-only로 강등(최종 출력=SAM decoder 복원, CTD는 training-only aux CE)",
+   "router 'decisive' 정규화로 uniform 라우팅 해소를 시도, SDC는 off"
+  ],
+  "architecture": {
+   "one_liner": "LoRA_Sam_P31_Det(calibrated reliability + decisive router) + FCOS primary(query decoder 대신 FCOS 유지, P30 교훈 반영)",
+   "components": [
+    [
+     "decisive router 정규화",
+     "router uniform 라우팅 해소용 정규화항",
+     "P31.1 seg 수정 이식"
+    ],
+    [
+     "FCOS primary",
+     "P30의 object-query decoder를 primary로 쓰지 않고 FCOS로 복귀",
+     "det_P31_v3clip_jarvis.yaml"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> D[SAM2 encoder RBMA]\n  B[LiDAR] --> D\n  C[Thermal] --> D\n  D --> E[calibrated reliability]\n  E --> F[decisive router]\n  F --> G[FCOS primary]\n  class E new\n  class F new",
+   "rationale": [
+    "P30-Det 소형객체 붕괴가 object-query decoder 탓으로 진단(E0.1)됨에 따라 P31.1-Det는 FCOS를 primary로 유지함"
+   ],
+   "setting": [
+    "configs/det/det_P31_v3clip_jarvis.yaml",
+    "poongsan v3clip split(비공식, 캡처 내 시간분할)",
+    "기록 없음",
+    "jarvis GPU1-4",
+    "기록 없음"
+   ]
+  },
+  "results": {
+   "gate": "판정 보류(v2 재평가 필요, taskboard D2)",
+   "table": [
+    [
+     "구성/ckpt",
+     "mAP50",
+     "비고"
+    ],
+    [
+     "P31.1-Det v3clip ep4",
+     "0.4619",
+     "조기 체크포인트"
+    ],
+    [
+     "P31.1-Det v3clip(완료)",
+     "0.4724",
+     "v2와 직접 비교 불가"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": [
+    "v3clip 수치는 시간분할 split(낙관 편향) — v2(캡처 holdout) 기준 P29 0.446과 직접 비교 금지"
+   ]
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "미확정",
+   "why": "v2 재평가가 이루어지지 않아 P29 대비 개선 여부가 미확정임",
+   "handoff": "v2 재평가(taskboard D2), egofill 데이터와 결합한 det_P31_egofill(monitor RUN-12) 실험으로 이어짐"
+  },
+  "todo": [
+   "v2 split 재평가 결과를 문서에서 찾지 못함",
+   "det_P31_egofill(monitor RUN-12) 결과 값을 문서에서 찾지 못함"
+  ],
+  "sources": [
+   "configs/det/det_P31_v3clip_jarvis.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/det/diagnosis-plan.md §7",
+   ".claude_logs/experiments/registry.md Det",
+   ".claude_logs/meta/taskboard.md",
+   ".claude_logs/experiments/monitor-log.md RUN-10/RUN-12"
+  ]
+ },
+ {
+  "key": "P37-P38-Det-architecture",
+  "title": "[Drone-Det] P37/P37a/P37b-Det — RF-DETR NMS-free head 이식, CEFR active/ClassToken NO-OP (poongsan)",
+  "period": "2026-07-14 ~ 2026-07-28",
+  "track": "det",
+  "status": "구조 분석 완료(절대 성능 수치는 원 문서에서 확인 안 됨)",
+  "summary": {
+   "change": "ReliaDINO(DINOv3) 백본 위 검출 head를 FCOS(P34/P35/P36)에서 RF-DETR NMS-free 디코더(COCO-pretrained, one-to-one Hungarian)로 교체함. P37a는 CEFR(2-pass feature blend) 추가, P37b는 ClassToken 추가",
+   "result": "구조/파라미터 실측(P37 total 356.6M/trainable 53.5M/head 9.9M, P37b total 359.7M/trainable 56.6M/head 9.9M) + 메커니즘별 ΔmAP50: P37a CEFR −0.0197(agreement 0.000, ACTIVE), P37b classtoken 0.0000(agreement 1.000, NO-OP)",
+   "verdict": "P37b의 class-token 추가는 검출에 무효과(agreement 1.000, +2.7M 파라미터만 소모). P37a CEFR은 mAP50을 낮추는 방향으로 실제 작동함(ACTIVE이지만 음의 효과)"
+  },
+  "background": [
+   "§9 결론(diagnosis-plan.md): 백본(SAM2/DINOv3)·fusion·router 어느 것도 정상조명 mAP50 격차(YOLO 0.935 vs 자체 모델군집 ~0.74)를 줄이지 못함 → head 성숙도가 원인으로 좁혀짐 → B1(COCO-pretrained head 이식) 실행"
+  ],
+  "architecture": {
+   "one_liner": "frozen DINOv3 + per-modal LoRA + ReliabilityGatedFusion + SimpleFPN(P34와 불변) + RF-DETR NMS-free decoder(신규)",
+   "components": [
+    [
+     "RF-DETR decoder",
+     "COCO-init, one-to-one Hungarian, single-scale stride16",
+     "semseg/models/rfdetr_head/_vendor/"
+    ],
+    [
+     "CEFR(P37a)",
+     "2-pass feature blend",
+     "extract_det_pyramid에 CEFR 적용"
+    ],
+    [
+     "ClassToken(P37b)",
+     "seg 헤드 로짓→det seam 1x1 projection+zero-init α residual",
+     "classtoken→det seam"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> D[DINOv3 plus LoRA]\n  B[LiDAR] --> D\n  C[Thermal] --> D\n  D --> E[ReliabilityGatedFusion]\n  E --> F[SimpleFPN]\n  F --> G[RF-DETR decoder]\n  G --> H[boxes]\n  I[seg head logits] --> J[ClassToken seam]\n  J --> F\n  class G new\n  class J new",
+   "rationale": [
+    "벤더링 = roboflow/rf-detr(Apache-2.0) 디코더 서브셋만(backbone 제외, transformers/timm 의존성 0)",
+    "hidden_dim 256이 일치해 projector가 불필요함",
+    "deformable-attn CUDA 컴파일이 불필요함(순수 PyTorch ms_deform_attn_core_pytorch)"
+   ],
+   "setting": [
+    "objdet/models/det_model.py, semseg/models/rfdetr_head/",
+    "poongsan 3모달",
+    "P34 det config를 head만 교체해 복사",
+    "bengio GPU7(단일 GPU, P37 착수 시점)",
+    "기록 없음"
+   ]
+  },
+  "results": {
+   "gate": "판정 전(절대 mAP50이 문서에서 확인되지 않음)",
+   "table": [
+    [
+     "모델",
+     "total",
+     "trainable",
+     "det-head",
+     "비고"
+    ],
+    [
+     "P37-Det",
+     "356.6M",
+     "53.5M",
+     "9.9M",
+     "RF-DETR 도입"
+    ],
+    [
+     "P37a-Det(+CEFR)",
+     "357.0M",
+     "53.9M",
+     "9.9M",
+     "ΔmAP50 −0.0197, agreement 0.000"
+    ],
+    [
+     "P37b-Det(+ClassToken)",
+     "359.7M",
+     "56.6M",
+     "9.9M",
+     "ΔmAP50 0.0000, agreement 1.000(NO-OP)"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "head는 전체 파라미터의 1.4~2.8%에 불과함 — 검출 품질은 백본·사전학습 여부가 좌우함",
+   "출력-레벨(seg head logit) 개입은 명시적 seam이 필요하고 대개 NO-OP(P36 router 0.0000/P37b classtoken 0.0000), feature-level 개입(CEFR)만 실제 작동함",
+   "P37 family만 COCO-pretrained head를 보유함. P38/P39의 M2F 헤드는 from-scratch라 P37과 head-for-head 비교가 성립하지 않음"
+  ],
+  "verdict": {
+   "worked": "P37b classtoken은 무효(NO-OP), P37a CEFR은 작동하나 음의 방향",
+   "why": "class-token 신호가 seg 헤드 로짓에서 det seam으로 전달되도록 zero-init residual로 연결했으나 학습 후에도 residual이 0에 머묾",
+   "handoff": "P39 설계가 output-level passive residual을 포기하고 competing path로 전환하는 근거가 됨"
+  },
+  "todo": [
+   "P37/P37b-Det의 절대 mAP50·야간/정상 breakdown 수치를 이 세션이 읽은 문서에서 찾지 못함(구조 비교 문서만 존재)",
+   "P38-Det(M2F query+box head) 절대 성능 수치도 문서에서 확인되지 않음"
+  ],
+  "sources": [
+   "objdet/models/det_model.py",
+   "semseg/models/rfdetr_head/",
+   "tools/det_analysis_pipeline.py"
+  ],
+  "_internal_refs": [
+   ".claude_logs/det/det-architecture-map.md",
+   ".claude_logs/det/diagnosis-plan.md §10"
+  ]
+ },
+ {
+  "key": "D1-vitsp-cert",
+  "title": "[Drone-Det] D1 ViT-S+ 인증 모델 — RTX5080/5090 실시간 제약 백본 스윕 (poongsan)",
+  "period": "2026-07-23 ~ 2026-07-25",
+  "track": "det",
+  "status": "완주 — CERTIFIED",
+  "summary": {
+   "change": "D1 = P37b-ClassToken seg backbone(ReliaDINO/DINOv3) + RF-DETR NMS-free det head. 백본 크기(ViT-S/S+/B/L)를 스윕한 뒤 RTX5080 실시간(≥5fps) 제약을 만족하는 최고 mAP50 변종을 인증 모델로 확정함",
+   "result": "D1 ViT-S+ 학습 시 best AP50 0.9205@ep11. 인증 리포트(poongsan_v2 final test 3239장, predicted-scope): mAP50 all 0.9166 / night 0.8765 / normal 0.9418. paper_page_builder 인용치는 RTX 5090 실측 19.43fps, 야간 mAP50 0.8292",
+   "verdict": "ViT-S+가 ≥5fps 변종 중 최고 AP50이라 인증 모델로 확정됨"
+  },
+  "background": [
+   "RTX 5080 실기가 fleet에 없어 3090 실측치를 공개 스펙 비율(FP32 1.582×, boost clock 1.544×, 메모리 대역폭 1.026×)로 1.3×~1.6× 스케일 추정함",
+   "ViT-L(D1 base/D1-recovered)은 추정 2.1~2.6fps로 5fps 미달로 제외됨"
+  ],
+  "architecture": {
+   "one_liner": "ReliaDINO(frozen DINOv3 ViT-S+/16 + per-modal LoRA + ReliabilityGatedFusion + SimpleFPN) + RF-DETR NMS-free head, 3모달(RGB+LiDAR+Thermal)",
+   "components": [
+    [
+     "백본",
+     "frozen DINOv3 ViT-S+/16",
+     "BACKBONE_TIMM: vit_small_plus_patch16_dinov3"
+    ],
+    [
+     "det head",
+     "RF-DETR NMS-free, NUM_QUERIES 300/GROUP_DETR 13/DEC_LAYERS 4",
+     "objdet/models/det_model.py ReliaDINORFDETRDetector"
+    ],
+    [
+     "IMG_SIZE",
+     "768x768",
+     "기록 없음"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> D[DINOv3 ViT-S plus frozen]\n  B[LiDAR] --> D\n  C[Thermal] --> D\n  D --> E[per-modal LoRA]\n  E --> F[ReliabilityGatedFusion]\n  F --> G[SimpleFPN]\n  G --> H[RF-DETR head]\n  H --> I[boxes]\n  class E new",
+   "rationale": [
+    "P37 family 구조를 그대로 유지함(백본 교체 없음)",
+    "배치 GPU RTX5080 제약(≥5fps)을 만족하는 최소/최적 백본 크기를 선택함"
+   ],
+   "setting": [
+    "configs/det/det_D1_vitsp_jarvis.yaml",
+    "poongsan_v2 final test(3239장, 3모달 img/lidar/thermal, REQUIRE_ALL_MODALITIES true)",
+    "3090 실측 FPS 벤치 후 5080/5090 추정·인용",
+    "웨이트 submission/ckpts/det_D1_vitsp_20260723/best_checkpoint.pth(epoch11, md5 b78f614cba1375bb54dfeacd5e58cef3)",
+    "기록 없음"
+   ]
+  },
+  "results": {
+   "gate": "RTX5080 ≥5fps 통과 + poongsan_v2 mAP50(학습기준) — 인증 대상 확정",
+   "table": [
+    [
+     "변종",
+     "best AP50",
+     "비고"
+    ],
+    [
+     "D1 ViT-S",
+     "0.9190@ep10",
+     "cert all 0.9164/night 0.8926/normal 0.9057"
+    ],
+    [
+     "D1 ViT-S+(인증)",
+     "0.9205@ep11",
+     "+0.0015 vs S. cert all 0.9166/night 0.8765/normal 0.9418"
+    ],
+    [
+     "D1 ViT-B",
+     "0.9090@ep6(당시 학습중)",
+     "S/S+ 대비 열세"
+    ],
+    [
+     "D1 base(ViT-L)/D1-recovered",
+     "0.8460 / 0.9321@ep6",
+     "정확도 최고이나 5fps 미달로 인증 제외"
+    ]
+   ],
+   "per_condition": [
+    "인증 리포트(poongsan final test 3239장, predicted-scope): all mAP50 0.9166 / night 0.8765(1768장) / normal 0.9418(1471장), 주야 격차 −0.065",
+    "야간 취약 클래스: Obstacles(−0.34)·Windows·Fire Extinguishers",
+    "paper_page_builder 인용치: 야간 mAP50 0.8292(위 인증리포트 night 0.8765와 수치가 다름 — 출처 문서 간 불일치, 원인 미확인)"
+   ],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "FPS 3090 실측 ViT-S+ 7.38 → RTX5080 추정 9.6~11.8(≥5fps 여유 큼)",
+   "BS1 추론 VRAM 0.76GB(5080 16GB의 4.8%)",
+   "modality ablation(P29-Det 실측)에서 RGB-only(0.7964)≥3-modal(0.7895) on mAP50이므로, 3-modal 인증 스토리는 lidar/thermal이 존재·사용되나 목표지표 mAP50 이득은 없음(strict-IoU COCO mAP만 소폭 개선). 인증 리포트에는 3-modal로 제출됨"
+  ],
+  "verdict": {
+   "worked": "예",
+   "why": "≥5fps 제약 내에서 정확도가 최대화된 백본 크기가 ViT-S+였음",
+   "handoff": "D1 ViT-B 완주 시 역전 여부 재확인 예정(문서상 완주 결과 미확인), drone-demo(26-drone-certificate 브랜치)로 핸드오프됨"
+  },
+  "todo": [
+   "D1 ViT-B 완주 후 최종 AP50이 문서에서 확인되지 않음",
+   "야간 mAP50 0.8292(paper_page_builder)와 인증리포트 night 0.8765의 불일치 원인이 미확인",
+   "RTX 5080/5090 실기 실측치(추정이 아닌)가 det-cert 문서 자체에는 명시되어 있지 않음 — 19.43fps의 출처가 실측인지 추정인지 불명확"
+  ],
+  "sources": [
+   "configs/det/det_D1_vitsp_jarvis.yaml",
+   "objdet/models/det_model.py",
+   "tools/det_fps_bench.py",
+   "tools/det_eval_breakdown.py",
+   "submission/code/det_cert/",
+   "submission/ckpts/det_D1_vitsp_20260723/best_checkpoint.pth"
+  ],
+  "_internal_refs": [
+   ".claude_logs/det/det-cert-D1-realtime.md",
+   ".claude_logs/det/det-cert-D1-vitsp-handoff.md"
+  ]
+ },
+ {
+  "key": "D1-recovered-vitl",
+  "title": "[Drone-Det] D1-recovered ViT-L — 계보 최고 AP50 0.9321, 5fps 미달로 인증 제외 (poongsan)",
+  "period": "기록 없음(2026-07-23 전후 추정)",
+  "track": "det",
+  "status": "종결 국면(목표 달성, 정확도 계보 최고이나 fps 미달로 인증 제외)",
+  "summary": {
+   "change": "D1 계열 백본 스윕에서 ViT-L(가장 큰 백본) 복구판",
+   "result": "AP50 0.9321@ep6",
+   "verdict": "목표(mAP50 0.85) +0.08 달성이나 5fps 실시간 제약 미달로 실제 인증 모델(ViT-S+)에서는 제외됨"
+  },
+  "background": [
+   "D1 base(ViT-L) 초기값 0.8460, 'D1-recovered'로 재학습/복구한 결과 0.9321@ep6로 계보 최고"
+  ],
+  "architecture": {
+   "one_liner": "D1과 동일 구조(ReliaDINO+RF-DETR), 백본만 ViT-L",
+   "components": [
+    [
+     "백본",
+     "frozen DINOv3 ViT-L",
+     "vit_large_patch16_dinov3"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> D[DINOv3 ViT-L frozen]\n  B[LiDAR] --> D\n  C[Thermal] --> D\n  D --> E[ReliabilityGatedFusion]\n  E --> F[SimpleFPN]\n  F --> G[RF-DETR head]\n  G --> H[boxes]\n  class D new",
+   "rationale": [
+    "백본 스윕 상한 확인용 — 정확도 상한이 어디인지 측정하기 위함"
+   ],
+   "setting": [
+    "D1 cert 스윕의 일부",
+    "poongsan 3모달",
+    "기록 없음",
+    "기록 없음",
+    "fps 추정치 3090 1.658 → 5080 2.1~2.6fps(미달)"
+   ]
+  },
+  "results": {
+   "gate": "목표 0.85 통과, 5fps 게이트 미통과(제외)",
+   "table": [
+    [
+     "ckpt",
+     "AP50",
+     "비고"
+    ],
+    [
+     "D1 base(ViT-L)",
+     "0.8460",
+     "초기"
+    ],
+    [
+     "D1-recovered(ViT-L) ep6",
+     "0.9321",
+     "계보 최고, 5fps 미달로 인증 제외"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "status/current.md 벤치표에도 Det 대표값으로 인용됨(목표 대비 +0.08)"
+  ],
+  "verdict": {
+   "worked": "정확도는 최고",
+   "why": "큰 백본이 정확도는 높으나 RTX5080 실시간 제약을 만족 못함(추정 2.1~2.6fps)",
+   "handoff": "실제 인증 모델은 ViT-S+로 확정됨(D1-vitsp-cert 항목 참조)"
+  },
+  "todo": [
+   "D1-recovered가 D1 base와 구체적으로 어떻게 다른지(복구 절차)의 설명을 문서에서 찾지 못함",
+   "night/normal breakdown이 문서에 없음"
+  ],
+  "sources": [],
+  "_internal_refs": [
+   ".claude_logs/det/det-cert-D1-realtime.md",
+   ".claude_logs/status/current.md"
+  ]
+ },
+ {
+  "key": "P29-Det-modality-ablation",
+  "title": "[Drone-Det] P29-Det 모달리티 ablation — 최종 annotation에서 RGB-only가 3모달 mAP50 상회 (poongsan)",
+  "period": "2026-07-08 ~ 2026-07-14",
+  "track": "det",
+  "status": "완료",
+  "summary": {
+   "change": "최종 확정 annotation셋(_final_ann/instances_train_egofill.json) 위에서 P29-Det 스택을 모달리티만 바꿔 재학습함(3모달 full, RGB단일, RGB+Thermal 등)",
+   "result": "final_full(3모달) mAP50 0.7895@ep24, final_rgb(RGB단일) mAP50 0.7964@ep14, final_rgbt(RGB+Thermal) mAP50 0.8000. RGB-only가 mAP50에서 3모달을 상회함",
+   "verdict": "최종 annotation셋 기준 mAP50(목표지표)에는 egofill lidar+thermal의 순기여가 없거나 음(−)임. 단 COCO strict-IoU mAP는 3모달이 상회(0.5230 vs 0.5030)함 — localization 정밀도에는 도움이 됨"
+  },
+  "background": [
+   "egofill 데이터(구 split)에서는 mAP50 0.85를 달성했으나(P29-Det 항목 참조) 최종 annotation셋은 스케일 자체가 다름(캡처 구성 상이) → egofill split(0.8501) 대비 −0.06 낮음"
+  ],
+  "architecture": {
+   "one_liner": "P29-Det(LoRA_Sam_P29_Det, mean fusion, FCOS)와 동일 스택, MODALS만 가변",
+   "components": [
+    [
+     "final_full",
+     "img+lidar+thermal, 최종 annotation",
+     "MODALS: [img,lidar,thermal]"
+    ],
+    [
+     "final_rgb",
+     "RGB 단일",
+     "MODALS: [img]"
+    ],
+    [
+     "final_rgbt",
+     "RGB+Thermal",
+     "MODALS: [img,thermal]"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> D[SAM2 encoder P29-Det]\n  B[LiDAR egofill optional] --> D\n  C[Thermal optional] --> D\n  D --> E[mean fusion FPN]\n  E --> F[FCOS head]\n  F --> G[boxes]\n  class B new\n  class C new",
+   "rationale": [
+    "P30 분석에서 LiDAR가 router에 의해 거의 0으로 드롭되는 경향이 관측됨(별도 모델이지만 시사점 유사)",
+    "데이터 결손·노이즈(동적객체 egofill 오차)가 원인일 가능성이 있음"
+   ],
+   "setting": [
+    "configs/det/det_P29_final_full.yaml, det_P29_final_rgb.yaml, det_P29_final_rgbt.yaml",
+    "poongsan 최종 annotation",
+    "위 config 경로",
+    "bengio(egofill 체크아웃, nproc5)",
+    "50 epoch"
+   ]
+  },
+  "results": {
+   "gate": "판정 전(비교 실험, 목표선 아님)",
+   "table": [
+    [
+     "구성",
+     "COCO mAP",
+     "mAP50",
+     "mAP75",
+     "peak epoch"
+    ],
+    [
+     "final_full(3모달)",
+     "0.5230",
+     "0.7895",
+     "0.5846",
+     "ep24"
+    ],
+    [
+     "final_rgb(RGB단일)",
+     "0.5030",
+     "0.7964",
+     "기록 없음",
+     "ep14"
+    ],
+    [
+     "final_rgbt(RGB+Thermal)",
+     "기록 없음",
+     "0.8000",
+     "기록 없음",
+     "기록 없음"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "RGB-only ep14 mAP50 0.7964 > final_full peak 0.7895 → 최종 annotation셋에서 멀티모달 순기여 음(−)으로 확정됨(monitor-log RUN-17 판정)",
+   "COCO mAP(strict IoU)는 반대로 3모달이 상회함(0.5230 vs 0.5030) → egofill lidar+thermal은 정밀 localization에는 +기여하나 mAP50(목표지표)엔 순기여가 없거나 음",
+   "이 결과가 D1 인증 모델의 3-modal 스토리에 대한 주의사항으로 handoff됨(D1-vitsp-cert 항목 참조)"
+  ],
+  "verdict": {
+   "worked": "아니오(mAP50 기준 멀티모달 순기여 없음)",
+   "why": "egofill lidar/thermal이 최종 annotation셋에서 오히려 mAP50을 소폭 저해함(원인은 egofill 동적객체 오차 등으로 추정되나 이 ablation 자체가 원인을 확정하지는 않음)",
+   "handoff": "D1 인증 리포트에 이 ablation을 인지시켜 3-modal 제출과 RGB-only 동등성을 함께 기록함"
+  },
+  "todo": [
+   "final_rgbt(RGB+Thermal)의 정확한 peak epoch·COCO mAP 값을 monitor-log에서 명확히 특정하지 못함(0.8000이 최종 수치인지 peak인지 확인 필요)"
+  ],
+  "sources": [
+   "configs/det/det_P29_final_full.yaml",
+   "configs/det/det_P29_final_rgb.yaml",
+   "configs/det/det_P29_final_rgbt.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/experiments/monitor-log.md RUN-15~18"
+  ]
+ },
+ {
+  "key": "GISTOLO",
+  "title": "[Drone-Det] GISTOLO — D1 ViT-S+ → YOLOv5m RGB 증류, 효과 작음 (poongsan)",
+  "period": "기록 없음(2026-07 하순 추정, det 인증 이후)",
+  "track": "det",
+  "status": "완료(정성 재현 확인)",
+  "summary": {
+   "change": "D1 ViT-S+(3모달 검출기)를 teacher로 YOLOv5m(RGB 단일)에 cross-modal feature distillation을 적용함",
+   "result": "poongsan 멀티모달 대비 우위 없음(night 포함 RGB student가 멀티모달 teacher와 동급). student가 3/3 seed에서 재현되는 근소 우위 +0.005",
+   "verdict": "멀티모달 teacher의 정보가 RGB student로 유의미하게 전이됐다고 보기 어려움(효과가 작고, 데이터 구성 차이가 더 큰 변수)"
+  },
+  "background": [
+   "teacher eval을 annotation-scope vs predicted-scope로 fair-scope 비교함(같은 2066장)",
+   "egofill 조밀 데이터(3239장)와 raw(2066장) 간 mAP50 차이(0.9166 vs 0.9081)가 증류 효과보다 큼"
+  ],
+  "architecture": {
+   "one_liner": "D1 ViT-S+(teacher, 3모달) → YOLOv5m(student, RGB) cross-modal feature KD",
+   "components": [
+    [
+     "cross-modal feature KD",
+     "융합-전 원 모달 특징을 증류(AMFD 대비 직접 비교 대상)",
+     "GISTOLO KD 구현(git 커밋 계열 feat(gistolo))"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[D1 ViT-S plus teacher 3모달] --> B[cross-modal feature KD]\n  B --> C[YOLOv5m student RGB]\n  C --> D[boxes]\n  class B new",
+   "rationale": [
+    "AMFD(2405.12944, TMM 2025)가 융합-후가 아닌 융합-전 원 모달 특징을 증류하는 방식과의 비교 대상으로 설계됨"
+   ],
+   "setting": [
+    "YOLOv5m RGB student, teacher=D1 ViT-S+",
+    "poongsan",
+    "기록 없음",
+    "기록 없음",
+    "기록 없음"
+   ]
+  },
+  "results": {
+   "gate": "판정 전(정성 비교)",
+   "table": [
+    [
+     "비교",
+     "값",
+     "비고"
+    ],
+    [
+     "3/3 seed 재현 student 우위",
+     "+0.005",
+     "작음"
+    ],
+    [
+     "egofill 조밀(3239장) teacher eval",
+     "0.9166",
+     "기록 없음"
+    ],
+    [
+     "raw(2066장) teacher eval",
+     "0.9081",
+     "데이터 구성 차이"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "poongsan 멀티모달 우위 없음(night 포함 RGB≈멀티모달) — P29-Det-modality-ablation의 'RGB-only≥3-modal' 관찰과 정합적임",
+   "egofill vs raw 데이터 차이(0.9166 vs 0.9081)가 증류 자체의 효과(+0.005)보다 훨씬 큼"
+  ],
+  "verdict": {
+   "worked": "제한적(효과 작음)",
+   "why": "poongsan 데이터 자체가 이미 RGB로 대부분의 정보를 커버함(P29-Det-modality-ablation과 동일 원인으로 추정)",
+   "handoff": "기록 없음(계보 문서에서 후속 확인 안 됨)"
+  },
+  "todo": [
+   "GISTOLO의 상세 방법론·전체 결과표·정식 실험 로그 문서를 이 세션이 지정받은 .claude_logs 소스 문서 안에서 찾지 못함. 이 항목은 research/related-work-raw.md의 1줄 언급, .claude/skills/notion-experiment-log/paper_page_builder.py의 요약행, git 커밋 로그(gistolo 관련 6건)로만 재구성함"
+  ],
+  "sources": [
+   "git log --grep=gistolo (커밋: 19db55c, d4908de, 85cd4e3, 316d7b4, 4bf5240, dc2ed0c)",
+   ".claude/skills/notion-experiment-log/paper_page_builder.py"
+  ],
+  "_internal_refs": [
+   ".claude_logs/research/related-work-raw.md L545"
+  ]
+ },
+ {
+  "key": "YOLO11m-rgb-baseline",
+  "title": "[Drone-Det] YOLO11m RGB-only 기준점 — mAP50 0.864, 데이터 무죄·스택 유죄 판정 (poongsan)",
+  "period": "2026-07-03",
+  "track": "det",
+  "status": "완료(외부 기준점)",
+  "summary": {
+   "change": "외부 YOLO11m(RGB 단독)을 poongsan 데이터로 파인튜닝해 스택 문제/데이터 문제 분기 실험을 수행함",
+   "result": "v2 split 100ep test mAP50 0.821/mAP50-95 0.526(E1.1). label-v3(신규 라벨 +904장) 50ep test mAP50 0.864/mAP50-95 0.581(E1.1b). YOLOv5m 교차검증 0.866/0.577(E1.1c). v3split(시간순) 0.866/0.605(E1.1d)",
+   "verdict": "'데이터/난이도 문제' 가설 기각, '우리 스택 문제' 확정(RGB단독 0.821~0.866 vs 당시 자체 스택 3모달 0.4455). 목표 0.85는 RGB-only 기성 모델로 근접 가능함"
+  },
+  "background": [
+   "진단계획 Phase1 분기규칙: YOLO-RGB mAP50≥0.7 → 스택 문제 확정 / ~0.5 → 데이터 문제로 재조정. 실측 0.821로 스택 문제가 확정됨"
+  ],
+  "architecture": {
+   "one_liner": "YOLO11m(ultralytics 표준 아키텍처), RGB 단일 입력, from-scratch fine-tune",
+   "components": [
+    [
+     "YOLO11m",
+     "외부 검증 아키텍처, RGB단일",
+     "objdet/yolo11m-rgb/"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> B[YOLO11m backbone]\n  B --> C[neck]\n  C --> D[head]\n  D --> E[boxes]\n  class B new",
+   "rationale": [
+    "poongsan 검출 스택 진단을 위한 독립 기준점을 확보하기 위함"
+   ],
+   "setting": [
+    "objdet/yolo11m-rgb/runs/",
+    "poongsan RGB",
+    "objdet/yolo11m-rgb/",
+    "hinton GPU1",
+    "100ep(E1.1)/50ep(E1.1b~d), batch16, imgsz640, seed0"
+   ]
+  },
+  "results": {
+   "gate": "분기규칙 mAP50≥0.7 → 통과(0.821)",
+   "table": [
+    [
+     "실험",
+     "split/라벨",
+     "mAP50",
+     "mAP50-95",
+     "P",
+     "R",
+     "비고"
+    ],
+    [
+     "E1.1",
+     "v2, 100ep",
+     "0.821",
+     "0.526",
+     "0.831",
+     "0.831",
+     "best@ep12"
+    ],
+    [
+     "E1.1b",
+     "label-v3, 50ep",
+     "0.864",
+     "0.581",
+     "0.877",
+     "0.883",
+     "목표 0.85 돌파"
+    ],
+    [
+     "E1.1c(YOLOv5mu 교차검증)",
+     "label-v3, 50ep",
+     "0.866",
+     "0.577",
+     "0.860",
+     "0.873",
+     "기록 없음"
+    ],
+    [
+     "E1.1d",
+     "v3split(시간순), 50ep",
+     "0.866",
+     "0.605",
+     "0.886",
+     "0.854",
+     "mAP50은 v2와 동률"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [
+    "E1.1 per-class mAP50: Allies 0.941/LandingMarkers 0.960/Casualties 0.941/Windows 0.881/Enemies 0.826/Lighting 0.811/FireExt 0.803/EmExits 0.802/Obstacles 0.747/Doors 0.499(최악)"
+   ],
+   "invalid": []
+  },
+  "analysis": [
+   "ep12 피크 후 val_cls loss 상승(과적합) — P29 ep9 피크와 동일 병리",
+   "0.86 수준은 모델 세대(YOLO11m/YOLOv5mu)와 무관하게 라벨/데이터가 결정함",
+   "시간순 split(v3split)의 낙관 편향이 mAP50 수준에선 미미(+0.000, mAP50-95만 +0.028) — 0.86~0.87이 라벨/난이도 상한으로 추정되며, 잔여 오류는 Doors·소물체 등 태스크 고유 문제"
+  ],
+  "verdict": {
+   "worked": "예",
+   "why": "기성 RGB 검출기로도 목표 0.85 도달이 가능함을 입증해 당시 자체 스택(0.4455)의 문제가 데이터가 아니라 스택 자체였음을 확정함",
+   "handoff": "Phase2(스택 통제 ablation) 진행 근거를 확보함, 이후 egofill 데이터 확보(P29-Det 항목)로 자체 스택도 0.85를 달성함"
+  },
+  "todo": [],
+  "sources": [
+   "objdet/yolo11m-rgb/runs/yolo11m_rgb_labelv3_50ep/",
+   "objdet/yolo11m-rgb/runs/yolov5mu_rgb_labelv3_50ep/",
+   "objdet/yolo11m-rgb/runs/yolov5mu_rgb_v3split_50ep/"
+  ],
+  "_internal_refs": [
+   ".claude_logs/det/diagnosis-plan.md §2/§6/§7"
+  ]
+ },
+ {
+  "key": "B0",
+  "title": "[Drone-Card] B0 — 일일 사이클 카드 기준선 스크린(현행 레시피 40ep) (DELIVER)",
+  "period": "2026-09-07 ~ 2026-09-08",
+  "track": "card-DELIVER",
+  "status": "완주(legal 재채점 완료)",
+  "summary": {
+   "change": "변경 없음(대조군) — 현행 P46 C3-only λ0.1 레시피를 40 epoch로 축소해 실행함",
+   "result": "legal val 64.97(mAcc 74.73, 트레이너 val 65.4, ckpt epoch40_65.4_top1) / legal test 53.78(mAcc 63.87), val→test 낙차 11.19",
+   "verdict": "이후 카드의 통과선(test ≥54.78)·폐기선(54.28)을 확정함"
+  },
+  "background": [
+   "DELIVER는 분할 형상은 정성적으로 괜찮으나 클래스를 헷갈려 점수를 잃는다는 user 문제정의에서 출발함",
+   "40epoch 스크린 공통 규약(시드 20260821, EVAL_INTERVAL 5)을 수립함",
+   "val→test 낙차 11.19 중 61%가 Wall(71.7→12.2)·Bridge(58.4→0.0)·Water(59.6→6.5) — 단 이 3클래스는 DGFusion도 test 0~4로 공통 붕괴하므로 SOTA 격차의 원인은 아님",
+   "진짜 격차 클래스 = RailTrack(19.4→32.0, DGFusion보다 낮음)"
+  ],
+  "architecture": {
+   "one_liner": "P46 C3-only(prototype consistency) 현행 레시피, 변경 없음",
+   "components": [
+    [
+     "기준 레시피",
+     "P46 C3-only λ0.1, PhysAug off, DGFUSION_AUG on, 768² 학습",
+     "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_B0.yaml"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[img] --> E[DINOv3 plus LoRA]\n  B[depth] --> E\n  C[event] --> E\n  D[lidar] --> E\n  E --> F[gated fusion]\n  F --> G[SimpleFPN]\n  G --> H[pixel head]",
+   "rationale": [
+    "카드 간 공통 대조군 확보를 위해 1회만 실행 후 고정함"
+   ],
+   "setting": [
+    "semseg/models/reliadino/p46.py",
+    "DELIVER 4센서(img/depth/event/lidar)",
+    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_B0.yaml",
+    "bengio",
+    "40 epoch, EVAL_INTERVAL 5, seed 20260821"
+   ]
+  },
+  "results": {
+   "gate": "통과선 test≥54.78(B0+1.0), 폐기선 54.28 — 본 카드 자체는 대조군이라 게이트 적용 대상 아님",
+   "table": [
+    [
+     "구분",
+     "val(트레이너)",
+     "val(legal)",
+     "test(legal)",
+     "비고"
+    ],
+    [
+     "B0 40ep",
+     "65.4@ep40",
+     "64.97",
+     "53.78",
+     "ckpt epoch40_65.4_top1"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": [
+    "트레이너 val(65.4)이 공식 val(64.97)보다 +0.43 높음 — 판정은 공식(legal) 수치로만 함"
+   ]
+  },
+  "analysis": [
+   "val→test 낙차 11.19의 61%가 Wall/Bridge/Water인데 이 셋은 DGFusion도 test 0~4로 공통 붕괴함 → SOTA 격차의 원인이 아님",
+   "진짜 격차 원인은 RailTrack(19.4→32.0, DGFusion보다 낮음)"
+  ],
+  "verdict": {
+   "worked": "대조군(작동 여부 판정 대상 아님)",
+   "why": "기록 없음",
+   "handoff": "모든 카드(E1~E10)의 비교 기준선이 됨"
+  },
+  "todo": [],
+  "sources": [
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_B0.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §0/§5",
+   ".claude_logs/experiments/plan.md"
+  ]
+ },
+ {
+  "key": "E0",
+  "title": "[Drone-Card] E0 — 특징 정보 프로브(S0, 선형 프로브) (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "완주(판정 완료, 게이트 미달)",
+  "summary": {
+   "change": "학습 없이 DINOv3 원 특징/어댑터 후 특징/융합 후 특징 위에 클래스 선형 프로브만 학습함(블록 6/12/18/24 탭)",
+   "result": "선형 프로브 test mIoU raw 27.81 < adapted_taps 32.24 < adapted_last 35.59 < fused_prehead 45.14(단조 증가)",
+   "verdict": "'어댑터가 백본 정보를 버린다'는 전역 가설이 기각됨(게이트 −8.2%p 미달). 단 depth 중간층 탭에 fused가 잃는 붕괴클래스(Water/RailTrack) 근거가 국소적으로 남아있음"
+  },
+  "background": [
+   "구조 사다리 S0(무학습 진단) 첫 단계",
+   "사전 등록 게이트(i): 원특징 붕괴클래스 recall − fused recall ≥ +10%p",
+   "사전 등록 게이트(ii): 오라클 센서선택 프로브가 우연 수준이면 학습형 라우팅 영구 폐쇄(H26)"
+  ],
+  "architecture": {
+   "one_liner": "DINOv3 블록 6/12/18/24 탭 + 4센서 concat 위 선형 프로브(fit: train 400장·클래스당 4000토큰 상한, eval: val/test 각 300장)",
+   "components": [
+    [
+     "선형 프로브",
+     "각 특징 세트 위 클래스 분류 선형 레이어만 학습",
+     "tools/probe_feature_info.py"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[raw taps] --> D[linear probe]\n  B[adapted taps] --> D\n  C[fused prehead] --> D\n  class D new",
+   "rationale": [
+    "원 특징에 정보가 있는데 어댑터·헤드가 버리는지, 애초에 없는지를 구조 카드(E1/E5/E6) 착수 전 먼저 확인하기 위함"
+   ],
+   "setting": [
+    "tools/probe_feature_info.py",
+    "DELIVER P46 C3-only seed821 val-best(ep90) ckpt",
+    "학습 config 아님(프로브 스크립트)",
+    "bengio GPU4",
+    "학습 0(프로브만)"
+   ]
+  },
+  "results": {
+   "gate": "게이트(i) 미달(−8.2%p, 기준 +10%p) — 전역 가설 기각. 게이트(ii) 오라클 프로브 미실행",
+   "table": [
+    [
+     "특징 세트",
+     "val mIoU",
+     "test mIoU",
+     "test 붕괴클래스 recall 평균"
+    ],
+    [
+     "raw_taps/all(LoRA off, 4탭 concat)",
+     "36.86",
+     "27.81",
+     "29.6"
+    ],
+    [
+     "adapted_taps/all(LoRA on, 4탭)",
+     "39.47",
+     "32.24",
+     "32.5"
+    ],
+    [
+     "adapted_last/all(LoRA on, 마지막블록)",
+     "44.14",
+     "35.59",
+     "32.4"
+    ],
+    [
+     "fused_prehead(융합 트렁크 출력)",
+     "50.23",
+     "45.14",
+     "37.8"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [
+    "test recall(%) fused_prehead: RailTrack 0.0/Wall 33.3/Water 16.6/TrafficLight 88.9",
+    "adapted_taps/depth: RailTrack 23.9/Wall 39.6/Water 47.6/TrafficLight 43.7(fused 대비 전부 높음, TrafficLight 제외)",
+    "raw_taps/depth: RailTrack 6.2/Wall 40.0/Water 31.0/TrafficLight 44.7",
+    "raw_taps/lidar: RailTrack 0.0/Wall 27.7/Water 1.4/TrafficLight 0.0"
+   ],
+   "invalid": []
+  },
+  "analysis": [
+   "순서가 raw<adapted<fused로 단조임 — 어댑터·융합 트렁크가 선형으로 읽을 수 있는 클래스 정보를 늘림",
+   "depth의 중간층 탭에만 fused가 test에서 잃는 붕괴클래스 근거가 국소적으로 남음(RGB/lidar/event에는 없음)",
+   "오라클 센서선택 프로브(H26)는 --oracle-dir 미지정으로 미실행됨",
+   "선형 프로브·eval 300장 서브셋·클래스당 4000토큰 상한·단일시드 단일ckpt라는 제한이 있음"
+  ],
+  "verdict": {
+   "worked": "전역 가설(어댑터가 정보를 버림)은 기각, 국소 가설(depth 중간층 손실)은 지지됨",
+   "why": "어댑터·융합이 선형판독 정보를 늘리므로 '얕은 어댑터가 백본 정보를 못 받는다'는 형태는 성립하지 않음. 다만 마지막 층만 읽는 FPN 입력+융합 지점에서 depth 중간층의 기하 단서(Water/RailTrack)가 소실됨",
+   "handoff": "E5·E6(구조 카드) 우선순위를 하향하고, E1(4탭 읽기)·E3(센서별 prototype) 근거를 유지·강화함"
+  },
+  "todo": [
+   "오라클 센서선택 프로브(H26) 미실행 — H16 산출물 위치 확인 후 별도 실행 필요"
+  ],
+  "sources": [
+   "tools/probe_feature_info.py"
+  ],
+  "_internal_refs": [
+   ".claude_logs/experiments/analysis/2026-09-08-daily-cards-E0-feature-probe.md",
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1"
+  ]
+ },
+ {
+  "key": "E9",
+  "title": "[Drone-Card] E9 — 검증셋 사전 로짓 보정(logit adjustment) (DELIVER)",
+  "period": "2026-09-07 ~ 2026-09-08",
+  "track": "card-DELIVER",
+  "status": "폐기",
+  "summary": {
+   "change": "추론 시 logit − τ·log(p_val) 형태의 클래스 사전 보정을 val.py 옵션으로 적용함(학습 0)",
+   "result": "τ=0(보정없음) test 53.57(기존 정본과 일치) / τ=0.5 test 53.45(mAcc 63.8→67.1) / τ=1.0 test 51.89(mAcc→69.2)",
+   "verdict": "mIoU가 τ 증가에 따라 단조 하락함 — 게이트(Δtest≥+0.5) 미달로 폐기"
+  },
+  "background": [
+   "가설: 혼동은 클래스 사전(prior)의 도메인 이동(val→test) 때문이라는 것",
+   "무료 이득이면 채택하는 낮은 리스크 카드로 1일차 학습0에 배치됨"
+  ],
+  "architecture": {
+   "one_liner": "추론 후처리 로짓 보정(logit − τ·log(p_val)), 학습 변경 없음",
+   "components": [
+    [
+     "로짓 보정",
+     "val 분포 기반 클래스 사전 차감",
+     "val.py 옵션 τ"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[model logits] --> B[logit adjustment tau]\n  B --> C[argmax]\n  class B new",
+   "rationale": [
+    "도메인 이동으로 인한 사전확률 불일치를 추론 시점에서 무료로 교정할 수 있는지 확인하기 위함"
+   ],
+   "setting": [
+    "val.py",
+    "DELIVER B0 ckpt",
+    "val.py 옵션(별도 config 없음)",
+    "bengio",
+    "학습 0"
+   ]
+  },
+  "results": {
+   "gate": "Δtest≥+0.5 → 미달(폐기)",
+   "table": [
+    [
+     "τ",
+     "test mIoU",
+     "mAcc"
+    ],
+    [
+     "0(재채점 검증)",
+     "53.57",
+     "63.8"
+    ],
+    [
+     "0.5",
+     "53.45",
+     "67.1"
+    ],
+    [
+     "1.0",
+     "51.89",
+     "69.2"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "mIoU는 단조 하락, mAcc는 단조 상승함 — 혼동이 클래스 사전 이동이 아니라 재현율↔정밀도 교환으로만 반응함"
+  ],
+  "verdict": {
+   "worked": "아니오",
+   "why": "클래스 사전 보정이 재현율만 늘리고 정밀도를 깎아 mIoU 순손실이 발생함",
+   "handoff": "기록 없음"
+  },
+  "todo": [],
+  "sources": [
+   "val.py"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§5"
+  ]
+ },
+ {
+  "key": "E7",
+  "title": "[Drone-Card] E7 — MUSES PhysAug-off 공정 기준선 (MUSES)",
+  "period": "2026-09-08",
+  "track": "card-MUSES",
+  "status": "완주(40ep 스크린), 공식 재채점 대기",
+  "summary": {
+   "change": "MUSES 3모달(img/lidar/event) 레시피에서 PHYSAUG를 off로 전환함(공정성 정합, user 지적 대응)",
+   "result": "트레이너 val 80.29@ep40",
+   "verdict": "헤드라인 교체용 카드로 게이트가 없음. E7c(PhysAug-on 대조군)와 공식 페어 재채점이 필요함"
+  },
+  "background": [
+   "MUSES는 압도적 SOTA가 아니며, PhysAug 사용 여부가 공정 비교 기준에 어긋난다는 user 지적에서 출발함"
+  ],
+  "architecture": {
+   "one_liner": "기존 MUSES 3모달 레시피(P39.1-rank seed2) 그대로, PHYSAUG만 off",
+   "components": [
+    [
+     "PHYSAUG off",
+     "물리기반 증강 비활성화",
+     "PHYSAUG.ENABLE: false"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[raw MUSES 3모달] --> B[PhysAug off]\n  B --> C[DINOv3 plus LoRA]\n  C --> D[gated fusion]\n  D --> E[M2F head]\n  class B new",
+   "rationale": [
+    "PhysAug on 레시피가 공정 비교 기준에서 벗어난다는 지적을 헤드라인 교체 전 검증하기 위함"
+   ],
+   "setting": [
+    "configs/hpca100-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml, configs/bengio-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml",
+    "MUSES 3모달(img/lidar/event)",
+    "위 config 경로",
+    "hpca100/bengio",
+    "40 epoch"
+   ]
+  },
+  "results": {
+   "gate": "게이트 없음(헤드라인 교체용)",
+   "table": [
+    [
+     "ckpt",
+     "트레이너 val"
+    ],
+    [
+     "E7 ep40",
+     "80.29"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "판정 보류(공식 재채점 대기)",
+   "why": "기록 없음",
+   "handoff": "E7c(PhysAug-on)와 tools/eval_muses_official.py로 페어 재채점 후 PhysAug 효과를 확정함"
+  },
+  "todo": [
+   "공식(legal) val/test 수치 아직 없음(트레이너 val만 존재)"
+  ],
+  "sources": [
+   "configs/hpca100-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml",
+   "configs/bengio-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml",
+   "tools/eval_muses_official.py"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§5",
+   ".claude_logs/experiments/plan.md"
+  ]
+ },
+ {
+  "key": "E7c",
+  "title": "[Drone-Card] E7c — MUSES PhysAug-on 대조군 (MUSES)",
+  "period": "2026-09-08",
+  "track": "card-MUSES",
+  "status": "진행 중(ep24/40)",
+  "summary": {
+   "change": "E7과 PHYSAUG만 상이함(on), 나머지는 B0(정본 레시피) 대비 변경 없음",
+   "result": "트레이너 val ep5 73.18 / ep10 75.52 / ep15 75.97 / ep20 77.68 (ep24/40 진행)",
+   "verdict": "판정 전(완주 후 E7과 공식 페어 재채점 필요)"
+  },
+  "background": [
+   "E7(PhysAug off)의 대조군으로 착수됨",
+   "기동검증: RANDOM INIT 없음, config dump에서 PHYSAUG ENABLE True 확인, epoch1 iteration 정상 전진(1.5~1.65it/s), GPU2 가동률 77%(18.7GiB)"
+  ],
+  "architecture": {
+   "one_liner": "E7과 동일 레시피, PHYSAUG on",
+   "components": [
+    [
+     "PHYSAUG on",
+     "물리기반 증강 활성화, B0 대비 변경 없음(정본 레시피)",
+     "PHYSAUG.ENABLE: true"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[raw MUSES 3모달] --> B[PhysAug on]\n  B --> C[DINOv3 plus LoRA]\n  C --> D[gated fusion]\n  D --> E[M2F head]\n  class B new",
+   "rationale": [
+    "PhysAug 효과를 E7과의 유일 변인 비교로 격리하기 위함"
+   ],
+   "setting": [
+    "configs/hpca100-muses_rgbel_P39_1_seed2_physaugon_screen40_E7c.yaml",
+    "MUSES 3모달",
+    "위 config 경로",
+    "hpca100 GPU2(단일 GPU, DDP 아님)",
+    "40 epoch, EVAL_INTERVAL 5"
+   ]
+  },
+  "results": {
+   "gate": "판정 전",
+   "table": [
+    [
+     "epoch",
+     "트레이너 val"
+    ],
+    [
+     "5",
+     "73.18"
+    ],
+    [
+     "10",
+     "75.52"
+    ],
+    [
+     "15",
+     "75.97"
+    ],
+    [
+     "20",
+     "77.68"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "판정 보류",
+   "why": "기록 없음",
+   "handoff": "완주 후 E7과 tools/eval_muses_official.py로 페어 재채점하여 PhysAug 효과를 확정하고 MUSES 헤드라인 교체 여부를 결정함"
+  },
+  "todo": [
+   "완주(ep40) 및 공식 재채점 결과가 아직 없음"
+  ],
+  "sources": [
+   "configs/hpca100-muses_rgbel_P39_1_seed2_physaugon_screen40_E7c.yaml",
+   "tools/eval_muses_official.py"
+  ],
+  "_internal_refs": [
+   ".claude_logs/experiments/registry.md 카드 E7c 행",
+   ".claude_logs/experiments/plan.md"
+  ]
+ },
+ {
+  "key": "E1",
+  "title": "[Drone-Card] E1 — 중간층 4탭 읽기(S1) (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "진행 중(ep33/40, legal 재채점 대기)",
+  "summary": {
+   "change": "블록 6/12/18/24 출력을 SimpleFPN 레벨별로 투입함(P43 lateral을 M2F 헤드와 분리해 단독 토글)",
+   "result": "트레이너 val ep5~30 = 60.98/63.56/66.30/66.57/66.43/66.88 (B0 동epoch 58.71/63.17/62.18/63.91/64.03/65.13)",
+   "verdict": "뚜렷한 양성 궤적(+1.7@ep30) — 판정은 완주 후 val-best legal test로만 함"
+  },
+  "background": [
+   "가설: 기하 센서(depth·lidar)의 클래스 근거는 중간층에 있다는 것",
+   "E0 프로브 결과(depth 중간층에 Water 47.6·RailTrack 23.9 잔존)가 이 카드의 근거를 강화함"
+  ],
+  "architecture": {
+   "one_liner": "MODEL.TAPS(블록 6/12/18/24 다중 레벨 탭)을 SimpleFPN 레벨별 투입, 투영은 non-zero init",
+   "components": [
+    [
+     "TAPS",
+     "블록 6/12/18/24 출력을 FPN 레벨별 투입, MODE=per_modal(센서별 독립 탭 투영 후 FPN레벨서 합산)",
+     "MODEL.TAPS.ENABLE true"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[block6] --> E[TAPS per-modal projection]\n  B[block12] --> E\n  C[block18] --> E\n  D[block24] --> E\n  E --> F[SimpleFPN]\n  F --> G[pixel head]\n  class E new",
+   "rationale": [
+    "E0 특징 프로브가 depth 중간층에 붕괴클래스(Water/RailTrack) 근거가 남아있음을 실측으로 확인함"
+   ],
+   "setting": [
+    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1.yaml",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "bengio GPU6,7",
+    "40 epoch, EVAL_INTERVAL 5, seed 20260821"
+   ]
+  },
+  "results": {
+   "gate": "통과선 Δtest≥+1.0(vs B0 53.78, 즉 test≥54.78)",
+   "table": [
+    [
+     "epoch",
+     "E1 트레이너 val",
+     "B0 트레이너 val"
+    ],
+    [
+     "5",
+     "60.98",
+     "58.71"
+    ],
+    [
+     "10",
+     "63.56",
+     "63.17"
+    ],
+    [
+     "15",
+     "66.30",
+     "62.18"
+    ],
+    [
+     "20",
+     "66.57",
+     "63.91"
+    ],
+    [
+     "25",
+     "66.43",
+     "64.03"
+    ],
+    [
+     "30",
+     "66.88",
+     "65.13"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": [
+    "legal test 수치 아직 없음(트레이너 val만, 완주 후 val.py 재채점 필요)"
+   ]
+  },
+  "analysis": [
+   "ep30까지 B0 대비 +1.7 트레이너 val 격차 — 조기 궤적으로는 카드 중 가장 뚜렷한 양성 신호"
+  ],
+  "verdict": {
+   "worked": "판정 보류(완주 및 legal 재채점 대기)",
+   "why": "기록 없음",
+   "handoff": "통과 시 200ep 3페어 확정 큐로 이동하며, E12(E1+E2 결합) 카드의 전제조건이 됨"
+  },
+  "todo": [
+   "legal val/test 최종 수치 없음"
+  ],
+  "sources": [
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§3-6/§5",
+   ".claude_logs/experiments/plan.md"
+  ]
+ },
+ {
+  "key": "E2",
+  "title": "[Drone-Card] E2 — 전 선형층 LoRA(S2, r32/α64) (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "완주(2026-09-08 17:24 KST, 총 18:26:55) — 정본 재채점 진행 중(20시 KST 예정)",
+  "summary": {
+   "change": "LoRA 타깃을 Q/V에서 Q/K/V/O(proj) + MLP(fc1/fc2)로 확장하고 rank 8→32, alpha null→64(=2r)로 변경함",
+   "result": "트레이너 val ep40 68.65(val-best, ckpt epoch40_68.65_top1). legal test·val은 val.py 1024 재채점 진행 중(20시 KST) — 판정 전",
+   "verdict": "판정 전(17:26 KST 완주 후 legal 재채점 예정)"
+  },
+  "background": [
+   "가설: Q/V만으로는 센서별 클래스 근거를 담을 용량이 부족하다는 것",
+   "근거: SoMA(2412.04077) 표8 — attn만<MLP만<둘다(+1.5). LoRA Learns Less and Forgets Less(2405.09673) — MLP가 학습 주 loci, α=2r 권장"
+  ],
+  "architecture": {
+   "one_liner": "MultiModalLoRAQKV 확장 + MultiModalLoRALinear(O·fc1·fc2 신규), LORA_TARGETS [qkv_full, proj, fc1, fc2], r32/α64",
+   "components": [
+    [
+     "LoRA 확장",
+     "Q/K/V/O + MLP fc1/fc2, r8→32, α null→64",
+     "encoder.py MultiModalLoRAQKV/MultiModalLoRALinear, LORA_TARGETS"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[Q] --> E[LoRA Q/K/V/O]\n  B[K] --> E\n  C[V] --> E\n  D[O proj] --> E\n  E --> F[MLP fc1/fc2 LoRA]\n  F --> G[gated fusion]\n  class E new\n  class F new",
+   "rationale": [
+    "구조 사다리 S2 — LoRA 용량 부족 가설의 직접 검증",
+    "SoMA·LoRA-용량 문헌 근거"
+   ],
+   "setting": [
+    "configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml(bengio 원본에서 ROOT/SAVE_DIR만 교체)",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "hpca100 GPU1,3",
+    "40 epoch"
+   ]
+  },
+  "results": {
+   "gate": "통과선 Δtest≥+1.0. ep20 RGB-only −0.5면 조기 kill",
+   "table": [
+    [
+     "구성/ckpt",
+     "트레이너 val",
+     "legal test",
+     "비고"
+    ],
+    [
+     "E2 트레이너 궤적 ep5~40",
+     "62.54 / 63.44 / 60.09 / 62.40 / 65.25 / 66.91 / 67.85 / 68.65",
+     "재채점 중",
+     "ep15 하락 후 회복, ep40이 val-best"
+    ],
+    [
+     "B0 기준선(같은 규약)",
+     "65.40@ep40 (정본 val 64.97)",
+     "53.78",
+     "통과선 test ≥ 54.78"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": [
+    "legal test 수치 아직 없음",
+    "로그 말미 'Best Test mIoU 55.57 (epoch 30)'은 test-best ckpt 수치 — 규약상 무효, 정본 대상은 val-best ep40"
+   ]
+  },
+  "analysis": [
+   "초반 하락 후 회복함 — B0/E1과 다른 궤적 형태(변동 큼)",
+   "config 헤더에 '🔴 model.py 배선 필요' 경고가 명시되어 있음: MODEL.LORA_TARGETS를 ReliaDINO→FrozenViTEncoder로 넘기는 배선 3줄이 워커 보고서 시점에 '아직 없다'고 기록되어 있어, 배선 전에는 이 config를 기동해도 LORA_TARGETS가 무시되고 B0(qkv Q/V, r8)로 돌 수 있음"
+  ],
+  "verdict": {
+   "worked": "판정 보류",
+   "why": "기록 없음",
+   "handoff": "통과 시 E12(E1+E2 결합) 착수 전제조건(E2 legal 판정이 양성일 때만)"
+  },
+  "todo": [
+   "legal val/test 최종 수치 없음",
+   "config 헤더의 model.py 배선 경고가 실제 학습 실행에 반영됐는지(LORA_TARGETS가 실제로 적용됐는지) 확인 필요"
+  ],
+  "sources": [
+   "configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml",
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml",
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2b.yaml",
+   "ckpt outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E2/DELIVER_ReliaDINO-ViTL16_idel/epoch40_68.65_top1_checkpoint.pth",
+   "eval config configs/eval/hpca100-deliver_rgbdel_P46_E2_eval1024_legal.yaml",
+   "hpca100 logs/hpca100_E2_launch.log"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§3-6/§5"
+  ]
+ },
+ {
+  "key": "E3",
+  "title": "[Drone-Card] E3 — 센서별 클래스 prototype(C3-M) (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "진행 중(ep25/40, legal 재채점 대기)",
+  "summary": {
+   "change": "prototype bank를 센서별로 분리하고(K×D×M) 센서 간 prototype 일치 항 λ_agree를 추가함",
+   "result": "트레이너 val ep5~25 = 59.35/63.72/62.23/65.44/65.97(B0 동epoch 64.03@25)",
+   "verdict": "보류(+1.9@ep25, 단일 시드 잡음 범위 경계)"
+  },
+  "background": [
+   "user 가설의 직접 검증: 센서마다 클래스 정체성을 독립으로 지지하게 하면 RGB가 헷갈리는 클래스를 lidar·depth의 근거가 붙잡는다는 가설"
+  ],
+  "architecture": {
+   "one_liner": "센서별 독립 prototype bank(_last_per_modal_feats 위, K×D×M) + 센서 간 일치 정규화(λ_agree)",
+   "components": [
+    [
+     "센서별 prototype",
+     "P46.C3_PROTO.SRC: permodal",
+     "p46.py"
+    ],
+    [
+     "일치 항",
+     "AGREE_LAMBDA",
+     "p46.py"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[img feat] --> E[per-modal prototype bank]\n  B[depth feat] --> E\n  C[event feat] --> E\n  D[lidar feat] --> E\n  E --> F[agree regularization]\n  F --> G[main loss]\n  class E new\n  class F new",
+   "rationale": [
+    "user의 문제정의(센서마다 클래스 근거가 다름)를 손실로 직접 구현함"
+   ],
+   "setting": [
+    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E3.yaml",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "bengio GPU4,5",
+    "40 epoch"
+   ]
+  },
+  "results": {
+   "gate": "통과선 Δtest≥+1.0. 예측: RailTrack 유지 + Wall/Water 회복",
+   "table": [
+    [
+     "epoch",
+     "E3 트레이너 val",
+     "B0 트레이너 val"
+    ],
+    [
+     "5",
+     "59.35",
+     "58.71"
+    ],
+    [
+     "10",
+     "63.72",
+     "63.17"
+    ],
+    [
+     "15",
+     "62.23",
+     "62.18"
+    ],
+    [
+     "20",
+     "65.44",
+     "63.91"
+    ],
+    [
+     "25",
+     "65.97",
+     "64.03"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": [
+    "legal test 수치 아직 없음"
+   ]
+  },
+  "analysis": [
+   "+1.9@ep25는 단일 시드 잡음 범위 경계로 판단되어 보류 상태임"
+  ],
+  "verdict": {
+   "worked": "판정 보류",
+   "why": "기록 없음",
+   "handoff": "user 가설(센서별 클래스 근거)의 직접 검증 카드 — 통과 시 200ep 확정"
+  },
+  "todo": [
+   "legal val/test 최종 수치 없음",
+   "RailTrack·Wall·Water 개별 클래스 IoU 예측 검증 결과 없음"
+  ],
+  "sources": [
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E3.yaml",
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E3b.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§3-6/§5"
+  ]
+ },
+ {
+  "key": "E4",
+  "title": "[Drone-Card] E4 — 혼동 쌍 margin 손실(자동 top-5 쌍) (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "진행 중(ep21/40)",
+  "summary": {
+   "change": "학습 시작 시 검증셋 혼동행렬에서 top-k(자동 k=5) 클래스쌍을 고정해 쌍별 prototype/로짓 margin 손실을 추가함",
+   "result": "트레이너 val ep5~20 = 59.77/63.17/65.92/65.70. auto 쌍(ep6 검증 200장 top-5) = Ground→SideWalk, Water→Terrain, Other→Fence, Other→SideWalk, Static→Building",
+   "verdict": "보류. auto 쌍에 RailTrack이 빠져 명시 쌍판(E4b)을 별도로 추가함"
+  },
+  "background": [
+   "가설: 붕괴는 특정 쌍(RailTrack→Sky/Static, Wall→Building 등)으로 흡수되는 형태라는 것"
+  ],
+  "architecture": {
+   "one_liner": "시작 시 혼동행렬 top-k 자동 산출 → 쌍별 margin 손실(CONFUSION_PAIRS: auto_k5)",
+   "components": [
+    [
+     "혼동쌍 자동선정",
+     "ep6 검증 200장 혼동행렬 top-5",
+     "p46.py CONFUSION_PAIRS: auto_k5"
+    ],
+    [
+     "margin 손실",
+     "쌍별 prototype/로짓 margin m",
+     "p46.py"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[val confusion matrix ep6] --> B[auto top-5 pairs]\n  B --> C[pairwise margin loss]\n  C --> D[main loss]\n  class B new\n  class C new",
+   "rationale": [
+    "혼동쌍이 랜덤이 아니라 구조적(특정 쌍으로 흡수)이라는 관찰에 대한 직접 처방"
+   ],
+   "setting": [
+    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4.yaml",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "bengio GPU1-3",
+    "40 epoch"
+   ]
+  },
+  "results": {
+   "gate": "통과선 Δtest≥+1.0, 표적 쌍 IoU 회복",
+   "table": [
+    [
+     "epoch",
+     "트레이너 val"
+    ],
+    [
+     "5",
+     "59.77"
+    ],
+    [
+     "10",
+     "63.17"
+    ],
+    [
+     "15",
+     "65.92"
+    ],
+    [
+     "20",
+     "65.70"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": [
+    "legal test 수치 아직 없음"
+   ]
+  },
+  "analysis": [
+   "auto 쌍에 RailTrack이 누락됨 — RailTrack이 B0에서 확인된 진짜 SOTA 격차 클래스인데 자동 선정 알고리즘이 놓침"
+  ],
+  "verdict": {
+   "worked": "판정 보류",
+   "why": "기록 없음",
+   "handoff": "E4b(명시 쌍판, RailTrack 포함)로 후속 실험을 등재함"
+  },
+  "todo": [
+   "legal val/test 최종 수치 없음"
+  ],
+  "sources": [
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§3-6/§5"
+  ]
+ },
+ {
+  "key": "E4b",
+  "title": "[Drone-Card] E4b — 혼동 쌍 margin 손실(명시 쌍판, RailTrack 포함) (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "미기동(config 완료, E4 완주 후 기동 예정)",
+  "summary": {
+   "change": "E4의 auto 쌍에서 빠진 RailTrack을 포함해 쌍을 명시로 고정함: RailTrack→Sky/Static/Terrain, Wall→Building, Water→Terrain",
+   "result": "기록 없음(미기동)",
+   "verdict": "기록 없음(미기동)"
+  },
+  "background": [
+   "E4 auto 쌍(top-5)에 RailTrack이 누락된 것을 확인함",
+   "RailTrack은 DGFusion 대비 진짜 격차 클래스임(Wall·Water·Bridge는 DGFusion도 test 0~4로 공통 붕괴)"
+  ],
+  "architecture": {
+   "one_liner": "E4와 동일하나 CONFUSION_PAIRS를 명시 리스트로 고정함",
+   "components": [
+    [
+     "명시 혼동쌍",
+     "[RailTrack→Sky, RailTrack→Static, RailTrack→Terrain, Wall→Building, Water→Terrain]",
+     "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b.yaml"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[explicit pairs RailTrack etc] --> B[pairwise margin loss]\n  B --> C[main loss]\n  class A new\n  class B new",
+   "rationale": [
+    "E4 auto 선정 알고리즘이 RailTrack을 놓친 결함을 사람이 직접 보정함"
+   ],
+   "setting": [
+    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b.yaml",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "bengio GPU1-3(E4 완주 후)",
+    "40 epoch"
+   ]
+  },
+  "results": {
+   "gate": "Δtest≥+1.0 그리고 legal test RailTrack IoU > B0 31.98",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "미기동 — 결과 없음"
+  ],
+  "sources": [
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1"
+  ]
+ },
+ {
+  "key": "E1M",
+  "title": "[Drone-Card] E1M — 카드 E1(4탭 읽기)의 MUSES 이식 (MUSES)",
+  "period": "2026-09-08",
+  "track": "card-MUSES",
+  "status": "진행 중(hpca100 GPU3, 2026-09-08 17:37 KST 기동, ep1, 1.61 it/s, 완주 ETA 09-09 13시 KST 전후)",
+  "summary": {
+   "change": "카드 E1(중간층 4탭 읽기)을 MUSES로 이식함(PhysAug off, E7 기준선 위에 TAPS on)",
+   "result": "기동 직후 — 수치 없음. E7(PhysAug-off, 트레이너 val 80.29@40)과 매칭 페어",
+   "verdict": "기록 없음"
+  },
+  "background": [
+   "원본 = hpca100-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml(PhysAug off), 변경 = MODEL.TAPS on"
+  ],
+  "architecture": {
+   "one_liner": "E1과 동일 TAPS 메커니즘을 MUSES 3모달 레시피에 적용함",
+   "components": [
+    [
+     "TAPS(MUSES 이식)",
+     "블록 6/12/18/24 다중 레벨 탭",
+     "MODEL.TAPS.ENABLE true"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[MUSES block6/12/18/24] --> B[TAPS per-modal projection]\n  B --> C[SimpleFPN]\n  C --> D[M2F head]\n  class B new",
+   "rationale": [
+    "DELIVER·MUSES 공통 한 단계 상승이 목표임 — E1이 DELIVER에서 통과하면 MUSES로 검증함"
+   ],
+   "setting": [
+    "configs/hpca100-muses_rgbel_P39_1_seed2_physaugoff_taps_screen40_E1M.yaml",
+    "MUSES 3모달",
+    "위 config 경로",
+    "hpca100(⚠️ bengio에는 MUSES 데이터 없음 — jarvis 등 MUSES 보유 서버 필요)",
+    "40 epoch"
+   ]
+  },
+  "results": {
+   "gate": "Δ(E1M − E7) 공식 val ≥ +1.0 이면 DELIVER E1과 함께 '공통 한 단계' 후보",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "미기동 — 결과 없음"
+  ],
+  "sources": [
+   "configs/hpca100-muses_rgbel_P39_1_seed2_physaugoff_taps_screen40_E1M.yaml",
+   "configs/hpca100-muses_rgbel_P39_1_seed2_physaugoff_taps_screen40_E1M.yaml",
+   "hpca100 logs/hpca100_E1M_launch.log"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §3-6",
+   ".claude_logs/experiments/plan.md"
+  ]
+ },
+ {
+  "key": "E12",
+  "title": "[Drone-Card] E12 — E1(4탭)+E2(전 선형층 LoRA) 결합 (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "미기동(config 완료, E2 legal 판정 양성일 때만 기동)",
+  "summary": {
+   "change": "E1(4탭 읽기)과 E2(전 선형층 LoRA r32/α64)를 결합함",
+   "result": "기록 없음(미기동)",
+   "verdict": "기록 없음"
+  },
+  "background": [
+   "카드 §3-6 배치계획: E2 판정 후 hpca100 GPU1에서 통과하면 E12, 아니면 E1s2로 이동"
+  ],
+  "architecture": {
+   "one_liner": "TAPS(E1) + 전 선형층 LoRA 확장(E2)을 동시 적용함",
+   "components": [
+    [
+     "TAPS",
+     "블록 6/12/18/24",
+     "MODEL.TAPS.ENABLE true"
+    ],
+    [
+     "전 선형층 LoRA",
+     "LORA_TARGETS [qkv_full, proj, fc1, fc2], r32/α64",
+     "LORA_R 32, LORA_ALPHA 64"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[block taps] --> C[TAPS]\n  B[LoRA all layers] --> D[expanded LoRA]\n  C --> E[SimpleFPN]\n  D --> E\n  E --> F[pixel head]\n  class C new\n  class D new",
+   "rationale": [
+    "E1·E2가 각각 양성이면 결합 이득을 확인하는 조합 카드"
+   ],
+   "setting": [
+    "configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E12.yaml",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "hpca100",
+    "40 epoch"
+   ]
+  },
+  "results": {
+   "gate": "E2 legal 판정 양성일 때만 기동, 이후 Δtest≥+1.0",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "미기동 — 결과 없음",
+   "config 헤더에 '🔴 model.py 배선 필요' 경고(E2와 동일) — LORA_TARGETS가 아직 무시되고 B0(qkv Q/V, r8)로 돌 수 있다는 주의가 명시됨"
+  ],
+  "sources": [
+   "configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E12.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §3-6"
+  ]
+ },
+ {
+  "key": "E1s2",
+  "title": "[Drone-Card] E1s2 — E1(4탭 읽기) 시드2 매칭 페어 (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "미기동(config 완료, bengio판/hpca100판 2벌)",
+  "summary": {
+   "change": "E1과 동일함(TAPS on), 시드만 20260902로 교체해 B0s2와 매칭 페어를 구성함",
+   "result": "기록 없음(미기동)",
+   "verdict": "기록 없음"
+  },
+  "background": [
+   "E1 legal 판정 후 재현성 확인을 위한 2번째 시드 페어"
+  ],
+  "architecture": {
+   "one_liner": "E1과 동일함(MODEL.TAPS.ENABLE true), seed 20260902",
+   "components": [
+    [
+     "TAPS",
+     "블록 6/12/18/24",
+     "MODEL.TAPS.ENABLE true"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[block6] --> E[TAPS per-modal projection]\n  B[block12] --> E\n  C[block18] --> E\n  D[block24] --> E\n  E --> F[SimpleFPN]\n  F --> G[pixel head]\n  class E new",
+   "rationale": [
+    "단일 시드 결과의 재현성 검증"
+   ],
+   "setting": [
+    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml, configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "bengio GPU4,5(E3 완주 후)/hpca100(E7c 완주 후)",
+    "40 epoch, seed 20260902"
+   ]
+  },
+  "results": {
+   "gate": "E1과 동일 규약, B0s2 대비 비교",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "미기동 — 결과 없음"
+  ],
+  "sources": [
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml",
+   "configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §3-6"
+  ]
+ },
+ {
+  "key": "B0s2",
+  "title": "[Drone-Card] B0s2 — 기준선 시드2 매칭 페어 (DELIVER)",
+  "period": "2026-09-08",
+  "track": "card-DELIVER",
+  "status": "미기동(config 완료)",
+  "summary": {
+   "change": "B0과 동일한 레시피, 시드만 20260902로 교체함(E1s2와 매칭 페어)",
+   "result": "기록 없음(미기동)",
+   "verdict": "기록 없음"
+  },
+  "background": [
+   "시드 페어 편차(~0.6) 통제를 위한 2번째 시드 기준선"
+  ],
+  "architecture": {
+   "one_liner": "B0과 동일함(변경 없음), seed 20260902",
+   "components": [
+    [
+     "기준 레시피",
+     "P46 C3-only λ0.1, PhysAug off",
+     "configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2.yaml"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[img] --> E[DINOv3 plus LoRA]\n  B[depth] --> E\n  C[event] --> E\n  D[lidar] --> E\n  E --> F[gated fusion]\n  F --> G[pixel head]",
+   "rationale": [
+    "카드 페어 비교의 시드 잡음 통제"
+   ],
+   "setting": [
+    "configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2.yaml",
+    "DELIVER 4모달",
+    "위 config 경로",
+    "bengio GPU6,7(E1 완주 후)",
+    "40 epoch, seed 20260902"
+   ]
+  },
+  "results": {
+   "gate": "대조군(게이트 없음)",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "미기동 — 결과 없음"
+  ],
+  "sources": [
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §3-6"
+  ]
+ },
+ {
+  "key": "E5",
+  "title": "[Drone-Card] E5 — 변형 가능 다중스케일 픽셀 디코더(MSDeformAttn) (DELIVER)",
+  "period": "미기동(4일차 이후 예정)",
+  "track": "card-DELIVER",
+  "status": "미기동(설계만, 코드 미작성)",
+  "summary": {
+   "change": "SimpleFPN 합산을 deformable attention 기반 픽셀 디코더(3층)로 교체함(E1 위에서만 적용, 질의 경로 없이 여전히 dense 픽셀 헤드)",
+   "result": "기록 없음",
+   "verdict": "E0 판정으로 우선순위가 하향됨(구조 카드 중단 후보)"
+  },
+  "background": [
+   "가설: 4탭을 SimpleFPN 합산이 아니라 deformable attention으로 읽어야 얇은 클래스가 산다는 것",
+   "E0 특징 프로브 결과 전역 가설(어댑터가 정보를 버림)이 기각되면서 이 카드의 전제(정보가 백본에 있다)가 약화되어 우선순위가 하향됨"
+  ],
+  "architecture": {
+   "one_liner": "SimpleFPN → MSDeformAttn 픽셀 디코더(3층), 출력은 여전히 dense 픽셀 헤드",
+   "components": [
+    [
+     "MSDeformAttn 픽셀 디코더",
+     "RF-DETR·Mask2Former 픽셀 디코더 유형, 3층",
+     "신규 모듈 pixel_decoder.py(미작성)"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[4 tap features E1] --> B[MSDeformAttn pixel decoder]\n  B --> C[dense pixel head]\n  class B new",
+   "rationale": [
+    "RF-DETR 이득의 근원이 DINOv2 백본+다중스케일 deformable 디코더였다는 판단 — 질의 경로가 아닌 디코더 자체만 세그로 이식함"
+   ],
+   "setting": [
+    "신규 모듈 pixel_decoder.py(미작성)",
+    "DELIVER 4모달",
+    "기록 없음",
+    "기록 없음",
+    "E1 위에서만 적용 예정"
+   ]
+  },
+  "results": {
+   "gate": "Δtest ≥ E1 + 0.5",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "E0 판정(원 특징에도 정보가 어댑터·융합 후보다 적음)으로 '구조 사다리 S3/S5의 전제(정보가 백본에 있다)'가 약해져 이 카드의 우선순위가 하향됨"
+  ],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "코드 미작성 — 실행 계획 단계"
+  ],
+  "sources": [],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1(4일차 이후)/§2",
+   ".claude_logs/experiments/analysis/2026-09-08-daily-cards-E0-feature-probe.md"
+  ]
+ },
+ {
+  "key": "E6",
+  "title": "[Drone-Card] E6 — 매 블록 센서 간 교환 어댑터(S3) (DELIVER)",
+  "period": "미기동",
+  "track": "card-DELIVER",
+  "status": "미기동(설계만, 코드 미작성)",
+  "summary": {
+   "change": "각 블록 attn 뒤·FFN 뒤에 StitchFusion-MoA식 양방향 저랭크 MLP로 센서 간 교환을 넣음(백본 frozen 유지)",
+   "result": "기록 없음",
+   "verdict": "E0 판정으로 우선순위가 하향됨"
+  },
+  "background": [
+   "가설: 후기 융합이 병목이며 인코딩 중 센서 간 저랭크 교환이 필요하다는 것",
+   "P51-CMLC(레포 전체 계보에서 legal Δ −0.82, H19 반증)와의 차이를 제안서에 선행 기술해야 함 — 블록 출력 교환 vs LoRA 코드 결합, non-zero init, 양방향"
+  ],
+  "architecture": {
+   "one_liner": "블록별 attn/FFN 후크에 양방향 저랭크 MLP를 삽입함(encoder.py 후크)",
+   "components": [
+    [
+     "교환 어댑터",
+     "StitchFusion-MoA식 양방향 저랭크 MLP",
+     "encoder.py 후크(미작성)"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[block attn] --> B[bidirectional low-rank exchange]\n  B --> C[block FFN]\n  C --> D[next block]\n  class B new",
+   "rationale": [
+    "E0에서 원 특징에도 어댑터·융합 대비 정보가 적었다는 결과로 이 카드의 전제가 약화됨"
+   ],
+   "setting": [
+    "encoder.py 후크(미작성)",
+    "DELIVER 4모달",
+    "기록 없음",
+    "기록 없음",
+    "기록 없음"
+   ]
+  },
+  "results": {
+   "gate": "Δtest≥+1.0, fog·night 비악화",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "E0 판정으로 구조 카드 E5·E6이 하향됨(카드 문서 §5 E0 결과 행)"
+  ],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "코드 미작성 — 실행 계획 단계"
+  ],
+  "sources": [],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1(4일차 이후)/§2",
+   ".claude_logs/experiments/analysis/2026-09-08-daily-cards-E0-feature-probe.md"
+  ]
+ },
+ {
+  "key": "E8",
+  "title": "[Drone-Card] E8 — 클래스 표적 copy-paste 증강 (DELIVER)",
+  "period": "미기동",
+  "track": "card-DELIVER",
+  "status": "미기동(설계만)",
+  "summary": {
+   "change": "붕괴 클래스(RailTrack·Wall·Water·Bridge) 인스턴스를 4센서 동시 copy-paste로 증강함",
+   "result": "기록 없음",
+   "verdict": "기록 없음"
+  },
+  "background": [
+   "가설: 붕괴 클래스의 학습 노출이 부족하다는 것",
+   "C1 RCS(샘플링 기반, 별도 카드 계보에서 실패)와 구분됨: 샘플링이 아니라 합성"
+  ],
+  "architecture": {
+   "one_liner": "로더에 4센서 동시 copy-paste 옵션을 추가함",
+   "components": [
+    [
+     "copy-paste",
+     "RailTrack·Wall·Water·Bridge 인스턴스 합성",
+     "deliver.py 로더 옵션(미작성)"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[original sample] --> B[copy-paste rare class instances]\n  B --> C[augmented sample]\n  class B new",
+   "rationale": [
+    "C1 RCS(우선샘플링)가 실패했으므로 샘플링이 아닌 합성 증강으로 노출 부족을 직접 해소함"
+   ],
+   "setting": [
+    "deliver.py 로더 옵션(미작성)",
+    "DELIVER 4모달",
+    "기록 없음",
+    "기록 없음",
+    "기록 없음"
+   ]
+  },
+  "results": {
+   "gate": "Δtest≥+1.0",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "코드 미작성 — 실행 계획 단계"
+  ],
+  "sources": [],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1(3일차)"
+  ]
+ },
+ {
+  "key": "E10",
+  "title": "[Drone-Card] E10 — 상위 절반 블록 부분 파인튜닝(S4) (DELIVER)",
+  "period": "미기동",
+  "track": "card-DELIVER",
+  "status": "미기동(설계만)",
+  "summary": {
+   "change": "블록 13~24만 unfreeze(layer-wise LR decay 0.9, top lr 1e-5)함",
+   "result": "기록 없음",
+   "verdict": "기록 없음"
+  },
+  "background": [
+   "가설: P49(전체 파인튜닝) 실패가 전체 FT 자체 때문이라는 것"
+  ],
+  "architecture": {
+   "one_liner": "옵티마이저 그룹을 블록 13~24만 unfreeze(LLRD 0.9)로 구성함",
+   "components": [
+    [
+     "부분 FT",
+     "블록 13~24 unfreeze, LLRD 0.9, top lr 1e-5",
+     "옵티마이저 그룹(미작성)"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[blocks 1-12 frozen] --> C[gated fusion]\n  B[blocks 13-24 unfrozen LLRD] --> C\n  C --> D[pixel head]\n  class B new",
+   "rationale": [
+    "P49 전체 FT 실패 원인을 블록 수 통제로 분리함"
+   ],
+   "setting": [
+    "옵티마이저 그룹 구성(미작성)",
+    "DELIVER 4모달",
+    "기록 없음",
+    "기록 없음",
+    "기록 없음"
+   ]
+  },
+  "results": {
+   "gate": "Δtest≥E2+0.5, RGB-only −0.5면 kill",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "기록 없음(미기동)",
+   "why": "기록 없음",
+   "handoff": "기록 없음"
+  },
+  "todo": [
+   "코드 미작성 — 실행 계획 단계",
+   "P49 실패 상세(별도 문서, 이 세션에서 미열람) — 참조 필요"
+  ],
+  "sources": [],
+  "_internal_refs": [
+   ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1(4일차 이후)"
+  ]
+ },
+ {
+  "key": "DGFusion-SwinT-retrain",
+  "title": "[Drone-Baseline] DGFusion Swin-T DELIVER 공식 설정 재학습 — 재현/한계분석 (DELIVER)",
+  "period": "2026-09-08 ~ 진행 중",
+  "track": "baseline",
+  "status": "진행 중(iter 19,979/200,000, ETA ~1.3일)",
+  "summary": {
+   "change": "DGFusion 공개 저장소(timbroed/DGFusion, RA-L 2026)는 학습코드가 의도적으로 빠져 있어(train_net.py 부재, forward 학습분기 예외차단, criterion 학습유틸 4종 미정의) CAFuser 공개 학습코드를 대조해 복원한 킷으로 공식 설정(bs8·LR1e-4·200k iter) 그대로 재학습함",
+   "result": "iter 19,979/200,000(진행 중, 2026-09-08 16:08 KST), iter 10k 시점 평가 mIoU 60.31(depth abs_rel 10.99)",
+   "verdict": "판정 전(완주 후 공개값 val 66.51/test 56.71 재현 여부로 판단)"
+  },
+  "background": [
+   "user 지시: '통계적으로 확실하게 뽑아 한계분석 후 우리 것에 반영'",
+   "복원 대상 3종: train_net.py 자체(test_net.py만 제공됨), forward 학습분기(예외로 차단됨), criterion.py 학습전용 유틸 4종(calculate_uncertainty/dist_collect/sigmoid_ce_loss_jit/dice_loss_jit)",
+   "손실가중치·SOLVER(bs8/LR1e-4/200k/AdamW/poly)·depth 손실 자체는 공개 config/criterion에 온전히 남아 있어 복원이 불필요함"
+  ],
+  "architecture": {
+   "one_liner": "Swin-T 백본 + CAFuser 계열 dual-head(class+depth) 구조, DELIVER 4모달 CLDE(camera/lidar/event/depth)",
+   "components": [
+    [
+     "train_net.py 복원",
+     "CAFuser train_net.py에 test_net.py의 dgfusion import·DepthEvaluator 배선을 병합",
+     "third_party/dgfusion_train_restore/train_net.py"
+    ],
+    [
+     "forward 학습분기 복원",
+     "CAFuser cafuser.py 학습블록+depth GT 배선 이식(gt_depth/image/sem_seg를 모델 패딩크기로 맞춰 targets에 주입)",
+     "third_party/dgfusion_train_restore/dgfusion_training_restore.patch"
+    ],
+    [
+     "criterion 유틸 복원",
+     "oneformer.modeling.criterion에서 import+jit 스크립트로 복원",
+     "같은 patch"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> E[Swin-T]\n  B[LiDAR] --> E\n  C[Event] --> E\n  D[Depth] --> E\n  E --> F[dual head class/depth]\n  F --> G[prediction]\n  H[train_net.py restored] --> F\n  class H new",
+   "rationale": [
+    "DGFusion은 공개 논문 SOTA 계열로, 우리 모델과의 공정 비교를 위해 동일 설정으로 직접 재현함",
+    "CAFuser 학습코드가 완전 공개되어 있어 구조적으로 대조 가능함(같은 저자 계열, timbroed)"
+   ],
+   "setting": [
+    "third_party/dgfusion_train_restore/",
+    "DELIVER CLDE(camera/lidar/event/depth)",
+    "configs/deliver/swin/dgfusion_swin_tiny_bs8_200k_deliver_clde.yaml",
+    "jarvis GPU1,2,4,5",
+    "200k iteration, bs8, LR 1e-4, poly, AdamW"
+   ]
+  },
+  "results": {
+   "gate": "판정 전(공개값 val 66.51/test 56.71 재현 목표)",
+   "table": [
+    [
+     "시점",
+     "iter",
+     "mIoU",
+     "비고"
+    ],
+    [
+     "기동검증",
+     "619→659 전진",
+     "기록 없음",
+     "loss_depth 0.081 반영, 18.2GiB×4"
+    ],
+    [
+     "진행(2026-09-08 16:08 KST)",
+     "19,979/200,000",
+     "기록 없음",
+     "기록 없음"
+    ],
+    [
+     "iter 10k 평가",
+     "10,000",
+     "60.31",
+     "depth abs_rel 10.99"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "기동검증: iteration이 실제로 전진함(619→659), loss_depth 반영 확인, GPU당 18.2GiB 사용 — 정상 기동으로 판정됨"
+  ],
+  "verdict": {
+   "worked": "판정 전",
+   "why": "기록 없음",
+   "handoff": "완주 후 공개값(val 66.51/test 56.71) 재현 여부로 한계분석하여 자체 모델(RxDINO/P46 등)에 반영함"
+  },
+  "todo": [
+   "완주 및 최종 val/test mIoU 없음(진행 중)"
+  ],
+  "sources": [
+   "third_party/dgfusion_train_restore/train_net.py",
+   "third_party/dgfusion_train_restore/dgfusion_training_restore.patch",
+   "third_party/dgfusion_train_restore/setup_dgfusion_train_env.sh",
+   "configs/deliver/swin/dgfusion_swin_tiny_bs8_200k_deliver_clde.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/status/history-2026H2.md 2026-09-08 엔트리",
+   ".claude_logs/experiments/registry.md dgfusion 행",
+   ".claude_logs/experiments/plan.md 실행중 표"
+  ]
+ },
+ {
+  "key": "CAFuser-SwinT-retrain",
+  "title": "[Drone-Baseline] CAFuser Swin-T DELIVER 공식 학습코드 재학습 — DGFusion 대조군 (DELIVER)",
+  "period": "2026-09-08 ~ 진행 중",
+  "track": "baseline",
+  "status": "진행 중(iter 11,039/266,667, ETA ~4일 17시간)",
+  "summary": {
+   "change": "CAFuser 공식 학습코드로 DELIVER를 재학습함(3 GPU 제약으로 bs6·LR0.75e-4·266,667 iter = 공식 bs8·200k와 총 샘플 수 동일하도록 보정)",
+   "result": "iter 11,039/266,667(진행 중, 2026-09-08 16:08 KST), iter 10k 시점 평가 mIoU 55.74",
+   "verdict": "판정 전(완주 후 공개값 val 68.12/test 55.80 재현 여부로 판단)"
+  },
+  "background": [
+   "DGFusion 재현 실험의 대조군 — 공식 학습코드가 완전 공개되어 있어 복원이 불필요함",
+   "DELIVER config에서는 DGFusion과 LR이 1e-4로 동일함(과거 기록의 '1.8×' 교란은 MUSES config 이야기였음)",
+   "3 GPU 제약(lecun GPU0,1,2)으로 bs6·LR0.75e-4·266,667 iter가 파생됨 — 공식 bs8 4GPU와의 편차를 결과 보고 시 반드시 명시해야 함"
+  ],
+  "architecture": {
+   "one_liner": "Swin-T 백본 + CAFuser 공식 dual-head 구조, DELIVER 4모달 CLDE",
+   "components": [
+    [
+     "공식 학습코드",
+     "train_net.py 그대로(복원 불필요)",
+     "third_party/dgfusion_train_restore/setup_cafuser_lecun.sh"
+    ],
+    [
+     "3GPU 파생 config",
+     "bs6·LR0.75e-4·266,667 iter(총 샘플 수는 공식과 동일 보정)",
+     "third_party/dgfusion_train_restore/cafuser_swin_tiny_bs6_267k_deliver_clde_lecun.yaml"
+    ]
+   ],
+   "mermaid": "flowchart LR\n  A[RGB] --> E[Swin-T]\n  B[LiDAR] --> E\n  C[Event] --> E\n  D[Depth] --> E\n  E --> F[CAFuser dual head]\n  F --> G[prediction]\n  H[bs6 LR0.75e-4 267k iter 3GPU 보정] --> E\n  class H new",
+   "rationale": [
+    "DGFusion 재현 실험의 대조군으로 같은 백본·같은 저자 계열의 공식 학습코드를 직접 실행해 재현성 기준을 확보함"
+   ],
+   "setting": [
+    "third_party/dgfusion_train_restore/setup_cafuser_lecun.sh",
+    "DELIVER CLDE(camera/lidar/event/depth)",
+    "third_party/dgfusion_train_restore/cafuser_swin_tiny_bs6_267k_deliver_clde_lecun.yaml",
+    "lecun GPU0,1,2",
+    "266,667 iteration, bs6, LR 0.75e-4"
+   ]
+  },
+  "results": {
+   "gate": "판정 전(공개값 val 68.12/test 55.80 재현 목표)",
+   "table": [
+    [
+     "시점",
+     "iter",
+     "mIoU",
+     "비고"
+    ],
+    [
+     "기동검증",
+     "69분에 ~4,000 iter",
+     "기록 없음",
+     "loss 하강, 17.4GiB×3"
+    ],
+    [
+     "진행(2026-09-08 16:08 KST)",
+     "11,039/266,667",
+     "기록 없음",
+     "기록 없음"
+    ],
+    [
+     "iter 10k 평가",
+     "10,000",
+     "55.74",
+     "기록 없음"
+    ]
+   ],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [
+   "기동검증: iteration이 전진함(69분에 ~4,000iter), loss 하강, GPU당 17.4GiB — 정상 기동으로 판정됨"
+  ],
+  "verdict": {
+   "worked": "판정 전",
+   "why": "기록 없음",
+   "handoff": "완주 후 공개값(val 68.12/test 55.80) 재현 여부를 확인하여 DGFusion 재현치와 함께 자체 모델 대비 한계분석에 사용함"
+  },
+  "todo": [
+   "완주 및 최종 val/test mIoU 없음(진행 중)",
+   "3GPU 파생 config(bs6/LR0.75e-4)로 인한 공식 4GPU(bs8) 대비 편차가 결과에 미치는 영향은 완주 후 별도 평가가 필요함"
+  ],
+  "sources": [
+   "third_party/dgfusion_train_restore/setup_cafuser_lecun.sh",
+   "third_party/dgfusion_train_restore/cafuser_swin_tiny_bs6_267k_deliver_clde_lecun.yaml"
+  ],
+  "_internal_refs": [
+   ".claude_logs/status/history-2026H2.md 2026-09-08 엔트리",
+   ".claude_logs/experiments/registry.md cafuser 행",
+   ".claude_logs/experiments/plan.md 실행중 표"
+  ]
+ }
+]
