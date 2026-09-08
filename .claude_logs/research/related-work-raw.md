@@ -487,3 +487,69 @@ tgt2 = self.cross_attn_image(
 - StitchFusion-MoA/CrossWeaver-MIB식 "인코딩 중 모달 간 교환"은 우리 P51-CMLC(LoRA 부분공간 대칭 결합, −0.82)와 정신이 같다. 재시도하려면 차이(블록마다 attn 뒤·FFN 뒤 양방향 저랭크 MLP 교환 vs LoRA 코드 결합)를 먼저 써야 한다.
 - MM-SA식 "별도 경량 인코더 + 비대칭 주입"은 P49/P49.1에서 실패(−0.8/−0.97). 단 P49는 **DINOv3 전체 FT(RGB_FT)**를 동반했고, SpectraDINO T8은 소량 데이터 전체 FT가 −9.4 붕괴·상위 절반만 FT가 최선임을 보인다 → P49 실패의 원인이 주입이 아니라 전체 FT였을 가능성(재해석 후보).
 - 미확인: MUSES 리더보드 GtA 82.39(camera-only)는 두 조사 모두 웹에서 찾지 못함(Codabench 로그인 페이지). 세션 메모리 값 — 제출 전 재확인 필요.
+
+---
+
+## 2026-09-08 — 최신 지형 전수 스윕 (user 요청: "기존 기록 이외의 신규 접근 조사" — 웹 병렬 3축: 세그 / 검출 / SAM·메모리 경쟁축)
+
+> 조사 방법: 병렬 웹 조사 에이전트 3개(WebSearch+arXiv 원문 대조) + 기존 기록(canonical 2문서 + 볼트 사본, arXiv ID 191건) 전수 대조. 아래는 **기존 기록에 없던 신규 항목 중심**이며, 기존 항목은 갱신된 사실(venue 확정 등)만 적는다. 미확인 수치는 표기대로 미확인.
+
+### A. 노벨티 판정에 직접 닿는 발견 (최우선)
+
+1. **MemorySAM(arXiv 2503.06700) 게재 상태 = 여전히 preprint.** GitHub bibtex(`@misc`)·저자 홈페이지 모두 학회 표기 없음. 일부 검색 요약의 "ICCV 2025 accepted"는 1차 출처에서 확인 불가 → **미확인 판정**. 코드·DELIVER/MCubeS 가중치는 공개돼 있음(스타 45). 구현 재확인: 모달을 프레임 시퀀스로 넣고 2번째 모달부터 memory attention으로 이전 모달 메모리에 cross-attend, 인코더는 동결+Q/V LoRA(rank4, 모달 공유), memory attention·memory encoder·mask decoder는 풀튜닝, SPMM(학습시 전용)의 prototypical adaptation loss. **신뢰도/가중 개념은 원문에 전무** — 모달 마스크 균등 평균의 "memory residual"뿐. ablation: 메모리 제거 −3.62, SPMM 제거 −1.07 (RGB-D).
+2. **"training-free 신뢰도 → memory-attention pre-softmax additive bias" 셀은 이번 스윕에서도 점유자 미발견.** 단, 이 판정은 웹 스윕 한정이며 **기존 기록의 PRIMED(2605.07154, learned modality-prior additive pre-softmax bias, RAVS)·SAE(2603.16558, training-free entropy additive bias, LVLM)가 여전히 최근접 위협**으로 유효 — 전문 정독 TODO는 그대로 blocking.
+3. 🔴 **신규 must-cite: DFormerv2 (CVPR 2025, arXiv 2504.04701, 난카이 VCIP, 코드 공개).** depth를 별도 인코더로 태우지 않고 **depth에서 뽑은 기하 prior로 self-attention 가중 배분을 변조**하는 Geometry Self-Attention(GSA). "보조 모달을 attention 변조로 주입"이라는 점에서 RBMA와 개념적으로 가장 가까운 CVPR급 이웃. 차별축: GSA의 신호는 **기하(거리)**이지 신뢰도가 아니고, 무대도 SAM memory attention이 아님. 원문에서 additive인지 multiplicative인지 정독 필요(→ lit-check TODO 7).
+4. **RSGMamba(2604.12319) 상세 확보**: Reliability-aware Self-Gated Mamba Block이 모달 신뢰도를 명시 모델링해 cross-modal 상호작용 강도를 self-gating(곱셈적)으로 조절. MFNet 61.1/PST900 88.9/NYUDv2 58.8/SUN 54.0, 48.6M. RBMA 방어 문구: "곱셈적 게이팅 vs 가산적 logit bias, 학습형 vs training-free".
+5. **검출 쪽에서도 2025~26년에 신뢰도-가중 융합이 급증** (JFRDet 조도 게이팅, MDQF 열화-모달 배제, SAMFusion 날씨별 센서 적응). 전부 게이팅/선택이며 attention-logit bias는 아님 — det-additive-bias 빈 셀 재확인.
+
+### B. 세그멘테이션 — 신규 파악 항목
+
+- **GeminiFusion** (arXiv 2406.01210, ICML 2024로 알려짐·venue 미확인, 코드 공개): 백본 블록의 attn과 MLP 사이 픽셀단위 cross-attention 교환, 선형 비용. 단 CVPRW 2025 강건성 벤치마크에서 "과도한 모달 교환이 노이즈를 전파해 노이즈 조건 급락" 판정 — 교환량과 강건성의 트레이드오프 실증 사례.
+- **센서 실패 강건성 벤치마크** (arXiv 2503.18445, **CVPRW 2025 Best Paper**, MemorySAM 1저자 동일 인물, 코드 공개): DELIVER 기반 Entire/Random Missing + noisy-modality 프로토콜로 CMNeXt·MAGIC(++)·GeminiFusion·StitchFusion 재평가. MAGIC++ 최상위, GeminiFusion 급락. **이후 DELIVER 신작은 거의 전부 missing 수치를 병기** — 우리 평가 프로토콜에도 결손·노이즈 축 추가 검토 근거.
+- **EGFormer** (2505.14014): 모달별 중요도 점수(ASM) + 스테이지마다 저정보 모달을 실제 탈락(MDM). "융합 대신 버리기"의 효율 노선.
+- **MMSFormer** (2309.04001, IEEE OJSP 2024): MCubeS 53.11로 상위권 기준점(RGB+AoLP+DoLP+NIR).
+- **Sigma** (2404.04256, WACV 2025, 코드 공개): 최초 SSM 멀티모달 세그(샴 VMamba + Cross/Concat Mamba Block). 수치 출처 간 불일치(통상 MFNet 61.3/PST900 88.6) — 인용 시 원문 재확인.
+- **AlignMamba** (2412.00833, CVPR 2025): 세그 아님(융합 일반). OT 국소 정렬+MMD 전역 정렬로 Mamba 순차 스캔의 cross-modal 한계 보완 — Mamba 융합 참고용.
+- **EIFNet** (2507.21971): event-image 융합 세그(DDD17/DSEC-Semantic SOTA 주장, 수치 미확인).
+- **KAN-SAM** (2504.05878, ICME 2025): thermal을 KAN 어댑터로 SAM2에 프롬프트 주입 + 상호배타 랜덤 마스킹(RGB 의존 저감). RGB-T SOD.
+- **CRISP-SAM2** (2506.23121): 언어-영상 cross-modal 프롬프트를 SAM2 메모리 파이프라인에 태우는 의료 세그 — 겹침 하.
+- **MedSAM2 계열** (2504.03600 등): 시간축 메모리를 **z축(볼륨 슬라이스)으로 전용** — "메모리 축 재해석" 계보의 선례로 관련연구 절 인용 가치.
+- **SAM3-Adapter** (2511.19425): SAM3 첫 어댑터 프레임워크(camouflage/shadow/의료). **SAM3의 멀티모달 센서 적응은 여전히 공백 — 선점 여지.** SAM3 구조 재확인: detector-tracker 분리로 memory attention은 트래커 쪽에 잔존 → 모달 축 전용하려면 트래커 브랜치를 떼어 써야 함(기존 10_related_work §SAM3 분석과 합치).
+- venue 확정: **StitchFusion = ACM MM 2025**, **MM SAM-adapter = IEEE 게재**(Xplore 11162503), SHIFNet = IROS 2025(기존 기록대로).
+- 스텁(미정독): HAPNet(2404.03527), BIMII-Net(2503.19303), Mul-VMamba(KBS, paywall 유지), SARTM 수치 미확인 유지.
+- 벤치 포화 신호: MFNet 61~62 정체, DELIVER 68대(StitchFusion), MUSES val 79~80 — 신작들은 절대치보다 강건성·효율·일반화로 차별화 중. MUSES GtA 82.39(camera-only)는 이번에도 웹 재확인 실패(Codabench 로그인 장벽) — 제출 전 재확인 의무 유지.
+
+### C. 검출 — 신규 파악 항목 (기존 기록이 얇던 축, 대부분 신규)
+
+**미스얼라인 3세대 진화**: 암묵 적응 → 명시적 offset/affine + deformable 정렬 → 쿼리·출력 공간 분리.
+- **OAFA** (CVPR 2024): CSOM으로 모달 공통 부분공간에서 feature-level 오프셋 명시 추정 + ODAF deformable 정렬 — weak-misalignment 기준점.
+- **CoDAF** (2506.16737): offset-유도 정렬(OSA) + 동적 attention 융합(DAFM), DroneVehicle 78.6 mAP.
+- **JFRDet** (2608.10680): 대변위 affine을 이미지 레벨에서 추정해 feature 워핑 + **조도 기반 모달 신뢰도 가중(IGCF)** + **정렬 신뢰도로 검출 supervision 강도 게이팅(AQCG)**. DVMA(DroneVehicle-Misaligned) 신규 벤치 제안, 69.7 mAP50.
+- **DPDETR** (2408.06123): 객체를 (카테고리, visible 좌표, IR 좌표)로 분해해 **모달별 박스를 둘 다 예측** — 정렬 문제의 출력-공간 해법(가장 급진적).
+- **MDQF** (2601.08458, 기존 스텁 → 상세 확보): 모달별 독립 DETR 브랜치 + 디코더 단계마다 고품질 쿼리 선별 교환, 열화 모달 융합 배제 가능, **unpaired 학습 가능**.
+- **MS-DETR** (2302.00290, TITS 2024, 코드 공개): loosely-coupled 디코더 융합 + instance-aware modality-balanced loss — 보행자 DETR 표준.
+- **DAMSDet** (ECCV 2024, 기존 스텁 → 상세 확보): Modality Competitive Query Selection + multispectral deformable cross-attention(모달별 독립 sparse 샘플링으로 정합 불요).
+
+**주파수 분해가 지배적 도구화** (융합·증류 공통):
+- **F2Net** (Sensors 2026): RGB 고주파+thermal 저주파 분리 가중, M3FD 89.6 mAP50. **DRPFNet** (ICME 2026, 2608.03370): 주파수+공간 dual-domain 점진 융합, LLVIP 97.8 mAP50. **IC-Fusion** (2505.15137, 코드 공개): wavelet 분석으로 IR 우위 논증 → **IR 중심 비대칭 설계**(RGB 백본 소형화).
+- **FreqKD** (2606.11572): RGB-IR 특징 발산이 고주파에서 저주파의 2.4×라는 정량 관찰 → 대역별 비대칭 증류. **uniform feature-matching/cosine/response KD 전부 베이스라인 미달**이라는 부정 결과 병기 — cross-modal KD 설계 시 필독.
+
+**융합 회의론의 실증화** (우리 poongsan "RGB-only ≥ 3-modal" 관찰과 수렴):
+- **M²D-LIF** (2503.11780, 코드 공개): linear probing으로 joint 멀티모달 학습이 단일모달 표현을 부실화시키는 **"Fusion Degradation"** 정량 규명 → Mono-Modality Distillation + 경량 조도 융합으로 해소.
+- **Words-to-Wavelengths** (2512.15971): GroundingDINO/YOLO-World를 멀티스펙트럴로 개조 — few-shot에선 **VLM prior가 전용 융합 모델을 압도**.
+- 문헌 전반: "융합 자체"에서 "모달별 표현 품질 확보 후 선택적 융합"으로 무게중심 이동(M²D-LIF·MDQF·JFRDet 공통).
+
+**foundation→thermal 이식**:
+- **Thermal-Det** (**CVPR 2026**, 2605.10130, Patel 그룹): 열화상 캡션 100만+ 합성 + frozen RGB OV teacher 증류 + full FT, IR 7벤치 zero-shot +2~4 AP — OV 검출기의 thermal 이식 레시피 첫 체계화.
+- **UniRGB-IR** (2404.17360, ACM MM 2025): frozen RGB 파운데이션에 어댑터로 IR 주입, 검출·세그 통일.
+- **AMFD** (2405.12944, TMM 2025, 코드 공개): 멀티모달 teacher→단일 student 증류에서 융합-후 특징이 아니라 **융합-전 원 모달 특징**을 증류(MEA) — GISTOLO와 직접 비교 대상.
+
+**기타**: YOLOv11-RGBT(2506.14696, 6융합모드 통일 프레임워크+MCF, 코드 공개 — 베이스라인 인프라), **SFEDet**(2606.30215, **ECCV 2026**): 희소 RoI에만 cross-modal 융합(융합 연산 희소화), E2E-MFD(NeurIPS 2024 Oral, 2403.09323: fusion image 생성과 검출의 gradient-수준 동기 joint), FAOD(2412.04149: event 주모달+Time-Shift 일관성으로 비동기 강건), MCFNet(2508.10704: optical-flow 이벤트 동기화+Cross-Modal Mamba), COMO(2412.18076: cross-Mamba+고레벨만 교환), CAGT(Inf. Fusion 2024: RoI 단위 TSR 분해 정렬), MM-DETR(TCSVT 2025), Mixture-of-Scale-Experts(2410.12143, alignment-free RGBT VOD), UAV-CB(2603.17492, anti-UAV RGB-T 데이터셋).
+
+### D. 후속 TODO (이번 스윕이 새로 남긴 것)
+
+1. DFormerv2 GSA 수식 정독 — attention 변조가 additive/multiplicative/거리감쇠 중 무엇인지 확정 후 novelty §2 비교표에 행 추가.
+2. SFEDet(ECCV 2026)·Thermal-Det(CVPR 2026) 카메라레디 공개 시 수치 확정.
+3. 검출 P-Det 스토리에 M²D-LIF의 Fusion Degradation 진단(linear probing)을 우리 poongsan ablation에 적용해 볼 것 — "RGB-only ≥ 3-modal"의 원인 규명 도구로 적합.
+4. MemorySAM venue 추적 유지(현 preprint) — 학회 게재 확정 시 인용 갱신.
+5. 결손·노이즈 강건성 프로토콜(2503.18445) 채택 여부 결정 — DELIVER 신작 관행이 됐으므로 리뷰어 요구 가능성 높음.
