@@ -1,0 +1,78 @@
+diff --git a/dgfusion/dgfusion.py b/dgfusion/dgfusion.py
+index 159897f..395698e 100644
+--- a/dgfusion/dgfusion.py
++++ b/dgfusion/dgfusion.py
+@@ -409,9 +409,48 @@ class DGFusion(OneFormer):
+         outputs = {**outputs, **sem_seg_outputs}
+ 
+         if self.training:
+-            raise Exception(
+-                "Training code for DGFusion is not provided. Please use the inference or evaluation mode."
+-            )
++            # Training path restored from CAFuser (cafuser.py forward), plus depth GT wiring
++            # for DGFusion's auxiliary depth loss (criterion.loss_depth expects targets[i]["gt_depth"]).
++            texts = torch.cat([self.text_tokenizer(x["text"]).to(self.device).unsqueeze(0) for x in batched_inputs], dim=0)
++            texts_x = self.encode_text(texts)
++
++            outputs = {**outputs, **texts_x}
++
++            if self.condition_text_encoder_module:
++                text_condition = self.condition_text_encoder_module(batched_inputs)
++                outputs = {**outputs, **q_condition_contrastive_logits, **text_condition}
++
++            # mask classification target
++            if "instances" in batched_inputs[0]:
++                gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
++                targets = self.prepare_targets(gt_instances, images)
++            else:
++                targets = None
++
++            if self.depth_head_enabled and self.depth_on and targets is not None:
++                # loss_depth needs gt_depth, plus image / sem_seg for the edge-aware smoothness terms.
++                # Pad each to the model's padded input size (images.tensor) so they match pred_depth,
++                # using the fill values each loss term ignores (depth 0, image -1, sem_seg 255).
++                pad_H, pad_W = images.tensor.shape[-2], images.tensor.shape[-1]
++                for target, x in zip(targets, batched_inputs):
++                    gt_depth = x["gt_depth"].to(self.device)
++                    ph, pw = pad_H - gt_depth.shape[-2], pad_W - gt_depth.shape[-1]
++                    target["gt_depth"] = F.pad(gt_depth, (0, pw, 0, ph), value=0)
++                    img = x["image"].to(self.device)
++                    target["image"] = F.pad(img.float(), (0, pw, 0, ph), value=-1)
++                    sem_seg = x["sem_seg"].to(self.device)
++                    target["sem_seg"] = F.pad(sem_seg, (0, pw, 0, ph), value=255)
++
++            # bipartite matching-based loss
++            losses = self.criterion(outputs, targets)
++
++            for k in list(losses.keys()):
++                if k in self.criterion.weight_dict:
++                    losses[k] *= self.criterion.weight_dict[k]
++                else:
++                    # remove this loss if not specified in `weight_dict`
++                    losses.pop(k)
++            return losses
+         else:
+             mask_cls_results = outputs["pred_logits"]
+             mask_pred_results = outputs["pred_masks"]
+diff --git a/dgfusion/modeling/criterion.py b/dgfusion/modeling/criterion.py
+index bd2f828..b9faa1e 100644
+--- a/dgfusion/modeling/criterion.py
++++ b/dgfusion/modeling/criterion.py
+@@ -25,6 +25,17 @@ import torch.distributed as dist
+ import diffdist.functional as diff_dist
+ import numpy as np
+ 
++# Training-only loss utilities restored from CAFuser criterion.py (missing in the public DGFusion release)
++from oneformer.modeling.criterion import dist_collect, dice_loss, sigmoid_ce_loss, calculate_uncertainty
++
++sigmoid_ce_loss_jit = torch.jit.script(
++    sigmoid_ce_loss
++)
++
++dice_loss_jit = torch.jit.script(
++    dice_loss
++)
++
+ def silog_loss(pred: Tensor,
+                target: [Tensor],
+                weight: Optional[Tensor] = None,

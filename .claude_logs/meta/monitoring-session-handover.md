@@ -1,7 +1,8 @@
 ---
 created: 2026-09-08
 author: 이 세션(worktree `.claude/worktrees/p30-det`, background job — EnterWorktree 아님, 작업폴더가 잡 생성 시 고정된 세션이라 ExitWorktree로 못 나감)
-status: 🟡 인계 대기 — 새 세션이 아래 감시 2건을 재설치하고 정상 동작을 확인하면 이 세션 종료
+status: ✅ 인계 완료 (2026-09-08) — 감시 주체는 `MMSAM | learning status monitoring` 세션 하나다.
+revised: 2026-09-08 — §1 감시 명세를 개정판으로 교체(진행 판정 방식 변경, 정체 감지 추가, PING 가드), §1-5 크론 생성 반영
 ---
 
 # 학습 감시 인계 문서 (2026-09-08)
@@ -24,86 +25,182 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 
 ## 1. 활성 감시 4건 — 재설치 명세
 
-### 1-a. `bzq3i0os7` — yeon P52 DELIVER seed1·seed2 크래시/진행 감지 (2026-09-08 세션 재기동으로 재설치, 구 `bx6x2n7x2`)
+> 🔴 **2026-09-08 개정판.** 초판 명세는 `tail -c 2000~3000`으로 잘라낸 조각에서 `[Val]` 줄을 찾았는데,
+> tqdm 진행 줄이 초당 여러 번 쌓여 그 창을 가득 채우기 때문에 평상시에는 `[Val]` 줄이 밀려나 진행
+> 이벤트가 거의 출력되지 않았다(재설치 직후 네 건 모두 출력 0바이트였던 이유가 이것이다). 창을 키우는
+> 것으로는 부족하다 — 학습이 빨라지면 다시 밀린다. 그래서 **진행 판정과 에러 판정을 분리**했다.
+> 아울러 초판에는 감지 사각지대와 오판 경로가 각각 하나씩 있어 함께 고쳤다(아래 ③④). **재설치할 때는
+> 반드시 이 개정판을 쓰고, 옛 방식으로 되돌리지 마라.**
 
-- 대상 서버: `yeon` (ssh alias)
-- 대상 tmux 세션(각각 독립): `p52_deliver_s1`, `p52_deliver_s2` (window `main`)
-- 감시 로그 절대경로:
-  - `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/p52_deliver_s1_launch.log`
-  - `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/p52_deliver_s2_launch.log`
-- 크래시 판정: `tmux has-session -t <세션>`이 실패(세션 없음) → `SESSION_ENDED`(완주 또는 죽음, 로그 tail로 구분). 로그에 `Traceback|CUDA out of memory|Killed|RuntimeError` 매칭 → `ERROR_DETECTED`(세션은 아직 살아있는 상태에서 잡힐 수 있음).
-- 진행 판정: 로그에서 `\[Val\] epoch:[0-9]+  mIoU: [0-9.]+  Best: [0-9.]+ \(ep[0-9]+\)` 패턴의 최신 줄.
-- 폴링 주기: 1800초.
-- 재설치 스크립트 골격(Monitor 도구, `persistent:true`):
-  ```bash
-  while true; do
-    for s in p52_deliver_s1 p52_deliver_s2; do
-      alive=$(ssh -o ConnectTimeout=10 yeon "tmux has-session -t $s 2>/dev/null && echo ALIVE" 2>/dev/null)
-      tail_out=$(ssh -o ConnectTimeout=10 yeon "tail -c 2000 /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/${s}_launch.log 2>/dev/null | tr '\r' '\n'" 2>/dev/null)
-      last_val=$(echo "$tail_out" | grep -oE '\[Val\] epoch:[0-9]+  mIoU: [0-9.]+  Best: [0-9.]+ \(ep[0-9]+\)' | tail -1)
-      err=$(echo "$tail_out" | grep -E 'Traceback|CUDA out of memory|Killed|RuntimeError' | tail -2)
-      case "$alive" in
-        *ALIVE*) [ -n "$err" ] && echo "[$s] ERROR_DETECTED last=${last_val:-unknown}: $err" || { [ -n "$last_val" ] && echo "[$s] PROGRESS: $last_val"; } ;;
-        *) echo "[$s] SESSION_ENDED last=${last_val:-unknown}"; echo "$tail_out" | tail -10 ;;
-      esac
-    done
-    sleep 1800
+### 1-0. 네 감시가 공유하는 판정 로직
+
+원격 조회는 대상 하나당 주기마다 `ssh` **한 번**만 쓴다. 그 한 번으로 아래 다섯 신호를 모두 받아 온다.
+
+| 신호 | 원격에서 얻는 방법 | 쓰임 |
+|---|---|---|
+| `PING` | 무조건 `echo PING` | 원격 조회 성공 여부 |
+| `ALIVE` | `tmux has-session -t <세션> 2>/dev/null && echo ALIVE` | 세션 생존 |
+| `AGE` | `$(date +%s) - $(stat -c %Y <로그>)` | 로그 무갱신 경과 초 |
+| `VAL` | `grep -a '\[Val\]' <로그> \| tail -1` | 최신 평가 결과 |
+| `ERR` | `tail -c 4000 <로그> \| tr '\r' '\n' \| grep -aE '<에러패턴>' \| tail -2` | 크래시 흔적 |
+
+① **진행 판정은 로그 전체를 훑는다.** `tail`로 자른 조각이 아니라 `grep -a '\[Val\]' <로그> | tail -1`로
+마지막 한 줄만 뽑는다. tqdm이 아무리 쌓여도 밀리지 않고, 전송량은 한 줄뿐이라 초판보다 오히려 가볍다.
+`-a` 옵션은 로그에 섞인 제어문자 때문에 grep이 파일을 바이너리로 판단하는 것을 막는다.
+
+② **에러 판정은 초판 그대로 꼬리 4KB에서 찾는다.** 크래시가 나면 Traceback이 로그 맨 끝에 오므로
+이 방식이 맞다. 패턴은 `Traceback|CUDA out of memory|Killed|RuntimeError`.
+
+③ **정체 판정을 두 층으로 새로 넣었다.** 프로세스는 살아 있는데 진전이 없는 경우가 초판의 사각지대였다.
+`tmux has-session`은 `ALIVE`를 반환하고, 로그 끝에 Traceback도 없으므로 어느 판정에도 걸리지 않는다.
+이 프로젝트에는 실제 사고 기록이 있다 — `CLAUDE.md` §1.6의 2026-07-16 NCCL 데드락 건으로, 기동됐다는
+사실만 보고 살아났다고 보고했으나 실제로는 `0/187`에서 13분간 정지해 있었다.
+
+- **`STALLED_LOG` (1차, 민감)**: `AGE >= 900`(15분)이면 알린다. tqdm이 초당 여러 번 쓰고 평가 구간에서도
+  `eval: NN%|...` 줄이 계속 쌓이므로(2026-09-08 실측으로 확인), 15분 무갱신은 정상 학습에서 나오지 않는다.
+  네 감시 모두 900초로 같다. 이것이 실질적인 1차 방어선이다.
+- **`STALLED_VAL` (2차, 보수적)**: `[Val]` 줄이 `CYCLES` 주기 연속으로 그대로면 알린다. 임계는 런마다
+  다르다 — `[Val]` 갱신 간격은 `EVAL_INTERVAL × epoch당 소요 시간`이고, 평가 구간에서 epoch이 잠시
+  멈추므로 그 간격의 **2.5배 이상**이 되도록 잡았다(§1-1 표의 `CYCLES` 열, 산출 근거 포함).
+
+④ **`PING` 가드로 원격 조회 실패와 세션 종료를 구분한다.** 초판은 `ssh`가 일시적으로 실패해 출력이 비면
+그것을 `SESSION_ENDED`(=완주)로 오판했고, 단일 대상 감시는 거기서 `break`로 **감시 자체를 끝내 버렸다**.
+개정판은 응답에 `PING`이 없으면 조회 실패로 보고 아무 판정도 하지 않으며, 3주기 연속 실패했을 때만
+`SSH_FAIL`을 알리고 감시는 계속 유지한다. `SESSION_ENDED`는 `PING`이 있고 `ALIVE`가 없을 때만 낸다.
+
+⑤ **알림 폭주를 막는다.** `PROGRESS`는 `[Val]` 값이 **바뀐 주기에만** 출력한다(평가가 한 번 끝날 때마다
+정확히 한 번). `STALLED_LOG`·`STALLED_VAL`은 플래그를 세워 한 번만 알리고, 진전이 재개되면 플래그를
+푼다. 첫 주기에는 `WATCH_START`를 한 번 내보내 **설치 직후 정상 동작을 즉시 확인할 수 있게 한다**
+(초판은 설치 후 몇 시간 동안 아무 출력이 없어 살아 있는지 확인할 방법이 없었다).
+
+### 1-1. 감시 넷의 대상과 임계
+
+`persistent: true`로 걸고, `SESSION_ENDED`가 뜨면 단일 대상 감시는 루프를 끝낸다(1-a는 두 런이 모두
+끝났을 때 끝낸다).
+
+| 항목 | 서버 | tmux 세션 | 폴링 | `CYCLES` (산출 근거) |
+|---|---|---|---|---|
+| 1-a | `yeon` | `p52_deliver_s1`, `p52_deliver_s2` (각각 독립, window `main`) | 1800초 | 7 (=3.5시간. `[Val]` 갱신 간격 약 80분 = EVAL_INTERVAL 2 × 40분/ep 의 2.6배) |
+| 1-b | `yeon` | `elora_a_r16` | 1500초 | 8 (=3.3시간. 갱신 간격 약 81분 = 2 × 40.4분/ep 의 2.5배) |
+| 1-c | `hpca100` | `hpca100_E2` | 1500초 | 14 (=5.8시간. 갱신 간격 약 139분 = EVAL_INTERVAL 5 × 27.8분/ep 의 2.5배) |
+| 1-d | `hpca100` | `hpca100_E7c` | 1500초 | 6 (=2.5시간. 갱신 간격 약 58분 = 5 × 11.6분/ep 의 2.6배) |
+
+감시 로그 절대경로:
+
+- 1-a: `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/p52_deliver_s1_launch.log` 및 `..._s2_launch.log`
+- 1-b: `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log`
+- 1-c: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E2_launch.log`
+- 1-d: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E7c_launch.log`
+
+완주 시 대응: **1-c 완주 시 hpca100 GPU1,3이 비고 1-d 완주 시 GPU2가 빈다. `gpu-never-idle` 원칙에 따라
+즉시 다음 배치를 정하라.**
+
+### 1-2. 재설치 스크립트 (단일 대상판 — 1-b·1-c·1-d 공통)
+
+`SRV`·`S`·`log`·`CYCLES`·`POLL`만 위 표대로 바꿔서 쓴다.
+
+```bash
+SRV=yeon; S=elora_a_r16
+log=/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log
+STALE=900; CYCLES=8; POLL=1500
+PREV=""; CYC=0; FS=0; FV=0; FAIL=0
+while true; do
+  out=$(ssh -o ConnectTimeout=10 $SRV "
+echo PING
+tmux has-session -t $S 2>/dev/null && echo ALIVE
+echo \"AGE:\$(( \$(date +%s) - \$(stat -c %Y $log 2>/dev/null || echo 0) ))\"
+echo \"VAL:\$(grep -a '\[Val\]' $log 2>/dev/null | tail -1 | tr -d '\r')\"
+echo ERRSTART
+tail -c 4000 $log 2>/dev/null | tr '\r' '\n' | grep -aE 'Traceback|CUDA out of memory|Killed|RuntimeError' | tail -2
+" 2>/dev/null)
+  if [ "$(echo "$out" | grep -c '^PING$')" = "0" ]; then
+    FAIL=$(( FAIL + 1 ))
+    [ "$FAIL" = "3" ] && echo "[$S] SSH_FAIL — 원격 조회가 3주기 연속 실패했습니다. 세션 종료로 단정하지 않고 감시를 유지합니다."
+    sleep $POLL; continue
+  fi
+  FAIL=0
+  alive=$(echo "$out" | grep -c '^ALIVE$')
+  age=$(echo "$out" | sed -n 's/^AGE://p' | head -1)
+  case "$age" in ''|*[!0-9]*) age=0 ;; esac
+  val=$(echo "$out" | sed -n 's/^VAL://p' | head -1)
+  err=$(echo "$out" | sed -n '/^ERRSTART$/,$p' | tail -n +2)
+  if [ "$alive" = "0" ]; then
+    echo "[$S] SESSION_ENDED — tmux 세션이 사라졌습니다(완주 또는 사망). last=${val:-unknown}"; break
+  fi
+  if [ -n "$err" ]; then
+    echo "[$S] ERROR_DETECTED (세션은 아직 살아 있음) last=${val:-unknown}: $err"
+  elif [ "$age" -ge "$STALE" ]; then
+    if [ "$FS" = "0" ]; then
+      echo "[$S] STALLED_LOG — 로그가 ${age}초 동안 갱신되지 않았습니다(임계 ${STALE}초). tmux 세션은 살아 있으므로 데드락이나 정지를 의심하십시오. last=${val:-unknown}"; FS=1
+    fi
+  else
+    FS=0
+    if [ -z "$PREV" ]; then
+      echo "[$S] WATCH_START — 감시를 시작했습니다. last=${val:-없음(첫 평가 전)}"; PREV="$val"; CYC=0; FV=0
+    elif [ "$val" = "$PREV" ]; then
+      CYC=$(( CYC + 1 ))
+      if [ "$CYC" -ge "$CYCLES" ] && [ "$FV" = "0" ]; then
+        echo "[$S] STALLED_VAL — [Val] 값이 ${CYC}주기(약 $(( CYC * POLL / 60 ))분) 동안 그대로입니다. 로그는 갱신되고 있으니 학습 지연이나 평가 구간 장기화를 확인하십시오. last=${val:-unknown}"; FV=1
+      fi
+    else
+      echo "[$S] PROGRESS: $val"; PREV="$val"; CYC=0; FV=0
+    fi
+  fi
+  sleep $POLL
+done
+```
+
+### 1-3. 재설치 스크립트 (다중 대상판 — 1-a 전용)
+
+1-a는 한 감시가 두 런(`p52_deliver_s1`·`p52_deliver_s2`)을 함께 본다. 위 스크립트의 상태 변수를
+연관배열로 바꾸고, 대상별로 종료 여부(`DONE`)를 따로 들고 있다가 **둘 다 끝났을 때만** 루프를 끝낸다.
+한쪽만 끝났으면 그 대상은 건너뛰고 다른 쪽 감시를 계속한다.
+
+```bash
+SRV=yeon
+LOGDIR=/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs
+STALE=900; CYCLES=7; POLL=1800
+TARGETS="p52_deliver_s1 p52_deliver_s2"
+declare -A PREV CYC FS FV FAIL DONE
+for s in $TARGETS; do PREV[$s]=""; CYC[$s]=0; FS[$s]=0; FV[$s]=0; FAIL[$s]=0; DONE[$s]=0; done
+while true; do
+  for s in $TARGETS; do
+    [ "${DONE[$s]}" = "1" ] && continue
+    log="$LOGDIR/${s}_launch.log"
+    # ... 원격 조회와 판정은 1-2 와 동일, 상태 변수만 ${PREV[$s]} 형태로 바꾼다 ...
+    # SESSION_ENDED 시 break 대신 DONE[$s]=1; continue
   done
-  ```
+  allover=1
+  for s in $TARGETS; do [ "${DONE[$s]}" = "0" ] && allover=0; done
+  [ "$allover" = "1" ] && { echo "P52 seed1·seed2 두 런 모두 종료되어 감시를 마칩니다."; break; }
+  sleep $POLL
+done
+```
 
-### 1-b. `b5eu8gyfe` — yeon E-LoRA arm A(r16) 크래시/진행 감지 (2026-09-08 세션 재기동으로 재설치, 구 `bp3mb0w0q`/`bsl6xtt9w`)
+### 1-4. 재설치할 때 지킬 것
 
-- 대상 서버: `yeon`
-- 대상 tmux 세션: `elora_a_r16` (window `main`)
-- 감시 로그 절대경로: `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log`
-- 크래시/진행 판정: 1-a와 동일 패턴(단일 세션 버전 — `SESSION_ENDED` 시 `break`로 루프 종료).
-- 폴링 주기: 1500초.
-- 🔴 **2026-09-08 버그 수정 이력**: 최초 설치판은 `tmux has-session ... 2>&1`로 원격 stderr를 stdout에 합류시킨 뒤 `[ -z "$alive" ]`로 판정했다 — 세션이 죽으면 `alive`가 `can't find session: ...` 에러 문구를 담아 **빈 문자열이 아니게 되므로 SESSION_ENDED가 영원히 안 찍히는 치명적 버그**였다("mmsam session merge" 세션이 발견, `bsl6xtt9w` 실측으로 확인됨 — arm A는 최대 며칠간 크래시 무방비 상태였을 수 있음). 2026-09-08 `2>/dev/null` + `case ... *ALIVE*)` 매칭으로 재설치·검증 완료. 아래는 **수정된 버전**이다 — 재설치 시 반드시 이 버전을 쓸 것.
-- 재설치 스크립트 골격(Monitor 도구, `persistent:true`):
-  ```bash
-  while true; do
-    alive=$(ssh -o ConnectTimeout=10 yeon "tmux has-session -t elora_a_r16 2>/dev/null && echo ALIVE" 2>/dev/null)
-    tail_out=$(ssh -o ConnectTimeout=10 yeon "tail -c 3000 /SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/logs/elora_a_r16_launch.log 2>/dev/null | tr '\r' '\n'" 2>/dev/null)
-    last_val=$(echo "$tail_out" | grep -oE '\[Val\] epoch:[0-9]+  mIoU: [0-9.]+  Best: [0-9.]+ \(ep[0-9]+\)' | tail -1)
-    err=$(echo "$tail_out" | grep -E 'Traceback|CUDA out of memory|Killed|RuntimeError' | tail -3)
-    case "$alive" in
-      *ALIVE*)
-        if [ -n "$err" ]; then echo "ERROR_DETECTED (still alive) last=${last_val:-unknown}: $err";
-        elif [ -n "$last_val" ]; then echo "PROGRESS: $last_val"; fi
-        ;;
-      *)
-        echo "SESSION_ENDED last=${last_val:-unknown}"; echo "$tail_out" | tail -15; break
-        ;;
-    esac
-    sleep 1500
-  done
-  ```
+- **먼저 기존 감시를 `TaskStop`으로 정리하고 새로 걸어라.** 정리하지 않고 겹쳐 걸면 같은 대상에 감시가
+  여러 개 쌓인다. 2026-09-08에 좀비 감시 6건(§3)이 나온 원인이 바로 이 누적이었다.
+- **설치 직후 `WATCH_START` 네 줄이 오는지 확인하라.** 오지 않으면 `ssh` 연결이나 로그 경로를 의심한다.
+- 이 감시들은 세션에 종속된다. **세션이 중단·재기동되면 감시와 크론이 함께 사라지므로 둘 다 다시 만들어야
+  한다**(§1-5의 크론 포함).
+- 🔴 **표시용 이름을 바꾸려고 세션을 재기동하지 마라.** 2026-09-08 인계 때 세션 이름이 임시값
+  (`MMSAM | monitoring (인계중)`)으로 남았는데, `claude` CLI 에는 이름을 바꾸는 명령이 없고 `respawn` 은
+  이름 옵션을 받지 않은 채 재시작만 한다. 즉 이름을 고치려는 재기동은 **방금 건 감시 넷과 크론을 전부
+  날리고 아무것도 바꾸지 못한다.** 이름은 기능에 영향이 없으므로 그대로 두고, 잡 상태 파일을 손으로
+  고치는 비공식 조작도 하지 마라(데몬이 도는 중이라 잡 관리가 꼬이면 복구가 번거롭다).
 
-### 1-c. `bkuv9oisq` — hpca100 E2 크래시/완주 감지 (2026-09-08 신설, 같은 날 세션 재기동으로 재설치, 구 `b3ed3wvps`)
+### 1-5. 세션 내부 정기 실행 — 3시간 주기 정기 진행보고 크론 (2026-09-08 생성 완료)
 
-- 대상 서버: `hpca100`, tmux 세션 `hpca100_E2`
-- 감시 로그: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E2_launch.log`
-- 판정 로직은 1-b 수정판과 동일(`case ... *ALIVE*)`), 폴링 1500초.
-- 완주 예정 2026-09-08 ~08:20 UTC(§2) — **완주 감지 시 GPU1,3이 비니 즉시 다음 배치를 정할 것**(`gpu-never-idle` 원칙).
+✅ **2026-09-08 생성 완료** — 인계받은 세션이 `CronCreate`로 만들었다(잡 `c0aba5c9`, `23 */3 * * *`). 사용자가 3시간 주기로 다시 원한다고 "mmsam session merge" 경유로 확인한 데 따른 것이다. 이 밖에 `/loop` 반복 같은 정기 실행 장치는 없다. "MMSAM | 생각정리" 세션은 bengio 일일 카드 런을 보는 Monitor `b23rrk2ii` 하나만 갖고 있으며, 그것은 인계 대상이 아니다.
 
-### 1-d. `b00kqnkg8` — hpca100 E7c 크래시/완주 감지 (2026-09-08 신설, 같은 날 세션 재기동으로 재설치, 구 `bmhf79on7`)
-
-- 대상 서버: `hpca100`, tmux 세션 `hpca100_E7c`
-- 감시 로그: `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/logs/hpca100_E7c_launch.log`
-- 판정 로직·폴링 동일. 완주 예정 2026-09-08 ~08:50 UTC(§2) — **완주 감지 시 GPU2가 비니 즉시 다음 배치를 정할 것.**
-
-이 두 감시는 원래 §1 끝에 "안 걸려 있다"고만 적었으나(초판 인계 시점 판단 보류), discussion 세션("mmsam session merge")이 "완주가 몇 시간 내인데 인계 타이밍이 사용자 조작에 달려 불확실하다"고 지적해 **이 세션이 직접 지금 걸었다** — 인계 대상이 2건에서 4건으로 늘었다. 새 세션은 1-a~1-d 넷 다 재설치 대상으로 볼 것.
-
-### 1-e. 세션 내부 정기 실행 — 이 세션엔 없음, **새 세션이 정기 진행보고 크론을 새로 만들어야 함**
-
-`CronCreate`로 만든 크론, `/loop` 반복 등 이 세션 안에서 돈 정기 실행 장치는 `CronList` 조회 결과 **없다**("No scheduled jobs.") — 위 1-a~1-d 넷이 이 세션이 감시로 책임지는 것의 전부다. "MMSAM | 생각정리" 세션도 자체 `CronList`가 비어 있음을 확인했다(그쪽이 갖고 있는 건 bengio 일일 카드 런을 보는 Monitor `b23rrk2ii` 하나뿐, 인계 대상 아님).
-
-🔴 **다만 정기 진행보고 크론 자체는 사용자가 다시 원한다(2026-09-08, "mmsam session merge" 경유 확인).** 처음엔 "재생성 안 함"이라고 들었다가, 사용자가 "버튼을 잘못 눌렀다"며 **3시간 주기**로 정정했다. **새 세션이 아래 사양대로 크론을 새로 만들어야 한다** — 이 세션에서 만들면 세션 종료와 함께 사라지므로 지금 만들지 않는다(바로 이 소실 패턴이, 과거에 실재했던 것으로 보이는 정기보고 크론이 유실된 원인으로 추정된다).
+아래가 그 크론의 사양이며, 재생성할 때도 이대로 만든다.
 
 - 주기: **3시간마다**, cron 표현식 `23 */3 * * *` 권장(정각 실행 회피, 00:23·03:23·06:23... 식으로 분산).
 - 보고 형식: auto-memory `progress-report-format` + `CLAUDE.md` §1.6 말미 규정 그대로 — ①서버별 현황 표(실험별 데이터셋 열·SOTA 대비 델타·내부최고 대비 델타·ETA) ②남은 런의 서버별 배치 계획, 두 블록 필수 + 벤치 baseline 표(SOTA/우리최고/격차) 포함.
 - 보고 범위: **bengio도 포함해야 한다**(일일 카드 E1·E3·E4, B0 재채점이 그쪽에서 돎 — 감시는 "MMSAM | 생각정리"의 `b23rrk2ii`가 맡지만, 정기보고의 서버별 표는 전체를 포괄해야 하므로 새 세션이 bengio도 직접 조회할 것).
-- ⚠️ **세션 안에서 만든 크론은 세션이 재기동되면 함께 사라진다.** 이번 유실의 원인으로 추정되는 지점이다 — 앞으로 이 세션(또는 후속 세션)이 중단·재기동될 때마다, 위 1-a~1-d 감시를 다시 거는 것과 마찬가지로 **이 크론도 다시 만들어야 한다는 걸 인수인계 체크리스트에 포함할 것.**
+- 크론 본문에는 조회를 sonnet에 위임하라는 지시(`CLAUDE.md` §1.6)와, 보고를 마친 뒤 감시 넷과 이 크론의 생존을 스스로 점검해 유실된 것을 즉시 재설치하라는 자가 점검 절차를 함께 담았다.
+- ⚠️ **세션 안에서 만든 크론은 세션이 재기동되면 함께 사라지고, 그러지 않더라도 7일 뒤 자동 만료된다.** 과거 정기보고 크론이 유실된 원인으로 추정되는 지점이다 — 세션이 중단·재기동될 때마다, 위 1-a~1-d 감시를 다시 거는 것과 마찬가지로 **이 크론도 다시 만들어야 한다.**
 
 ## 2. 현재 활성 런 현황 (2026-09-08 02:00~02:05 UTC 실측)
 
@@ -114,6 +211,18 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 | yeon GPU6,7 (tmux `elora_a_r16`) | E-LoRA arm A 재런(per-modal r16) | DELIVER 4모달 | ep34/200 | 65.88 | best 66.64@ep26 — 이 값을 B/C(각 r16 기준 shared/shared+resid)와 비교할 새 arm A 기준치 | ~4.66일 (40.4분/ep, 09-13 오전경) |
 | hpca100 GPU1,3 (tmux `hpca100_E2`) | 일일카드 E2(LoRA 전 선형층 QKVO+MLP, r32) | DELIVER 4모달 | ep25/40 | 65.25 | B0(현행 레시피, 변경 0) 대비 — ep20 시점 62.40으로 −1.5(음성 방향)였으나 ep25에서 65.25로 반등, **정본 비교용으로 완주까지 중단 안 함**(discussion 세션 지시) | ~6.9시간 (27.8분/ep, 09-08 08:20 UTC≈17:20 KST) |
 | hpca100 GPU2 (tmux `hpca100_E7c`) | 일일카드 E7c(MUSES PhysAug-on 대조군, PYTHONUNBUFFERED=1) | MUSES 3모달(img/lidar/event) | ep4/40 (70%) | 아직 첫 eval 전(EVAL_INTERVAL 5) | E7(PhysAug-off, 완료, 트레이너 val 80.29@ep40 — **legal test 아님**)과 페어 비교 예정 | ~6.8시간 (11.6분/ep, 09-08 08:50 UTC≈17:50 KST) |
+
+**갱신 실측 (2026-09-08 13:30 KST = 04:30 UTC, 인계받은 세션이 ssh로 직접 측정).** 위 표는 02:00 UTC 시점 값이므로 약 11시간 낡았다. 아래가 최신이며, 전부 트레이너가 찍는 val 이라 legal test 가 아니다.
+
+| 런 | 진행 | 최신 `[Val]` | best |
+|---|---|---|---|
+| `p52_deliver_s1` | ep38 진행 중 | 66.25@ep36 | 66.25@ep36 (내부 신기록 갱신) |
+| `p52_deliver_s2` | ep38 | 65.23 | 66.19@ep28 |
+| `elora_a_r16` | ep38 | 65.55 | 66.64@ep26 |
+| `hpca100_E2` | ep30/40 | 66.91@ep30 | 66.91@ep30 |
+| `hpca100_E7c` | ep13/40 | 75.52@ep10 | 75.52@ep10 |
+
+E2 는 표의 ep25 시점 65.25 에서 ep30 66.91 로 계속 올라가고 있어, ep20 의 −1.5 하락은 일시적 흔들림이었던 것으로 보인다. 다만 채택·폐기 판정은 완주 후 공식 재채점으로만 한다.
 
 체크포인트 경로(전부 `.../outputs/ReliaDINO/<SAVE_DIR명>/`):
 - `yeon:/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38/outputs/ReliaDINO/yeon_deliver_rgbdel_P52_seed20260901/`
@@ -146,8 +255,6 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 6건 전부 `TaskStop` 호출 시 성공 응답을 받음 — 즉 단순 stale 메타데이터가 아니라 실제로 살아있는 프로세스였고(대상이 끝났는데도 안 죽고 도는 좀비), 전부 목적을 다한 뒤였다. **"감시가 죽은 줄 모르고 지나가는" 위험한 케이스는 없었다.**
 
 ## 4. 인계받는 쪽이 알아야 할 함정
-
-- 🔴 **세션이 재기동되면 그 세션이 만든 감시(Monitor task)는 전부 "stopped"로 표시된다 — 그러나 원격 서버의 tmux 세션·학습 프로세스 자체는 영향을 받지 않는다.** 2026-09-08에 이 세션이 재기동되면서 활성 감시 4건(1-a~1-d)이 전부 이렇게 끊겼다. 그때마다 **당황하지 말고**: ① 각 대상 서버에 직접 ssh로 `tmux ls`를 쳐서 실제 세션 생존을 먼저 확인 ② 살아있으면(거의 항상 살아있다) 최신 로그를 읽어 진행상황 파악 ③ 위 1-a~1-d 골격으로 감시를 다시 건다 ④ 이 문서의 task id를 새 것으로 갱신. **"stopped" 알림 = 크래시로 오판하지 말 것** — 이번에도 실제로는 5개 런 전부 정상 진행 중이었다.
 
 - **hpca100 origin = GitHub(`gist-ailab/drone-MemorySAM`), 로컬 허브(`local` remote) 없음.** `CLAUDE.md` §1.7이 전제하는 "서버는 로컬 허브를 pull"이 hpca100엔 적용 안 됨 — develop 갱신 후 hpca100은 `git fetch origin develop && git merge origin/develop --ff-only`로 직접 동기화해야 한다(이 세션이 매번 이렇게 했음). yeon도 마찬가지로 origin 직접 사용 확인됨.
 - **jarvis가 `2f14dae`로 크게 뒤처져 있다**(다른 세션 확인 사항, 전달만 함) — P52 관련 config가 아예 없다. jarvis에서 뭔가 돌리려면 먼저 동기화 필요.

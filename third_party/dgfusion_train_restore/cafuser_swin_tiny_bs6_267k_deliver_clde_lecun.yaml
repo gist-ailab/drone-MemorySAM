@@ -1,0 +1,10 @@
+# CAFuser DELIVER CLDE reproduction on lecun (3x RTX titan-class 24GB GPUs 0,1,2).
+# Official recipe is bs8 on 4 GPUs; 3 GPUs cannot split bs8, so this keeps the
+# total number of training samples identical: bs6, LR linearly scaled (1e-4 * 6/8),
+# MAX_ITER scaled (200000 * 8/6 = 266667). Deviation must be reported with results.
+_BASE_: cafuser_swin_tiny_bs8_200k_deliver_clde.yaml
+
+SOLVER:
+  IMS_PER_BATCH: 6
+  BASE_LR: 0.000075
+  MAX_ITER: 266667
