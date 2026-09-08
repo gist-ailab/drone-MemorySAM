@@ -88,6 +88,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 3. 빈 GPU에 다음 카드 기동(sonnet: `remote_exp.sh status` → `run ... auto:N`, 기동 검증 5항목). **환경변수 `PYTHONUNBUFFERED=1` 필수** — tee 파이프 시 파이썬 stdout 블록 버퍼링으로 `[E2] lora_targets=…` 같은 1회성 기동 로그가 flush 전까지 로그 파일에 안 보인다(2026-09-07 hpca100 E2·bengio E0 실측). `remote_exp.sh`가 git을 부르는 환경(worktree 격리 세션)에서는 `ssh <host>` 직접 실행.
    1일차 실측 속도: DELIVER 40ep — bengio 3090×4 ≈12.5분/ep(8.3h), 3090×2 ≈26분/ep(17.5h), hpca100 A100×2 ≈22분/ep(14.8h) · MUSES 40ep — A100×1 ≈14.5분/ep(9.7h).
 4. 구현 워커: 카드별 지시문을 이 문서에서 복사해 `labcode -p` / `glmcode -p`로 위임, 이 세션이 diff 검수 + 스모크(기본 off byte-동일).
+5. **속도 실측(2026-09-08, yeon 4090 24GB, DELIVER 768² 4센서 BS1)**: 학습 1 epoch ≈26분, **학습 중 평가(Val 2,005장 + Test 1,897장, BS1) ≈28분/2 epoch → 벽시계의 ≈35%가 평가**. **BS2는 첫 backward에서 즉시 OOM(22.3GiB 할당)** → 4090에서는 배치를 못 키운다(학습 중 3GiB로 보이는 순간은 평가 구간). 처방: 새 config는 `EVAL.BATCH_SIZE 4`(BS 불변성 ISSUE-033에서 확인됨)·`EVAL_INTERVAL 5`·**학습 중 Test 평가 끄기**(선택에 안 쓰는 test-peeking, 정본은 오프라인 재채점)로 평가 비중을 10% 미만으로. 진행 중 런은 재시작 비용(수십 시간)이 커서 그대로 둔다. A100 40GB(hpca100)에서는 BS2 가능성 있음(미실측).
 
 ## 4. 등재
 - plan.md 대기열에 카드 행 추가(B0·E0·E7·E1·E2·E3·E4·E8 순), 각 행 EPOCHS 40 명시.
