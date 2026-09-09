@@ -23,6 +23,8 @@ depends: decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md §3.5
 | 기준선 | **B0 = 같은 규약의 현행 레시피 40ep 스크린**(1회 실행 후 고정) | 카드 간 공통 대조 |
 | 스크린 통과 | Δtest(카드 − B0) ≥ **+1.0** and 악조건(night·fog·rain) 어느 것도 −0.5 미만 아님 | 페어 설계 검정력(±1.0) |
 | 확정 | 통과 카드만 200ep × 3페어, 게이트 = 3페어 mean ≥ +1.0 | 축 0 규약 |
+| 🔴 보강(2026-09-09) 부기준 | **RailTrack 제외 24클래스 mIoU Δ ≥ +0.5**를 통과의 부기준으로 병기 | 40ep B0의 RailTrack test 31.98은 200ep 기준선(67.7~72.0, analysis/2026-08-06)의 절반 = 스크린 구간은 RailTrack 학습 곡선의 급경사라 "RailTrack을 빨리 배우는" 카드가 전부 +1로 보인다(§5-3) |
+| 🔴 보강(2026-09-09) 중간 epoch 비교 금지 | 판정·시드 페어 비교는 **40ep 완주(val-best) 지점에서만**. 중간 epoch 이득 폭은 인용 금지 | B0 vs B0s2 ep5/10/15 = +1.00/−2.36/+1.36, 진폭 3.72 > 카드 간 차이(0.7) → 중간 지점 이득은 잡음(§5-3) |
 | 조기 kill | ep20 legal-val이 B0 ep20 −1.5 미만 | 비용 절감 |
 
 카드마다 구현은 **토글 하나**(config 키)로 켜지고, 기본값 off에서 forward가 byte-동일해야 한다(스모크: state_dict 키 + |Δ|max=0). 코드 검수 파이프라인(conventions.md)을 따른다.
@@ -125,6 +127,35 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | 09-10 07~08시 | hpca100 GPU1,2 | E12·E2s2 완주 → legal 재채점 → 확정 런 대상 선정 | — |
 | 다음 빈 자리 | — | E1s2 재개(bengio ep5) → E4b 재개(bengio ep10) 순 | plan.md 「bengio 중단 런」 |
 
+**2026-09-10 새벽~낮 배치(09-09 23시 결정)**
+
+| 시각(KST) | 자리 | 작업 | 근거 |
+|---|---|---|---|
+| 02:30 E13 완주 | jarvis GPU1 / GPU2,4 | E13 legal 재채점(test→val) / **E1 확정 런 200ep 시드 20260821**(`jarvis-…seed20260821_E1_confirm200.yaml`, 기존 200ep seed821 기준선과 매칭) | §5-3: E3 확정은 보류(RailTrack 천장), E1이 24클래스 유일 양수 |
+| 08:30 E4b 완주 | jarvis GPU5 | E4b legal 재채점 → 이후 E1 확정 런 3장으로 확장 여부 | — |
+| 10:45~14:30 | jarvis 7, hpca100 0·3·2·1 | E1s2·E3s2·B0s2·E2s2·E12 완주 → 각 legal 재채점(40ep 완주 지점 페어) | 아침에 재배치 |
+
+## 4.5 체크포인트 보존 대장 (2026-09-09, user 승인: "보존 완료된 체크포인트는 지워도 괜찮아")
+
+규칙: 정본 = **val-best `*_top1_checkpoint.pth` 하나**(test-best·중간·last는 재현 가치 없음). NAS 사본이 md5 일치할 때만 서버 원본의 나머지를 지운다. NAS 루트 = `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/daily_cards_20260908/`.
+
+| 런 | 정본 ckpt | 서버 원본 | NAS 사본 | md5 | 삭제 가능 범위 |
+|---|---|---|---|---|---|
+| E2 (hpca100) | `epoch40_68.65_top1_checkpoint.pth` 2.4G | `~/SSDb/…/outputs/ReliaDINO/hpca100_…_screen40_E2/` (33G) | `E2/` | `b8f7dc0d…edab28` ✅ | 정본 외 전부(≈30G) |
+| E7 (hpca100) | `epoch40_80.29_top1_checkpoint.pth` 1.7G | `…_screen40_E7/` (11G) | `E7/` | `4f16733b…6ba456` ✅ | 정본 외 전부 |
+| E7c (hpca100) | `epoch40_80.18_top1_checkpoint.pth` 1.7G | `…_screen40_E7c/` (11G) | `E7c/` | `ef062c7a…f96fdc5` ✅ | 정본 외 전부 |
+| E1M (hpca100, /tmp 재개) | `epoch35_80.64_top1` | SSDb 원본(ep18까지 7.0G, 재개 전) + `/tmp/jemo_scratch/…E1M/` | `_tmp_volatile/E1M/`(자동 회수) | 회수 시 md5 대조 | SSDb 원본 7.0G 전부(정본은 /tmp·NAS) — **NAS에 ep35 사본 있음을 확인 후** |
+| B0 (bengio) | `epoch40_65.4_top1` | bengio(양도됨) | ❌ 미회수 | — | bengio는 우리가 지우지 않음. 회수 필요 시 후배 양해 |
+| E1 (bengio) | `epoch35_67.25_top1` | bengio | ❌ 미회수 | — | 동상 — **회수 대상(확정 런 착수 전 NAS로)** |
+| E3 (bengio) | `epoch25_65.97_top1` | bengio | ❌ 미회수 | — | 동상 — **회수 대상** |
+| E4 (bengio) | `epoch15_65.92_top1` | bengio | ❌ 미회수 | — | 폐기 카드, 회수 선택 |
+| E4b·B0s2·E1s2 (bengio 중단분) | 재개점 ckpt | bengio + jarvis/hpca100 사본 | E4b는 md5 검증본 로컬 | ✅ | bengio 원본은 손대지 않음 |
+| E12·E2s2·E3s2·B0s2 (hpca100 /tmp) | 진행 중 | `/tmp/jemo_scratch/` | `_tmp_volatile/<런>/` 30분 주기 자동 회수 | 회수 시 대조 | 진행 중 — 삭제 없음 |
+| DGFusion 80k (jarvis) | `model_0079999.pth` 1.4G | `/SSDb/jemo_maeng/dgfusion_train/` | ❌ 미회수 | — | **회수 대상**(재현 정본) |
+| P52·P50-EXT·P46 lam02 등 이전 런(hpca100 SSDb) | 각 val-best | SSDb | registry/NAS `ckpts/` 확인 필요 | — | **NAS 대조 확인 전 삭제 금지** |
+
+- 이 표가 단일 출처다. 삭제를 집행하면 "삭제 가능 범위" 열을 "✅ 삭제(날짜)"로 바꾼다. 다른 런의 위치는 `experiments/registry.md`의 ckpt 열.
+
 ## 5. 결과 기록
 
 | 카드 | 결과 | 판정 | 근거 |
@@ -204,5 +235,20 @@ ep10 으로 계산하면 E1s2 이득이 +4.00(시드1 +0.39 의 열 배)으로 �
 
 **규칙**: 시드 페어 판정은 **40ep 완주 지점(또는 val-best ckpt 의 legal 재채점) 한 곳에서만** 한다.
 중간 epoch 수치는 크래시 감지와 진행 확인에만 쓰고, 채택·폐기 근거로 인용하지 마라.
+
+### 5-3. 🔴 스크린 규약의 교란 발견 (2026-09-09 밤) — 40ep 이득 = RailTrack 학습 가속
+
+| 카드 | 25클래스 test | RailTrack | **RailTrack 제외 24클래스 평균** | Δ24 vs B0 |
+|---|---|---|---|---|
+| B0 | 53.78 | 31.98 | 54.69 | — |
+| E1 | 54.85 | 45.11 | **55.26** | **+0.57** |
+| E2 | 54.50 | 47.75 | 54.78 | +0.09 |
+| E3 | 55.18 | 70.37 | 54.55 | −0.14 |
+| E4 | 53.75 | 45.71 | 54.09 | −0.60 |
+| E3b | 54.10 | 56.99 | 53.98 | −0.71 |
+
+- **사실**: 200ep 정본 기준선(P46 C3-only)은 RailTrack test **67.69~72.03**(analysis/2026-08-06-p46-c3only-fair-eval-final.md)에 이미 도달한다. 40ep B0(31.98)는 그 절반 = 스크린 40ep는 RailTrack 학습 곡선의 급경사 구간이다. 따라서 E1·E2·E3의 "+1" 대부분은 **200ep가 어차피 도달하는 RailTrack을 더 빨리 배운 것**이고, E3의 +1.40은 24클래스에서 −0.14다.
+- **함의**: (1) E3 200ep 확정 런은 RailTrack 천장(≈70)이 같아 이득이 사라질 가능성이 큼 → 착수 보류. (2) 24클래스에서 유일하게 양수인 **E1(+0.57, 약 1σ)** + 붕괴 클래스 보존 + MUSES +0.34의 일관성 → **E1을 첫 확정 런 대상으로**(기존 200ep seed821 기준선과 매칭 페어라 B0 재학습 불필요). (3) 스크린 통과 부기준으로 24클래스 Δ ≥ +0.5를 병기(§0 보강). (4) 시드 페어 판정은 40ep 완주 지점에서만(B0 vs B0s2 중간 진폭 3.72).
+- **다음 카드 방향**은 §5-2대로 얇고 작은 객체(Pole·Pedestrian·Static·TrafficLight)이며, 24클래스 기준으로 측정한다.
 
 > 🔗 **노션 동기화(2026-09-08)**: 이 표는 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, 33d05310) §4.2 카드 표와 같은 내용이다. 판정이 바뀌면 둘을 같은 날 갱신한다(CLAUDE.md §3, 빌더 `.claude/skills/notion-experiment-log/paper_page_builder.py`).
