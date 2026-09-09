@@ -70,7 +70,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(트레이너 val) | ETA | 목적 |
 |---|---|---|---|---|---|---|
-| ~~**카드 E3b**~~ E3 + 센서 간 일치항(`AGREE_LAMBDA` 0.0→0.1) | ~~jarvis 1,2,4~~ | DELIVER 4모달 | 40 | ✅ **완주(2026-09-09 19:35, 6:58:57)** — 트레이너 val-best **63.69@ep35**, E3(65.97@25) 대비 **−2.28** | legal 재채점 중(jarvis 5) | 8지점 중 7지점이 E3보다 낮다 → 일치 항이 해롭다는 방향. 확정은 legal test. RailTrack 손실폭이 핵심 |
+| ~~**카드 E3b**~~ E3 + 센서 간 일치항(`AGREE_LAMBDA` 0.0→0.1) | ~~jarvis 1,2,4~~ | DELIVER 4모달 | 40 | ❌ **폐기 확정(2026-09-09)** — legal test **54.10**(B0 53.78 대비 +0.32, E3 55.18 대비 −1.08) | 완료 | 일치 항이 **E3 가 벌던 클래스만 골라서 깎았다**: RailTrack −13.38 · Water −7.24 · Wall −5.30 · TrafficLight −5.26, 나머지 21클래스는 ±2 상쇄. → **센서별 prototype 은 서로 달라야 한다**(일치 강제는 이득의 원천을 지운다) |
 | **카드 E12** E1(4탭)+E2(전 선형층 LoRA) 결합 | hpca100 1 | DELIVER 4모달 | 40 | ep15/40 — ep5 61.04 · ep10 61.32 (같은 지점 E2 63.44·E1 63.56·B0 63.17보다 낮음, warmup 경계) | 09-10 08시 KST | 결합이 이득을 더하는가. 🔴 ep5 수치로 축 비교 금지(시드 흔들림 1.41) |
 | **카드 E2s2** E2 시드2(20260902) 매칭 페어 | hpca100 3 | DELIVER 4모달 | 40 | ep15/40 — ep5 61.13 · ep10 61.86 | 09-10 07시 KST | E2 seed1 Δtest +0.72(회색지대)의 재현 여부 — B0s2 대조 필요(bengio 중단 런) |
 | **E-LoRA arm A / C** per-modal r16 (lora 6.29M) / 공유8+잔차8 (3.93M) | yeon 0,1 / 6,7 | DELIVER 4모달 | 200 | A best 66.64@26 / C ep18 64.78 (best 64.81@14) — 초반 C > A (ep2 +3.49 · ep4 +2.85 · ep6 +2.58 · ep12 +0.62) | 09-12~13 | LoRA 구조 ablation. 판정 = 200ep legal test |
