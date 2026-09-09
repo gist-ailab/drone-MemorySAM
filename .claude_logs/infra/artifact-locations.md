@@ -57,14 +57,17 @@ run 디렉터리를 통째로 `<run이름>.tar` 로 묶어 저장했다(2026-09-
 | `hpca100_muses_rgbel_P39_1_seed2_physaugoff_taps_screen40_E1M`(SSDb 잔여분) | 일일 카드 **E1M — 카드 E1(중간층 4탭 읽기)을 MUSES로 이식** | MUSES 3모달 | `/tmp`에서 학습 진행 중(ep25까지) — 이건 그 이전 구간 | `…_screen40_E1M_ssdb.tar` |
 | `ckpts_p38muses_import/` · `ckpts_p39muses_import/` · `ckpt_stage/` | 타 서버에서 가져온 P38·P39 MUSES 웨이트와 그 변형(router 제거·seg 전용) | MUSES | 대부분 NAS에 정본 존재(§2.2) | `hpca100_ckpts_p38muses_import.tar` 등 |
 
-**결과**: 14개 tar, 총 147G를 옮겼다. hpca100 SSDb의 여유는 **121G → 287G**(사용률 95% → 87%)로 늘었고,
+| `/tmp/jemo_scratch/…_screen40_E1M`(완주분) | 위 E1M이 **2026-09-08 22:44에 40 epoch 완주**한 결과 — 휘발성 `/tmp`에 있어 함께 회수 | MUSES 3모달 | 트레이너 val-best **80.64@ep35**(최종 ep40 80.49), 총 학습 6시간 15분 | `…_screen40_E1M_COMPLETED_tmp.tar` |
+
+**결과**: 15개 tar, 총 158G를 옮겼다. hpca100 SSDb의 여유는 **121G → 287G**(사용률 95% → 87%)로 늘었고,
 레포 디렉터리는 123G → 880M, probe 레포는 20G → 163M로 줄었다.
 
 ### 2.1 서버에 남긴 것 (지우지 않았다)
 
 | 대상 | 왜 남겼나 |
 |---|---|
-| `/tmp/jemo_scratch/outputs/…E12`, `…E1M`, `…E2s2` | **현재 돌고 있는 학습 3건의 저장 경로**다. 손대면 학습이 깨진다. |
+| `/tmp/jemo_scratch/outputs/…E12`, `…E2s2` | **아직 돌고 있는 학습 2건의 저장 경로**다. 손대면 학습이 깨진다. 완주하면 회수해야 한다. |
+| `/tmp/jemo_scratch/outputs/…E1M` | 완주했고 아카이브로 **회수 완료**. 후속 공식 채점에 쓰일 수 있어 `/tmp` 사본은 남겨 뒀다(오버레이 여유 319G). |
 | `~/SSDb/jemo_maeng/dset/` | 데이터셋. 옮기면 학습이 못 읽는다. |
 | `~/SSDb/jemo_maeng/cache/`(56G) | HuggingFace 백본 캐시. 지우면 백본을 못 찾아 **랜덤 초기화로 학습이 조용히 망가진다**(ISSUE: HF_HUB_OFFLINE 함정). |
 | `~/SSDb/jemo_maeng/venv/`(5.7G) | 학습 실행 환경. |
