@@ -1512,7 +1512,7 @@
   "title": "[Drone] E-LoRA — per-modal vs 공유 vs 공유+잔차 LoRA 구조 ablation, 세 팔 가동 (DELIVER)",
   "period": "2026-09-07 (진행 중, arm A만 착수)",
   "track": "seg-DELIVER (ablation)",
-  "status": "세 팔 모두 가동(2026-09-09): A per-modal r16 yeon 0,1 (ep56, best 66.64@26) · B 완전공유 r16 jarvis 0,3 (ep2 49.79) · C 공유8+잔차8 yeon 6,7 (ep12 64.49). 200ep, 시드 20260821 매칭",
+  "status": "세 팔 모두 가동(2026-09-09): A per-modal r16 yeon 0,1 (best 66.64@26) · B 완전공유 r16 jarvis 0,3 (ep12 63.54) · C 공유8+잔차8 yeon 6,7 (ep18 64.78, best 64.81@14). 200ep, 시드 20260821 매칭",
   "summary": {
    "change": "P46-CTR C3-only(λ0.1, seed20260821 매칭) 위에서 LoRA 구조를 3갈래로 비교하는 ablation: arm A = 현행 per-modal 독립 LoRA(r16), arm B = 공유 LoRA(r16, 모달 간 파라미터 공유, 라우팅 없음), arm C = 공유(r8)+모달별 잔차(r8) 혼합 구조",
    "result": "arm A만 착수(2026-09-07, tmux elora_a_r16, develop 커밋 047e951). 기동검증 PASS: [E-LORA] mode=per_modal lora_trainable=6,291,456 total_trainable=57,705,247(r16 예측치와 일치)",

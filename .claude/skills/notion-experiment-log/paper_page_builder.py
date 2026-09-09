@@ -32,7 +32,7 @@ def sec_summary():
         CO([B("캠페인 결론(2026-06~09) "),
             T("추론 경로 안에서 모달을 적응적으로 가중하는 기제(학습 게이트 · 신뢰도→attention logit bias · 추론 재가중 · 패치별 라우팅 · cross-attention 트렁크 · 인코딩-시간 결합)는 전부 반증됨. 성능을 실제로 움직인 축 = 백본 표현력(SAM2→DINOv3 +11.6) · 학습 해상도(768→1024 test +2.0) · 학습 전용 클래스 prototype 손실(C3, DELIVER +1.4) · 어댑터 정렬 사전학습(+0.74, 재현 대기).")], "🧭", "yellow_background"),
         CO([B("지금 하는 것(2026-09-07~) "),
-            T("일일 사이클 실험 카드: 카드 1개 = 변수 1개 = 하루, 40ep 스크린 후 통과 카드만 200ep×3페어 확정. 기준선 B0 legal test 53.78. E1(중간층 4탭 읽기) 트레이너 val ep30 66.88 vs B0 65.13, **카드 넷 legal 완결 — E3(센서별 prototype) test 55.18 = B0 +1.40, E1(중간층 4탭) 54.85 = +1.07로 스크린 통과 2건**, E2(전 선형층 LoRA) 54.50 = +0.72 회색지대, E4(혼동 쌍 margin) 53.75 = −0.03 폐기. 트레이너 val 순위(E2>E1>E3>E4)와 legal test 순위(E3>E1>E2>E4)가 역전. MUSES 공식 val: PhysAug off 80.08 vs on 79.94 → off 통일, E1M(4탭) 80.42 = +0.34로 게이트 미달. 후속 E3b(일치 항)·E12·E2s2·E-LoRA 3팔 진행 중, bengio 양도로 시드2 페어 3런 중단(재개 대기). DGFusion 재학습은 3회 NaN 발산이나 80k ckpt val 66.54로 재현 성립, E7(MUSES PhysAug-off 공정 기준선) 완주. 병행: DGFusion·CAFuser 공식 설정 직접 재학습(재현 수치 확보 후 한계 분석).")], "🔬", "orange_background"),
+            T("일일 사이클 실험 카드: 카드 1개 = 변수 1개 = 하루, 40ep 스크린 후 통과 카드만 200ep×3페어 확정. 기준선 B0 legal test 53.78. E1(중간층 4탭 읽기) 트레이너 val ep30 66.88 vs B0 65.13, **카드 넷 legal 완결 — E3(센서별 prototype) test 55.18 = B0 +1.40, E1(중간층 4탭) 54.85 = +1.07로 스크린 통과 2건**, E2(전 선형층 LoRA) 54.50 = +0.72 회색지대, E4(혼동 쌍 margin) 53.75 = −0.03 폐기. 트레이너 val 순위(E2>E1>E3>E4)와 legal test 순위(E3>E1>E2>E4)가 역전. MUSES 공식 val: PhysAug off 80.08 vs on 79.94 → off 통일, E1M(4탭) 80.42 = +0.34로 게이트 미달. 후속 E3b(일치 항)·E12·E2s2·E-LoRA 3팔 진행 중, bengio 양도로 시드2 페어 3런 중단(재개 대기). DGFusion 재학습은 4회 NaN 발산(동일 iteration 재현, 특정 배치 원인 유력)이나 80k ckpt val 66.54로 재현 성립, E7(MUSES PhysAug-off 공정 기준선) 완주. 병행: DGFusion·CAFuser 공식 설정 직접 재학습(재현 수치 확보 후 한계 분석).")], "🔬", "orange_background"),
         P(B("페이지 갱신 규칙 "), T(f"이 페이지는 레포 실험 계획 문서(experiments/plan)과 같은 날짜로 동기화한다. 마지막 동기화 {TODAY}. 절 제목은 고정이고 본문만 교체된다.")),
     ]
 
@@ -142,7 +142,7 @@ def sec_campaign():
         L(B("목적 "), T("DGFusion(depth-guided fusion)의 재현 수치를 통계적으로 확보한 뒤 한계를 분석해 우리 설계에 반영. 공개 저장소에 학습 코드가 의도적으로 빠져 있어(train_net.py 부재, 학습 분기 차단) CAFuser 공개 코드를 대조해 복원.")),
         L(B("실행 "), T("DGFusion Swin-T DELIVER CLDE 공식 설정(bs8·LR 1e-4·200k iter) jarvis GPU1,2,4,5, ETA ~1.3일 · CAFuser Swin-T 대조군 lecun GPU0,1,2(3 GPU 제약: bs6·LR 0.75e-4·266,667 iter = 총 샘플 동일). 복원 킷 third_party/dgfusion_train_restore/.")),
         L(B("기대 산출 "), T("공개값(DGFusion val 66.51/test 56.71, CAFuser 68.12/55.80) 재현 여부 + per-class 3자 비교표(우리 P46 5-seed / DGFusion 재현 / MM SAM-adapter)의 재료.")),
-        L(B("경과(2026-09-09) "), T("DGFusion: iter 86.5k~87.8k에서 NaN 발산 3회(loss_ce·loss_contrastive NaN, mask·dice 0, condition·depth 정상 — 형태 동일, 80k에서 재개해도 472 iter 뒤 재발). 그러나 80k ckpt(40%) val 66.54 ≥ 공개 66.51 → 재현 성립, test 미측정. 재개·설정 조정은 판단 대기. CAFuser: iter 42k/267k, ETA 09-13.")),
+        L(B("경과(2026-09-09) "), T("DGFusion: NaN 발산 4회(iter 86,572 · 87,370 · 87,842 · 86,572 — 1차와 4차가 동일 iteration이라 시드 재현 데이터 순서상 특정 배치 원인 유력; loss_ce·loss_contrastive NaN, mask·dice 0, condition·depth 정상 = 디코더 경로만 오염). 80k ckpt(40%) val 66.54 ≥ 공개 66.51 → 재현 성립, test 1897장 평가 진행 중. 판정(생각정리 세션): 200k 완주 포기, 80k ckpt를 정본으로 기록 — 공식 설정을 바꾸면 재현이 아니므로. 평가 함정: 스플릿 키는 DATASETS.TEST가 아니라 DATASETS.TEST_SEMANTIC(장수 val 2005/test 1897로 구별). 감시 공백 중 jarvis GPU5·7 상실. CAFuser: iter 42k/267k, ETA 09-13.")),
         IMG("fig2_deliver_campaign.png", "DELIVER 캠페인 합법 test 정리. 초록 = 게이트 통과, 주황 = 반증, 노랑 = 동급(우위 주장 철회)."),
     ]
     return out
@@ -272,15 +272,15 @@ def sec_plan():
             ["서버 / GPU", "실험", "데이터셋", "진행", "ETA · 비고"],
             ["bengio 0-3", "B0 기준선 스크린", "DELIVER 4모달", "완주 → legal test 53.78 / val 64.97", "카드 대조군 고정"],
             ["bengio (양도 완료)", "E1·E3·E4 완주·legal 완결 후 E4b·B0s2·E1s2 중단(ckpt 보존)", "DELIVER 4모달", "8장 전부 타 사용자(articubot) 사용 중", "중단 3런은 다른 서버에서 AUTO_RESUME 재개 대기"],
-            ["jarvis 1,2,4", "카드 E3b (E3 + 일치 항 0.1)", "DELIVER 4모달", "40ep, 09-09 기동", "20시 KST 완주 예정 → legal 재채점"],
-            ["jarvis 0,3", "E-LoRA arm B (완전공유 r16, lora 1.57M)", "DELIVER 4모달", "200ep, ep2 49.79", "세 팔(A yeon 0,1 / B jarvis / C yeon 6,7) 전부 가동"],
+            ["jarvis 1,2,4", "카드 E3b (E3 + 일치 항 0.1)", "DELIVER 4모달", "ep15/40 — 57.06/55.88/62.00 (E3 같은 시점 62.23)", "20시 KST 완주 예정 → legal 재채점"],
+            ["jarvis 0,3", "E-LoRA arm B (완전공유 r16, lora 1.57M)", "DELIVER 4모달", "200ep, ep12 63.54", "세 팔(A yeon 0,1 / B jarvis / C yeon 6,7) 전부 가동"],
             ["hpca100 1,3", "E12(E1+E2 결합) · E2s2(E2 시드2)", "DELIVER 4모달", "ep15/40 · ep15/40 (/tmp 우회, 여유 349G)", "09-10 08시 · 07시 KST 완주 예정"],
             ["hpca100 3", "E1M MUSES 4탭 이식(E7 매칭 페어)", "MUSES 3모달", "완주 + 공식 재채점 완결: 80.416 vs E7 80.0756 (+0.340, 게이트 +1.0 미달)", "GPU3 해방"],
             ["hpca100 2", "E7·E7c 공식 페어 재채점 완료", "MUSES 3모달", "공식 native val E7 80.0756 / E7c 79.9417 (PhysAug on −0.134)", "PhysAug-off 통일 확정. GPU2 해방"],
-            ["yeon 2,3 / 4,5", "P52 RxDINO DELIVER seed1 / seed2", "DELIVER 4모달", "ep73/75, best 66.25@36 / 66.76@58(ep58 최고 갱신)", "09-12~13 완주. 게이트 재등록 예정"],
-            ["yeon 0,1 / 6,7", "E-LoRA arm A (per-modal r16, lora 6.29M) / arm C (공유8+잔차8, 3.93M)", "DELIVER 4모달", "A ep56 best 66.64@26 / C ep12 64.49 (초반 C > A: ep2 +3.49 · ep12 +0.62)", "09-12~13 완주 → legal test로 판정"],
+            ["yeon 2,3 / 4,5", "P52 RxDINO DELIVER seed1 / seed2", "DELIVER 4모달", "ep76/78, best 66.25@36 / 66.76@58", "09-12~13 완주. 게이트 재등록 예정"],
+            ["yeon 0,1 / 6,7", "E-LoRA arm A (per-modal r16, lora 6.29M) / arm C (공유8+잔차8, 3.93M)", "DELIVER 4모달", "A best 66.64@26 / C ep18 64.78 (best 64.81@14; 초반 C > A: ep2 +3.49 · ep12 +0.62)", "09-12~13 완주 → legal test로 판정"],
             ["hpca100 0,2 / 1,3", "P52 MUSES seed1 / seed2", "MUSES 4모달", "보류(ep54 79.63 / ep30 78.81, ckpt 보존)", "감사 §1.5 기준선 문제 적용 후 재개"],
-            ["jarvis (중단)", "DGFusion Swin-T 재학습(공식 설정 bs8·LR 1e-4·200k)", "DELIVER CLDE", "⏸ NaN 발산 3회(iter 86,572·87,370·87,842, CE·contrastive NaN·mask/dice 0 동일 형태) — 단 80k ckpt val 66.54 ≥ 공개 66.51 = 재현 성립(test 미측정)", "재개·설정 조정은 생각정리 세션 판단 대기. model_0079999.pth 보존"],
+            ["jarvis (중단)", "DGFusion Swin-T 재학습(공식 설정 bs8·LR 1e-4·200k)", "DELIVER CLDE", "⏸ NaN 발산 4회(iter 86,572·87,370·87,842·86,572 재현 — 특정 배치 원인 유력, CE·contrastive NaN·mask/dice 0 동일 형태) — 80k ckpt val 66.54 ≥ 공개 66.51 = 재현 성립, test 1897장 평가 중(GPU6)", "생각정리 세션 판정: 200k 완주 포기, 80k ckpt를 정본으로 기록(공식 설정을 바꾸면 재현이 아님). jarvis GPU5·7은 감시 공백 중 타 사용자에게 상실. 평가 함정: DATASETS.TEST_SEMANTIC이 실제 키"],
             ["lecun 0,1,2", "CAFuser Swin-T 대조군(bs6·LR 0.75e-4·266,667 iter)", "DELIVER CLDE", "iter 42,159/266,667 · iter 10k 평가 mIoU 55.74", "로그 ETA 4일 6시간 (2026-09-13경). 공개값 val 68.12/test 55.80"],
             ["NAS 보존", "정본 ckpt(E2·E7·E7c val-best) md5 대조 후 /drone_nas/…/ckpts/daily_cards_20260908/ 보관 + hpca100 /tmp 산출물은 새 val-best마다 자동 회수(E1M ep20 첫 회수 md5 일치)", "—", "완료", "bengio 중단 3런 ckpt 보존"],
         ]),

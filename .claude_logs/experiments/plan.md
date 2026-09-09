@@ -70,11 +70,11 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(트레이너 val) | ETA | 목적 |
 |---|---|---|---|---|---|---|
-| **카드 E3b** E3 + 센서 간 prototype 일치 항(`AGREE_LAMBDA` 0.0→0.1) | jarvis 1,2,4 | DELIVER 4모달 | 40 | 09-09 기동, 시드 20260821 | 09-09 20시 KST → legal 재채점 | E3(+1.40, 카드 최고) 위 단일 변수. 사전 예측 = RailTrack 유지 + Wall/Water 회복, 통과선 Δtest ≥ +1.0 |
+| **카드 E3b** E3 + 센서 간 prototype 일치 항(`AGREE_LAMBDA` 0.0→0.1) | jarvis 1,2,4 | DELIVER 4모달 | 40 | ep15/40 — ep5 57.06 · ep10 55.88 · ep15 62.00 (E3 같은 시점 62.23) | 09-09 20시 KST → legal 재채점 | E3(+1.40, 카드 최고) 위 단일 변수. 사전 예측 = RailTrack 유지 + Wall/Water 회복, 통과선 Δtest ≥ +1.0 |
 | **카드 E12** E1(4탭)+E2(전 선형층 LoRA) 결합 | hpca100 1 | DELIVER 4모달 | 40 | ep15/40 — ep5 61.04 · ep10 61.32 (같은 지점 E2 63.44·E1 63.56·B0 63.17보다 낮음, warmup 경계) | 09-10 08시 KST | 결합이 이득을 더하는가. 🔴 ep5 수치로 축 비교 금지(시드 흔들림 1.41) |
 | **카드 E2s2** E2 시드2(20260902) 매칭 페어 | hpca100 3 | DELIVER 4모달 | 40 | ep15/40 — ep5 61.13 · ep10 61.86 | 09-10 07시 KST | E2 seed1 Δtest +0.72(회색지대)의 재현 여부 — B0s2 대조 필요(bengio 중단 런) |
-| **E-LoRA arm A / C** per-modal r16 (lora 6.29M) / 공유8+잔차8 (3.93M) | yeon 0,1 / 6,7 | DELIVER 4모달 | 200 | A ep56 best 66.64@26 / C ep12 64.49 — 초반 C > A (ep2 +3.49 · ep4 +2.85 · ep6 +2.58 · ep12 +0.62) | 09-12~13 | LoRA 구조 ablation. 판정 = 200ep legal test |
-| **E-LoRA arm B** 완전공유 r16 (lora 1.57M, total 52.99M) | jarvis 0,3 | DELIVER 4모달 | 200 | 09-09 기동, ep2 49.79 | ~09-16 | 세 팔 전부 가동 |
+| **E-LoRA arm A / C** per-modal r16 (lora 6.29M) / 공유8+잔차8 (3.93M) | yeon 0,1 / 6,7 | DELIVER 4모달 | 200 | A best 66.64@26 / C ep18 64.78 (best 64.81@14) — 초반 C > A (ep2 +3.49 · ep4 +2.85 · ep6 +2.58 · ep12 +0.62) | 09-12~13 | LoRA 구조 ablation. 판정 = 200ep legal test |
+| **E-LoRA arm B** 완전공유 r16 (lora 1.57M, total 52.99M) | jarvis 0,3 | DELIVER 4모달 | 200 | ep12 63.54 | ~09-16 | 세 팔 전부 가동 |
 | **P52 RxDINO DELIVER seed1 / seed2** | yeon 2,3 / 4,5 | DELIVER 4모달 | 200 | ep73/75 — best 66.25@36 / **66.76@58**(ep58 최고 갱신) | 09-12~13 | 감사 후 게이트 재등록 예정(동등성 [−1.0,∞) 3페어 + G5 고정 스윕) |
 | **P52 MUSES seed1 / seed2** | hpca100 0,2 / 1,3 | MUSES 4모달 | 300 | 🟡 **보류**(ep54 79.63 / ep30 78.81, ckpt 보존) | — | 감사 §1.5(3모달 기준선·PhysAug-off) 적용 후 재개 |
 | **CAFuser Swin-T 대조군**(bs6·LR0.75e-4·266,667 iter) | lecun 0,1,2 | DELIVER CLDE | 266,667 iter | iter 42,159/266,667(09-09 12:54) · iter 10k 평가 mIoU 55.74 | 로그 ETA 4일 6시간(09-13경) | 공개값 val 68.12/test 55.80 재현 |
@@ -190,6 +190,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **P43-PanopticDual (MUSES, hpca100)** | **완주** — best val 82.51@ep156 (seed2 82.62 −0.11 / P38 82.22 +0.29). val로는 seed2 미돌파. PQ 축(설계 헤드라인)은 MUSES panoptic GT 부재로 val PQ 미측정 → PQ 판정 보류. ckpt `outputs/ReliaDINO/hpca100_muses_rgbel_P43_pdual/epoch156_82.51_top1_checkpoint.pth`. test 제출 후보(mIoU 82.5대). Total Training Time 01:37:24는 로깅 아티팩트 |
 
 ## ⚠️ 사고 기록 (반복 금지)
+
+- **2026-09-09 — DGFusion 재학습 감시 공백으로 jarvis GPU5·7 상실**: 발산 후 1h45m 방치되는 사이 타 사용자(openpi) 점유. 베이스라인 재학습에도 워치독 등록 필수. 같은 날 발견한 평가 함정: DGFusion 세만틱 평가는 `DATASETS.TEST_SEMANTIC`을 읽는다(`DATASETS.TEST`만 바꾸면 val이 그대로 돌아감 — val 2005/test 1897 장수로 구별).
 
 - **2026-07-27 — jarvis SSH 불통 (connection refused)**: 내부 172.27.183.201:22 즉시 거부 — bengio(timeout)와 달리 호스트는 살아있고 sshd 중단/포트 변경 가능성. jarvis 상주 학습·ckpt 생존 여부 미확인 — **jarvis 사용 세션은 접근 복구 확인 후 진행할 것.** (p33-impl 세션 감시 중 감지)
 
