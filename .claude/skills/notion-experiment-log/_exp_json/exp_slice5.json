@@ -1353,11 +1353,11 @@
   "title": "[Drone-Card] E1 — 중간층 4탭 읽기(S1) (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "진행 중(ep38/40, 완주 20:28 KST 전후) — 트레이너 val 67.25@ep35(카드 중 최고, legal 아님)",
+  "status": "완주 + legal test 재채점 완결 — **스크린 통과**(Δtest +1.07 ≥ +1.0, 생각정리 세션 확정 2026-09-09). legal val 재채점 진행 중",
   "summary": {
    "change": "블록 6/12/18/24 출력을 SimpleFPN 레벨별로 투입함(P43 lateral을 M2F 헤드와 분리해 단독 토글)",
-   "result": "트레이너 val ep5~30 = 60.98/63.56/66.30/66.57/66.43/66.88 (B0 동epoch 58.71/63.17/62.18/63.91/64.03/65.13)",
-   "verdict": "뚜렷한 양성 궤적(+1.7@ep30) — 판정은 완주 후 val-best legal test로만 함"
+   "result": "legal test 54.85 (mAcc 65.42), val-best ckpt epoch35_67.25_top1, 1024 BS1 native GT. B0 53.78 대비 Δtest +1.07 — 카드 프로그램 첫 통과",
+   "verdict": "스크린 통과(사전 등록 통과선 +1.0 초과). 다음 = 200ep × 3페어 확정 런(게이트 3페어 mean ≥ +1.0). 트레이너 val 순위(E2 68.65 > E1 67.25)와 legal test 순위(E1 54.85 > E2 54.50)가 뒤집힘"
   },
   "background": [
    "가설: 기하 센서(depth·lidar)의 클래스 근거는 중간층에 있다는 것",
@@ -1385,52 +1385,58 @@
    ]
   },
   "results": {
-   "gate": "통과선 Δtest≥+1.0(vs B0 53.78, 즉 test≥54.78)",
+   "gate": "통과선 Δtest ≥ +1.0 → 실측 +1.07 통과(악조건 −0.5 조건은 조건별 수치 미수신). 판정 주체 = 생각정리 세션",
    "table": [
     [
-     "epoch",
-     "E1 트레이너 val",
-     "B0 트레이너 val"
+     "구성/ckpt",
+     "legal val",
+     "legal test",
+     "비고"
     ],
     [
-     "5",
-     "60.98",
-     "58.71"
+     "E1 val-best ep35 (epoch35_67.25_top1)",
+     "재채점 중",
+     "54.85 (mAcc 65.42)",
+     "val.py 1024×1024 BS1 native GT, FPS 0.57"
     ],
     [
-     "10",
-     "63.56",
-     "63.17"
+     "B0 val-best ep40",
+     "64.97",
+     "53.78",
+     "같은 규약"
     ],
     [
-     "15",
-     "66.30",
-     "62.18"
+     "Δ (E1 − B0)",
+     "—",
+     "+1.07",
+     "통과선 +1.0 초과"
     ],
     [
-     "20",
-     "66.57",
-     "63.91"
+     "E2 (대조: 전 선형층 LoRA)",
+     "68.38",
+     "54.50",
+     "트레이너 val은 E2가 높으나 legal test는 E1이 높음"
     ],
     [
-     "25",
-     "66.43",
-     "64.03"
-    ],
-    [
-     "30",
-     "66.88",
-     "65.13"
+     "E1 트레이너 val 궤적 ep5~35",
+     "60.98 / 63.56 / 66.30 / 66.57 / 66.43 / 66.88 / 67.25",
+     "—",
+     "B0 58.71/63.17/62.18/63.91/64.03/65.13/64.67/65.40"
     ]
    ],
    "per_condition": [],
-   "per_class": [],
+   "per_class": [
+    "test 클래스별 Δ(E1 − B0): RailTrack 31.98→45.11(+13.13) · TrafficLight 30.23→35.24(+5.01) · SideWalk 74.57→77.66(+3.09) · Truck 91.45→93.27(+1.82) · Ground 4.85→6.24(+1.39) · Terrain 67.31→68.61(+1.30) / Water 6.46→4.75(−1.71) · Dynamic 9.73→8.32(−1.41) · Other 2.75→1.65(−1.10) / Wall 12.17→12.43(+0.26) · Static 28.63→28.88(+0.25)"
+   ],
    "invalid": [
     "legal test 수치 아직 없음(트레이너 val만, 완주 후 val.py 재채점 필요)"
    ]
   },
   "analysis": [
-   "ep30까지 B0 대비 +1.7 트레이너 val 격차 — 조기 궤적으로는 카드 중 가장 뚜렷한 양성 신호"
+   "ep30까지 B0 대비 +1.7 트레이너 val 격차 — 조기 궤적으로는 카드 중 가장 뚜렷한 양성 신호",
+   "E1 vs E2 클래스별 대조: 두 카드 모두 RailTrack 회복(E1 +13.13, E2 +15.77)이나 Wall·Static·Water에서 E2만 크게 잃음(−6.40/−5.44/−5.47, E1은 +0.26/+0.25/−1.71) → E1의 test 우위는 공통 붕괴 클래스를 지킨 데서 나옴(수치 관측)",
+   "val↔test 순위 역전: 트레이너 val E2 68.65 > E1 67.25, legal test E1 54.85 > E2 54.50 — val 기준 카드 선택은 위험, legal test로만 판정하는 규약이 이번에 실효",
+   "E0 프로브 예측(depth 중간층에 RailTrack·Water 근거 잔존 → E1이 depth·lidar 의존 클래스 회복)과 부합: RailTrack +13.13, Ground +1.39, Terrain +1.30. 단 Water는 −1.71로 예측과 반대"
   ],
   "verdict": {
    "worked": "판정 보류(완주 및 legal 재채점 대기)",
@@ -1441,7 +1447,9 @@
    "legal val/test 최종 수치 없음"
   ],
   "sources": [
-   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1.yaml"
+   "configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1.yaml",
+   "bengio logs/e1_eval_test_ep35_20260908_233821.log · logs/e1_eval_val_ep35_20260909_011343.log(진행 중)",
+   "ckpt outputs/ReliaDINO/bengio_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1/DELIVER_ReliaDINO-ViTL16_idel/epoch35_67.25_top1_checkpoint.pth"
   ],
   "_internal_refs": [
    ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1/§3-6/§5",
@@ -1562,10 +1570,10 @@
   "title": "[Drone-Card] E3 — 센서별 클래스 prototype(C3-M) (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "진행 중(ep30/40) — 트레이너 val ep30 65.51, best 65.97@ep25",
+  "status": "완주(총 20:53:16) — 트레이너 val-best 65.97@ep25, ep40 65.69. legal 재채점 대기열",
   "summary": {
    "change": "prototype bank를 센서별로 분리하고(K×D×M) 센서 간 prototype 일치 항 λ_agree를 추가함",
-   "result": "트레이너 val ep5~25 = 59.35/63.72/62.23/65.44/65.97(B0 동epoch 64.03@25)",
+   "result": "트레이너 val ep5~40: 59.35/63.72/62.23/65.44/65.97/65.51/65.61/65.69 (val-best ep25 65.97, B0 65.40@40). legal test 미측정",
    "verdict": "보류(+1.9@ep25, 단일 시드 잡음 범위 경계)"
   },
   "background": [
@@ -1601,40 +1609,29 @@
    "gate": "통과선 Δtest≥+1.0. 예측: RailTrack 유지 + Wall/Water 회복",
    "table": [
     [
-     "epoch",
-     "E3 트레이너 val",
-     "B0 트레이너 val"
+     "구성/ckpt",
+     "트레이너 val",
+     "legal test",
+     "비고"
     ],
     [
-     "5",
-     "59.35",
-     "58.71"
-    ],
-    [
-     "10",
-     "63.72",
-     "63.17"
-    ],
-    [
-     "15",
-     "62.23",
-     "62.18"
-    ],
-    [
-     "20",
-     "65.44",
-     "63.91"
-    ],
-    [
-     "25",
+     "E3 val-best ep25",
      "65.97",
-     "64.03"
+     "재채점 대기",
+     "카드 4개 중 트레이너 val 3위(E2 68.65 > E1 67.25 > E3 65.97 > E4 65.92 > B0 65.40)"
+    ],
+    [
+     "B0",
+     "65.40@40 (정본 64.97)",
+     "53.78",
+     "통과선 test ≥ 54.78"
     ]
    ],
    "per_condition": [],
    "per_class": [],
    "invalid": [
-    "legal test 수치 아직 없음"
+    "legal test 수치 아직 없음",
+    "로그 말미 'Best Test mIoU 54.99 (epoch 35)'는 test-best 계열 — 판정 대상 아님, 정본은 val-best ep25 legal 재채점"
    ]
   },
   "analysis": [
@@ -1750,7 +1747,7 @@
   "title": "[Drone-Card] E4b — 혼동 쌍 margin 손실(명시 쌍판, RailTrack 포함) (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "미기동(config 완료, E4 완주 후 기동 예정)",
+  "status": "진행 중(bengio, ep5/40) — E4 완주 후 같은 GPU에서 기동",
   "summary": {
    "change": "E4의 auto 쌍에서 빠진 RailTrack을 포함해 쌍을 명시로 고정함: RailTrack→Sky/Static/Terrain, Wall→Building, Water→Terrain",
    "result": "기록 없음(미기동)",
@@ -1809,7 +1806,7 @@
   "title": "[Drone-Card] E1M — 카드 E1(4탭 읽기)의 MUSES 이식 (MUSES)",
   "period": "2026-09-08",
   "track": "card-MUSES",
-  "status": "진행 중(hpca100 GPU3, ep10/40) — 트레이너 val ep5 71.73 · ep10 75.55 vs 짝 E7 73.84 · 75.39 (ep5 −2.11 → ep10 +0.16). warmup 15ep라 ep15·20이 실질 비교점",
+  "status": "진행 중(hpca100 GPU3, ep18/40 재개 — 디스크 만복으로 중단 후 /tmp 우회 재개, 완주 09-09 18시 KST 예정). ep5 71.73 · ep10 75.55 vs E7 73.84 · 75.39",
   "summary": {
    "change": "카드 E1(중간층 4탭 읽기)을 MUSES로 이식함(PhysAug off, E7 기준선 위에 TAPS on)",
    "result": "기동 직후 — 수치 없음. E7(PhysAug-off, 트레이너 val 80.29@40)과 매칭 페어",
@@ -1889,7 +1886,7 @@
   "title": "[Drone-Card] E12 — E1(4탭)+E2(전 선형층 LoRA) 결합 (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "미기동(config 완료, E2 legal 판정 양성일 때만 기동)",
+  "status": "진행 중(hpca100, ep2/40, 디스크 만복으로 /tmp 우회 가동, 완주 09-10 08시 KST 예정) — E2 legal +0.72(회색지대)에도 결합 검증 착수",
   "summary": {
    "change": "E1(4탭 읽기)과 E2(전 선형층 LoRA r32/α64)를 결합함",
    "result": "기록 없음(미기동)",
@@ -1953,7 +1950,7 @@
   "title": "[Drone-Card] E1s2 — E1(4탭 읽기) 시드2 매칭 페어 (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "미기동(config 완료, bengio판/hpca100판 2벌)",
+  "status": "진행 중(bengio, 기동 중) — E1 스크린 통과 후 시드2 매칭 페어",
   "summary": {
    "change": "E1과 동일함(TAPS on), 시드만 20260902로 교체해 B0s2와 매칭 페어를 구성함",
    "result": "기록 없음(미기동)",
@@ -2012,7 +2009,7 @@
   "title": "[Drone-Card] B0s2 — 기준선 시드2 매칭 페어 (DELIVER)",
   "period": "2026-09-08",
   "track": "card-DELIVER",
-  "status": "미기동(config 완료)",
+  "status": "진행 중(bengio, ep3/40) — 시드2 기준선(E1s2·E2s2의 대조군)",
   "summary": {
    "change": "B0과 동일한 레시피, 시드만 20260902로 교체함(E1s2와 매칭 페어)",
    "result": "기록 없음(미기동)",
@@ -2497,5 +2494,60 @@
    ".claude_logs/experiments/registry.md cafuser 행",
    ".claude_logs/experiments/plan.md 실행중 표"
   ]
+ },
+ {
+  "key": "E2s2",
+  "title": "[Drone-Card] E2s2 — 전 선형층 LoRA(E2)의 시드2 매칭 페어 (DELIVER)",
+  "period": "2026-09-09 기동",
+  "track": "card-DELIVER",
+  "status": "진행 중(hpca100, ep1/40, /tmp 우회 가동, 완주 09-10 07시 KST 예정)",
+  "summary": {
+   "change": "E2(LoRA를 Q/K/V/O + MLP fc1/fc2, r32·α64)와 동일 레시피, 시드만 20260902",
+   "result": "기동 직후 — 수치 없음",
+   "verdict": "판정 전. E2 seed1 legal Δtest +0.72(회색지대)의 재현 여부 확인용"
+  },
+  "background": [
+   "E2 seed1 legal test 54.50 = B0 +0.72로 통과선(+1.0)과 폐기선(+0.5) 사이 회색지대",
+   "시드 페어 편차 ~0.6이라 시드 1개로 판별 불가 → 시드2 매칭 페어(B0s2 대조)"
+  ],
+  "architecture": {
+   "one_liner": "E2와 byte-동일 구조, TRAIN.SEED 20260902",
+   "components": [
+    [
+     "LORA_TARGETS",
+     "[qkv_full, proj, fc1, fc2], r32, α64",
+     "config 키"
+    ]
+   ],
+   "mermaid": "기록 없음",
+   "rationale": [
+    "측정 규약 R1: 헤드라인·게이트 판정은 매칭 페어 3시드 이상"
+   ],
+   "setting": [
+    "hpca100",
+    "DELIVER 4모달",
+    "40ep, EVAL_INTERVAL 5, seed 20260902"
+   ]
+  },
+  "results": {
+   "gate": "Δtest(E2s2 − B0s2) ≥ +1.0, 페어 2개 mean으로 재판정",
+   "table": [],
+   "per_condition": [],
+   "per_class": [],
+   "invalid": []
+  },
+  "analysis": [],
+  "verdict": {
+   "worked": "판정 전",
+   "why": "—",
+   "handoff": "—"
+  },
+  "todo": [
+   "config 경로·로그 경로 확인"
+  ],
+  "sources": [
+   "hpca100"
+  ],
+  "_internal_refs": []
  }
 ]
