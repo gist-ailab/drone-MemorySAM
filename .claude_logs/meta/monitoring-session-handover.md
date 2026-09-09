@@ -23,7 +23,7 @@ background 세션이라 이 도구의 적용 대상이 아니다(`pwd` 재확인
 8건이 아니라 실제로는 **2건뿐**임을 확인(§3)한 뒤 지금 바로 이관하기로 했다 — 재설치할 게
 둘뿐이면 새 세션이 그 둘을 켜고 정상 동작을 확인한 다음에 이 세션을 끄면 감시 공백이 0이다.
 
-## 1. 활성 감시 열 건 — 재설치 명세
+## 1. 활성 감시 열두 건 — 재설치 명세
 
 > 🔴 **2026-09-08 개정판.** 초판 명세는 `tail -c 2000~3000`으로 잘라낸 조각에서 `[Val]` 줄을 찾았는데,
 > tqdm 진행 줄이 초당 여러 번 쌓여 그 창을 가득 채우기 때문에 평상시에는 `[Val]` 줄이 밀려나 진행
@@ -151,39 +151,41 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
 `grep -E '^epoch.*top1_checkpoint'` 로 `test_` 를 걸러낸 적이 있는데, 회수 장치를 새로 만들 때 그 지식을
 적용하지 않았다. **체크포인트를 이름으로 다루는 코드를 새로 쓸 때마다 이 두 계열을 먼저 떠올려라.**
 
-### 1-1. 감시 대상과 임계 (2026-09-09 18:30 KST 실측으로 전면 교체)
+### 1-1. 감시 대상과 임계 (2026-09-09 22:00 KST 실측 — 열셋으로 재편)
 
-> 🔴 **이 표는 2026-09-08 판(감시 넷)을 대체한다.** 그때의 1-c(`hpca100_E2`)·1-d(`hpca100_E7c`)는
-> 둘 다 완주해서 대상이 없어졌고, 그 자리를 E12·E2s2·E3s2·B0s2 가 채웠다. 낡은 표를 그대로 재설치하면
-> **존재하지 않는 tmux 세션을 감시하게 되어 즉시 `SESSION_GONE` 으로 끝난다.**
+> 🔴 **이 표는 같은 날 18:30 판을 다시 대체한다.** 저녁에 배치가 크게 바뀌었다: E3b 완주로 jarvis GPU1,2,4 가
+> 열렸고 오후에 빼앗겼던 **GPU5·7 이 되돌아왔으며**(openpi 종료), bengio 에서 멎어 있던 중단 런 셋(B0s2·E1s2·E4b)이
+> 전부 다른 서버에서 되살아났다. **런이 열셋이고 유휴 GPU 는 없다.**
 
 `persistent: true`로 걸고, `SESSION_GONE`이 뜨면 단일 대상 감시는 루프를 끝낸다(1-a는 두 런이 모두
 끝났을 때 끝낸다). `CYCLES` 는 **그 런의 실측 `[Val]` 갱신 간격 × 2.5 ÷ 폴링 주기**로 정한다 —
-평가 간격보다 짧게 잡으면 정상 진행 중에 `STALLED_VAL` 오탐이 난다(2026-09-09 에 E3s2·B0s2 를
-8주기=120분으로 걸었다가 실제 간격이 229·252분이어서 교정했다).
+평가 간격보다 짧게 잡으면 정상 진행 중에 `STALLED_VAL` 오탐이 난다.
 
 | 항목 | 서버 | tmux 세션 | 로그 | 실측 ep 시간 | `[Val]` 간격 | 폴링 | `CYCLES` |
 |---|---|---|---|---|---|---|---|
-| 1-a | `yeon` | `p52_deliver_s1`, `p52_deliver_s2` | `<yeon-p38>/logs/<세션>_launch.log` | 40.0 / 38.9분 | 2ep ≈ 79분 | 1800초 | 7 |
-| 1-b | `yeon` | `elora_a_r16` | 〃 | 40.4분 | 2ep ≈ 81분 | 1500초 | 8 |
-| 1-c | `yeon` | `elora_c_shres` (arm C) | 〃 | 41.4분 | 2ep ≈ 83분 | 1500초 | 8 |
-| 1-d | `jarvis` | `elora_b_shared` (arm B) | `/SSDb/jemo_maeng/src/drone-MemorySAM/logs/` | 18.9분 | 2ep ≈ 38분 | 1500초 | 4 |
-| 1-e | `jarvis` | `e3b_agree` (카드 E3b) | 〃 | 10.5분 | 5ep ≈ 52분 | 1500초 | 5 |
-| 1-f | `hpca100` | `hpca100_E12` | `/tmp/jemo_scratch/logs/hpca100_E12_launch.log` | 56.1분 | 5ep ≈ 280분 | 1500초 | 28 |
-| 1-g | `hpca100` | `hpca100_E2s2` | `/tmp/jemo_scratch/logs/hpca100_E2s2_launch.log` | 54.4분 | 5ep ≈ 272분 | 1500초 | 27 |
-| 1-h | `hpca100` | `hpca100_E3s2` | `/tmp/jemo_scratch/logs/hpca100_E3s2_launch.log` | 45.8분 | 5ep ≈ 229분 | 1500초 | 23 |
-| 1-i | `hpca100` | `hpca100_B0s2` | `/tmp/jemo_scratch/logs/hpca100_B0s2_resume.log` | 50.4분 | 5ep ≈ 252분 | 1500초 | 25 |
-| 1-j | `hpca100` | (세션 없음 — `/tmp` val-best NAS 자동 회수) | — | — | — | 회수 주기 | — |
+| 1-a | `yeon` | `p52_deliver_s1`, `p52_deliver_s2` | `<yeon-p38>/logs/<세션>_launch.log` | 39.5 / 38.5분 | 2ep ≈ 78분 | 1800초 | 7 |
+| 1-b | `yeon` | `elora_a_r16` | 〃 | 40.5분 | 2ep ≈ 81분 | 1500초 | 8 |
+| 1-c | `yeon` | `elora_c_shres` (arm C) | 〃 | 41.5분 | 2ep ≈ 83분 | 1500초 | 8 |
+| 1-d | `jarvis` | `elora_b_shared` (arm B) | `<jarvis>/logs/<세션>_launch.log` | 19.0분 | 2ep ≈ 38분 | 1500초 | 4 |
+| 1-e | `jarvis` | `e13_combo` (E1+E3 결합) | 〃 | 10.6분 | 5ep ≈ 53분 | 1500초 | 5 |
+| 1-f | `jarvis` | `e4b_resume` (E4b 재개, ep14~) | 〃 | 24.6분 | 5ep ≈ 123분 | 1500초 | 12 |
+| 1-g | `jarvis` | `e1s2_resume` (E1s2 재개, ep9~) | 〃 | 25.0분 | 5ep ≈ 125분 | 1500초 | 13 |
+| 1-h | `hpca100` | `hpca100_E12` | `/tmp/jemo_scratch/logs/<세션>_launch.log` | 62.4분 | 5ep ≈ 312분 | 1500초 | 31 |
+| 1-i | `hpca100` | `hpca100_E2s2` | 〃 | 61.0분 | 5ep ≈ 305분 | 1500초 | 30 |
+| 1-j | `hpca100` | `hpca100_E3s2` | 〃 | 24.2분 | 5ep ≈ 121분 | 1500초 | 12 |
+| 1-k | `hpca100` | `hpca100_B0s2` | `/tmp/jemo_scratch/logs/hpca100_B0s2_resume.log` | 33.7분 | 5ep ≈ 169분 | 1500초 | 17 |
+| 1-l | `hpca100` | (세션 없음 — `/tmp` val-best NAS 자동 회수) | — | — | — | 회수 주기 | — |
+| 1-m | `lecun` | CAFuser (감시 미설치, 조회로만 추적) | `/SSDb/jemo_maeng/cafuser_train/output/…/log.txt` | — | iter 기반 | — | — |
 
 `<yeon-p38>` = `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`
+`<jarvis>` = `/SSDb/jemo_maeng/src/drone-MemorySAM`
 
-🔴 **hpca100 로그가 `/tmp/jemo_scratch/` 로 옮겨졌다.** SSDb 가 100% 차서 2026-09-09 에 우회한 결과이며,
-옛 경로(`/home/jovyan/SSDb/.../logs/`)에는 E12 이후의 로그가 없다. `/tmp` 는 컨테이너 재시작 시 사라지므로
-1-j 회수 감시가 val-best 를 NAS 로 계속 빼내고 있다.
+⚠️ **hpca100 의 epoch 시간은 GPU 경합에 따라 두 배까지 흔들린다.** E3s2 는 기동 직후 45.8분/ep 로 추정했으나
+네 런이 자리를 잡은 뒤 24.2분/ep 로 줄었다. 임계를 다시 계산할 때는 **추정이 아니라 그때의 실측 `[Val]`
+간격**을 쓰라.
 
-**완주 시 대응**: 1-e(E3b)가 가장 먼저 끝난다(19:30 KST 전후). 끝나면 jarvis GPU1·2·4 가 비므로
-`gpu-never-idle` 원칙에 따라 즉시 E13 을 올린다 — jarvis `/SSDb/jemo_maeng/run_E13.sh` 와
-`run_E3b_legal.sh`(val-best 자동 탐색, `test_` 접두어 제외)가 배치돼 있다.
+**완주 임박 순서(09-10)**: E13 02:30 → E4b 08:30 → E1s2 10:45 → E3s2 11:30 → B0s2 12:30 → E2s2 14:10 → E12 14:30.
+**하루 사이에 GPU 아홉 장이 순차로 빈다** — `gpu-never-idle` 원칙상 그 전에 다음 배치가 정해져 있어야 한다.
 
 ### 1-2. 재설치 스크립트 (단일 대상판 — 1-b·1-c·1-d 공통)
 
