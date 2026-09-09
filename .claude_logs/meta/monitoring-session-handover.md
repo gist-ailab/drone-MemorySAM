@@ -172,7 +172,7 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
 | 1-g | `jarvis` | `e1s2_resume` (E1s2 재개, ep9~) | 〃 | 25.0분 | 5ep ≈ 125분 | 1500초 | 13 |
 | 1-h | `hpca100` | `hpca100_E12` | `/tmp/jemo_scratch/logs/<세션>_launch.log` | 62.4분 | 5ep ≈ 312분 | 1500초 | 31 |
 | 1-i | `hpca100` | `hpca100_E2s2` | 〃 | 61.0분 | 5ep ≈ 305분 | 1500초 | 30 |
-| 1-j | `hpca100` | `hpca100_E3s2` | 〃 | 24.2분 | 5ep ≈ 121분 | 1500초 | 12 |
+| 1-j | `hpca100` | `hpca100_E3s2` | 〃 | 학습 38분 + 평가 45분/5ep | 5ep ≈ **235분** | 1500초 | **23** |
 | 1-k | `hpca100` | `hpca100_B0s2` | `/tmp/jemo_scratch/logs/hpca100_B0s2_resume.log` | 33.7분 | 5ep ≈ 169분 | 1500초 | 17 |
 | 1-l | `hpca100` | (세션 없음 — `/tmp` val-best NAS 자동 회수) | — | — | — | 회수 주기 | — |
 | 1-m | `lecun` | CAFuser (감시 미설치, 조회로만 추적) | `/SSDb/jemo_maeng/cafuser_train/output/…/log.txt` | — | iter 기반 | — | — |
@@ -180,10 +180,10 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
 `<yeon-p38>` = `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38`
 `<jarvis>` = `/SSDb/jemo_maeng/src/drone-MemorySAM`
 
-⚠️ **hpca100 의 epoch 시간은 GPU 경합에 따라 두 배까지 흔들린다.** E3s2 는 기동 직후 45.8분/ep 로 추정했으나
-네 런이 자리를 잡은 뒤 24.2분/ep 로 줄었다. 임계를 다시 계산할 때는 **추정이 아니라 그때의 실측 `[Val]`
-간격**을 쓰라.
-
+⚠️ **hpca100 의 epoch 시간은 GPU 경합에 따라 두 배까지 흔들리고, 학습 시간만 재면 틀린다.**
+E3s2 를 두 번 잘못 쟀다 — 기동 직후 45.8분/ep 로 추정했다가 24.2분/ep 로 고쳤는데, 둘 다 **평가 시간을 빼먹은 값**이었다.
+실제는 학습 38분/ep 에 **5ep 마다 평가 45분**(val 2005장 × 1.34s/it)이 붙어 `[Val]` 간격이 235분이다.
+**임계는 학습 속도가 아니라 `[Val]` 줄 두 개의 타임스탬프 차이로 재라.** 
 **완주 임박 순서(09-10)**: E13 02:30 → E4b 08:30 → E1s2 10:45 → E3s2 11:30 → B0s2 12:30 → E2s2 14:10 → E12 14:30.
 **하루 사이에 GPU 아홉 장이 순차로 빈다** — `gpu-never-idle` 원칙상 그 전에 다음 배치가 정해져 있어야 한다.
 
