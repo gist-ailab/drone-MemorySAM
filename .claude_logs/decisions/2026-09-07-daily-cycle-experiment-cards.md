@@ -146,6 +146,8 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | bengio 양도(2026-09-09 04:18) | user 지시로 bengio를 후배에게 양도 → E4b(ep14, 재개점 ep10 62.83)·B0s2(ep10, 재개점 ep5 59.71)·E1s2(ep6, 재개점 ep5 61.75) SIGTERM 중단, ckpt는 `/SSDe/…/outputs/`에 잔존(지우면 재시작) | ⏸ 재개 대기(plan.md 「bengio 중단 런」 절). B0s2는 hpca100 GPU3에서 /tmp 복사 재개 지시, E1s2·E4b는 다음 빈 자리 | 감시 세션 |
 | jarvis 리포 구축 + E3b·E-LoRA arm B 기동(2026-09-09) | jarvis에 develop(b99ce18) 클론(기존엔 체크아웃 없어 7장 유휴). **E3b**(E3 + AGREE_LAMBDA 0.1) GPU1,2,4 완주 09-09 20시; **E-LoRA arm B**(완전공유 r16) GPU0,3 → A(yeon 0,1)·C(yeon 6,7)와 3-way 성립. ep2: A 52.28 / B 49.79 / C 55.77(파라미터 100/25/62.5%) — 중간 지점 C가 최고, H22 정합. ep12: C 64.49 vs A 63.87(6지점 중 5지점 C 우세, 게이트 C ≥ A−0.3 충족) | 🔵 진행 | 감시 세션(`brr1mnl3y`, `b6pwg1rxw`) |
 | P52 DELIVER seed2 (yeon, 진행) | ep58 66.76 최고 갱신(ep28 66.19 이후 30ep 만) | 정체는 붕괴 아님 | yeon |
+| E3b 센서 간 prototype 일치 항(AGREE_LAMBDA 0.1, jarvis, 완주) | 트레이너 val ep5~40 = 59.66/55.88/62.00/63.17/63.59/62.26/**63.69**/63.60 vs E3 …/**65.97**… — 8지점 중 7지점 음수, val-best −2.28 | 🟡 방향은 "일치 강제는 해롭다"(센서별 prototype은 서로 달라야 한다는 해석). 판정은 legal test(jarvis GPU5 재채점 중, ep35 ckpt) | jarvis 감시 세션 |
+| E13 E1+E3 결합 (jarvis GPU1,2,4, 진행) | 기동 검증: TAPS 덤프 + C3_PROTO SRC permodal 동시 확인, trainable 58.8M(E3 54.6M + 4탭 투영 4.3M), RANDOM INIT 없음. 완주 09-10 03~04시 | 🔵 성격 = 포화 여부 측정(세 축이 RailTrack을 공유) | `configs/jarvis-…_screen40_E13.yaml` |
 | MCubeS P52 seed1 (완주) | val-best 58.18@ep174 / final 57.96; 3시드 58.07±0.49 | P46과 동률 — P52 컨트롤러 이득 없음(감사 결론 재확인) | yeon |
 
 ### 5-1. 카드 넷 최종 정리 (2026-09-09, legal 기준)
@@ -177,7 +179,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 
 - **E3 +1.40의 산술**: RailTrack 단독 기여 +38.39/25 = **+1.54** → 나머지 24클래스 합은 소폭 음수. E1(+13.13)·E2(+15.77)도 RailTrack이 최대 축. **세 카드가 같은 클래스를 서로 다른 경로(특징 접점·용량·손실)로 풀고 있으므로 결합(E12·E13)에서 두 번 벌 수 없다.** E12 ep20이 E1 단독 대비 −1.24인 것이 같은 구조일 수 있음(단, E2는 ep15 바닥→ep40 최고 전례라 완주 전 판정 금지). E13은 "포화 여부"를 직접 재는 실험으로 성격이 바뀜 — 그대로 진행.
 - **RailTrack은 이제 격차가 아니다**: E3 70.37 > DGFusion 50.38(+20). 센서별 prototype이 lidar/depth 기하 근거로 RailTrack 정체성을 붙잡는다는 user 가설의 가장 강한 증거(RailTrack Acc 82.32).
-- 🔴 **다음 병목 = 얇고 작은 객체**: E3 vs DGFusion 80k에서 뒤지는 곳은 **Pole −13.31 · Pedestrian −8.46 · Static −7.68 · TrafficLight −4.75**(우리가 앞서는 곳은 RailTrack·Wall +12.20·Water +6.69 = 희소·경계 모호 클래스). 전체 −0.50은 이 상쇄의 결과. 얇은 객체는 1/16 패치·마지막 블록 SimpleFPN의 공간 분해능 문제로 읽히며, 후보 카드 = 학습 해상도 1024(hpca100 A100, `yeon-…_res1024` 계열 config 전례) · 고해상도 레벨 탭(E1의 level-0 강화) · 디코더 교체(S3~S4). **다음 카드 설계는 이 클래스 묶음을 통과 기준에 명시**(예: Pole·Pedestrian·TrafficLight 합 Δ ≥ +10).
+- 🔴 **다음 병목 = 얇고 작은 객체**: E3 vs DGFusion 80k에서 뒤지는 곳은 **Pole −13.31 · Pedestrian −8.46 · Static −7.68 · TrafficLight −4.75**(우리가 앞서는 곳은 RailTrack·Wall +12.20·Water +6.69 = 희소·경계 모호 클래스). 전체 −0.50은 이 상쇄의 결과. 얇은 객체는 1/16 패치·마지막 블록 SimpleFPN의 공간 분해능 문제로 읽힌다. ⚠️ **입력 해상도 1024는 이미 반증**: registry의 P46 C3 @1024 200ep 두 시드가 val 70.58/70.73인데 legal test 54.85/54.55로 768 학습(54.39±0.76)과 차이 없음 → 해상도만으로는 test의 얇은 객체가 안 풀린다. 남는 후보 = 고해상도 레벨 탭(E1의 level-0 강화) · 디코더 교체(구조 사다리 S3~S4, 구현 며칠) · 얇은 객체 표적 손실(경계·소객체 가중). **다음 카드 설계는 이 클래스 묶음을 통과 기준에 명시**(예: Pole·Pedestrian·TrafficLight 합 Δ ≥ +10).
 - 논문 서사 재료: "희소·모호 클래스에서 크게 이기고 얇은 객체에서 진다"는 대조가 DGFusion 실측으로 확보됨.
 - E12·E2s2 ep20: 65.33 / 65.14(둘 다 자기 최고). E2s2는 E2 같은 지점(62.40) +2.74이나 시드2 기준선 B0s2(ep10)가 8시간 뒤라 대조 유보.
 
