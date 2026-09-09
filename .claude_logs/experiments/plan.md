@@ -70,13 +70,15 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(트레이너 val) | ETA | 목적 |
 |---|---|---|---|---|---|---|
-| **카드 E3b** E3 + 센서 간 prototype 일치 항(`AGREE_LAMBDA` 0.0→0.1) | jarvis 1,2,4 | DELIVER 4모달 | 40 | ep15/40 — ep5 57.06 · ep10 55.88 · ep15 62.00 (E3 같은 시점 62.23) | 09-09 20시 KST → legal 재채점 | E3(+1.40, 카드 최고) 위 단일 변수. 사전 예측 = RailTrack 유지 + Wall/Water 회복, 통과선 Δtest ≥ +1.0 |
+| ~~**카드 E3b**~~ E3 + 센서 간 일치항(`AGREE_LAMBDA` 0.0→0.1) | ~~jarvis 1,2,4~~ | DELIVER 4모달 | 40 | ✅ **완주(2026-09-09 19:35, 6:58:57)** — 트레이너 val-best **63.69@ep35**, E3(65.97@25) 대비 **−2.28** | legal 재채점 중(jarvis 5) | 8지점 중 7지점이 E3보다 낮다 → 일치 항이 해롭다는 방향. 확정은 legal test. RailTrack 손실폭이 핵심 |
 | **카드 E12** E1(4탭)+E2(전 선형층 LoRA) 결합 | hpca100 1 | DELIVER 4모달 | 40 | ep15/40 — ep5 61.04 · ep10 61.32 (같은 지점 E2 63.44·E1 63.56·B0 63.17보다 낮음, warmup 경계) | 09-10 08시 KST | 결합이 이득을 더하는가. 🔴 ep5 수치로 축 비교 금지(시드 흔들림 1.41) |
 | **카드 E2s2** E2 시드2(20260902) 매칭 페어 | hpca100 3 | DELIVER 4모달 | 40 | ep15/40 — ep5 61.13 · ep10 61.86 | 09-10 07시 KST | E2 seed1 Δtest +0.72(회색지대)의 재현 여부 — B0s2 대조 필요(bengio 중단 런) |
 | **E-LoRA arm A / C** per-modal r16 (lora 6.29M) / 공유8+잔차8 (3.93M) | yeon 0,1 / 6,7 | DELIVER 4모달 | 200 | A best 66.64@26 / C ep18 64.78 (best 64.81@14) — 초반 C > A (ep2 +3.49 · ep4 +2.85 · ep6 +2.58 · ep12 +0.62) | 09-12~13 | LoRA 구조 ablation. 판정 = 200ep legal test |
 | **E-LoRA arm B** 완전공유 r16 (lora 1.57M, total 52.99M) | jarvis 0,3 | DELIVER 4모달 | 200 | ep12 63.54 | ~09-16 | 세 팔 전부 가동 |
 | **P52 RxDINO DELIVER seed1 / seed2** | yeon 2,3 / 4,5 | DELIVER 4모달 | 200 | ep73/75 — best 66.25@36 / **66.76@58**(ep58 최고 갱신) | 09-12~13 | 감사 후 게이트 재등록 예정(동등성 [−1.0,∞) 3페어 + G5 고정 스윕) |
 | **P52 MUSES seed1 / seed2** | hpca100 0,2 / 1,3 | MUSES 4모달 | 300 | 🟡 **보류**(ep54 79.63 / ep30 78.81, ckpt 보존) | — | 감사 §1.5(3모달 기준선·PhysAug-off) 적용 후 재개 |
+| **카드 E13** E1(4탭)+E3(센서별 prototype) 결합 | jarvis 1,2,4 | DELIVER 4모달 | 40 | 09-09 19:39 기동, ep1 진행(2.55 it/s, 15.5GB×3) | ~09-10 03시 | 축 가산성 검증. 검증 통과: `TAPS{ENABLE:True, LAYERS:[6,12,18,24], MODE:per_modal}` + `C3_PROTO{SRC:permodal, AGREE_LAMBDA:0.0}` 동시 활성, params 361.9M/58.8M(E3s2 단독 +4.3M). ⚠️ E1·E2·E3 세 카드가 **전부 RailTrack 에서 벌고 있어** 축이 직교하지 않을 가능성 — E12 도 ep20 에서 E1 단독 −1.24 |
+| **카드 E1s2** E1 시드2 — bengio 중단분 재개 | jarvis 7 | DELIVER 4모달 | 40 | ep6 에서 멎은 것을 ckpt 5.4G 이관해 재개 준비 중 | — | GPU5·7 이 09-09 19:39 에 되돌아왔다(openpi 종료). `gpu-never-idle` 로 즉시 채움. config develop `ce28015` |
 | **카드 E3s2** E3 시드2(20260902) 매칭 페어 | hpca100 0 | DELIVER 4모달 | 40 | 09-09 17:5x 기동, ep1 진행(1.18 it/s, 33.6GB·87%) | ~09-11 07시 | E3 seed 821 legal test 55.18(+1.40, 카드 최고)의 시드 판별. jarvis GPU5·7 상실로 hpca100 이관 |
 | **카드 B0s2** 시드2 기준선 — bengio 중단분 재개 | hpca100 3 | DELIVER 4모달 | 40 | 09-09 17:5x 재개(ep9 ckpt에서, 1.12 it/s) | ~09-10 22시 | 시드2 페어(E1s2·E2s2·E3s2)의 **공통 대조군**. bengio 후배 양도로 ep10 에서 멎었던 것을 ckpt 3.5G 이관해 이어 돌림 |
 | **CAFuser Swin-T 대조군**(bs6·LR0.75e-4·266,667 iter) | lecun 0,1,2 | DELIVER CLDE | 266,667 iter | iter 42,159/266,667(09-09 12:54) · iter 10k 평가 mIoU 55.74 | 로그 ETA 4일 6시간(09-13경) | 공개값 val 68.12/test 55.80 재현 |
