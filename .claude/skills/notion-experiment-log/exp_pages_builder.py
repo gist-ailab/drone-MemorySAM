@@ -153,7 +153,8 @@ def build_blocks(e):
 def upsert(e, dry=False):
     e = sanitize(e)
     key, title = e["key"], e["title"]
-    pid, old = find_existing(key)
+    # 제목 접두어가 key와 다르면 JSON의 "match"(예: "DGFusion Swin-T")로 찾는다
+    pid, old = find_existing(e.get("match") or key)
     blocks = build_blocks(e)
     if dry:
         print(("UPDATE " if pid else "CREATE ") + title, "| blocks", len(blocks)); return pid
