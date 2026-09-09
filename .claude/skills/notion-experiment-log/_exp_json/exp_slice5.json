@@ -2364,11 +2364,11 @@
   "title": "[Drone-Baseline] DGFusion Swin-T DELIVER 공식 설정 재학습 — 재현/한계분석 (DELIVER)",
   "period": "2026-09-08 ~ 진행 중",
   "track": "baseline",
-  "status": "⏸ 3회 NaN 발산으로 중단(iter 86,572 · 87,370 · 87,842, 형태 동일: loss_ce·loss_contrastive NaN, mask·dice 0, condition·depth 정상) — 단 80k ckpt(40%) 평가 val 66.54 ≥ 공개값 66.51 → 재현 성립. test 미측정. 재개·설정 조정은 생각정리 세션 판단 대기",
+  "status": "⏸ NaN 발산 4회로 중단(iter 86,572 · 87,370 · 87,842 · **86,572 재현**) — 4차가 1차와 동일 iteration = 시드 재현 데이터 순서상 **특정 배치** 원인 가능성 높음(최적화 설정 아님). 80k ckpt val 66.54 ≥ 공개 66.51 → 재현 성립. test 1897장 평가 진행 중(jarvis GPU6)",
   "summary": {
    "change": "DGFusion 공개 저장소(timbroed/DGFusion, RA-L 2026)는 학습코드가 의도적으로 빠져 있어(train_net.py 부재, forward 학습분기 예외차단, criterion 학습유틸 4종 미정의) CAFuser 공개 학습코드를 대조해 복원한 킷으로 공식 설정(bs8·LR1e-4·200k iter) 그대로 재학습함",
    "result": "model_0079999.pth val mIoU 66.5427 (fwIoU 93.73, mACC 75.16, pACC 96.29; depth silog 0.132 / abs_rel 7.74 / d1 94.17) vs 공개 val 66.51 — 200k의 40% 지점에서 공개 val 도달. iter 10k 60.31",
-   "verdict": "판정 전(완주 후 공개값 val 66.51/test 56.71 재현 여부로 판단)"
+   "verdict": "생각정리 세션 판정(2026-09-09): 200k 완주 포기, 80k ckpt(val 66.54 ≥ 공개 66.51)를 재현 정본으로 기록 — 공식 설정(bs8·LR·200k)을 바꾸면 재현이 아니므로 설정 조정 재개는 하지 않음. test 1897장 평가 진행 중"
   },
   "background": [
    "user 지시: '통계적으로 확실하게 뽑아 한계분석 후 우리 것에 반영'",
@@ -2437,15 +2437,19 @@
   },
   "analysis": [
    "기동검증: iteration이 실제로 전진함(619→659), loss_depth 반영 확인, GPU당 18.2GiB 사용 — 정상 기동으로 판정됨",
-   "발산 3회가 86.5k~87.8k에 집중, 손상 형태 동일(CE·contrastive NaN, mask/dice 0) → LR 스케줄·contrastive 항 관련 수치 불안정 후보(원인 미확정). 80k에서 재개해도 472 iter 뒤 재발"
+   "발산 4회(2026-09-09 02:29 · 05:2x · 12:32 KST 등): 1차와 4차가 iteration 86,572로 완전 일치, 2·3차 87,370·87,842. 형태 동일 — loss_ce·loss_contrastive NaN, loss_mask·loss_dice 정확히 0.0, loss_condition 0.672·loss_depth 0.0079 정상 → 백본은 살아 있고 디코더 경로만 오염. 80k 재개 시 데이터 순서가 시드로 재현되므로 특정 배치(샘플) 원인 후보",
+   "평가 하네스 함정: DGFusion 코드에서 평가 스플릿은 DATASETS.TEST가 아니라 **DATASETS.TEST_SEMANTIC**을 참조 — TEST만 바꾸면 val 2005장이 그대로 돈다(장수로 구별: val 2005 / test 1897). 이 실수로 80k 값 66.5427이 val임이 재확인됨"
   ],
   "verdict": {
-   "worked": "판정 전",
-   "why": "기록 없음",
-   "handoff": "완주 후 공개값(val 66.51/test 56.71) 재현 여부로 한계분석하여 자체 모델(RxDINO/P46 등)에 반영함"
+   "worked": "재현 성립(80k, 200k의 40% 지점에서 공개 val 도달)",
+   "why": "특정 배치 원인 유력 NaN 발산이 동일 iteration에서 4회 재현 — 설정 변경 없이는 200k 완주 불가",
+   "handoff": "80k ckpt를 DGFusion 재현 정본으로 per-class 3자 비교표에 사용. CAFuser 대조군은 계속 진행"
   },
   "todo": [
-   "완주 및 최종 val/test mIoU 없음(진행 중)"
+   "완주 및 최종 val/test mIoU 없음(진행 중)",
+   "발산 배치 특정(86,572 직전 배치 샘플 ID 덤프) 후 제외·클리핑 여부 결정",
+   "80k ckpt test 1897장 평가 결과 반영(진행 중)",
+   "jarvis GPU5·7을 타 사용자(openpi)에게 상실 — 감시 미설치가 원인, 현재 설치됨"
   ],
   "sources": [
    "third_party/dgfusion_train_restore/train_net.py",
@@ -2617,7 +2621,7 @@
   "title": "[Drone-Card] E3b — 센서별 클래스 prototype + 센서 간 일치 항(AGREE_LAMBDA 0.1) (DELIVER)",
   "period": "2026-09-09 기동",
   "track": "card-DELIVER",
-  "status": "진행 중(jarvis GPU1,2,4, 40ep, 완주 09-09 20시 KST 예정)",
+  "status": "진행 중(jarvis GPU1,2,4, ep15/40) — 트레이너 val ep5 57.06 · ep10 55.88 · ep15 62.00 (E3 같은 시점 62.23). 완주 09-09 20시 KST 예정",
   "summary": {
    "change": "E3(센서별 prototype bank)에서 센서 간 prototype 일치 항 λ_agree를 0.0→0.1로만 켬(그 외 E3와 동일, 시드 20260821)",
    "result": "기동 직후 — 수치 없음",
