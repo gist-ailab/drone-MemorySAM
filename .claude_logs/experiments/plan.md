@@ -94,7 +94,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 \* E3의 Δval은 트레이너 val 기준(legal val 미측정). 관측: 트레이너 val 순위(E2>E1>E3>E4)와 legal test 순위(E3>E1>E2>E4)가 역전, val 이득이 클수록 test 전이율 낮음(E2 21% · E1 55% · E3 증폭). 클래스별: E1 RailTrack +13.13·TrafficLight +5.01·SideWalk +3.09, Wall +0.26·Static +0.25·Water −1.71 / E2 RailTrack +15.77·TrafficLight +12.49, Wall −6.40·Static −5.44·Water −5.47 / E4 RailTrack +13.73·Ground +10.88·Water +5.86, Pole −8.87·TwoWheeler −5.10·GroundRail −4.51·RoadLine −3.74. 🔴 **트레이너 val − 정본 val = B0 +0.43 · E2 +0.27 · E1 +0.35 · E4 +0.06** → 편차가 커 고정 보정값으로 쓰지 말 것.
 
-**MUSES 공식 재채점 세 건(`tools/eval_muses_official.py`, 250장, 공식 native 1080×1920)**: **E7**(PhysAug-off, 4탭 없음) **80.0756** / E7c(PhysAug-on) 79.9417(−0.134 → **PhysAug-off로 통일 확정**) / **E1M**(off + 4탭) **80.416**(+0.340 — 게이트 +1.0 미달; 트레이너 val-best 80.64@35, Δ(E1M−E7) ep10 이후 7지점 연속 양수; 조건별 fog/day 85.43 ~ rain/day 67.24). letterbox 1024: 80.2872 / — / 80.6358.
+**MUSES 공식 재채점 세 건(`tools/eval_muses_official.py`, 250장, 공식 native 1080×1920)**: **E7**(PhysAug-off, 4탭 없음) **80.0756** / E7c(PhysAug-on) 79.9417(−0.134 → **PhysAug-off로 통일 확정**) / **E1M**(off + 4탭) **80.416**(+0.340 — 게이트 문면상 미달이나 **폐기 아님: 중립~미소 양성, 채택 저지 사유 없음**(생각정리 세션 판정, 카드 문서 §5); 트레이너 val-best 80.64@35, Δ(E1M−E7) ep10 이후 7지점 연속 양수; 조건별 fog/day 85.43 ~ rain/day 67.24). letterbox 1024: 80.2872 / — / 80.6358.
 
 **정본 ckpt NAS 보존**: E2·E7·E7c val-best → `/drone_nas/…/ckpts/daily_cards_20260908/`(md5 대조), hpca100 `/tmp` 산출물은 새 val-best마다 자동 회수(E1M ep20 첫 회수 md5 일치). E1 ep35·E3 ep25·E4 ep15 ckpt도 보존 대상.
 

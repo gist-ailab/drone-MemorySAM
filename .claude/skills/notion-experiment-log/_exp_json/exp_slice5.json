@@ -1848,11 +1848,11 @@
   "title": "[Drone-Card] E1M — 카드 E1(4탭 읽기)의 MUSES 이식 (MUSES)",
   "period": "2026-09-08",
   "track": "card-MUSES",
-  "status": "완주(트레이너 val-best 80.64@ep35, 재개 후 06:15:32) + 공식 재채점 완결 — 공식 native val 80.416 = E7 +0.340, 게이트 +1.0 미달(판정 = 생각정리 세션)",
+  "status": "완주(트레이너 val-best 80.64@ep35) + 공식 재채점 완결 — 공식 native val 80.416 = E7 +0.340. 판정(생각정리 세션 2026-09-09): 🟡 게이트 문면(+1.0)상 미달이나 **폐기 아님 — 중립~미소 양성, 채택 저지 사유 없음**",
   "summary": {
    "change": "카드 E1(중간층 4탭 읽기)을 MUSES로 이식함(PhysAug off, E7 기준선 위에 TAPS on)",
    "result": "공식 native(1080×1920) val 80.416 vs E7 80.0756 → Δ +0.340 (internal letterbox 1024: 80.6358 vs 80.2872, +0.349). 트레이너 val-best 80.64@35",
-   "verdict": "사전 등록 게이트 '공식 val Δ(E1M − E7) ≥ +1.0' 미달(+0.34). DELIVER E1(+1.07)과 달리 MUSES에서는 4탭 이득이 작음 — '공통 한 단계' 조건 미충족(판정 주체 생각정리 세션)"
+   "verdict": "🟡 게이트(공식 val Δ ≥ +1.0) 문면상 미달이나 폐기 아님 — 중립~미소 양성, 채택 저지 사유 없음(생각정리 세션 판정). 근거: 공식 +0.34·letterbox +0.35·트레이너 +0.35로 세 축 일치, 8지점 중 7지점 양수(PhysAug on/off의 4:4 진동과 형태가 다름), 같은 4탭 축이 DELIVER에서 +1.07로 통과, 단일 아키텍처 원칙상 MUSES는 손해 없음이면 충분"
   },
   "background": [
    "원본 = hpca100-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml(PhysAug off), 변경 = MODEL.TAPS on"
@@ -1879,7 +1879,7 @@
    ]
   },
   "results": {
-   "gate": "공식 val Δ(E1M − E7) ≥ +1.0 → 실측 +0.340 미달",
+   "gate": "공식 val Δ(E1M − E7) ≥ +1.0 → 실측 +0.340 문면상 미달. 판정 = 폐기 아님(중립~미소 양성, 채택 저지 사유 없음)",
    "table": [
     [
      "구성",
@@ -1925,9 +1925,9 @@
   },
   "analysis": [],
   "verdict": {
-   "worked": "기록 없음(미기동)",
-   "why": "기록 없음",
-   "handoff": "기록 없음"
+   "worked": "4탭 읽기가 MUSES에서도 손해 없이 소폭 양성(세 측정축 +0.34~0.35 일치, 궤적 8지점 중 7지점 양수)",
+   "why": "MUSES는 클래스 붕괴 축이 아니라 조건 축 벤치 → 중간층 기하 근거의 이득이 DELIVER(+1.07)보다 작음(해석)",
+   "handoff": "단일 아키텍처 원칙: DELIVER 통과 + MUSES 무손해 → 4탭을 통일 레시피에 채택 검토. 200ep 3페어 확정 런은 DELIVER E1 기준"
   },
   "todo": [
    "미기동 — 결과 없음"
@@ -2364,10 +2364,10 @@
   "title": "[Drone-Baseline] DGFusion Swin-T DELIVER 공식 설정 재학습 — 재현/한계분석 (DELIVER)",
   "period": "2026-09-08 ~ 진행 중",
   "track": "baseline",
-  "status": "⏸ NaN 발산 4회로 중단(iter 86,572 · 87,370 · 87,842 · **86,572 재현**) — 4차가 1차와 동일 iteration = 시드 재현 데이터 순서상 **특정 배치** 원인 가능성 높음(최적화 설정 아님). 80k ckpt val 66.54 ≥ 공개 66.51 → 재현 성립. test 1897장 평가 진행 중(jarvis GPU6)",
+  "status": "⏸ NaN 발산 4회(동일 iteration 86,572 재현, 특정 배치 원인 유력) — 200k 완주 포기, **80k ckpt를 재현 정본으로 기록**(생각정리 세션 판정): val 66.54(공개 +0.03) / **test 55.68(공개 56.71 −1.03)**",
   "summary": {
    "change": "DGFusion 공개 저장소(timbroed/DGFusion, RA-L 2026)는 학습코드가 의도적으로 빠져 있어(train_net.py 부재, forward 학습분기 예외차단, criterion 학습유틸 4종 미정의) CAFuser 공개 학습코드를 대조해 복원한 킷으로 공식 설정(bs8·LR1e-4·200k iter) 그대로 재학습함",
-   "result": "model_0079999.pth val mIoU 66.5427 (fwIoU 93.73, mACC 75.16, pACC 96.29; depth silog 0.132 / abs_rel 7.74 / d1 94.17) vs 공개 val 66.51 — 200k의 40% 지점에서 공개 val 도달. iter 10k 60.31",
+   "result": "80k ckpt(model_0079999.pth, 200k의 40%): val 66.5427 (공개 66.51 +0.03) / test 55.68 (공개 56.71 −1.03). depth silog 0.132 / abs_rel 7.74 / d1 94.17. iter 10k 60.31",
    "verdict": "생각정리 세션 판정(2026-09-09): 200k 완주 포기, 80k ckpt(val 66.54 ≥ 공개 66.51)를 재현 정본으로 기록 — 공식 설정(bs8·LR·200k)을 바꾸면 재현이 아니므로 설정 조정 재개는 하지 않음. test 1897장 평가 진행 중"
   },
   "background": [
@@ -2413,21 +2413,25 @@
     [
      "ckpt",
      "val mIoU",
+     "test mIoU",
      "비고"
     ],
     [
      "iter 10k",
      "60.31",
+     "—",
      "학습 중 평가"
     ],
     [
-     "iter 80k (model_0079999.pth)",
-     "66.5427",
-     "공개값 66.51 상회, jarvis GPU5 평가"
+     "iter 80k (model_0079999.pth) = 재현 정본",
+     "66.5427 (+0.03)",
+     "55.68 (−1.03)",
+     "val 2005 / test 1897장, jarvis GPU5·6 평가"
     ],
     [
      "공개값",
-     "66.51 / test 56.71",
+     "66.51",
+     "56.71",
      "리사이즈 GT 프로토콜"
     ]
    ],
@@ -2438,7 +2442,8 @@
   "analysis": [
    "기동검증: iteration이 실제로 전진함(619→659), loss_depth 반영 확인, GPU당 18.2GiB 사용 — 정상 기동으로 판정됨",
    "발산 4회(2026-09-09 02:29 · 05:2x · 12:32 KST 등): 1차와 4차가 iteration 86,572로 완전 일치, 2·3차 87,370·87,842. 형태 동일 — loss_ce·loss_contrastive NaN, loss_mask·loss_dice 정확히 0.0, loss_condition 0.672·loss_depth 0.0079 정상 → 백본은 살아 있고 디코더 경로만 오염. 80k 재개 시 데이터 순서가 시드로 재현되므로 특정 배치(샘플) 원인 후보",
-   "평가 하네스 함정: DGFusion 코드에서 평가 스플릿은 DATASETS.TEST가 아니라 **DATASETS.TEST_SEMANTIC**을 참조 — TEST만 바꾸면 val 2005장이 그대로 돈다(장수로 구별: val 2005 / test 1897). 이 실수로 80k 값 66.5427이 val임이 재확인됨"
+   "평가 하네스 함정: DGFusion 코드에서 평가 스플릿은 DATASETS.TEST가 아니라 **DATASETS.TEST_SEMANTIC**을 참조 — TEST만 바꾸면 val 2005장이 그대로 돈다(장수로 구별: val 2005 / test 1897). 이 실수로 80k 값 66.5427이 val임이 재확인됨",
+   "80k 정본: val은 공개값 도달(+0.03)이나 test는 −1.03 — 200k 완주분(공개값)과 40% 지점의 차이가 test에 남음. per-class 3자 비교표에는 이 정본과 공개값을 병기"
   ],
   "verdict": {
    "worked": "재현 성립(80k, 200k의 40% 지점에서 공개 val 도달)",
