@@ -1,0 +1,230 @@
+# [E3b legal 재채점용 eval config] 원본 configs/jarvis-…screen40_E3b.yaml
+#   변경 = EVAL.IMAGE_SIZE·TEST.IMAGE_SIZE [1024,1024] 둘뿐(EVAL.BATCH_SIZE 는 이미 1, TEST.FILE 은 이미 jarvis 경로).
+#   MODEL 블록을 학습 config 그대로 두어야 strict load 가 통과한다(카드 §3-6 재채점 규약).
+#   MODEL_PATH 는 --model_path 인자로 val-best ckpt 를 준다. test_ 접두어 ckpt 는 쓰지 마라.
+# [DAILY-CARDS E3b] 센서별 클래스 prototype (C3-M) + 센서 간 일치 항 — 원본 B0
+#   변경 = SAVE_DIR + MODEL.P46.C3_PROTO.SRC(mfeat→permodal) + AGREE_LAMBDA 0.1(일치 항 활성).
+# ═══ 카드 E3 — .claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1 "E3" ═══
+# 가설(user): 센서마다 클래스 근거가 다르므로 클래스 정체성을 **센서마다 독립으로** 지지하게 하면,
+#   RGB가 헷갈리는 클래스(RailTrack·Wall·Water·Bridge)를 lidar·depth의 근거가 붙잡는다.
+# 구현: per-class EMA prototype bank를 센서별 M개로 분리(feats[i], 백본 dim=1024 위) + 센서 평균 손실.
+#   λ는 기존 C3_PROTO.LAMBDA(0.1) 그대로. AGREE_LAMBDA=0.1 → 센서 간 일치 항 활성(E3 대비 유일 차이).
+# 통과 기준: Δtest(E3b − B0) ≥ +1.0. 예측 = RailTrack 유지 + Wall/Water 회복.
+#
+# 진단(우리 실측): DELIVER val→test 하락의 지배 원인 = **per-class 도메인 전이 붕괴**
+#   Wall 62→2 · TrafficLight 81→13 · Water 33→0 · Bridge 46→0 · RailTrack val 23.92(under-learned)
+# 🔴 공정성: PHYSAUG off · DGFUSION_AUG(ColorAugSSD, ISSUE-026 픽스본) on · val-best ckpt · TTA 금지.
+# 🔴 추론 경로는 P39.1과 **완전히 동일**하다 (prototype bank는 학습 루프에만).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_E3b'  # [DAILY-CARDS E3b]
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — 3토글 (전부 학습 전용) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false      # [C3-only ablation] RCS 끔 — C3 단독기여 격리
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+
+    C2_MCC:
+      ENABLE        : false      # [C1+C3 변형] 2-forward 주범 제거 — 24GB 대응
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+
+    # ── C-3 Domain-Invariant Class-Prototype Consistency ───────────────────
+    # [E3b] SRC: permodal — 센서별 독립 prototype bank(feats[i], 백본 dim=1024) +
+    #   센서 평균 prototype-contrastive CE. AGREE_LAMBDA=0.1(센서 간 일치 항 활성).
+    C3_PROTO:
+      ENABLE        : true
+      SRC           : permodal   # [E3] permodal(센서별 bank) | mfeat | fused
+      FEATURE       : mfeat      # SRC 미지정 시의 하위호환 fallback(현행 무시됨)
+      LAMBDA        : 0.1        # λ3 (센서 평균 손실에 곱함)
+      AGREE_LAMBDA  : 0.1        # [E3b] 센서 간 prototype 일치 항 배율 (특징↔타센서 prototype 당김)
+      TEMPERATURE   : 0.1        # cosine logit 온도 τ
+      EMA           : 0.999      # prototype EMA 계수
+      PIXELS        : 4096       # 손실당 서브샘플 픽셀 수(센서별 bank 공통)
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false      # [C1+C3 변형] 보조 branch 제거 — prototype은 주 forward aux로만
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/SSDb/jemo_maeng/dset/DELIVER'   # jarvis DELIVER path (2026-09-07 실측: /SSDe에만 존재)
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 20260821                # [진짜-시드 replication] 모든 카드 동일 시드
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1
+  EPOCHS        : 40   # [스크린] 40ep 조기 판정. 확정은 200ep 3페어
+  EVAL_START    : 0
+  EVAL_INTERVAL : 5
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
