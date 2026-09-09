@@ -67,6 +67,12 @@ moved: 2026-07-08
 4. MUSES RGB-L 2모달 런(~1일) — 상위권 실구성과 직접 비교.
 5. 반증 확정(재제안 금지) 목록 = artifact D절: attn-bias 계열·추론 재가중·CEFR·zero-init 잔차·rank/η² 개입·모달 드롭·gradient 균형화·radar(MUSES)·NORM_ALL.
 
+### 산출물 위치 (2026-09-09 hpca100 2차 이관)
+
+- hpca100의 작업 볼륨 `~/SSDb`가 95%까지 차서 학습이 휘발성 `/tmp`로 우회하던 상태를 풀기 위해, 내 체크포인트 약 148G를 `/drone_nas/.../ckpts/hpca100_archive_20260909/`로 옮겼다(run 단위 tar).
+- 🔴 **서버에서 체크포인트가 안 보이면 지워진 것이 아니라 이관된 것이다. 재학습하기 전에 [infra/artifact-locations.md](../infra/artifact-locations.md)를 먼저 확인하라** — 실험별 위치·서버에 남긴 것과 그 이유·복원 명령이 정리돼 있다. 이관 대상 실험 행에는 `experiments/registry.md`에도 표기를 붙였다.
+- 보류 상태인 P52 MUSES 시드1·시드2는 아카이브에서 `last_checkpoint.pth`를 서버로 되돌리면 `AUTO_RESUME`으로 재개할 수 있다(11G 기준 약 11분).
+
 ### 재현성 규약 (전 세션 공통, 논문 표 작성 시 재검증)
 
 - **test-best ckpt 인용 금지** (철회 사고 2회: P34 57.60, P46 57.05). val-best 선택 민감도 큼(ep20→26에서 test −2.76) → 3-seed mean±std 필수.
