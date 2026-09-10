@@ -164,7 +164,7 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
 | 1-a | `yeon` | `p52_deliver_s1`, `p52_deliver_s2` | 39.7 / 39.0분 | 2ep ≈ 79분 | 1800초 | 7 |
 | 1-b | `yeon` | `elora_a_r16` (arm A) | 40.6분 | 2ep ≈ 81분 | 1500초 | 8 |
 | 1-c | `yeon` | `elora_c_shres` (arm C) | 41.3분 | 2ep ≈ 83분 | 1500초 | 8 |
-| 1-d | `jarvis` | `elora_b_shared` (arm B) | 18.9분 | 2ep ≈ 38분 | 1500초 | 4 |
+| 1-d | `jarvis` | `elora_b_shared` (arm B) | 18.9분 | 2ep ≈ 38분 | **1200초** | 5 |
 | 1-e | `jarvis` | `e13_confirm200` (E13 확정, GPU1+5) | **15.9분** | 5ep ≈ 80분 | 1500초 | 10 |
 | 1-f | `jarvis` | `e1_confirm200` (E1 확정, GPU2·4) | 19.2분 | 2ep ≈ 38분 | 1500초 | 6 |
 | 1-g | `jarvis` | `e4c` (쌍 축소·margin 완화) | 27분(잠정) | 5ep ≈ 135분 | 1500초 | 14 |
@@ -173,7 +173,7 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
 | 1-j | `hpca100` | `hpca100_B0s2_legal` + `hpca100_E12_legal` (재채점 다중판) | — | — | 600초 | — |
 | 1-k | `hpca100` | `hpca100_E12_legal` (**전용 감시**, 아래 ⑪) | — | — | 300초 | — |
 | 1-l | `hpca100` | (세션 없음 — `/tmp` val-best NAS 자동 회수 루프) | — | 회수 주기 | — | — |
-| 1-m | `lecun` | CAFuser (감시 미설치, 조회로만 추적) | — | iter 기반 | — | — |
+| 1-m | `lecun` | CAFuser (**감시 신설**, `jemo:cafuser_deliver` 윈도우) | — | iter 기반 | 1800초 | 3 |
 
 로그: yeon `<yeon-p38>/logs/<세션>_launch.log` · jarvis `/SSDb/jemo_maeng/src/drone-MemorySAM/logs/<세션>_launch.log`
 · hpca100 `/tmp/jemo_scratch/logs/<세션>_launch.log`. 🔴 **hpca100 repo 경로에 `Project` 세그먼트가 없다**
@@ -333,13 +333,28 @@ E3s2 의 OOM 재발을 막으려고 `expandable_segments:True,max_split_size_mb:
   드러난다. 2026-09-10 에 이 방법으로 열 건 생존과 arm B 한 건 누락을 30초 만에 가려냈다.
 
 ```bash
-# ① 감시 폴링(sleep)들을 찾아 부모 pid 를 얻는다
-ps -eo pid,ppid,etime,args | grep -a 'sleep \(600\|900\|1500\|1800\)$' | grep -v grep
-# ② 각 부모의 명령줄에서 감시 대상 세션명을 뽑는다
-for ppid in <위에서 얻은 ppid 들>; do
-  echo "$ppid $(tr '\0' ' ' < /proc/$ppid/cmdline | grep -aoE 'S=[A-Za-z0-9_]+|has-session -t =[A-Za-z0-9_]+' | head -2 | tr '\n' ' ')"
+# 🔴 폴링 값을 열거하지 마라 — 아래처럼 '모든 sleep' 을 잡는다(아래 사고 참조)
+cd <repo>   # /tmp 로 옮겨 다니지 말 것(작업폴더가 바뀐다)
+for ppid in $(ps -eo ppid,args | grep -aE ' sleep [0-9]+$' | grep -v grep | awk '{print $1}' | sort -u); do
+  tgt=$(tr '\0' ' ' < /proc/$ppid/cmdline 2>/dev/null \
+        | grep -aoE 'S=[A-Za-z0-9_]+|has-session -t =[A-Za-z0-9_]+|TARGETS="[^"]*"' | head -2 | tr '\n' ' ')
+  slp=$(ps --ppid $ppid -o args= 2>/dev/null | grep -oE 'sleep [0-9]+' | head -1)
+  echo "$ppid  [$slp]  ${tgt:-<확인불가: 감시 아닌 주기작업>}"
 done
 ```
+
+  🔴 **폴링 값을 grep 에 열거해서 감시 하나를 놓치고 중복을 만들었다(2026-09-10 실사고).** §1-1 표에
+  적힌 폴링만 믿고 `sleep (300|600|900|1500|1800)` 로 훑었는데, jarvis arm B 감시는 표에 없는
+  **`sleep 1200`** 으로 돌고 있어 스캔에 안 잡혔다. "누락"으로 판단해 같은 대상에 감시를 새로 걸었고,
+  **곧바로 arm B 진행 이벤트가 두 번씩 도착**해서야 중복임을 알았다. 즉 이 확인법은 패턴을 좁히는 순간
+  **없는 누락을 만들어 내고, 그 누락을 메우려는 행동이 중복을 낳는다.** 표의 폴링 값은 옛 실측이라 실제와
+  어긋날 수 있으니 값으로 거르지 말고 전부 잡은 뒤 대상 이름으로 판단하라. `<확인불가>` 로 찍히는 것들은
+  감시가 아닌 주기 작업이다(NAS 자동 회수 루프, 타 세션의 대기 스크립트, 시스템 데몬).
+
+  🔴 **그래도 새로 걸기 전에 한 번 더 확인하라.** 감시가 마침 `ssh` 조회 중이면 그 순간에는 `sleep`
+  자식이 없어 어느 방식으로도 안 잡힌다. 누락이 의심되면 **10초 남짓 간격으로 두세 번 훑어 합집합**을
+  취한다. 그러고도 안 보일 때만 새로 건다. 중복을 만들었다면 **나중에 건 쪽을 `TaskStop`** 한다
+  (오래 돈 쪽이 임계 설정이 이미 검증돼 있다).
 
   ②에서 `<확인불가>` 가 나오는 항목은 감시가 아니라 다른 주기 작업일 수 있다(실제로 하나는
   `/tmp` val-best 를 NAS 로 자동 회수하는 루프였다). 명령줄 앞부분을 직접 읽어 확인하라.
