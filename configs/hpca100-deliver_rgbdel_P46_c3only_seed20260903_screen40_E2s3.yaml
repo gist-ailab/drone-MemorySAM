@@ -1,4 +1,4 @@
-# [E2-s3] 전 선형층 LoRA r32 40ep 스크린 시드 3(20260903), hpca100 — E2 축은 24클래스 Δ 가 시드1 +0.09 / 시드2 +1.00 로 편차가 커서 세 번째 시드로 판별한다. 기준선은 시드1 B0(24클래스 54.19).
+# [E2-s3] 전 선형층 LoRA r32 40ep 스크린 시드 3(20260903), hpca100 — E2 축은 24클래스 Δ 가 시드1 +0.09 / 시드2 +1.00 로 편차가 커서 세 번째 시드로 판별한다. 기준선은 시드1 B0(24클래스 54.69).
 # [hpca100 파생] E2 전 선형층 LoRA 40ep 스크린 — 원본 bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml, 변경 = ROOT·SAVE_DIR 만(레시피 동일)
 # [DAILY-CARDS E2] LoRA 타깃 확장 — Q/V(현행) → Q/K/V + O(proj) + MLP(fc1/fc2)
 # 파생: bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_B0.yaml (40ep 스크린 기준선)
