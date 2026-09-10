@@ -236,6 +236,40 @@ ep10 으로 계산하면 E1s2 이득이 +4.00(시드1 +0.39 의 열 배)으로 �
 **규칙**: 시드 페어 판정은 **40ep 완주 지점(또는 val-best ckpt 의 legal 재채점) 한 곳에서만** 한다.
 중간 epoch 수치는 크래시 감지와 진행 확인에만 쓰고, 채택·폐기 근거로 인용하지 마라.
 
+### 5-5. 🔴 E4b(명시 쌍) legal test 55.14 — 폐기에서 통과로 뒤집혔다 (2026-09-10, **35ep 기준**)
+
+카드 설계 당시의 가설("E4 auto 쌍에 RailTrack 이 누락돼 무차별 손해를 본다")이 검증됐다.
+
+| 카드 | legal test | 25클래스 Δ | **24클래스 Δ** |
+|---|---|---|---|
+| B0 | 53.78 | — | — |
+| **E4 (auto k5)** | 53.75 | −0.03 | **−0.60** (폐기) |
+| **E4b (명시 5쌍)** | **55.14** | **+1.36** | **+0.58** (통과, E1 +0.57 과 동급) |
+
+**RailTrack 이 45.71 → 64.07(+18.36)** 로 뛰었다. 명시 쌍에 `RailTrack→Sky/Static/Terrain` 을 넣은 것이 직접 작용했다.
+
+**B0 대비 클래스별(24클래스 안)**
+
+| 번 것 | Δ | | 잃은 것 | Δ |
+|---|---|---|---|---|
+| TrafficLight | **+7.47** | | Pole | −3.21 |
+| SideWalk | +5.24 | | Wall | −2.90 |
+| Terrain | +3.84 | | TrafficSign | −2.01 |
+| GroundRail | +2.38 | | Water | −1.24 |
+| TwoWheeler | +2.02 | | Building | −1.12 |
+| Fence | +1.63 | | Pedestrian | −0.91 |
+
+**margin 항이 여전히 얇은 객체 일부를 해친다**(Pole −3.21 · Wall −2.90 · TrafficSign −2.01). 쌍을 좁혀
+무차별 손해를 줄였을 뿐 없애지는 못했다. §5-3 의 「다음 병목 = 얇고 작은 객체」와 맞물리는 지점이다.
+
+⚠️ **이 결과는 35ep 기준이다.** E4b 는 ep36~40 구간에서 Adam `_multi_tensor_adam` 의
+`result type ComplexFloat can't be cast to Float` 로 죽었다(수치 불안정으로 `exp_avg_sq` 가 음수 →
+sqrt 에서 복소수 추정). **E4(auto)는 완주했는데 E4b 만 죽었으므로 confusion margin 항의 불안정이
+의심된다.** val-best 가 이미 ep35 였고 E4 도 val-best 가 ep15(ep40 은 64.99 로 더 낮음)여서 ep35 로
+재채점했다. 다른 카드와 나란히 놓을 때 이 차이를 명시할 것.
+
+출처: jarvis `logs/e4b_legal_test_20260910_115525.log`, ckpt `epoch35_66.07_top1`(val-best). legal val 재채점 진행 중.
+
 ### 5-4. 🔴 E13(E1+E3 결합) legal test 56.30 — 트레이너 val 과 순위가 완전히 역전 (2026-09-10)
 
 | 카드 | 트레이너 val-best | legal test | 25클래스 Δ | **24클래스 Δ** |
