@@ -186,7 +186,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | **E13 E1+E3 결합 (완주·legal 확정)** | 트레이너 val-best **65.50@ep20**(카드 중 최저, 8지점 모두 E1보다 낮음). **legal val 65.42 / test 56.30** — 25클래스 **+2.52**, **24클래스 +1.79**(E1 +0.57의 3배). 이득 분산: TrafficLight +11.57·Static +9.25·Fence +6.67·SideWalk +4.46·Water +3.71(RailTrack 64.05). 손실 Ground −2.25·Pedestrian −1.98·Wall −1.29·Pole −1.11 | ✅ **통과·확정 런 1순위** — 우리 최고 P34 56.62에 −0.32, DGFusion 56.71에 −0.41(40ep). E13 확정 런 200ep jarvis 기동(04:36, 14:00에 GPU5 합류해 2장 DDP). 상세 §5-4 | jarvis |
 | 시드2 스크린 완주(2026-09-10 오후, 트레이너 val-best) | **E12**(E1+E2) 68.52@ep40 · **E2s2** 68.00@ep40 · **E1s2** 67.01@ep35 · B0s2 65.82@ep30(ep37 진행, 15:20 완주) | 🔵 legal 재채점 진행(E2s2 hpca100 GPU2, E1s2 jarvis GPU7; E12·B0s2 대기). 판정은 넷 다 끝난 뒤 시드2 페어 한 표로(25·24클래스) | 감시 세션 |
 | E3s2 재개 (hpca100 GPU0) | ep10 ckpt에서 재개, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments`; 학습 중 test 평가 off 플래그는 코드에 없음(train_reliadino.py 254~258·1299행 무조건 평가) → 플래그 추가는 OOM 재발 시 | 🔵 진행 | — |
-| E2s2 legal test (시드2, 완주) | test **53.70**(mAcc 62.51), val-best ep40 68.00. 25클래스 Δ +0.40, **24클래스 Δ +1.57**(E13 다음). **RailTrack 4.36**(시드1 E2 47.75, B0 31.98) — 같은 레시피에서 43점 갈림. 24클래스 안: TrafficLight **+18.57**(카드 중 최대)·TrafficSign +3.63·GroundRail +3.35·TwoWheeler +3.19·SideWalk +2.71 / Static −5.88·Wall −3.34·Ground −2.03 | 🟡 E2 축은 25클래스 회색지대(+0.72/+0.40)이나 24클래스는 시드1 +0.09 vs 시드2 +1.57로 편차 커 시드 3 없이 확정 불가. TrafficLight는 E2·E13·E4b 공통 이득 → 얇은 객체 병목과 직결 | hpca100 |
+| E2s2 legal test (시드2, 완주) | test **53.70**(mAcc 62.51), val-best ep40 68.00. 시드1 B0 기준 25클래스 Δ +0.40 / 24클래스 +1.57은 **과대평가(잘못된 기준선)** → **정본 페어(B0s2 55.07 기준): 25클래스 −1.37, 24클래스 +1.00**(§5-6). **RailTrack 4.36**(시드1 E2 47.75, B0 31.98) — 같은 레시피에서 43점 갈림. 24클래스 안: TrafficLight **+18.57**(카드 중 최대)·TrafficSign +3.63·GroundRail +3.35·TwoWheeler +3.19·SideWalk +2.71 / Static −5.88·Wall −3.34·Ground −2.03 | 🟡 E2 축은 25클래스 회색지대(+0.72/+0.40)이나 24클래스는 시드1 +0.09 vs 시드2 +1.57로 편차 커 시드 3 없이 확정 불가. TrafficLight는 E2·E13·E4b 공통 이득 → 얇은 객체 병목과 직결 | hpca100 |
 | 함정(09-10) `PYTORCH_CUDA_ALLOC_CONF` | `expandable_segments:True`와 `max_split_size_mb`는 호환되지 않음 → E13s2 기동 직후 `!block->expandable_segment_ INTERNAL ASSERT FAILED`. `max_split_size_mb` 제거 | 감시 세션 명세 반영(4553b66) | — |
 | MCubeS P52 seed1 (완주) | val-best 58.18@ep174 / final 57.96; 3시드 58.07±0.49 | P46과 동률 — P52 컨트롤러 이득 없음(감사 결론 재확인) | yeon |
 
@@ -200,6 +200,9 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | E4 | 혼동 쌍 margin(auto k5) | 65.92 | 65.86 | 53.75 | −0.03 | +0.89 | 소멸 | ❌ 폐기 |
 | B0 | 기준선 | 65.40 | 64.97 | 53.78 | — | — | — | — |
 | **E13** | E1+E3 결합 | 65.50 | 65.42 | **56.30** | **+2.52** | +0.45 | 증폭 5.6× | ✅ 통과·확정 1순위(24클래스 +1.79) |
+| B0s2 | 시드2 기준선 | 66.21@ep40 | — | 55.07 | (B0 +1.29, RailTrack 62.47) | — | — | 시드2 페어의 분모(§5-6) |
+| E1s2 | E1 시드2 | 67.01@ep35 | — | 55.89 | +0.82 vs B0s2 | — | — | 24클래스 **+0.78**(시드1 +0.57과 일관) → E1 축 시드 안정 |
+| E2s2 | E2 시드2 | 68.00@ep40 | — | 53.70 | **−1.37** vs B0s2 | — | — | 24클래스 **+1.00**(시드1 +0.09), RailTrack 4.36 파괴 → 회색지대 유지, E12로 가치 판정 |
 | **E4b** | 혼동 쌍 margin(명시 5쌍) | 66.07@ep35 | 65.00 | 55.14 | +1.36 | +0.03 | 증폭 | ✅ 통과 상당(35ep 기준, 24클래스 +0.58; ep36~40 Adam ComplexFloat로 미완주) |
 | E3b | E3 + 일치 항 λ0.1 | 63.69 | 64.29 | 54.10 | +0.32 | −0.68 | — | ❌ 폐기(일치 강제는 해로움) |
 
