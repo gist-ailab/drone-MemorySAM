@@ -186,6 +186,18 @@ E13 이 1.6배 느려 완주가 **09-14** 로 E1(09-12)보다 이틀 늦다. **2
 **완주 임박(09-10)**: E2s2 13:10 → E12 13:30 → E1s2 13:50 → e4b_legal 14:00 → B0s2 15:30.
 그 뒤 arm B 09-12 03시 · E1 확정 09-12 18시 · P52 s2 19시 · P52 s1 21시 · arm A 09-13 03시 · lecun 09-14 03시 · E13 확정 09-14 09시 · arm C 09-14 22시.
 
+🔴 **`PYTORCH_CUDA_ALLOC_CONF` 에 `expandable_segments:True` 와 `max_split_size_mb` 를 함께 주지 마라 (2026-09-10 실증).**
+두 옵션은 호환되지 않아 할당자 내부에서 터진다:
+```
+RuntimeError: !block->expandable_segment_ INTERNAL ASSERT FAILED
+  at "../c10/cuda/CUDACachingAllocator.cpp":2549, please report a bug to PyTorch.
+```
+E3s2 의 OOM 재발을 막으려고 `expandable_segments:True,max_split_size_mb:128` 을 넣었다가 **E13s2 가 기동 직후
+이 assert 로 죽었다.** 같은 설정을 받은 E3s2 는 ep13 까지 살아 있었는데, assert 가 특정 할당 패턴에서만
+발동하기 때문이지 안전해서가 아니다 — 두 런 모두에서 `max_split_size_mb` 를 제거했다.
+**단편화 완화가 목적이면 `expandable_segments:True` 단독으로 충분하다.**
+
+
 ### 1-2. 재설치 스크립트 (단일 대상판 — 1-b·1-c·1-d 공통)
 
 `SRV`·`S`·`log`·`CYCLES`·`POLL`만 위 표대로 바꿔서 쓴다.
