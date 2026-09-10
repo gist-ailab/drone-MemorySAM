@@ -9,6 +9,16 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+### 🎬 2026-09-10 — MULTIAQUA 챌린지 비교 영상 제작 (제출 모델 vs 결과표 최하위)
+
+**요청**: 챌린지에 제출한 모델 기준으로 val·test 추론을 보기 좋게 영상화한다. 윗줄은 RGB·LiDAR·Thermal, 아랫줄은 RGB 위에 baseline·ours·GT를 겹친 화면으로 구성하고, val 50장과 test 50장을 영상 하나로 만든다.
+
+**결정 (user 선택)**: Ours = 최종 제출 #16710(P9 GatedMemorySAM, hardaug8_physaug ep131). Baseline = 결과표 최하위 P8 no-aug(#15509, 야간 증강 없음, M 64.51). 프레임 선별 = 서버 채점 프레임별 mIoU에서 Ours−Baseline 격차가 큰 상위 50장(val 격차 +0.6~+11.9, test 격차 +43.3~+65.7). 영상 안에 "격차 상위 선별"임을 명시했다.
+
+**한 일**: 재추론 없이 두 모델의 제출 마스크(`eval_macvi`, 345장)와 서버 CSV(`frames_*.csv`)만으로 렌더링하는 `tools/render_multiaqua_compare_video.py`를 추가했다(labcode 작성 → 미리보기·코드 검토 → 2차 수정). Thermal은 모델 입력용 `thermal_processed`가 유효 영역에서 8단계 정도의 값밖에 없어서, 원본 uint16 `thermal_camera`를 퍼센타일 스트레칭한 뒤 CLAHE와 INFERNO 컬러맵을 적용하고 센서 시야로 잘라 확대했다. test는 GT가 로컬에 없으므로 GT 칸을 "서버 비공개"로 표시했다. 결과는 1920×1080, 30fps, 3분 26초(한 장당 1.6초)이며, 발행 위치는 `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/videos/inference_multiaqua-challenge_gatedmemorysam-vs-p8noaug/`(mp4·사이드카 json·선별 프레임 csv)이다.
+
+**부수 발견 (영상과 무관, 챌린지 종료로 조치 없음)**: P9 제출 config(`configs/eval/levine-multiaqua_rgbtl_P9_hardaug8_physaug.yaml`)는 `LIDAR_SUBROOT: null`이라 `lidar_processed`를 읽는데, 이 폴더에는 **test 프레임이 0/200장**이다. 로더는 파일이 없으면 0 텐서를 넣는다. 실제로 `epoch131_94.41_top1_test_pred_P9/detailed_log.json`에서 LiDAR 특징 크기(`uamm_feature_modulation/lidar/before_norm`)가 200장 전부 1.0627로 동일했다(표준편차 0.0). 따라서 적어도 이 test 예측 로그는 **LiDAR 입력이 빈 상태에서 생성됐다**. 과거 기록의 "test LiDAR UAMM=1.0 고정" 현상과도 맞는다. 제출본 #16710의 마스크가 같은 조건에서 나왔는지는 재추론 없이는 확정하지 못했다. Baseline(MMSamBase)과 P22 config는 `lidar_processed2`(test 200/200장 보유)를 쓴다.
+
 ### 🛠 2026-09-09 — hpca100 SSDb 2차 이관(약 148G)과 산출물 위치 지도 신설
 
 **계기**: hpca100의 작업 볼륨 `~/SSDb`(2.0T, 다른 사용자와 공유)가 95%까지 차서 여유가 121G만 남았고, 그 때문에 9월 8일에 기동한 학습 3건(E12·E1M·E2s2)이 SSDb가 아니라 컨테이너 오버레이인 `/tmp`로 우회해 돌고 있었다. `/tmp`는 휘발성이라 산출물을 잃을 위험이 있고, 남은 여유로는 새 실험을 배치하기도 어려웠다.
