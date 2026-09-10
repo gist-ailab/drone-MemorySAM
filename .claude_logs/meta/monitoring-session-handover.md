@@ -151,52 +151,41 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
 `grep -E '^epoch.*top1_checkpoint'` 로 `test_` 를 걸러낸 적이 있는데, 회수 장치를 새로 만들 때 그 지식을
 적용하지 않았다. **체크포인트를 이름으로 다루는 코드를 새로 쓸 때마다 이 두 계열을 먼저 떠올려라.**
 
-### 1-1. 감시 대상과 임계 (2026-09-10 12:00 KST 실측 — 열둘)
+### 1-1. 감시 대상과 임계 (2026-09-10 16:00 KST 실측 — 열넷)
 
-> 🔴 **09-10 04:00 판을 대체한다.** 바뀐 것: **E13 확정 런 200ep 기동**(legal test 56.30·24클래스 +1.79 로 카드 최고),
-> **E4b 가 Adam ComplexFloat 에러로 사망**해 ep35 val-best 재채점으로 전환.
+> 🔴 **09-10 12:00 판을 대체한다.** 바뀐 것: **E13 확정 런이 2장 DDP 로 재기동**(GPU1+5, 30.2 → **13.2분/ep**,
+> 완주 09-14 → **09-12 06시**), E12·E2s2·E1s2 **완주**, **E13s2 신규**, **E3s2 재개**, 재채점 셋 가동.
 
-`CYCLES` 는 **실측 `[Val]` 간격 × 2.5 ÷ 폴링**. 🔴 간격은 학습 속도가 아니라 **`[Val]` 줄 두 개의 타임스탬프 차이**로 재라.
+`CYCLES` 는 **실측 `[Val]` 간격 × 2.5 ÷ 폴링**. 🔴 간격은 **`[Val]` 줄 두 개의 타임스탬프 차이**로 재라.
 
 | 항목 | 서버 | tmux 세션 | 실측 ep 시간 | `[Val]` 간격 | 폴링 | `CYCLES` |
 |---|---|---|---|---|---|---|
-| 1-a | `yeon` | `p52_deliver_s1`, `p52_deliver_s2` | 40.0 / 39.0분 | 2ep ≈ 79분 | 1800초 | 7 |
+| 1-a | `yeon` | `p52_deliver_s1`, `p52_deliver_s2` | 39.5 / 38.5분 | 2ep ≈ 78분 | 1800초 | 7 |
 | 1-b | `yeon` | `elora_a_r16` (arm A) | 40.5분 | 2ep ≈ 81분 | 1500초 | 8 |
 | 1-c | `yeon` | `elora_c_shres` (arm C) | 41.5분 | 2ep ≈ 83분 | 1500초 | 8 |
-| 1-d | `jarvis` | `elora_b_shared` (arm B) | 18.8분 | 2ep ≈ 38분 | 1500초 | 4 |
-| 1-e | `jarvis` | `e1_confirm200` (E1 확정 런, GPU2·4) | 19.0분 | 2ep ≈ 38분 | 1500초 | 6 |
-| 1-f | `jarvis` | **`e13_confirm200`** (E13 확정 런, GPU1 **단독**) | **30.2분** | **5ep ≈ 151분** | 1500초 | **15** |
-| 1-g | `jarvis` | `e1s2_resume` | 30.4분 | 5ep ≈ 152분 | 1500초 | 20 |
-| 1-h | `jarvis` | **`e4b_legal`** (재채점, 완료 시 종료) | — | — | 600초 | — |
-| 1-i | `hpca100` | `hpca100_E12` | 56.2분 | 5ep ≈ 281분 | 1500초 | 31 |
-| 1-j | `hpca100` | `hpca100_E2s2` | 55.2분 | 5ep ≈ 276분 | 1500초 | 30 |
-| 1-k | `hpca100` | `hpca100_B0s2` | 40.4분 | 5ep ≈ 202분 | 1500초 | 25 |
+| 1-d | `jarvis` | `elora_b_shared` (arm B) | 19.0분 | 2ep ≈ 38분 | 1500초 | 4 |
+| 1-e | `jarvis` | **`e13_confirm200`** (E13 확정, **GPU1+5 2장**) | **13.2분** | 5ep ≈ 66분 | 1500초 | 10 |
+| 1-f | `jarvis` | `e1_confirm200` (E1 확정, GPU2·4) | 19.0분 | 2ep ≈ 38분 | 1500초 | 6 |
+| 1-g | `jarvis` | `e1s2_legal` (재채점, 완료 시 종료) | — | — | 600초 | — |
+| 1-h | `hpca100` | `hpca100_E3s2` (재개, ep10~) | 33.2분 | 5ep ≈ 166분 | 1500초 | 23 |
+| 1-i | `hpca100` | **`hpca100_E13s2`** (E13 시드2, 신규) | 33.4분 | 5ep ≈ 167분 | 1500초 | 20 |
+| 1-j | `hpca100` | `hpca100_B0s2` (**ep40 완료, 마무리 중**) | 40.4분 | — | 1500초 | 25 |
+| 1-k | `hpca100` | `hpca100_E2s2_legal` (재채점, 완료 시 종료) | — | — | 600초 | — |
 | 1-l | `hpca100` | (세션 없음 — `/tmp` val-best NAS 자동 회수) | — | — | 회수 주기 | — |
 | 1-m | `lecun` | CAFuser (감시 미설치, 조회로만 추적) | — | iter 기반 | — | — |
 
 로그: yeon `<yeon-p38>/logs/<세션>_launch.log` · jarvis `/SSDb/jemo_maeng/src/drone-MemorySAM/logs/<세션>_launch.log`
-· hpca100 `/tmp/jemo_scratch/logs/<세션>_launch.log`(B0s2 만 `_resume.log`)
+· hpca100 `/tmp/jemo_scratch/logs/<세션>_launch.log`(B0s2 `_resume.log`, 재채점 `E2s2_legal_launch.log`)
 
-⚠️ **두 확정 런의 조건이 다르다.** E1 은 GPU 2장·`EVAL_INTERVAL 2`(19.0분/ep), E13 은 **GPU 1장·`EVAL_INTERVAL 5`**(30.2분/ep)다.
-E13 이 1.6배 느려 완주가 **09-14** 로 E1(09-12)보다 이틀 늦다. **24클래스 기준으로는 E13(+1.79)이 E1(+0.57)의 세 배인데
-자원은 절반**이므로, 자리가 나면 E13 에 GPU 를 더 주는 것을 검토하라(다만 DDP 재기동은 진행분 손실이 있다).
+⚠️ **두 확정 런의 조건 차이를 판정 각주로 남겨라.** E1 = GPU2장·`EVAL_INTERVAL 2`, E13 = GPU2장·`EVAL_INTERVAL 5`.
+val-best 선택 granularity 가 다르다(E13 은 5ep 단위로만 후보가 생긴다).
 
-⚠️ **hpca100 은 공유 GPU 다.** E3s2 가 평가 구간 38.2GB(A100 의 93%)를 쓰다가 타 사용자가 34GB 를 잡자 OOM 으로 죽었다.
+**완주 임박**: E1s2 재채점 곧 · E2s2 재채점 ~45분 · E3s2 09-11 06시 · E13s2 09-11 13시 ·
+arm B 09-12 03시 · **E13 확정 09-12 06시** · E1 확정 09-12 18시 · P52 s2 22시 · P52 s1 09-13 00시 ·
+arm A 09-13 02시 · lecun 09-14 05시 · arm C 09-14 21시.
 
-**완주 임박(09-10)**: E2s2 13:10 → E12 13:30 → E1s2 13:50 → e4b_legal 14:00 → B0s2 15:30.
-그 뒤 arm B 09-12 03시 · E1 확정 09-12 18시 · P52 s2 19시 · P52 s1 21시 · arm A 09-13 03시 · lecun 09-14 03시 · E13 확정 09-14 09시 · arm C 09-14 22시.
-
-🔴 **`PYTORCH_CUDA_ALLOC_CONF` 에 `expandable_segments:True` 와 `max_split_size_mb` 를 함께 주지 마라 (2026-09-10 실증).**
-두 옵션은 호환되지 않아 할당자 내부에서 터진다:
-```
-RuntimeError: !block->expandable_segment_ INTERNAL ASSERT FAILED
-  at "../c10/cuda/CUDACachingAllocator.cpp":2549, please report a bug to PyTorch.
-```
-E3s2 의 OOM 재발을 막으려고 `expandable_segments:True,max_split_size_mb:128` 을 넣었다가 **E13s2 가 기동 직후
-이 assert 로 죽었다.** 같은 설정을 받은 E3s2 는 ep13 까지 살아 있었는데, assert 가 특정 할당 패턴에서만
-발동하기 때문이지 안전해서가 아니다 — 두 런 모두에서 `max_split_size_mb` 를 제거했다.
-**단편화 완화가 목적이면 `expandable_segments:True` 단독으로 충분하다.**
-
+**미실행 대기**: **E12 재채점**(트레이너 val 68.52 완주, 자리 없어 못 돌림) · **B0s2 재채점**(시드2 페어 판정의
+마지막 조각) · **E4c**(config·스크립트 준비 완료, hpca100 판이라 jarvis 에 올리려면 경로 파생 필요).
 
 ### 1-2. 재설치 스크립트 (단일 대상판 — 1-b·1-c·1-d 공통)
 
