@@ -139,7 +139,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 
 | 시각 | 자리 | 작업 |
 |---|---|---|
-| 14:00 | jarvis GPU5 → GPU1+5 | E13 확정 런을 2장 DDP로 재기동(AUTO_RESUME, 손실 ≤5ep). E1 확정 런(GPU2,4)은 유지 |
+| ✅ 14:0x | jarvis GPU1+5 | E13 확정 런 2장 DDP 재기동 완료 — `Resumed (epoch 20)`, 30.2→**13분/ep**, 완주 **09-12 오전**(1장이면 09-14). E1 확정 런(GPU2,4) 유지 |
 | 13:10~15:20 | hpca100 GPU1·2·3 | E2s2·E12·E1s2·B0s2 완주 → 각 legal 재채점(시드2 페어 판정은 B0s2까지 끝난 뒤 한 표로) |
 | 재채점 후 | hpca100 3장 | ① E3s2 재개(ep10, 학습 중 test 평가 off) ② **E13s2**(E13 시드2 40ep) ③ **E4c**(E4b에서 쌍을 RailTrack→Sky/Static/Terrain 3개로, MARGIN 0.25) |
 | — | E4b | 35ep 재채점으로 종결(재개 안 함). ep36~40 Adam `ComplexFloat` 에러 = margin 항 후기 불안정 → E4c에서 margin 완화 |
@@ -184,6 +184,8 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | P52 DELIVER seed2 (yeon, 진행) | ep58 66.76 최고 갱신(ep28 66.19 이후 30ep 만) | 정체는 붕괴 아님 | yeon |
 | E3b 센서 간 prototype 일치 항(AGREE_LAMBDA 0.1, jarvis, 완주) | 트레이너 val ep5~40 = 59.66/55.88/62.00/63.17/63.59/62.26/**63.69**/63.60 vs E3 …/**65.97**… — 8지점 중 7지점 음수, val-best −2.28 | 🟡 방향은 "일치 강제는 해롭다"(센서별 prototype은 서로 달라야 한다는 해석). 판정은 legal test(jarvis GPU5 재채점 중, ep35 ckpt) | jarvis 감시 세션 |
 | **E13 E1+E3 결합 (완주·legal 확정)** | 트레이너 val-best **65.50@ep20**(카드 중 최저, 8지점 모두 E1보다 낮음). **legal val 65.42 / test 56.30** — 25클래스 **+2.52**, **24클래스 +1.79**(E1 +0.57의 3배). 이득 분산: TrafficLight +11.57·Static +9.25·Fence +6.67·SideWalk +4.46·Water +3.71(RailTrack 64.05). 손실 Ground −2.25·Pedestrian −1.98·Wall −1.29·Pole −1.11 | ✅ **통과·확정 런 1순위** — 우리 최고 P34 56.62에 −0.32, DGFusion 56.71에 −0.41(40ep). E13 확정 런 200ep jarvis 기동(04:36, 14:00에 GPU5 합류해 2장 DDP). 상세 §5-4 | jarvis |
+| 시드2 스크린 완주(2026-09-10 오후, 트레이너 val-best) | **E12**(E1+E2) 68.52@ep40 · **E2s2** 68.00@ep40 · **E1s2** 67.01@ep35 · B0s2 65.82@ep30(ep37 진행, 15:20 완주) | 🔵 legal 재채점 진행(E2s2 hpca100 GPU2, E1s2 jarvis GPU7; E12·B0s2 대기). 판정은 넷 다 끝난 뒤 시드2 페어 한 표로(25·24클래스) | 감시 세션 |
+| E3s2 재개 (hpca100 GPU0) | ep10 ckpt에서 재개, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments`; 학습 중 test 평가 off 플래그는 코드에 없음(train_reliadino.py 254~258·1299행 무조건 평가) → 플래그 추가는 OOM 재발 시 | 🔵 진행 | — |
 | MCubeS P52 seed1 (완주) | val-best 58.18@ep174 / final 57.96; 3시드 58.07±0.49 | P46과 동률 — P52 컨트롤러 이득 없음(감사 결론 재확인) | yeon |
 
 ### 5-1. 카드 넷 최종 정리 (2026-09-09, legal 기준)
@@ -196,7 +198,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | E4 | 혼동 쌍 margin(auto k5) | 65.92 | 65.86 | 53.75 | −0.03 | +0.89 | 소멸 | ❌ 폐기 |
 | B0 | 기준선 | 65.40 | 64.97 | 53.78 | — | — | — | — |
 | **E13** | E1+E3 결합 | 65.50 | 65.42 | **56.30** | **+2.52** | +0.45 | 증폭 5.6× | ✅ 통과·확정 1순위(24클래스 +1.79) |
-| **E4b** | 혼동 쌍 margin(명시 5쌍) | 66.07@ep35 | — | 55.14 | +1.36 | — | — | ✅ 통과 상당(35ep 기준, 24클래스 +0.58; ep36~40 Adam ComplexFloat로 미완주) |
+| **E4b** | 혼동 쌍 margin(명시 5쌍) | 66.07@ep35 | 65.00 | 55.14 | +1.36 | +0.03 | 증폭 | ✅ 통과 상당(35ep 기준, 24클래스 +0.58; ep36~40 Adam ComplexFloat로 미완주) |
 | E3b | E3 + 일치 항 λ0.1 | 63.69 | 64.29 | 54.10 | +0.32 | −0.68 | — | ❌ 폐기(일치 강제는 해로움) |
 
 - 🔴 **트레이너 val 순위(E2>E1>E3>E4)와 test 순위(E3>E1>E2>E4)가 뒤집혔다.** val로만 봤으면 E3를 버렸을 것. **val 이득이 클수록 전이율이 낮다**(E2 21% / E1 55% / E3 증폭) — val 이득이 도메인 특화 과적합의 지표일 수 있음. → **스크린 판정표에 '전이율' 열을 상시 포함**하고, 확정 대상 선정에서 Δtest와 전이율을 함께 본다(§0 규약 보강).
