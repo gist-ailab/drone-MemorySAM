@@ -271,6 +271,25 @@ done
 
 ### 1-4. 재설치할 때 지킬 것
 
+🔴 **hpca100 에서 `PYTORCH_CUDA_ALLOC_CONF` 를 아예 쓰지 마라 (2026-09-10, 두 번 실증).**
+```
+RuntimeError: !block->expandable_segment_ INTERNAL ASSERT FAILED
+  at "../c10/cuda/CUDACachingAllocator.cpp":2549, please report a bug to PyTorch.
+```
+E3s2 의 OOM 재발을 막으려고 `expandable_segments:True,max_split_size_mb:128` 을 넣었다가 E13s2 가 기동
+직후 이 assert 로 죽었다. 그때 **"두 옵션의 조합이 문제"로 진단하고 `max_split_size_mb` 만 제거했는데
+그 진단이 틀렸다** — `expandable_segments:True` 단독으로 남긴 E3s2 가 ep15 를 마친 뒤 **같은 assert 로 또
+죽었다**(GELU forward 중). **원인은 조합이 아니라 `expandable_segments` 자체**이고 이 venv 의 torch 버전과
+맞지 않는다. 두 스크립트에서 환경변수를 통째로 지운 뒤 E3s2 는 ep16 부터 정상 진행한다.
+
+**교훈**: 메모리 압박을 줄이려고 할당자 옵션을 건드리는 것은 이 환경에서 위험하다. OOM 이 문제라면
+평가 배치·해상도처럼 **동작이 검증된 축**을 조정하고 할당자 설정은 손대지 마라.
+
+🔴 **§1-1 을 통째로 교체하는 스크립트를 쓸 때 그 앞뒤에 붙인 메모가 함께 지워진다.** 2026-09-10 에
+위 ALLOC_CONF 기록을 §1-1 과 §1-2 사이에 넣었다가, 다음 §1-1 갱신에서 교체 범위(§1-1 시작 ~ §1-2 직전)에
+휩쓸려 사라졌다. **표와 무관한 함정 기록은 §1-4 이하에 두라.**
+
+
 - **먼저 기존 감시를 `TaskStop`으로 정리하고 새로 걸어라.** 정리하지 않고 겹쳐 걸면 같은 대상에 감시가
   여러 개 쌓인다. 2026-09-08에 좀비 감시 6건(§3)이 나온 원인이 바로 이 누적이었다.
 - **설치 직후 `WATCH_START` 네 줄이 오는지 확인하라.** 오지 않으면 `ssh` 연결이나 로그 경로를 의심한다.
