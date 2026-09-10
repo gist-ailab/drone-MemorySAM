@@ -1,0 +1,251 @@
+# [jarvis 판] E1s2 재채점 종료로 GPU7 이 비어 여기에 올린다. hpca100 판에서 SAVE_DIR·경로만 교체.
+# [E4c] 혼동 쌍 margin — **쌍 축소 + margin 완화판**, hpca100, 시드 20260821.
+#   근거: E4b(명시 5쌍, m=0.5)가 24클래스 Δ +0.58 로 통과 상당이었으나 **Pole −3.21 · Wall −2.90 · TrafficSign −2.01 을 여전히 해쳤다**.
+#   또 ep36~40 에서 Adam `_multi_tensor_adam` ComplexFloat 에러로 죽어(exp_avg_sq 음수 → sqrt 복소수) margin 항의 후기 불안정이 의심된다.
+#   변경 = PAIRS 5쌍 → **RailTrack 3쌍만**(Wall→Building · Water→Terrain 제거) · MARGIN 0.5 → **0.25** · SAVE_DIR · 경로.
+#   LAMBDA 0.05 · SOURCE proto · 시드 20260821 은 E4b 그대로 두어 변수를 둘로 좁힌다.
+#   묻는 것: 쌍을 좁히고 margin 을 낮추면 **RailTrack 이득은 지키면서 얇은 객체 손해가 사라지는가.**
+# [jarvis 재개판] bengio 후배 양도로 ep14 에서 멎은 E4b 를 jarvis GPU5 에서 이어 돌린다.
+#   변경 = DATASET.ROOT·TEST.FILE 둘뿐. SAVE_DIR 은 registry 추적을 위해 bengio_ 접두어를 유지한다.
+#   AUTO_RESUME true 그대로. 명시 쌍 PAIRS 는 원본 그대로 둔다(이 카드의 유일한 변수).
+# [DAILY-CARDS E4b] 혼동 쌍 margin 손실 — 명시 쌍판. E4(auto_val_k5)와 동일하되 PAIRS만 명시.
+#   이유: E4 auto 쌍(ep6 검증 200장 혼동행렬 top-5)은 Ground→SideWalk, Water→Terrain, Other→Fence,
+#   Other→SideWalk, Static→Building 으로 확정돼 **RailTrack이 빠졌다**. RailTrack은 DGFusion 대비 진짜 격차
+#   클래스(decisions/2026-07-28 §68: Wall·Water·Bridge는 DGFusion도 test 0~4로 공통 붕괴, RailTrack만 우리가 뒤짐).
+#   쌍 근거: RailTrack→Sky/Static(몽타주 확인), RailTrack→Terrain(선로 주변 지면 흡수 가설), Wall→Building, Water→Terrain(auto 선택 유지).
+#   판정: 트레이너 val 궤적 + 완주 후 legal test(val.py native-GT) RailTrack IoU vs B0 31.98.
+# [DAILY-CARDS E4] 혼동 쌍 margin 손실 — B0(c3only) 복사 + MODEL.P46.CONFUSION_MARGIN 켬
+#   원본 = bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_B0.yaml
+#   변경 = SAVE_DIR·헤더 + P46.CONFUSION_MARGIN(ENABLE true, PAIRS auto_val_k5, MARGIN 0.5, LAMBDA 0.05)
+# 카드 = .claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md §1 "E4"
+#
+# 가설: DELIVER 붕괴는 특정 혼동 쌍(RailTrack→Sky/Static, Wall→Building 등)으로 흡수된다.
+#   C-3(C3_PROTO)는 클래스별 "당김"이고, E4는 그 위에 얹는 혼동 쌍별 "밀어냄"(margin)이다.
+#   auto: warmup(C3 WARMUP_EP=5) 후 첫 epoch(=ep6) 종료 시 검증셋(앞 200장) 행-정규화
+#   혼동행렬에서 대각 제외 top-5 (GT c → 예측 j) 쌍을 고정 → 이후 GT=c 픽셀에서
+#   cos(f,p_c) − cos(f,p_j) ≥ MARGIN 이 되도록 hinge(prototype 소스, C3 bank 앵커).
+#   λ=0.05로 총손실에 가산. 추론 경로는 B0(P39.1)과 완전히 동일(학습 전용).
+#
+# 🔴 통과 기준(카드): Δtest(E4 − B0) ≥ +1.0 and 악조건 −0.5 미만 없음, 표적 쌍 IoU 회복.
+# 🔴 공정성: PHYSAUG off · DGFUSION_AUG on · val-best ckpt · TTA 금지 (B0와 동일).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_E4c'  # [DAILY-CARDS E4] decisions/2026-09-07-daily-cycle-experiment-cards.md
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true   # 신규 런이지만 중단 대비로 켜 둔다
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — C-3 단독 + [E4] 혼동 쌍 margin ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false      # [C3-only ablation] RCS 끔
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+
+    C2_MCC:
+      ENABLE        : false      # [C1+C3 변형] 2-forward 주범 제거 — 24GB 대응
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+
+    C3_PROTO:                    # [E4 앵커] SOURCE=proto의 prototype bank — 켜져 있어야 함
+      ENABLE        : true
+      FEATURE       : mfeat      # 단일 bank(stride-4 head feature, 256)
+      LAMBDA        : 0.1
+      TEMPERATURE   : 0.1
+      EMA           : 0.999
+      PIXELS        : 4096       # [E4] pair_margin이 재사용하는 서브샘플 노브
+      WARMUP_EP     : 5          # [E4] auto 쌍은 이 warmup 후 첫 epoch 종료 시 확정
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+    # ── [E4] 혼동 쌍 margin 손실 ───────────────────────────────────────────
+    # 시작 시(auto: warmup 후 검증셋 혼동행렬 top-k) 혼동 쌍을 고정하고, GT=c
+    # 픽셀에서 정답(c) prototype과 혼동(j) prototype의 코사인 마진을 hinge로 벌린다.
+    # 학습 전용 — 추론 경로 불변(off면 버퍼조차 안 만들어 state_dict byte-동일).
+    CONFUSION_MARGIN:
+      ENABLE        : true
+      PAIRS         : [[RailTrack, Sky], [RailTrack, Static], [RailTrack, Terrain]]   # [E4c] RailTrack 세 쌍으로 축소 — E4b 가 Wall/Water 쌍에서 Pole·Wall·TrafficSign 을 해쳤다
+      MARGIN        : 0.25          # [E4c] 0.5 → 0.25 완화. E4b 가 ep36~40 에서 Adam ComplexFloat(수치 불안정)로 죽었다
+      LAMBDA        : 0.05          # 총손실 가산 배율
+      VAL_IMAGES    : 200           # auto 혼동행렬 산출에 쓸 검증 이미지 수
+      SOURCE        : proto         # proto(C3 bank 앵커) | logit(최종 로짓 (c−j) 마진)
+      # WARMUP_EP 미지정 → C3_PROTO.WARMUP_EP(5) 계승: ep6 종료 시 쌍 확정
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/SSDb/jemo_maeng/dset/DELIVER'   # jarvis DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 20260821                # 카드 공통 시드
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1               # B0와 동일 (C3-only, cross_view off — base 14GiB 실측)
+  EPOCHS        : 40   # [스크린] 40ep 조기 판정. 확정은 200ep 3페어
+  EVAL_START    : 0
+  EVAL_INTERVAL : 5
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 1                 # BS1 일관(TRAIN과 동일 이유)
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false
