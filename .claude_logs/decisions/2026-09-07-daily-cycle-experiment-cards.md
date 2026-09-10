@@ -135,26 +135,31 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | 08:30 E4b 완주 | jarvis GPU5 | E4b legal 재채점 → 이후 E1 확정 런 3장으로 확장 여부 | — |
 | 10:45~14:30 | jarvis 7, hpca100 0·3·2·1 | E1s2·E3s2·B0s2·E2s2·E12 완주 → 각 legal 재채점(40ep 완주 지점 페어) | 아침에 재배치 |
 
-## 4.5 체크포인트 보존 대장 (2026-09-09, user 승인: "보존 완료된 체크포인트는 지워도 괜찮아")
+**2026-09-10 낮 결정**
 
-규칙: 정본 = **val-best `*_top1_checkpoint.pth` 하나**(test-best·중간·last는 재현 가치 없음). NAS 사본이 md5 일치할 때만 서버 원본의 나머지를 지운다. NAS 루트 = `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/daily_cards_20260908/`.
+| 시각 | 자리 | 작업 |
+|---|---|---|
+| 14:00 | jarvis GPU5 → GPU1+5 | E13 확정 런을 2장 DDP로 재기동(AUTO_RESUME, 손실 ≤5ep). E1 확정 런(GPU2,4)은 유지 |
+| 13:10~15:20 | hpca100 GPU1·2·3 | E2s2·E12·E1s2·B0s2 완주 → 각 legal 재채점(시드2 페어 판정은 B0s2까지 끝난 뒤 한 표로) |
+| 재채점 후 | hpca100 3장 | ① E3s2 재개(ep10, 학습 중 test 평가 off) ② **E13s2**(E13 시드2 40ep) ③ **E4c**(E4b에서 쌍을 RailTrack→Sky/Static/Terrain 3개로, MARGIN 0.25) |
+| — | E4b | 35ep 재채점으로 종결(재개 안 함). ep36~40 Adam `ComplexFloat` 에러 = margin 항 후기 불안정 → E4c에서 margin 완화 |
 
-| 런 | 정본 ckpt | 서버 원본 | NAS 사본 | md5 | 삭제 가능 범위 |
-|---|---|---|---|---|---|
-| E2 (hpca100) | `epoch40_68.65_top1_checkpoint.pth` 2.4G | `~/SSDb/…/outputs/ReliaDINO/hpca100_…_screen40_E2/` (33G) | `E2/` | `b8f7dc0d…edab28` ✅ | 정본 외 전부(≈30G) |
-| E7 (hpca100) | `epoch40_80.29_top1_checkpoint.pth` 1.7G | `…_screen40_E7/` (11G) | `E7/` | `4f16733b…6ba456` ✅ | 정본 외 전부 |
-| E7c (hpca100) | `epoch40_80.18_top1_checkpoint.pth` 1.7G | `…_screen40_E7c/` (11G) | `E7c/` | `ef062c7a…f96fdc5` ✅ | 정본 외 전부 |
-| E1M (hpca100, /tmp 재개) | `epoch35_80.64_top1` | SSDb 원본(ep18까지 7.0G, 재개 전) + `/tmp/jemo_scratch/…E1M/` | `_tmp_volatile/E1M/`(자동 회수) | 회수 시 md5 대조 | SSDb 원본 7.0G 전부(정본은 /tmp·NAS) — **NAS에 ep35 사본 있음을 확인 후** |
-| B0 (bengio) | `epoch40_65.4_top1` | bengio(양도됨) | ❌ 미회수 | — | bengio는 우리가 지우지 않음. 회수 필요 시 후배 양해 |
-| E1 (bengio) | `epoch35_67.25_top1` | bengio | ❌ 미회수 | — | 동상 — **회수 대상(확정 런 착수 전 NAS로)** |
-| E3 (bengio) | `epoch25_65.97_top1` | bengio | ❌ 미회수 | — | 동상 — **회수 대상** |
-| E4 (bengio) | `epoch15_65.92_top1` | bengio | ❌ 미회수 | — | 폐기 카드, 회수 선택 |
-| E4b·B0s2·E1s2 (bengio 중단분) | 재개점 ckpt | bengio + jarvis/hpca100 사본 | E4b는 md5 검증본 로컬 | ✅ | bengio 원본은 손대지 않음 |
-| E12·E2s2·E3s2·B0s2 (hpca100 /tmp) | 진행 중 | `/tmp/jemo_scratch/` | `_tmp_volatile/<런>/` 30분 주기 자동 회수 | 회수 시 대조 | 진행 중 — 삭제 없음 |
-| DGFusion 80k (jarvis) | `model_0079999.pth` 1.4G | `/SSDb/jemo_maeng/dgfusion_train/` | ❌ 미회수 | — | **회수 대상**(재현 정본) |
-| P52·P50-EXT·P46 lam02 등 이전 런(hpca100 SSDb) | 각 val-best | SSDb | registry/NAS `ckpts/` 확인 필요 | — | **NAS 대조 확인 전 삭제 금지** |
+## 4.5 체크포인트 보존 대장 (2026-09-09~10, user 승인: "보존 완료된 체크포인트는 지워도 괜찮아")
 
-- 이 표가 단일 출처다. 삭제를 집행하면 "삭제 가능 범위" 열을 "✅ 삭제(날짜)"로 바꾼다. 다른 런의 위치는 `experiments/registry.md`의 ckpt 열.
+규칙: 정본 = **val-best `*_top1_checkpoint.pth` 하나**. NAS 사본 md5 일치 후에만 서버 원본 정리. **서버에서 ckpt가 안 보이면 지워진 것이 아니라 NAS로 이관된 것** — 위치 단일 출처 = [infra/artifact-locations.md](../infra/artifact-locations.md)(develop 798ec44). NAS 루트 `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/`.
+
+| 런 | 정본 ckpt | 지금 위치 | md5 | 상태 |
+|---|---|---|---|---|
+| E2·E7·E7c (hpca100) | ep40 top1 각 1 | `daily_cards_20260908/{E2,E7,E7c}/` ✅ + `hpca100_archive_20260909/*.tar`(디렉터리 전체) | ✅ 3/3 | ✅ 서버 원본 이관·삭제 완료(09-09 16:22, 다른 세션) — 추가 삭제 대상 없음 |
+| E1M (hpca100) | `epoch35_80.64_top1` | `/tmp/jemo_scratch`(휘발) + `daily_cards_20260908/_tmp_volatile/E1M/`(자동 회수); SSDb 잔여분 `hpca100_archive_20260909/…E1M.tar` | ep35 사본 대조 확인 필요 | 🟡 |
+| B0 / E1 / E3 (bengio, 양도됨) | `epoch40_65.4` / `epoch35_67.25` / `epoch25_65.97` | `ckpts/bengio_…_screen40_{B0,E1,E3}/` | ✅ `cbaa692f…` / `e69d7deb…` / `123f94e4…` (09-10 회수) | ✅ 카드 판정 근거 정본 셋 보존. bengio 원본은 손대지 않음 |
+| E4 (bengio) | `epoch15_65.92` | bengio만 | — | 폐기 카드, 회수 생략 |
+| DGFusion 80k (jarvis) | `model_0079999.pth` | `ckpts/dgfusion_swin_tiny_bs8_200k_deliver_clde/` | ✅ `4bb241fa…` | ✅ 재현 정본 보존 |
+| E3s2 (hpca100, OOM 중단) | `epoch10_63.33_top1` | `/tmp/jemo_scratch` + NAS 자동 회수 | ✅ | 재개 대기 |
+| 진행 중(E12·E2s2·B0s2 hpca100 /tmp, E13·E1 확정·E1s2 jarvis) | — | 서버 작업 사본 + hpca100은 NAS `_tmp_volatile/<런>/` 30분 회수 | 회수 시 | 완주 후 val-best만 정본화 |
+| hpca100 이전 런(P52·P50-EXT·P46 lam02·P38/P39 import) | 각 val-best | `hpca100_archive_20260909/*.tar`(14건) | artifact-locations.md §2.2 | ✅ 이관 완료 |
+
+- 결론: hpca100·bengio·jarvis 어디에도 **추가 삭제 대상 없음**. 남은 확인 = E1M ep35 NAS 사본 md5.
 
 ## 5. 결과 기록
 
@@ -178,7 +183,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | jarvis 리포 구축 + E3b·E-LoRA arm B 기동(2026-09-09) | jarvis에 develop(b99ce18) 클론(기존엔 체크아웃 없어 7장 유휴). **E3b**(E3 + AGREE_LAMBDA 0.1) GPU1,2,4 완주 09-09 20시; **E-LoRA arm B**(완전공유 r16) GPU0,3 → A(yeon 0,1)·C(yeon 6,7)와 3-way 성립. ep2: A 52.28 / B 49.79 / C 55.77(파라미터 100/25/62.5%) — 중간 지점 C가 최고, H22 정합. ep12: C 64.49 vs A 63.87(6지점 중 5지점 C 우세, 게이트 C ≥ A−0.3 충족) | 🔵 진행 | 감시 세션(`brr1mnl3y`, `b6pwg1rxw`) |
 | P52 DELIVER seed2 (yeon, 진행) | ep58 66.76 최고 갱신(ep28 66.19 이후 30ep 만) | 정체는 붕괴 아님 | yeon |
 | E3b 센서 간 prototype 일치 항(AGREE_LAMBDA 0.1, jarvis, 완주) | 트레이너 val ep5~40 = 59.66/55.88/62.00/63.17/63.59/62.26/**63.69**/63.60 vs E3 …/**65.97**… — 8지점 중 7지점 음수, val-best −2.28 | 🟡 방향은 "일치 강제는 해롭다"(센서별 prototype은 서로 달라야 한다는 해석). 판정은 legal test(jarvis GPU5 재채점 중, ep35 ckpt) | jarvis 감시 세션 |
-| E13 E1+E3 결합 (jarvis GPU1,2,4, 진행) | 기동 검증: TAPS 덤프 + C3_PROTO SRC permodal 동시 확인, trainable 58.8M(E3 54.6M + 4탭 투영 4.3M), RANDOM INIT 없음. 완주 09-10 03~04시 | 🔵 성격 = 포화 여부 측정(세 축이 RailTrack을 공유) | `configs/jarvis-…_screen40_E13.yaml` |
+| **E13 E1+E3 결합 (완주·legal 확정)** | 트레이너 val-best **65.50@ep20**(카드 중 최저, 8지점 모두 E1보다 낮음). **legal val 65.42 / test 56.30** — 25클래스 **+2.52**, **24클래스 +1.79**(E1 +0.57의 3배). 이득 분산: TrafficLight +11.57·Static +9.25·Fence +6.67·SideWalk +4.46·Water +3.71(RailTrack 64.05). 손실 Ground −2.25·Pedestrian −1.98·Wall −1.29·Pole −1.11 | ✅ **통과·확정 런 1순위** — 우리 최고 P34 56.62에 −0.32, DGFusion 56.71에 −0.41(40ep). E13 확정 런 200ep jarvis 기동(04:36, 14:00에 GPU5 합류해 2장 DDP). 상세 §5-4 | jarvis |
 | MCubeS P52 seed1 (완주) | val-best 58.18@ep174 / final 57.96; 3시드 58.07±0.49 | P46과 동률 — P52 컨트롤러 이득 없음(감사 결론 재확인) | yeon |
 
 ### 5-1. 카드 넷 최종 정리 (2026-09-09, legal 기준)
@@ -190,11 +195,14 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | E2 | 전 선형층 LoRA r32 | 68.65 | 68.38 | 54.50 | +0.72 | +3.41 | 21% | 🟡 회색지대(E2s2 판별) |
 | E4 | 혼동 쌍 margin(auto k5) | 65.92 | 65.86 | 53.75 | −0.03 | +0.89 | 소멸 | ❌ 폐기 |
 | B0 | 기준선 | 65.40 | 64.97 | 53.78 | — | — | — | — |
+| **E13** | E1+E3 결합 | 65.50 | 65.42 | **56.30** | **+2.52** | +0.45 | 증폭 5.6× | ✅ 통과·확정 1순위(24클래스 +1.79) |
+| **E4b** | 혼동 쌍 margin(명시 5쌍) | 66.07@ep35 | — | 55.14 | +1.36 | — | — | ✅ 통과 상당(35ep 기준, 24클래스 +0.58; ep36~40 Adam ComplexFloat로 미완주) |
+| E3b | E3 + 일치 항 λ0.1 | 63.69 | 64.29 | 54.10 | +0.32 | −0.68 | — | ❌ 폐기(일치 강제는 해로움) |
 
 - 🔴 **트레이너 val 순위(E2>E1>E3>E4)와 test 순위(E3>E1>E2>E4)가 뒤집혔다.** val로만 봤으면 E3를 버렸을 것. **val 이득이 클수록 전이율이 낮다**(E2 21% / E1 55% / E3 증폭) — val 이득이 도메인 특화 과적합의 지표일 수 있음. → **스크린 판정표에 '전이율' 열을 상시 포함**하고, 확정 대상 선정에서 Δtest와 전이율을 함께 본다(§0 규약 보강).
 - 트레이너 val − 공식 val 보정값 4사례: B0 0.43 / E1 0.35 / E2 0.27 / E4 0.06 → 평균 0.28, 편차 큼. 트레이너 val은 위치 가늠용일 뿐 판정에 쓰지 않는다.
 - 클래스 구조: E1·E2·E4 모두 RailTrack에서 +13~+16(진짜 격차 클래스가 세 경로 모두에서 풀림). 갈리는 곳은 붕괴 클래스(Wall·Water·Static): E1 보존, E2 −5~−6, E4는 다른 클래스로 손해 전이. E3 클래스별 표는 미확보(추가 필요).
-- 확정 런(200ep×3페어) 대상은 E12(E1+E2)·E13(E1+E3)·E3s2·E2s2 결과(09-10)를 본 뒤 선정. 후보 우선순위: E13 > E3 단독 > E1 단독 > E12.
+- **확정 런 결정(2026-09-10)**: 1순위 **E13**(24클래스 +1.79, 이득 분산) — jarvis 200ep 진행, 2순위 **E1**(24클래스 +0.57, 두 벤치 일관) — jarvis 200ep 병행. E3 단독은 24클래스 −0.14라 보류. E12는 완주 후 재채점으로 "결합이 일반적으로 나은가"를 확인.
 
 ### 5-2. E3 클래스별 분해 (2026-09-09 오후) — 이득은 RailTrack 한 클래스, 세 축은 직교하지 않는다
 
