@@ -43,11 +43,13 @@ FFMPEG = "/usr/bin/ffmpeg"
 
 NOTO = "/usr/share/fonts/opentype/noto"
 DEJAVU_MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+DEJAVU_SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_FILES = {
     "bold": (f"{NOTO}/NotoSansCJK-Bold.ttc", 0),
     "med": (f"{NOTO}/NotoSansCJK-Medium.ttc", 0),
     "reg": (f"{NOTO}/NotoSansCJK-Regular.ttc", 0),
     "mono": (DEJAVU_MONO, 0),
+    "dejavu": (DEJAVU_SANS, 0),  # superscript-glyph fallback (e.g. U+2020)
 }
 
 
@@ -104,6 +106,28 @@ def natkey(stem):
 
 def isnan(x):
     return x is None or (isinstance(x, float) and math.isnan(x))
+
+
+_GLYPH_CACHE = {}
+
+
+def font_has_glyph(path, index, ch):
+    """True if the font at (path, index) has a real glyph for `ch`. Falls back
+    to assuming coverage when fontTools is unavailable or the font can't be
+    inspected, so a check failure never suppresses an otherwise valid glyph."""
+    key = (path, index, ch)
+    if key in _GLYPH_CACHE:
+        return _GLYPH_CACHE[key]
+    ok = True
+    try:
+        from fontTools.ttLib import TTFont
+        tt = TTFont(path, fontNumber=index, lazy=True)
+        ok = any(ord(ch) in t.cmap for t in tt["cmap"].tables)
+        tt.close()
+    except Exception:
+        ok = True
+    _GLYPH_CACHE[key] = ok
+    return ok
 
 
 def draw_tracked(d, pos, text, font, fill, tracking=2):
@@ -376,20 +400,28 @@ class Renderer:
             return np.full((PH, PW, 3), PANEL_BG, np.uint8)
         return im
 
-    def render_overlay(self, stem, label_path):
+    def render_overlay(self, stem, label_path=None, lab=None, ignore=None):
+        """Blend class colors + boundaries onto the RGB panel. `lab` is a
+        panel-resolution (PH, PW) label map; if omitted it is loaded from
+        `label_path` and resized. When `ignore` (a panel-resolution boolean
+        mask) is given, those pixels are filled pure black AFTER the class
+        blend and boundary drawing so no color or white edge remains there."""
         base = self._rgb_panel(stem).astype(np.float32)
-        lab = (cv2.imread(label_path, cv2.IMREAD_GRAYSCALE)
-               if label_path and os.path.exists(label_path) else None)
         if lab is None:
-            return base.astype(np.uint8)
-        lab = cv2.resize(lab, (PW, PH), interpolation=cv2.INTER_NEAREST)
+            raw = (cv2.imread(label_path, cv2.IMREAD_GRAYSCALE)
+                   if label_path and os.path.exists(label_path) else None)
+            if raw is not None:
+                lab = cv2.resize(raw, (PW, PH), interpolation=cv2.INTER_NEAREST)
         out = base
-        for cls, col in CLASS_RGB.items():
-            m = lab == cls
-            if m.any():
-                out[m] = out[m] * 0.45 + np.array(col, np.float32) * 0.55
-        b = boundary_mask(lab)
-        out[b] = out[b] * 0.4 + np.array((255, 255, 255), np.float32) * 0.6
+        if lab is not None:
+            for cls, col in CLASS_RGB.items():
+                m = lab == cls
+                if m.any():
+                    out[m] = out[m] * 0.45 + np.array(col, np.float32) * 0.55
+            b = boundary_mask(lab)
+            out[b] = out[b] * 0.4 + np.array((255, 255, 255), np.float32) * 0.6
+        if ignore is not None:
+            out[ignore] = 0
         return out.astype(np.uint8)
 
     def render_gt_withheld(self, stem):
@@ -444,10 +476,22 @@ class Renderer:
         panels1 = [("RGB", self.render_rgb(stem)),
                    ("LiDAR", self.render_lidar(stem)),
                    ("Thermal · sensor FOV", self.render_thermal(stem))]
-        # Row 2: prediction overlays.
-        base_ov = self.render_overlay(stem, self.p_pred(self.a.base_pred, stem))
-        ours_ov = self.render_overlay(stem, self.p_pred(self.a.ours_pred, stem))
-        gt_ov = (self.render_overlay(stem, self.p_gt(stem)) if val
+        # Row 2: prediction overlays. For a val frame the GT is loaded once,
+        # resized to panel resolution (NEAREST), and reused both for the GT
+        # overlay and to build the evaluation-ignore mask (labels not in 1..4
+        # are excluded from the challenge IoU).
+        gt_lab, ignore = None, None
+        if val:
+            graw = cv2.imread(self.p_gt(stem), cv2.IMREAD_GRAYSCALE)
+            if graw is not None:
+                gt_lab = cv2.resize(graw, (PW, PH), interpolation=cv2.INTER_NEAREST)
+                if self.a.mask_ignore:
+                    ignore = ~((gt_lab >= 1) & (gt_lab <= 4))
+        base_ov = self.render_overlay(stem, self.p_pred(self.a.base_pred, stem),
+                                      ignore=ignore)
+        ours_ov = self.render_overlay(stem, self.p_pred(self.a.ours_pred, stem),
+                                      ignore=ignore)
+        gt_ov = (self.render_overlay(stem, lab=gt_lab, ignore=ignore) if val
                  else self.render_gt_withheld(stem))
         panels2 = [(self.a.base_label, base_ov), (self.a.ours_label, ours_ov),
                    ("Ground Truth", gt_ov)]
@@ -525,17 +569,28 @@ class Renderer:
             x += 24
             d.text((x, fy), name, font=lf, fill=PRIMARY)
             x += d.textlength(name, font=lf) + 28
+        if self.a.mask_ignore:
+            # Black swatch with a faint outline so it reads on the dark footer.
+            d.rounded_rectangle([x, fy, x + 16, fy + 16], radius=5,
+                                fill=(0, 0, 0), outline=hx("#5B6478"), width=1)
+            x += 24
+            label = "Not evaluated"
+            d.text((x, fy), label, font=lf, fill=PRIMARY)
+            x += d.textlength(label, font=lf) + 28
 
-        rf = self.font("reg", 15)
-        l1 = "Per-frame mIoU = official challenge-server scores"
-        d.text((W - MARGIN - d.textlength(l1, font=rf), fy - 6), l1, font=rf, fill=SECONDARY)
-        if self.a.select == "gap":
-            n = (f"{self.a.n_val}" if self.a.n_val == self.a.n_test
-                 else f"{self.a.n_val} val / {self.a.n_test} test")
-            l2 = f"Frames: {n} per split with the largest Ours − Baseline gap"
-        else:
-            l2 = "Frames: uniform sampling per split"
-        d.text((W - MARGIN - d.textlength(l2, font=rf), fy + 16), l2, font=rf, fill=SECONDARY)
+        if self.a.footnote:
+            rf = self.font("reg", 15)
+            l1 = "Per-frame mIoU = official challenge-server scores"
+            d.text((W - MARGIN - d.textlength(l1, font=rf), fy - 6), l1,
+                   font=rf, fill=SECONDARY)
+            if self.a.select == "gap":
+                n = (f"{self.a.n_val}" if self.a.n_val == self.a.n_test
+                     else f"{self.a.n_val} val / {self.a.n_test} test")
+                l2 = f"Frames: {n} per split with the largest Ours − Baseline gap"
+            else:
+                l2 = "Frames: uniform sampling per split"
+            d.text((W - MARGIN - d.textlength(l2, font=rf), fy + 16), l2,
+                   font=rf, fill=SECONDARY)
 
     # -- cards --------------------------------------------------------------
     def _summ_vals(self, summ):
@@ -547,7 +602,64 @@ class Renderer:
         return {"val_mIoU": summ.get("val_mIoU"),
                 "test_mIoU": summ.get("test_mIoU"), "M": summ.get("M")}
 
-    def render_table_card(self):
+    # -- author line (intro card) ------------------------------------------
+    @staticmethod
+    def _author_segments(authors):
+        """Parse a comma-separated author string into [(name, sup), ...] where
+        `sup` is a trailing superscript marker ('†' or '*') or '' if none."""
+        segs = []
+        for raw in authors.split(","):
+            name = raw.strip()
+            if not name:
+                continue
+            sup = ""
+            if name[-1] in "†*":  # dagger or asterisk
+                sup, name = name[-1], name[:-1].rstrip()
+            segs.append((name, sup))
+        return segs
+
+    def _draw_authors(self, d, y, authors, name_size=24):
+        """Draw one centered author line at top-y `y`. Trailing '†'/'*' on a
+        name is rendered as a raised, smaller superscript. Names and separators
+        are measured together so the whole line is centered as a single unit."""
+        segs = self._author_segments(authors)
+        if not segs:
+            return
+        name_font = self.font("med", name_size)
+        sup_size = max(1, round(name_size * 0.6))
+        sep = ", "
+        name_asc = name_font.getmetrics()[0]
+
+        def sup_font_for(ch):
+            npath, nidx = FONT_FILES["med"]
+            if font_has_glyph(npath, nidx, ch):
+                return self.font("med", sup_size)
+            return self.font("dejavu", sup_size)
+
+        # Measure the full line width (names + superscripts + separators).
+        total = 0.0
+        for i, (name, sup) in enumerate(segs):
+            total += d.textlength(name, font=name_font)
+            if sup:
+                total += d.textlength(sup, font=sup_font_for(sup))
+            if i < len(segs) - 1:
+                total += d.textlength(sep, font=name_font)
+
+        x = (W - total) / 2
+        for i, (name, sup) in enumerate(segs):
+            d.text((x, y), name, font=name_font, fill=PRIMARY)
+            x += d.textlength(name, font=name_font)
+            if sup:
+                sf = sup_font_for(sup)
+                # Raise the superscript baseline by ~40% of the name font size.
+                sup_y = y + name_asc - 0.4 * name_size - sf.getmetrics()[0]
+                d.text((x, sup_y), sup, font=sf, fill=PRIMARY)
+                x += d.textlength(sup, font=sf)
+            if i < len(segs) - 1:
+                d.text((x, y), sep, font=name_font, fill=PRIMARY)
+                x += d.textlength(sep, font=name_font)
+
+    def render_table_card(self, authors=""):
         base = self.bg.copy()
         d = ImageDraw.Draw(base)
         tf = self.font("bold", 64)
@@ -557,18 +669,28 @@ class Renderer:
         sw = d.textlength(self.a.subtitle, font=sf)
         d.text(((W - sw) / 2, 340), self.a.subtitle, font=sf, fill=SECONDARY)
 
+        # Optional author line below the subtitle. When present the results
+        # table shifts down so the title -> subtitle -> authors -> table spacing
+        # stays even; with no authors the card is byte-for-byte as before.
+        shift = 0
+        if authors:
+            self._draw_authors(d, 388, authors)
+            shift = 46
+
         # Results table.
         cols = ["Val mIoU", "Test mIoU", "M-score"]
         col_x = [990, 1250, 1510]
         label_x = 420
+        header_y = 470 + shift
         hf = self.font("med", 22)
-        d.text((label_x, 470), "Model", font=hf, fill=SECONDARY)
+        d.text((label_x, header_y), "Model", font=hf, fill=SECONDARY)
         for cx, name in zip(col_x, cols):
-            d.text((cx - d.textlength(name, font=hf) / 2, 470), name, font=hf, fill=SECONDARY)
+            d.text((cx - d.textlength(name, font=hf) / 2, header_y), name,
+                   font=hf, fill=SECONDARY)
 
         rows = [(self.a.base_label, self._summ_vals(self.base_summary), False),
                 (self.a.ours_label, self._summ_vals(self.ours_summary), True)]
-        ry = 540
+        ry = 540 + shift
         rf = self.font("med", 24)
         for label, (v, t, m), hi in rows:
             if hi:
@@ -606,13 +728,14 @@ class Renderer:
         specs += [("frame", fi) for fi in self.val_frames]
         specs += [("section", "test")]
         specs += [("frame", fi) for fi in self.test_frames]
-        specs += [("outro", None)]
+        if self.a.outro:
+            specs += [("outro", None)]
         return specs
 
     def render_spec(self, spec):
         kind, data = spec
         if kind == "intro":
-            return self.render_table_card(), 3.5
+            return self.render_table_card(authors=self.a.authors), 3.5
         if kind == "outro":
             return self.render_table_card(), 3.0
         if kind == "section":
@@ -735,6 +858,7 @@ def write_sidecar(path, r):
     data = {
         "title": a.title,
         "subtitle": a.subtitle,
+        "authors": a.authors,
         "splits": {
             "val": {"count": len(r.val_frames), "condition": "day",
                     "ground_truth": True},
@@ -750,6 +874,9 @@ def write_sidecar(path, r):
             "ours": r._summ_vals_dict(r.ours_summary),
         },
         "submission_ids": {"baseline": a.base_sub, "ours": a.ours_sub},
+        "mask_ignore": a.mask_ignore,
+        "footnote": a.footnote,
+        "outro": a.outro,
         "fps": FPS, "hold": a.hold, "fade": a.fade,
         "caption": caption,
     }
@@ -787,12 +914,27 @@ def build_parser():
     p.add_argument("--subtitle",
                    default="MaCVi · MULTIAQUA Challenge — "
                            "RGB + LiDAR + Thermal semantic segmentation")
+    p.add_argument("--authors", default="",
+                   help="comma-separated author names for the intro card; a "
+                        "trailing '†' or '*' on a name renders as a superscript "
+                        "(empty = no author line)")
     p.add_argument("--n_val", type=int, default=50)
     p.add_argument("--n_test", type=int, default=50)
     p.add_argument("--select", choices=["gap", "uniform"], default="gap")
     p.add_argument("--hold", type=float, default=1.6)
     p.add_argument("--fade", type=float, default=0.35)
     p.add_argument("--lidar_dilate", type=int, default=9)
+    p.add_argument("--mask_ignore", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="blacken the evaluation-ignored region (GT label not in "
+                        "1..4) in all three bottom panels of val frames")
+    p.add_argument("--footnote", action=argparse.BooleanOptionalAction,
+                   default=False,
+                   help="show the right-aligned footer footnote lines")
+    p.add_argument("--outro", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="append the results-table outro card; with --no-outro "
+                        "the last frame crossfades straight to black")
     p.add_argument("--base_sub", type=int, default=15509)
     p.add_argument("--ours_sub", type=int, default=16710)
     p.add_argument("--preview", default=None,
