@@ -94,6 +94,36 @@ depends: decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md §3.5
 
 RF-DETR에 대한 판단: RF-DETR의 이득은 DINOv2 백본 + **다중 스케일 deformable 디코더**에서 나왔고, 객체 질의 자체는 우리 세그 스택에서 세 번(P30·P38·P43) 무효였다. 세그로 옮길 수 있는 부분은 E5(deformable 픽셀 디코더)이며, 질의 기반 클래스 디코딩은 카드에 넣지 않는다.
 
+### MUSES 이식 카드 (2026-09-11 등재 — 그동안 config 헤더에만 있었다)
+
+DELIVER 에서 통과한 카드가 **두 벤치에서 공통으로 오르는지**를 40ep 스크린으로 먼저 확인하는 계열이다.
+단일 아키텍처 원칙상 3페어 확정에 GPU 6일치를 쓰기 전에 이쪽 정보량이 더 크다.
+
+| 카드 | 원본 | 변경(1개) | config | 게이트(사전 등록) |
+|---|---|---|---|---|
+| **E7** MUSES PhysAug-off 기준선 | — | PHYSAUG off | — | 게이트 없음(헤드라인 교체용 대조군). **공식 val 80.0756** |
+| **E1M** 4탭 읽기 MUSES 이식 | E7 | `MODEL.TAPS` on `[6,12,18,24]`·per_modal | — | E7 대비 상승. **공식 val 80.416**(달성) |
+| **E13M** 4탭 + 센서별 prototype | E1M | `MODEL.P46.C3_PROTO` on(SRC permodal·λ0.1·τ0.1·EMA 0.999·PIXELS 4096·WARMUP_EP 5) | `configs/hpca100-muses_rgbel_P39_1_seed2_physaugoff_taps_c3permodal_screen40_E13M.yaml` | 아래 셋 **모두** |
+
+🔴 **E13M 게이트 셋** — `tools/eval_muses_official.py` 의 **공식 val**(native 1080×1920) 기준이다.
+트레이너가 찍는 레터박스 1024² 내부 지표로 판정하지 마라.
+
+1. **vs E7(80.0756) ≥ +0.5**
+2. **vs E1M(80.416) ≥ 0** — 4탭 위에 prototype 을 얹어 해롭지 않을 것
+3. **조건별로 night·fog 에서 −0.5 미만이 없을 것**
+
+셋 중 하나라도 미달이면 **"E13 의 이득은 DELIVER 특화"**로 기록하고 MUSES 이식을 닫는다.
+
+세 카드는 시드가 같아 **매칭 페어**다. 재채점 명령 형태는 다음과 같다(별도 eval config 가 없고 학습
+config 를 그대로 쓴다. 도구는 hpca100 레포에 있고 로컬과 md5 동일 `0b71f4e2…` 를 확인했다).
+
+```bash
+python tools/eval_muses_official.py --cfg <학습 config> --ckpt <val-best ckpt> --gpu <N> --out <출력 디렉터리>
+```
+
+⚠️ **C3_PROTO 의 warmup 은 `WARMUP_EP 5` 이고 epoch 이 0-index 라, prototype 손실은 로그상 ep6 부터
+작동한다**(`train_reliadino.py:564` 주석). ep5 이전 수치로 "효과 없음"을 판정하지 마라.
+
 ---
 
 ## 2. 카드가 답하는 질문의 구조
