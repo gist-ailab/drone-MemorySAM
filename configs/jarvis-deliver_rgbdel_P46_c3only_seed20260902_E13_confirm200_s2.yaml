@@ -1,0 +1,232 @@
+# [E13 확정 런 시드2] E13(E1 4탭 + E3 센서별 prototype) 200ep 확정, **SEED 20260902**, jarvis.
+#   시드1(20260821) 확정 런과 같은 레시피이며 변경은 SEED·SAVE_DIR 둘뿐이다.
+#   확정 판정 규약이 200ep × 3페어이고 한 런이 이틀 넘게 걸리므로 시드1 완주를 기다리지 않고 병행한다.
+#
+#   🔴 **비교 분모 주의**: 시드 20260902 는 **200ep 기준선 5시드에 없다.** 따라서
+#     - 매칭 페어(같은 시드 기준선과 1:1)는 **시드 20260821 한 쌍뿐**이고,
+#     - 이 런은 **P46 C3-only 5시드 평균(legal test 54.39 ± 0.76)과 독립 비교**로 읽는다.
+#   페어가 아닌 비교임을 판정문에 반드시 명시할 것. 40ep 스크린에서 기준선이 시드에 따라
+#   25클래스 1.29 흔들린 전례가 있다(§5-6) — 분모를 잘못 잡으면 그만큼 통째로 틀어진다.
+#
+#   근거: E13 은 40ep 스크린에서 24클래스 Δ **+1.29** 로 카드 최고이고, 구성요소 E3 가 단독으로는
+#   −0.14 인데 결합에서 합(+0.43)보다 0.86 큰 초가산 구조를 보인다(§5-11 판정).
+#   🔴 재분류 조건(사전 등록): E13 시드들에서 24클래스가 **+0.5 밑으로 떨어지면** E13 도
+#   RailTrack 운으로 재분류한다.
+#
+#   기동 검증: TAPS 덤프 · `SRC: permodal` · `fix_seeds(20260902)` · `EPOCHS 200` · RANDOM INIT 없음.
+#   배치: jarvis GPU7(E4c val 재채점이 끝나는 자리), 단일 GPU 시작 → 09-12 18시 E1 확정 런 완주 후
+#   GPU2·4 중 한 장을 붙여 2장 DDP 재기동(AUTO_RESUME, 손실 ≤5ep).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260902_E13_confirm200_s2'  # [DAILY-CARDS E1 40ep 스크린]
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  # ═══ [E1] DINOv3 다중 레벨 탭 읽기 — 이번 카드의 유일한 변경 ═══
+  TAPS:
+    ENABLE  : true                          # off(기본)면 B0 와 forward·state_dict byte-동일
+    LAYERS  : [6, 12, 18, 24]               # 1-indexed 블록(24블록에서 24=마지막). resolve_taps 규약
+    MODE    : per_modal                     # per_modal(센서별 탭 유지·FPN 레벨 합산) | mean(P43 식 모달 평균)
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — C3 단독(C1/C2 off, B0 동일) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+    C2_MCC:
+      ENABLE        : false
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+    C3_PROTO:
+      ENABLE        : true
+      SRC           : permodal   # [E13←E3] 센서별 prototype bank
+      AGREE_LAMBDA  : 0.0        # [E13←E3] 일치 항 무효(E3와 동일)
+      FEATURE       : mfeat
+      LAMBDA        : 0.1
+      TEMPERATURE   : 0.1
+      EMA           : 0.999
+      PIXELS        : 4096
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/SSDb/jemo_maeng/dset/DELIVER'   # jarvis DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 20260902   # [E13 확정 시드2] 200ep 기준선 5시드에 없는 시드 — 아래 헤더의 비교 분모 주의
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1                 # 3090 24GB: 4탭×4센서 투영은 BS1 유지(B0 규약). 기동 전 P46_MEM_LOG=1 권장
+  EPOCHS        : 200  # [확정 런] 24클래스 Δtest +1.79(카드 최고, E1 +0.57 의 세 배)
+  EVAL_START    : 0
+  EVAL_INTERVAL : 5
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false
