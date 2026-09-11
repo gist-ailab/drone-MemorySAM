@@ -1,0 +1,211 @@
+# [E13M] E13(E1 4탭 읽기 + E3 센서별 class prototype)의 **MUSES 이식** — 40ep 스크린, hpca100 GPU0.
+#   원본 = E1M(이 카드의 4탭만 켠 판). 변경은 **MODEL.P46.C3_PROTO 를 켠 것 하나**이며
+#   값은 DELIVER E3/E13 과 동일하다(SRC permodal · LAMBDA 0.1 · AGREE_LAMBDA 0.0 · τ0.1 · EMA 0.999
+#   · PIXELS 4096 · WARMUP_EP 5 · CROSS_VIEW false). SEED 는 E1M·E7 과 같아 **매칭 페어**가 된다.
+#
+#   왜 지금 이것을 돌리는가: E13 이 DELIVER 40ep 스크린에서 24클래스 Δ +1.29 로 카드 최고이고
+#   확정 런 1순위인데, **MUSES 에서 어떻게 되는지 모른다.** 단일 아키텍처 원칙상 3페어 확정에
+#   GPU 6일치를 더 쓰기 전에 **"두 벤치 공통 상승"을 40ep 로 먼저 확인**하는 편이 정보량이 크다.
+#
+#   🔴 게이트(사전 등록, 2026-09-11 생각정리 세션) — `tools/eval_muses_official.py` 공식 val 기준:
+#     (1) **vs E7(80.0756) ≥ +0.5** 이고
+#     (2) **vs E1M(80.416) ≥ 0**(4탭 위에 prototype 을 얹어 해롭지 않을 것)
+#     (3) 조건별로 **night·fog 에서 −0.5 미만이 없을 것**
+#     셋 중 하나라도 미달이면 "E13 의 이득은 DELIVER 특화"로 기록하고 MUSES 이식을 닫는다.
+#
+#   기동 검증: TAPS 덤프 `[6, 12, 18, 24]` · `SRC: permodal` 과 `[C3-M]` 로그 줄 · `fix_seeds` ·
+#   RANDOM INIT 없음 · 진행 표시줄 장수.
+#   🔴 hpca100 표준 env 넷 필수. `PYTORCH_CUDA_ALLOC_CONF` 는 절대 설정하지 말 것.
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_muses_rgbel_P39_1_seed2_physaugoff_taps_c3permodal_screen40_E13M'  # [DAILY-CARDS 40ep 스크린] decisions/2026-09-07-daily-cycle-experiment-cards.md
+
+MODEL:
+  TAPS:                                   # [E1-MUSES] DINOv3 다중 레벨 탭 읽기(카드 E1을 MUSES로 이식). E7(off)과 유일 변수
+    ENABLE : true
+    LAYERS : [6, 12, 18, 24]              # 1-indexed 블록(24=마지막)
+    MODE   : per_modal                    # 센서별 투영 → FPN 4레벨 합산
+
+  # ═══ [E13M] C-3 센서별 class prototype — DELIVER E3/E13 과 동일 값 ═══
+  #   🔴 P46 은 모델 버전이 아니라 기능 네임스페이스다. build_reliadino() 가
+  #   MODEL.P46.C3_PROTO 를 읽어 p46_proto* 인자로 넘기므로 P39 모델에서도 작동한다
+  #   (model.py:1846-1847, 2005-2013 확인). MODEL.P39 와 독립적으로 공존한다.
+  P46:
+    C3_PROTO:
+      ENABLE        : true
+      SRC           : permodal   # [E3] 센서별 PrototypeBank M개
+      FEATURE       : mfeat      # SRC 미지정 시 하위호환 fallback(현행 무시됨)
+      LAMBDA        : 0.1        # λ3 (센서 평균 손실에 곱함) — DELIVER E3 와 동일
+      AGREE_LAMBDA  : 0.0        # 센서 간 일치 항 무효(E3b 가 켰다가 폐기)
+      TEMPERATURE   : 0.1
+      EMA           : 0.999
+      PIXELS        : 4096
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false      # prototype 은 주 forward aux 로만(보조 branch 없음)
+      CROSS_VIEW_W  : 1.0
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20) — off, ablation 분리
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  # [P36] per-class router 유지 (P38-DELIVER와 동일 — M2F 대비 1-변수 비교)
+  ROUTER:
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:        { ENABLE: false }   # P37a 헤드 off
+  CLASS_TOKEN: { ENABLE: false }   # P37b 헤드 off
+
+  # [P38] MaskQueryLite (Mask2Former-lite) — 헤드
+  M2F:
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256                   # query dim_t (params ≈5.5M)
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0                   # zero-init residual (do not change)
+    W_CLS           : 2.0                   # M2F 표준 가중 2/5/5
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544                 # point-sampled mask losses (M2F 관행)
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5                   # aux['m2f_loss'] 전역 스케일
+    SRC             : modal                 # [P39-V2] query가 per-modal 토큰 합집합을 attend (fused rank-병목 우회)
+    ANCHORED        : true                  # [P39-V3] K개 클래스 앵커 query (고정 할당) + 나머지 Hungarian
+    POINT_QUOTA     : 256                   # [P39-V4] GT 영역별 최소 포인트 쿼터 (thin-mask 기아 수정)
+
+
+  # [P39] Dual-Path Compete (decisions/2026-07-20-p39-dual-path-compete-proposal.md)
+  P39:
+    TRUNK_EXP       : true                  # V1: fused += Σ P_m(f_m) (rank 확장, 주 경로)
+    ARBITER         : true                  # V5: per-class Λ 중재 + path dropout 경쟁 (β 잔차 대체)
+    PATH_DROPOUT_P  : 0.25                  # dense-only / query-only 각 25%
+    ROUTER_CE_W     : 0.4                   # router 직접 CE 감독 가중
+    TRUNK_MODE      : gated_mlp             # [P39.1-R1] 선형→LN·MLP·tanh(γ) 게이트 (저rank 지름길 제거, γ=0.1 init — 0이면 gradient가 안 흘러 사장됨)
+    TRUNK_HIDDEN    : 256
+    VICREG:                                 # [P39.1-R2] var+cov rank 복원 (per-modal 토큰, lidar 강조)
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/MUSES'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  PHYSAUG:
+    ENABLE    : false   # [E7] 공정선 정합: 경쟁작(CAFuser/DGFusion)은 물리 열화 증강 미사용 (user 2026-09-07)
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1                 # jarvis=24GB: BS2@1024²는 OOM(22.5GB). BS1로 fit(~12GB).
+                                    # seg accum=ceil(16/(BS×world))가 eff-batch 자동보정 → BS1×4×accum4=16 (hpca100 BS2×4와 동일).
+                                    # grad-ckpt는 active_modality 버그라 못 켬 → BS로만 조절.
+  EPOCHS        : 40   # [스크린] 40ep 조기 판정(P50 val-best ep30 전례). 확정은 200ep 3페어
+  EVAL_START    : 0
+  EVAL_INTERVAL : 5
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 4
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false
