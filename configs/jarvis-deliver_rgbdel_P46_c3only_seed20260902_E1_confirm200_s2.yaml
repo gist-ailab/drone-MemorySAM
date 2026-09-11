@@ -13,9 +13,16 @@
 #   GPU 가 더 나면 AUTO_RESUME(true)로 2장 DDP 재기동이 가능하다.
 #
 #   ⚠️ 알려진 비대칭(시드1 에서 그대로 물려받았다, 고치지 않았다): `DATASET.ROOT` 는 jarvis
-#   경로(`/SSDb/...`)인데 `TEST.FILE` 만 hpca100 경로(`/home/jovyan/...`)다. **학습 중 평가는
-#   val 만 돌아(949장) 이 키를 읽지 않으므로 무해**하며, 재채점은 별도 eval config 로 한다.
+#   경로(`/SSDb/...`)인데 `TEST.FILE` 만 hpca100 경로(`/home/jovyan/...`)다. 학습 중에는 val 과
+#   test 를 **둘 다** 평가하지만(로그에 `Found 2005 val` · `Found 1897 test`), 트레이너는 두 split
+#   모두 `DATASET.ROOT` 로 읽으므로 **`TEST.FILE` 은 학습 경로에서 쓰이지 않아 무해**하다.
+#   재채점은 별도 eval config 로 하며 거기서는 올바른 경로를 쓴다.
 #   단일 변수 원칙을 지키려고 일부러 시드1 과 같은 상태로 두었다.
+#
+#   📌 진행 표시줄 숫자 읽는 법: 학습 중 평가 진행 표시줄은 `1003`(val)·`949`(test)로 뜨는데
+#   이는 배치 크기가 2 라서가 아니라 **2장 DDP 의 `DistributedSampler` 가 rank 당 절반씩
+#   나눠 주기 때문**이다(`train_reliadino.py:464-468`). 분모 = 총장수 / (BS × world_size).
+#   `EVAL.BATCH_SIZE` 는 1 이 맞다. 단일 GPU 로 돌리면 같은 구간이 2005·1897 로 뜬다.
 #
 #   분모: 매칭 페어가 아직 없으므로 **5시드 평균 54.39±0.76 과의 독립 비교**로 읽는다.
 #   완주 후 시드1 과 함께 확정 게이트(3페어 mean Δtest ≥ +1.0 and 24클래스 mean Δ ≥ +0.5)에 넣는다.
