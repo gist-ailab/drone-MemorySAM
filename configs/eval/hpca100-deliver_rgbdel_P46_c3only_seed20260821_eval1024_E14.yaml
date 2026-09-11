@@ -1,0 +1,238 @@
+# [E14 legal 재채점] E14(E13 레시피 + 탭 깊이만 [4,8,12,24]) 40ep 완주분 val-best 재채점용, hpca100.
+#   학습 config 에서 EVAL/TEST 의 IMAGE_SIZE 를 1024 로, EVAL.BATCH_SIZE 를 1 로 맞춘 파생본이다.
+#   🔴 native-GT BS1: test 1897장 / val 2005장이 그 장수 그대로 돌아야 한다(475/501 이면 중단).
+#   🔴 판정 게이트(사전 등록): legal test **24클래스 Δ vs B0 ≥ +0.5** 이고
+#      **얇은 객체 4클래스(Pole·Pedestrian·Static·TrafficLight) 평균 Δ vs E13 > 0**.
+#      하나라도 미달이면 '탭 깊이는 얇은 객체 병목이 아님'으로 기록하고 이 방향을 닫는다.
+#   🔴 ckpt 는 val-best(epoch*_top1_checkpoint.pth)만 쓴다. test_ 접두어는 무효다.
+# [E14] E13 레시피 + **탭 깊이만 얕게** — 40ep 스크린, 시드 20260821, hpca100 GPU2.
+#   변경은 정확히 하나: MODEL.TAPS.LAYERS [6, 12, 18, 24] -> **[4, 8, 12, 24]**. 나머지는 E13 그대로다
+#   (C3_PROTO.SRC permodal · AGREE_LAMBDA 0.0 · TAPS.MODE per_modal · 시드 20260821).
+#
+#   가설: **얇은 객체(Pole·Pedestrian·Static·TrafficLight)는 1/16 패치의 고층 의미 특징보다 저층 특징의
+#   공간 세부를 필요로 한다.** 근거는 E12(E1+E2 결합) 클래스별 실측이다 — 결합에서 가산이 실제로 작동한
+#   영역은 얇은 객체뿐이었고(TrafficLight +13.07 · TrafficSign +4.90 · Pole +3.33), RailTrack 은 파괴적으로
+#   간섭했으며 Wall 은 E2 단독보다 나빴다(카드 문서 §5-9). 그 방향을 탭 깊이로 직접 건드린다.
+#
+#   🔴 게이트(사전 등록, 2026-09-11 생각정리 세션):
+#     (1) legal test **24클래스 Δ vs B0 ≥ +0.5**, 그리고
+#     (2) **얇은 객체 4클래스(Pole·Pedestrian·Static·TrafficLight) 평균 Δ vs E13 > 0**
+#     둘 중 **하나라도 미달이면 "탭 깊이는 얇은 객체 병목이 아님"으로 기록**하고 이 방향을 닫는다.
+#   비교 대상: E13(legal test 56.30 · 24클래스 +1.29 · 같은 시드 20260821)과 단일 변수 직접 비교.
+#
+#   기동 검증: TAPS 덤프에 `[4, 8, 12, 24]` · `SRC: permodal` · `fix_seeds(20260821)` · RANDOM INIT 없음 ·
+#   진행 표시줄 장수. 단일 A100 42분/ep 이므로 40ep 완주는 09-12 밤 예상.
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E14'  # [DAILY-CARDS E1 40ep 스크린]
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  FPN_DIM       : 256
+
+  # ═══ [E1] DINOv3 다중 레벨 탭 읽기 — 이번 카드의 유일한 변경 ═══
+  TAPS:
+    ENABLE  : true                          # off(기본)면 B0 와 forward·state_dict byte-동일
+    LAYERS  : [4, 8, 12, 24]                # [E14] 얕은 탭. E13 의 [6,12,18,24] 대비 앞 세 탭만 낮췄다(마지막 24는 고정)
+    MODE    : per_modal                     # per_modal(센서별 탭 유지·FPN 레벨 합산) | mean(P43 식 모달 평균)
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — C3 단독(C1/C2 off, B0 동일) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+    C2_MCC:
+      ENABLE        : false
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+    C3_PROTO:
+      ENABLE        : true
+      SRC           : permodal   # [E13←E3] 센서별 prototype bank
+      AGREE_LAMBDA  : 0.0        # [E13←E3] 일치 항 무효(E3와 동일)
+      FEATURE       : mfeat
+      LAMBDA        : 0.1
+      TEMPERATURE   : 0.1
+      EMA           : 0.999
+      PIXELS        : 4096
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'   # hpca100 DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 20260821   # [E14] E13(시드1)과 같은 시드 — 탭 깊이 단일 변수 비교를 위해
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1                 # 3090 24GB: 4탭×4센서 투영은 BS1 유지(B0 규약). 기동 전 P46_MEM_LOG=1 권장
+  EPOCHS        : 40   # [스크린] 40ep 조기 판정. 확정은 200ep 3페어
+  EVAL_START    : 0
+  EVAL_INTERVAL : 5
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]   # [legal] 하네스 규약 1024
+  BATCH_SIZE    : 1   # [legal] native-GT BS1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [1024, 1024]   # [legal] 하네스 규약 1024
+  OVERLAY       : false
