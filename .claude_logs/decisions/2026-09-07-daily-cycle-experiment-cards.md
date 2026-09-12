@@ -226,6 +226,18 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | 재채점 후 | hpca100 3장 | ① E3s2 재개(ep10, 학습 중 test 평가 off) ② **E13s2**(E13 시드2 40ep) ③ **E4c**(E4b에서 쌍을 RailTrack→Sky/Static/Terrain 3개로, MARGIN 0.25) |
 | — | E4b | 35ep 재채점으로 종결(재개 안 함). ep36~40 Adam `ComplexFloat` 에러 = margin 항 후기 불안정 → E4c에서 margin 완화 |
 
+**MCubeS 이식 예약(2026-09-12, user 지시 "확정되는대로 mcubes에도 돌려보자")**
+
+| 트리거 | 기동 | config | 게이트(사전 등록) |
+|---|---|---|---|
+| DELIVER E13 확정 3페어 통과 | E13Mc 3시드(3407·20260827·20260828, 200ep) | `configs/{hpca100,yeon}-mcubes_rgbadn_P39_1_rank_E13Mc_seed*.yaml` | 3시드 평균 Δ vs 매칭 C3-off ≥ +0.5, final-epoch 기준 |
+| E13 미달·E1 통과 | E1Mc 3시드 | `…_E1Mc_seed*.yaml`(기준선과 TAPS 하나만 다름, diff 확인) | 동일 |
+| 둘 다 미달 | 기동 안 함 | — | — |
+
+- 매칭 기준선 = MCubeS 통일 레시피 C3-off 3시드 {57.93, 57.67, 58.62} = 58.07±0.49(registry N4). E13Mc는 C3-on(N4b) config 파생.
+- MCubeS 로더는 test split을 'val'로 읽으므로 트레이너 val-best 선택이 test-best와 동치 → **final-epoch 값을 판정 기준**, val-best는 병기만.
+- 기동 검증: TAPS 덤프 `[6,12,18,24] per_modal`, (E13Mc) `SRC: permodal`와 `[C3-M]` 로그에 네 센서(image·aolp·dolp·nir) 손실이 모두 찍히는지, `fix_seeds(<시드>)`, RANDOM INIT 없음, 진행 표시줄.
+
 ## 4.5 체크포인트 보존 대장 (2026-09-09~10, user 승인: "보존 완료된 체크포인트는 지워도 괜찮아")
 
 규칙: 정본 = **val-best `*_top1_checkpoint.pth` 하나**. NAS 사본 md5 일치 후에만 서버 원본 정리. **서버에서 ckpt가 안 보이면 지워진 것이 아니라 NAS로 이관된 것** — 위치 단일 출처 = [infra/artifact-locations.md](../infra/artifact-locations.md)(develop 798ec44). NAS 루트 `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/`.

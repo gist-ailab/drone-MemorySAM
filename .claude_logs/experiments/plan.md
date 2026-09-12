@@ -147,6 +147,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 ### 🎯 신규 대기열 (논문-가치 순, 여유 GPU 투입 대상)
 | # | 실험 | 자원 적합 | 논문 가치 (A/B 분기별) | 상태 |
 |---|---|---|---|---|
+| **N-MC** | **확정 레시피의 MCubeS 이식 3시드(200ep)** — DELIVER 확정 판정(09-14~15, E13·E1 각 3페어)에서 채택된 레시피를 MCubeS 통일 레시피 3시드(3407·20260827·20260828)에 매칭해 돌린다. E13 채택 → `configs/{hpca100,yeon}-mcubes_rgbadn_P39_1_rank_E13Mc_seed{3407,20260827,20260828}.yaml`, E1 채택 → `…_E1Mc_seed…yaml` | 서버당 2장×3런(yeon 3090×2 ≈16h/런, hpca100도 가능) | 단일 아키텍처 원칙상 세 벤치 공통 적용 증거(DELIVER·MUSES·MCubeS). 게이트 = 3시드 평균 Δ vs 매칭 C3-off(58.07±0.49) ≥ +0.5, **final-epoch 기준**(MCubeS는 val-best = test-best 동치라 보수치), val-best 병기 | ⏳ **user 지시(2026-09-12) 「확정되는대로 mcubes에도 돌려보자」** — config 12벌 준비 완료, 확정 판정 직후 기동 |
 | ~~N1~~ | ~~MUSES 시드 분산 ×2~~ | — | ✅ **완결(2026-08-27)** | 공식 val 3점 {82.13, 81.79(s824), 81.47(s825)} spread **0.66** = MUSES val 시드 안정 확정 → test 단일제출 방어 근거 | registry 참조 |
 | ~~N2~~ | ~~MLE-SAM 평균융합 baseline~~ | — | ✅ **완료·판정(2026-08-31, H21)** | legal test **55.45** — gated-MLP(54.2~55.4)와 동급 이상 = **우리 트렁크 우위 주장 철회**, 믹서 3점 완성(mean≈gated-MLP>xattn). 소거 논지 완결 재료 | 판정 [analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md](analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md) |
 | **N3** | **C3 진단-구동 검출기 (분석, 학습 0)** — 기존 ckpt들의 val confusion에서 class-transfer 붕괴 지표(비대각 집중도) 정량화 → C3 on/off 효과와 상관 검증 (DELIVER 붕괴有/MUSES 無) | **GPU ~0**(캐시 confusion 재집계, 필요시 1 GPU eval) | **B 헤드라인 기둥·A여도 통일 서사 필수** — "벤치별 C3 on/off"를 원칙적 자동설정으로 전환하는 근거. 검출기가 두 벤치의 경험적 C3 효과와 일치하면 통일 아키텍처 주장 성립 | 🟡 분석 설계 = discussion 세션 직접 — **즉시 가능** |
