@@ -34,7 +34,22 @@ export PYTHONPATH=/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/semseg/models
 export HF_HOME=/home/jovyan/.cache/huggingface
 export HF_HUB_OFFLINE=1
 export LD_LIBRARY_PATH=/home/jovyan/SSDb/jemo_maeng/venv/p34/lib/python3.11/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH:-}
-D=/tmp/jemo_scratch/outputs/ReliaDINO/$RUN/DELIVER_ReliaDINO-ViTL16_idel
+# 🔴 산출물 위치는 런마다 다르다 — /tmp/jemo_scratch 우회로 돌린 런과 레포 outputs/ 에
+#    그대로 쓴 런이 섞여 있다. 하드코딩된 한 곳만 보다가 E13s3 재채점이 _LEGAL_ABORT 로
+#    막혔다(2026-09-12). 두 곳을 순서대로 찾는다.
+D=""
+for _cand in \
+  /tmp/jemo_scratch/outputs/ReliaDINO/$RUN/DELIVER_ReliaDINO-ViTL16_idel \
+  /home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/outputs/ReliaDINO/$RUN/DELIVER_ReliaDINO-ViTL16_idel
+do
+  if ls "$_cand"/epoch*_top1_checkpoint.pth >/dev/null 2>&1; then D="$_cand"; break; fi
+done
+if [ -z "$D" ]; then
+  echo "${CARD}_LEGAL_ABORT: val-best 체크포인트를 두 후보 경로 어디서도 찾지 못했다 (RUN=$RUN)"
+  echo "  찾아본 곳: /tmp/jemo_scratch/outputs/ReliaDINO/$RUN/... 와 레포 outputs/ReliaDINO/$RUN/..."
+  exit 1
+fi
+echo "${CARD}_LEGAL_DIR=$D"
 CKPT=$(ls -1 "$D"/epoch*_top1_checkpoint.pth 2>/dev/null | grep -v '/test_' | sort -t_ -k2 -V | tail -1)
 [ -z "$CKPT" ] && { echo "${CARD}_LEGAL_ABORT: val-best 없음 ($D)"; exit 1; }
 echo "${CARD}_LEGAL_CKPT=$CKPT"
