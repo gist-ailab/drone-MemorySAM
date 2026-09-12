@@ -9,6 +9,8 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+📝 2026-09-13 — **DGFusion 재학습 yeon 이전 + NaN 대책** (user 지시: "yeon도 비어있으니까 학습에 활용해줘"). 9/9 다른 세션의 "80k 정본 확정·200k 포기" 판단을 완주 재시도로 번복. jarvis는 다른 세션 학습이 GPU를 곧바로 채워 4일간 4장이 한 번도 동시에 비지 않았음. yeon에 복원 킷 셋업 스크립트로 환경을 한 번에 구축(복원 코드 md5가 jarvis와 동일), ckpt 10k~80k 이전(80k md5 일치). NaN 3회(86.5k~87.9k)는 fp16 순전파 오버플로를 detectron2 지표 기록이 학습 종료로 처리하는 구조 문제로 진단 → `detectron2_nonfinite_skip.patch`(NaN 배치만 건너뜀, 20회 연속이면 종료) 적용·스모크 통과. 앞선 registry의 "NaN 4회·86,572 재발"은 로그 중복 계수로 정정(실제 3회, 모두 다른 지점). yeon GPU 0·2·4를 다른 세션 평가가 쓰는 중이라 `dgfusion_wait_and_resume.sh`(빈 GPU 4장 연속 확인 시 자동 재개)로 대기.
+
 ### 🎬 2026-09-10 — MULTIAQUA 챌린지 비교 영상 제작 (제출 모델 vs 결과표 최하위)
 
 **요청**: 챌린지에 제출한 모델 기준으로 val·test 추론을 보기 좋게 영상화한다. 윗줄은 RGB·LiDAR·Thermal, 아랫줄은 RGB 위에 baseline·ours·GT를 겹친 화면으로 구성하고, val 50장과 test 50장을 영상 하나로 만든다.

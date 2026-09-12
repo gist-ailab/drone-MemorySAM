@@ -27,6 +27,12 @@ CAFuser의 LR이 1e-4로 동일**하다 (과거 기록의 "1.8×" 교란은 MUSE
 - `setup_cafuser_lecun.sh` — CAFuser 학습 세팅 (lecun, 기존 conda env `dgfusion` 재사용).
 - `cafuser_swin_tiny_bs6_267k_deliver_clde_lecun.yaml` — ⚠️ 3 GPU 제약 파생 config
   (bs6·LR 0.75e-4·266,667 iter = 총 샘플 수 동일). 공식 bs8 4 GPU와의 편차를 결과 보고에 반드시 명시.
+- `detectron2_nonfinite_skip.patch` — detectron2 `engine/train_loop.py` 패치(아래 "NaN 대책" 절). detectron2
+  클론 루트에서 `patch -p1 < detectron2_nonfinite_skip.patch`.
+- `dgfusion_wait_and_resume.sh` — 빈 GPU 4장이 20초 간격 두 번 연속 확인되면 `--resume`으로 재개하는 대기 스크립트
+  (다른 세션이 GPU를 곧바로 채우는 서버에서 30분 간격 점검이 매번 빈 틈을 놓쳐서 만든 것).
+- `dgfusion_test_sweep.sh` — 저장된 체크포인트들을 공식 README의 test 평가 명령으로 차례로 평가
+  (`bash dgfusion_test_sweep.sh <gpu> 0009999 0019999 ...`). val→test 전이 곡선용.
 
 ## 실행 (jarvis 검증 커맨드)
 
@@ -39,6 +45,29 @@ CUDA_VISIBLE_DEVICES=1,2,4,5 python train_net.py --dist-url tcp://127.0.0.1:5036
     --config-file configs/deliver/swin/dgfusion_swin_tiny_bs8_200k_deliver_clde.yaml \
     OUTPUT_DIR output/dgfusion_swin_tiny_bs8_200k_deliver_clde
 ```
+
+## NaN 대책 (2026-09-13)
+
+**증상**: 공식 설정(fp16 AMP) 그대로 학습하면 80k 이후 NaN으로 학습이 종료된다. jarvis에서 3회 재현됐다 —
+처음부터 학습 시 iteration 87,370, 80k 재개 후 87,842, 80k 재개 후 86,572 (jarvis의 모든 로그를 합친 서로 다른
+크래시는 이 3건뿐이다. 같은 재개 기록이 `log.txt`와 `dgfusion_resume_80k.log`에 중복 기록돼 있어 4건으로 세기 쉽다).
+`SEED: 0`이라 두 번의 80k 재개는 같은 데이터 순서로 시작했는데도 서로 다른 지점에서 죽었으므로, 특정 배치 하나가
+원인이라기보다 **80k 이후 모델 상태에서 fp16 순전파가 가끔(약 7천 iteration에 한 번) 넘치는 현상**으로 본다
+(GPU 연산의 비결정성 때문에 같은 데이터 순서라도 수치가 조금씩 달라진다). NaN 시점에 loss_ce·loss_contrastive가 NaN이고 매처가
+"Matrix contains all NaN values!"를 출력한다(= 순전파 출력 자체가 NaN). loss_depth·loss_condition은 정상값.
+
+**원인 구조**: detectron2 `AMPTrainer.run_step` 순서는 역전파 → `_write_metrics` → `grad_scaler.step`이다.
+GradScaler는 기울기가 NaN/inf면 그 스텝의 가중치 갱신을 원래 건너뛰는데, 그 직전의 `write_metrics`가
+손실이 유한하지 않다고 `FloatingPointError`로 학습 전체를 종료시킨다.
+
+**대책**: `detectron2_nonfinite_skip.patch` — `write_metrics`가 NaN 손실을 만나면 경고(`[nonfinite-skip]`,
+연속 횟수·누적 횟수 포함)를 남기고 기록만 건너뛴다. 가중치 갱신은 GradScaler가 건너뛴다. 진짜 발산이면 NaN이
+연속으로 나오므로 **20회 연속이면 종전대로 종료**한다. 모델의 정규화 층은 LayerNorm(Swin)·GroupNorm(픽셀
+디코더·depth head)뿐이라(설정의 SyncBN은 쓰이지 않는 ResNet 항목) NaN 순전파가 running 통계를 오염시킬 경로가 없다.
+CPU 스모크 테스트 통과(단발 NaN 건너뜀·정상값에서 연속 카운터 초기화·20회 연속에서 종료).
+
+**보고 의무**: 이 패치는 fp16 레시피를 바꾸지 않고 드문 NaN 배치만 건너뛰지만, 공식 코드와의 차이이므로
+결과 보고 시 **건너뛴 스텝 수**(로그의 `total_skipped`)를 함께 적는다.
 
 ## 프로토콜 주의
 
