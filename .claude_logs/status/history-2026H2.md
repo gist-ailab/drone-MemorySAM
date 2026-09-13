@@ -9,6 +9,8 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+📝 2026-09-13 (정정) — **DGFusion NaN 원인 확정 = OneFormer `task_mlp` fp16 넘침 → bf16으로 재개.** 오전 NaN 건너뛰기 패치로 yeon 재개했으나 89,855부터 20회 연속 NaN으로 안전장치 종료 — "드문 배치 넘침" 1차 진단이 틀렸음. `act_probe.py`로 체크포인트별 모듈 활성값을 재 보니 `task_mlp` 출력 최대가 52.6k@50k→62.9k@80k로 단조 증가(fp16 최대 65,504의 96%), 입력이 과제 문장이라 입력 무관 → 넘기면 모든 배치 NaN. 가중치는 멀쩡(최대 |57|). `DGFUSION_AMP_BF16=1`(train_net.py opt-in)로 bf16 autocast 전환, 80k부터 재개(10:09, yeon GPU0~3, 0.97 s/iter, 완주 예상 9/14 18:30경). 80k 이후 bf16은 공식 레시피와의 차이로 보고 의무. 부수 발견: 1차 진단의 "BatchNorm 없음"도 틀림(`depth_feature_fusion/concat.py`에 BatchNorm2d). 10k~80k test 전이 곡선 확보(val→test Pearson 0.33, test std 0.64) — registry DGFusion 행.
+
 📝 2026-09-13 — **DGFusion 재학습 yeon 이전 + NaN 대책** (user 지시: "yeon도 비어있으니까 학습에 활용해줘"). 9/9 다른 세션의 "80k 정본 확정·200k 포기" 판단을 완주 재시도로 번복. jarvis는 다른 세션 학습이 GPU를 곧바로 채워 4일간 4장이 한 번도 동시에 비지 않았음. yeon에 복원 킷 셋업 스크립트로 환경을 한 번에 구축(복원 코드 md5가 jarvis와 동일), ckpt 10k~80k 이전(80k md5 일치). NaN 3회(86.5k~87.9k)는 fp16 순전파 오버플로를 detectron2 지표 기록이 학습 종료로 처리하는 구조 문제로 진단 → `detectron2_nonfinite_skip.patch`(NaN 배치만 건너뜀, 20회 연속이면 종료) 적용·스모크 통과. 앞선 registry의 "NaN 4회·86,572 재발"은 로그 중복 계수로 정정(실제 3회, 모두 다른 지점). yeon GPU 0·2·4를 다른 세션 평가가 쓰는 중이라 `dgfusion_wait_and_resume.sh`(빈 GPU 4장 연속 확인 시 자동 재개)로 대기.
 
 ### 🎬 2026-09-10 — MULTIAQUA 챌린지 비교 영상 제작 (제출 모델 vs 결과표 최하위)

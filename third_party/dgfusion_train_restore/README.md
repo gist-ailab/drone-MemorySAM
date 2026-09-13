@@ -22,15 +22,17 @@ CAFuser의 LR이 1e-4로 동일**하다 (과거 기록의 "1.8×" 교란은 MUSE
 
 - `setup_dgfusion_train_env.sh` — 환경 구축 통합본. 공식 INSTALL.md + 실전에서 잡은 빌드 픽스 4종
   (빌드 격리 해제, gcc-11 강제, setuptools 59.5.0 선치, natten 인덱스 SSL 만료 우회) + 복원물 적용까지.
-- `train_net.py` — DGFusion용 학습 스크립트 복원본 (저장소 루트에 복사해 사용).
+- `train_net.py` — DGFusion용 학습 스크립트 복원본 (저장소 루트에 복사해 사용). `DGFUSION_AMP_BF16=1`이면 bf16 autocast(아래 "NaN 대책").
 - `dgfusion_training_restore.patch` — `dgfusion/dgfusion.py`·`dgfusion/modeling/criterion.py` 패치 (`git apply`).
 - `setup_cafuser_lecun.sh` — CAFuser 학습 세팅 (lecun, 기존 conda env `dgfusion` 재사용).
 - `cafuser_swin_tiny_bs6_267k_deliver_clde_lecun.yaml` — ⚠️ 3 GPU 제약 파생 config
   (bs6·LR 0.75e-4·266,667 iter = 총 샘플 수 동일). 공식 bs8 4 GPU와의 편차를 결과 보고에 반드시 명시.
-- `detectron2_nonfinite_skip.patch` — detectron2 `engine/train_loop.py` 패치(아래 "NaN 대책" 절). detectron2
+- `detectron2_nonfinite_skip.patch` — detectron2 `engine/train_loop.py` 안전장치 패치(아래 "NaN 대책" 절의 1차 대책). detectron2
   클론 루트에서 `patch -p1 < detectron2_nonfinite_skip.patch`.
 - `dgfusion_wait_and_resume.sh` — 빈 GPU 4장이 20초 간격 두 번 연속 확인되면 `--resume`으로 재개하는 대기 스크립트
   (다른 세션이 GPU를 곧바로 채우는 서버에서 30분 간격 점검이 매번 빈 틈을 놓쳐서 만든 것).
+- `act_probe.py` — 체크포인트별 모듈 최대 |활성값| 측정(fp16 넘침 진단용, `python act_probe.py <ckpt> ...`).
+- `bf16_smoke.py` — 80k 체크포인트로 bf16·fp16 autocast 순전파가 정상인지 확인.
 - `dgfusion_test_sweep.sh` — 저장된 체크포인트들을 공식 README의 test 평가 명령으로 차례로 평가
   (`bash dgfusion_test_sweep.sh <gpu> 0009999 0019999 ...`). val→test 전이 곡선용.
 
@@ -46,28 +48,46 @@ CUDA_VISIBLE_DEVICES=1,2,4,5 python train_net.py --dist-url tcp://127.0.0.1:5036
     OUTPUT_DIR output/dgfusion_swin_tiny_bs8_200k_deliver_clde
 ```
 
-## NaN 대책 (2026-09-13)
+## NaN 대책 (2026-09-13, 원인 확정·정정판)
 
-**증상**: 공식 설정(fp16 AMP) 그대로 학습하면 80k 이후 NaN으로 학습이 종료된다. jarvis에서 3회 재현됐다 —
-처음부터 학습 시 iteration 87,370, 80k 재개 후 87,842, 80k 재개 후 86,572 (jarvis의 모든 로그를 합친 서로 다른
-크래시는 이 3건뿐이다. 같은 재개 기록이 `log.txt`와 `dgfusion_resume_80k.log`에 중복 기록돼 있어 4건으로 세기 쉽다).
-`SEED: 0`이라 두 번의 80k 재개는 같은 데이터 순서로 시작했는데도 서로 다른 지점에서 죽었으므로, 특정 배치 하나가
-원인이라기보다 **80k 이후 모델 상태에서 fp16 순전파가 가끔(약 7천 iteration에 한 번) 넘치는 현상**으로 본다
-(GPU 연산의 비결정성 때문에 같은 데이터 순서라도 수치가 조금씩 달라진다). NaN 시점에 loss_ce·loss_contrastive가 NaN이고 매처가
-"Matrix contains all NaN values!"를 출력한다(= 순전파 출력 자체가 NaN). loss_depth·loss_condition은 정상값.
+**증상**: 공식 설정(fp16 AMP) 그대로 학습하면 86.5k~89.9k 구간에서 NaN으로 학습이 종료된다. 4회 재현됐다 —
+jarvis에서 처음부터 학습 시 87,370, 80k 재개 후 87,842, 80k 재개 후 86,572, yeon에서 80k 재개 후 89,855
+(jarvis의 서로 다른 크래시는 3건이다. 같은 재개 기록이 `log.txt`와 `dgfusion_resume_80k.log`에 중복 기록돼 있어
+더 많이 세기 쉽다). NaN 시점에 `loss_ce`·`loss_contrastive`가 NaN, 매처가 "Matrix contains all NaN values!"를
+출력한다(= 순전파 출력 자체가 NaN). `loss_depth`·`loss_condition`은 정상값.
 
-**원인 구조**: detectron2 `AMPTrainer.run_step` 순서는 역전파 → `_write_metrics` → `grad_scaler.step`이다.
-GradScaler는 기울기가 NaN/inf면 그 스텝의 가중치 갱신을 원래 건너뛰는데, 그 직전의 `write_metrics`가
-손실이 유한하지 않다고 `FloatingPointError`로 학습 전체를 종료시킨다.
+**원인 (측정으로 확정)**: OneFormer의 **`task_mlp` 출력이 학습 내내 한 방향으로 커져 fp16 최대값 65,504를 넘는다.**
+`act_probe.py`로 val 8장 fp32 순전파의 모듈별 최대 |활성값|을 체크포인트마다 잰 결과:
 
-**대책**: `detectron2_nonfinite_skip.patch` — `write_metrics`가 NaN 손실을 만나면 경고(`[nonfinite-skip]`,
-연속 횟수·누적 횟수 포함)를 남기고 기록만 건너뛴다. 가중치 갱신은 GradScaler가 건너뛴다. 진짜 발산이면 NaN이
-연속으로 나오므로 **20회 연속이면 종전대로 종료**한다. 모델의 정규화 층은 LayerNorm(Swin)·GroupNorm(픽셀
-디코더·depth head)뿐이라(설정의 SyncBN은 쓰이지 않는 ResNet 항목) NaN 순전파가 running 통계를 오염시킬 경로가 없다.
-CPU 스모크 테스트 통과(단발 NaN 건너뜀·정상값에서 연속 카운터 초기화·20회 연속에서 종료).
+| ckpt | 50k | 60k | 70k | 80k |
+|---|---|---|---|---|
+| `task_mlp` 출력 최대 | 52,605 | 57,533 | 60,564 | **62,918** |
+| fp16 최대 대비 | 80.3% | 87.8% | 92.5% | **96.1%** |
 
-**보고 의무**: 이 패치는 fp16 레시피를 바꾸지 않고 드문 NaN 배치만 건너뛰지만, 공식 코드와의 차이이므로
-결과 보고 시 **건너뛴 스텝 수**(로그의 `total_skipped`)를 함께 적는다.
+10k당 약 2,400~3,000씩 늘어 88k~89k에서 한계를 넘는다(학습 이미지는 증강 때문에 조금 일찍 닿는다). 백본 등 다른
+모듈은 최대 1.5k 수준이고, 가장 큰 파라미터도 |57|로 가중치 자체는 멀쩡하다. `task_mlp`의 입력은 과제 설명
+문장("the task is semantic")인데 DELIVER는 semantic 과제만 쓰므로 **모든 배치에서 입력이 같다** → 한 번 넘기
+시작하면 이후 모든 배치가 NaN이다. yeon 재개에서 89,855부터 **20회 연속** NaN이 난 것이 이것을 보여 준다.
+
+**1차 대책(불충분, 기록용)**: `detectron2_nonfinite_skip.patch` — detectron2 `write_metrics`가 NaN을 만나면 학습을
+끝내지 않고 기록만 건너뛰게 한 것(가중치 갱신은 GradScaler가 건너뜀, 20회 연속이면 종료). "드문 배치 하나가
+넘친다"는 1차 진단에 맞춘 대책이었으나, 원인이 입력과 무관한 상시 넘침이라 이것만으로는 이어갈 수 없었다
+(위 20회 연속 사례). 안전장치로는 여전히 유효해 적용해 둔다. 또한 1차 진단의 "BatchNorm이 없다"는 판단도
+틀렸다 — `dgfusion/modeling/depth_feature_fusion/concat.py`에 `nn.BatchNorm2d`가 있다(학습 모드에서는 배치
+통계를 쓰므로 이번 NaN의 원인은 아니다).
+
+**최종 대책**: **bf16 혼합정밀**. `train_net.py`에서 환경변수 `DGFUSION_AMP_BF16=1`이면 detectron2 `AMPTrainer`의
+autocast 정밀도를 `torch.bfloat16`으로 바꾼다(기본값은 공식 fp16 그대로). bf16은 fp32와 같은 지수 범위라
+넘침이 사라지고 속도·메모리는 fp16과 같다(RTX 3090에서 약 0.97 s/iter, 18.5 GiB). `bf16_smoke.py`로 80k
+체크포인트의 bf16 순전파(MSDeformAttn 커스텀 커널 포함)가 정상이고 출력이 유한함을 확인했다.
+
+```bash
+DGFUSION_AMP_BF16=1 bash dgfusion_wait_and_resume.sh   # 또는 train_net.py 직접 호출 앞에 같은 환경변수
+```
+
+**보고 의무**: 80k 이후 구간은 **fp16이 아니라 bf16으로 학습**했다는 점(공식 레시피와의 차이)을 결과와 함께 적는다.
+bf16은 fp16보다 가수 비트가 적어(8 vs 10) 활성값 정밀도가 낮다. 공개 가중치(저자 학습)가 같은 문제를 겪었는지는
+알 수 없다(학습 코드 미공개). CAFuser도 같은 `task_mlp`를 쓰므로 fp16 학습 중 같은 넘침이 날 수 있다.
 
 ## 프로토콜 주의
 

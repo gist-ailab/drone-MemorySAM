@@ -522,6 +522,12 @@ def main(args):
         return res
 
     trainer = Trainer(cfg)
+    # fp16 autocast overflows in OneFormer task_mlp (input-independent task text; its output max grows
+    # 52.6k@50k -> 62.9k@80k iters and crosses the fp16 max 65504 near 88k), after which every batch is NaN.
+    # bf16 keeps the fp32 exponent range at the same speed/memory. Opt-in so the default stays the official fp16.
+    if os.environ.get("DGFUSION_AMP_BF16") == "1" and hasattr(trainer._trainer, "precision"):
+        trainer._trainer.precision = torch.bfloat16
+        logging.getLogger("detectron2.trainer").info("AMP autocast precision overridden to bfloat16 (DGFUSION_AMP_BF16=1)")
     trainer.resume_or_load(resume=args.resume)
     if args.machine_rank == 0:
         net_params = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
