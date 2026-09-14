@@ -78,13 +78,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **E7 시드 902 · 903** | hpca100 0 · 1 | MUSES 3모달 | 40 | ep20 — 77.12 · 78.12 | 09-15 09시경 | E7 기준선의 시드 페어(E1M·E13M 시드2·3 짝) |
 | **E1M 시드 903** | hpca100 2 | MUSES 3모달 | 40 | ep20 — 78.32 | 09-15 09시경 | E1M 셋째 시드 |
 | **E1M 200ep 풀 런**(시드 3407) | hpca100 3 | MUSES 3모달 | 200 | ep20 — 79.05 | 09-17 04시경 | MUSES test 서버 제출 후보 |
-| **E1 확정 시드4** | yeon 0,1 | DELIVER 4모달 | 200 | ep1 (09-15 04:54 기동, TAPS per_modal 확인) | 09-20 새벽경(1.26 it/s) | 확정 페어 넷째 |
+| **E1 확정 시드4** 🔴 TAPS 미적용(무효) | yeon 0,1 | DELIVER 4모달 | 200 | ep4 — yeon 코드에 TAPS 없음(total_trainable 54,559,519 = C3 시드4) | 09-20 새벽경(1.26 it/s) | 확정 페어 넷째 |
 | **C3-only 200ep 시드4** (매칭 분모) | yeon 2,3 | DELIVER 4모달 | 200 | ep1 (TAPS 없음 확인) | 09-20 새벽경 | E1 시드4 짝 |
 | **E-LoRA arm C 시드 902** | yeon 6,7 | DELIVER 4모달 | 200 | ep1 (shared_residual 3.93M 확인) | 09-20 새벽경 | bengio A·B 3시드와 짝 |
 | **E-LoRA arm C 시드 903** (대기 기동) | jarvis 0,3 | DELIVER 4모달 | 200 | E1 시드2 재채점 종료 + GPU 해제 후 자동 기동(`wait_elorac_s903`) | 09-15 08시 기동 예정 | 〃 |
 
 > 🔴 위 진행 값은 전부 트레이너 val 이며 legal 이 아니다. 판정은 `val.py` 하네스(1024·native-GT BS1) 또는 `tools/eval_muses_official.py` 재채점으로만 한다.
-> ✅ **09-15 MCubeS E1Mc 3시드 게이트 통과**: final 평균 58.44 vs 기준선 final 57.05 = **+1.39**(3/3 양수, 게이트 +0.5) — E1 이 세 벤치 모두 양수(§5-25). E1Mc − E13Mc = +0.99.
+> 🔴 **09-15 07:30 철회 — MCubeS E1Mc 게이트 통과 무효**: yeon 체크아웃(378864f)에 TAPS 코드가 없어 E1Mc 0827·0828 과 yeon E1 확정 시드4 가 TAPS 없이 돌았다(total_trainable = 기준선). 같은 시드 재실행이 +1.1~1.35 흔들려 MCubeS 는 E1·E13 모두 판별 불가(§5-25). 재판정 = hpca100 동일 코드 기준선 B0Mc 3시드(9628ec6). yeon E1 시드4·C3 시드4 는 사용자 동의 후 새 체크아웃에서 재기동 예정(생각정리).
 > 🟡 **(b) 잠정**: 5시드 top1 규칙 24클래스 54.66 대비 E13 확정 3시드 Δtest +1.31 · Δ24 +0.67 — 잠정 통과(§5-24), 확정은 (c).
 > ✅ **09-14~15 완주·확정**: E13 확정 3시드(평균 test 55.14 · 24클래스 55.33, 게이트는 분모 (c) 완주 후 판정 — §5-22) · E-LoRA arm C(legal test 55.72 / val 67.16 · 24클래스 55.09 — 3자 1페어 §5-23) · MCubeS E13Mc(같은 척도 +0.40, 게이트 근소 미달 — §5-21 정정).
 > 📌 **자동 연쇄**: `scripts/run_legal_rescore_jarvis_chain.sh`(770eaf5, REPO 환경변수로 yeon 겸용) — 대기 중 = jarvis `rescore_e1conf_s2`·`rescore_e1conf_s3`.

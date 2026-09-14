@@ -196,6 +196,13 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
    세션 기준 감시(`watch1.sh`)는 "세션 생존 + 로그 무갱신" 을 정지로 읽는데, 학습이 끝나도 셸이 남으면 이 조합이 된다.
    완주 여부는 **로그의 `Total Training Time` 과 학습 프로세스 0개**(연쇄 콘솔의 `CHAIN_TRAIN_DONE`)로 판정하고,
    완주가 확인되면 그 학습 감시는 TaskStop 한다. 남은 E1 확정 시드2·3 도 같은 경보가 날 수 있다.
+   🔴🔴 **기동 검증에 `total_trainable` 대조를 반드시 넣어라 — config 덤프는 모델 결선을 증명하지 않는다(2026-09-15 실사고).**
+   yeon 체크아웃(`drone-MemorySAM-p38`, HEAD 378864f)은 TAPS 도입(7d83c11) 이전 코드라 `MODEL.TAPS` 가 **오류 없이 무시**됐다.
+   "TAPS 덤프에 ENABLE True" 는 config 를 그대로 찍은 것이라 통과처럼 보였고, 그 결과 **E1Mc 두 시드와 E1 확정 시드4 가
+   TAPS 없이** 돌았다(E1Mc 게이트 통과 판정 철회, 카드 §5-25). 증거는 로그의 `[E-LORA] … total_trainable=` 한 줄이었다
+   (TAPS 켠 E1 = 58,790,687 / 기준선 = 54,559,519). **새 서버·새 체크아웃에서 카드를 띄울 때는 ① 그 체크아웃이 카드 코드
+   커밋을 포함하는지(`git merge-base --is-ancestor <커밋> HEAD`) ② `total_trainable` 이 같은 카드의 참조 런과 같은지** 둘 다 확인하라.
+   평가도 같다 — `val.py` 가 `ReliaDINO loaded: missing=0 unexpected=0` 이 아니면 그 수치는 쓰지 마라.
 
 ⚠️ **두 확정 런의 조건 차이를 판정 각주로 남겨라.** E1 = GPU2장·`EVAL_INTERVAL 2`, E13 = GPU2장·`EVAL_INTERVAL 5`.
 val-best 선택 granularity 가 다르다(E13 은 5ep 단위로만 후보가 생긴다).
