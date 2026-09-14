@@ -5,7 +5,9 @@
 #         configs/eval/jarvis-deliver_rgbdel_P46_c3only_seed20260902_eval1024_E13_confirm200_s2.yaml \
 #         outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260902_E13_confirm200_s2/DELIVER_ReliaDINO-ViTL16_idel 1 7
 #
-# 🔴 jarvis 전용(레포·pylibs 경로 하드코딩). 200ep 확정 런이 **완주한 뒤** val-best 로 legal 재채점을
+# 🔴 jarvis 기본(레포 경로는 환경변수 REPO 로 바꿀 수 있다 — yeon 은
+#    REPO=/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38). pylibs_p34·anaconda3 MMSS_SAM 은
+#    두 서버 공통(2026-09-14 yeon 기동 환경 실측). 200ep 런이 **완주한 뒤** val-best 로 legal 재채점을
 #    test / val 두 GPU 에 병렬로 돌린다. 완주 전에는 기동하지 않는다(val-best 는 완주 후 확정 — 늦은 갱신 선례
 #    E1 s1 ep138 · E13 s2 ep160 · E1 s2 ep112). 서버 배치 위치 = /SSDb/jemo_maeng/, 이 파일이 정본이다.
 #
@@ -14,7 +16,8 @@
 # 산출: logs/<태그>_{test,val}_<ts>.log , 이 스크립트 콘솔에 CHAIN_* 마커.
 set -u
 TAG="$1"; KEY="$2"; TLOG="$3"; CFG="$4"; D="$5"; GT="$6"; GV="$7"
-cd /SSDb/jemo_maeng/src/drone-MemorySAM || exit 1
+REPO="${REPO:-/SSDb/jemo_maeng/src/drone-MemorySAM}"
+cd "$REPO" || { echo "CHAIN_ABORT: 레포 경로 없음 ($REPO)"; exit 1; }
 nproc_of() { pgrep -af 'train_reliadino.py' | grep -- "$KEY" | grep -vc 'pgrep\|bash -c'; }
 
 # 사전 검증 — 기동 전에 틀린 것을 잡는다
