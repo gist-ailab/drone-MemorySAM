@@ -31,6 +31,8 @@ CAFuser의 LR이 1e-4로 동일**하다 (과거 기록의 "1.8×" 교란은 MUSE
   클론 루트에서 `patch -p1 < detectron2_nonfinite_skip.patch`.
 - `dgfusion_wait_and_resume.sh` — 빈 GPU 4장이 20초 간격 두 번 연속 확인되면 `--resume`으로 재개하는 대기 스크립트
   (다른 세션이 GPU를 곧바로 채우는 서버에서 30분 간격 점검이 매번 빈 틈을 놓쳐서 만든 것).
+- `after_train_sweep.sh` — 학습 종료(model_final 생성 + 학습 프로세스 소멸)를 서버 안에서 감지해, 그 순간 비는 GPU로 남은 체크포인트 test 평가를 창별로 병렬 기동. 세션이 끊겨도 평가가 이어지게 하려고 만든 것.
+- `cafuser_test_sweep.sh` — CAFuser용 test 평가 스윕(공식 README test 명령).
 - `act_probe.py` — 체크포인트별 모듈 최대 |활성값| 측정(fp16 넘침 진단용, `python act_probe.py <ckpt> ...`).
 - `bf16_smoke.py` — 80k 체크포인트로 bf16·fp16 autocast 순전파가 정상인지 확인.
 - `dgfusion_test_sweep.sh` — 저장된 체크포인트들을 공식 README의 test 평가 명령으로 차례로 평가
