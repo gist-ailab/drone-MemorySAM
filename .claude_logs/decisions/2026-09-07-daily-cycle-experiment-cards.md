@@ -423,6 +423,26 @@ Wall·Static 몇 클래스의 문제가 아니라, **결합 모델 전체가 E2 
 **출처**: hpca100 `logs/E12_legal_test_20260910_101317.log`(1897장·1024·BS1, 진행 표시줄 장수 자동 검증
 통과) · B0 는 bengio `logs/b0_eval_test_20260908_085257.log`(ckpt `epoch40_65.4_top1`).
 
+### 5-25. ✅ E1Mc(E1 의 MCubeS 이식) 3시드 — 사전 등록 게이트 통과, E1 이 세 벤치 모두 양수 (2026-09-15)
+
+yeon 두 런(0827·0828)이 06:1x~06:3x KST 에 200 epoch 완주(Traceback 0), hpca100 시드3407 은 09-14 16:36 완주.
+게이트(§4 MCubeS 이식 예약, 사전 등록) = **3시드 평균 Δ vs 매칭 C3-off ≥ +0.5, final-epoch 기준**. MCubeS 는 val=test 라
+아래 값은 모두 트레이너가 찍은 test 수치이며, §0-1 척도 열 규칙대로 기준선 척도를 적는다.
+
+| 시드 | E1Mc final (ep200) | 기준선 **final** | **Δ final** | E1Mc val-best | 기준선 val-best | Δ val-best(참고) |
+|---|---|---|---|---|---|---|
+| 3407 | 58.68 | 56.97 | **+1.71** | 58.74@188 | 57.93 | +0.81 |
+| 20260827 | 57.71 | 56.61 | **+1.10** | 58.68@170 | 57.67 | +1.01 |
+| 20260828 | 58.93 | 57.58 | **+1.35** | 59.41@178 | 58.62 | +0.79 |
+| **평균** | **58.44** | **57.05** | **+1.39** | 58.94 | 58.07 | +0.87 |
+
+**판정: 게이트 통과 — 3/3 시드 양수, 평균 +1.39(게이트 +0.5 의 약 세 배).** val-best 끼리(판정 척도 아님)로도 +0.87.
+같은 시드끼리 **E1Mc − E13Mc = +0.99**(final 평균) — MCubeS 에서는 센서별 prototype(C3 permodal)을 더한 E13 보다 4탭 읽기 단독인
+E1 이 확실히 높다. DELIVER 확정(E1 시드1 Δ24 +0.58, 24클래스로 E13 과 동급) · MUSES(E1M +0.34, E13M 은 rain/night 손실 재현)와
+합치면 **E1 은 세 벤치 모두 양수, E13 은 DELIVER 에서만 앞선다.** 헤드라인 후보로 E1 의 무게가 커졌다(판단은 생각정리).
+출처: yeon `logs/E1Mc_{0827,0828}_launch.log` · hpca100 `/tmp/jemo_scratch/logs/hpca100_E1Mc_3407_launch.log` 의 `[Val] epoch:200` 줄.
+기준선 final: yeon `logs/yeon-mcubes_rgbadn_P39_1_rank/run.log` · `…_seed20260827_launch.log` · `…_seed20260828_launch.log`.
+
 ### 5-24. 🟡 (b) 5시드 기준선 24클래스 잠정값 — 같은 선택 규칙이면 E13 확정 3시드가 두 조건을 넘는다 (2026-09-15, 확정은 (c))
 
 N6 재선택(08-25~31) 원 로그를 jarvis 두 번째 체크아웃에서 찾았다 — `/home/jemo_maeng/src/drone-MemorySAM-develop/logs/n6_batch_eval/`
