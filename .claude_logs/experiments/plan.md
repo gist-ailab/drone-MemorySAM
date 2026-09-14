@@ -63,26 +63,29 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **lecun** | — | 🔴 타인(openvla) 점유 | — |
 | ~~B200~~ | — | 🔴 상실(07-15 마감) | — |
 
-## 🔬 실행 중 (2026-09-14 20:45 KST 갱신 — 노션 논문 페이지 §6.1과 동일 스냅샷)
+## 🔬 실행 중 (2026-09-15 04:40 KST 실측 — 노션 논문 페이지 §6.1과 동일 스냅샷)
 
 > ⚠️ **이 표는 "지금 도는 것"만 담는다.** 완주·종결된 런은 registry/analysis로 즉시 이동.
 > 🔗 **노션 동기화 규칙(2026-09-08, CLAUDE.md §3)**: 이 표·대기열이 바뀌면 같은 날 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, `33d05310…`) §4·§6을 `.claude/skills/notion-experiment-log/paper_page_builder.py`(절 단위 교체, 멱등; 차트는 `paper_page_charts.py`)로 함께 갱신한다.
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(🔴 트레이너 val — legal 아님) | ETA | 목적·게이트 |
 |---|---|---|---|---|---|---|
-| **E1 확정 시드2** | jarvis 0,3 | DELIVER 4모달 | 200 | ep142 — 최고 68.76@134 | 09-15 07:00 | 3페어 중 둘째 |
-| **E1 확정 시드3** | jarvis 2,4 | DELIVER 4모달 | 200 | ep82 — 최고 68.53@70 (09-13 약 5시간 공백 뒤 AUTO_RESUME) | 09-16 02:40 | 3페어 중 셋째 |
-| **E-LoRA arm C**(3.93M) | yeon 6,7 | DELIVER 4모달 | 200 | ep186 — 최고 67.99@56 | 09-14 21:45 | 3자 비교(A/B/C) |
-| **E1Mc** 시드0827·0828 | yeon 4,5 | MCubeS | 200 | ep84 — 57.26 / 57.85 | 09-15 06:40 | E1 이식 대조 |
-| **CAFuser Swin-T 대조군** | lecun 0,1,2 | DELIVER CLDE | 267k iter | iter 236k/267k | 09-15 02:00 | 외부 기준선 재현(공개 val 68.12/test 55.80) |
+| **E1 확정 시드2** | jarvis 0,3 | DELIVER 4모달 | 200 | ep192 — 최고 68.76@134 | 09-15 06:55 → legal 재채점 자동 연쇄(`rescore_e1conf_s2`) | 3페어 중 둘째 |
+| **E1 확정 시드3** | jarvis 2,4 | DELIVER 4모달 | 200 | ep130 — 최고 68.53@70 | 09-16 02:20 → 자동 연쇄(`rescore_e1conf_s3`) | 3페어 중 셋째 |
+| **C3-only 200ep 시드 902** (확정 매칭 분모) | jarvis 1,7 | DELIVER 4모달 | 200 | ep18 — 최고 64.48@16 | 09-17 12시경 | 분모 (c) — E1·E13·E-LoRA 시드2 짝 |
+| **C3-only 200ep 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep18 — 최고 65.01@16 | 09-17 12시경 | 분모 (c) — 시드3 짝 |
+| **E-LoRA A·B × 시드 902·903** (4런) | bengio 0~7 (각 2장) | DELIVER 4모달 | 200 | ep8~10 — 61.3~63.3 | 09-18 전후 | A(센서별 r16) 대 B(완전공유 r16) 3시드 판정. 생각정리 기동 |
+| **E7 시드 902 · 903** | hpca100 0 · 1 | MUSES 3모달 | 40 | ep20 — 77.12 · 78.12 | 09-15 09시경 | E7 기준선의 시드 페어(E1M·E13M 시드2·3 짝) |
+| **E1M 시드 903** | hpca100 2 | MUSES 3모달 | 40 | ep20 — 78.32 | 09-15 09시경 | E1M 셋째 시드 |
+| **E1M 200ep 풀 런**(시드 3407) | hpca100 3 | MUSES 3모달 | 200 | ep20 — 79.05 | 09-17 04시경 | MUSES test 서버 제출 후보 |
+| **E1Mc** 시드0827·0828 | yeon 4,5 | MCubeS | 200 | ep144 — 57.75 · 58.18 | 09-15 06:10~06:30 | E1Mc 3시드 판정(기준선 final 척도) |
+| **CAFuser Swin-T 대조군** | lecun 0,1,2 | DELIVER CLDE | 267k iter | iter 266k/267k | 09-15 04:45경 | 외부 기준선 재현(공개 val 68.12/test 55.80) |
 
 > 🔴 위 진행 값은 전부 트레이너 val 이며 legal 이 아니다. 판정은 `val.py` 하네스(1024·native-GT BS1) 또는 `tools/eval_muses_official.py` 재채점으로만 한다.
-> ✅ **2026-09-14 완주·확정**: **E13 확정 시드2**(legal test **53.86** / val **66.67** · 24클래스 **55.25** · RailTrack 20.49 · val-best ep160). 시드1과 24클래스 0.12 차 — 2페어 예비. 시드2·3 매칭 분모가 등록돼 있지 않아 3페어 게이트 판정 보류(카드 §5-20, 생각정리 결정 사항).
-> 🔴 **2026-09-14 E13 확정 3시드 완결**: 시드3 legal test **55.88** / val **67.02** · 24클래스 55.59. 3시드 평균 test 55.14 · 24클래스 **55.33**(표준편차 0.24). 게이트는 **분모에 따라 갈린다** — 등록 분모 seed821 이면 Δtest +1.56 · Δ24 +0.65 로 통과, 5시드 평균 54.39 면 Δtest +0.75 로 미달. 분모 결정은 생각정리 세션(카드 §5-22).
-> ❌ **2026-09-14 MCubeS**: **E13Mc 3시드 완주 — 사전 등록 게이트 미달**(final 평균 57.45 vs 매칭 C3-off 58.07 = −0.62; 카드에 가장 유리한 val-best 대 val-best 로도 +0.15). E1Mc 시드3407 final 58.68(+0.75), 나머지 두 시드는 yeon 09-15 완주 후 판정(카드 §5-21). hpca100 4장 16:53 부터 유휴.
-> 📌 **자동 연쇄**: `scripts/run_legal_rescore_jarvis_chain.sh`(efe313d) — 완주 판정(`Total Training Time` + 학습 프로세스 0개) 뒤 val-best 로 test·val 을 두 GPU 병렬 재채점. 확정 런 네 벌 eval config 는 22c426b. E13 시드2 에서 첫 사용(11:52 기동 → 12:55 완료).
-> ⚠️ **빈 GPU 14장**(20:45): jarvis 1·5·6·7 · hpca100 0~3 · bengio 0·1·3·4·5·6 — 카드 미정. 재채점 연쇄 대기 = yeon `rescore_elorac`(arm C). bengio 4장은 06:55 유휴였다가 10:41 타 사용자 점유로 상실.
-> 🗑 이 갱신에서 내린 종결 런: E13 확정 시드2(09-14 완주) · E1 확정 시드1 · E-LoRA arm A·B · P52 두 시드 · E13M 시드2 · E15 · E14·E13s3 재채점(모두 §5-18·§5-19 판정 완료)
+> ✅ **09-14~15 완주·확정**: E13 확정 3시드(평균 test 55.14 · 24클래스 55.33, 게이트는 분모 (c) 완주 후 판정 — §5-22) · E-LoRA arm C(legal test 55.72 / val 67.16 · 24클래스 55.09 — 3자 1페어 §5-23) · MCubeS E13Mc(같은 척도 +0.40, 게이트 근소 미달 — §5-21 정정).
+> 📌 **자동 연쇄**: `scripts/run_legal_rescore_jarvis_chain.sh`(770eaf5, REPO 환경변수로 yeon 겸용) — 대기 중 = jarvis `rescore_e1conf_s2`·`rescore_e1conf_s3`.
+> ⚠️ **빈 GPU**(04:40): yeon 0~3·6·7(6장) — 카드 미정. lecun 0~2 는 CAFuser 완주(04:45경) 후 빔.
+> 🗑 이 갱신에서 내린 종결 런: E13 확정 시드3 · E-LoRA arm C(재채점 완료) · MCubeS hpca100 4런(09-14 16:53 완주)
 
 **카드 넷 legal 완결(09-09, val-best ckpt · `val.py` 1024 BS1 native GT)** — 판정 주체 = 생각정리 세션:
 
