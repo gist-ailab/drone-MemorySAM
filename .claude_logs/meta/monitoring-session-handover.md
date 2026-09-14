@@ -192,6 +192,10 @@ NAS 에는 쓰면 안 되는 파일만 남고 정작 필요한 것이 사라졌�
    ✅ 200ep 확정 런 재채점은 이제 `scripts/run_legal_rescore_jarvis_chain.sh`(jarvis, efe313d)가 완주 판정
    (`Total Training Time` + 학습 프로세스 0개) 뒤 val-best 로 test/val 을 두 GPU 에 병렬 기동한다. 확정 런 네 벌의
    eval config 는 22c426b. 첫 사용 = E13 확정 시드2(11:52 자동 기동, test 1897 · val 2005 검증 통과).
+   ⚠️ **완주 후 tmux 세션이 닫히지 않는 런은 학습 감시가 `STALLED_LOG` 오경보를 낸다(2026-09-14 E13 확정 시드3).**
+   세션 기준 감시(`watch1.sh`)는 "세션 생존 + 로그 무갱신" 을 정지로 읽는데, 학습이 끝나도 셸이 남으면 이 조합이 된다.
+   완주 여부는 **로그의 `Total Training Time` 과 학습 프로세스 0개**(연쇄 콘솔의 `CHAIN_TRAIN_DONE`)로 판정하고,
+   완주가 확인되면 그 학습 감시는 TaskStop 한다. 남은 E1 확정 시드2·3 도 같은 경보가 날 수 있다.
 
 ⚠️ **두 확정 런의 조건 차이를 판정 각주로 남겨라.** E1 = GPU2장·`EVAL_INTERVAL 2`, E13 = GPU2장·`EVAL_INTERVAL 5`.
 val-best 선택 granularity 가 다르다(E13 은 5ep 단위로만 후보가 생긴다).
