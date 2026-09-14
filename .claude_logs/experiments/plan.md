@@ -70,7 +70,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(🔴 트레이너 val — legal 아님) | ETA | 목적·게이트 |
 |---|---|---|---|---|---|---|
-| **E1 확정 시드2** | jarvis 0,3 | DELIVER 4모달 | 200 | ep192 — 최고 68.76@134 | 09-15 06:55 → legal 재채점 자동 연쇄(`rescore_e1conf_s2`) | 3페어 중 둘째 |
 | **E1 확정 시드3** | jarvis 2,4 | DELIVER 4모달 | 200 | ep130 — 최고 68.53@70 | 09-16 02:20 → 자동 연쇄(`rescore_e1conf_s3`) | 3페어 중 셋째 |
 | **C3-only 200ep 시드 902** (확정 매칭 분모) | jarvis 1,7 | DELIVER 4모달 | 200 | ep18 — 최고 64.48@16 | 09-17 12시경 | 분모 (c) — E1·E13·E-LoRA 시드2 짝 |
 | **C3-only 200ep 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep18 — 최고 65.01@16 | 09-17 12시경 | 분모 (c) — 시드3 짝 |
@@ -84,6 +83,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **E-LoRA arm C 시드 903** (대기 기동) | jarvis 0,3 | DELIVER 4모달 | 200 | E1 시드2 재채점 종료 + GPU 해제 후 자동 기동(`wait_elorac_s903`) | 09-15 08시 기동 예정 | 〃 |
 
 > 🔴 위 진행 값은 전부 트레이너 val 이며 legal 이 아니다. 판정은 `val.py` 하네스(1024·native-GT BS1) 또는 `tools/eval_muses_official.py` 재채점으로만 한다.
+> ✅ **09-15 E1 확정 시드2 완주**: legal test **55.35** / val **67.47** · 24클래스 **55.85**(§5-26). E1 2시드 평균 24클래스 55.55. 판정은 같은 코드 기준선 902·903 완주(09-17) 후.
 > 🔴 **09-15 07:30 철회 — MCubeS E1Mc 게이트 통과 무효**: yeon 체크아웃(378864f)에 TAPS 코드가 없어 E1Mc 0827·0828 과 yeon E1 확정 시드4 가 TAPS 없이 돌았다(total_trainable = 기준선). 같은 시드 재실행이 +1.1~1.35 흔들려 MCubeS 는 E1·E13 모두 판별 불가(§5-25). 재판정 = hpca100 동일 코드 기준선 B0Mc 3시드(9628ec6). yeon E1 시드4·C3 시드4 는 사용자 동의 후 새 체크아웃에서 재기동 예정(생각정리).
 > 🟡 **(b) 잠정**: 5시드 top1 규칙 24클래스 54.66 대비 E13 확정 3시드 Δtest +1.31 · Δ24 +0.67 — 잠정 통과(§5-24), 확정은 (c).
 > ✅ **09-14~15 완주·확정**: E13 확정 3시드(평균 test 55.14 · 24클래스 55.33, 게이트는 분모 (c) 완주 후 판정 — §5-22) · E-LoRA arm C(legal test 55.72 / val 67.16 · 24클래스 55.09 — 3자 1페어 §5-23) · MCubeS E13Mc(같은 척도 +0.40, 게이트 근소 미달 — §5-21 정정).
