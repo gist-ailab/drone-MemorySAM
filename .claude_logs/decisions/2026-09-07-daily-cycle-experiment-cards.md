@@ -44,6 +44,9 @@ depends: decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md §3.5
 | 분모의 얇은 객체 4클래스 | **43.25** (Pole 44.46 · Pedestrian 73.81 · Static 30.10 · TrafficLight 24.64) |
 | 분모 로그 | bengio `/SSDe/jemo_maeng/src/drone-MemorySAM-daily/logs/e9_la_tau0_20260907_222205.log` (1897장·3.05s/it = BS1 확인) |
 
+🔴 **기준선 척도 열 필수(2026-09-15, 생각정리 지시).** 모든 판정표에 **기준선 값이 val-best 인지 final 인지, legal 재채점인지 트레이너 값인지**를
+열로 적어라. MCubeS E13Mc 를 카드 final 대 기준선 val-best 로 비교해 −0.62(실제 +0.40)로 잘못 보고한 사고가 계기다.
+
 🔴 **두 분모의 24클래스 값이 0.01 차이로 붙어 있다 — 판정표에 어느 것을 썼는지 반드시 적어라.**
 
 | 분모 | 쓰는 곳 | 25클래스 | RailTrack | 24클래스 |
@@ -235,6 +238,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | 둘 다 미달 | 기동 안 함 | — | — |
 
 - 매칭 기준선 = MCubeS 통일 레시피 C3-off 3시드 {57.93, 57.67, 58.62} = 58.07±0.49(registry N4). E13Mc는 C3-on(N4b) config 파생.
+  🔴 **척도 주의(09-15 정정)**: 위 {57.93, 57.67, 58.62} 는 **val-best** 다. 게이트 척도인 **final(ep200)** 은 **{56.97, 56.61, 57.58} = 57.05** — 판정은 final 대 final 로만 한다(§5-21 정정).
 - MCubeS 로더는 test split을 'val'로 읽으므로 트레이너 val-best 선택이 test-best와 동치 → **final-epoch 값을 판정 기준**, val-best는 병기만.
 - 기동 검증: TAPS 덤프 `[6,12,18,24] per_modal`, (E13Mc) `SRC: permodal`와 `[C3-M]` 로그에 네 센서(image·aolp·dolp·nir) 손실이 모두 찍히는지, `fix_seeds(<시드>)`, RANDOM INIT 없음, 진행 표시줄.
 
