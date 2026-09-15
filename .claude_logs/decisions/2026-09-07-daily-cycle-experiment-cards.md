@@ -178,7 +178,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 4. 구현 워커: 카드별 지시문을 이 문서에서 복사해 `labcode -p` / `glmcode -p`로 위임, 이 세션이 diff 검수 + 스모크(기본 off byte-동일).
 5. **속도 실측(2026-09-08, yeon 4090 24GB, DELIVER 768² 4센서 BS1)**: 학습 1 epoch ≈26분, **학습 중 평가(Val 2,005장 + Test 1,897장, BS1) ≈28분/2 epoch → 벽시계의 ≈35%가 평가**. **BS2는 첫 backward에서 즉시 OOM(22.3GiB 할당)** → 4090에서는 배치를 못 키운다(학습 중 3GiB로 보이는 순간은 평가 구간). 처방: 새 config는 `EVAL.BATCH_SIZE 4`(BS 불변성 ISSUE-033에서 확인됨)·`EVAL_INTERVAL 5`·**학습 중 Test 평가 끄기**(선택에 안 쓰는 test-peeking, 정본은 오프라인 재채점)로 평가 비중을 10% 미만으로. 진행 중 런은 재시작 비용(수십 시간)이 커서 그대로 둔다. A100 40GB(hpca100)에서는 BS2 가능성 있음(미실측).
 
-6. 🔴 **메모리 제약(2026-09-15 실측, 생각정리 결정)**: **TAPS 를 켠 MCubeS 런(E1Mc 계열)은 24GB 카드에 들어가지 않는다.** A100 에서 24.2GB 를 쓰고, lecun 24GB 카드에서는 첫 반복에 CUDA OOM(23.46/23.56GiB)으로 죽었다. 그래디언트 체크포인팅은 ISSUE-027(멀티모달 LoRA 기울기 오염) 때문에 쓸 수 없다. → **E1 레시피 MCubeS 런은 hpca100(40GB) 전용**이다. 같은 설정의 기준선 B0Mc(TAPS 없음)도 24GB 카드에서는 23.8GB 로 한계에 붙고 hpca100 대비 약 6배 느리다(4.66 s/it 대 1.30 it/s). 과거 yeon 3090 에서 E1Mc 가 돌았던 것은 옛 체크아웃에 TAPS 가 빠져 있었기 때문이다(§5-25).
+6. 🔴 **메모리 제약(2026-09-15 실측, 생각정리 결정)**: **TAPS 를 켠 MCubeS 런(E1Mc 계열)은 24GB 카드에 들어가지 않는다.** A100 에서 24.2GB 를 쓰고, lecun 24GB 카드에서는 첫 반복에 CUDA OOM(23.46/23.56GiB)으로 죽었다. 그래디언트 체크포인팅은 ISSUE-027(멀티모달 LoRA 기울기 오염) 때문에 쓸 수 없다. → **E1 레시피 MCubeS 런은 hpca100(40GB) 전용**이다. 같은 설정의 기준선 B0Mc(TAPS 없음)도 24GB 카드에서는 23.8GB 로 한계에 붙고 hpca100 대비 약 6배 느리다(4.66 s/it 대 1.30 it/s). 과거 yeon 3090 에서 E1Mc 가 돌았던 것은 옛 체크아웃에 TAPS 가 빠져 있었기 때문이다(§5-25). **TAPS 없는 B0Mc 도 lecun 24GB 에서 ep1 도중 backward OOM(13:24, 23.56GiB 중 179MiB 남음)으로 죽었다 — 이 MCubeS 레시피 전체가 24GB 카드에서 안정적이지 않다.**
 
 ## 4. 등재
 - plan.md 대기열에 카드 행 추가(B0·E0·E7·E1·E2·E3·E4·E8 순), 각 행 EPOCHS 40 명시.
@@ -427,7 +427,7 @@ Wall·Static 몇 클래스의 문제가 아니라, **결합 모델 전체가 E2 
 **출처**: hpca100 `logs/E12_legal_test_20260910_101317.log`(1897장·1024·BS1, 진행 표시줄 장수 자동 검증
 통과) · B0 는 bengio `logs/b0_eval_test_20260908_085257.log`(ckpt `epoch40_65.4_top1`).
 
-### 5-28. ✅ MUSES 시드 페어 보강 — 공식 재채점 E7 시드 902·903 · E1M 시드3(ep35): E1M 3페어 평균 +0.52, E13M 2페어 평균 +1.13 (2026-09-15)
+### 5-28. ✅ MUSES 시드 페어 보강 — E1M "일관된 소폭 양성, 통과선 미달"(3페어 +0.52) · E13M 게이트 ①② 통과(2페어 +1.13), MUSES 에서는 E13 우위 (2026-09-15)
 
 `tools/eval_muses_official.py`(공식 native 1080×1920, val 250장), lecun GPU1·2, develop 769239d 체크아웃, `--dataset-root /SSDb/jemo_maeng/dset/MUSES`.
 hpca100 체크포인트를 md5 대조 복사해 채점했다. 서버를 옮긴 영향은 두 가지로 통제했다.
@@ -448,7 +448,11 @@ hpca100 체크포인트를 md5 대조 복사해 채점했다. 서버를 옮긴 �
 - 시드 902: clear/day +1.32 · clear/night −0.23 · fog/day −1.09 · fog/night +0.52 · rain/day −1.73 · rain/night +0.81 · snow/day +0.53 · snow/night +0.84
 - 시드 903: clear/day +0.27 · clear/night +0.29 · fog/day +0.53 · fog/night −0.77 · rain/day +0.97 · rain/night +2.01 · snow/day +0.75 · snow/night −0.20
 
-**판정 재료(판정은 생각정리)**: E1M 은 세 페어 모두 양수(+0.34 / +0.80 / +0.41)이고 평균 +0.52 다. E13M 은 두 페어 모두 +0.5 를 넘고(+0.72 / +1.53) E1M 보다도 두 페어 모두 높다.
+**✅ 판정(생각정리, 09-15) — lecun 채점 채택(대조군 차이 +0.0018)**
+- **E1M(4탭)**: E7 대비 3페어 +0.34 / +0.80 / +0.41, 평균 +0.52. 세 페어 모두 양수이고 두 시드에서 되풀이되는 조건 손실이 없다. 다만 스크린 통과선(+1.0)에 못 미친다 → **"일관된 소폭 양성, 통과선 미달"**.
+- **E13M(4탭 + 센서별 prototype)**: E7 대비 2페어 +0.72 / +1.53(평균 +1.13), E1M 대비 +0.38 / +0.73 → **게이트 ①② 통과, MUSES 에서는 E1M 보다 높다.** rain/night 손실(E1M 대비 두 시드 −1.8)은 각주로 둔다.
+- **벤치별 우열이 갈린다**: MUSES 는 E13 우위, DELIVER 는 24클래스로 동급(E1 2시드 55.55 대 E13 3시드 55.33), MCubeS 는 hpca100 같은 코드 재판정(09-16)이 정한다. **헤드라인 레시피는 09-16 MCubeS 와 09-17 DELIVER 매칭 판정을 모두 본 뒤 정한다.**
+- 📌 후속: E13M 만 2페어라 **E13M 시드3(20260903, 40ep)** 을 hpca100 에 올린다(`configs/hpca100-muses_rgbel_P39_1_physaugoff_taps_c3permodal_screen40_E13M_s3.yaml`, 시드2 에서 SEED·SAVE_DIR 과 저장 설정만 변경). 순서는 MCubeS 0827 쌍 다음, 09-16 오전 MCubeS 세 런이 끝나 비는 자리.
 E7 기준선 세 시드의 폭은 0.67(79.61~80.28)이다. 그래서 1시드 페어로 계산했던 +0.89 대신 페어 평균을 쓴다.
 출처: lecun `/SSDb/jemo_maeng/analysis_out/muses_official_20260915/{E1Ms2,E7s2,E7s3,E1Ms3}/report.json` → NAS `analysis_logs/muses_official_eval_20260915_lecun/`.
 
