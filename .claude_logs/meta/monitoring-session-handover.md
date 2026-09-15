@@ -552,6 +552,28 @@ pgrep -f 'train_reliadino.py --cfg /tmp/jemo_scratch/configs/<카드>.yaml' >/de
 - 크론 본문에는 조회를 sonnet에 위임하라는 지시(`CLAUDE.md` §1.6)와, 보고를 마친 뒤 감시 넷과 이 크론의 생존을 스스로 점검해 유실된 것을 즉시 재설치하라는 자가 점검 절차를 함께 담았다.
 - ⚠️ **세션 안에서 만든 크론은 세션이 재기동되면 함께 사라지고, 그러지 않더라도 7일 뒤 자동 만료된다.** 과거 정기보고 크론이 유실된 원인으로 추정되는 지점이다 — 세션이 중단·재기동될 때마다, 위 1-a~1-d 감시를 다시 거는 것과 마찬가지로 **이 크론도 다시 만들어야 한다.**
 
+### 1-6. 🔴 2026-09-15 14:00 KST 기준 살아 있는 감시·대기 기동 (세션 재기동 시 이 표대로 재설치)
+
+크론 지시문에 적힌 감시 4건(yeon P52 시드1·2 / yeon E-LoRA arm A r16 / hpca100 E2 / hpca100 E7c)은 대상이 모두 끝나 **재설치 불필요**. 실제로 필요한 감시는 아래다.
+스크립트는 잡 로컬 tmp(`watch1.sh`·`watch_bundle.sh`·`watch_chain.sh`·`watch_waiters.sh`)라 세션이 사라지면 같이 사라진다 — 재설치 시 1-2·1-3 명세로 다시 만든다.
+
+| 대상 | 서버·세션/창 | 로그 | 방식 |
+|---|---|---|---|
+| E1 확정 시드3 | jarvis `e1_confirm200_s3` | `/SSDb/jemo_maeng/src/drone-MemorySAM/logs/e1_confirm200_s3_launch_2gpu.log`(🔴 `_launch.log` 는 옛 로그) | 단일(STALE 900s) |
+| E1 시드3 자동 재채점 연쇄 | jarvis `rescore_e1conf_s3` | `…/logs/rescore_chain_E1conf_s3_console.log` | 연쇄 마커 |
+| C3-only 시드 902 / 903 | jarvis `c3base_s2` / `c3base_s3` | `…/logs/c3base_s{2,3}_launch.log` | 단일(1200s) |
+| E-LoRA arm C 시드 903 | jarvis `elora_c_s903` | `…/logs/elora_c_s903_launch.log` | 단일(1500s) |
+| E-LoRA A·B × 902·903 | bengio `jemo:elora_{A,B}_s90{2,3}` | `/SSDe/jemo_maeng/src/drone-MemorySAM-daily/logs/elora_*_2026091422513*.log` | 묶음(window:jemo, 2400s) |
+| E1·C3 시드4 v2 | yeon `jemo:e1conf_s904_v2` / `jemo:c3base_s904_v2` | `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-develop/logs/{e1conf,c3base}_s904_v2_20260915_12205*.log` | 묶음(window:jemo, 2400s) |
+| E-LoRA arm C 시드 902 | yeon `elora_c_s902` | `…/drone-MemorySAM-p38/logs/elora_c_s902_launch.log` | 묶음(session, 1800s) |
+| E1M 풀 런 · B0Mc 3407 · B0Mc 0828 · E1Mc 0828h | hpca100 `hpca100_{E1Mfull,B0Mc3407,B0Mc0828,E1Mc0828h}` | `/tmp/jemo_scratch/logs/hpca100_<카드>_launch.log` | 묶음(session, 1800s) |
+| 대기 기동 3건 | hpca100 `wait_{B0Mc0827,E1Mc0827h,E13Ms3}` → `rs_*` → `hpca100_<카드>` | `/tmp/jemo_scratch/logs/wait_*.log`, `rs_*.out` | 마커(LAUNCHED/RS_ABORT/WAIT_TIMEOUT) |
+
+- 대기 기동: `wait_gpus_then_launch.sh <앞 세션> <GPU> /tmp/jemo_scratch/rs_<카드>.sh rs_<카드> 1200` → `restart_card.sh <카드> <GPU> 30`(여유 30G·GPU 빈지·세션 중복 확인, 옛 로그 보존 후 `launch_card.sh`). 매핑: hpca100_B0Mc3407→GPU1 B0Mc0827 · hpca100_B0Mc0828→GPU2 E1Mc0827h · hpca100_E1Mc0828h→GPU3 E13Ms3. 카드 config 는 `/tmp/jemo_scratch/configs/<카드>.yaml`(develop 133de05 사본, SAVE_TOPK 1).
+- 🔴 hpca100 `train_reliadino.py` 는 40843ed 판으로 교체돼 있다(원본 cddc319 판 = `/tmp/jemo_scratch/train_reliadino.py.cddc319`). 체크아웃 git 상태에 수정으로 보인다 — 되돌리지 말 것.
+- 🔴 hpca100 볼륨 `/home/jovyan/SSDb` 는 다른 사용자와 공유(타 사용자 약 1.4T). 09-15 가득 참 사고(카드 §4.5). 기동 전 `df` 여유 30G 이상 확인.
+- 🔴 TAPS 켠 MCubeS 는 24GB 카드 불가 — hpca100 전용(카드 §3-6). lecun 은 입출력 병목으로 새 학습 자리에서 제외.
+
 ## 2. 현재 활성 런 현황 (2026-09-08 02:00~02:05 UTC 실측)
 
 | 서버 | 실험 | 데이터셋 | 진행 | 최근 val | 내부최고 델타 | ETA |
