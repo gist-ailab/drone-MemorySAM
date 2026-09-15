@@ -563,7 +563,7 @@ pgrep -f 'train_reliadino.py --cfg /tmp/jemo_scratch/configs/<카드>.yaml' >/de
 |---|---|---|---|
 | E1 확정 시드3 | jarvis `e1_confirm200_s3` | `/SSDb/jemo_maeng/src/drone-MemorySAM/logs/e1_confirm200_s3_launch_2gpu.log`(🔴 `_launch.log` 는 옛 로그) | 단일(STALE 900s) |
 | E1 시드3 자동 재채점 연쇄 | jarvis `rescore_e1conf_s3` | `…/logs/rescore_chain_E1conf_s3_console.log` | 연쇄 마커 |
-| C3-only 시드 902 / 903 | jarvis `c3base_s2` / `c3base_s3` | `…/logs/c3base_s{2,3}_launch.log` | 단일(1200s) |
+| C3-only 시드 902 / 903 | jarvis `c3base_s2` / `c3base_s3` | 902 = `…/logs/c3base_s2_resume_launch.log`(09-15 22:08 ep54 재개, GPU1,7) · 903 = `…/logs/c3base_s3_launch.log` | 단일(1200s) |
 | E-LoRA arm C 시드 903 | jarvis `elora_c_s903` | `…/logs/elora_c_s903_launch.log` | 단일(1500s) |
 | E-LoRA A·B × 902·903 | bengio `jemo:elora_{A,B}_s90{2,3}` | `/SSDe/jemo_maeng/src/drone-MemorySAM-daily/logs/elora_*_2026091422513*.log` | 묶음(window:jemo, 2400s) |
 | E1·C3 시드4 v2 | yeon `jemo:e1conf_s904_v2` / `jemo:c3base_s904_v2` | `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-develop/logs/{e1conf,c3base}_s904_v2_20260915_12205*.log` | 묶음(window:jemo, 2400s) |

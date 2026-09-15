@@ -71,7 +71,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(🔴 트레이너 val — legal 아님) | ETA | 목적·게이트 |
 |---|---|---|---|---|---|---|
 | **E1 확정 시드3** | jarvis 2,4 | DELIVER 4모달 | 200 | ep154 — 최고 68.53@70 | 09-16 02:30 → 자동 연쇄(`rescore_e1conf_s3`) | 3페어 중 셋째 |
-| **C3-only 200ep 시드 902** (확정 매칭 분모) | jarvis 1,7 | DELIVER 4모달 | 200 | ep42 — 최고 66.67@32 | 09-17 13시경 | 분모 (c) — E1·E13·E-LoRA 시드2 짝 |
+| **C3-only 200ep 시드 902** (확정 매칭 분모) | jarvis 1,7 | DELIVER 4모달 | 200 | ep55 — 최고 66.67@32 (15:44 타 사용자 OOM 사망 → 22:08 ep54 재개) | 09-17 20시경 | 분모 (c) — E1·E13·E-LoRA 시드2 짝 |
 | **C3-only 200ep 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep40 — 최고 65.55@30 | 09-17 15시경 | 분모 (c) — 시드3 짝 |
 | **E-LoRA arm C 시드 903** | jarvis 0,3 | DELIVER 4모달 | 200 | ep12 — 최고 63.87@12 | 09-18 01시경 | bengio A·B 3시드와 짝 |
 | **E-LoRA A·B × 시드 902·903** (4런) | bengio 0~7 (각 2장) | DELIVER 4모달 | 200 | ep16~17 — 64.1~65.3 | 09-20 09~15시 | A(센서별 r16) 대 B(완전공유 r16) 3시드 판정. 생각정리 기동 |
