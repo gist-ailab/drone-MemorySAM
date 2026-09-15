@@ -178,6 +178,8 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 4. 구현 워커: 카드별 지시문을 이 문서에서 복사해 `labcode -p` / `glmcode -p`로 위임, 이 세션이 diff 검수 + 스모크(기본 off byte-동일).
 5. **속도 실측(2026-09-08, yeon 4090 24GB, DELIVER 768² 4센서 BS1)**: 학습 1 epoch ≈26분, **학습 중 평가(Val 2,005장 + Test 1,897장, BS1) ≈28분/2 epoch → 벽시계의 ≈35%가 평가**. **BS2는 첫 backward에서 즉시 OOM(22.3GiB 할당)** → 4090에서는 배치를 못 키운다(학습 중 3GiB로 보이는 순간은 평가 구간). 처방: 새 config는 `EVAL.BATCH_SIZE 4`(BS 불변성 ISSUE-033에서 확인됨)·`EVAL_INTERVAL 5`·**학습 중 Test 평가 끄기**(선택에 안 쓰는 test-peeking, 정본은 오프라인 재채점)로 평가 비중을 10% 미만으로. 진행 중 런은 재시작 비용(수십 시간)이 커서 그대로 둔다. A100 40GB(hpca100)에서는 BS2 가능성 있음(미실측).
 
+6. 🔴 **메모리 제약(2026-09-15 실측, 생각정리 결정)**: **TAPS 를 켠 MCubeS 런(E1Mc 계열)은 24GB 카드에 들어가지 않는다.** A100 에서 24.2GB 를 쓰고, lecun 24GB 카드에서는 첫 반복에 CUDA OOM(23.46/23.56GiB)으로 죽었다. 그래디언트 체크포인팅은 ISSUE-027(멀티모달 LoRA 기울기 오염) 때문에 쓸 수 없다. → **E1 레시피 MCubeS 런은 hpca100(40GB) 전용**이다. 같은 설정의 기준선 B0Mc(TAPS 없음)도 24GB 카드에서는 23.8GB 로 한계에 붙고 hpca100 대비 약 6배 느리다(4.66 s/it 대 1.30 it/s). 과거 yeon 3090 에서 E1Mc 가 돌았던 것은 옛 체크아웃에 TAPS 가 빠져 있었기 때문이다(§5-25).
+
 ## 4. 등재
 - plan.md 대기열에 카드 행 추가(B0·E0·E7·E1·E2·E3·E4·E8 순), 각 행 EPOCHS 40 명시.
 - 카드 결과는 `experiments/analysis/2026-09-XX-daily-cards-<E>.md` 1건씩.
