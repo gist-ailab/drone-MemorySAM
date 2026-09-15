@@ -163,6 +163,8 @@ TRAIN:
   EPOCHS        : 200                # [N4] DELIVER 대비 데이터 규모 작음(train 302장) 감안
   EVAL_START    : 0
   EVAL_INTERVAL : 2
+  SAVE_TOPK     : 1                 # [2026-09-15] val 상위 1개만 저장(디스크 만복 사고 2회). 학습 동작과 무관
+  SAVE_TEST_CKPT: false             # test-best 체크포인트는 규약상 사용 금지라 저장하지 않음(test 평가·로그는 유지)
   AMP           : true
   AMP_DTYPE     : bfloat16
   DDP           : true

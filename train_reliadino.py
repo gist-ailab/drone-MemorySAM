@@ -232,6 +232,13 @@ def main(cfg, gpu, save_dir, logger):
     is_rank0 = (not ddp_enable) or (dist.get_rank() == 0)
     num_workers = 8
 
+    # 체크포인트 저장 개수 조절 (없으면 현행과 동일: val 상위 5개 + test 상위 5개).
+    # SAVE_TEST_CKPT=false 면 test 상위 체크포인트를 저장하지 않는다(test 평가·로그는 유지).
+    save_topk = max(1, int(train_cfg.get('SAVE_TOPK', 5)))
+    save_test_ckpt = bool(train_cfg.get('SAVE_TEST_CKPT', True))
+    if is_rank0:
+        logger.info(f"[CKPT] save_topk={save_topk} save_test_ckpt={save_test_ckpt}")
+
     # ── data ────────────────────────────────────────────────────────────────
     traintransform = get_train_augmentation(
         train_cfg['IMAGE_SIZE'], seg_fill=dataset_cfg['IGNORE_LABEL'], dataset_cfg=dataset_cfg)
@@ -1281,11 +1288,11 @@ def main(cfg, gpu, save_dir, logger):
                         except Exception:
                             pass
                 iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, ious))
-                worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= 5 else -1.0
+                worst_day = top_day_ckpts[-1][0] if len(top_day_ckpts) >= save_topk else -1.0
                 if miou > worst_day:
                     top_day_ckpts = _update_topk_checkpoints(
                         top_day_ckpts, miou, epoch + 1, save_dir, prefix='',
-                        ckpt_dict=_ckpt({'best_miou': miou}), k=5)
+                        ckpt_dict=_ckpt({'best_miou': miou}), k=save_topk)
                     if miou > best_mIoU:
                         best_mIoU, best_epoch = miou, epoch + 1
                         logger.info(print_iou(epoch, ious, miou, acc, macc, class_names))
@@ -1302,13 +1309,17 @@ def main(cfg, gpu, save_dir, logger):
             if testloader is not None and is_rank0:
                 writer.add_scalar('test/mIoU', t_miou, epoch)
                 t_iou_str = " | ".join(f"{c}: {v:.2f}" for c, v in zip(class_names, t_ious))
-                worst_test = top_test_ckpts[-1][0] if len(top_test_ckpts) >= 5 else -1.0
-                if t_miou > worst_test:
-                    top_test_ckpts = _update_topk_checkpoints(
-                        top_test_ckpts, t_miou, epoch + 1, save_dir, prefix='test_',
-                        ckpt_dict=_ckpt({'best_test_miou': t_miou}), k=5)
-                    if t_miou > best_test_mIoU:
-                        best_test_mIoU, best_test_epoch = t_miou, epoch + 1
+                if save_test_ckpt:
+                    worst_test = top_test_ckpts[-1][0] if len(top_test_ckpts) >= save_topk else -1.0
+                    if t_miou > worst_test:
+                        top_test_ckpts = _update_topk_checkpoints(
+                            top_test_ckpts, t_miou, epoch + 1, save_dir, prefix='test_',
+                            ckpt_dict=_ckpt({'best_test_miou': t_miou}), k=save_topk)
+                        if t_miou > best_test_mIoU:
+                            best_test_mIoU, best_test_epoch = t_miou, epoch + 1
+                elif t_miou > best_test_mIoU:
+                    # test 체크포인트를 저장하지 않아도 best 추적·로그는 유지한다.
+                    best_test_mIoU, best_test_epoch = t_miou, epoch + 1
                 logger.info(f"[Test] epoch:{epoch+1}  mIoU: {t_miou:.4f}  "
                             f"Best: {best_test_mIoU:.4f} (ep{best_test_epoch})"
                             f"\n      IoU: {t_iou_str}")
