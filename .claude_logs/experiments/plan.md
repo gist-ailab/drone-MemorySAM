@@ -63,7 +63,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **lecun** | — | 🔴 타인(openvla) 점유 | — |
 | ~~B200~~ | — | 🔴 상실(07-15 마감) | — |
 
-## 🔬 실행 중 (2026-09-15 06:50 KST 갱신 — 노션 논문 페이지 §6.1과 동일 스냅샷)
+## 🔬 실행 중 (2026-09-15 10:10 KST 갱신 — 노션 논문 페이지 §6.1과 동일 스냅샷)
 
 > ⚠️ **이 표는 "지금 도는 것"만 담는다.** 완주·종결된 런은 registry/analysis로 즉시 이동.
 > 🔗 **노션 동기화 규칙(2026-09-08, CLAUDE.md §3)**: 이 표·대기열이 바뀌면 같은 날 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, `33d05310…`) §4·§6을 `.claude/skills/notion-experiment-log/paper_page_builder.py`(절 단위 교체, 멱등; 차트는 `paper_page_charts.py`)로 함께 갱신한다.
@@ -74,15 +74,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **C3-only 200ep 시드 902** (확정 매칭 분모) | jarvis 1,7 | DELIVER 4모달 | 200 | ep18 — 최고 64.48@16 | 09-17 12시경 | 분모 (c) — E1·E13·E-LoRA 시드2 짝 |
 | **C3-only 200ep 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep18 — 최고 65.01@16 | 09-17 12시경 | 분모 (c) — 시드3 짝 |
 | **E-LoRA A·B × 시드 902·903** (4런) | bengio 0~7 (각 2장) | DELIVER 4모달 | 200 | ep8~10 — 61.3~63.3 | 09-18 전후 | A(센서별 r16) 대 B(완전공유 r16) 3시드 판정. 생각정리 기동 |
-| **E7 시드 902 · 903** | hpca100 0 · 1 | MUSES 3모달 | 40 | ep20 — 77.12 · 78.12 | 09-15 09시경 | E7 기준선의 시드 페어(E1M·E13M 시드2·3 짝) |
-| **E1M 시드 903** | hpca100 2 | MUSES 3모달 | 40 | ep20 — 78.32 | 09-15 09시경 | E1M 셋째 시드 |
-| **E1M 200ep 풀 런**(시드 3407) | hpca100 3 | MUSES 3모달 | 200 | ep20 — 79.05 | 09-17 04시경 | MUSES test 서버 제출 후보 |
 | **E1 확정 시드4** 🔴 TAPS 미적용(무효) | yeon 0,1 | DELIVER 4모달 | 200 | ep4 — yeon 코드에 TAPS 없음(total_trainable 54,559,519 = C3 시드4) | 09-20 새벽경(1.26 it/s) | 확정 페어 넷째 |
 | **C3-only 200ep 시드4** (매칭 분모) | yeon 2,3 | DELIVER 4모달 | 200 | ep1 (TAPS 없음 확인) | 09-20 새벽경 | E1 시드4 짝 |
 | **E-LoRA arm C 시드 902** | yeon 6,7 | DELIVER 4모달 | 200 | ep1 (shared_residual 3.93M 확인) | 09-20 새벽경 | bengio A·B 3시드와 짝 |
 | **E-LoRA arm C 시드 903** (대기 기동) | jarvis 0,3 | DELIVER 4모달 | 200 | E1 시드2 재채점 종료 + GPU 해제 후 자동 기동(`wait_elorac_s903`) | 09-15 08시 기동 예정 | 〃 |
 
 > 🔴 위 진행 값은 전부 트레이너 val 이며 legal 이 아니다. 판정은 `val.py` 하네스(1024·native-GT BS1) 또는 `tools/eval_muses_official.py` 재채점으로만 한다.
+> 🔴 **09-15 09:24~09:40 KST hpca100 디스크 가득 참(Errno 28)** — `/home/jovyan/SSDb`(2.0T, 다른 사용자와 공유, 타 사용자 약 1.4T)가 0 바이트가 되어 E1M 200ep 풀 런(ep35 이어 받기 가능)·E1M 시드3(ep35 top1 80.86 온전, last 잘림)·B0Mc 3407/0827/0828·E1Mc 0827h/0828h 여섯 런 사망, GPU 0~3 유휴. E7 시드 902·903 은 그 전에 완주(트레이너 최고 79.79 / 80.45, 공식 재채점 대기). 정리 방식(끝난 런의 top2~5·test_* 삭제 약 119G / NAS 이관 후 삭제) 사용자 동의 대기.
 > ✅ **09-15 DELIVER 조건별 평가(E1·E13 확정 시드1, yeon 4·5 새 체크아웃, 로드 0/0)**: 24클래스 Δ vs seed821 기준선 — E1 +0.06~+1.19 · E13 +0.14~+1.18, 두 카드 모두 −0.5 미만 조건 없음(§5-27). 판정은 생각정리. yeon 4·5 는 09:38 부터 비어 있음(다음 카드 결정 대기).
 > ✅ **09-15 E1 확정 시드2 완주**: legal test **55.35** / val **67.47** · 24클래스 **55.85**(§5-26). E1 2시드 평균 24클래스 55.55. 판정은 같은 코드 기준선 902·903 완주(09-17) 후.
 > 🔴 **09-15 07:30 철회 — MCubeS E1Mc 게이트 통과 무효**: yeon 체크아웃(378864f)에 TAPS 코드가 없어 E1Mc 0827·0828 과 yeon E1 확정 시드4 가 TAPS 없이 돌았다(total_trainable = 기준선). 같은 시드 재실행이 +1.1~1.35 흔들려 MCubeS 는 E1·E13 모두 판별 불가(§5-25). 재판정 = hpca100 동일 코드 기준선 B0Mc 3시드(9628ec6). yeon E1 시드4·C3 시드4 는 사용자 동의 후 새 체크아웃에서 재기동 예정(생각정리).
