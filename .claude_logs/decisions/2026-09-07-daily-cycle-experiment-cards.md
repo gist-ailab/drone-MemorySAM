@@ -256,8 +256,10 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 | E3s2 (hpca100, OOM 중단) | `epoch10_63.33_top1` | `/tmp/jemo_scratch` + NAS 자동 회수 | ✅ | 재개 대기 |
 | 진행 중(E12·E2s2·B0s2 hpca100 /tmp, E13·E1 확정·E1s2 jarvis) | — | 서버 작업 사본 + hpca100은 NAS `_tmp_volatile/<런>/` 30분 회수 | 회수 시 | 완주 후 val-best만 정본화 |
 | hpca100 이전 런(P52·P50-EXT·P46 lam02·P38/P39 import) | 각 val-best | `hpca100_archive_20260909/*.tar`(14건) | artifact-locations.md §2.2 | ✅ 이관 완료 |
+| **hpca100 2026-09-15 삭제 (사용자 승인 방식 B)** | 각 디렉터리 val top1 + last_checkpoint 만 남김 | hpca100 서버(NAS 사본 없음) | — | ✅ 공유 볼륨 가득 참(Errno 28, 09-15 09:24~09:40 KST) 복구 — 판정 끝난 12개 디렉터리(DELIVER E14·E15·E13s3, MCubeS E13Mc 3시드·E1Mc 3407, MUSES E13M 시드1·2, E1M 시드2, E7 시드2·3)에서 test_* 와 val top2~5 63개(약 108GB) 삭제. **보존 없이 삭제**라 기존 승인("보존 완료된…") 범위 밖 — 생각정리 세션이 사용자에게 직접 받은 승인으로 집행. 여유 0 → 112G |
 
 - 결론: hpca100·bengio·jarvis 어디에도 **추가 삭제 대상 없음**. 남은 확인 = E1M ep35 NAS 사본 md5.
+- 🔴 **09-15 추가**: hpca100 방식 B 삭제(위 행). 이후 새로 기동하는 MCubeS 런은 `TRAIN.SAVE_TOPK: 1`·`SAVE_TEST_CKPT: false`(40843ed)로 val top1 + last 만 저장한다.
 
 ## 5. 결과 기록
 
