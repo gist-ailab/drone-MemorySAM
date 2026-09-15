@@ -70,7 +70,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(🔴 트레이너 val — legal 아님) | ETA | 목적·게이트 |
 |---|---|---|---|---|---|---|
-| **E1 확정 시드3** | jarvis 2,4 | DELIVER 4모달 | 200 | ep154 — 최고 68.53@70 | 09-16 02:30 → 자동 연쇄(`rescore_e1conf_s3`) | 3페어 중 셋째 |
 | **C3-only 200ep 시드 902** (확정 매칭 분모) | jarvis 1,7 | DELIVER 4모달 | 200 | ep55 — 최고 66.67@32 (15:44 타 사용자 OOM 사망 → 22:08 ep54 재개) | 09-17 20시경 | 분모 (c) — E1·E13·E-LoRA 시드2 짝 |
 | **C3-only 200ep 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep40 — 최고 65.55@30 | 09-17 15시경 | 분모 (c) — 시드3 짝 |
 | **E-LoRA arm C 시드 903** | jarvis 0,3 | DELIVER 4모달 | 200 | ep12 — 최고 63.87@12 | 09-18 01시경 | bengio A·B 3시드와 짝 |
@@ -86,6 +85,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **B0Mc · E1Mc 시드 0827 쌍** (대기) | lecun 0 · 1 | MCubeS 4모달 | 200 | MCubeS 데이터 복사 검증 중 → 새 체크아웃(40843ed) clone 후 기동 | 09-16 | 같은 서버·코드 쌍 |
 
 > 🔴 위 진행 값은 전부 트레이너 val 이며 legal 이 아니다. 판정은 `val.py` 하네스(1024·native-GT BS1) 또는 `tools/eval_muses_official.py` 재채점으로만 한다.
+> ✅ **09-16 E1 확정 시드3 완주**: legal test 54.81 / **val 67.89(내부 legal val 최고 경신)** · 24클래스 55.35(§5-29). E1 3시드 평균 test 54.93 · 24클래스 55.49 · val 67.58. 판정은 같은 코드 기준선 902·903 완주 후. jarvis 2·4 비어 있음(다음 카드 결정 대기).
 > ✅ **09-15 hpca100 복구**: 09:24~09:40 공유 볼륨 가득 참(Errno 28)으로 6런 사망 → 사용자 승인 방식 B(판정 끝난 12개 디렉터리의 test_*·val top2~5 63개, 약 108G 삭제, 카드 §4.5)로 여유 0→112G → 12:24~12:25 E1M 풀 런 이어 받기 + MCubeS 3런 기동. 새 MCubeS 런은 `TRAIN.SAVE_TOPK 1`·`SAVE_TEST_CKPT false`(40843ed). E7 시드 902·903 은 완주(79.79 / 80.45), E1M 시드3 은 ep35 val-best(80.86)로 판정(결손 각주) — 세 런 MUSES 공식 재채점 대기.
 > ✅ **09-15 DELIVER 조건별 평가(E1·E13 확정 시드1, yeon 4·5 새 체크아웃, 로드 0/0)**: 24클래스 Δ vs seed821 기준선 — E1 +0.06~+1.19 · E13 +0.14~+1.18, 두 카드 모두 −0.5 미만 조건 없음(§5-27). 판정은 생각정리. yeon 4·5 는 09:38 부터 비어 있음(다음 카드 결정 대기).
 > ✅ **09-15 E1 확정 시드2 완주**: legal test **55.35** / val **67.47** · 24클래스 **55.85**(§5-26). E1 2시드 평균 24클래스 55.55. 판정은 같은 코드 기준선 902·903 완주(09-17) 후.
