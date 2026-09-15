@@ -87,7 +87,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 > 🟡 **(b) 잠정**: 5시드 top1 규칙 24클래스 54.66 대비 E13 확정 3시드 Δtest +1.31 · Δ24 +0.67 — 잠정 통과(§5-24), 확정은 (c).
 > ✅ **09-14~15 완주·확정**: E13 확정 3시드(평균 test 55.14 · 24클래스 55.33, 게이트는 분모 (c) 완주 후 판정 — §5-22) · E-LoRA arm C(legal test 55.72 / val 67.16 · 24클래스 55.09 — 3자 1페어 §5-23) · MCubeS E13Mc(같은 척도 +0.40, 게이트 근소 미달 — §5-21 정정).
 > 📌 **자동 연쇄**: `scripts/run_legal_rescore_jarvis_chain.sh`(770eaf5, REPO 환경변수로 yeon 겸용) — 대기 중 = jarvis `rescore_e1conf_s2`·`rescore_e1conf_s3`.
-> ⚠️ **빈 GPU**(09:50): yeon 4·5(조건별 평가 09:38 종료) — 카드 미정. lecun 0~2 는 CAFuser test_sweep(우리 세션이 띄운 것 아님, 건드리지 않음) 사용 중. lecun 은 체크아웃 부재로 보류.
+> 🔴 **yeon 4·5 상실**(12:10 확인): 조건별 평가 종료(09:38) 후 비어 있던 사이 다른 사용자(sangmin_park)가 점유 — MCubeS 0827 쌍(B0Mc·E1Mc, 3933943) 기동 거부됨, 자리 재결정 대기. 빈 GPU = lecun 0~2. lecun 0~2 는 CAFuser test_sweep(우리 세션이 띄운 것 아님, 건드리지 않음) 사용 중. lecun 은 체크아웃 부재로 보류.
 > 🗑 이 갱신에서 내린 종결 런: E13 확정 시드3 · E-LoRA arm C(재채점 완료) · MCubeS hpca100 4런(09-14 16:53 완주)
 
 **카드 넷 legal 완결(09-09, val-best ckpt · `val.py` 1024 BS1 native GT)** — 판정 주체 = 생각정리 세션:
