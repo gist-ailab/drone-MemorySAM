@@ -78,7 +78,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **E1 확정 시드4 v2** (새 체크아웃, TAPS 적용) | yeon 0,1 | DELIVER 4모달 | 200 | ep1 (09-15 12:20 재기동, total_trainable 58,790,687) | 09-21 경 | 확정 페어 넷째 |
 | **C3-only 200ep 시드4 v2** (새 체크아웃) | yeon 2,3 | DELIVER 4모달 | 200 | ep1 (12:20 재기동, 54,559,519) | 09-21 경 | E1 시드4 v2 의 같은 코드 짝 |
 | **E-LoRA arm C 시드 902** (옛 체크아웃) | yeon 6,7 | DELIVER 4모달 | 200 | ep7 — 61.92 | 09-20 22시경 | bengio A·B 3시드와 짝(코드 버전 각주) |
-| **E13 확정 시드4** (대기 기동) | yeon 4,5 | DELIVER 4모달 | 200 | 다른 사용자(sangmin_park)가 GPU4·5 를 비우면 자동 기동(`wait_e13s4`) | 기동 후 약 5.5일 | E1 시드4 v2·C3 시드4 v2 와 같은 코드의 E13 넷째 페어 |
+| **E13 확정 시드4** | yeon 4,5 | DELIVER 4모달 | 200 | ep1 (09-15 20:21 기동, total_trainable 58,790,687, SRC permodal) | 09-21 오전 | E1 시드4 v2·C3 시드4 v2 와 같은 코드의 E13 넷째 페어 |
 | **E1M 200ep 풀 런**(시드 3407, 이어 받기) | hpca100 0 | MUSES 3모달 | 200 | ep39 (12:24 AUTO_RESUME, ep38 에서) — 최고 80.40@30 | 09-17 오후 | MUSES test 서버 제출 후보 |
 | **B0Mc 시드 3407** (MCubeS 같은 코드 기준선) | hpca100 1 | MCubeS 4모달 | 200 | ep3 (12:25 이어 받기, SAVE_TOPK 1) | 09-16 오전 | E1Mc·E13Mc 재판정 분모 |
 | **B0Mc 시드 0828** | hpca100 2 | MCubeS 4모달 | 200 | ep1 (12:25 기동, SAVE_TOPK 1) | 09-16 오전 | 〃 |

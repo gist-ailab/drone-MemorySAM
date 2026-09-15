@@ -567,6 +567,7 @@ pgrep -f 'train_reliadino.py --cfg /tmp/jemo_scratch/configs/<카드>.yaml' >/de
 | E-LoRA arm C 시드 903 | jarvis `elora_c_s903` | `…/logs/elora_c_s903_launch.log` | 단일(1500s) |
 | E-LoRA A·B × 902·903 | bengio `jemo:elora_{A,B}_s90{2,3}` | `/SSDe/jemo_maeng/src/drone-MemorySAM-daily/logs/elora_*_2026091422513*.log` | 묶음(window:jemo, 2400s) |
 | E1·C3 시드4 v2 | yeon `jemo:e1conf_s904_v2` / `jemo:c3base_s904_v2` | `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-develop/logs/{e1conf,c3base}_s904_v2_20260915_12205*.log` | 묶음(window:jemo, 2400s) |
+| E13 확정 시드4 | yeon `e13conf_s904` | `…/drone-MemorySAM-develop/logs/e13conf_s904_launch.log` | 묶음(session, 2400s) |
 | E-LoRA arm C 시드 902 | yeon `elora_c_s902` | `…/drone-MemorySAM-p38/logs/elora_c_s902_launch.log` | 묶음(session, 1800s) |
 | E1M 풀 런 · B0Mc 3407 · B0Mc 0828 · E1Mc 0828h | hpca100 `hpca100_{E1Mfull,B0Mc3407,B0Mc0828,E1Mc0828h}` | `/tmp/jemo_scratch/logs/hpca100_<카드>_launch.log` | 묶음(session, 1800s) |
 | 대기 기동 3건 | hpca100 `wait_{B0Mc0827,E1Mc0827h,E13Ms3}` → `rs_*` → `hpca100_<카드>` | `/tmp/jemo_scratch/logs/wait_*.log`, `rs_*.out` | 마커(LAUNCHED/RS_ABORT/WAIT_TIMEOUT) |
