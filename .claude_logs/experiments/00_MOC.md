@@ -10,6 +10,7 @@
 | [registry.md](registry.md) | **실험 레지스트리 허브** — 핵심 실험 ID/config/서버/ckpt/상태/수치 한눈표 (신설 2026-07-08) | — (신규) |
 | [log.md](log.md) | 전체 결과 M-score 표 + 버전별 상세 + 진단 — **실험 canonical** | 03 |
 | [monitor-log.md](monitor-log.md) | 진행 중 학습 실시간 모니터 로그 (RUN-N 단위, `/loop` 세션이 append) | 15 |
+| [analysis/2026-09-17-baseline-failure-analysis-plan.md](analysis/2026-09-17-baseline-failure-analysis-plan.md) | **DGFusion·CAFuser 재학습본 vs 우리 — 평가셋 전수(val 2005+test 1897) 실패 사례·특징 추출 분석 설계**(user 지시 2026-09-17: depth 감독과 독립인 노벨티 라인 발굴). D1 예측 덤프 · D2 이미지별 지표 · D3 실패 채굴(조건×케이스·혼동·객체 크기·센서 고장·val→test) · D4 기제 측정(depth/조건 토큰·attention 가중·모달 제거) · D5 시각화 · D6 판정. 집행 = 감시 세션(sonnet/labcode), 판정 = 생각정리 세션 | — |
 | [analysis/2026-06-30-p28-p29-failure-analysis.md](analysis/2026-06-30-p28-p29-failure-analysis.md) | P28(RBMA)·P29(SDC) 체계적 실패분석 + P30 커버리지 판정 + P31 프로토타입 | 16 |
 | [analysis/2026-07-07-p32-perimage-analysis.md](analysis/2026-07-07-p32-perimage-analysis.md) | **P32(CoRB) ep108 per-image 전체 test(1897장) 분석** — corroboration ON/OFF diff(flip 0.046%, ΔmIoU −0.013), UAMM 균일·misalloc 51.6%, event/LiDAR competence≈16. 도구=[`tools/viz_features_full.py`](../../tools/viz_features_full.py) | — (2026-07-28 회수) |
 | [analysis/2026-07-12-p29-p34-standard-analysis.md](analysis/2026-07-12-p29-p34-standard-analysis.md) | **P29·P31·P32·P34 표준분석 종합(동일 프로토콜)** — P34 전도메인 1위·Water 부활, SAM2 피쳐 rank-1 붕괴 vs DINOv3 정렬, additive-bias 3세대 no-op, P31 router +10~13 기여. 산출물=NAS `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/` | — (2026-07-12) |
