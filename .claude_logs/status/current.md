@@ -25,6 +25,11 @@ moved: 2026-07-08
 
 ### 벤치별 현재 최선 (legal 프로토콜: val-best 또는 final-iter만, test-best 금지)
 
+> 🔴 **2026-09-16 갱신 — DELIVER legal val 내부 최고 = 67.89** (E1 확정 런 시드3, val-best `epoch70_68.53_top1`, 1024·BS1 로드 0/0, 카드 §5-29).
+> 기존 67.74(P36 fair)를 대체한다. SOTA 대비 **−1.71**(MM SAM-adapter 69.60 기준) · 괄호로 −0.90(CAFuser-CAA 68.79 기준).
+> ⚠️ 단일 시드이고 **확정 판정 전**이다 — 같은 코드 매칭 기준선 C3-only 902·903(09-17 완주) 뒤에 3페어로 확정한다. test 헤드라인 56.62 는 그대로.
+
+
 | 벤치 | 우리 최선 | vs SOTA | 판정 |
 |---|---|---|---|
 | DELIVER | **P46 C3-only 5-seed 정본 최종(N6 legal-val 재선택 완료 2026-08-31)** test **54.39±0.76** (best **55.29**=seed816 재선택, base 55.18) / val ~67.0 | mean −2.96 / best −2.06 (MM-SA native) · **DGFusion 자로는 best 56.99 +0.28 상회 유지** | ✅ 통계 확정 — 재선택이 mean +0.57 회복(선택 아티팩트 2/5런). base는 더 이상 최고 단일런도 아님(seed816이 최고) → outlier 서사 완전 해소 |
