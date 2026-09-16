@@ -29,6 +29,7 @@ from . import p47 as P47
 from . import p52 as P52
 from .cmlc import CrossModalLoRACoupling
 from .classtoken import ClassTokenLiteHead
+from .detail_branch import DetailStem
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion, XAttnTrunk, MeanFusionTrunk
 from .m2f_head import MaskQueryLiteHead
@@ -274,7 +275,17 @@ class ReliaDINO(nn.Module):
                  unibal_adaptive_cap: float = 2.0,
                  unibal_adaptive_momentum: float = 0.99,
                  unibal_adaptive_warmup_ep: int = 0,
-                 unibal_adaptive_warmup_small: float = 0.05):
+                 unibal_adaptive_warmup_small: float = 0.05,
+                 # [DETAIL_BRANCH] 고해상도 세부 가지 (default OFF — off면 아래
+                 # 블록이 모듈/RNG/버퍼를 전혀 건드리지 않아 forward·state_dict 가
+                 # baseline 과 byte-동일). detail_branch.py 참조.
+                 detail_enable: bool = False,
+                 detail_stem_dim: int = 32,
+                 detail_levels: Sequence[int] = (4, 8),
+                 detail_mode: str = 'shared_stem',
+                 detail_gate_init: float = 0.1,
+                 detail_input_norm: str = 'same',
+                 detail_norm: str = 'gn'):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -845,10 +856,38 @@ class ReliaDINO(nn.Module):
                 warmup_ep=unibal_adaptive_warmup_ep,
                 warmup_small=unibal_adaptive_warmup_small)
 
+        # ── [DETAIL_BRANCH] 고해상도 세부 가지 (default OFF) ──────────────────
+        # 입력 이미지에 가벼운 conv 스템을 걸어 stride-4/8 세부를 뽑아 FPN pyramid
+        # 의 대응 레벨에 게이트 잔차로 더한다(detail_branch.py). TAPS(stride-16 토큰
+        # 4탭)와 **독립**이라 동시 사용 가능. off면 self.detail=None → 이 블록이
+        # 모듈·RNG·버퍼를 전혀 건드리지 않아 baseline byte-동일. **가장 마지막에
+        # 생성**(P47-2/CMLC/P52 규약 — off 경로 init RNG 스트림 불변).
+        self.detail = None
+        self._detail_feats = None       # per-forward 세부 특징(레벨 리스트, fpn_dim)
+        if detail_enable:
+            if str(detail_input_norm).lower() != 'same':
+                # 'same' = 백본에 넣는 것과 동일한 전처리 입력을 그대로 쓴다(현재
+                # 유일 지원). 다른 값을 조용히 무시하면 "정규화를 켰다"는 착각을 남긴다.
+                raise ValueError(
+                    f"[DETAIL] INPUT_NORM 은 현재 'same' 만 지원한다 "
+                    f"(got {detail_input_norm!r}).")
+            # 입력 채널: 이 파이프라인은 모달을 공유 백본(단일 patch_embed, 3ch)에
+            # 넣으므로 전 모달 3채널이다(encoder.forward 계약 'x: (B,3,H,W)').
+            # 로더가 다른 채널을 준다면 shared_stem 은 첫 conv 만 모달별로 폴백한다.
+            self.detail = DetailStem(
+                in_ch=3, fpn_dim=fpn_dim, stem_dim=detail_stem_dim,
+                levels=detail_levels, mode=detail_mode,
+                num_modalities=self.num_modalities, norm=detail_norm,
+                gate_init=detail_gate_init)
+
         # [E-LORA] 학습가능 파라미터 수 보고(plan.md "파라미터 수 보고"). LoRA 항은
         # qkv 래퍼 안의 어댑터 텐서(.base 제외)만 센다. rank0 에서 한 줄만 출력한다.
         _rank0 = (not torch.distributed.is_initialized()
                   or torch.distributed.get_rank() == 0)
+        if _rank0 and self.detail is not None:
+            _dp = sum(p.numel() for p in self.detail.parameters())
+            print(f"[DETAIL] mode={detail_mode} levels={list(detail_levels)} "
+                  f"params={_dp:,} gate_init={detail_gate_init}", flush=True)
         if _rank0:
             n_lora = sum(p.numel() for n, p in self.named_parameters()
                          if p.requires_grad and '.attn.qkv.' in n and '.base.' not in n)
@@ -1025,6 +1064,32 @@ class ReliaDINO(nn.Module):
                 t, size=out[lvl].shape[-2:], mode='bilinear', align_corners=False)
         return out
 
+    def _apply_detail_branch(self, pyramid: List[torch.Tensor]) -> List[torch.Tensor]:
+        """[DETAIL_BRANCH] 세부 가지 게이트 잔차를 FPN pyramid 에 더한다.
+
+        `self._detail_feats`(모달 합산된 레벨별 fpn_dim 특징, forward 에서 1회 계산·
+        캐시)를 stride-4/8 레벨에 `pyr[l] + tanh(g_l)·detail[l]` 로 얹는다. off(모듈
+        미생성) 또는 detail 미계산이면 pyramid 를 그대로 돌려준다(no-op).
+
+        SimpleFPN 은 [s4, s8, s16, s32] 순서라 pyramid[0] 이 최고해상도다 — 그
+        불변식을 assert 로 지키고, DetailStem 이 계산한 stride→pyramid 인덱스 매핑을
+        그대로 소비한다(TAPS 의 p43_lateral 과 독립 경로)."""
+        if self.detail is None or self._detail_feats is None:
+            return pyramid
+        # 순서 불변식: index 0 이 가장 조밀(stride-4)해야 stride→index 매핑이 맞다.
+        assert pyramid[0].shape[-1] >= pyramid[1].shape[-1], (
+            "[DETAIL] SimpleFPN pyramid 순서가 [s4, s8, ...] 이 아니다 — "
+            "stride→레벨 매핑 전제가 깨졌다.")
+        g = torch.tanh(self.detail.gate)
+        out = list(pyramid)
+        for li, idx in enumerate(self.detail.pyr_index):
+            assert 0 <= idx < len(out), (
+                f"[DETAIL] pyramid 레벨 인덱스 {idx} 범위 밖(레벨 {len(out)}개).")
+            d = self._detail_feats[li]
+            out[idx] = out[idx] + g[li] * F.interpolate(
+                d, size=out[idx].shape[-2:], mode='bilinear', align_corners=False)
+        return out
+
     def _apply_trunk_exp(self, fused: torch.Tensor,
                          feats: List[torch.Tensor]) -> torch.Tensor:
         """[P39-V1/P39.1-R1] modal subspace restoration — seg/det 공용 단일
@@ -1153,7 +1218,8 @@ class ReliaDINO(nn.Module):
         `pyramid_out`, when given, receives the (P43-lateral-augmented) pyramid
         so the [P43] mask-cls head can read the SAME trunk levels the pixel
         head just consumed — the only thing the two heads share."""
-        pyramid = self._apply_p43_lateral(self.fpn(fused))
+        pyramid = self._apply_detail_branch(
+            self._apply_p43_lateral(self.fpn(fused)))    # [DETAIL] (no-op if off)
         if pyramid_out is not None:
             pyramid_out.extend(pyramid)
         logits, m_feat = self.head(pyramid)
@@ -1267,6 +1333,11 @@ class ReliaDINO(nn.Module):
         x = self._p44_local_mask(x)                        # [P44-B3] 국소 img 마스킹
         H, W = x[0].shape[-2:]
         feats = self._encode_all(x)                        # [P43-T2] taps here
+        # [DETAIL_BRANCH] 백본과 같은 전처리 입력(마스킹/드롭 반영 후 x)으로 세부
+        # 특징을 1회 계산·캐시한다. _decode 두 번(CEFR two-pass)에서 재사용하고,
+        # off면 None → _apply_detail_branch 가 no-op. 학습 시 grad 는 _decode(2nd
+        # pass)에서 게이트·스템·투영으로 흐른다.
+        self._detail_feats = self.detail(x) if self.detail is not None else None
         if not self.training:
             self._last_per_modal_feats = [f.detach() for f in feats]
         # [P40-C1] lidar 리턴 유효성(입력 유도, 내부 신호) — RCA 가드 + 분석용
@@ -1744,6 +1815,10 @@ class ReliaDINO(nn.Module):
         path. [P36] router->det residual (zero-init) is applied if the router is on.
         """
         feats = self._encode_all(list(batched_input))
+        # [DETAIL_BRANCH] det pyramid 도 seg 와 동일한 세부 잔차를 받도록 입력에서
+        # 세부 특징을 계산·캐시한다(내부 _decode 호출과 최종 pyramid 모두 소비).
+        self._detail_feats = (self.detail(list(batched_input))
+                              if self.detail is not None else None)
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
         cefr_ctx = aux.get('cefr_ctx', None) if isinstance(aux, dict) else None
@@ -1762,7 +1837,8 @@ class ReliaDINO(nn.Module):
             fused = (1.0 - mix) * fused + mix * fused_p
         # [P39-V1] seg forward와 동일 순서(CEFR blend 이후)·동일 게이트로 적용
         fused = self._apply_trunk_exp(fused, feats)
-        pyramid = self._apply_p43_lateral(self.fpn(fused))   # [P43-T2] (no-op if off)
+        pyramid = self._apply_detail_branch(
+            self._apply_p43_lateral(self.fpn(fused)))        # [P43-T2/DETAIL] (no-op if off)
         if routed is not None and getattr(self, 'det_router_proj', None) is not None:
             r = self.det_router_proj(routed)
             pyramid = [
@@ -1793,6 +1869,9 @@ class ReliaDINO(nn.Module):
         decoder, in_proj, query, cls_head and box_head train through cls+box loss.
         """
         feats = self._encode_all(list(batched_input))
+        # [DETAIL_BRANCH] feat_s4(내부 _decode)가 seg 와 같은 세부 잔차를 받도록 캐시.
+        self._detail_feats = (self.detail(list(batched_input))
+                              if self.detail is not None else None)
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
         fused = self._apply_trunk_exp(fused, feats)   # seg와 동일 게이트 경로
@@ -1836,6 +1915,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     p42 = (mc.get('P42', {}) or {}).get('MASK_IMG', {}) or {}   # [P42-M1] 조건부 img 마스킹
     p43 = mc.get('P43', {}) or {}                               # [P43] PanopticDual
     taps = mc.get('TAPS', {}) or {}                             # [E1] 다중 레벨 탭 단독 토글
+    detail = mc.get('DETAIL_BRANCH', {}) or {}                  # [DETAIL] 고해상도 세부 가지
     p44 = mc.get('P44', {}) or {}                      # [P44-BMR]
     p44_lm = p44.get('LOCAL_MASK', {}) or {}           #   B-3 국소 마스킹
     p44_hp = p44.get('HARD_PIXEL_AUX', {}) or {}       #   M-3 hard-pixel aux
@@ -2062,4 +2142,12 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         unibal_adaptive_momentum=uba.get('EMA_M', 0.99),
         unibal_adaptive_warmup_ep=uba.get('WARMUP_EP', 0),
         unibal_adaptive_warmup_small=uba.get('WARMUP_SMALL', 0.05),
+        # [DETAIL_BRANCH] 고해상도 세부 가지 (기본 OFF → 키 없으면 byte-동일)
+        detail_enable=detail.get('ENABLE', False),
+        detail_stem_dim=detail.get('STEM_DIM', 32),
+        detail_levels=tuple(detail.get('LEVELS', (4, 8))),
+        detail_mode=detail.get('MODE', 'shared_stem'),
+        detail_gate_init=detail.get('GATE_INIT', 0.1),
+        detail_input_norm=detail.get('INPUT_NORM', 'same'),
+        detail_norm=detail.get('NORM', 'gn'),
     )

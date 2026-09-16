@@ -1222,6 +1222,16 @@ def main(cfg, gpu, save_dir, logger):
                 log_extra['train/rca_readout'] = rca_accum / (it + 1)
                 logger.info(f"[P40] rca pick_rate:{rate:.3f} "
                             f"readout_ce:{rca_accum / (it + 1):.4f}")
+            if getattr(_core, 'detail', None) is not None:
+                # [DETAIL_BRANCH] 레벨별 게이트 tanh(g) — 성장하면 세부 잔차가 실제로
+                # 주 경로에 들어오는 것(키1 준수 확인). 정체(≈0)면 세부가 한 번도 안
+                # 들어온 것이므로 판정에 쓴다.
+                _dg = _core.detail.gate_values()
+                _dstr = "[" + ", ".join(f"{v:.3f}" for v in _dg) + "]"
+                for li, s in enumerate(_core.detail.strides):
+                    writer.add_scalar(f'detail/gate_s{s}', _dg[li], epoch)
+                    log_extra[f'detail/gate_s{s}'] = _dg[li]
+                logger.info(f"[DETAIL] gate={_dstr}")
             if wandb_enabled:
                 wandb.log({'epoch': epoch + 1, 'train/total_loss': train_loss,
                            'train/cal_loss': cal_accum / (it + 1),
