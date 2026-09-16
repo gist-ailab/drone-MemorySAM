@@ -6,6 +6,7 @@
 
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
+| [2026-09-17-strategy-exploration-moe-lora-fusion-training.md](2026-09-17-strategy-exploration-moe-lora-fusion-training.md) | **성능 개선 전략 탐색(user 요청)** — MoE-LoRA(미사용, 문헌상 도입 근거 없음·"중반부터 라우팅" 일정 근거 없음)·융합 대안(시드 분산 이하)·경쟁 SOTA 해부(백본 FT·세부 특징·depth가 원천)·학습 전략. 후보 카드 E18 Lovász·E19 EMA·E17x extractor·D0 진단·E20~E22 + 사용자 결정 항목(depth 보조 감독·토큰 밀도) | — |
 | [2026-09-17-p53-detail-branch-proposal.md](2026-09-17-p53-detail-branch-proposal.md) | **P53 후보: 고해상도 세부 가지(Detail Branch)** — user 렌즈 결정(전 모달 융합 계열 1위)의 약점(DELIVER 시드 평균 < DGFusion)을 얇은 객체(Pole·TrafficLight·Pedestrian·Static, DGFusion 대비 −7~−15) 직격으로 메우는 제안. MODEL.DETAIL_BRANCH(기본 off), 스크린 카드 E17, 게이트 G1~G4 사전 등록 | — |
 | [2026-09-07-daily-cycle-experiment-cards.md](2026-09-07-daily-cycle-experiment-cards.md) | **일일 사이클 실험 카드** — 40ep 스크린 규약 + 카드 B0·E0~E10(특징 프로브·4탭·전층 LoRA·센서별 prototype·혼동쌍 margin·copy-paste·deformable 픽셀 디코더·블록 교환·부분 FT), RF-DETR 판단 | 🟡 워커·GPU 대기 |
 | [2026-09-07-p52-validity-audit-and-bottleneck-program.md](2026-09-07-p52-validity-audit-and-bottleneck-program.md) | **P52 타당성 감사 + 병목 해소 실험 프로그램** — 게이트 마진 0.3 < 시드 σ, C3-adaptive 신호(train 혼동)↔병리(val→test 붕괴) 불일치, 노벨티 선행(Recall Loss·PMR/MLB) → P52.1 수정 6건; 축 0~4(측정 규약·P52.1·백본 적응 깊이 A1~A4·P50 재현+실패 진단·RGB-D fair-eval), 함수엔트로피 폐기. 딥리서치 3축 부록 | 🟡 user 검토 대기 |
