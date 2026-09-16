@@ -56,32 +56,38 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 - 실증: 2026-07-16 새벽 lecun 분석 완주 후 7장을 비우자 **즉시 타인(openvla)이 24GB×7 전부 점유** → TTA 실측 무기한 보류.
 - ⚠️ **단 타인 GPU에 얹지 마라** — CLAUDE.md "빈 GPU(≤2000MiB, util≤10%)" 규칙 유지. 이 원칙은 *우리 것을 놓치지 말라*는 뜻.
 
-## 🖥 GPU 예약 현황 (2026-08-08 갱신 — 07-18 이후 미갱신 상태였음; 아래 실행 중 표와 함께 재정리)
+## 🖥 GPU 예약·점유 현황 (2026-09-17 03:40 KST 실측)
 
-| 서버 | GPU | 상태 | ETA |
+| 서버 | 우리 점유 | 타 사용자 | 비고 |
 |---|---|---|---|
-| **lecun** | — | 🔴 타인(openvla) 점유 | — |
-| ~~B200~~ | — | 🔴 상실(07-15 마감) | — |
+| **jarvis** (4090×8) | 0,3 arm C 903 · 1,7 C3 902 · 4 E7 풀 런 · 5,6 C3 903 | GPU2 | ⚠️ **GPU0 예약 여부 확인 필요** — 메모리에는 "jarvis GPU0 은 여전히 예약"으로 남아 있는데 지금 arm C 903 이 GPU0,3 을 쓰고 있다. 사용자 확인 대기 |
+| **yeon** (3090×8) | 0,1 E1 시드4 v2 · 2,3 C3 시드4 v2 · 4,5 E13 시드4 · 6,7 arm C 902 | 없음 | GPU3,4 제약은 2026-08-06 해제됨(일반 규칙 적용) |
+| **hpca100** (A100×4) | 0 E1M 풀 런 · 1 E13M 풀 런 s2 · 2 E1M 풀 런 s2 · 3 E13M 풀 런 3407 | 없음(볼륨은 공유) | 🔴 공유 볼륨 96%·여유 85G. 09-15 Errno 28 로 6런 사망 전례 — 60G·40G 임계 감시 가동 중 |
+| **bengio** (8장) | 0~7 E-LoRA A·B × 시드 902·903 (각 2장) | 없음 | ⚠️ 아래 "중단 런" 절의 양도 전제와 모순 — 확인 필요 |
+| **lecun** (24GB×7) | 없음(추론만 간헐) | sangmin_park · youngjin_lee | 입출력 병목으로 **학습 자리에서 제외**, 짧은 평가·추론만. `/SSDb` 100%(여유 46G) → 산출물은 `/SSDc` 로 |
+| ~~B200~~ | — | — | 🔴 상실(07-15 마감) |
 
-## 🔬 실행 중 (2026-09-16 15:20 KST 갱신 — 노션 논문 페이지 §6.1과 동일 스냅샷)
+## 🔬 실행 중 (2026-09-17 03:40 KST 실측 갱신)
 
 > ⚠️ **이 표는 "지금 도는 것"만 담는다.** 완주·종결된 런은 registry/analysis로 즉시 이동.
 > 🔗 **노션 동기화 규칙(2026-09-08, CLAUDE.md §3)**: 이 표·대기열이 바뀌면 같은 날 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, `33d05310…`) §4·§6을 `.claude/skills/notion-experiment-log/paper_page_builder.py`(절 단위 교체, 멱등; 차트는 `paper_page_charts.py`)로 함께 갱신한다.
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(🔴 트레이너 val — legal 아님) | ETA | 목적·게이트 |
 |---|---|---|---|---|---|---|
-| **C3-only 시드 902** (확정 매칭 분모, ep54 재개) | jarvis 1,7 | DELIVER 4모달 | 200 | ep109 — 최고 66.99@88 | 09-17 20시경 | 분모 (c) — E1·E13 시드2 짝 |
-| **C3-only 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep127 — 최고 66.26@106 | 09-17 14시경 | 분모 (c) — 시드3 짝 |
-| **E-LoRA arm C 시드 903** | jarvis 0,3 | DELIVER 4모달 | 200 | ep95 — 최고 66.60@92 | 09-18 02시경 | bengio A·B 3시드와 짝 |
-| **E-LoRA A·B × 시드 902·903** (4런) | bengio 0~7 (각 2장) | DELIVER 4모달 | 200 | ep57~63 — 최고 66.80~67.50 | 09-20 09~14시 | A(센서별 r16) 대 B(완전공유 r16) 3시드 판정 |
-| **E1 확정 시드4 v2** | yeon 0,1 | DELIVER 4모달 | 200 | ep39 — 최고 67.05@24 | 09-21 06시경 | 확정 페어 넷째 |
-| **C3-only 시드4 v2** | yeon 2,3 | DELIVER 4모달 | 200 | ep41 — 최고 66.17@22 | 09-21 01시경 | E1 시드4 v2 짝 |
-| **E13 확정 시드4** | yeon 4,5 | DELIVER 4모달 | 200 | ep36 — 최고 67.28@35 | 09-20 오전 | E13 넷째 페어(E1 과 검정력 맞춤) |
-| **E-LoRA arm C 시드 902** (옛 체크아웃) | yeon 6,7 | DELIVER 4모달 | 200 | ep51 — 최고 67.23@48 | 09-20 22시경 | 〃 |
-| **E1M 200ep 풀 런**(시드 3407, ep38 이어 받기) | hpca100 0 | MUSES 3모달 | 200 | ep136 — 최고 81.94@105 | 09-17 09시경 | MUSES test 서버 제출 후보 |
-| **E13M 200ep 풀 런**(시드 3407) | hpca100 3 (1장) | MUSES 3모달 | 200 | ep1 (09-16 16:39 기동, TAPS on·permodal 확인) | 09-18~19 | MUSES test 제출 후보(E13 쪽) |
-| **E13M · E1M 풀 런 시드 20260902**(2런, 대기 기동) | hpca100 1 · 2 (각 1장) | MUSES 3모달 | 200 | MCubeS 0827 쌍 완주(21시경) 후 자동 기동 | 09-18~19 | 풀 런 시드 페어 — test 제출 헤드라인의 시드 의존 제거 |
-| **E7 기준선 200ep 풀 런**(시드 3407) | jarvis 4 (1장) | MUSES 3모달 | 200 | ep1 (09-16 15:42 기동, TAPS off 확인, 2.04 it/s) | 09-18 12시경 | E1M 풀 런의 같은 길이 짝 — test 서버 제출 근거 |
+| **C3-only 시드 902** (확정 매칭 분모, ep54 재개) | jarvis 1,7 | DELIVER 4모달 | 200 | ep146 — 최고 **67.20@140** | 09-17 20:20 (19.4분/ep) | 분모 (c) — E1·E13 시드2 짝 |
+| **C3-only 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep162 — 최고 66.84@146 | 09-17 16:25 (21.2분/ep) | 분모 (c) — 시드3 짝 |
+| **E-LoRA arm C 시드 903** | jarvis 0,3 | DELIVER 4모달 | 200 | ep130 — 최고 66.96@100 | 09-18 03:45 (20.9분/ep) | bengio A·B 3시드와 짝 |
+| **E7 기준선 200ep 풀 런**(시드 3407) | jarvis 4 (1장) | MUSES 3모달 | 200 | ep50 — 최고 **79.77@50** | 09-18 11:20 (13.1분/ep) | E1M·E13M 풀 런의 같은 길이 짝 — test 제출 근거 |
+| **E-LoRA A·B × 시드 902·903** (4런) | bengio 0~7 (각 2장) | DELIVER 4모달 | 200 | ep74~76 — 최고 66.80~**68.06**(A 902) | 09-20 09:15~13:40 (39~41분/ep) | A(센서별 r16) 대 B(완전공유 r16) 3시드 판정 |
+| **E1 확정 시드4 v2** | yeon 0,1 | DELIVER 4모달 | 200 | ep52 — 최고 67.05@24 | 09-21 06:40 (41.6분/ep) | 확정 페어 넷째 |
+| **C3-only 시드4 v2** | yeon 2,3 | DELIVER 4모달 | 200 | ep54 — 최고 **66.74@54** | 09-21 01:20 (40.0분/ep) | E1 시드4 v2 짝 |
+| **E13 확정 시드4** | yeon 4,5 | DELIVER 4모달 | 200 | ep50 — 최고 67.28@35 | 09-20 07:10 (31.5분/ep) | E13 넷째 페어(E1 과 검정력 맞춤) |
+| **E-LoRA arm C 시드 902** (옛 체크아웃) | yeon 6,7 | DELIVER 4모달 | 200 | ep64 — 최고 **68.69@60 = 현재 DELIVER 트레이너 val 최고** | 09-20 22:00 (41.2분/ep) | 〃 |
+| **E1M 200ep 풀 런**(시드 3407, ep38 이어 받기) | hpca100 0 | MUSES 3모달 | 200 | ep170 — 최고 81.94@105 | **09-17 08:20** (16.2분/ep) | MUSES test 제출 후보 |
+| **E13M 200ep 풀 런**(시드 3407) | hpca100 3 | MUSES 3모달 | 200 | ep35 — 최고 **79.91@30** | 09-18 23:35 (16.5분/ep) | MUSES test 제출 후보(E13 쪽) |
+| **E13M 풀 런 시드 20260902** | hpca100 1 | MUSES 3모달 | 200 | ep15 — 77.11 (09-16 20:44 기동, 검증 5항 통과) | 09-19 03:45 | 풀 런 시드 페어 — 제출 헤드라인의 시드 의존 제거 |
+| **E1M 풀 런 시드 20260902** | hpca100 2 | MUSES 3모달 | 200 | ep10 — 76.45 (09-16 21:14 기동, 검증 5항 통과) | 09-19 03:30 | 〃 |
+| **E17 = E1 + 고해상도 세부 가지**(시드 821, 40ep 스크린) | hpca100 0 — **대기 기동** | DELIVER 4모달 | 40 | ⏳ E1M 풀 런 완주 후 자동 기동(waiter PID 2023203, `WAIT_START 09-16 18:02 UTC`) | 09-17 08:20 기동 예정 | 얇은 객체 병목 직격. 게이트 G1~G4 는 대기열 N-P53 행 |
 
 > 🔴 위 진행 값은 전부 트레이너 val 이며 legal 이 아니다. 판정은 `val.py` 하네스(1024·native-GT BS1) 또는 `tools/eval_muses_official.py` 재채점으로만 한다.
 > ✅ **09-16 MUSES 확정 판정(생각정리)**: E13M 이 세 게이트를 3페어로 통과 — **MUSES 에서는 E13 이 E1 보다 낫다**. E1M 은 "일관된 소폭 양성(+0.52), 통과선 미달"(§5-31). 📌 §0-1 에 MUSES 조건별 표본 규칙 추가(§5-31b).
@@ -120,6 +126,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 ## ⏸ bengio 중단 런 — 재개 대기 (2026-09-09 04:20 KST)
 
+> 🔴 **전제 모순 확인 필요(2026-09-17)**: 아래는 "bengio 를 후배에게 넘겨야 해서" 중단한 기록인데, **지금 bengio 8장에서 우리 E-LoRA A·B 네 런이 돌고 있다.** 서버가 돌아온 것이라면 세 런(E4b·B0s2·E1s2)은 `AUTO_RESUME` 으로 이어 돌릴 수 있고, 아직 남의 것이라면 이 절의 재개 계획을 접어야 한다. registry 기준으로 세 런은 09-09 이후 재개된 적이 없다. **사용자·생각정리 확인 대상.**
+
 > **왜 껐나**: bengio 를 후배에게 넘겨야 해서 user 지시로 **미리** 중단했다(09-09 04:18 KST, SIGTERM).
 > **버린 것 없음** — 셋 다 `AUTO_RESUME: true` 이고 체크포인트가 `outputs/` 에 남아 있다. 같은 서버든
 > 다른 서버든 **SAVE_DIR 의 산출물만 있으면 그 자리에서 이어 돌아간다.**
@@ -145,18 +153,22 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 > **재설계 기준**: ①논문(accept) 기여 — A(P51 확장)·B(진단-프레임워크) 어느 분기에서도 쓰이는가 ②24GB(yeon 3090/jarvis 4090)에서 도는가 ③원장 반증 경로가 아닌가. 옛 대기열 대부분은 계보 사망·중복으로 종결 처리(하단 🗑).
 
-### 🔵 진행 중 (3트랙)
-| 실험 | 자원 | 다음 이벤트 |
-|---|---|---|
-| ~~P51-CMLC 페어1~~ (#16) | — | 🔴 **판정 종결(2026-08-26): H19 반증** — legal Δ(on−off) **−0.82**(off 55.40 > on 54.58), per-condition 악조건일수록 유해(fog −2.03·night −0.58, 유일우세 sun +0.26) → **F 기각 + B 재프레이밍 확정**. jarvis 페어2(5,6)는 완주 시 재현성 각주만. 판정 [analysis/2026-08-26-p51-cmlc-verdict-h19.md](analysis/2026-08-26-p51-cmlc-verdict-h19.md) |
-| P50-MAP finetune (seed821 매칭) (#11) | yeon 1,2 | 완주 → Δ vs 53.57, 게이트 ≥+0.5 |
-| 시드 n=5 (#3) | jarvis (822 마무리) | 완주 → n=5 mean±std 확정 → jarvis GPU 해방 |
+### 🔵 진행 중 (2026-09-17 재정리 — 옛 3트랙 표는 전부 종결돼 내림)
+
+| 트랙 | 다음 이벤트 |
+|---|---|
+| **DELIVER 확정 3쌍 판정** | jarvis C3-only 902·903 완주(09-17 16:25·20:20) → legal 재채점 → E1·E13 3쌍 판정(생각정리). 판정표에 카드 §0-2 두 항목(우리 최고 단일 런 56.99 대비·모달리티 정합 SOTA 거리) 병기 |
+| **MUSES 풀 런 4종** | E1M 3407(09-17 08:20) · E7 3407(09-18 11:20) · E13M 3407(09-18 23:35) · 시드 20260902 페어(09-19 03:30~03:45) → 공식 재채점 → test 제출 후보 확정 |
+| **E-LoRA 3갈래 판정** | arm C 903(09-18 03:45) · A·B 902·903(09-20) 완주 → A/B/C 3시드 판정 |
+| **E17 세부 가지 스크린** | hpca100 GPU0 대기 기동(09-17 08:20 예정) → 40ep 스크린 → G1~G4 판정 |
+
+> 🗑 내린 것: ~~P51-CMLC 페어1~~(08-26 H19 반증으로 종결) · ~~P50-MAP finetune~~(H22 +0.74 로 판정 완료) · ~~시드 n=5~~(N6 5/5 로 완결, 54.39±0.76).
 
 ### 🎯 신규 대기열 (논문-가치 순, 여유 GPU 투입 대상)
 | # | 실험 | 자원 적합 | 논문 가치 (A/B 분기별) | 상태 |
 |---|---|---|---|---|
-| **N-P53** | **E17 = E1 레시피 + 고해상도 세부 가지(DETAIL_BRANCH)** 40ep 스크린, 시드 821 — 얇은 객체 병목 직격(제안서 decisions/2026-09-17-p53-detail-branch-proposal.md). config `configs/{jarvis,hpca100}-deliver_rgbdel_P46_c3only_seed20260821_screen40_E17.yaml`(구현 후 등재) | jarvis 2장 또는 hpca100 1장 | user 렌즈(전 모달 융합 계열 1위)의 DELIVER 시드 평균 약점 해소 후보. 게이트 G1 24클래스 Δ vs E1 ≥ +0.5 · G2 얇은 객체 4클래스 Δ vs E1 ≥ +2.0 · G3 악조건 · G4 SOTA 거리 병기 | 🟡 구현 완료·검수 통과(develop faffea5, 09-17) → 기동 대기. 검증: `[DETAIL] mode=shared_stem levels=[4, 8] params=292,130`, total_trainable 59,082,817(=E1 58,790,687+292,130), `[CKPT] save_topk=1`, 첫 기동 `P46_MEM_LOG=1` |
-| **N-MC** | **확정 레시피의 MCubeS 이식 3시드(200ep)** — DELIVER 확정 판정(09-14~15, E13·E1 각 3페어)에서 채택된 레시피를 MCubeS 통일 레시피 3시드(3407·20260827·20260828)에 매칭해 돌린다. E13 채택 → `configs/{hpca100,yeon}-mcubes_rgbadn_P39_1_rank_E13Mc_seed{3407,20260827,20260828}.yaml`, E1 채택 → `…_E1Mc_seed…yaml` | 서버당 2장×3런(yeon 3090×2 ≈16h/런, hpca100도 가능) | 단일 아키텍처 원칙상 세 벤치 공통 적용 증거(DELIVER·MUSES·MCubeS). 게이트 = 3시드 평균 Δ vs 매칭 C3-off(58.07±0.49) ≥ +0.5, **final-epoch 기준**(MCubeS는 val-best = test-best 동치라 보수치), val-best 병기 | ⏳ **user 지시(2026-09-12) 「확정되는대로 mcubes에도 돌려보자」** — config 12벌 준비 완료, 확정 판정 직후 기동 |
+| **N-P53** | **E17 = E1 레시피 + 고해상도 세부 가지(DETAIL_BRANCH)** 40ep 스크린, 시드 821 — 얇은 객체 병목 직격(제안서 decisions/2026-09-17-p53-detail-branch-proposal.md). config `configs/{jarvis,hpca100}-deliver_rgbdel_P46_c3only_seed20260821_screen40_E17.yaml`(구현 후 등재) | jarvis 2장 또는 hpca100 1장 | user 렌즈(전 모달 융합 계열 1위)의 DELIVER 시드 평균 약점 해소 후보. 게이트 G1 24클래스 Δ vs E1 ≥ +0.5 · G2 얇은 객체 4클래스 Δ vs E1 ≥ +2.0 · G3 악조건 · G4 SOTA 거리 병기 | 🟢 **대기 기동 예약 완료(09-17 03:0x)** — hpca100 GPU0(E1M 풀 런 완주 직후, 08:20 예정). 코드 3파일·config 를 md5 대조로 전송(실행 중 학습이 있어 pull 대신 파일 단위), `P46_MEM_LOG=1` 전용 기동 스크립트. 검증: `[DETAIL] mode=shared_stem levels=[4, 8] params=292,130`, total_trainable 59,082,817(=E1 58,790,687+292,130), `[CKPT] save_topk=1`, 첫 기동 `P46_MEM_LOG=1` |
+| **N-MC** | **확정 레시피의 MCubeS 이식 3시드(200ep)** — DELIVER 확정 판정(09-14~15, E13·E1 각 3페어)에서 채택된 레시피를 MCubeS 통일 레시피 3시드(3407·20260827·20260828)에 매칭해 돌린다. E13 채택 → `configs/{hpca100,yeon}-mcubes_rgbadn_P39_1_rank_E13Mc_seed{3407,20260827,20260828}.yaml`, E1 채택 → `…_E1Mc_seed…yaml` | 서버당 2장×3런(yeon 3090×2 ≈16h/런, hpca100도 가능) | 단일 아키텍처 원칙상 세 벤치 공통 적용 증거(DELIVER·MUSES·MCubeS). 게이트 = 3시드 평균 Δ vs 매칭 C3-off(58.07±0.49) ≥ +0.5, **final-epoch 기준**(MCubeS는 val-best = test-best 동치라 보수치), val-best 병기 | ❌ **종결(2026-09-16)** — 기다리지 않고 먼저 돌린 같은 코드 3페어가 결론을 냈다. 4탭 단독 3페어 평균 **+0.10**, 4탭+prototype 3시드 평균 **−0.63** 으로 둘 다 게이트(+0.5) 미달이고 페어 폭 0.64 가 평균 효과의 여섯 배다. 사전 등록 종결 조건대로 **MCubeS 시드를 더 늘리지 않는다**(카드 §5-30 ② · §5-21 말미). config 12벌은 보관만 한다 |
 | ~~N1~~ | ~~MUSES 시드 분산 ×2~~ | — | ✅ **완결(2026-08-27)** | 공식 val 3점 {82.13, 81.79(s824), 81.47(s825)} spread **0.66** = MUSES val 시드 안정 확정 → test 단일제출 방어 근거 | registry 참조 |
 | ~~N2~~ | ~~MLE-SAM 평균융합 baseline~~ | — | ✅ **완료·판정(2026-08-31, H21)** | legal test **55.45** — gated-MLP(54.2~55.4)와 동급 이상 = **우리 트렁크 우위 주장 철회**, 믹서 3점 완성(mean≈gated-MLP>xattn). 소거 논지 완결 재료 | 판정 [analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md](analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md) |
 | **N3** | **C3 진단-구동 검출기 (분석, 학습 0)** — 기존 ckpt들의 val confusion에서 class-transfer 붕괴 지표(비대각 집중도) 정량화 → C3 on/off 효과와 상관 검증 (DELIVER 붕괴有/MUSES 無) | **GPU ~0**(캐시 confusion 재집계, 필요시 1 GPU eval) | **B 헤드라인 기둥·A여도 통일 서사 필수** — "벤치별 C3 on/off"를 원칙적 자동설정으로 전환하는 근거. 검출기가 두 벤치의 경험적 C3 효과와 일치하면 통일 아키텍처 주장 성립 | 🟡 분석 설계 = discussion 세션 직접 — **즉시 가능** |
@@ -182,7 +194,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **E-LoRA** | **LoRA 구조 ablation** — A. per-modal r16(현행=기존 seed821 재사용, 추가런 0) vs **B. 완전공유 r16** vs **C. 공유 r8 + per-modal 잔차 r8** — 시드 20260821 매칭, DELIVER 프로브, 파라미터 수 보고 | 신규 2런(B·C) × yeon 2장 × ~15h | 🟢 **등재(2026-09-01 user 승인)** — 근거: H22(P50 +0.74)가 "독립 어댑터 미정렬" 증거 → C는 정렬을 아키텍처에 내장하는 대안. ⚠️ **반증 가족 아님 확인**: 라우터/게이트/입력-의존 가중 없음(모달 정체성 정적 배정) — H1/H16(선택 계열)과 무관. 입력-조건부(D형)는 금지 유지 | **게이트(사전등록)**: C ≥ A(54.21) − 0.3 → 채택 검토(+P50 상호작용 팔 후속: C+P50 vs A+P50으로 정렬 기제 상보/중복 판정) / C·B 모두 A 미달 → 현행 A가 실증 정당화(논문 ablation 행). 슬롯 = N7 완주 후 yeon 해방분, P52 본런보다 후순위 |
 | **N5** | TTA-on 실측 (구 #4, 참고용 ablation 행) | yeon/jarvis 1장 ×7h | 낮음 — 헤드라인 불가 확정, ablation 완결성용 | ⏸ 위 소진 후 필러 |
 
-### 🅰️ A100 대기열 (hpca100 P51 완주 후)
+### 🅰️ A100 대기열 (⚠️ 제목의 "P51 완주 후" 조건은 2026-08-26 P51 종결로 소멸 — 현재 A100 4장은 MUSES 풀 런 4종이 09-17~19 까지 점유)
 | 순위 | 실험 | 근거 |
 |---|---|---|
 | ① | **P47-2 UniBal** (MUSES 4모달 역전 유일 레버, 구현·스모크 완료) | A100 필요(보조 head 메모리). P51 판정 후 슬롯 |
@@ -208,6 +220,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **module ablation** | **제안 모듈 전부 ≈0**(ATTN_BIAS=RBMA 간판 포함). gate+calib만 test +0.26. **성능 출처 = DINOv3 백본 + per-modal LoRA** |
 | **det 붕괴 진단** | 원인 = **BS1의 gradient 노이즈**(n_pos 1~3), LR 아님. 처방 = 배치↑ + **LR 유지**. warmup 5ep 완주로 검증 |
 | **seg-P37a/b (bengio분)** | **사망 확정** — bengio 노드 CUDA 전체 장애(GPU5 HW 고장, 재부팅 후 SSH 미복귀)로 ep1~2에서 종료. jarvis 재기동분(P37a→P37b 체인)이 계보 승계 — 남 세션 소관이라 수치 갱신하지 않음 |
+| **MUSES 시드 20260825 test 제출본** | **준비 완료·업로드 전(2026-09-17)** — MUSES 1위 수치가 시드2 단일 제출이라 시드 평균을 만들기 위한 둘째 제출 후보. 공식 val 재채점 **81.4653** 으로 기록값 81.47 재현(로드 clean, `total_trainable=50,801,334`), test 750장 추론 완료, zip 이 헤드라인 제출본과 파일명 집합 완전 일치. 산출 = `/ailab_mat2/.../submission/muses/muses_P39_1_seed20260825_3modal_ep168_submission.zip`(md5 e4f02f3fc6599d31db4a9a5bf9b3b95f). 🔴 **시드 20260824 는 체크포인트가 어느 서버에도 남아 있지 않아 재학습 없이는 제출 불가** — 생각정리 결정으로 재학습은 보류 |
 | **P43-PanopticDual (MUSES, hpca100)** | **완주** — best val 82.51@ep156 (seed2 82.62 −0.11 / P38 82.22 +0.29). val로는 seed2 미돌파. PQ 축(설계 헤드라인)은 MUSES panoptic GT 부재로 val PQ 미측정 → PQ 판정 보류. ckpt `outputs/ReliaDINO/hpca100_muses_rgbel_P43_pdual/epoch156_82.51_top1_checkpoint.pth`. test 제출 후보(mIoU 82.5대). Total Training Time 01:37:24는 로깅 아티팩트 |
 
 ## ⚠️ 사고 기록 (반복 금지)
@@ -254,7 +267,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 **적용 예**: MUSES/DELIVER 모달 실험을 짤 때 위 표를 baseline으로 붙이고, 누적 ablation + per-condition을 기본 산출로. 근거 = 조사보고(2026-07-17, DGFusion 2509.09828 v3 / CAFuser 2410.10791 v2 Table IX / MUSES 2401.12761 v4 Table 3 / CMNeXt 2303.01480).
 
-### [대기 트리거] jarvis P37b-DELIVER 완주 시 → P34 per-class 비교 분석 (등록 2026-07-18)
+### ~~[대기 트리거] jarvis P37b-DELIVER 완주 시 → P34 per-class 비교 분석~~ (등록 2026-07-18 · 🗑 **2026-09-17 종결** — 대상 런이 7월에 끝났고 감시 ID·PID 가 모두 사라진 죽은 트리거다. 계보도 P39.1 로 승계됐다)
 
 - **트리거**: jarvis `train_reliadino ... jarvis-deliver_rgbdel_P37b_classtoken` 프로세스 종료(Monitor blf49vkbc 감시 중). ETA 07-19 02:20경, ep200 완주.
 - **할 일**: P37b-best(top-1 val ckpt)와 P34-best를 **동일 프로토콜로 DELIVER val per-class IoU 산출 → 클래스별 Δ(P37b−P34) 테이블**. 실행=sonnet(tools/ 표준 분석 스위트), 비교 판정=opus.
@@ -262,7 +275,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 - **맥락**: P37b는 P37a(CEFR) 붕괴를 피했으나 val best 62.99로 P34 −5.2pt 미달. per-class로 "어느 클래스에서 classtoken이 P34 대비 이득/손해인지" 규명 = DELIVER analysis 목적(user 지정). P37a는 ep24 고착(실패), P37b는 중립(무해무익) 잠정 판정.
 - 참고 그래프: P37a `jarvis_p37a_valtest.png`, P37b `jarvis_p37b_valtest.png`.
 
-### [대기 트리거] yeon P37b-det 완주 → P38-det 자동 기동 (등록 2026-07-19)
+### ~~[대기 트리거] yeon P37b-det 완주 → P38-det 자동 기동~~ (등록 2026-07-19 · 🗑 **2026-09-17 종결** — 체인 래퍼와 PID 가 사라진 죽은 트리거다. det 트랙은 D1 인증 배포로 이관됐다)
 - **체인**: yeon tmux jemo/p38_chain wrapper가 P37b-det(torchrun PID 3733229) 종료 감시 → 종료 시 P38-det 자동 기동. 세션 독립(서버측 실행).
 - **P38-det**: 워크트리 `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-p38` (브랜치 worktree-p38-det, f775687, `ReliaDINOM2FDetector`=M2F query head를 detector로). config `configs/det/det_P38_m2f_yeon.yaml`(M2F on, CEFR/CLASS_TOKEN/ROUTER off, grad-ckpt false, GRAD_CLIP 0.1).
 - **기동 설정**: env openmmlab, DET_GRAD_CLIP=0.1, port 29713, **4-GPU 고정**(eff-batch를 P37a/b-det와 일치). ETA 07-20 14:30경.
