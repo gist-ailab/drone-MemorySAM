@@ -465,6 +465,8 @@ hpca100 GPU3(E13M 시드3 공식 재채점이 끝나 빈 자리), 16:39 KST 기�
 기동 검증 통과: fix_seeds(3407) · TAPS ENABLE True · C3_PROTO SRC=permodal · `[CKPT] save_topk=1 save_test_ckpt=False` · total_trainable 53,974,710 · RANDOM INIT 없음 · 1.60 it/s · GPU 19.4GB. ETA 09-18~19.
 같은 조건의 풀 런 셋이 이렇게 모인다: **E7 기준선(jarvis GPU4) · E1M(hpca100 GPU0, ep38 재개) · E13M(hpca100 GPU3)** — 셋 다 시드 3407·한 장·EPOCHS 200.
 
+📌 **풀 런 시드 페어(2026-09-16 생각정리 결정)**: 지금 풀 런 셋이 모두 시드 3407 하나라 test 제출 헤드라인이 단일 시드에 걸려 있다 — 40ep 스크린에서 E7 세 시드가 0.67 폭으로 흔들렸다. MCubeS 0827 쌍이 끝나 비는 자리에 **E13M 풀 런 시드 20260902(GPU1) · E1M 풀 런 시드 20260902(GPU2)** 를 대기 기동으로 걸었다(config c9adb59, 각각 SEED·SAVE_DIR 만 변경). E7 기준선 풀 런 시드2 는 jarvis GPU4 가 비는 09-18 이후.
+
 ### 5-30. ✅ 조건별 평가 3시드로 확장 + MCubeS 같은 코드 쌍 두 개 — 악조건 규칙은 유지, MCubeS 는 게이트 미달 (2026-09-16)
 
 #### ① DELIVER 조건별 평가 — E1·E13 각 3시드 (jarvis GPU2·4, 04:47 완료)

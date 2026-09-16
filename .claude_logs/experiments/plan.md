@@ -80,6 +80,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **E-LoRA arm C 시드 902** (옛 체크아웃) | yeon 6,7 | DELIVER 4모달 | 200 | ep51 — 최고 67.23@48 | 09-20 22시경 | 〃 |
 | **E1M 200ep 풀 런**(시드 3407, ep38 이어 받기) | hpca100 0 | MUSES 3모달 | 200 | ep136 — 최고 81.94@105 | 09-17 09시경 | MUSES test 서버 제출 후보 |
 | **E13M 200ep 풀 런**(시드 3407) | hpca100 3 (1장) | MUSES 3모달 | 200 | ep1 (09-16 16:39 기동, TAPS on·permodal 확인) | 09-18~19 | MUSES test 제출 후보(E13 쪽) |
+| **E13M · E1M 풀 런 시드 20260902**(2런, 대기 기동) | hpca100 1 · 2 (각 1장) | MUSES 3모달 | 200 | MCubeS 0827 쌍 완주(21시경) 후 자동 기동 | 09-18~19 | 풀 런 시드 페어 — test 제출 헤드라인의 시드 의존 제거 |
 | **E7 기준선 200ep 풀 런**(시드 3407) | jarvis 4 (1장) | MUSES 3모달 | 200 | ep1 (09-16 15:42 기동, TAPS off 확인, 2.04 it/s) | 09-18 12시경 | E1M 풀 런의 같은 길이 짝 — test 서버 제출 근거 |
 | **B0Mc 시드 0827** | hpca100 1 | MCubeS 4모달 | 200 | ep131 — 최고 58.00@112 | 09-16 21시경 | MCubeS 셋째 페어 기준선 |
 | **E1Mc 시드 0827** | hpca100 2 | MCubeS 4모달 | 200 | ep129 — 최고 58.94@114 | 09-16 21시경 | 〃 |
