@@ -38,6 +38,16 @@ moved: 2026-07-08
 
 | 벤치 | 우리 최선 | vs SOTA | 판정 |
 |---|---|---|---|
+> 🔴 **모달리티 정합 비교(2026-09-17, user 지적 반영)** — 우리는 벤치의 모달리티를 전부 쓴다. 1차 비교 = 같은 모달리티 집합 방법, 2차 = 적은 모달 방법.
+>
+> | 벤치 | 우리 최고(모달·시드) | 같은 계열 최고 | 격차 | 적은 모달 최고(2차) |
+> |---|---|---|---|---|
+> | DELIVER test | 56.99, 4모달, 단일 런(5시드 평균 53.83) | DGFusion 56.71, 4모달 | +0.28 | MM SAM-adapter 57.35, RGB+D |
+> | MUSES test 공식 | 79.788, 3모달, 단일 런 | DGFusion 79.5, 4모달 | +0.29 | MM SAM-adapter 81.07, RGB+L · GtA 82.39, 카메라 단독 |
+> | MCubeS | 58.07, 4모달, 3시드 | StitchFusion 55.9, 4모달 | +2.17 | — |
+>
+> 세 최고치는 구조(ReliaDINO P39.1 트렁크)는 같으나 손실 설정이 다르다(DELIVER C3 on / MUSES·MCubeS C3 off — MUSES C3 mfeat λ0.2 −0.97, MCubeS C3-on −0.24). E1·E13 확정 런은 우리 최고 단일 런보다 낮아 SOTA 거리 게이트(카드 §0-2) 미달. MUSES 200ep 풀 런 셋(기준선·E1·E13, 시드 3407·902)은 09-18~19 완주.
+
 | DELIVER | 🔴 **1차 규칙 = 학습기 val-best top1 (2026-09-16 고정)**: test 최고 **56.99**(P46 C3-only 본런 ep70) · 5시드 평균 53.83(24클래스 54.66) · legal val 최고 **67.89**(E1 확정 시드3, 단일 시드·확정 전) | test: DGFusion 56.71 **+0.28** · MM SAM-adapter 57.35 −0.36 / val: CAFuser-CAA 68.79 −0.90 · MM SAM-adapter 69.60 −1.71 | 보조(규칙명 필수) = N6 legal-val 재선택 평균 54.39±0.76 · 최고 55.29(seed816). 확정 3페어 판정 09-17 |
 | MUSES | **P39.1-rank seed2 3모달** Codabench 공식 test **79.788**(val 82.62@ep208) — 정본(79.025 = 7월 P38-m2f 기록) | GtA(camera-only) 82.39 대비 **−2.60** · **융합 계보 1위**(DGFusion 79.5 상회) | 정면 돌파 비현실 → 포지셔닝 = 융합 계보 1위 + 악조건 강건성 |
 | MUSES PQ | things 22.87 / All 35.55 (P47-D1 ep172) | SOTA(CAFuser) 59.26 −23점대 | PQ 축 비교 불가 — limitation 절 소재 |
