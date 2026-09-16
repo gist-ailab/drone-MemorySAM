@@ -556,23 +556,22 @@ pgrep -f 'train_reliadino.py --cfg /tmp/jemo_scratch/configs/<카드>.yaml' >/de
 - 🔴 **2026-09-16 15:50 KST 재생성 2차 (`553da444` → `d5ac9c03`)**: 고정 기준값을 갱신하려고 다시 만들었다(생각정리 결정 — 크론은 이 세션 전용이라 다른 세션에서 못 고친다). 바뀐 값 = DELIVER legal val 내부 최고 67.74 → **67.89**(E1 확정 시드3, 단일 시드·확정 전 각주) · 격차 1차 기준 **MM SAM-adapter 69.60(−1.71)**, CAFuser-CAA 68.79(−0.90) 괄호 병기 · DELIVER test 56.62 vs 57.35(−0.73), DGFusion 56.71(−0.09) 괄호. 조회 대상 서버·로그 경로도 09-16 현황으로 고쳤다. **다음 만료 = 2026-09-23 16시경.**
 - 🔴 **2026-09-15 16:25 KST 재생성**: `c0aba5c9`(09-08 생성)가 7일 만료로 사라진 것을 정기보고 자가 점검에서 발견(`CronList` 비어 있음) → 같은 표현식·같은 본문으로 **`553da444`** 재생성. **다음 만료 = 2026-09-22 16시경** — 그 전 정기보고에서 다시 만들어야 한다.
 
-### 1-6. 🔴 2026-09-15 14:00 KST 기준 살아 있는 감시·대기 기동 (세션 재기동 시 이 표대로 재설치)
+### 1-6. 🔴 2026-09-16 22:00 KST 기준 살아 있는 감시·대기 기동 (세션 재기동 시 이 표대로 재설치)
 
 크론 지시문에 적힌 감시 4건(yeon P52 시드1·2 / yeon E-LoRA arm A r16 / hpca100 E2 / hpca100 E7c)은 대상이 모두 끝나 **재설치 불필요**. 실제로 필요한 감시는 아래다.
 스크립트는 잡 로컬 tmp(`watch1.sh`·`watch_bundle.sh`·`watch_chain.sh`·`watch_waiters.sh`)라 세션이 사라지면 같이 사라진다 — 재설치 시 1-2·1-3 명세로 다시 만든다.
 
 | 대상 | 서버·세션/창 | 로그 | 방식 |
 |---|---|---|---|
-| E1 확정 시드3 | jarvis `e1_confirm200_s3` | `/SSDb/jemo_maeng/src/drone-MemorySAM/logs/e1_confirm200_s3_launch_2gpu.log`(🔴 `_launch.log` 는 옛 로그) | 단일(STALE 900s) |
-| E1 시드3 자동 재채점 연쇄 | jarvis `rescore_e1conf_s3` | `…/logs/rescore_chain_E1conf_s3_console.log` | 연쇄 마커 |
-| C3-only 시드 902 / 903 | jarvis `c3base_s2` / `c3base_s3` | 902 = `…/logs/c3base_s2_resume_launch.log`(09-15 22:08 ep54 재개, GPU1,7) · 903 = `…/logs/c3base_s3_launch.log` | 단일(1200s) |
+| C3-only 시드 902 / 903 | jarvis `c3base_s2` / `c3base_s3` | 902 = `/SSDb/jemo_maeng/src/drone-MemorySAM/logs/c3base_s2_resume_launch.log`(ep54 재개분) · 903 = `…/logs/c3base_s3_launch.log` | 단일(1200s) |
 | E-LoRA arm C 시드 903 | jarvis `elora_c_s903` | `…/logs/elora_c_s903_launch.log` | 단일(1500s) |
-| E-LoRA A·B × 902·903 | bengio `jemo:elora_{A,B}_s90{2,3}` | `/SSDe/jemo_maeng/src/drone-MemorySAM-daily/logs/elora_*_2026091422513*.log` | 묶음(window:jemo, 2400s) |
+| MUSES E7 기준선 200ep 풀 런 | jarvis `e7full200` | `…/logs/e7full200_launch.log` | 단일(1500s) |
 | E1·C3 시드4 v2 | yeon `jemo:e1conf_s904_v2` / `jemo:c3base_s904_v2` | `/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-develop/logs/{e1conf,c3base}_s904_v2_20260915_12205*.log` | 묶음(window:jemo, 2400s) |
-| E13 확정 시드4 | yeon `e13conf_s904` | `…/drone-MemorySAM-develop/logs/e13conf_s904_launch.log` | 묶음(session, 2400s) |
-| E-LoRA arm C 시드 902 | yeon `elora_c_s902` | `…/drone-MemorySAM-p38/logs/elora_c_s902_launch.log` | 묶음(session, 1800s) |
-| E1M 풀 런 · B0Mc 3407 · B0Mc 0828 · E1Mc 0828h | hpca100 `hpca100_{E1Mfull,B0Mc3407,B0Mc0828,E1Mc0828h}` | `/tmp/jemo_scratch/logs/hpca100_<카드>_launch.log` | 묶음(session, 1800s) |
-| 대기 기동 3건 | hpca100 `wait_{B0Mc0827,E1Mc0827h,E13Ms3}` → `rs_*` → `hpca100_<카드>` | `/tmp/jemo_scratch/logs/wait_*.log`, `rs_*.out` | 마커(LAUNCHED/RS_ABORT/WAIT_TIMEOUT) |
+| E13 확정 시드4 · E-LoRA arm C 시드 902 | yeon 세션 `e13conf_s904` · `elora_c_s902` | `…/drone-MemorySAM-develop/logs/e13conf_s904_launch.log` · `…/drone-MemorySAM-p38/logs/elora_c_s902_launch.log` | 묶음(session, 2400s) |
+| E-LoRA A·B × 902·903 | bengio `jemo:elora_{A,B}_s90{2,3}` | `/SSDe/jemo_maeng/src/drone-MemorySAM-daily/logs/elora_{A,B}_s90{2,3}_2026091422513*.log` | 묶음(window:jemo, 2400s) |
+| MUSES 풀 런 4건 | hpca100 세션 `hpca100_{E1Mfull,E13Mfull,E13Mfull_s2,E1Mfull_s2}` | `/tmp/jemo_scratch/logs/hpca100_<카드>_launch.log` | 묶음(session, 1800s) + E13Mfull 단일 |
+
+🔴 **2026-09-16 22:00 유실·재설치 기록**: 정기 점검에서 **yeon 두 묶음과 bengio 한 묶음이 사라져 있었다**. 위 표대로 세 개를 다시 설치했다(`watch_bundle.sh`, persistent). jarvis 네 건과 hpca100 두 건은 살아 있었고, MUSES 풀 런 시드2 페어의 대기 기동 감시는 두 건 검증을 확보하고 정상 종료했다. 🔴 **yeon 로그 경로에 주의하라 — 홈이 아니라 `/SSDb/jemo_maeng/src/Project/Drone/detection/` 아래다.** `~/src/` 로 찾으면 빈 출력이 나오고 런이 죽은 것으로 오인하게 된다(이번 점검에서 실제로 한 번 헛짚었다).
 
 - 대기 기동: `wait_gpus_then_launch.sh <앞 세션> <GPU> /tmp/jemo_scratch/rs_<카드>.sh rs_<카드> 1200` → `restart_card.sh <카드> <GPU> 30`(여유 30G·GPU 빈지·세션 중복 확인, 옛 로그 보존 후 `launch_card.sh`). 매핑: hpca100_B0Mc3407→GPU1 B0Mc0827 · hpca100_B0Mc0828→GPU2 E1Mc0827h · hpca100_E1Mc0828h→GPU3 E13Ms3. 카드 config 는 `/tmp/jemo_scratch/configs/<카드>.yaml`(develop 133de05 사본, SAVE_TOPK 1).
 - 🔴 hpca100 `train_reliadino.py` 는 40843ed 판으로 교체돼 있다(원본 cddc319 판 = `/tmp/jemo_scratch/train_reliadino.py.cddc319`). 체크아웃 git 상태에 수정으로 보인다 — 되돌리지 말 것.
