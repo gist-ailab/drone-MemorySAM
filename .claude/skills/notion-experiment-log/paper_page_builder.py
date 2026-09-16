@@ -28,7 +28,7 @@ def sec_summary():
     return [
         CO([B("연구 대상 "), T("드론·주행 야간/악천후 멀티모달(RGB + LiDAR + Event + Depth/Thermal/Radar) 시맨틱 세그멘테이션과 객체 검출. 벤치 = DELIVER · MUSES · MCubeS(세그) / poongsan indoor(검출) / MULTIAQUA(챌린지, 종료).")], "📌", "blue_background"),
         CO([B("현재 최선(합법 ckpt = val-best 또는 final-iter만, test-best 금지) "),
-            T("DELIVER test 54.39±0.76 (5-seed, 최고 단일런 55.29) vs SOTA MM SAM-adapter 57.35 · MUSES 공식 test 79.788 (융합 계보 1위, 카메라단독 1위 GtA 82.39에 −2.60) · MCubeS 58.07±0.49 (published 최고 54.65 대비 +3.42, 1위) · 검출 mAP50 0.9321 (목표 0.85 달성).")], "🏁", "green_background"),
+            T("DELIVER test 56.99 (체크포인트 선택 1차 규칙 = 학습기 val-best top1, 5시드 평균 53.83) vs SOTA MM SAM-adapter 57.35 = −0.36 · 융합 기준선 DGFusion 56.71 대비 +0.28 상회 · MUSES 공식 test 79.788 (융합 계보 1위, 카메라 단독 1위 GtA 82.39 대비 −2.60)")], "🏁", "green_background"),
         CO([B("캠페인 결론(2026-06~09) "),
             T("추론 경로 안에서 모달을 적응적으로 가중하는 기제(학습 게이트 · 신뢰도→attention logit bias · 추론 재가중 · 패치별 라우팅 · cross-attention 트렁크 · 인코딩-시간 결합)는 전부 반증됨. 성능을 실제로 움직인 축 = 백본 표현력(SAM2→DINOv3 +11.6) · 학습 해상도(768→1024 test +2.0) · 학습 전용 클래스 prototype 손실(C3, DELIVER +1.4) · 어댑터 정렬 사전학습(+0.74, 재현 대기).")], "🧭", "yellow_background"),
         CO([B("지금 하는 것(2026-09-07~) "),
@@ -47,7 +47,7 @@ def sec_problem():
         h2("1.2 공식 목표 (2026-07-03 설정)"),
         table([
             ["트랙", "목표", "현재(합법)", "판정"],
-            ["Seg — DELIVER (4모달 CLDE)", "논문 publish: SOTA 상회 (MM SAM-adapter val 69.60 / test 57.35)", "5-seed test 54.39±0.76 · best 55.29 · val ≈67.0", "미달 (−2.06~−2.96). DGFusion 자(56.71)로는 best +0.28"],
+            ["Seg — DELIVER (4모달 CLDE)", "논문 publish: SOTA 상회 (MM SAM-adapter val 69.60 / test 57.35)", "1차 규칙(학습기 val-best top1): test 최고 56.99 · 5시드 평균 53.83 · legal val 최고 67.89(E1 확정 시드3, 단일 시드·확정 전). 보조(정본 하네스 val 재선택 규칙): 평균 54.39 · 최고 55.29", "미달 (−2.06~−2.96). DGFusion 자(56.71)로는 best +0.28"],
             ["Seg — MUSES (3모달 CLE)", "SOTA 수준 (GtA 82.39 camera-only / 융합 DGFusion 79.5)", "공식 test 79.788 (val 82.13, 5-seed val 82.03±)", "융합 계보 1위 / 전체 −2.60"],
             ["Seg — MCubeS (4모달)", "3번째 벤치 진입", "3-seed 58.07±0.49", "1위 (+3.42)"],
             ["Det — poongsan indoor", "국가 R&D mAP50 0.85", "0.9321 @ep6 (D1-recovered ViT-L)", "달성 (+0.08)"],
