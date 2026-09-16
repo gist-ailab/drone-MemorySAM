@@ -427,7 +427,7 @@ Wall·Static 몇 클래스의 문제가 아니라, **결합 모델 전체가 E2 
 **출처**: hpca100 `logs/E12_legal_test_20260910_101317.log`(1897장·1024·BS1, 진행 표시줄 장수 자동 검증
 통과) · B0 는 bengio `logs/b0_eval_test_20260908_085257.log`(ckpt `epoch40_65.4_top1`).
 
-### 5-31. ✅ E13M 시드3 완주·공식 재채점 80.8403 — MUSES 3페어 완결, 게이트 ①②③ 모두 통과 (2026-09-16)
+### 5-31. ✅ MUSES 확정 — **E13M 이 세 게이트를 3페어로 통과, MUSES 에서는 E13 이 E1 보다 낫다**(생각정리 판정 09-16)
 
 E13M 시드3(hpca100 GPU3, 09-15 20:18 대기 기동 → 09-16 16:20 완주, 40ep)의 val-best `epoch40_81.06_top1` 을 `tools/eval_muses_official.py`(공식 native 1080×1920, val 250장)로 재채점했다.
 공식 **80.8403**(내부 레터박스 1024 81.0639). 산출물 hpca100 `/tmp/jemo_scratch/muses_official_E13M_s3/report.json`.
@@ -441,14 +441,29 @@ E13M 시드3(hpca100 GPU3, 09-15 20:18 대기 기동 → 09-16 16:20 완주, 40e
 
 ¹ E1M 시드3 은 디스크 사고로 ep35 val-best 를 쓴다(§5-28 각주).
 
-**사전 등록 게이트 판정(판정 주체 = 생각정리, 아래는 계산 결과)**
+**✅ 판정(생각정리 09-16): E13M 은 세 게이트를 3페어로 모두 통과 — MUSES 에서는 E13 이 E1 보다 낫다.** E1M 은 기존대로 "일관된 소폭 양성(+0.52), 스크린 통과선 미달"이다.
+
+사전 등록 게이트 계산:
 - ① vs E7 ≥ +0.5: 세 페어 모두 통과(+0.72 / +1.53 / +0.56), 평균 +0.94 ✅
 - ② vs E1M ≥ 0: 세 페어 모두 양수(+0.38 / +0.73 / +0.15), 평균 +0.42 ✅
 - ③ night·fog 에서 −0.5 미만 없을 것: 시드3 은 **여덟 조건 모두 E7 대비 양수**(clear/day +0.63 · clear/night +0.24 · fog/day +1.00 · **fog/night +3.76** · rain/day +0.17 · rain/night +2.31 · snow/day +1.08 · snow/night +1.37) ✅
 
-🔴 **§5-17·§5-20 의 "rain/night 손실 −1.79" 는 시드3 에서 재현되지 않는다.** 시드3 의 E13M − E1M 은 rain/night **+0.30**, rain/day −0.80 으로 손실 조건이 옮겨 갔다.
+✅ **정정 승인(생각정리 09-16): "조건이 고정된 손실" → "조건별 표본 흔들림(25~34장) — 손실 조건이 시드마다 옮겨 다님".** §5-17·§5-20·§5-28 의 rain/night 서술에 모두 적용한다.
+🔴 근거: **§5-17·§5-20 의 "rain/night 손실 −1.79" 는 시드3 에서 재현되지 않는다.** 시드3 의 E13M − E1M 은 rain/night **+0.30**, rain/day −0.80 으로 손실 조건이 옮겨 갔다.
 두 시드에서 재현됐다고 적었던 그 손실은 **세 시드로 보면 조건이 고정되지 않는다** — 조건별 25~34장 표본의 흔들림으로 읽는 편이 맞다. §5-28 의 각주도 이 관점으로 고쳐야 한다(생각정리 판정 요청).
 E13M 조건별(공식, 시드3): clear/day 76.29 · clear/night 68.28 · fog/day 86.69 · fog/night 77.27 · rain/day 67.51 · rain/night 70.39 · snow/day 78.84 · snow/night 74.95.
+
+### 5-31b. 📌 §0-1 규칙 추가 — MUSES 조건별 수치의 표본 한계 (2026-09-16 생각정리 결정)
+
+**MUSES 조건별 수치는 표본이 조건당 25~34장이라, 한두 시드에서 나온 특정 조건의 손실을 실재로 읽지 않는다. 같은 조건이 3시드 이상에서 반복될 때만 실재로 본다.**
+근거 = E13M 의 rain/night 손실(−1.79)이 두 시드에서 보였으나 시드3 에서 +0.30 으로 뒤집히고 대신 rain/day 가 −0.80 이 됐다(§5-31).
+⚠️ **이 규칙은 DELIVER 조건별에는 적용하지 않는다** — DELIVER 는 조건당 379~380장이라 표본이 10배 이상 크다(§5-27·§5-30 ①).
+
+### 5-32. ✅ E13M 200ep 풀 런 기동 — MUSES test 제출 후보를 E13 쪽으로도 확보 (2026-09-16)
+
+hpca100 GPU3(E13M 시드3 공식 재채점이 끝나 빈 자리), 16:39 KST 기동. config `configs/hpca100-muses_rgbel_P39_1_physaugoff_taps_c3permodal_full200_E13M.yaml`(bf9f761) = 시드1 config 에서 EPOCHS 200 · SAVE_DIR · SAVE_TOPK 1 · SAVE_TEST_CKPT false 만 변경.
+기동 검증 통과: fix_seeds(3407) · TAPS ENABLE True · C3_PROTO SRC=permodal · `[CKPT] save_topk=1 save_test_ckpt=False` · total_trainable 53,974,710 · RANDOM INIT 없음 · 1.60 it/s · GPU 19.4GB. ETA 09-18~19.
+같은 조건의 풀 런 셋이 이렇게 모인다: **E7 기준선(jarvis GPU4) · E1M(hpca100 GPU0, ep38 재개) · E13M(hpca100 GPU3)** — 셋 다 시드 3407·한 장·EPOCHS 200.
 
 ### 5-30. ✅ 조건별 평가 3시드로 확장 + MCubeS 같은 코드 쌍 두 개 — 악조건 규칙은 유지, MCubeS 는 게이트 미달 (2026-09-16)
 
