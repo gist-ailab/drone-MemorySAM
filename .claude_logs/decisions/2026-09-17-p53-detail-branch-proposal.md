@@ -1,7 +1,7 @@
 ---
 created: 2026-09-17
 author: fable (background 세션 "MMSAM | 생각정리")
-status: 🟡 설계 완료 — 구현 워커(labcode) 진행 중, 스크린 카드 E17 기동 대기
+status: 🟡 구현 완료·검수 통과(develop faffea5, 2026-09-17) — 스크린 카드 E17 기동 대기(24GB 메모리 첫 기동 실측 필수)
 depends: decisions/2026-09-07-daily-cycle-experiment-cards.md §0-2·§5-2·§5-3·§5-30 · decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md §3.6(구조 사다리)
 ---
 
@@ -58,7 +58,7 @@ depends: decisions/2026-09-07-daily-cycle-experiment-cards.md §0-2·§5-2·§5-
 
 ## 5. 실행 계획
 
-1. labcode 구현 + 스모크(byte-동일·gradient·메모리) → 이 세션 검수 → develop 병합.
+1. ✅ labcode 구현 + 스모크(byte-동일·gradient) → 이 세션 검수(스모크 재실행 PASS·config diff 검토) → develop 병합 faffea5 (2026-09-17). 파라미터 292,130. 768² BS1 24GB 메모리는 미실측 → 첫 기동 시 `P46_MEM_LOG=1`로 확인.
 2. E17 스크린: jarvis 2장(GPU2·4가 비면) 또는 hpca100 1장. 기동 검증에 `[DETAIL] mode=… params=…` 줄과 total_trainable 대조(E1 58,790,687 + 세부 가지 파라미터) 추가.
 3. legal 재채점(1024·BS1) + 클래스별 표 + 조건별 평가 → G1~G4 판정.
 
