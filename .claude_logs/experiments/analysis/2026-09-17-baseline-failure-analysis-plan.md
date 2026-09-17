@@ -73,3 +73,16 @@ depends: registry `dgfusion_swin_tiny_bs8_200k_deliver_clde` · `cafuser_swin_ti
 ## 3. 우선순위와 기대 일정
 
 D1→D2→D3(1·2·4·6)이 핵심이며 2일 안에 나와야 E17/E18 우선순위 판정에 쓸 수 있다. D4는 기준선 내부 훅이라 시간이 더 걸리므로 병렬로 진행하되 D3 결과를 먼저 보고한다.
+
+## 7. 보완(2026-09-18, DGFusion·CAFuser 재학습 담당 세션 제안 5건 + 추출값 1건 — 생각정리 세션 채택 판정)
+
+| # | 제안 | 판정 | 반영 방식 |
+|---|---|---|---|
+| A1 | test 재추론 불필요(DGFusion 20개·CAFuser 27개 체크포인트의 test 예측 JSON 잔존, val은 마지막 것만) | ✅ 채택(이미 감시 세션이 JSON→PNG 변환으로 D1 완료, 재현 검산 통과 4건) | D1 문면을 "JSON 변환 우선, val만 재추론(DGFusion 80k·CAFuser 170k)"으로 읽는다 |
+| A2 | 채점 방식이 다르다: 기준선은 `CMNEXT_EQUIVALENT_EVAL: true`(GT를 1024 최근접 축소), 우리는 native 1042 GT | ✅ 채택 — **이미지별 지표를 두 프로토콜로 모두 계산해 병기** | `per_image_metrics.py`에 `--gt_protocol {native,resized1024}` 추가(resized1024 = GT를 1024 최근접 축소, 예측은 1024 그대로). 🔴 헤드라인 56.99도 같은 이유로 프로토콜 확정 전(§5-34 참조) |
+| A3 | 기준선 `dataset_dict` 모달 키는 `CAMERA/LIDAR/EVENT/DEPTH`(주 모달은 `image`에도 중복) | ✅ 채택 | `d2_zero_modality.patch`의 `_bf_keys`를 이 이름으로 수정 |
+| A4 | DELIVER의 depth 감독 정답(`depth/`)은 입력 DEPTH(`hha/`)와 같은 원본 → **HHA 입력을 0으로 둔 채 depth 헤드 정확도가 유지되는지** 측정 | ✅ 채택 — D4에 항목 추가. 무너지면 depth 감독의 이득은 "새 정보"가 아니라 정규화 효과이며, 이것이 E23(DGFusion식 depth 감독 이식) +α 도출의 직접 근거 | D4-(iv): DGFusion 80k·final로 HHA=0 추론 시 depth AbsRel·d1과 seg mIoU 동시 기록 |
+| A5 | 체크포인트 선택 잡음 분리: 후반 체크포인트 11개(100k~200k)의 test 예측으로 이미지별 IoU를 재서 "항상 실패 / 뒤집힘 / 항상 성공"으로 가르고 해석은 항상 실패에 한정(한 런 내 후반 test 표준편차 DGFusion 0.74·CAFuser 0.47) | ✅ 채택 — D3-7 신설 | 기준선은 JSON 변환 11개, 우리 모델은 확정 런 저장 체크포인트(top-k)로 같은 분류. 임계: 이미지 mIoU가 11개 중 ≥9개에서 데이터셋 중앙값 미만이면 "항상 실패" |
+| A6 | depth GT 거리 구간별 IoU(DGFusion−CAFuser 차이가 먼 거리에 몰리는지) | ✅ 채택 — D3-8 신설 | 원본 depth를 5구간(로그 스케일)으로 나눠 픽셀 단위 IoU, 모델별 |
+
+산출물 공유 위치는 user 결정대로 `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/analysis/baseline_failure_20260917/`(서버 간 연동)로 하고, NAS `analysis_logs/`에는 사본을 둔다. 분담: 감시 세션 = 이미 완료한 D1·D2·D3(test) 유지, 재학습 담당 세션(GLM 실행·자체 검수) = A2~A6 코드 보강과 실행, 생각정리 세션 = 코드 검수·D6 판정.
