@@ -16,9 +16,24 @@ updated: 2026-09-09 (hpca100 SSDb 이관)
 | 평가·분석·시각화 | 같은 루트의 `analysis_logs/<model>_eval_<YYYYMMDD>/` |
 | 학습 런 로그 | 같은 루트의 `train_logs/` |
 | 제출(submission) 코드·zip | `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/submission/{code,muses}/` |
+| **공유 분석 산출물(서버 간 연동)** | `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/analysis/<run_id>/` (user 지시 2026-09-18) |
 
 원격 서버의 `outputs/`는 **작업 사본**이지 정본이 아니다. 서버 디스크가 차면 위 루트로 이관하고 서버에서는 지운다.
-`/ailab_mat2`는 2026-09-09 기준 89%(여유 12T)이고 제출물 전용이므로 **학습 웨이트를 여기 두지 않는다.**
+`/ailab_mat2`는 2026-09-18 기준 90%(여유 11T)이다. 제출물 외에 **여러 서버가 함께 읽고 쓰는 분석 산출물**도 여기 둔다
+(user 지시 2026-09-18). 학습 웨이트 아카이브 정본은 그대로 `/drone_nas`이며, 분석에 필요한 체크포인트 사본만 `analysis/<run_id>/raw/ckpts/`에 둔다.
+
+### 공유 분석 산출물 운용 (`scripts/nas_analysis_sync.sh`)
+
+- 루트 = `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/analysis/<run_id>/`
+  하위 규약: `raw/`(입력 원본 사본: 체크포인트·예측 JSON) · `preds/`(복원 예측 PNG) · `metrics/`(이미지별 지표)
+  · `mining/`(실패 채굴) · `reports/`(판정 문서) · `code/`(실행 시점 도구 사본) · `MANIFEST.tsv`(대장).
+- `/ailab_mat2` 마운트 현황(2026-09-18 확인): hub·yeon·lecun 있음, **hpca100 없음**(hub 경유).
+- 부명령: `init` 루트 생성 · `push`/`pull` 전송(서버 인자로 그 서버에서 실행) · `verify` 체크섬 대조(전송 없음)
+  · `manifest` 대장 갱신(크기·mtime·md5) · `ls` 용량·목록 · `mounts` 마운트 점검.
+- NFS가 그룹 변경을 거부하므로 전송은 `rsync -rt --no-perms --no-owner --no-group`으로 한다
+  (속성 보존 옵션을 켜면 `chgrp ... Operation not permitted`로 실패한다 — 2026-09-18 실측).
+- 첫 사용 예: `baseline_failure_20260917`(DGFusion·CAFuser 실패 분석). DGFusion은 yeon, CAFuser는 lecun에서
+  예측 JSON과 분석 대상 체크포인트를 이 루트로 복사했다(lecun은 작업 배치 금지 서버라 파일 복사만 했다).
 `/drone_nas`는 여유 37T이며 웨이트 아카이브의 정본이다.
 
 ---
