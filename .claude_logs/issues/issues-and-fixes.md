@@ -17,6 +17,7 @@ moved: 2026-07-08
 
 | ID | 상태 | 한 줄 |
 |----|------|-------|
+| **ISSUE-036** | 🟡 **OPEN (2026-09-18 발견)** | **DELIVER 헤드라인 56.99 가 legal 프로토콜이 아니라 1024 축소 GT 채점으로 기록됐다.** 같은 체크포인트를 native GT 덤프 도구로 재측정하니 test 55.18 · val 66.88 이 나왔다(등록값 56.99 / 69.44). 원본 로그 yeon `/SSDe/jemo_maeng/temp_ckpts/eval_logs/job1_p46c3only_eval1024.log` 39번째 줄에 "CMNeXt-protocol 1024-resized-GT TEST mIoU = 56.99" 라고 적혀 있다. 같은 덤프 도구가 4탭 읽기 확정 시드1 의 24클래스 55.26 을 정확히 재현했으므로 도구는 legal 프로토콜을 재현한다. **영향**: 사실이면 재학습 DGFusion 80k(55.68)·CAFuser(55.38)보다 낮아져 "DELIVER test +0.28 우위" 주장이 무너진다. **처방**: val.py 직접 재채점으로 확정한다. jarvis 에 자동 연결해 둠(`/SSDb/jemo_maeng/muses_rescore/after_elora_c_s903.sh`, 콘솔 `after_elora_c_s903_console.log`). 판정은 생각정리 세션. 상세 근거 = `.claude_logs/experiments/analysis/2026-09-18-baseline-failure-d3-test-findings.md` §7 |
 | **ISSUE-035** | 🟡 **OPEN (2026-09-17 발견 · 가중치는 생존)** | **DELIVER 헤드라인 56.99 런의 체크포인트 경로가 어디에도 기록되지 않았고, 원본 디렉터리는 정리돼 임시 사본만 남아 있었다.** 런 = `jarvis_deliver_rgbdel_P46_ctr_c3only`(C3 λ0.1) val-best ep70. jarvis `outputs/` 는 정리돼 이 런이 없고, 보관 루트(NAS ckpts)·가중치 보관소(/ailab_mat2)·hpca100·bengio 에도 없어 한때 소실로 판단했다. **실제로는 yeon 에 같은 파일 두 벌이 있다** — `/SSDe/jemo_maeng/temp_ckpts/epoch70_67.79_top1_checkpoint.pth` 와 `drone-MemorySAM-p49/_eval_ckpts/p46_c3only_lam01_ep70/` (1,865,010,172 바이트, 2026-07-30, md5 d340e3fe9824bd922fc7fe6eff7a8b26). 근거: 옆 `eval_logs/job1_p46c3only_eval1024.log` 원문 "P46 C3-only 본run epoch70(val 67.79) — CMNeXt-protocol 1024-resized-GT TEST mIoU = 56.99". **위험**: 두 사본 모두 임시 성격의 경로라 정리 과정에서 지워질 수 있다. **처방**: ① 보관 루트(NAS ckpts)에 md5 대조로 정본 이관 ② registry 행에 체크포인트 경로 기록 ③ 헤드라인급 런은 산출물 위치 문서에 경로를 남기는 것을 규칙화. 교훈: "소실"로 단정하기 전에 평가용 사본(`temp_ckpts`·`_eval_ckpts`)과 파일명 패턴(학습 해상도의 트레이너 val 이 이름에 들어감 — 1024 재평가 값과 다름)까지 검색할 것 |
 | **ISSUE-034** | 🔴 **OPEN (2026-09-17 발견)** | **eval 예측 덤프가 파일명을 평탄화해 이미지를 조용히 잃는다.** `*_{test,val}_pred/seg/` 가 원본 파일명(`000050_rgb_front.png`)을 한 디렉터리에 그대로 쓰는데, DELIVER 는 조건(cloud/fog/night/rain/sun)×케이스 하위 폴더로 나뉘어 **같은 이름이 여러 폴더에 중복**된다. 뒤에 쓴 것이 앞의 것을 덮어써 **test 1270/1897 · val 1733/2005 만 남는다**(E1 확정 시드1 ep140 실측). PNG 형식 자체는 정상(uint8 1042×1042, 값 0~24). jarvis 에 같은 방식의 덤프가 **12개 런** 더 있다. **영향**: 이 덤프를 쓴 이미지별·조건별 분석은 표본이 빠진 채 계산됐을 수 있다 — 과거 분석 문서 점검 필요. **처방**: 덤프 시 원본 상대 경로 구조(`<condition>/<case>/<name>.png`)를 보존하고 저장 후 장수를 2005/1897 과 대조해 assert. 2026-09-17 기준선 실패 분석 도구(`tools/baseline_failure/`)에 이 조건을 넣었다 |
 | **ISSUE-033** | 🔴 **재진단 확정(2026-08-26): 측정 드라이버 불일치** — ~~배치사이즈 의존~~ 아님(BS4=BS1=66.88, 배치 불변 성립). 실체 = **`tools/eval_reliadino_ckpt.py`(1024-리사이즈 GT 채점, 낙관 +2.56)** vs **`val.py`(native-GT, 정본)** 드라이버 차이. base 69.44/56.99는 ERC 산(낙관), 시드 66.4~67.6/53.x는 val.py 산 → **H18 "base outlier" = 도구 혼용 아티팩트 의심, 재판정 중**(base test의 val.py 측정 대기). 규칙: **legal 수치 = val.py native-GT만, 동일-드라이버 비교만 유효. ERC는 토글 진단용으로 강등**. 🔒 **구조적 재발 방지(2026-08-31)**: `tools/eval_harness_guard.py` — 채점기 8파일(val.py·eval_muses_official·metrics·로더 3종·정본 eval config 2종) SHA256 동결. **legal eval 전 `--check` 필수, FAIL 상태 수치는 legal 인용 금지**, 의도적 변경은 `--freeze`+커밋 사유+대표 ckpt 재채점 의무 |
@@ -55,6 +56,20 @@ moved: 2026-07-08
 | RESOLVED-001~004 | ✅ 해결 | 하단 "해결된 이슈" 섹션 참조 |
 
 > ✅ 정리 완료(2026-06-24): `[해결]` ISSUE-021/020/019/018/016을 "해결된 이슈" 섹션으로 물리 이동함. 이제 "열린 이슈" 섹션은 ISSUE-001부터 시작(실제 미해결/진행 항목 위주).
+
+---
+
+### ISSUE-036: DELIVER 헤드라인 56.99 가 legal 프로토콜이 아니라 1024 축소 GT 채점으로 기록됨 [OPEN, 2026-09-18]
+
+**사실**: 같은 체크포인트(P46 C3-only 본run epoch70)를 native GT 덤프 도구로 재측정하니 test 55.18 · val 66.88 이 나왔다(등록값 56.99 / 69.44). 원본 로그 yeon `/SSDe/jemo_maeng/temp_ckpts/eval_logs/job1_p46c3only_eval1024.log` 39번째 줄에 "CMNeXt-protocol 1024-resized-GT TEST mIoU = 56.99" 라고 적혀 있다.
+
+**교차검증**: 같은 덤프 도구가 4탭 읽기 확정 시드1 의 24클래스 55.26 을 정확히 재현했으므로 도구는 legal 프로토콜을 재현한다(도구 자체는 무죄).
+
+**영향**: 사실이면 재학습 DGFusion 80k(55.68)·CAFuser(55.38)보다 낮아져 "DELIVER test +0.28 우위" 주장이 무너진다.
+
+**처방**: val.py 직접 재채점으로 확정한다. jarvis 에 자동 연결해 둠(`/SSDb/jemo_maeng/muses_rescore/after_elora_c_s903.sh`, 콘솔 `after_elora_c_s903_console.log`). 판정은 생각정리 세션.
+
+**상세 근거**: `.claude_logs/experiments/analysis/2026-09-18-baseline-failure-d3-test-findings.md` §7
 
 ---
 
