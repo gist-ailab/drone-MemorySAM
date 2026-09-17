@@ -73,11 +73,23 @@ depends: decisions/2026-09-17-p53-detail-branch-proposal.md · decisions/2026-09
 | 5 | **E21 확률적 분할-B LoRA + 병합** | 각 모달 LoRA의 B를 2~3조각으로 나눠 배치마다 1조각 활성, 두 forward 간 KL 일관성, 추론 시 병합(라우터·추론 비용 0) | +0.3~+1 | MoSA/AdaMix/THOR | 학습 forward 2× | 충돌 없음 |
 | 6 | **E22 라벨 없는 조건 게이트** | 고정 tanh(γ_m) 대신 RGB 최상위 특징 풀링에서 조건 토큰 → 소프트맥스 모달 가중치. **조건 라벨 손실은 쓰지 않는다**(정책) | +0.3~+0.6 | CAFuser CAA, URVIS FiLM | 수천 파라미터 | 라벨 손실 없는 변형만 허용 |
 
-### 사용자 결정이 필요한 후보(정책·비용 충돌)
+### 🔴 user 결정(2026-09-17 추가): DGFusion식 depth 보조 감독 **허용, 단 +α 필수**
+
+> user: "dgfusion 방식 써도 되는데 거기의 한계를 우리의 무언가로 해결해서 +alpha가 있어야 해."
+
+- **E23 = DGFusion 기제 이식(기반)**: 학습 시 depth 보조 헤드(LiDAR 투영/GT depth 감독, robust L1 + τ 분위 필터 + edge smoothness — DGFusion 손실 설계 그대로) + 우리 융합부 2층 cross-modal attention에 윈도별 로컬 depth 토큰을 K/V로 추가. 추론 구조는 depth 토큰 생성만 추가. 게이트: 24클래스 Δ vs E1 ≥ +0.5(재현 근거 +1.0~1.3), 조건별 G3, SOTA 거리 G4. **E23 단독 결과는 SOTA 주장에 쓰지 않는다**(재현일 뿐).
+- **+α는 기준선 실패 분석(analysis/2026-09-17-baseline-failure-analysis-plan.md D4/D6)에서 도출**한다. D4에서 검증할 DGFusion 한계 가설(사전 등록, 추측 금지):
+  - H1 윈도 평균 풀링 depth 토큰은 얇은 구조를 지움 → DGFusion−CAFuser 클래스별 차가 Pole·TrafficLight·Pedestrian에서 ≈0인가.
+  - H2 depth 감독 신호(LiDAR 투영)가 야간·비·lidarjitter에서 희소·노이즈 → depth 헤드 오차가 커지는 조건에서 seg 이득이 사라지는가(이미지별 depth 오차 vs ΔmIoU 상관).
+  - H3 유도가 RGB 쿼리 한정 → 비-RGB 모달 특징은 기하 정렬이 안 됨(모달 제거 추론에서 RGB 외 기여 ≈0인가).
+  - H4 depth 토큰은 attention만 바꾸고 해상도는 못 바꿈 → 원거리 얇은 객체(면적 구간 최소)에서 이득 없음.
+- 가설별 +α 후보(D4 결과로 택1, 단일 변수): H1/H4 → **기하 유도 세부 경로**(예측 depth·depth 경계로 E17 세부 가지의 게이트/샘플링을 구동: "geometry-aware detail"); H2 → **depth 불확실성 인지 유도**(depth 헤드의 학습된 불확실성으로 depth 토큰 기여를 조절 — 엔트로피 바이어스 계열과 다름을 명시); H3 → **모달 대칭 기하 토큰**(모든 센서 스트림에 depth 정렬 토큰, "전 모달 융합" 렌즈와 정합); 공통 → **교차 모달 기하 일관성**(LiDAR 유도 depth를 각 모달 스트림의 공통 타깃으로 두는 내부 신호 감독).
+- 시드 규약 불변: 단일 런 최고와 시드 평균 병기, 판정 3시드 평균.
+
+### 사용자 결정이 필요한 후보(정책·비용 충돌) — depth 항목은 위로 이동
 
 | 후보 | 예상 | 충돌 |
 |---|---|---|
-| **depth 보조 감독 + 로컬 depth 토큰(DGFusion식)** | +1.0~1.3(DELIVER test 55.6→56.7 재현 근거) | 노벨티 방침("외부 신호 불사용, GT depth 배제", "DGFusion 유사 구조 금지", model-proposal §2). depth는 DELIVER 입력 모달이므로 "내부 신호" 해석도 가능하나 사용자 판단 필요 |
 | **토큰 밀도 상향(1536 또는 세밀 stride 슬라이딩)** | 문헌 +1.5~3 | **우리 실측이 반대**: 1024 학습 3런 test 54.85/54.55 vs 768 54.39(registry, "유해" 판정). 세부 가지가 실패했을 때만 재고 |
 | **마스크 분류 주 헤드(M2F 픽셀 디코더)** | +2~4 추정 | 비용 4×, P43 계보 재개 |
 | **마지막 2~4블록 MLP LoRA / 부분 해동** | SPAR: MLP > QKV | E2(전 선형층 r32) 무이득, "frozen 백본" 원칙 충돌 → 후순위 |
