@@ -4,6 +4,7 @@
 
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
+| [experiment-glossary.md](experiment-glossary.md) | **실험·게이트·구조 약어 용어집**(E1/E13/G1 등 ①무엇을 보나 ②왜 ③구조 ④결과 해석 + 문서 간 정의 불일치 9건). 🔴 답변에서 약어를 풀어 쓰는 규칙의 참조 정본이지 생략 근거가 아님(user 2026-09-17) | — |
 | [conventions.md](conventions.md) | **리포 컨벤션(구조 유지 단일 출처)** — git(develop 기준 브랜치·직접 병합), 문서 배치·명명, 코드(MODEL_REGISTRY·shim 금지), configs, vault sync. **파일 생성/코드 추가 전 확인** | — |
 | [bot-roles.md](bot-roles.md) | 세션 역할(코드분석봇/코딩봇/실험분석봇/그림봇) 지침 — **세션 시작 Step 0에서 읽기** | 09 |
 | [taskboard.md](taskboard.md) | Supervisor 세션별 목표 태스크보드 — 세션 시작 시 자기 섹션 확인, 완료 시 상태 갱신 | 22 |
