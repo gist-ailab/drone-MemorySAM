@@ -1,0 +1,30 @@
+--- a/train_net.py
++++ b/train_net.py
+@@ -513,6 +513,26 @@ def main(args):
+         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+             cfg.MODEL.WEIGHTS, resume=args.resume
+         )
++        # [baseline_failure D4/6] BF_ZERO_MODAL 이 있으면 해당 모달 입력 텐서를 0 으로
++        # 치환하는 forward pre-hook 을 건다(zero-out ablation). ⚠️ batched_inputs 의
++        # 실제 key 이름은 저장소마다 다르므로, 첫 실행에서 아래 print 로 key 를 확인하고
++        # 필요하면 _bf_keys 매핑을 조정하라(미확인 가정).
++        _bf_zero = os.environ.get("BF_ZERO_MODAL")
++        if _bf_zero:
++            import torch as _bf_torch
++            _bf_keys = {"img": ("image",), "depth": ("depth", "hha"),
++                        "lidar": ("lidar",), "event": ("event",)}.get(_bf_zero, (_bf_zero,))
++
++            def _bf_zero_hook(_module, _inp):
++                bi = _inp[0]
++                if isinstance(bi, (list, tuple)):
++                    for d in bi:
++                        if isinstance(d, dict):
++                            for k, v in list(d.items()):
++                                if any(t in k.lower() for t in _bf_keys) and _bf_torch.is_tensor(v):
++                                    d[k] = _bf_torch.zeros_like(v)
++                return _inp
++            model.register_forward_pre_hook(_bf_zero_hook)
++            print(f"[baseline_failure] BF_ZERO_MODAL={_bf_zero} → zero keys~{_bf_keys}")
+         res = Trainer.test(cfg, model, eval_only=args.eval_only, inference_only=args.inference_only)
+         if cfg.TEST.AUG.ENABLED:
+             res.update(Trainer.test_with_TTA(cfg, model))

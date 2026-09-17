@@ -1,0 +1,22 @@
+--- a/train_net.py
++++ b/train_net.py
+@@ -178,8 +178,15 @@ class Trainer(DefaultTrainer):
+         # Deliver
+         if evaluator_type == "deliver_semantic_seg":
+             if cfg.MODEL.TEST.SEMANTIC_ON:
+                 sem_seg_loading_fn = create_deliver_gt_sem_seg_loading_fn(cfg)
+-                evaluator_list.append(SemSegEvaluator(dataset_name, distributed=True, output_dir=output_folder,
+-                                                        sem_seg_loading_fn=sem_seg_loading_fn))
++                if os.environ.get("BF_DUMP_DIR"):
++                    # [baseline_failure D1] BF_DUMP_DIR 이 있을 때만 예측 덤프 evaluator 사용.
++                    from d2_dump_evaluator import make_dump_evaluator_class
++                    _BFDump = make_dump_evaluator_class()
++                    evaluator_list.append(_BFDump(dataset_name, distributed=True, output_dir=output_folder,
++                                                        sem_seg_loading_fn=sem_seg_loading_fn,
++                                                        dump_dir=os.environ["BF_DUMP_DIR"]))
++                else:
++                    evaluator_list.append(SemSegEvaluator(dataset_name, distributed=True, output_dir=output_folder,
++                                                        sem_seg_loading_fn=sem_seg_loading_fn))
+             if cfg.MODEL.TEST.PANOPTIC_ON or cfg.MODEL.TEST.INSTANCE_ON:
+                 raise Exception("The DELIVER segmentation dataset does not support panoptic or instance evaluation")
+             if cfg.MODEL.TEST.DEPTH_ON:
