@@ -23,6 +23,17 @@ updated: 2026-09-09 (hpca100 SSDb 이관)
 
 ---
 
+## 1b. 🔴 헤드라인 체크포인트 — 정본 위치 (2026-09-17 신설)
+
+논문·벤치 표의 "우리 최고"를 만든 체크포인트다. **이 표에 없는 헤드라인 수치는 재평가할 수 없다** — ISSUE-035(56.99 런 경로 미기록) 이후 신설했다.
+
+| 수치 | 런 | 체크포인트 정본(NAS) | md5 | 남은 사본 |
+|---|---|---|---|---|
+| **DELIVER test 56.99**(val-best ep70, 768 학습 트레이너 val 67.79 · 1024 재평가 val 69.44) | `jarvis_deliver_rgbdel_P46_ctr_c3only`(C3 λ0.1, TAPS 없음, 시드 고정 기능 없던 무작위 시드 런) | `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/P46_c3only_base_ep70_test5699_20260730/epoch70_67.79_top1_checkpoint.pth` | `d340e3fe9824bd922fc7fe6eff7a8b26` | yeon `/SSDe/jemo_maeng/temp_ckpts/` · yeon `drone-MemorySAM-p49/_eval_ckpts/p46_c3only_lam01_ep70/` (임시 경로 — 지워질 수 있음). jarvis 원본 디렉터리는 정리됨 |
+| **MUSES 공식 test 79.788** | P39.1-rank 시드2 3모달 | (미기록 — 확인 필요) | — | 제출 zip `/ailab_mat2/.../submission/muses/muses_P39_1_seed2_3modal_ep208_submission.zip` |
+
+평가 config: 56.99 런 = `configs/eval/jarvis-deliver_rgbdel_P46_ctr_c3only_eval1024.yaml`(학습 config 에서 EVAL·TEST IMAGE_SIZE 만 1024 로 파생).
+
 ## 2. hpca100(A100×4) 이관 — 2026-09-09
 
 ### 왜 옮겼나
