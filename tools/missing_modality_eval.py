@@ -468,6 +468,12 @@ def main():
                     help="등록 clean mIoU. 주면 전부-존재 mIoU 가 ±--tol 밖일 때 exit≠0.")
     ap.add_argument("--tol", type=float, default=0.05)
     ap.add_argument("--limit", type=int, default=0, help="디버그용 앞 N 장만(0=전체)")
+    ap.add_argument("--batch", type=int, default=1,
+                    help="평가 배치 크기(기본 1). native-GT 복원은 이미지별이라 배치 무관. "
+                         "메모리 허용 시 2~4 로 올려 15조합 순차 forward 비용을 줄인다.")
+    ap.add_argument("--subset_every", type=int, default=1,
+                    help="k>1 이면 데이터셋 순서상 k장마다 1장(결정론적 부분집합)만 평가. "
+                         "스크린용; 벤치마크 비교 수치는 반드시 1(전체)로 낸다. summary 에 기록.")
     args = ap.parse_args()
 
     import val as valmod
@@ -489,10 +495,18 @@ def main():
 
     dataset, has_gt = valmod.create_dataset(dataset_cfg, mode, transform, mode,
                                             macvi=False, eval_day=False)
+    base_dataset = dataset
     if not has_gt:
         print("[mm-eval] ⚠️ has_gt=False — GT 없는 split 은 채점 불가", flush=True)
 
-    loader = DataLoader(dataset, batch_size=1, num_workers=4,
+    if args.subset_every > 1:
+        # 결정론적 부분집합(k장마다 1장): 조건·장면 순서를 그대로 훑으므로 조건 분포가 대체로 보존된다.
+        from torch.utils.data import Subset
+        idx = list(range(0, len(dataset), args.subset_every))
+        dataset = Subset(dataset, idx)
+        print(f"[mm-eval] ⚠️ 부분집합 평가: {len(idx)} 장(every {args.subset_every}) — "
+              f"벤치마크 비교용 수치가 아니다(스크린).", flush=True)
+    loader = DataLoader(dataset, batch_size=max(1, args.batch), num_workers=4,
                         pin_memory=False, collate_fn=valmod._collate_fn)
 
     model = valmod.load_model(cfg, Path(args.model_path), device)
@@ -509,8 +523,8 @@ def main():
 
     modal_names = list(dataset_cfg["MODALS"])
     M = len(modal_names)
-    n_classes = dataset.n_classes
-    ignore = dataset.ignore_label
+    n_classes = base_dataset.n_classes
+    ignore = base_dataset.ignore_label
 
     def gen_factory():
         g = torch.Generator()
@@ -532,6 +546,13 @@ def main():
         args.out, mode, cases, hists, M, modal_names, list(common.CLASSES),
         args.rmm_ratios, args.nm_density, args.protocol, args.presence_renorm,
         args.nm_gaussian, args.nm_gaussian_std, args.model_path, args.cfg)
+    if args.subset_every > 1 or args.batch != 1:
+        # 부분집합·배치 정보를 summary 에 남긴다(부분집합 수치는 벤치마크 비교 불가 표시).
+        summary["subset_every"] = int(args.subset_every)
+        summary["batch"] = int(args.batch)
+        summary["benchmark_comparable"] = bool(args.subset_every == 1 and not args.limit)
+        (base / "summary.json").write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\n[mm-eval] clean mIoU = {summary['clean_mIoU']}")
     if "EMM" in summary:
