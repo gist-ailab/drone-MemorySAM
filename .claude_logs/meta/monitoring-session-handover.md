@@ -654,3 +654,19 @@ E2 는 표의 ep25 시점 65.25 에서 ep30 66.91 로 계속 올라가고 있어
 - **위 넷 다 끝나면 hpca100 GPU1,2,3 + yeon GPU2~7이 전부 해방** — 그 시점에 discussion 세션과 다시 상의해서 다음 배치(P52.1 본런 3벤치×3페어, 축2 A2, E-LoRA B·C 등)를 정할 것. GPU 유휴 금지 원칙 적용.
 
 관련 문서: [decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md](../decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md) · [decisions/2026-09-07-daily-cycle-experiment-cards.md](../decisions/2026-09-07-daily-cycle-experiment-cards.md) · [decisions/2026-08-31-p52-rxdino-adaptive-amendment.md](../decisions/2026-08-31-p52-rxdino-adaptive-amendment.md) · [experiments/registry.md](../experiments/registry.md)
+
+## 6. 🔴 2026-09-17 13:40 KST 인계 대기 항목 (감시 세션 "MMSAM | monitoring (인계중)"이 세션 목록에서 사라짐 — 복원 즉시 이어받을 것)
+
+작성 = 생각정리 세션(판정·설계 담당). 아래는 감시 세션이 집행하기로 했던 것이며, 그 세션이 사라진 시점 이후 진행 상태는 미확인이다.
+
+| # | 항목 | 상태(13:40 KST 실측) | 할 일 |
+|---|---|---|---|
+| 1 | **E17 세부 가지 스크린**(hpca100 GPU0, 08:23 기동, 40ep ≈ 09-18 08시) | 진행 중. `[DETAIL] gate=[0.395, 0.218]`(init 0.0997에서 상승 = 세부 잔차 실사용) | ep20 조기 kill 기준(트레이너 val < 65.07) 감시, 완주 후 legal 재채점·게이트 G1~G4 → 생각정리 세션에 회신 |
+| 2 | **DELIVER 기준선 902·903 완주 → E1·E13 확정 3쌍 legal 재채점** | jarvis 5,6이 16시경 빈다고 했으나 13:40 현재 3.4GB·100%로 점유 중(정체 미확인) | 완주 확인 → 재채점(1024·BS1·native GT) → §0-2 두 항목 포함 표를 생각정리 세션에 |
+| 3 | **기준선 실패 분석 D1~D5**(설계 = experiments/analysis/2026-09-17-baseline-failure-analysis-plan.md, 도구 = tools/baseline_failure/, develop e636242·68c1a94) | 코드 병합 완료. CPU 단계(dump_gt_only → check_label_convention → rle_json_to_png 재현 검산)는 GPU 없이 yeon /SSDe·lecun /SSDc에서 시작 가능 | CPU 단계 즉시, 우리 모델 덤프(E1 시드1·56.99 런)는 빈 GPU 1장, DGFusion 80k val 재추론은 그 다음 |
+| 4 | **결측 모달 강건성 평가**(user 요청, 도구 = tools/missing_modality_eval.py, develop 699444a) | 미실행. 레포에 EMM/RMM 수치 0건 | 빈 GPU 1장: `--limit 8` 선검증(NaN·clean 일치) → E1 시드1 val-best·56.99 런 val 전체(EMM 우선, RMM r=0.5, NM 순), `--expected_clean_miou`=해당 런 legal val. 추가로 `--presence_renorm` on/off 비교. 옛 게이트 ckpt(P36 gate/calib/veto, P39 router) NAS 인벤토리 |
+| 5 | **MUSES 시드 825 제출본** | zip 준비 완료(md5 e4f02f3f…), 업로드는 user 승인 대기 | Codabench 잔여 횟수 확인은 user 로그인 필요 |
+| 6 | **MUSES 풀 런 셋**(E7·E1M 81.70 완주·E13M) | E1M 공식 val 81.70 = 제출본 82.13 −0.43 | E7·E13M 완주 후 세 값 같은 채점기로 → 생각정리 세션 판정 |
+| 7 | 노션 §6 동기화 | 09-17 04:00 스냅샷까지 반영됨 | plan.md N-E23 등재(a6507f9) 이후 변경분 반영 |
+
+GPU 규칙 그대로: 빈 GPU(≤2000MiB·util≤10%)만, 실행 중 학습 체크아웃 pull 금지(파일 단위 전송 + md5). 판정은 생각정리 세션이 한다.
