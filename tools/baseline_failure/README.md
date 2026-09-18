@@ -51,6 +51,11 @@ python tools/baseline_failure/dump_preds_ours.py \
 `summary.json`. image_id = 상대 경로(`img/<cond>/<split>/<scene>/<stem>_rgb_front`)로 중첩
 저장되고, 끝에 장수(val 2005 / test 1897)를 assert 한다(`--limit` 디버그 실행은 예외).
 
+**A9 — 정본 채점 격자는 1024²**(이미지별 분석 방침). 새 덤프는 `dump_preds_ours.py ... --save_1024`
+로 복원 전 1024² argmax 를 `<out>/<split>/pred1024/` 에 정확 저장한다(`pred/` 1042² 는 유지).
+기존 1042² 덤프는 `recover_1024_from_1042.py --pred_dir <1042 pred> --split test --out <ROOT>/rec1024`
+로 중심 정렬 최근접(PIL NEAREST, floor 금지) 근사 복원해 쓴다 — summary 의 `approx_from_1042` 참조.
+
 ## D1 — 기준선 덤프 (권장: RLE JSON → PNG 복원)
 
 기준선 `--eval-only` 로그가 남긴 `inference/sem_seg_predictions.json` 을 그대로 PNG 로

@@ -26,6 +26,11 @@ A2~A7 확장 항목:
        per_image_metrics resized1024 — 1024 예측 디렉터리 exact / 1042 예측 디렉터리
        resampled 로 기록, 같은 예측·GT 로 두 경로 모두 mIoU 100, 근사 note 는
        resampled 모델이 있을 때만
+  (A9) recover_1024_from_1042 — 합성 1042² 라벨을 중심 정렬 최근접으로 1024² 복원:
+       출력 1024²·값 집합이 입력의 부분집합·요약(approx_from_1042·resize_method) 기록.
+       1024² 입력은 보정 없이 에러. floor(torch nearest) vs 중심(PIL NEAREST) 정렬이
+       실제로 다른 결과를 냄을 가는 줄무늬로 단언. dump_preds_ours --save_1024 는
+       모델이 필요해 argparse 인자 존재만 단언.
 파일 1·2·6·7 은 실서버 전용이라 import·인자 파싱(+id 규약 동치성)만 검사.
 
 실행: /home/jemo/anaconda3/envs/MMSS_SAM/bin/python tools/smoke_baseline_failure.py
@@ -651,6 +656,101 @@ def smoke_exact_1024(tmp):
     print("[smoke] (A8-2) resized1024 exact/resampled 기록 · 두 경로 모두 mIoU 100 ✓")
 
 
+# ---------------------------------------------------------------------------
+# A9 — 1042 덤프 근사 복원(중심 정렬) · floor/중심 정렬 차이 · --save_1024 인자
+# ---------------------------------------------------------------------------
+A9_SRC = A8_GT_H          # 1042 — 우리 덤프가 복원돼 있는 native 해상도
+A9_DST = A8_RLE_H         # 1024 — 정본 채점 격자
+A9_IDS = ["img/night/test/s1/000020_rgb_front", "img/fog/test/s2/000021_rgb_front"]
+
+
+def smoke_a9_recover(tmp):
+    """(A9-2) 합성 1042² 라벨 → 중심 정렬 최근접 1024² 복원 — 해상도·값 집합 부분집합·
+    요약 기록. 1024² 입력은 임의 보정 없이 명확한 에러로 멈춘다."""
+    from tools.baseline_failure import recover_1024_from_1042 as rec
+
+    src = {}
+    for k in A9_IDS:
+        a = np.full((A9_SRC, A9_SRC), ROAD, np.uint8)
+        a[100:600, 200:900] = WATER
+        a[0:50, :] = 255                                # ignore 포함(값 규약 확인용)
+        src[k] = a
+    pred_dir = tmp / "a9_src1042"
+    save_dir(src, pred_dir)
+
+    out = tmp / "a9_rec1024"
+    _run_main(rec, ["recover_1024_from_1042.py", "--pred_dir", str(pred_dir),
+                    "--split", "test", "--out", str(out), "--expected_count", "2"])
+    idx = common.index_label_pngs(out / "test" / "pred")
+    assert len(idx) == 2, f"복원 장수 {len(idx)} != 2"
+    for k in A9_IDS:
+        r = common.load_label_png(idx[k])
+        assert r.shape == (A9_DST, A9_DST), f"{k} 복원 해상도 {r.shape} != 1024²"
+        u_out = set(np.unique(r).tolist())
+        assert u_out <= set(np.unique(src[k]).tolist()), \
+            f"{k}: 복원 후 새 라벨 값 생김: {u_out}"
+    summ = json.loads((out / "test" / "summary.json").read_text(encoding="utf-8"))
+    assert summ["approx_from_1042"] is True, summ
+    assert summ["resize_method"], f"resize_method 미기록: {summ}"
+    assert summ["src_resolution"] == 1042 and summ["dst_resolution"] == 1024, summ
+    assert summ["num_images"] == 2, summ
+
+    # 이미 1024² 인 입력 — 되돌릴 것이 없으니 보정 없이 에러.
+    p1024 = tmp / "a9_src1024"
+    save_dir({k: common.resize_nearest(v, 1024, 1024) for k, v in src.items()}, p1024)
+    try:
+        _run_main(rec, ["recover_1024_from_1042.py", "--pred_dir", str(p1024),
+                        "--split", "test", "--out", str(tmp / "a9_bad_out"),
+                        "--expected_count", "2"])
+        raise AssertionError("1024² 입력인데 에러 없이 통과했다")
+    except ValueError:
+        pass
+    print("[smoke] (A9-2) 1042→1024 중심 정렬 복원·값 부분집합·1024 입력 에러·요약 기록 ✓")
+
+
+def smoke_a9_alignment():
+    """(A9) floor 정렬(torch F.interpolate mode='nearest')과 중심 정렬(PIL NEAREST)
+    이 실제로 다른 결과를 냄 — 3픽셀 주기 가는 세로 줄무늬를 1042→1024 로 축소해
+    클래스 픽셀수가 다름을 단언한다(같으면 구현이 floor 정렬을 쓰고 있다는 뜻)."""
+    import torch
+    import torch.nn.functional as F
+    from tools.baseline_failure.recover_1024_from_1042 import resize_center_nearest
+
+    a = np.full((A9_SRC, A9_SRC), ROAD, np.uint8)
+    a[:, ::3] = POLE                                   # 가는 세로선(얇은 클래스)
+    center = resize_center_nearest(a)
+    t = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).float()
+    floor = F.interpolate(t, size=(A9_DST, A9_DST), mode="nearest")
+    floor = floor.squeeze().numpy().astype(np.uint8)
+    assert center.shape == floor.shape == (A9_DST, A9_DST)
+    n_center = int((center == POLE).sum())
+    n_floor = int((floor == POLE).sum())
+    assert n_center != n_floor, (
+        f"floor({n_floor}) == 중심({n_center}) — 두 정렬이 같은 결과를 냈다. "
+        f"구현이 floor 정렬을 쓰고 있거나 대조군이 잘못됐다")
+    print(f"[smoke] (A9-정렬) floor {n_floor} vs 중심 {n_center} 픽셀 — 실제로 다른 결과 ✓")
+
+
+def smoke_a9_dump_arg():
+    """(A9-1) dump_preds_ours --save_1024 — 모델이 필요해 실행은 못 하고 인자가
+    argparse 에 등록돼 있는지만 단언한다(미등록이면 SystemExit=unrecognized)."""
+    from tools.baseline_failure import dump_preds_ours as dpo
+    old = sys.argv
+    try:
+        sys.argv = ["dump_preds_ours.py", "--cfg", "nonexistent.yaml",
+                    "--model_path", "nonexistent.pth", "--split", "test",
+                    "--out", "unused", "--save_1024"]
+        dpo.main()
+        raise AssertionError("--save_1024 로 main 이 정상 종료했다 — 비정상(cfg 가 없다)")
+    except SystemExit:
+        raise AssertionError("--save_1024 인자가 인식되지 않았다(argparse 미등록)")
+    except Exception:
+        pass    # 파싱은 통과하고 cfg 파일 부재 등으로 실패 — 인자 존재 단언에는 충분
+    finally:
+        sys.argv = old
+    print("[smoke] (A9-1) dump_preds_ours --save_1024 인자 등록 ✓")
+
+
 def run():
     tmp = Path(tempfile.mkdtemp(prefix="bf_smoke_"))
     gts = build_gt()
@@ -749,13 +849,16 @@ def run():
     smoke_rle(tmp)
     smoke_label_offset(tmp)
 
-    # ---- A2~A8 확장: GT 프로토콜 · 체크포인트 안정성 · depth 구간 IoU · zero-out 규약 · 1024 정확 경로 ----
+    # ---- A2~A9 확장: GT 프로토콜 · 체크포인트 안정성 · depth 구간 IoU · zero-out 규약 · 1024 정확 경로 ----
     smoke_gt_protocol(tmp)
     smoke_ckpt_stability(tmp)
     smoke_depth_bin(tmp)
     smoke_zero_mode()
     smoke_keep_1024(tmp)
     smoke_exact_1024(tmp)
+    smoke_a9_recover(tmp)
+    smoke_a9_alignment()
+    smoke_a9_dump_arg()
 
     # ---- 파일 1·2·6·7: import + argparse + 규약 동치성 ----
     from tools.baseline_failure import dump_preds_ours, d2_dump_evaluator, \
