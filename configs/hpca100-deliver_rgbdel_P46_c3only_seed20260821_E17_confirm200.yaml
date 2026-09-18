@@ -1,0 +1,245 @@
+# [E17 확정 200ep · hpca100 1장 판] E1 확정 레시피(TAPS on per_modal + C3 mfeat λ0.1) + DETAIL_BRANCH on, 시드 20260821.
+#   원본 = hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E17.yaml — 바꾼 것 = EPOCHS 40→200 · EVAL_INTERVAL 5→2 · SAVE_DIR · TRAIN.BATCH_SIZE 1→2(A100 40GB, accum 자동).
+#   jarvis 2장 판(jarvis-…_E17_confirm200.yaml)과 학습 수학 동일(eff-batch 16). 2026-09-18 19:45 jarvis 8장 상실로 hpca100 GPU0 대안 기동용.
+#   게이트 짝 = 같은 시드 E1 확정 런(4탭만). 24GB 가 아니므로 grad-ckpt 우회 이점(hpca100 메모리)도 있다.
+# [E17·hpca100] E1 스크린 레시피(TAPS on per_modal + C3 mfeat λ0.1) + DETAIL_BRANCH on, 40ep 스크린, 시드 20260821, hpca100.
+#   jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E17.yaml 의 hpca100 경로판 (ROOT·TEST.FILE·SAVE_DIR 만 다름).
+#
+# ── 진단(왜 만드나) ──────────────────────────────────────────────────────────
+#   DELIVER 정본 test 클래스별 대조(우리 확정 런 vs DGFusion 재현 80k): Pole −11.8 · TrafficLight −14.8 ·
+#   Pedestrian −11.9 · Static −7.7 로 **얇고 작은 객체**에서 지고, RailTrack·Wall·Water 같은 큰 영역
+#   클래스에서는 이긴다. 현재 파이프라인은 백본 stride-16 토큰(768 입력 기준 48×48)만 쓰고 SimpleFPN 이
+#   그 한 맵을 ConvTranspose 로 stride-4/8 까지 **늘려 쓸 뿐** 원본 해상도 정보가 들어오지 않는다.
+#   입력을 1024 로 올려도 test 이득이 없던 것(registry P46@1024)이 "토큰 격자가 아니라 세부 경로 부재"를 가리킨다.
+# ── 가설 ─────────────────────────────────────────────────────────────────────
+#   백본에 넣는 것과 같은 전처리 입력 이미지에 가벼운 합성곱 스템(모달 공유, 투영만 모달별)을 걸어 stride-4/8
+#   세부 특징을 따로 뽑아 FPN pyramid 의 대응 레벨에 게이트 잔차(tanh(g_l)·detail[l], g_l init 0.1)로 더하면,
+#   얇고 작은 객체 클래스가 회복된다. SOTA(MM SAM-adapter)의 ConvNeXt 측면 가지와 같은 역할을 더 가벼운
+#   스템으로, 모든 모달리티에 적용한다. TAPS(stride-16 토큰 4탭)와 **독립**이라 동시 사용한다.
+# ── 게이트(사전 등록) ───────────────────────────────────────────────────────
+#   legal test 24클래스(RailTrack 제외) Δ vs E1 확정 시드1 ≥ +0.5  AND  얇은 객체 4클래스
+#   (Pole·Pedestrian·Static·TrafficLight) 평균 Δ vs E1 ≥ +2.0,  악조건 조건별 −0.5 미만 없음.
+#   부수 확인: [DETAIL] gate=[g4,g8] 가 정체(≈0)가 아니라 성장(세부 잔차가 주 경로에 실제로 유입).
+# ── 공정성 ──────────────────────────────────────────────────────────────────
+#   PHYSAUG off · DGFUSION_AUG(ColorAugSSD, ISSUE-026 픽스본) on · val-best ckpt · TTA 금지 (E1 계승).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_E17_confirm200'  # [E17 확정 200ep, hpca100 1장 판]
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  TAPS:
+    ENABLE  : true                          # off(기본)면 B0 와 forward·state_dict byte-동일
+    LAYERS  : [6, 12, 18, 24]               # 1-indexed 블록(24블록에서 24=마지막). resolve_taps 규약
+    MODE    : per_modal                     # per_modal(센서별 탭 유지·FPN 레벨 합산) | mean(P43 식 모달 평균)
+
+  # ═══ [E17] DINOv3 세부 가지 — 이번 카드의 유일한 변경 ═══
+  DETAIL_BRANCH:
+    ENABLE     : true                       # off(기본)면 forward·state_dict byte-동일 (detail_branch.py)
+    STEM_DIM   : 32                          # stage 채널 = STEM_DIM·2^k → stride4=64ch, stride8=128ch
+    LEVELS     : [4, 8]                      # FPN pyramid stride-4·stride-8 레벨에 게이트 잔차 주입
+    MODE       : shared_stem                 # shared_stem(스템 공유·투영만 모달별) | per_modal
+    GATE_INIT  : 0.1                          # 레벨별 게이트 g init(zero-init 금지 — 첫 스텝부터 grad)
+    INPUT_NORM : same                         # 백본과 동일한 전처리 입력을 그대로 사용
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — C3 단독(C1/C2 off, E1 동일) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+    C2_MCC:
+      ENABLE        : false
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+    C3_PROTO:
+      ENABLE        : true
+      FEATURE       : mfeat      # mfeat(stride-4 head feature, 256) | fused(1/16, 1024)
+      LAMBDA        : 0.1        # λ3
+      TEMPERATURE   : 0.1        # cosine logit 온도 τ
+      EMA           : 0.999      # prototype EMA 계수
+      PIXELS        : 4096       # 손실당 서브샘플 픽셀 수
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'   # hpca100 DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 20260821
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 2                 # hpca100 A100 40GB 1장: 스크린 BS1 피크 14.91GiB → BS2(85~90% 규칙, accum 자동으로 eff-batch 16 유지). 기동 전 P46_MEM_LOG=1 실측, OOM 이면 1
+  EPOCHS        : 200               # [확정] 200ep 3페어
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2                 # [확정] E1 확정 config 와 동일
+  SAVE_TOPK     : 1                 # [확정] val 상위 1개만 보관(디스크)
+  SAVE_TEST_CKPT : false            # [확정] test 상위 ckpt 미보관(평가·로그 유지)
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false
