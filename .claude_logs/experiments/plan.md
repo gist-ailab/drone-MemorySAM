@@ -1,6 +1,6 @@
 ---
 created: 2026-07-16
-updated: 2026-09-12 18:00 (E13M 공식 80.7998 게이트 통과·E13 확정 시드1 완주 확정본·E13s3/E14/armB 재채점·자동 연쇄 3건 설치 반영) ; 2026-09-12 (실행 중 표를 네 서버 전수 실측으로 교체 — 종결 런 10건 제거·신규 6건 추가, 빈 GPU 0장/작업 14건, E1 확정 ep138 급등 반영) ; 2026-09-09 (카드 넷 legal 완결 E3 +1.40·E1 +1.07·E2 +0.72·E4 −0.03, MUSES 공식 E7/E7c/E1M, DGFusion 발산 3회·80k 재현 성립, E3b·E-LoRA B/C 기동, bengio 양도 반영) ; 2026-09-08 (노션 논문 페이지 리팩토링과 동기화 — "실행 중" 표를 실상태(카드 E1/E2/E3/E4/E7c·P52·E-LoRA·DGFusion/CAFuser 재학습)로 교체, B0 legal 수치·E0/E9/E7 판정 반영, DAILY-CARDS 행 2일차 갱신, 노션 동기화 규칙 명시) ; 2026-07-21 (ISSUE-025 MUSES radar 디코딩 버그 수정 반영 → 대기열 #3 "P39-4모달 radar-fix 재실험" 신설 + 사고 기록 1줄, 이하 대기열 번호 +1) ; ISSUE-026 ColorAugSSD RGB 붕괴 버그 반영 → hpca100 P39-DPC resume 오염 표기 + 사고 기록 1줄 + 대기열 #1 클린런 표기 ; 2026-07-23 대기열 #1 "P39.1 Rank 수리" MUSES-jarvis 분기 착수 → 실행중 표에 행 추가(jarvis 2,3,4,5, 기동검증 통과) ; 2026-07-26 P43-MUSES 완주(val 82.51@ep156, seed2 미돌파) → 대기열 #11 P44-BMR을 hpca100 GPU2,3에 착수(develop 678c493, 기동검증 통과); 2026-07-27 seed4 완주(81.92)→해방 GPU에 첫 4-modal(P39.1+radar) 착수(yeon 0,1,5, 305b030); seed2 분석 완료(trunk+2~7·VICReg lidar rank 78~100 검증); 2026-07-27 jarvis 리부트(드라이버 595.84 복구)→DELIVER 2실험 착수(P39.1-rank GPU0-3 / P44-BMR GPU4-7, BS1, develop be2603c) — DELIVER 첫 캠페인 실험; 2026-07-27 4-modal ep2 eval OOM→EVAL BS1+expandable_segments 수정 재기동(9f199be), ep4 eval 통과 확인; 2026-07-28 P44-MUSES 완주(80.71)→해방 A100에 2번째 4-modal(P44-BMR+radar) 착수(hpca100 0-3, 1cf1e66, BS1 OOM수정); 2026-07-28 hpca100 4모달 HF 백본 이중고장(offline=RANDOM INIT/online=hang) 확진 → RELIADINO_LOCAL_BACKBONE env fix(encoder.py 697a10a) → P39.1+radar seed2 클린 기동(ep2 47.61); 2026-07-28 seed3 완주(81.89@204, 5-seed variance 완결) → P44-DELIVER seed2 yeon6,7 수동기동; P44-MUSES(80.71) test staging+분석 lecun; 2026-07-28 P46-CTR 제안 등재(DELIVER SOTA class-transfer, 내부신호 RCS+MIC+prototype) ; 2026-08-03 P46 C3-only λ0.2 DELIVER 완주(200/200, test-best 57.05@ep108) = **DELIVER test SOTA 돌파 확정**(DGFusion 56.71 대비 +0.34, @768 동일 프로토콜) → λ 스윕 상단탐색 λ0.3을 jarvis GPU4-7(회수됨)에 착수, 기동검증 PASS ; 2026-08-03 λ0.2 SOTA 재현성 검증을 위해 seed2를 jarvis GPU1-3(4090×3, GPU0=user 예약)에 착수, config `jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`(develop b925c90), 기동검증 PASS ; 2026-08-04 **정정**: 57.05는 test-best 체크포인트 값으로 규약상 무효 확인됨 — legal 재계산(val-best/final-iter) 결과 최고 test 55.62~55.69, DGFusion 56.71 대비 −1.0로 **SOTA 미달**(base 대비 실제 이득은 test +1.35~1.74/val +0.97로 견고, λ 최적 0.05~0.2 평탄). 상세 [experiments/analysis/2026-08-03-p46-c3only-lambda-sweep.md](analysis/2026-08-03-p46-c3only-lambda-sweep.md) ; 2026-08-06 MUSES val PQ 첫 측정(P47-MUB D-1 ep172, native, tools/eval_pq.py b6d3da0) → things PQ 22.87 ≤ 30 = P48(쿼리 경로 인스턴스 감독) 사전등록 게이트 미달 → **설계 폐기** (analysis/2026-08-06-pq-first-measurement-p48-gate.md) ; 2026-08-08 대기열·예약표 청소(완주 4건 제거, bengio 잔재 제거, CEA 프로브 등재) ; 2026-08-18 "실행 중" 표 청소(3~4주치 완주 런 박제 제거, 실상태 2런만 유지) + 대기열 #13 spatial-modality oracle 등재
+updated: 2026-09-18 11:20 (registry 낡은 행 4건 실측 갱신 — C3-only 시드903·E-LoRA arm C 시드903 완주 legal 반영, E17 신규 등재, E7 풀 런 공식 val 81.88 반영 — 후 "실행 중"·"GPU 예약·점유 현황" 표를 네 서버 전수 실측으로 교체) ; 2026-09-12 18:00 (E13M 공식 80.7998 게이트 통과·E13 확정 시드1 완주 확정본·E13s3/E14/armB 재채점·자동 연쇄 3건 설치 반영) ; 2026-09-12 (실행 중 표를 네 서버 전수 실측으로 교체 — 종결 런 10건 제거·신규 6건 추가, 빈 GPU 0장/작업 14건, E1 확정 ep138 급등 반영) ; 2026-09-09 (카드 넷 legal 완결 E3 +1.40·E1 +1.07·E2 +0.72·E4 −0.03, MUSES 공식 E7/E7c/E1M, DGFusion 발산 3회·80k 재현 성립, E3b·E-LoRA B/C 기동, bengio 양도 반영) ; 2026-09-08 (노션 논문 페이지 리팩토링과 동기화 — "실행 중" 표를 실상태(카드 E1/E2/E3/E4/E7c·P52·E-LoRA·DGFusion/CAFuser 재학습)로 교체, B0 legal 수치·E0/E9/E7 판정 반영, DAILY-CARDS 행 2일차 갱신, 노션 동기화 규칙 명시) ; 2026-07-21 (ISSUE-025 MUSES radar 디코딩 버그 수정 반영 → 대기열 #3 "P39-4모달 radar-fix 재실험" 신설 + 사고 기록 1줄, 이하 대기열 번호 +1) ; ISSUE-026 ColorAugSSD RGB 붕괴 버그 반영 → hpca100 P39-DPC resume 오염 표기 + 사고 기록 1줄 + 대기열 #1 클린런 표기 ; 2026-07-23 대기열 #1 "P39.1 Rank 수리" MUSES-jarvis 분기 착수 → 실행중 표에 행 추가(jarvis 2,3,4,5, 기동검증 통과) ; 2026-07-26 P43-MUSES 완주(val 82.51@ep156, seed2 미돌파) → 대기열 #11 P44-BMR을 hpca100 GPU2,3에 착수(develop 678c493, 기동검증 통과); 2026-07-27 seed4 완주(81.92)→해방 GPU에 첫 4-modal(P39.1+radar) 착수(yeon 0,1,5, 305b030); seed2 분석 완료(trunk+2~7·VICReg lidar rank 78~100 검증); 2026-07-27 jarvis 리부트(드라이버 595.84 복구)→DELIVER 2실험 착수(P39.1-rank GPU0-3 / P44-BMR GPU4-7, BS1, develop be2603c) — DELIVER 첫 캠페인 실험; 2026-07-27 4-modal ep2 eval OOM→EVAL BS1+expandable_segments 수정 재기동(9f199be), ep4 eval 통과 확인; 2026-07-28 P44-MUSES 완주(80.71)→해방 A100에 2번째 4-modal(P44-BMR+radar) 착수(hpca100 0-3, 1cf1e66, BS1 OOM수정); 2026-07-28 hpca100 4모달 HF 백본 이중고장(offline=RANDOM INIT/online=hang) 확진 → RELIADINO_LOCAL_BACKBONE env fix(encoder.py 697a10a) → P39.1+radar seed2 클린 기동(ep2 47.61); 2026-07-28 seed3 완주(81.89@204, 5-seed variance 완결) → P44-DELIVER seed2 yeon6,7 수동기동; P44-MUSES(80.71) test staging+분석 lecun; 2026-07-28 P46-CTR 제안 등재(DELIVER SOTA class-transfer, 내부신호 RCS+MIC+prototype) ; 2026-08-03 P46 C3-only λ0.2 DELIVER 완주(200/200, test-best 57.05@ep108) = **DELIVER test SOTA 돌파 확정**(DGFusion 56.71 대비 +0.34, @768 동일 프로토콜) → λ 스윕 상단탐색 λ0.3을 jarvis GPU4-7(회수됨)에 착수, 기동검증 PASS ; 2026-08-03 λ0.2 SOTA 재현성 검증을 위해 seed2를 jarvis GPU1-3(4090×3, GPU0=user 예약)에 착수, config `jarvis-deliver_rgbdel_P46_ctr_c3only_lam02_seed2.yaml`(develop b925c90), 기동검증 PASS ; 2026-08-04 **정정**: 57.05는 test-best 체크포인트 값으로 규약상 무효 확인됨 — legal 재계산(val-best/final-iter) 결과 최고 test 55.62~55.69, DGFusion 56.71 대비 −1.0로 **SOTA 미달**(base 대비 실제 이득은 test +1.35~1.74/val +0.97로 견고, λ 최적 0.05~0.2 평탄). 상세 [experiments/analysis/2026-08-03-p46-c3only-lambda-sweep.md](analysis/2026-08-03-p46-c3only-lambda-sweep.md) ; 2026-08-06 MUSES val PQ 첫 측정(P47-MUB D-1 ep172, native, tools/eval_pq.py b6d3da0) → things PQ 22.87 ≤ 30 = P48(쿼리 경로 인스턴스 감독) 사전등록 게이트 미달 → **설계 폐기** (analysis/2026-08-06-pq-first-measurement-p48-gate.md) ; 2026-08-08 대기열·예약표 청소(완주 4건 제거, bengio 잔재 제거, CEA 프로브 등재) ; 2026-08-18 "실행 중" 표 청소(3~4주치 완주 런 박제 제거, 실상태 2런만 유지) + 대기열 #13 spatial-modality oracle 등재
 ---
 
 # 🗓 실험 계획 / 큐 (Experiment Plan & Queue)
@@ -56,38 +56,37 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 - 실증: 2026-07-16 새벽 lecun 분석 완주 후 7장을 비우자 **즉시 타인(openvla)이 24GB×7 전부 점유** → TTA 실측 무기한 보류.
 - ⚠️ **단 타인 GPU에 얹지 마라** — CLAUDE.md "빈 GPU(≤2000MiB, util≤10%)" 규칙 유지. 이 원칙은 *우리 것을 놓치지 말라*는 뜻.
 
-## 🖥 GPU 예약·점유 현황 (2026-09-17 03:40 KST 실측)
+## 🖥 GPU 예약·점유 현황 (2026-09-18 11:20 KST 실측)
 
 | 서버 | 우리 점유 | 타 사용자 | 비고 |
 |---|---|---|---|
-| **jarvis** (4090×8) | 0,3 arm C 903 · 1,7 C3 902 · 4 E7 풀 런 · 5,6 C3 903 | GPU2 | ⚠️ **GPU0 예약 여부 확인 필요** — 메모리에는 "jarvis GPU0 은 여전히 예약"으로 남아 있는데 지금 arm C 903 이 GPU0,3 을 쓰고 있다. 사용자 확인 대기 |
-| **yeon** (3090×8) | 0,1 E1 시드4 v2 · 2,3 C3 시드4 v2 · 4,5 E13 시드4 · 6,7 arm C 902 | 없음 | GPU3,4 제약은 2026-08-06 해제됨(일반 규칙 적용) |
-| **hpca100** (A100×4) | 0 E1M 풀 런 · 1 E13M 풀 런 s2 · 2 E1M 풀 런 s2 · 3 E13M 풀 런 3407 | 없음(볼륨은 공유) | 🔴 공유 볼륨 96%·여유 85G. 09-15 Errno 28 로 6런 사망 전례 — 60G·40G 임계 감시 가동 중 |
-| **bengio** (8장) | 0~7 E-LoRA A·B × 시드 902·903 (각 2장) | 없음 | ⚠️ 아래 "중단 런" 절의 양도 전제와 모순 — 확인 필요 |
-| **lecun** (24GB×7) | 없음(추론만 간헐) | sangmin_park · youngjin_lee | 입출력 병목으로 **학습 자리에서 제외**, 짧은 평가·추론만. `/SSDb` 100%(여유 46G) → 산출물은 `/SSDc` 로 |
+| **jarvis** (4090×8, 전부 우리 것) | GPU0 4탭 읽기 확정 시드1 하네스 v2 재채점(test→val) · GPU1 E-LoRA arm C 시드903 legal 재채점 val · GPU2 56.99 런 하네스 v2 재채점(test→val) · GPU3 56.99 런 모달 누락 평가(val) · GPU4 방금 E7 공식 재채점 끝나 비는 자리 · GPU5 4탭+센서별 프로토타입 시드3 모달 누락 평가 · GPU6 4탭 시드1 모달 열화 r0.25·0.75 · GPU7 56.99 런 모달 누락 평가(test) | 없음 | 8장 전부 우리 것으로 실측 확인(이전 갱신의 "GPU0 예약 확인 필요"·"GPU2 타사용자" 메모는 해소) |
+| **yeon** (3090×8, 전부 우리 것) | 0,1 4탭 읽기 확정 시드4(ep101, 트레이너 val 최고 67.94@92, ETA 09-21 06:50) · 2,3 프로토타입 손실만 쓴 기준선 시드4(ep106, 67.02@74, ETA 09-21 00:30) · 4,5 4탭+센서별 프로토타입 시드4(ep119, 68.35@110, ETA 09-20 04:30) · 6,7 E-LoRA arm C 시드902(ep114, 68.69@60, ETA 09-20 21:00) | 없음 | GPU3,4 제약은 2026-08-06 해제됨(일반 규칙 적용) |
+| **hpca100** (A100×4) | 0 E17 세부 가지 스크린(36/40, ETA 09-18 13:05) · 1 4탭+센서별 프로토타입 MUSES 풀 런 시드902(ep136, 81.95@110, ETA 09-19 03:45) · 2 4탭 읽기 MUSES 풀 런 시드902(ep136, 82.20@100, ETA 09-19 03:40) · 3 4탭+센서별 프로토타입 MUSES 풀 런 시드3407(ep151, 82.21@130, ETA 09-18 23:40) | 없음(볼륨은 공유) | 🔴 공유 볼륨 감시 유지. 09-15 Errno 28 로 6런 사망 전례 |
+| **bengio** (8장, 전부 우리 것) | 0,1 E-LoRA arm A 시드902(ep128, 68.06@70, ETA 09-20 09:20) · 2,3 arm B 시드902(ep127, 67.39@100, ETA 09-20 09:00) · 4,5 arm A 시드903(ep128, 68.57@80, ETA 09-20 09:10) · 6,7 arm B 시드903(ep124, 66.88@80, ETA 09-20 15:00) | 없음 | 이전 갱신의 "양도 전제와 모순" 메모는 실측으로 해소 — bengio 8장 전부 우리 것 |
+| **lecun** (24GB×7) | 없음 — user 지시로 추가 작업 배치 금지 | sangmin_park · youngjin_lee | GPU 0~4 유휴. 🔴 lecun 배치 금지(2026-09-17 user 지정) 유지 |
 | ~~B200~~ | — | — | 🔴 상실(07-15 마감) |
 
-## 🔬 실행 중 (2026-09-17 03:40 KST 실측 갱신)
+## 🔬 실행 중 (2026-09-18 11:20 KST 실측 갱신)
 
 > ⚠️ **이 표는 "지금 도는 것"만 담는다.** 완주·종결된 런은 registry/analysis로 즉시 이동.
 > 🔗 **노션 동기화 규칙(2026-09-08, CLAUDE.md §3)**: 이 표·대기열이 바뀌면 같은 날 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, `33d05310…`) §4·§6을 `.claude/skills/notion-experiment-log/paper_page_builder.py`(절 단위 교체, 멱등; 차트는 `paper_page_charts.py`)로 함께 갱신한다.
+> jarvis 8장은 전부 학습이 아니라 평가/재채점(하네스 v2 재채점, 모달 누락 평가, 모달 열화 평가) 중이다 — 위 GPU 예약·점유 현황 표 참조, 이 표에는 EPOCHS 진행이 있는 학습 런만 싣는다.
 
 | 실험 | 서버/GPU | 데이터셋 | EPOCHS | 진행(🔴 트레이너 val — legal 아님) | ETA | 목적·게이트 |
 |---|---|---|---|---|---|---|
-| **C3-only 시드 902** (확정 매칭 분모, ep54 재개) | jarvis 1,7 | DELIVER 4모달 | 200 | ep146 — 최고 **67.20@140** | 09-17 20:20 (19.4분/ep) | 분모 (c) — E1·E13 시드2 짝 |
-| **C3-only 시드 903** (확정 매칭 분모) | jarvis 5,6 | DELIVER 4모달 | 200 | ep162 — 최고 66.84@146 | 09-17 16:25 (21.2분/ep) | 분모 (c) — 시드3 짝 |
-| **E-LoRA arm C 시드 903** | jarvis 0,3 | DELIVER 4모달 | 200 | ep130 — 최고 66.96@100 | 09-18 03:45 (20.9분/ep) | bengio A·B 3시드와 짝 |
-| **E7 기준선 200ep 풀 런**(시드 3407) | jarvis 4 (1장) | MUSES 3모달 | 200 | ep50 — 최고 **79.77@50** | 09-18 11:20 (13.1분/ep) | E1M·E13M 풀 런의 같은 길이 짝 — test 제출 근거 |
-| **E-LoRA A·B × 시드 902·903** (4런) | bengio 0~7 (각 2장) | DELIVER 4모달 | 200 | ep74~76 — 최고 66.80~**68.06**(A 902) | 09-20 09:15~13:40 (39~41분/ep) | A(센서별 r16) 대 B(완전공유 r16) 3시드 판정 |
-| **E1 확정 시드4 v2** | yeon 0,1 | DELIVER 4모달 | 200 | ep52 — 최고 67.05@24 | 09-21 06:40 (41.6분/ep) | 확정 페어 넷째 |
-| **C3-only 시드4 v2** | yeon 2,3 | DELIVER 4모달 | 200 | ep54 — 최고 **66.74@54** | 09-21 01:20 (40.0분/ep) | E1 시드4 v2 짝 |
-| **E13 확정 시드4** | yeon 4,5 | DELIVER 4모달 | 200 | ep50 — 최고 67.28@35 | 09-20 07:10 (31.5분/ep) | E13 넷째 페어(E1 과 검정력 맞춤) |
-| **E-LoRA arm C 시드 902** (옛 체크아웃) | yeon 6,7 | DELIVER 4모달 | 200 | ep64 — 최고 **68.69@60 = 현재 DELIVER 트레이너 val 최고** | 09-20 22:00 (41.2분/ep) | 〃 |
-| **E1M 200ep 풀 런**(시드 3407, ep38 이어 받기) | hpca100 0 | MUSES 3모달 | 200 | ep170 — 최고 81.94@105 | **09-17 08:20** (16.2분/ep) | MUSES test 제출 후보 |
-| **E13M 200ep 풀 런**(시드 3407) | hpca100 3 | MUSES 3모달 | 200 | ep35 — 최고 **79.91@30** | 09-18 23:35 (16.5분/ep) | MUSES test 제출 후보(E13 쪽) |
-| **E13M 풀 런 시드 20260902** | hpca100 1 | MUSES 3모달 | 200 | ep15 — 77.11 (09-16 20:44 기동, 검증 5항 통과) | 09-19 03:45 | 풀 런 시드 페어 — 제출 헤드라인의 시드 의존 제거 |
-| **E1M 풀 런 시드 20260902** | hpca100 2 | MUSES 3모달 | 200 | ep10 — 76.45 (09-16 21:14 기동, 검증 5항 통과) | 09-19 03:30 | 〃 |
-| **E17 = E1 + 고해상도 세부 가지**(시드 821, 40ep 스크린) | hpca100 0 — **대기 기동** | DELIVER 4모달 | 40 | ⏳ E1M 풀 런 완주 후 자동 기동(waiter PID 2023203, `WAIT_START 09-16 18:02 UTC`) | 09-17 08:20 기동 예정 | 얇은 객체 병목 직격. 게이트 G1~G4 는 대기열 N-P53 행 |
+| **4탭 읽기 확정 시드4** | yeon 0,1 | DELIVER 4모달 | 200 | ep101 — 최고 **67.94@92** | 09-21 06:50 | 확정 페어 넷째 |
+| **프로토타입 손실만 쓴 기준선 시드4**(C3-only) | yeon 2,3 | DELIVER 4모달 | 200 | ep106 — 최고 67.02@74 | 09-21 00:30 | 4탭 읽기 시드4 짝(분모) |
+| **4탭+센서별 프로토타입 시드4**(E13) | yeon 4,5 | DELIVER 4모달 | 200 | ep119 — 최고 68.35@110 | 09-20 04:30 | E13 넷째 페어(4탭 읽기와 검정력 맞춤) |
+| **E-LoRA arm C 시드902**(옛 체크아웃, 공유 r8+잔차 r8) | yeon 6,7 | DELIVER 4모달 | 200 | ep114 — 최고 **68.69@60 = 현재 DELIVER 트레이너 val 최고** | 09-20 21:00 | A/B/C 3시드 판정 |
+| **E-LoRA arm A 시드902**(센서별 r16) | bengio 0,1 | DELIVER 4모달 | 200 | ep128 — 최고 68.06@70 | 09-20 09:20 | A 대 B 대 C 3시드 판정 |
+| **E-LoRA arm B 시드902**(완전공유 r16) | bengio 2,3 | DELIVER 4모달 | 200 | ep127 — 최고 67.39@100 | 09-20 09:00 | 〃 |
+| **E-LoRA arm A 시드903** | bengio 4,5 | DELIVER 4모달 | 200 | ep128 — 최고 68.57@80 | 09-20 09:10 | 〃 |
+| **E-LoRA arm B 시드903** | bengio 6,7 | DELIVER 4모달 | 200 | ep124 — 최고 66.88@80 | 09-20 15:00 | 〃 |
+| **E17 = 4탭 읽기 + 고해상도 세부 가지**(시드821, 40ep 스크린) | hpca100 0 | DELIVER 4모달 | 40 | 36/40 | 09-18 13:05 | 얇은 객체 병목 직격. 게이트 G1~G4(대기열 N-P53) |
+| **4탭+센서별 프로토타입 MUSES 풀 런 시드902**(E13M) | hpca100 1 | MUSES 3모달 | 200 | ep136 — 최고 81.95@110 | 09-19 03:45 | 풀 런 시드 페어 — 제출 헤드라인 시드 의존 제거 |
+| **4탭 읽기 MUSES 풀 런 시드902**(E1M) | hpca100 2 | MUSES 3모달 | 200 | ep136 — 최고 82.20@100 | 09-19 03:40 | 〃 |
+| **4탭+센서별 프로토타입 MUSES 풀 런 시드3407**(E13M) | hpca100 3 | MUSES 3모달 | 200 | ep151 — 최고 82.21@130 | 09-18 23:40 | MUSES test 제출 후보 |
 
 > 🔴 위 진행 값은 전부 트레이너 val 이며 legal 이 아니다. 판정은 `val.py` 하네스(1024·native-GT BS1) 또는 `tools/eval_muses_official.py` 재채점으로만 한다.
 > ✅ **09-16 MUSES 확정 판정(생각정리)**: E13M 이 세 게이트를 3페어로 통과 — **MUSES 에서는 E13 이 E1 보다 낫다**. E1M 은 "일관된 소폭 양성(+0.52), 통과선 미달"(§5-31). 📌 §0-1 에 MUSES 조건별 표본 규칙 추가(§5-31b).
