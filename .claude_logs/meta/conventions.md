@@ -87,6 +87,17 @@ created: 2026-07-08
 
 **왜**: 세션 A 모델을 세션 B가 모르면 재구현. develop+허브 = 유일한 공유 지점. 상세는 CLAUDE.md §1.7.
 
+### 8.1 🔴 허브는 모든 코드를 갖는다 (user 지정 2026-09-18)
+
+"이 컴퓨터는 모든 코드를 가지고 있어야 한다"는 **상태 조건**이다. push 때만이 아니라 지속적으로 성립해야 한다.
+
+- **develop에 push한 세션이 그 턴 안에서 허브도 pull한다.** 워크트리 격리 세션은 `ExitWorktree`(keep)로 나와서 직접 pull한다 — user에게 미루지 않는다.
+- **허브 상태를 실측하고 보고한다.** 세션 시작 시 받은 git status 스냅샷은 낡는다. 다른 세션이 이미 병합해 뒀을 수 있으므로 `git log --oneline -1` + `git merge-base --is-ancestor <내커밋> HEAD`로 확인한다.
+- **서버 remote를 정기적으로 fetch한다.** 허브에는 `origin`(GitHub) 외에 `jarvis`·`yeonp37a`·`b200` remote가 있다. `git fetch --all --tags --prune`은 죽은 b200 때문에 2분 넘게 걸리지만 완주한다(exit 0). 급하면 `git fetch origin --tags --prune`만 쓰고 서버 회수는 따로 돌린다.
+- **서버에만 있는 브랜치는 `archive/<서버>-<브랜치>` 태그로 고정한다.** remote-tracking ref는 `--prune`이나 서버 쪽 삭제로 조용히 사라진다. 2026-09-18 감사에서 GitHub 어디에도 없는 서버 브랜치 6개를 발견해 허브에 태그로 고정했다(`archive/jarvis-p46-ctr-impl` = P46-CTR 구현 · `archive/jarvis-worktree-p29-det` = P29-Det 정제 라벨셋 10커밋 · `archive/yeon-det-dist-eval` = eval 전 rank 분산 27분→5분 · `archive/yeon-feat-det-analysis` = P39rf-Det RF-DETR 헤드 · `archive/yeon-reconcile-m2f-det` · `archive/yeon-worktree-p38-det`). **origin에는 아직 push하지 않았다(허브 로컬 전용) — 공개 저장소 노출 여부가 user 판단 사항이다.**
+- 감사 방법: 서버 remote-tracking ref마다 `git merge-base --is-ancestor <ref> origin/develop`과 `git branch -r --contains <ref> | grep origin/`. 둘 다 아니면 허브에만 있는 코드다.
+- **커밋되지 않은 코드도 코드다.** 서버 체크아웃에서 작업했으면 `git status`로 untracked를 확인한다(2026-07 B200 반납 때 untracked 34종이 그 서버에만 있었다).
+
 
 ## 모달 수 표기 (user 지정 2026-07-21)
 
