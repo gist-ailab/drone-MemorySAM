@@ -113,8 +113,6 @@ def depth_absrel_d1(pred_depth, gt_depth, mask=None):
 # A4 — 모달 zero-out + GT 기반 depth/분할 채점 · A7 — 개입 규약(normalized|raw)
 # ---------------------------------------------------------------------------
 MODAL_KEYS = ("CAMERA", "LIDAR", "EVENT", "DEPTH")
-_MODAL_MEAN_TOKENS = {"CAMERA": ("CAMERA", "RGB", "IMAGE"), "LIDAR": ("LIDAR",),
-                      "EVENT": ("EVENT",), "DEPTH": ("DEPTH",)}
 
 
 def _obj_attr_items(node):
@@ -169,36 +167,92 @@ def _seg_has_pixel_mean(seg):
                for i in range(len(toks) - 1))
 
 
+def _strip_pixel_mean_marker(seg):
+    """세그먼트에서 PIXEL_MEAN 토큰쌍 하나를 떼어 낸 나머지(조인). 쌍이 없으면 None.
+
+    LIDAR_PIXEL_MEAN→LIDAR, PIXEL_MEAN_LIDAR→LIDAR, PIXEL_MEAN→"", EVENT_CAMERA→None.
+    """
+    toks = seg.split("_")
+    for i in range(len(toks) - 1):
+        if toks[i] == "PIXEL" and toks[i + 1] == "MEAN":
+            return "_".join(toks[:i] + toks[i + 2:])
+    return None
+
+
+def _last_seg_is_modal(last, modal):
+    """A11 — 후보 판정: 경로의 마지막 세그먼트가 모달 이름과 **정확히** 일치하는가.
+
+    세그먼트를 `_` 로 쪼갠 부분일치는 인정하지 않는다(DATASETS.PIXEL_MEAN.EVENT_CAMERA
+    는 마지막 세그먼트가 EVENT_CAMERA 라 CAMERA 의 후보도 EVENT 의 후보도 아니다).
+    예외 두 가지:
+      (a) 무명평탄 키 — PIXEL_MEAN 마커를 떼면 정확히 모달 이름만 남는 세그먼트
+          (LIDAR_PIXEL_MEAN 등). 마커 외 토큰이 모달 이름뿐이므로 다른 모달이 끼어들
+          여지가 없다.
+      (b) CAMERA(주 모달)만 마지막 세그먼트가 그냥 PIXEL_MEAN 인 경로(MODEL.PIXEL_MEAN).
+    """
+    if last == modal:
+        return True
+    if modal == "CAMERA" and last == "PIXEL_MEAN":
+        return True
+    return _strip_pixel_mean_marker(last) == modal
+
+
+# A11 — 후보 우선순위: 데이터셋 특화(경로에 DELIVER) > 그 외 DATASETS.* > MODEL.* > 기타.
+_MEAN_PRIO_NAMES = {3: "데이터셋 특화(DELIVER)", 2: "DATASETS.*", 1: "MODEL.*",
+                    0: "기타"}
+
+
+def _mean_cand_priority(up):
+    """대문자 경로의 후보 우선순위(A11) — 클수록 구체적이다."""
+    if "DELIVER" in up:
+        return 3
+    first = up.split(".")[0]
+    if first == "DATASETS":
+        return 2
+    if first == "MODEL":
+        return 1
+    return 0
+
+
 def find_modal_pixel_mean(cfg, modal):
     """cfg 에서 모달의 PIXEL_MEAN(채널별 평균) 을 찾아 (float, ...) 로 반환한다.
 
-    키 이름을 추측하지 않는다: cfg 를 재귀 열거해 경로 세그먼트에 PIXEL_MEAN 토큰이
-    들어간 항목 중 모달에 대응하는 것(CAMERA 는 무수식 세그먼트 PIXEL_MEAN 또는 경로에
-    CAMERA·RGB·IMAGE 동반, 나머지 모달은 해당 토큰 동반)을 쓴다.
-    못 찾거나 값이 서로 다른 후보가 여럿이면 명확한 에러로 멈춘다(임의값 대입 금지).
+    키 이름을 추측하지 않는다: cfg 를 재귀 열거해 (1) 경로 어딘가에 PIXEL_MEAN 토큰쌍이
+    있고 (2) 경로의 마지막 세그먼트가 모달 이름과 정확히 일치하는(_last_seg_is_modal,
+    부분일치 부정) 항목만 후보로 쓴다. 후보가 여럿이면 우선순위(_mean_cand_priority)로
+    하나를 고르고, 고른 후보와 값이 같은 다른 후보를 로그로 남긴다(A11). 같은
+    우선순위 안에서 값이 서로 다르거나 후보가 아예 없으면 명확한 에러로 멈춘다
+    (임의값 대입 금지). d2_zero_modality.patch 안의 복사본과 규칙이 같아야 한다
+    (smoke_baseline_failure A11 이 같은 입력으로 동시 검증).
     """
     if modal not in MODAL_KEYS:
         raise ValueError(f"modal 은 {MODAL_KEYS} 중 하나여야 한다: {modal!r}")
-    tokens = _MODAL_MEAN_TOKENS[modal]
     cands = []
     for path, val in _iter_cfg_items(cfg):
         up = path.upper()
         segs = up.split(".")
         if not any(_seg_has_pixel_mean(s) for s in segs):
             continue
-        if (any(t in up for t in tokens)
-                or (modal == "CAMERA" and segs[-1] == "PIXEL_MEAN")):
-            cands.append((path, _as_mean_tuple(val, path)))
+        if not _last_seg_is_modal(segs[-1], modal):
+            continue
+        cands.append((path, _as_mean_tuple(val, path)))
     if not cands:
         raise RuntimeError(
             f"cfg 에서 {modal} 의 PIXEL_MEAN 을 찾지 못했다(임의값 대입 금지) — config "
             f"의 실제 키 이름을 확인한 뒤 다시 실행하라.")
-    means = {m for _p, m in cands}
+    top = max(_mean_cand_priority(p.upper()) for p, _m in cands)
+    tier = [(p, m) for p, m in cands if _mean_cand_priority(p.upper()) == top]
+    means = {m for _p, m in tier}
     if len(means) != 1:
         raise RuntimeError(
-            f"{modal} 의 PIXEL_MEAN 후보가 여럿이라 모호하다: {cands} — config 의 "
-            f"모달별 통계 정의를 확인하라(추측 금지).")
-    return next(iter(means))
+            f"{modal} 의 PIXEL_MEAN 후보가 같은 우선순위({_MEAN_PRIO_NAMES[top]}) 안에서 "
+            f"값이 달라 모호하다: {tier} — config 의 모달별 통계 정의를 확인하라(추측 금지).")
+    chosen_path, mean = tier[0]
+    same_value = [p for p, m in cands if m == mean and p != chosen_path]
+    print(f"[probe_dgfusion] {modal} PIXEL_MEAN 후보 {len(cands)}개 — 채택 "
+          f"{chosen_path}({_MEAN_PRIO_NAMES[top]}), 값이 같은 다른 후보 "
+          f"{same_value or '없음'} -> {list(mean)}")
+    return mean
 
 
 def _fill_modal(v, mean):

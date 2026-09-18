@@ -20,6 +20,10 @@ A2~A7 확장 항목:
   (A6) depth_bin_iou — 로그 5분위 경계·구간별 픽셀수 합·완벽 예측 pacc=1·diff 정합성
   (A7) zero_modal_in_batch 두 방식 — normalized 는 모달 평균 채움((x-mean)/std → 0),
        raw 는 0 채움(옛 동작), 평균을 찾지 못하는 cfg 는 에러
+  (A11) 모달 PIXEL_MEAN 탐색 — 마지막 세그먼트 정확 일치(부분일치 부정: EVENT_CAMERA 는
+       CAMERA·EVENT 어느 쪽 후보도 아님) + 우선순위 채택(DELIVER 특화 > DATASETS.* >
+       MODEL.*) + 같은 우선순위 값 불일치 모호 에러. probe_dgfusion 탐색과
+       d2_zero_modality.patch 본문에서 추출한 탐색이 같은 입력에 같은 결과를 내는지.
   (A8) rle_json_to_png — 저장은 항상 RLE 해상도(1024²) 그대로(--gt_dir 가 있어도
        변경 없음). --keep_1024 는 1024 단언 검증(1024² 면 통과, 아니면 에러) +
        요약 pred_resolution·keep_1024 기록.
@@ -516,6 +520,90 @@ def smoke_zero_mode():
 
 
 # ---------------------------------------------------------------------------
+# A11 — 모달 PIXEL_MEAN 탐색: 마지막 세그먼트 정확 일치 + 우선순위 채택
+# ---------------------------------------------------------------------------
+# jarvis DGFusion 80k 실패 실측(2026-09-18)의 후보 구성 그대로 — 부분일치로
+# EVENT_CAMERA 가 CAMERA·EVENT 양쪽에 섞여 "모호하다" 에러로 멈춘 사례.
+A11_RGB_MEAN = (123.675, 116.28, 103.53)          # CAMERA 공통(DELIVER·DATASETS·MODEL)
+A11_EVENT_MEAN = (0.12577528, 0.12728328, 0.0)    # EVENT_CAMERA(이벤트 카메라 평균)
+
+
+def _a11_failure_cfg():
+    """실패 실측과 같은 모양의 가짜 cfg(점 경로) + LIDAR 우선순위 확인용 두 경로."""
+    return {"MODEL": {"PIXEL_MEAN": list(A11_RGB_MEAN),
+                      "PIXEL_STD": [1.0, 1.0, 1.0]},
+            "DATASETS": {"PIXEL_MEAN": {"CAMERA": list(A11_RGB_MEAN),
+                                        "EVENT_CAMERA": list(A11_EVENT_MEAN),
+                                        "LIDAR": [0.5]},
+                         "DELIVER": {"PIXEL_MEAN": {"CAMERA": list(A11_RGB_MEAN),
+                                                    "LIDAR": [0.35]}}}}
+
+
+def _a11_patch_finder():
+    """d2_zero_modality.patch 본문에서 PIXEL_MEAN 탐색 함수들을 추출해 실행 가능하게
+    만든다 — 패치 쪽 규칙이 probe 쪽과 갈라지지 않았는지 같은 입력으로 검증하기 위함."""
+    import textwrap
+    patch = (_REPO_ROOT / "tools/baseline_failure/d2_zero_modality.patch"
+             ).read_text(encoding="utf-8")
+    added = "\n".join(l[1:] for l in patch.splitlines()
+                      if l.startswith("+") and not l.startswith("+++"))
+    start = added.index("def _bf_iter_cfg")
+    start = added.rfind("\n", 0, start) + 1   # 함수 정의 줄 맨 앞(들여쓰기 포함)부터
+    end = added.index("_bf_mean = None")   # 탐색 helper 블록은 이 대입 직전까지
+    ns = {}
+    exec(compile(textwrap.dedent(added[start:end]),
+                 "<d2_zero_modality.patch>", "exec"), ns)
+    return ns["_bf_find_modal_pixel_mean"]
+
+
+def smoke_a11_mean_search():
+    """(A11) probe·패치 양쪽 탐색이 같은 입력에서: CAMERA 는 DELIVER 특화 값을 고르고
+    EVENT_CAMERA 값은 절대 고르지 않는다. EVENT 는 후보 없음 에러(EVENT_CAMERA 는 부분
+    일치 후보가 아니다). 우선순위가 다른 값 불일치는 채택으로 해결, 같은 우선순위 값
+    불일치는 모호 에러로 멈춘다."""
+    import contextlib
+    import io
+    from tools.baseline_failure import probe_dgfusion as pdg
+
+    cfg = _a11_failure_cfg()
+    finders = (("probe", pdg.find_modal_pixel_mean),
+               ("patch", _a11_patch_finder()))
+
+    # CAMERA — DELIVER 특화 경로를 골라 로그로 남기고, EVENT_CAMERA 값은 배제된다.
+    for tag, finder in finders:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            mean = finder(cfg, "CAMERA")
+        assert mean == A11_RGB_MEAN and mean != A11_EVENT_MEAN, (tag, mean)
+        assert "DATASETS.DELIVER.PIXEL_MEAN.CAMERA" in buf.getvalue(), \
+            (tag, buf.getvalue())
+        assert "EVENT_CAMERA" not in buf.getvalue(), (tag, buf.getvalue())
+
+    # EVENT — EVENT_CAMERA 가 후보로 잡히지 않아 정확 일치 항목이 없다 → 후보 없음 에러.
+    for _tag, finder in finders:
+        try:
+            finder(cfg, "EVENT")
+            raise AssertionError("EVENT 후보가 없는데 에러가 나지 않았다")
+        except RuntimeError:
+            pass
+
+    # 우선순위 — LIDAR 는 DELIVER 특화(0.35) 가 그 외 DATASETS.*(0.5) 보다 이긴다.
+    for _tag, finder in finders:
+        assert finder(cfg, "LIDAR") == (0.35,), f"{_tag}: 우선순위 채택이 아니다"
+
+    # 같은 우선순위(둘 다 DATASETS.*) 안에서 값이 다르면 여전히 모호 에러.
+    amb = {"DATASETS": {"PIXEL_MEAN": {"LIDAR": [0.5]},
+                        "MUSES": {"PIXEL_MEAN": {"LIDAR": [0.9]}}}}
+    for _tag, finder in finders:
+        try:
+            finder(amb, "LIDAR")
+            raise AssertionError("같은 우선순위 값 불일치인데 에러가 나지 않았다")
+        except RuntimeError:
+            pass
+    print("[smoke] (A11) PIXEL_MEAN 마지막 세그먼트 정확일치·우선순위 채택·probe/패치 동치 ✓")
+
+
+# ---------------------------------------------------------------------------
 # A8 — keep_1024 저장(정확 경로) · resized1024 채점의 exact/resampled 구분
 # ---------------------------------------------------------------------------
 # 실제 규약 그대로: 기준선 RLE = 1024²(추론 해상도), 우리 GT 덤프 = native 1042².
@@ -1001,6 +1089,7 @@ def run():
     smoke_ckpt_stability(tmp)
     smoke_depth_bin(tmp)
     smoke_zero_mode()
+    smoke_a11_mean_search()
     smoke_keep_1024(tmp)
     smoke_exact_1024(tmp)
     smoke_a9_recover(tmp)

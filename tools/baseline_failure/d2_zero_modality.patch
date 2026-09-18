@@ -1,10 +1,10 @@
 --- a/train_net.py
 +++ b/train_net.py
-@@ -513,6 +513,192 @@ def main(args):
+@@ -513,6 +513,247 @@ def main(args):
          DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
              cfg.MODEL.WEIGHTS, resume=args.resume
          )
-+        # [baseline_failure D4/6·A7] BF_ZERO_MODAL 이 있으면 해당 모달 입력 텐서를 채우는
++        # [baseline_failure D4/6·A7·A11] BF_ZERO_MODAL 이 있으면 해당 모달 입력 텐서를 채우는
 +        # forward pre-hook 을 건다(zero-out ablation). 모델 입력 dict 의 모달 키는
 +        # CAMERA·LIDAR·EVENT·DEPTH 이고 주 모달(RGB)은 image 키에도 중복 저장된다.
 +        # CAMERA 를 다룰 때는 image 까지 함께 채운다(두 키가 서로 다른 텐서를 가리킬 수
@@ -17,6 +17,18 @@
 +        #   raw: 원본을 0 으로 채운다(옛 동작 — 정규화 후 -PIXEL_MEAN/PIXEL_STD 상수).
 +        # 평균은 cfg 에서만 읽는다(추측 금지). 못 찾거나 정규화가 표준 (x-mean)/std 임을
 +        # 확인하지 못하면 에러로 멈춘다.
++        #
++        # 모달 PIXEL_MEAN 탐색 규칙(A11 — probe_dgfusion.find_modal_pixel_mean 과 동일,
++        # 두 곳이 갈라지면 smoke_baseline_failure A11 이 잡는다):
++        #   - 후보는 경로 어딘가에 PIXEL_MEAN 토큰쌍이 있고 **마지막 세그먼트**가 모달
++        #     이름과 정확히 일치할 때만 인정(부분일치 부정 — DATASETS.PIXEL_MEAN.EVENT_CAMERA
++        #     는 CAMERA 의 후보도 EVENT 의 후보도 아니다).
++        #   - 예외: PIXEL_MEAN 마커를 떼면 정확히 모달 이름만 남는 무명평탄 키
++        #     (LIDAR_PIXEL_MEAN 등), 그리고 CAMERA(주 모달)만 마지막 세그먼트가 그냥
++        #     PIXEL_MEAN 인 경로(MODEL.PIXEL_MEAN 등).
++        #   - 후보가 여럿이면 우선순위로 하나를 고른다: 경로에 DELIVER(데이터셋 특화)
++        #     > 그 외 DATASETS.* > MODEL.* > 기타. 같은 우선순위 안에서 값이 서로 다르면
++        #     모호 에러로 멈춘다. 고른 후보와 값이 같은 다른 후보를 로그로 남긴다.
 +        _bf_zero = os.environ.get("BF_ZERO_MODAL")
 +        if _bf_zero:
 +            import torch as _bf_torch
@@ -60,45 +72,88 @@
 +                    else:
 +                        yield from _bf_iter_cfg(_v, _p)
 +
-+            _bf_mean = None
-+            if _bf_mode == "normalized":
-+                _bf_toks = {"CAMERA": ("CAMERA", "RGB", "IMAGE"),
-+                            "LIDAR": ("LIDAR",), "EVENT": ("EVENT",),
-+                            "DEPTH": ("DEPTH",)}[_bf_modal]
-+                _bf_cands = []
-+                for _p, _v in _bf_iter_cfg(cfg):
++            def _bf_seg_has_pixel_mean(_seg):
++                # 세그먼트에 PIXEL_MEAN 토큰쌍이 들어가는지(PIXEL_MEAN·LIDAR_PIXEL_MEAN 등,
++                # PIXEL_MEANING 같은 우연 일치는 제외).
++                _t = _seg.split("_")
++                return any(_t[i] == "PIXEL" and _t[i + 1] == "MEAN"
++                           for i in range(len(_t) - 1))
++
++            def _bf_strip_pixel_mean_marker(_seg):
++                # 세그먼트에서 PIXEL_MEAN 토큰쌍 하나를 떼어 낸 나머지(조인). 쌍이 없으면 None.
++                # LIDAR_PIXEL_MEAN->LIDAR, PIXEL_MEAN->"", EVENT_CAMERA->None.
++                _t = _seg.split("_")
++                for _i in range(len(_t) - 1):
++                    if _t[_i] == "PIXEL" and _t[_i + 1] == "MEAN":
++                        return "_".join(_t[:_i] + _t[_i + 2:])
++                return None
++
++            def _bf_last_seg_is_modal(_last, _modal):
++                # A11 — 마지막 세그먼트가 모달 이름과 정확히 일치할 때만 후보.
++                _bf_exact = (_last == _modal
++                             or (_modal == "CAMERA" and _last == "PIXEL_MEAN")
++                             or _bf_strip_pixel_mean_marker(_last) == _modal)
++                return _bf_exact
++
++            _bf_prio_names = {3: "데이터셋 특화(DELIVER)", 2: "DATASETS.*",
++                              1: "MODEL.*", 0: "기타"}
++
++            def _bf_mean_cand_priority(_up):
++                # A11 — 후보 우선순위: 경로에 DELIVER > 그 외 DATASETS.* > MODEL.* > 기타.
++                if "DELIVER" in _up:
++                    return 3
++                _first = _up.split(".")[0]
++                if _first == "DATASETS":
++                    return 2
++                if _first == "MODEL":
++                    return 1
++                return 0
++
++            def _bf_find_modal_pixel_mean(_cfg, _modal):
++                # A11 — probe_dgfusion.find_modal_pixel_mean 과 같은 규칙(부분일치 금지·
++                # 우선순위 채택·같은 값 후보 로그). 후보가 없거나 같은 우선순위 안에서
++                # 값이 다르면 명확한 에러로 멈춘다(임의값 대입 금지).
++                _cands = []
++                for _p, _v in _bf_iter_cfg(_cfg):
 +                    _up = _p.upper()
 +                    _segs = _up.split(".")
-+                    _hit = False
-+                    for _s in _segs:
-+                        _t = _s.split("_")
-+                        if any(_t[i] == "PIXEL" and _t[i + 1] == "MEAN"
-+                               for i in range(len(_t) - 1)):
-+                            _hit = True
-+                            break
-+                    if not _hit:
++                    if not any(_bf_seg_has_pixel_mean(_s) for _s in _segs):
 +                        continue
-+                    if (any(_t in _up for _t in _bf_toks)
-+                            or (_bf_modal == "CAMERA" and _segs[-1] == "PIXEL_MEAN")):
-+                        _bf_cands.append((_p, _v))
-+                if not _bf_cands:
++                    if not _bf_last_seg_is_modal(_segs[-1], _modal):
++                        continue
++                    try:
++                        _seq = _v if isinstance(_v, (list, tuple)) else [_v]
++                        _m = tuple(float(_c) for _c in _seq)
++                    except (TypeError, ValueError):
++                        raise RuntimeError(
++                            "PIXEL_MEAN 후보(" + _p + ") 값이 숫자가 아니다: " + repr(_v))
++                    if not _m:
++                        raise RuntimeError(
++                            "PIXEL_MEAN 후보(" + _p + ") 가 빈 값이다")
++                    _cands.append((_p, _m))
++                if not _cands:
 +                    raise RuntimeError(
-+                        "BF_ZERO_MODE=normalized 인데 cfg 에서 " + _bf_modal
-+                        + " 의 PIXEL_MEAN 을 찾지 못했다(임의값 대입 금지) — config 의 "
-+                          "실제 키 이름을 확인하라.")
-+                try:
-+                    _bf_means = [
-+                        tuple(float(_c) for _c in
-+                              (_v if isinstance(_v, (list, tuple)) else [_v]))
-+                        for _p, _v in _bf_cands]
-+                except (TypeError, ValueError):
++                        "cfg 에서 " + _modal + " 의 PIXEL_MEAN 을 찾지 못했다(임의값 대입 "
++                        "금지) — config 의 실제 키 이름을 확인한 뒤 다시 실행하라.")
++                _top = max(_bf_mean_cand_priority(_p.upper()) for _p, _m in _cands)
++                _tier = [(_p, _m) for _p, _m in _cands
++                         if _bf_mean_cand_priority(_p.upper()) == _top]
++                if len({_m for _p, _m in _tier}) != 1:
 +                    raise RuntimeError(
-+                        "PIXEL_MEAN 후보 값이 숫자가 아니다: " + repr(_bf_cands))
-+                if len(set(_bf_means)) != 1:
-+                    raise RuntimeError(
-+                        "모달 " + _bf_modal + " 의 PIXEL_MEAN 후보가 여럿이라 모호하다: "
-+                        + repr(_bf_cands))
-+                _bf_mean = _bf_means[0]
++                        "모달 " + _modal + " 의 PIXEL_MEAN 후보가 같은 우선순위("
++                        + _bf_prio_names[_top] + ") 안에서 값이 달라 모호하다: "
++                        + repr(_tier) + " — config 의 모달별 통계 정의를 확인하라(추측 금지).")
++                _chosen_p, _mean = _tier[0]
++                _same = [_p for _p, _m in _cands if _m == _mean and _p != _chosen_p]
++                print("[baseline_failure] " + _modal + " PIXEL_MEAN 후보 "
++                      + str(len(_cands)) + "개 — 채택 " + _chosen_p + "("
++                      + _bf_prio_names[_top] + "), 값이 같은 다른 후보 "
++                      + (repr(_same) if _same else "없음") + " -> " + str(list(_mean)))
++                return _mean
++
++            _bf_mean = None
++            if _bf_mode == "normalized":
++                _bf_mean = _bf_find_modal_pixel_mean(cfg, _bf_modal)
 +
 +                # 정규화가 detectron2 표준 (x-mean)/std 인지 확인 — 못 확인하면 에러.
 +                _bf_norm = getattr(model, "normalize_image", None)
