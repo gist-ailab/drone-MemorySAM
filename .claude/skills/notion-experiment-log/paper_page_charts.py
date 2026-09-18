@@ -34,8 +34,9 @@ def fig_gap():
     rows = [
         ("DELIVER test\n(우리 5-seed 평균 54.39 vs MM SAM-adapter 57.35)", -2.96),
         ("DELIVER test\n(우리 최고 단일런 55.29 vs 57.35)", -2.06),
-        ("MUSES test\n(우리 79.79 vs 카메라단독 1위 GtA 82.39)", -2.60),
-        ("MUSES test\n(우리 79.79 vs 융합계보 1위 DGFusion 79.5)", +0.29),
+        ("MUSES test\n(우리 best 단일런 79.79 vs 카메라단독 1위 GtA 82.39)", -2.60),
+        ("MUSES test\n(우리 2-seed 평균 79.29 vs 융합계보 1위 DGFusion 79.5)", -0.21),
+        ("MUSES test\n(우리 best 단일런 79.79 vs DGFusion 79.5)", +0.29),
         ("MCubeS test\n(우리 3-seed 평균 58.07 vs Mul-VMamba 54.65)", +3.42),
     ]
     fig, ax = plt.subplots(figsize=(8.5, 4.2))
@@ -97,6 +98,7 @@ def fig_muses():
         ("우리 P46-C3 이식 (MUSES)", 79.023, C[1]),
         ("우리 P34 3모달", 78.979, C[0]),
         ("우리 P39-DPC", 78.881, C[0]),
+        ("우리 P39.1-rank seed 20260825 3모달 (seed2와 동일 레시피)", 78.786, C[0]),
         ("우리 P47-D1 LiDAR 밀도화", 78.790, C[1]),
         ("CAFuser-CAA (4모달)", 78.5, MUTE),
         ("우리 P44-BMR", 78.429, C[1]),
@@ -108,8 +110,8 @@ def fig_muses():
         ax.barh(yi, v, color=c, height=0.6)
         ax.text(v + 0.05, yi, f"{v:.3f}" if v < 82 and "우리" in lab else f"{v:.2f}", va="center", color=INK, fontsize=9.5)
     ax.set_yticks(y); ax.set_yticklabels([i[0] for i in items], fontsize=9, color=INK)
-    ax.set_xlim(77.5, 83.2); ax.set_xlabel("MUSES 공식 test mIoU (Codabench comp 14005, 단일 제출)")
-    ax.set_title("MUSES 공식 test: 융합 계보 1위이나 카메라단독 1위에 -2.60", color=INK, fontsize=12, loc="left")
+    ax.set_xlim(77.5, 83.2); ax.set_xlabel("MUSES 공식 test mIoU (Codabench comp 14005, 제출 1건 = 막대 1개; 같은 레시피 시드 차이 1.00)")
+    ax.set_title("MUSES 공식 test: 2-seed 평균 79.29±0.71 (DGFusion -0.21), best 단일런 79.79 (+0.29)", color=INK, fontsize=12, loc="left")
     from matplotlib.patches import Patch
     ax.legend(handles=[Patch(color=C[0], label="우리 (계보)"), Patch(color=C[1], label="우리 (반증된 시도)"), Patch(color=MUTE, label="선행연구")],
               loc="lower right", fontsize=9, frameon=False)
