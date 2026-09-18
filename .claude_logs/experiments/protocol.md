@@ -20,6 +20,7 @@ updated: 2026-09-18
 
 - **DELIVER legal** = `val.py` 1024·BS1·native GT + 하네스 가드 `tools/eval_harness_guard.py --check` 필수(채점 8파일 SHA256 동결 — ISSUE-033).
 - 🔴 **ISSUE-036(2026-09-18)**: 하네스 v1(`val.py`의 nearest, floor 정렬)은 우리 수치를 약 −1.3 낮게 잰다. **2026-09-18 12:10 v2(`tools/legal_rescore_v2.py`, nearest-exact 중심 정렬) 채택** — 근거 = 같은 ckpt 재채점에서 하락 클래스 0·얇은 객체만 +2.7~2.9(측정 산물 확인), 기준선 변환(PIL 중심 정렬)과 정합. 헤드라인·SOTA 거리 비교는 v2 값으로, v1 값은 "(v1)" 꼬리표로만 병기. 카드 쌍 Δ(같은 하네스 v1 양쪽)는 재판정하지 않는다. 잔여: 확정 런 v2 재채점(E1 시드2·3, E13 시드1~3, val 전부)과 v2 래퍼의 가드 매니페스트 등재.
+- **배치 크기는 프로토콜이 아니다(2026-09-18 판정, user 지시 "모든 실험은 VRAM 을 최대한 채워라" 재확인)**: `val.py` 는 혼동행렬 누적이라 배치 불변(ISSUE-033 재진단 실측 BS4=BS1=66.88). legal 재채점·덤프·결측 평가·기준선 평가 모두 **GPU 메모리 85~90%** 가 되는 배치로 돌린다. 조건 = ① 배치를 바꾼 첫 실행은 같은 ckpt 의 BS1 결과와 전역 mIoU ±0.01 이내(벗어나면 BS1 복귀·이슈 등록) ② 가드 동결 정본 eval config 2종은 수정 금지, 배치는 런별 파생 eval config 의 `EVAL.BATCH_SIZE`/`TEST.BATCH_SIZE` 로 ③ 사용한 배치를 로그·registry 행에 적는다. "BS1" 표기는 옛 관행 기록이며 채점 정의에서 뺀다.
 - **MUSES 공식** = `tools/eval_muses_official.py`(native 1080×1920 val 250장). test = Codabench(comp 14005) 제출이며 **user 승인 후에만** 올린다.
 - **MCubeS** = 커뮤니티 표준 test split 102장(`semseg/datasets/mcubes.py` 로더 직접 검증).
 - **결측·열화 모달 강건성(EMM/RMM/NM)** = `tools/missing_modality_eval.py`(2503.18445 프로토콜).
