@@ -159,7 +159,13 @@ python tools/baseline_failure/viz_panels.py \
 - **기준선 모달 zero-out**: `d2_zero_modality.patch` 적용 후 위 test 명령에
   `BF_ZERO_MODAL=CAMERA|LIDAR|EVENT|DEPTH` 를 앞에 붙여 4회 실행(각 결과 mIoU 를 base 와
   비교). 입력 dict 의 모달 키는 `CAMERA`,`LIDAR`,`EVENT`,`DEPTH`(+주 모달 중복 `image`)이며
-  `CAMERA` 지정 시 `image` 까지 함께 0 으로 채운다.
+  `CAMERA` 지정 시 `image` 까지 함께 채운다.
+  개입 규약(A7): 기본 `normalized` 는 원본 입력을 **그 모달의 PIXEL_MEAN** 으로 채워 정규화
+  `(x-mean)/std` 후 값이 0 이 되게 한다 — `modality_zero_ablation.py`(정규화가 끝난 텐서를
+  0 으로 채움)과 개입 지점이 같아 **기본값끼리 모델 간 비교 가능**. `raw` 는 옛 동작(원본을
+  0 으로 채움 → 정규화 후 `-PIXEL_MEAN/PIXEL_STD` 상수). 패치는 환경변수 `BF_ZERO_MODE`,
+  프로브는 `--zero-mode`(CSV `zero_mode` 열)로 고르고, 평균은 cfg 에서만 읽으며 못 찾거나
+  정규화가 표준식임을 확인 못 하면 에러로 멈춘다(임의값 대입 금지).
 - **DGFusion/CAFuser 내부 프로브**(저장소 안에서):
   ```bash
   # 먼저 모듈 이름 확인 후 정규식을 맞춘다(추측 금지)
@@ -169,8 +175,9 @@ python tools/baseline_failure/viz_panels.py \
     --depth-head-regex '<...>' --depth-token-regex '<...>' \
     --xattn-regex '<...>' --split test --out probe_dgf_test.csv
   # depth 토큰 0 치환 대조: BF_ZERO_DEPTH_TOKEN=1 python .../probe_dgfusion.py ...
-  # 모달 zero-out 기제 측정(A4): --zero-modal CAMERA|LIDAR|EVENT|DEPTH — 해당 모달 입력을
-  # 0 으로 채운 추론에서 이미지별 depth AbsRel·delta1(+분할 mIoU)를 같은 CSV 행에 기록.
+  # 모달 zero-out 기제 측정(A4): --zero-modal CAMERA|LIDAR|EVENT|DEPTH [--zero-mode
+  # normalized|raw] — 해당 모달 입력을 채운 추론에서 이미지별 depth AbsRel·delta1
+  # (+분할 mIoU)를 같은 CSV 행에 기록(zero_mode 열 포함).
   # depth GT 는 DELIVER depth/ 원본, 로그 스케일 여부는 MODEL.DEPTH_HEAD.LOSS.LOG_SCALE 를 읽어 처리.
   python .../probe_dgfusion.py --config-file <cfg> --weights <ckpt> \
     --zero-modal DEPTH --split test --out probe_dgf_zero_depth.csv

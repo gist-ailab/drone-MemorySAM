@@ -11,13 +11,15 @@ tools/baseline_failure/ 합성 스모크 (CPU, 1분 이내).
   (E1) 합성 RLE JSON(3장, 두 조건 폴더에 같은 basename) → PNG 변환 →
        장수·값 범위·중복 basename 의 상대 경로 보존을 assert
   (E2) 오프셋 +1 로 일부러 어긋난 GT 에서 check_label_convention 이 이동량 +1 을 잡는지
-A2~A6 확장 항목:
+A2~A7 확장 항목:
   (A2) per_image_metrics --gt_protocol native·resized1024 두 경로 모두 실행 — 완전히
        같은 예측·GT 에서는 두 프로토콜 모두 이미지별 mIoU 100, 파일명이 프로토콜별로
        갈라 서로 덮어쓰지 않는다
   (A5) 합성 체크포인트 3개(항상 나쁨·항상 좋음·절반만 좋음)로 ckpt_stability 가
        always_fail/always_pass/flip 을 규칙대로 분류하는지
   (A6) depth_bin_iou — 로그 5분위 경계·구간별 픽셀수 합·완벽 예측 pacc=1·diff 정합성
+  (A7) zero_modal_in_batch 두 방식 — normalized 는 모달 평균 채움((x-mean)/std → 0),
+       raw 는 0 채움(옛 동작), 평균을 찾지 못하는 cfg 는 에러
 파일 1·2·6·7 은 실서버 전용이라 import·인자 파싱(+id 규약 동치성)만 검사.
 
 실행: /home/jemo/anaconda3/envs/MMSS_SAM/bin/python tools/smoke_baseline_failure.py
@@ -438,6 +440,66 @@ def smoke_depth_bin(tmp):
     print("[smoke] (A6) depth_bin_iou 로그 5분위·구간별 지표·diff 정합 ✓")
 
 
+# ---------------------------------------------------------------------------
+# A7 — zero_modal_in_batch 개입 방식(normalized|raw)
+# ---------------------------------------------------------------------------
+def smoke_zero_mode():
+    """(A7) 실제 모델 없이 합성 텐서·가짜 cfg 로 두 방식을 검증 — normalized 는 채운
+    값이 모달 평균이고 (x-mean)/std 를 적용하면 0, raw 는 채운 값이 0, 평균을 찾지
+    못하면 에러로 멈춘다."""
+    import torch
+    from tools.baseline_failure import probe_dgfusion as pdg
+
+    class _ModelCfg:                       # 가짜 cfg.MODEL — 평균·표준편차만 가진 객체
+        PIXEL_MEAN = [0.485, 0.456, 0.406]
+        PIXEL_STD = [0.229, 0.224, 0.225]
+    class _Cfg:
+        MODEL = _ModelCfg()
+        LIDAR_PIXEL_MEAN = [0.5]           # 보조 모달별 통계 키(탐색 경로 확인용)
+    mean = torch.tensor(_ModelCfg.PIXEL_MEAN).view(-1, 1, 1)
+    std = torch.tensor(_ModelCfg.PIXEL_STD).view(-1, 1, 1)
+
+    def _batch():
+        return [{"CAMERA": torch.randn(3, 8, 10) + 10.0,   # 0 이 아닌 값들
+                 "image": torch.randn(3, 8, 10) + 10.0,
+                 "LIDAR": torch.randn(1, 8, 10) + 10.0}]
+
+    # raw — 옛 동작 그대로: 지정 모달(+image)만 원본이 0, 다른 모달은 그대로.
+    b = _batch()
+    pdg.zero_modal_in_batch(b, "CAMERA", mode="raw", cfg=_Cfg())
+    assert (b[0]["CAMERA"] == 0).all() and (b[0]["image"] == 0).all()
+    assert not (b[0]["LIDAR"] == 0).any(), "raw 가 지정 밖 모달을 건드렸다"
+
+    # normalized — 원본이 채널별 평균으로 차고, (x-mean)/std 를 적용하면 정확히 0.
+    b = _batch()
+    pdg.zero_modal_in_batch(b, "CAMERA", mode="normalized", cfg=_Cfg())
+    for k in ("CAMERA", "image"):
+        assert torch.allclose(b[0][k], mean.expand_as(b[0][k])), k
+        assert torch.allclose((b[0][k] - mean) / std, torch.zeros_like(b[0][k])), k
+    assert not (b[0]["LIDAR"] == 0).any(), "normalized 가 지정 밖 모달을 건드렸다"
+
+    # 보조 모달 키 탐색(LIDAR_PIXEL_MEAN) — LIDAR 도 모달 평균으로 채워진다.
+    b = _batch()
+    pdg.zero_modal_in_batch(b, "LIDAR", mode="normalized", cfg=_Cfg())
+    assert torch.allclose(b[0]["LIDAR"], torch.full_like(b[0]["LIDAR"], 0.5))
+    assert not (b[0]["CAMERA"] == 0).all(), "LIDAR 지정이 CAMERA 를 건드렸다"
+
+    # 기본 모드는 normalized — cfg 없이는 호출 자체가 거부된다.
+    try:
+        pdg.zero_modal_in_batch(_batch(), "CAMERA")
+        raise AssertionError("기본 모드가 normalized 인데 cfg 없이 통과했다")
+    except ValueError:
+        pass
+
+    # 평균 부재 — EVENT 통계는 가짜 cfg 에 없다 → 명확한 에러(임의값 대입 금지).
+    try:
+        pdg.zero_modal_in_batch(_batch(), "EVENT", mode="normalized", cfg=_Cfg())
+        raise AssertionError("EVENT 평균이 없는데 에러가 나지 않았다")
+    except RuntimeError:
+        pass
+    print("[smoke] (A7) zero-modal normalized/raw·평균 부재 에러 ✓")
+
+
 def run():
     tmp = Path(tempfile.mkdtemp(prefix="bf_smoke_"))
     gts = build_gt()
@@ -536,10 +598,11 @@ def run():
     smoke_rle(tmp)
     smoke_label_offset(tmp)
 
-    # ---- A2~A6 확장: GT 프로토콜 · 체크포인트 안정성 · depth 구간 IoU ----
+    # ---- A2~A7 확장: GT 프로토콜 · 체크포인트 안정성 · depth 구간 IoU · zero-out 규약 ----
     smoke_gt_protocol(tmp)
     smoke_ckpt_stability(tmp)
     smoke_depth_bin(tmp)
+    smoke_zero_mode()
 
     # ---- 파일 1·2·6·7: import + argparse + 규약 동치성 ----
     from tools.baseline_failure import dump_preds_ours, d2_dump_evaluator, \

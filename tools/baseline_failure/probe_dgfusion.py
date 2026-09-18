@@ -6,8 +6,10 @@ D4 — DGFusion 내부 기제 프로브(기준선 저장소 전용). forward hoo
   (b) 로컬 depth 토큰·전역 조건 토큰 텐서의 평균/분산
   (c) 각 레벨 cross-attention 의 softmax 가중을 K/V 모달 구간별로 합산(RGB 쿼리 기준
       모달별 가중)
-  (d) --zero-modal 지정 시 해당 모달 입력을 0 으로 채운 추론에서 (a) 의 AbsRel·delta1
+  (d) --zero-modal 지정 시 해당 모달 입력을 채운 추론에서 (a) 의 AbsRel·delta1
       와 그 이미지의 분할 mIoU 를 같은 CSV 행에 기록(모달 zero-out 기제 측정).
+      개입 규약(A7) --zero-mode normalized(기본: 원본을 모달 PIXEL_MEAN 으로 채워
+      정규화 후 0 — 우리 modality_zero_ablation 과 동일 규약) | raw(옛 동작: 원본 0 채움).
 BF_ZERO_DEPTH_TOKEN=1 이면 depth 토큰을 0 으로 치환한 추론과 대조한다.
 
 depth 정답은 DELIVER `depth/` 원본 depth. depth 헤드가 로그 스케일로 학습되었는지는
@@ -108,21 +110,138 @@ def depth_absrel_d1(pred_depth, gt_depth, mask=None):
 
 
 # ---------------------------------------------------------------------------
-# A4 — 모달 zero-out + GT 기반 depth/분할 채점
+# A4 — 모달 zero-out + GT 기반 depth/분할 채점 · A7 — 개입 규약(normalized|raw)
 # ---------------------------------------------------------------------------
 MODAL_KEYS = ("CAMERA", "LIDAR", "EVENT", "DEPTH")
+_MODAL_MEAN_TOKENS = {"CAMERA": ("CAMERA", "RGB", "IMAGE"), "LIDAR": ("LIDAR",),
+                      "EVENT": ("EVENT",), "DEPTH": ("DEPTH",)}
 
 
-def zero_modal_in_batch(batch, modal):
-    """batched_inputs(list[dict]) 안의 지정 모달 입력 텐서를 0 으로 채운다(in-place).
+def _obj_attr_items(node):
+    """단순 객체의 (속성, 값) 목록 — 인스턴스·클래스 속성(밑줄·콜러블 제외)."""
+    d = {}
+    for src in (getattr(type(node), "__dict__", {}) or {}, vars(node)):
+        for k, v in src.items():
+            if not k.startswith("_") and not callable(v):
+                d[k] = v
+    return list(d.items())
+
+
+def _iter_cfg_items(node, prefix=""):
+    """cfg(CfgNode·dict·속성 객체) 를 (dotted 경로, 값) 쌍으로 재귀 열거."""
+    if isinstance(node, dict):
+        items = list(node.items())
+    elif hasattr(node, "keys") and hasattr(node, "__getitem__"):
+        try:
+            items = [(str(k), node[k]) for k in node.keys()]
+        except Exception:
+            items = []
+    elif hasattr(node, "__dict__"):
+        items = _obj_attr_items(node)
+    else:
+        yield prefix, node
+        return
+    for k, v in items:
+        p = f"{prefix}.{k}" if prefix else str(k)
+        if isinstance(v, (bool, int, float, str, list, tuple)):
+            yield p, v
+        else:
+            yield from _iter_cfg_items(v, p)
+
+
+def _as_mean_tuple(val, path):
+    """PIXEL_MEAN 후보 값 → (float, ...) 튜플. 숫자가 아니면 RuntimeError."""
+    try:
+        seq = val if isinstance(val, (list, tuple)) else [val]
+        out = tuple(float(x) for x in seq)
+    except (TypeError, ValueError):
+        raise RuntimeError(f"PIXEL_MEAN 후보({path}) 값이 숫자가 아니다: {val!r}")
+    if not out:
+        raise RuntimeError(f"PIXEL_MEAN 후보({path}) 가 빈 값이다")
+    return out
+
+
+def _seg_has_pixel_mean(seg):
+    """세그먼트에 PIXEL_MEAN 토큰쌍이 들어가는지 — PIXEL_MEAN·PIXEL_MEAN_LIDAR·
+    LIDAR_PIXEL_MEAN 등 (PIXEL_MEANING 같은 우연 일치는 제외)."""
+    toks = seg.split("_")
+    return any(toks[i] == "PIXEL" and toks[i + 1] == "MEAN"
+               for i in range(len(toks) - 1))
+
+
+def find_modal_pixel_mean(cfg, modal):
+    """cfg 에서 모달의 PIXEL_MEAN(채널별 평균) 을 찾아 (float, ...) 로 반환한다.
+
+    키 이름을 추측하지 않는다: cfg 를 재귀 열거해 경로 세그먼트에 PIXEL_MEAN 토큰이
+    들어간 항목 중 모달에 대응하는 것(CAMERA 는 무수식 세그먼트 PIXEL_MEAN 또는 경로에
+    CAMERA·RGB·IMAGE 동반, 나머지 모달은 해당 토큰 동반)을 쓴다.
+    못 찾거나 값이 서로 다른 후보가 여럿이면 명확한 에러로 멈춘다(임의값 대입 금지).
+    """
+    if modal not in MODAL_KEYS:
+        raise ValueError(f"modal 은 {MODAL_KEYS} 중 하나여야 한다: {modal!r}")
+    tokens = _MODAL_MEAN_TOKENS[modal]
+    cands = []
+    for path, val in _iter_cfg_items(cfg):
+        up = path.upper()
+        segs = up.split(".")
+        if not any(_seg_has_pixel_mean(s) for s in segs):
+            continue
+        if (any(t in up for t in tokens)
+                or (modal == "CAMERA" and segs[-1] == "PIXEL_MEAN")):
+            cands.append((path, _as_mean_tuple(val, path)))
+    if not cands:
+        raise RuntimeError(
+            f"cfg 에서 {modal} 의 PIXEL_MEAN 을 찾지 못했다(임의값 대입 금지) — config "
+            f"의 실제 키 이름을 확인한 뒤 다시 실행하라.")
+    means = {m for _p, m in cands}
+    if len(means) != 1:
+        raise RuntimeError(
+            f"{modal} 의 PIXEL_MEAN 후보가 여럿이라 모호하다: {cands} — config 의 "
+            f"모달별 통계 정의를 확인하라(추측 금지).")
+    return next(iter(means))
+
+
+def _fill_modal(v, mean):
+    """텐서 v 를 채널별 평균 mean 으로 채운 새 텐서(정규화 후 0 이 되는 원본 값)."""
+    import torch
+    m = torch.as_tensor(mean, dtype=v.dtype, device=v.device).reshape(-1)
+    if v.ndim == 3 and m.numel() == v.shape[0]:
+        return torch.ones_like(v) * m.view(-1, 1, 1)
+    if m.numel() == 1:
+        return torch.full_like(v, float(m[0]))
+    raise RuntimeError(
+        f"입력 텐서 채널 수({tuple(v.shape)}) 와 PIXEL_MEAN 길이({m.numel()}) 가 맞지 "
+        f"않아 평균 채움을 정의할 수 없다 — config 의 모달별 통계를 확인하라.")
+
+
+def zero_modal_in_batch(batch, modal, mode="normalized", cfg=None):
+    """batched_inputs(list[dict]) 안의 지정 모달 입력 텐서를 채운다(in-place).
+
+    mode(A7):
+      - "normalized"(기본): 원본 텐서를 그 모달의 PIXEL_MEAN(cfg 탐색) 으로 채운다.
+        detectron2 정규화 (x-mean)/std 를 거치면 모델이 보는 값이 0 이 된다 — 우리
+        modality_zero_ablation.py(정규화 후 0)와 같은 개입 규약. cfg 필수.
+      - "raw": 원본 텐서를 0 으로 채운다(옛 동작 — 정규화 후에는 -PIXEL_MEAN/PIXEL_STD
+        상수가 된다).
 
     모델 입력 dict 의 모달 키는 CAMERA·LIDAR·EVENT·DEPTH 이며 주 모달(RGB)은 image
-    키에도 중복 저장된다. modal=CAMERA 면 image 키까지 함께 0 으로 채운다(두 키가
-    같은 텐서를 공유하지 않을 수 있으므로 둘 다 처리).
+    키에도 중복 저장된다. modal=CAMERA 면 image 키까지 함께 채운다(두 키가 같은
+    텐서를 공유하지 않을 수 있으므로 둘 다 처리).
+    정규화가 표준식임의 검증은 여기서 하지 않는다 — 모델이 있는 호출부(main) 가
+    assert_normalized_fill_is_zero 로 검증한다.
     """
     import torch
     if modal not in MODAL_KEYS:
         raise ValueError(f"modal 은 {MODAL_KEYS} 중 하나여야 한다: {modal!r}")
+    if mode not in ("normalized", "raw"):
+        raise ValueError(f"mode 는 normalized|raw 중 하나여야 한다: {mode!r}")
+    mean = None
+    if mode == "normalized":
+        if cfg is None:
+            raise ValueError(
+                "mode='normalized' 는 모달 PIXEL_MEAN 을 찾을 cfg 가 필요하다 "
+                "(raw 면 불필요).")
+        mean = find_modal_pixel_mean(cfg, modal)
     keys = {modal}
     if modal == "CAMERA":
         keys.add("image")
@@ -131,8 +250,61 @@ def zero_modal_in_batch(batch, modal):
             for k in keys:
                 v = d.get(k)
                 if torch.is_tensor(v):
-                    d[k] = torch.zeros_like(v)
+                    d[k] = (_fill_modal(v, mean) if mode == "normalized"
+                            else torch.zeros_like(v))
     return batch
+
+
+def assert_normalized_fill_is_zero(model, modal, mean):
+    """'원본을 모달 평균으로 채우면 정규화 후 0' 임을 모델 코드로 검증한다(A7).
+
+    - CAMERA(주 모달): model.normalize_image 에 평균 채움 텐서를 직접 넣어 결과가
+      0 인지 실행으로 확인한다(정규화가 (x-mean)/std 표준식이며 cfg·모델의 평균이
+      일치함의 직접 증명).
+    - 보조 모달(LIDAR·EVENT·DEPTH): 모델이 cfg 평균과 같은 값을 가진 MEAN
+      버퍼·파라미터를 보유하는지 확인한다(모델이 그 평균으로 (x-mean)/std 정규화를
+      한다는 근거). 표준 normalize_image 도 있어야 한다.
+    어느 쪽도 확인 불가면 RuntimeError — normalized 를 적용하지 않고 멈춘다(추측 금지).
+    """
+    import torch
+    norm = getattr(model, "normalize_image", None)
+    if not callable(norm):
+        raise RuntimeError(
+            "model.normalize_image 가 없다 — 정규화가 detectron2 표준 (x-mean)/std 인지 "
+            "확인 불가. --zero-mode raw 로 돌리거나 모델 정규화 코드를 확인해 도구를 "
+            "확장하라(추측 금지).")
+    mean_t = torch.as_tensor(mean, dtype=torch.float32).reshape(-1)
+    if modal == "CAMERA":
+        x = mean_t.view(-1, 1, 1).expand(-1, 2, 2)
+        p = next(model.parameters(), None)
+        if p is not None:
+            x = x.to(device=p.device, dtype=p.dtype)
+        try:
+            with torch.no_grad():
+                y = norm(x)
+            ok = bool(torch.allclose(y.float(), torch.zeros_like(y.float()),
+                                     atol=1e-3))
+        except Exception as e:
+            raise RuntimeError(
+                f"normalize_image 호출 실패({e!r}) — 비표준 정규화 가능성. normalized "
+                f"로 두지 말고 모델 정규화 코드를 확인하라.")
+        if not ok:
+            raise RuntimeError(
+                f"CAMERA 평균 채움의 normalize_image 결과가 0 이 아니다"
+                f"(max|y|={float(y.float().abs().max()):.3g}) — cfg PIXEL_MEAN 과 모델 "
+                f"pixel_mean 이 다르거나 정규화식이 표준 (x-mean)/std 가 아니다.")
+        return
+    for name, t in list(model.named_buffers()) + list(model.named_parameters()):
+        if "MEAN" not in name.upper() or "STD" in name.upper():
+            continue
+        v = t.detach().float().cpu().reshape(-1)
+        if v.numel() == mean_t.numel() and torch.allclose(v, mean_t, atol=1e-5):
+            print(f"[probe_dgfusion] {modal} 정규화 평균 버퍼 확인: {name}")
+            return
+    raise RuntimeError(
+        f"모델에서 {modal} 의 PIXEL_MEAN({list(mean)}) 과 같은 값을 가진 MEAN 버퍼·"
+        f"파라미터를 찾지 못했다 — 이 모달의 정규화가 (x-mean)/std 인지 확인 불가"
+        f"(추측 금지). --zero-mode raw 로 돌리거나 모델 코드를 확인하라.")
 
 
 def depth_pred_2d(out):
@@ -252,8 +424,15 @@ def main():
     ap.add_argument("--xattn-regex", default=r"cross.*attn|fusion.*attn")
     ap.add_argument("--zero-modal", default="none",
                     choices=["none"] + list(MODAL_KEYS),
-                    help="지정 모달의 입력 텐서를 0 으로 채운 상태로 추론(A4). "
-                         "CAMERA 면 주 모달 중복 키 image 까지 함께 0 으로 채운다.")
+                    help="지정 모달의 입력 텐서를 채운 상태로 추론(A4). CAMERA 면 주 모달 "
+                         "중복 키 image 까지 함께 채운다. 채우는 값은 --zero-mode 참조.")
+    ap.add_argument("--zero-mode", default="normalized",
+                    choices=["normalized", "raw"],
+                    help="모달 zero-out 개입 방식(A7). normalized(기본)=원본을 모달 "
+                         "PIXEL_MEAN 으로 채워 정규화 후 0 — 우리 modality_zero_ablation "
+                         "과 같은 규약. raw=옛 동작(원본 0 채움, 정규화 후 "
+                         "-PIXEL_MEAN/PIXEL_STD 상수). 평균은 cfg 에서만 읽고 못 찾으면 "
+                         "에러로 멈춘다.")
     ap.add_argument("--deliver-root", default=None,
                     help="DELIVER 데이터셋 루트(GT depth/semantic 위치). 못 주면 "
                          "file_name 의 '/img/' 마커에서 유도한다.")
@@ -299,8 +478,16 @@ def main():
     if os.environ.get("BF_ZERO_DEPTH_TOKEN") == "1":
         print("[probe_dgfusion] BF_ZERO_DEPTH_TOKEN=1 — depth 토큰 0 치환 모드")
     if args.zero_modal != "none":
-        print(f"[probe_dgfusion] --zero-modal {args.zero_modal} — 해당 모달 입력을 0 으로 "
-              f"채워 추론(A4). CAMERA 면 image 키까지 함께 0 으로 채운다.")
+        print(f"[probe_dgfusion] --zero-modal {args.zero_modal} zero-mode={args.zero_mode}"
+              + (" — 원본을 모달 PIXEL_MEAN 으로 채운다(정규화 후 0, A7)"
+                 if args.zero_mode == "normalized" else
+                 " — 원본을 0 으로 채운다(정규화 후 -PIXEL_MEAN/PIXEL_STD 상수, 옛 동작)")
+              + ". CAMERA 면 image 키까지 함께 채운다.")
+        if args.zero_mode == "normalized":
+            _zm_mean = find_modal_pixel_mean(cfg, args.zero_modal)
+            assert_normalized_fill_is_zero(model, args.zero_modal, _zm_mean)
+            print(f"[probe_dgfusion] {args.zero_modal} PIXEL_MEAN={list(_zm_mean)} "
+                  f"— 원본을 이 값으로 채운다(실행 로그·CSV zero_mode 열에 기록).")
 
     # depth 헤드의 로그 스케일 여부 — config 에서 읽는다(없으면 선형으로 간주하고 경고).
     try:
@@ -322,11 +509,12 @@ def main():
             break
         probe.clear()
         if args.zero_modal != "none":
-            zero_modal_in_batch(batch, args.zero_modal)
+            zero_modal_in_batch(batch, args.zero_modal, mode=args.zero_mode, cfg=cfg)
         with torch.no_grad():
             outputs = model(batch)
         file_name = batch[0].get("file_name", "")
-        rec = {"idx": i, "file_name": file_name, "zero_modal": args.zero_modal}
+        rec = {"idx": i, "file_name": file_name, "zero_modal": args.zero_modal,
+               "zero_mode": args.zero_mode if args.zero_modal != "none" else "none"}
         for tag in ("depth_token", "cond_token"):
             caps = probe.captured.get(tag, {})
             if caps:
