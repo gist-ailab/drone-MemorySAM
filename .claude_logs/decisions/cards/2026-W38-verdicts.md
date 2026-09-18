@@ -515,3 +515,27 @@ E1 은 4탭 읽기 단독, E13 은 거기에 센서별 class prototype 을 더�
 - D3 케이스 민감도("event 저해상도·LiDAR 흔들림에서 우리만 하락", 칸당 19~20장)와의 관계: **모순이 아니라 보완**이다. 0으로 채운(부재) event·LiDAR는 무해하지만, 존재하되 망가진 event·LiDAR는 해롭다. 게이팅이 할 일은 "부재 감지"가 아니라 **"존재하지만 열화된 모달의 품질 판별"**(RMM·NM·케이스 파티션)이며, 이 계보의 옛 게이트는 그 축에서 평가된 적이 없다.
 - 다음 측정 우선순위: ① 56.99 val.py 재채점(위 (2)) ② E13 시드3 덤프 ③ 같은 부분집합에서 presence_renorm 켬 ④ test 분할 EMM(케이스 파티션과 대조) ⑤ 옛 게이트 체크포인트(P36 gate/calib/veto, P39 router) 인벤토리 후 같은 프로토콜 재평가.
 
+<a id="2026-09-18-legal-v2"></a>
+### 2026-09-18 legal v2(nearest-exact) 채택 — DELIVER 헤드라인 56.39(DGFusion −0.32, SOTA 미달), 56.99 는 1024 격자라 제외
+
+**무엇을 판정했나**: §5-34 (2-정정)에서 보류한 "56.99 vs 55.18" 의 원인(ISSUE-036, legal 하네스 `val.py:_unpad_resize_to_orig` 의 nearest floor 정렬 편차)을 고친 하네스 v2(`tools/legal_rescore_v2.py`, nearest-exact)를 채점 정본으로 쓸지.
+
+**근거(감시 세션 재채점, jarvis, 도구 md5 655a755d…, 가드 통과)**:
+
+| ckpt | test v1 | test **v2** | Δ | 24클래스 v1→v2 | 얇은 4클래스 v1→v2 | val v1 | val **v2** | Δ |
+|---|---|---|---|---|---|---|---|---|
+| P46 C3-only 본 런 ep70(옛 56.99 런; C3 prototype 손실만 켠 레시피) | 55.18 | **56.39** | +1.21 | 54.66→55.91 | 47.42→50.14 | 66.88 | **68.64** | +1.76 |
+| E1(백본 중간층 4탭을 FPN 에 읽는 카드) 확정 시드1 | 54.63 | **55.97** | +1.34 | 55.26→56.66 | 46.39→49.30 | 67.37 | **69.39** | +2.02 |
+
+- 하락 클래스 0(RailTrack −0.01 수준), 상승은 RoadLine +4.76 · Pole +4.64 · Pedestrian +3.55 · GroundRail +2.44 등 얇은 객체에 집중 — 반 픽셀 정렬 편차 가설과 정합.
+- 기준선 변환(`tools/baseline_failure/common.py:resize_nearest`, PIL 중심 정렬)은 편차가 없으므로 v2 가 기준선과 같은 자다.
+
+**판정**:
+1. **legal v2 채택.** 헤드라인·SOTA 거리 비교는 v2 값으로, v1 값은 "(v1)" 꼬리표로만 병기한다(`experiments/protocol.md` §2).
+2. **DELIVER test 헤드라인 = P46 C3-only 본 런 legal v2 56.39 = DGFusion 56.71 대비 −0.32, SOTA 미달.** 56.99(학습기 복제 1024 격자 채점)는 legal 프로토콜이 아니므로 제외. v2 와의 잔여 −0.60 은 격자 프로토콜 차이로 추정(미검증, 추적 안 함).
+3. 25클래스 순위 P46 > E1, 24클래스 순위 E1 > P46 은 v1 과 같다(RailTrack 67.85 vs 39.44 가 뒤집는 구조 유지).
+4. **카드 쌍 Δ(§5-34 E1·E13 확정 3쌍 등)는 같은 하네스 v1 양쪽 비교라 재판정하지 않는다.**
+5. val: E1 시드1 v2 69.39 는 CAFuser-CAA 68.79 를 +0.60 넘지만 **단일 시드라 잠정**(MM SAM-adapter 69.60 에는 −0.21). 시드2·3 v2 val 후 확정. val 상승폭(+1.8~2.0)이 test(+1.2~1.3)보다 큰 이유는 미검증.
+
+**잔여**: E1 시드2·3, E13(4탭+센서별 prototype) 시드1~3 의 v2 test(jarvis 병렬 3건 14:45 전후, 나머지 2건 이어서)·val 재채점, E17(4탭+고해상도 세부 가지) 스크린 v1/v2 재채점(hpca100, 17시 전후), v2 래퍼의 가드 매니페스트 등재, 카드 §0 규약 문구에 "하네스 v2" 명시. 정본 반영: `experiments/headline.yaml`·`experiments/judgment-ledger.md` 2026-09-18 행·`issues/issues-and-fixes.md` ISSUE-036 행·노션 논문 페이지(커밋 da3afff).
+

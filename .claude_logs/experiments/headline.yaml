@@ -44,22 +44,29 @@ benchmarks:
           - {label: "judgment-ledger 2026-09-18 행", path: ".claude_logs/experiments/judgment-ledger.md"}
         date: 2026-09-18
         note: "판정(생각정리 2026-09-18 12:10, judgment-ledger 행): legal v1 의 floor 정렬 편차(ISSUE-036)를 nearest-exact 로 고친 legal v2 를 채택. 같은 ckpt 가 v1 55.18 → v2 56.39(+1.21, 하락 클래스 0, 얇은 4클래스 +2.72). 56.99 는 legal 프로토콜이 아니므로 헤드라인에서 제외(v2 와의 잔여 −0.60 은 격자 프로토콜 차이, 추적 안 함). 카드 §5-34 (2-정정)의 '보류' 는 이 판정으로 해소 — 카드 분할 파일에 후속 판정 항목으로 추가 예정."
-      - id: "E1 확정 시드3(4탭 읽기 카드) legal val"
-        describe: "E1(백본 블록 6/12/18/24 중간층 4탭을 FPN에 함께 읽는 카드) 확정 런 시드3 — DELIVER legal val 내부 최고. 09-18 확정 3쌍 판정에서 헤드라인 카드 = E1."
-        value: 67.89
+      - id: "E1 확정 시드1(4탭 읽기 카드) legal v2 val — 잠정"
+        describe: "E1(백본 블록 6/12/18/24 중간층 4탭을 FPN에 함께 읽는 카드) 확정 런 시드1 — legal v2(nearest-exact) val. 시드2·3 v2 val 재채점 대기 중이라 잠정(v1 최고는 시드3 67.89)."
+        value: 69.39
         split: val
-        basis: "단일 시드(val-best epoch70_68.53_top1)"
+        basis: "단일 시드(시드1 val-best epoch140_68.9_top1) — 시드2·3 v2 val 대기, 3시드 전 확정 금지"
         ckpt_rule: "학습기 val-best(top1)"
-        protocol: "legal v1(val.py 1024·BS1·native GT, nearest)"
-        protocol_short: "legal v1"
-        status: "유효(legal v1; val v2 재채점 진행 중 — 결과 후 갱신)"
-        gap_1st: "−0.90(CAFuser-CAA 68.79)"
-        gap_2nd: "−1.71(MM SAM-adapter 69.60)"
+        protocol: "legal v2(tools/legal_rescore_v2.py, nearest-exact) — 2026-09-18 채택"
+        protocol_short: "legal v2"
+        value_alt: 67.37
+        protocol_alt: "같은 ckpt legal v1(nearest floor 정렬)"
+        protocol_short_alt: "v1 같은 ckpt"
+        value_alt2: 67.89
+        protocol_alt2: "legal v1 내부 최고 = E1 확정 시드3(카드 §5-29)"
+        protocol_short_alt2: "v1 최고 시드3"
+        status: "잠정(단일 시드; 시드2·3 v2 val 후 확정)"
+        gap_1st: "+0.60(CAFuser-CAA 68.79) — 단일 시드라 주장 보류"
+        gap_2nd: "−0.21(MM SAM-adapter 69.60)"
         loss: "C3 on"
         source:
-          - {label: "카드 §5-29", path: ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md"}
-        date: 2026-09-16
-        note: "E1 3시드 확정: test 평균 54.93 · 24클래스 55.49 · legal val 평균 67.58(§5-34·§5-29). E1 3쌍 평균 test 54.93은 SOTA 거리 게이트(G4) 미달 — '기준선 대비 이득 카드'."
+          - {label: "judgment-ledger 2026-09-18 v2 val 행", path: ".claude_logs/experiments/judgment-ledger.md"}
+          - {label: "카드 §5-29(v1 시드3)", path: ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md"}
+        date: 2026-09-18
+        note: "감시 세션 보고 2026-09-18 14:00: P46 본 런 val v1 66.88→v2 68.64(+1.76), E1 시드1 67.37→69.39(+2.02). val 상승폭이 test(+1.2~1.3)보다 큰 이유(주간 위주라 얇은 객체 픽셀 비중?)는 미검증. E1 3시드 v1: test 평균 54.93 · 24클래스 55.49 · legal val 평균 67.58(§5-34·§5-29)."
   muses:
     label: "MUSES"
     task: "MUSES 3모달(RGB·LiDAR·Event) 19클래스 세그멘테이션 — 공식 test mIoU(Codabench comp 14005)"

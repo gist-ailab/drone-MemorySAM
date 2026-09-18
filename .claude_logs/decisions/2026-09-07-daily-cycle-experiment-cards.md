@@ -327,9 +327,9 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 
 ### 최신 판정 3개
 
+- [2026-09-18 legal v2 채택 — DELIVER 헤드라인 56.39(DGFusion −0.32, SOTA 미달), 56.99 제외](cards/2026-W38-verdicts.md#2026-09-18-legal-v2) (2026-09-18) — 같은 ckpt v1 55.18→v2 56.39, E1 시드1 54.63→55.97, 하락 클래스 0; E1 시드1 v2 val 69.39 는 단일 시드라 잠정.
 - [§5-34 — DELIVER 확정 3쌍 판정 + 🔴 헤드라인 56.99 채점 프로토콜 보류 + 결측 모달 첫 실측](cards/2026-W38-verdicts.md#5-34) (2026-09-18) — E1(중간층 4탭)을 DELIVER·MCubeS 공통 레시피로 확정, 56.99 는 legal 하네스 재샘플 정렬 편차(ISSUE-036)로 v2 재채점 전까지 수치 동결.
 - [§5-33 — 벤치 세 곳의 E1·E13 우열 요약](cards/2026-W38-verdicts.md#5-33) (2026-09-16) — MUSES 만 E13 우위, DELIVER·MCubeS 는 E1 ≥ E13 이라 단일 구조 원칙에서 E1 이 안전.
-- [§5-31 — MUSES 확정, E13M 세 게이트 3페어 통과](cards/2026-W38-verdicts.md#5-31) (2026-09-16) — E13M vs E7 평균 +0.94 · vs E1M +0.42, MUSES 에서는 E13 > E1.
 
 ### 분할 파일
 
