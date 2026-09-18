@@ -14,6 +14,9 @@
 - 사용자의 첫 메시지에 역할 키워드("코드분석봇", "코딩봇", "실험분석봇", "그림봇")가 포함되어 있으면, 해당 역할의 지침을 이번 세션 전체에 적용한다.
 - 역할이 지정되지 않으면 기본 모드(AI 연구 보조 및 엔지니어)로 동작한다.
 
+#### Step 0.5 — 분석 의뢰를 받은 세션 (user 지시 2026-09-18)
+- 첫 메시지가 "MUSES/DELIVER/MCubeS 분석해 줘", "새 체크포인트 측정" 류이면 **`.claude_logs/meta/analysis-session-protocol.md`를 먼저 읽고 그대로 따른다**(측정·기록·보고만, 판정은 "MMSAM | 생각정리" 세션). 보고에는 클래스별 Δ 전표(기준선 대비·직전 최고 대비)를 반드시 넣고, 원본(ckpt+md5·산출물·로그)은 §4 규약 위치에 먼저 보존한다.
+
 #### Step 1 — 프로젝트 상태 파악
 - **`00_INDEX.md`를 먼저 읽어라** — 주제 폴더 구조(status/models/experiments/det/datasets/research/decisions/infra/issues/meta/archive)의 front door + 구번호("doc N")→새경로 매핑표. 어떤 문서를 볼지 여기서 결정한다. 각 폴더의 `00_MOC.md`가 폴더 내 문서를 안내한다.
 - `status/current.md`: **현재 상태 스냅샷 — 현재 상태의 단일 출처**. 전체 진행 상황·현재 최선 모델·남은 과제. (진행 이력은 `status/history-2026H2.md`·`history-2026H1.md`)
