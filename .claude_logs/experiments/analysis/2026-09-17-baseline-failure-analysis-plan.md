@@ -263,3 +263,58 @@ depth 의존과 RGB 의존의 비: DGFusion 2.88 배, CAFuser 3.11 배, 우리 �
   jarvis `/SSDb/jemo_maeng/dgfusion_train/cafuser_modal_zero/`(CAFuser).
 - 우리 모델: jarvis `/SSDb/jemo_maeng/src/drone-MemorySAM/modal_zero_ours_par/*.json`.
 - depth 헤드 프로브 원자료: NAS `analysis/baseline_failure_20260917/reports/depth_head_probe_dgf80k/`.
+
+---
+
+## D4 조건별 Δ (2026-09-19) — DGFusion, depth 제거와 RGB 제거
+
+집행: 재학습 담당 세션(jarvis). 판정 문구는 넣지 않고 수치와 해석까지만 적는다.
+
+전역 Δ 만 보면 "depth 가 중요하다" 까지만 알 수 있다. 어느 상황에서 그 의존이 커지는지를
+보려고, 이미지별 mIoU 를 DELIVER 조건(cloud/fog/night/rain/sun)과 센서 열화 케이스로 갈랐다.
+
+### 방법
+
+- 자료: `tools/baseline_failure/probe_dgfusion.py` 가 남긴 이미지별 CSV(기준·DEPTH 제거·CAMERA 제거).
+  NAS `analysis/baseline_failure_20260917/reports/depth_head_probe_dgf80k/`.
+- 집계: `tools/baseline_failure/condition_delta.py`. 조건은 DELIVER 경로 `.../img/<조건>/test/...`
+  에서 읽고, 센서 열화 케이스는 장면 폴더 이름에서 읽는다.
+- 값은 **이미지별 mIoU 의 평균**이다. 전역 혼동행렬 기준 수치와 집계가 다르므로 섞어 쓰지 말 것.
+
+### 조건별 Δ
+
+| 조건 | 장수 | DEPTH 제거 Δ | CAMERA 제거 Δ |
+|---|---|---|---|
+| night | 379 | **−32.59** | −9.02 |
+| rain | 380 | −27.55 | −10.75 |
+| fog | 379 | −25.91 | −10.21 |
+| cloud | 379 | −24.86 | −10.41 |
+| sun | 380 | −23.11 | −9.58 |
+
+### 센서 열화 케이스별 Δ
+
+| 케이스 | 장수 | DEPTH 제거 Δ | CAMERA 제거 Δ |
+|---|---|---|---|
+| underexposure | 100 | **−37.14** | −8.00 |
+| lidarjitter | 99 | −28.43 | −10.60 |
+| eventlowres | 100 | −27.03 | −10.89 |
+| overexposure | 100 | −26.49 | −8.62 |
+| clean | 1198 | −26.22 | −10.16 |
+| motionblur | 300 | −25.19 | −9.97 |
+
+### 읽기
+
+- **depth 의존은 RGB 가 약한 곳에서 가장 커진다.** 야간 −32.59 와 저노출 −37.14 가 가장 크고,
+  맑은 낮 −23.11 이 가장 작다. 조건 사이의 폭이 9.5 점, 케이스 사이의 폭이 11.9 점이다.
+- **RGB 의존은 조건에 거의 무관하다.** 조건별 폭이 1.7 점뿐이다. 오히려 RGB 가 이미 망가진
+  저노출(−8.00)·과노출(−8.62)에서 지웠을 때 덜 아프다. 이미 못 쓰고 있던 입력을 마저 치운 셈이다.
+- 둘을 합치면, 이 기준선이 악천후와 야간에서 버티는 힘은 RGB 쪽 기제가 아니라 depth 입력에서
+  나온다. 바꾸어 말하면 **depth 가 함께 나빠지는 상황에 대한 대비는 이 구조에 없다.**
+- lidarjitter 와 eventlowres 에서 depth 제거 Δ 가 조금 큰 것(−28.43, −27.03)은 그 두 모달이
+  쓰이지 않는다는 앞선 결과와 어긋나지 않는다. 해당 표본은 열화 종류만 다를 뿐 장면 분포가
+  다르므로, 모달 사용 여부가 아니라 표본 차이로 보는 편이 안전하다.
+
+### 부기 — 우리 모델 기준값의 배치 등가
+
+배치 8 에서 54.633, 배치 1 에서 54.631 로 편차 0.002 다(허용 0.01). 기준선 CAFuser 쪽
+편차 0.0003 과 함께, 평가 배치를 키운 것이 수치를 바꾸지 않았음을 확인했다.
