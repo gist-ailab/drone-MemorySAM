@@ -1,6 +1,6 @@
 --- a/train_net.py
 +++ b/train_net.py
-@@ -513,6 +513,259 @@ def main(args):
+@@ -513,6 +513,288 @@ def main(args):
          DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
              cfg.MODEL.WEIGHTS, resume=args.resume
          )
@@ -235,6 +235,24 @@
 +                    "입력 채널 수(" + str(tuple(_v.shape)) + ") 와 PIXEL_MEAN 길이("
 +                    + str(_m.numel()) + ") 가 맞지 않아 평균 채움을 정의할 수 없다.")
 +
++            # [baseline_failure 부분 열화] BF_ZERO_RATIO 로 모달을 통째로 지우는 대신
++            # 원소별로 비율 ratio 만큼만 열화한다. 우리 모델 쪽 규약(tools/
++            # missing_modality_eval.py 의 rmm_mask·rmm_degrade)과 같은 의미다 — 정규화
++            # 텐서에서 rand<ratio 인 자리를 0(원본 공간에선 그 모달 평균)으로 만들고
++            # 픽셀·채널이 서로 독립이다. 기준선은 원본 입력을 다루므로 그 자리를 치환값
++            # (normalized 면 모델 평균, raw 면 0)으로 바꾸면 정규화 후 같은 개입이 된다.
++            # ratio>=1.0 이면 전부 치환(옛 동작), 0<ratio<1.0 이면 부분 열화한다.
++            _bf_ratio = float(os.environ.get("BF_ZERO_RATIO", "1.0"))
++            _bf_seed = int(os.environ.get("BF_ZERO_SEED", "0"))
++            if _bf_ratio <= 0.0 or _bf_ratio > 1.0:
++                raise ValueError(
++                    "BF_ZERO_RATIO 는 (0, 1] 범위여야 한다(값을 조용히 고치지 않는다): "
++                    + str(_bf_ratio))
++            # 우리 도구(missing_modality_eval)처럼 CPU 생성기 하나를 훅 바깥에 두고
++            # 호출마다 이어 쓴다 — 훅이 불릴 때마다 새로 만들면 배치마다 같은 마스크가
++            # 나와 부분 열화가 편향된다.
++            _bf_gen = _bf_torch.Generator().manual_seed(_bf_seed)
++
 +            def _bf_zero_hook(_module, _inp):
 +                bi = _inp[0]
 +                if isinstance(bi, (list, tuple)):
@@ -243,20 +261,31 @@
 +                            for k in _bf_keys:
 +                                v = d.get(k)
 +                                if _bf_torch.is_tensor(v):
-+                                    if _bf_mode == "raw":
-+                                        d[k] = _bf_torch.zeros_like(v)
-+                                    else:   # normalized — 모달 평균 채움
-+                                        d[k] = _bf_fill(v)
++                                    # 치환값: raw 면 0, normalized 면 모달 평균(정규화 후 0).
++                                    filled = (_bf_torch.zeros_like(v)
++                                              if _bf_mode == "raw" else _bf_fill(v))
++                                    if _bf_ratio >= 1.0:
++                                        d[k] = filled   # 전부 치환(옛 동작 그대로)
++                                    else:
++                                        # rmm_mask 규약 — rand>=ratio 는 유지, 나머지만
++                                        # 치환한다(픽셀·채널 독립). CPU 생성기를 이어 쓴다.
++                                        keep = (_bf_torch.rand(
++                                            v.shape, generator=_bf_gen) >= _bf_ratio
++                                            ).to(dtype=v.dtype, device=v.device)
++                                        d[k] = v * keep + filled * (1 - keep)
 +                return _inp
 +            model.register_forward_pre_hook(_bf_zero_hook)
++            _bf_scope = ("전부 치환" if _bf_ratio >= 1.0
++                         else f"원소별 비율 {_bf_ratio} 부분 열화")
 +            if _bf_mode == "normalized":
 +                print(f"[baseline_failure] 모달 {_bf_modal} 인덱스 {_bf_modal_idx} "
-+                      f"zero_mode={_bf_mode} -> keys {sorted(_bf_keys)} 를 모델 버퍼 평균 "
-+                      f"{list(_bf_mean)} 로 채운다(정규화 후 0)")
++                      f"zero_mode={_bf_mode} ratio={_bf_ratio} seed={_bf_seed} -> keys "
++                      f"{sorted(_bf_keys)} 를 모델 버퍼 평균 {list(_bf_mean)} 로 "
++                      f"채운다({_bf_scope}, 정규화 후 0)")
 +            else:
 +                print(f"[baseline_failure] 모달 {_bf_modal} zero_mode={_bf_mode} "
-+                      f"-> keys {sorted(_bf_keys)} 를 0 으로 채운다(정규화 후 "
-+                      f"-PIXEL_MEAN/PIXEL_STD 상수, 옛 동작)")
++                      f"ratio={_bf_ratio} seed={_bf_seed} -> keys {sorted(_bf_keys)} 를 "
++                      f"0 으로 채운다({_bf_scope}, 정규화 후 -PIXEL_MEAN/PIXEL_STD 상수)")
          res = Trainer.test(cfg, model, eval_only=args.eval_only, inference_only=args.inference_only)
          if cfg.TEST.AUG.ENABLED:
              res.update(Trainer.test_with_TTA(cfg, model))

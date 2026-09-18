@@ -31,7 +31,14 @@ if str(_REPO_ROOT) not in sys.path:
 from tools.baseline_failure import common  # noqa: E402
 
 
-def _run_once(valmod, model, loader, device, n_classes, ignore, model_size, zero_idx):
+def _run_once(valmod, model, loader, device, n_classes, ignore, model_size, zero_idx,
+              per_image=None):
+    """전역 혼동행렬 기준 mIoU 를 돌려준다.
+
+    per_image 에 리스트를 주면 이미지별 mIoU 도 같이 담는다(조건별 Δ 산출용). 이미지별
+    값은 그 이미지 한 장의 혼동행렬로 계산한 것이라 전역 mIoU 와 집계가 다르다 —
+    두 수치를 섞어 인용하면 안 된다.
+    """
     hist = np.zeros((n_classes, n_classes), dtype=np.int64)
     with torch.no_grad():
         for images, labels, metas in tqdm(loader, desc=f"zero={zero_idx}", leave=False):
@@ -48,8 +55,16 @@ def _run_once(valmod, model, loader, device, n_classes, ignore, model_size, zero
                     continue
                 pr = valmod._unpad_resize_to_orig(
                     pred_labels[b], meta["orig_h"], meta["orig_w"], model_size=model_size)
-                hist += common.confusion_matrix(
+                cm = common.confusion_matrix(
                     pr.cpu().numpy(), orig_label.cpu().numpy(), n_classes, ignore)
+                hist += cm
+                if per_image is not None:
+                    _, miou_i = common.global_miou_from_cm(cm)
+                    per_image.append({
+                        "stem": meta.get("stem", ""),
+                        "img_path": (meta.get("paths") or {}).get("img", ""),
+                        "miou": round(float(miou_i), 4),
+                    })
     _, miou = common.global_miou_from_cm(hist)
     return miou
 
@@ -63,6 +78,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--batch", type=int, default=1)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--per_image_csv", default=None,
+                    help="이미지별 mIoU 를 이 CSV 에 남긴다(조건별 Δ 산출용). 이미지별 값은 "
+                         "그 한 장의 혼동행렬로 계산하므로 전역 mIoU 와 집계가 다르다.")
     ap.add_argument("--only", nargs="*", default=[],
                     help="돌릴 조건만 고른다(예: --only base zero_depth). 생략하면 전부. "
                          "조건 이름은 base 와 zero_<모달> 이다.")
@@ -106,9 +124,23 @@ def main():
         conditions = [(name, idx) for name, idx in conditions if name in wanted]
 
     results = {}
+    per_image_rows = []
     for name, zero_idx in conditions:
+        rows = [] if args.per_image_csv else None
         results[name] = _run_once(valmod, model, loader, device, n_classes, ignore,
-                                  model_size, zero_idx)
+                                  model_size, zero_idx, per_image=rows)
+        for r in (rows or []):
+            r["condition"] = name
+            per_image_rows.append(r)
+    if args.per_image_csv and per_image_rows:
+        import csv
+        out_csv = Path(args.per_image_csv)
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+        with out_csv.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["condition", "stem", "img_path", "miou"])
+            w.writeheader()
+            w.writerows(per_image_rows)
+        print(f"[modality_zero] 이미지별 {len(per_image_rows)} 행 -> {out_csv}")
 
     report = {"cfg": args.cfg, "model_path": args.model_path, "split": mode,
               "modals": modals, "conditions": [n for n, _ in conditions], "mIoU": results}

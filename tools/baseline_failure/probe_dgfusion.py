@@ -60,6 +60,11 @@ class ActivationProbe:
         self.captured = {}
 
     def watch(self, pattern, tag):
+        # 정규식으로 "none" 을 주면 그 항목은 감시하지 않는다. 모델 계열에 따라 아예 없는
+        # 구성요소(예: CAFuser 에는 depth 헤드가 없다)를 억지로 다른 모듈에 붙이지 않기
+        # 위한 것이다. 없는 것을 감시하려다 멈추는 기본 동작은 그대로 둔다.
+        if pattern == "none":
+            return []
         hits = find_modules(self.model, pattern)
         for name, mod in hits:
             def hook(_m, _i, out, _name=name, _tag=tag):
