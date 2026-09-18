@@ -20,6 +20,12 @@ A2~A7 확장 항목:
   (A6) depth_bin_iou — 로그 5분위 경계·구간별 픽셀수 합·완벽 예측 pacc=1·diff 정합성
   (A7) zero_modal_in_batch 두 방식 — normalized 는 모달 평균 채움((x-mean)/std → 0),
        raw 는 0 채움(옛 동작), 평균을 찾지 못하는 cfg 는 에러
+  (A8) rle_json_to_png — 저장은 항상 RLE 해상도(1024²) 그대로(--gt_dir 가 있어도
+       변경 없음). --keep_1024 는 1024 단언 검증(1024² 면 통과, 아니면 에러) +
+       요약 pred_resolution·keep_1024 기록.
+       per_image_metrics resized1024 — 1024 예측 디렉터리 exact / 1042 예측 디렉터리
+       resampled 로 기록, 같은 예측·GT 로 두 경로 모두 mIoU 100, 근사 note 는
+       resampled 모델이 있을 때만
 파일 1·2·6·7 은 실서버 전용이라 import·인자 파싱(+id 규약 동치성)만 검사.
 
 실행: /home/jemo/anaconda3/envs/MMSS_SAM/bin/python tools/smoke_baseline_failure.py
@@ -500,6 +506,151 @@ def smoke_zero_mode():
     print("[smoke] (A7) zero-modal normalized/raw·평균 부재 에러 ✓")
 
 
+# ---------------------------------------------------------------------------
+# A8 — keep_1024 저장(정확 경로) · resized1024 채점의 exact/resampled 구분
+# ---------------------------------------------------------------------------
+# 실제 규약 그대로: 기준선 RLE = 1024²(추론 해상도), 우리 GT 덤프 = native 1042².
+A8_RLE_H = A8_RLE_W = 1024
+A8_GT_H = A8_GT_W = 1042
+A8_IDS = ["img/night/test/s1/000010_rgb_front", "img/fog/test/s2/000011_rgb_front"]
+
+
+def _a8_gt():
+    """Road 배경 + Water 블록 2장(native 1042²). 완벽 예측의 전역 mIoU = 2/25*100=8."""
+    gt = {k: np.full((A8_GT_H, A8_GT_W), ROAD, np.uint8) for k in A8_IDS}
+    for k in A8_IDS:
+        gt[k][100:500, 200:900] = WATER
+    return gt
+
+
+def _a8_records(droot, labels):
+    """{image_id: 라벨} → category 별 RLE 레코드 목록(file_name 은 droot 절대 경로)."""
+    records = []
+    for k, lab in labels.items():
+        for cid in (ROAD, WATER):
+            records.append({"file_name": f"{droot}/{k}.png", "category_id": int(cid),
+                            "segmentation": _encode_rle(lab == cid)})
+    return records
+
+
+def _run_main(mod, argv):
+    old = sys.argv
+    try:
+        sys.argv = argv
+        mod.main()
+    finally:
+        sys.argv = old
+
+
+def smoke_keep_1024(tmp):
+    """(A8-1) 저장은 항상 RLE 해상도 그대로 — GT 덤프(1042²)를 줘도 기본 모드 저장은
+    1024². --keep_1024 는 크기 단언(1024² 면 통과, 아니면 에러)이지 저장을 바꾸지 않는다."""
+    from tools.baseline_failure import rle_json_to_png as r2p
+
+    gt = _a8_gt()
+    pred1024 = {k: common.resize_nearest(v, 1024, 1024) for k, v in gt.items()}
+    droot = str(tmp / "a8_root2")
+    json_path = tmp / "a8_predictions.json"
+    json_path.write_text(json.dumps(_a8_records(droot, pred1024)), encoding="utf-8")
+    gt_dir = tmp / "a8_gt"
+    save_dir(gt, gt_dir)
+
+    def run(out, extra):
+        _run_main(r2p, ["rle_json_to_png.py", "--json", str(json_path),
+                        "--dataset_root", droot, "--split", "test",
+                        "--out", str(out), "--expected_count", "2",
+                        "--gt_dir", str(gt_dir)] + extra)
+
+    out_keep, out_def = tmp / "a8_keep", tmp / "a8_default"
+    # keep_1024 의 재현 검산도 기본 로직(pred→GT 최근접) — 이 블록 배치에서는
+    # 1042→1024→1042 왕복이 픽셀 정합이라 mIoU = 8.0(2/25 클래스).
+    run(out_keep, ["--keep_1024", "--expected_miou", "8.0"])
+    run(out_def, [])
+
+    idx_keep = common.index_label_pngs(out_keep / "test" / "pred")
+    idx_def = common.index_label_pngs(out_def / "test" / "pred")
+    for image_id in A8_IDS:
+        k = common.load_label_png(idx_keep[image_id])
+        d = common.load_label_png(idx_def[image_id])
+        # 저장은 모드와 무관하게 항상 RLE 해상도(1024²) — GT(1042²)를 무시한다.
+        assert k.shape == (1024, 1024), f"keep_1024 저장 해상도 {k.shape} != 1024²"
+        assert d.shape == (1024, 1024), \
+            f"기본 저장이 RLE 해상도가 아니다: {d.shape} != 1024² (GT {A8_GT_H}² 을 무시해야)"
+        assert np.array_equal(k, pred1024[image_id]) and np.array_equal(d, k), \
+            "저장 내용이 RLE 디코드 원본이 아니다"
+
+    sk = json.loads((out_keep / "test" / "summary.json").read_text(encoding="utf-8"))
+    assert sk["keep_1024"] is True and sk["pred_resolution"] == 1024, sk
+    assert sk["reproduced"] is True and sk["reproduce_miou"] == 8.0, sk
+    sd = json.loads((out_def / "test" / "summary.json").read_text(encoding="utf-8"))
+    assert sd["keep_1024"] is False and sd["pred_resolution"] == 1024, sd
+
+    # 비-1024 RLE → keep_1024 는 임의 보정 없이 명확한 에러로 멈춘다.
+    bad = tmp / "a8_bad_size.json"
+    bad.write_text(json.dumps(_a8_records(droot, {A8_IDS[0]: np.full((32, 32), ROAD, np.uint8)})),
+                   encoding="utf-8")
+    try:
+        _run_main(r2p, ["rle_json_to_png.py", "--json", str(bad),
+                        "--dataset_root", droot, "--split", "test",
+                        "--out", str(tmp / "a8_bad_out"), "--expected_count", "1",
+                        "--keep_1024"])
+        raise AssertionError("비-1024 RLE 인데 keep_1024 가 에러 없이 통과했다")
+    except ValueError:
+        pass
+    print("[smoke] (A8-1) 저장=항상 RLE 해상도 · keep_1024 1024 단언(통과/에러) · 요약 기록 ✓")
+
+
+def smoke_exact_1024(tmp):
+    """(A8-2) resized1024 채점 — 1024 예측 디렉터리는 exact, 1042 예측 디렉터리는
+    resampled 로 기록. 같은 예측·GT 로는 두 경로 모두 이미지별 mIoU 100."""
+    import csv as _csv
+    from tools.baseline_failure import per_image_metrics as pim
+
+    gt = _a8_gt()
+    gt_dir = tmp / "a8_gt3"
+    save_dir(gt, gt_dir)
+    # exact 경로용 예측 = GT 를 1024 최근접으로 줄인 것(RLE 복원 덤프와 동일 구성 = 1024²).
+    # resampled 경로용 예측 = GT 원 해상도 그대로(1042 → 채점 시 1024 로 줄인다).
+    save_dir({k: common.resize_nearest(v, 1024, 1024) for k, v in gt.items()},
+             tmp / "a8_p1024")
+    save_dir({k: v.copy() for k, v in gt.items()}, tmp / "a8_p1042")
+
+    out = tmp / "a8_pim_out"
+    out.mkdir(parents=True, exist_ok=True)
+    _run_main(pim, ["per_image_metrics.py", "--gt", str(gt_dir),
+                    "--models", f"exact={tmp}/a8_p1024", f"resamp={tmp}/a8_p1042",
+                    "--split", SPLIT, "--out", str(out),
+                    "--gt_protocol", "resized1024"])
+    summ = json.loads((out / f"summary_per_image_{SPLIT}_resized1024.json")
+                      .read_text(encoding="utf-8"))
+    m = summ["models"]
+    assert m["exact"]["pred_1024_path"] == "exact", m["exact"]
+    assert m["exact"]["n_pred_1024_exact"] == 2 and m["exact"]["n_pred_1024_resampled"] == 0
+    assert m["resamp"]["pred_1024_path"] == "resampled", m["resamp"]
+    assert m["resamp"]["n_pred_1024_resampled"] == 2, m["resamp"]
+    assert "정수배" in summ["note"], f"근사 경로가 있는데 근사 note 없음: {summ['note']}"
+    # 같은 예측·GT — 두 경로 모두 완벽(이미지별 mIoU 100, 전역 2/25*100=8).
+    for name in ("exact", "resamp"):
+        with open(out / f"per_image_{name}_{SPLIT}_resized1024.csv", encoding="utf-8") as f:
+            rows = list(_csv.DictReader(f))
+        assert rows and all(float(r["mIoU_img"]) * 100 == 100.0 for r in rows), \
+            f"{name}: mIoU_img != 100(%) — {[r['mIoU_img'] for r in rows]}"
+        assert abs(m[name]["global_miou"] - 8.0) < 1e-6, m[name]
+
+    # exact 만 있으면 note 에 근사 문구가 없어야 한다.
+    out2 = tmp / "a8_pim_out_exact"
+    out2.mkdir(parents=True, exist_ok=True)
+    _run_main(pim, ["per_image_metrics.py", "--gt", str(gt_dir),
+                    "--models", f"exact={tmp}/a8_p1024",
+                    "--split", SPLIT, "--out", str(out2),
+                    "--gt_protocol", "resized1024"])
+    summ2 = json.loads((out2 / f"summary_per_image_{SPLIT}_resized1024.json")
+                       .read_text(encoding="utf-8"))
+    assert summ2["models"]["exact"]["pred_1024_path"] == "exact", summ2
+    assert "정수배" not in summ2["note"], f"근사 경로가 없는데 근사 note 있음: {summ2['note']}"
+    print("[smoke] (A8-2) resized1024 exact/resampled 기록 · 두 경로 모두 mIoU 100 ✓")
+
+
 def run():
     tmp = Path(tempfile.mkdtemp(prefix="bf_smoke_"))
     gts = build_gt()
@@ -520,7 +671,7 @@ def run():
     from tools.baseline_failure import per_image_metrics as pim
     models_pi = {}
     for name in preds:
-        pi, miou, _ok, _chk = pim.score_model(name, pred_dirs[name], gt_dir, SPLIT, d2_out)
+        pi, miou, _ok, _chk, _p1024 = pim.score_model(name, pred_dirs[name], gt_dir, SPLIT, d2_out)
         models_pi[name] = pi
         # (a) 혼동행렬 합 mIoU == 독립 계산값
         ind = independent_global_miou(preds[name], gts)
@@ -598,11 +749,13 @@ def run():
     smoke_rle(tmp)
     smoke_label_offset(tmp)
 
-    # ---- A2~A7 확장: GT 프로토콜 · 체크포인트 안정성 · depth 구간 IoU · zero-out 규약 ----
+    # ---- A2~A8 확장: GT 프로토콜 · 체크포인트 안정성 · depth 구간 IoU · zero-out 규약 · 1024 정확 경로 ----
     smoke_gt_protocol(tmp)
     smoke_ckpt_stability(tmp)
     smoke_depth_bin(tmp)
     smoke_zero_mode()
+    smoke_keep_1024(tmp)
+    smoke_exact_1024(tmp)
 
     # ---- 파일 1·2·6·7: import + argparse + 규약 동치성 ----
     from tools.baseline_failure import dump_preds_ours, d2_dump_evaluator, \

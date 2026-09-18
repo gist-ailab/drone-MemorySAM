@@ -32,6 +32,15 @@ D1(기준선) — detectron2 `SemSegEvaluator` 예측 JSON → trainID PNG 복�
   summary 에 남긴다(기준선 evaluator 의 GT 읽기 방식 — native 1042 vs 리사이즈 — 을
   함께 확인·보고할 것).
 
+1024 단언(--keep_1024, A8):
+- 저장은 옵션·GT 유무와 무관하게 **항상 RLE 해상도 그대로** 한다(기본 동작. 이미
+  만들어진 1024 덤프와 새 덤프의 저장 해상도가 섞이는 사고를 막는다).
+- `--keep_1024` 는 저장 해상도를 바꾸는 옵션이 아니라 **RLE 의 size 가 정확히
+  1024x1024 인지 단언(검증)**하는 옵션이다 — 어긋나면 임의 보정 없이 명확한 에러로
+  멈춘다.
+- summary.json 에 실제 저장 해상도 `pred_resolution` 과 `keep_1024`(옵션 사용 여부)를
+  옵션과 무관하게 항상 기록한다.
+
 예:
   python tools/baseline_failure/rle_json_to_png.py \
     --json output/.../inference/sem_seg_predictions.json \
@@ -122,6 +131,10 @@ def main():
     ap.add_argument("--expected_miou", type=float, default=None,
                     help="로그 mIoU(주면 재현 검산 후 summary 에 reproduced 기록)")
     ap.add_argument("--tol", type=float, default=0.05)
+    ap.add_argument("--keep_1024", action="store_true",
+                    help="저장 해상도가 정확히 1024x1024 임을 단언(검증)한다 — RLE"
+                         " size 가 1024² 가 아니면 임의 보정 없이 에러로 멈춘다."
+                         " 저장 해상도 자체는 옵션과 무관하게 항상 RLE 해상도 그대로다")
     args = ap.parse_args()
 
     out_root = Path(args.out) / args.split
@@ -141,6 +154,7 @@ def main():
     total_ignore = 0
     total_px = 0
     seen_ids = set()
+    saved_shapes = set()
     cat_min, cat_max = None, None
     for fname, recs in groups.items():
         image_id = common.image_id_from_rel(
@@ -149,11 +163,19 @@ def main():
             raise RuntimeError(f"image_id 충돌: {image_id} — 경로 규약 확인 필요")
         seen_ids.add(image_id)
         label, overlap, seen = build_label_map(recs, args.label_offset)
+        if args.keep_1024:
+            # 1024 단언(A8): 저장은 항상 RLE 해상도 그대로 — 여기선 size 검증만 한다.
+            if label.shape != (1024, 1024):
+                raise ValueError(
+                    f"--keep_1024 인데 디코드한 RLE 해상도가 {label.shape[1]}x{label.shape[0]}"
+                    f"(기대 1024x1024, file={fname}) — 다른 해상도로 추론한 예측이다. "
+                    f"해상도를 확인해 다시 덤프하라(임의 보정 금지).")
         common.save_label_png(pred_dir / f"{image_id}.png", label)
         n_saved += 1
         total_overlap += overlap
         total_ignore += int(np.count_nonzero(label == 255))
         total_px += label.size
+        saved_shapes.add((label.shape[0], label.shape[1]))
         if seen:
             lo, hi = min(seen), max(seen)
             cat_min = lo if cat_min is None else min(cat_min, lo)
@@ -181,7 +203,14 @@ def main():
     if total_overlap:
         print(f"[rle2png] ⚠️ 겹침 픽셀 {total_overlap} — argmax 예측이면 0 이어야 한다.")
 
-    # 재현 검산(D1 유효 판정).
+    # 저장 해상도 요약 — 모든 이미지가 같은 정사각 해상도면 int, 아니면 [h, w] 목록.
+    shapes = sorted(saved_shapes)
+    pred_resolution = (shapes[0][0] if len(shapes) == 1 and shapes[0][0] == shapes[0][1]
+                       else [list(s) for s in shapes])
+    summary["keep_1024"] = bool(args.keep_1024)
+    summary["pred_resolution"] = pred_resolution
+
+    # 재현 검산(D1 유효 판정) — pred 를 GT 해상도로 최근접 리샘플하는 기존 로직 그대로.
     if args.gt_dir and args.expected_miou is not None:
         summary.update(_reproduce_check(pred_dir, args.gt_dir, args.expected_miou, args.tol))
 
@@ -196,7 +225,12 @@ def main():
 
 
 def _reproduce_check(pred_dir, gt_dir, expected_miou, tol):
-    """변환 PNG vs GT 덤프로 전역 mIoU 재계산 → 로그값과 ±tol 비교."""
+    """변환 PNG vs GT 덤프로 전역 mIoU 재계산 → 로그값과 ±tol 비교.
+
+    저장된 PNG 는 RLE 해상도(예: 1024²)이고 우리 GT 덤프는 native(예: 1042²)일 수
+    있다 — 해상도가 다르면 pred 를 GT 해상도로 최근접 리샘플해 같은 축에서 채점한다
+    (기존 로직 그대로). 사용한 방식은 reproduce_method 로 summary 에 남긴다.
+    """
     pred_index = common.index_label_pngs(pred_dir)
     gt_index = common.index_label_pngs(gt_dir)
     ids = sorted(set(pred_index) & set(gt_index))
@@ -217,6 +251,7 @@ def _reproduce_check(pred_dir, gt_dir, expected_miou, tol):
     ok = delta <= tol
     note = (f"pred {resized}/{len(ids)} 장을 GT 해상도로 최근접 리샘플" if resized
             else "pred·GT 해상도 동일(리샘플 없음)")
+    method = "pred→GT 최근접" if resized else "리샘플 없음"
     print(f"[rle2png] 재현 mIoU={miou:.4f} vs 로그 {expected_miou:.4f} "
           f"Δ={delta:.4f} → {'OK' if ok else 'MISMATCH'} ({note})")
     if resized:
@@ -224,7 +259,7 @@ def _reproduce_check(pred_dir, gt_dir, expected_miou, tol):
               "읽기 방식(native 1042 vs 리사이즈)을 확인해 보고하라.")
     return {"reproduced": bool(ok), "reproduce_miou": miou,
             "reproduce_delta": round(delta, 4), "reproduce_note": note,
-            "reproduce_n": len(ids)}
+            "reproduce_method": method, "reproduce_n": len(ids)}
 
 
 if __name__ == "__main__":

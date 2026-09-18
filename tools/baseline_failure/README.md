@@ -78,8 +78,12 @@ python tools/baseline_failure/check_label_convention.py \
   재계산해 로그값(DGFusion test 80k 55.6807 / final 55.5605, CAFuser test final 55.3761,
   val 66.0405)과 ±0.05 안이면 `summary.reproduced=true`. GT 해상도가 달라 리샘플했으면
   summary 에 남으니, 기준선 evaluator 의 GT 읽기 방식(native 1042 vs 리사이즈)을 확인해 보고.
+- **`--keep_1024`(A8, 1024 단언)**: 저장 해상도를 바꾸는 옵션이 아니라 **RLE 의 size 가
+  정확히 1024² 인지 검증**하는 옵션이다 — 어긋나면 임의 보정 없이 에러로 멈춘다. 저장은
+  옵션·GT 유무와 무관하게 항상 RLE 해상도 그대로(기본 1024²)다.
 - summary.json = 장수·`overlap_pixels`(겹침, argmax 면 0)·`ignore_pixel_ratio`(255 비율)·
-  category_id min/max·(검산 시) reproduce_miou/delta/note.
+  category_id min/max·`pred_resolution`(실제 저장 해상도)·`keep_1024`(옵션 사용 여부,
+  둘 다 항상 기록)·(검산 시) reproduce_miou/delta/note.
 
 ## D1 — 기준선 덤프 (대안: 저장소 안에서 재추론하며 덤프)
 1. 이 킷의 `d2_dump_evaluator.py` 를 저장소 루트에 복사하고, `d2_dump.patch` 를 적용한다:
@@ -127,6 +131,12 @@ python tools/baseline_failure/per_image_metrics.py \
 각 모델의 전역 재계산 mIoU 를 `<pred>/../summary.json`(우리·RLE 변환 모두 생성) 과 대조한다
 (불일치 시 exit 1). 재추론 경로처럼 summary.json 이 없으면 대조를 건너뛰고 공식 로그 mIoU 와
 손대조하라. image_id 는 **중첩 상대 경로**로 join 하며, 평탄 덤프를 만나면 즉시 에러로 멈춘다.
+- **exact/resampled 구분(A8)**: `--gt_protocol resized1024` 에서 예측 PNG 가 이미 1024²인
+  모델은 예측을 건드리지 않고 GT 만 줄여 채점한다(`exact` — RLE 복원 덤프는 원래부터
+  1024² 로 저장되므로 이것이 기본), 아니면 예측도 1024 로 줄인다(`resampled`, 근사 —
+  예: native 1042² 저장분). 반대로 `native` 에서는 기준선 예측을 GT 해상도(1042²)로
+  최근접 확대하는 쪽이 근사다. 요약 JSON `pred_1024_path` 와 로그에 모델별 경로가
+  기록되고, 근사 문구는 resampled 모델이 하나라도 있을 때만 붙는다.
 
 ## D3 — 실패 채굴
 ```bash

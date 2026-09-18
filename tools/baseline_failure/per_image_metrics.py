@@ -17,8 +17,12 @@ summary.json 과 대조한다(불일치 시 경고 + exit≠0). 여러 모델을
              caf=.../caf/test/pred
 
 채점 프로토콜(--gt_protocol): 기준선(DGFusion·CAFuser)은 1024²로 리사이즈해 채점하는
-반면 우리 덤프는 native 1042² GT 로 채점한다. `resized1024` 를 주면 GT·예측을 모두
-1024² 최근접으로 맞춰 같은 축에서 재채점한다(파일명에 프로토콜이 붙어 덮어쓰지 않는다).
+반면 우리 덤프는 native 1042² GT 로 채점한다. `resized1024` 를 주면 GT 를 1024²
+최근접으로 맞춰 기준선과 같은 축에서 재채점한다(파일명에 프로토콜이 붙어 덮어쓰지
+않는다). 기준선 덤프(RLE 복원)는 원래부터 1024² 로 저장되므로 이 프로토콜에서 예측
+재축소 없는 `exact` 가 기본이고, 1024² 가 아닌 예측(예: 우리 native 1042² 덤프)만
+1024 로 줄인다(`resampled`, 근사). 반대로 `native` 에서는 기준선 예측(1024²)을 GT
+해상도로 최근접 확대해야 하므로 그쪽이 근사다.
 """
 import argparse
 import csv
@@ -41,10 +45,19 @@ GT_PROTOCOLS = ("native", "resized1024")
 
 # resized1024 프로토콜의 한계 — 요약 JSON note 필드와 함수 docstring 에 그대로 남긴다.
 RESIZED1024_NOTE = (
-    "1042→1024 는 정수배 축소가 아니므로, 원본 해상도(예: 1042)로 복원 저장된 예측 PNG 를 "
-    "다시 1024x1024 로 줄이면 기준선 추론 시점의 원래 1024 예측과 픽셀 단위로 완전히 같지는 "
-    "않다(근사 재현). 임의 보정 없이 GT·예측을 같은 규칙(최근접)으로 줄여 채점한다.")
-NATIVE_NOTE = "GT 덤프 원 해상도 그대로 채점 — 기존 프로토콜(덤프·summary.json 검산)과 동일."
+    "1024x1024 가 아닌 해상도(예: native 1042²)로 저장된 예측 PNG 는 1042→1024 가 정수배 "
+    "축소가 아니어서 다시 줄인 결과가 원래 1024 추론 예측과 픽셀 단위로 완전히 같지는 않다"
+    "(근사). 기준선 RLE 복원 덤프는 원래부터 1024² 로 저장되므로 재축소 없이 채점된다"
+    "(exact). 임의 보정 없이 GT·예측을 같은 규칙(최근접)으로 줄여 채점한다.")
+# A8 — resized1024 에서 모든 예측이 이미 1024² 로 저장된 경우(근사 재축소 없음).
+EXACT1024_NOTE = (
+    "모든 모델의 예측 PNG 가 이미 1024x1024 여서 예측 재축소 없이 GT 만 1024 최근접으로 "
+    "줄여 채점했다(재샘플 없는 정확 경로 — 기준선 RLE 복원 덤프는 원래부터 1024² 로 "
+    "저장되므로 이것이 기본 상태다).")
+NATIVE_NOTE = (
+    "GT 덤프 원 해상도(예: 1042²) 그대로 채점 — 기존 프로토콜(덤프·summary.json 검산)과 "
+    "동일. 이 축에서는 native 해상도 저장 예측(우리)이 정확한 대신, 1024² 저장 기준선 "
+    "예측을 GT 해상도로 최근접 확대하는 근사가 이 프로토콜 쪽에서 생긴다.")
 
 
 def _resolve_pred_dir(path):
@@ -63,17 +76,25 @@ def _find_summary(pred_dir):
 
 def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05, gt_protocol="native"):
     """한 모델의 이미지별 CSV 를 쓰고, 전역 mIoU 재계산·summary 대조 결과를 담아
-    per-image 요약 dict(image_id→{condition,case,miou_img,thin,large,iou_vec})를 반환.
+    (per_image, miou, ok, check_status, resized1024_info) 를 반환.
+
+    per_image = image_id→{condition,case,miou_img,thin,large,iou_vec}.
+    resized1024_info = resized1024 프로토콜에서만 {"path","n_exact","n_resampled"}
+    (path = "exact": 모든 예측 PNG 가 이미 1024² — 재축소 없음 / "resampled": 근사).
+    native 프로토콜에서는 None.
 
     image_id = 각 디렉터리 기준 **상대 경로**(중첩) — common.index_label_pngs 로
     재귀 인덱싱한다. 평탄 파일명 중복(1차 덤프 결함)을 만나면 그 함수가 에러로 멈춘다.
 
-    gt_protocol='native'(기본) = GT 원 해상도 그대로 채점(기존 동작). 'resized1024' 는
-    GT 와 예측을 모두 1024x1024 최근접으로 맞춘 뒤 채점한다. ⚠️ 1042→1024 는 정수배가
-    아니므로, 이미 1042 로 복원 저장된 예측 PNG 를 다시 1024 로 줄이면 기준선 추론 시점의
-    원래 1024 예측과 픽셀 단위로 완전히 같지는 않다 — 근사이며 임의 보정은 하지 않는다
-    (요약 JSON 의 note 필드에도 같은 문구를 남긴다). 출력 CSV 는 프로토콜별 파일명
-    (native 는 기존 이름 그대로, resized1024 는 접미사)이라 서로 덮어쓰지 않는다.
+    gt_protocol='native'(기본) = GT 원 해상도 그대로 채점(기존 동작). 이 축에서는
+    native 해상도(예: 1042²)로 저장된 우리 예측이 정확하고, 1024² 로 저장된 기준선
+    예측을 GT 해상도로 최근접 확대하는 쪽이 근사다. 'resized1024' 는 GT 를
+    1024x1024 최근접으로 맞춘 뒤 채점하는데, 예측 PNG 가 이미 1024²면 예측은
+    건드리지 않는다(A8 exact — 기준선 RLE 복원 덤프의 기본). 예측이 1024 가 아니면
+    예측도 1024 로 줄인다 — ⚠️ 1042→1024 는 정수배가 아니므로 재축소된 예측이 원래
+    추론 결과와 픽셀 단위로 완전히 같지는 않다(resampled, 근사 — 요약 JSON note 에도
+    같은 문구를 남긴다). 출력 CSV 는 프로토콜별 파일명(native 는 기존 이름 그대로,
+    resized1024 는 접미사)이라 서로 덮어쓰지 않는다.
     """
     if gt_protocol not in GT_PROTOCOLS:
         raise ValueError(f"알 수 없는 gt_protocol: {gt_protocol!r} ({GT_PROTOCOLS} 중 하나)")
@@ -105,6 +126,8 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05, gt_protocol="n
 
     global_hist = np.zeros((N, N), dtype=np.int64)
     per_image = {}
+    n_exact = 0          # resized1024: 예측이 이미 1024² — 재축소 없이 채점한 장수
+    n_resampled = 0      # resized1024: 예측을 1024 로 줄인 장수(근사 경로)
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(header)
@@ -112,9 +135,14 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05, gt_protocol="n
             gt = common.load_label_png(gt_index[image_id])
             pred = common.load_label_png(pred_index[image_id])
             if gt_protocol == "resized1024":
-                # GT·예측을 모두 1024x1024 최근접으로 맞춘 뒤 채점(RESIZED1024_NOTE 참조).
+                # GT 는 항상 1024x1024 최근접으로 맞춘다. 예측이 이미 1024² 면 건드리지
+                # 않는다(A8 exact — 재축소 없음), 아니면 같은 규칙으로 줄인다(근사).
                 gt = common.resize_nearest(gt, 1024, 1024)
-                pred = common.resize_nearest(pred, 1024, 1024)
+                if pred.shape == (1024, 1024):
+                    n_exact += 1
+                else:
+                    pred = common.resize_nearest(pred, 1024, 1024)
+                    n_resampled += 1
             elif pred.shape != gt.shape:
                 pred = common.resize_nearest(pred, gt.shape[0], gt.shape[1])
             cm = common.confusion_matrix(pred, gt, N, common.IGNORE_LABEL)
@@ -140,6 +168,13 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05, gt_protocol="n
     print(f"[{name}] gt_protocol={gt_protocol}  {len(ids)} imgs  "
           f"전역 재계산 mIoU={miou:.2f}  -> {csv_path.name}")
 
+    info_1024 = None
+    if gt_protocol == "resized1024":
+        path_1024 = "exact" if n_resampled == 0 else "resampled"
+        info_1024 = {"path": path_1024, "n_exact": n_exact, "n_resampled": n_resampled}
+        print(f"[{name}] 예측 1024 경로={path_1024} "
+              f"(재축소 없음 {n_exact} / 재축소 {n_resampled} 장)")
+
     ok = True
     check_status = "no_summary"
     summ = _find_summary(pred_dir)
@@ -148,7 +183,7 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05, gt_protocol="n
         # 비교 자체가 성립하지 않으므로 대조를 건너뛴다(결과 무효가 아님).
         print(f"[{name}] gt_protocol={gt_protocol} — summary.json 대조 생략(프로토콜 상이)")
         check_status = "skipped_protocol"
-        return per_image, miou, ok, check_status
+        return per_image, miou, ok, check_status, info_1024
     if summ is not None:
         ref = json.loads(summ.read_text(encoding="utf-8")).get("mIoU")
         if ref is not None:
@@ -160,7 +195,7 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05, gt_protocol="n
     else:
         print(f"[{name}] summary.json 없음 — 전역 mIoU 대조 생략")
 
-    return per_image, miou, ok, check_status
+    return per_image, miou, ok, check_status, info_1024
 
 
 def _protocol_suffix(gt_protocol):
@@ -216,7 +251,8 @@ def main():
     ap.add_argument("--tol", type=float, default=0.05)
     ap.add_argument("--gt_protocol", default="native", choices=list(GT_PROTOCOLS),
                     help="채점 GT 프로토콜: native=GT 원 해상도(기존 동작), "
-                         "resized1024=GT·예측을 모두 1024x1024 최근접으로 맞춰 채점")
+                         "resized1024=GT 를 1024x1024 최근접으로 맞춰 채점"
+                         "(예측이 이미 1024² 면 건드리지 않음)")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -233,11 +269,15 @@ def main():
     models_stats = {}
     all_ok = True
     for name, d in models:
-        pi, miou, ok, check = score_model(name, d, args.gt, args.split, out_dir,
-                                          args.tol, gt_protocol=args.gt_protocol)
+        pi, miou, ok, check, info_1024 = score_model(name, d, args.gt, args.split, out_dir,
+                                                     args.tol, gt_protocol=args.gt_protocol)
         models_pi[name] = pi
-        models_stats[name] = {"global_miou": miou, "n_images": len(pi),
-                              "summary_check": check}
+        stats = {"global_miou": miou, "n_images": len(pi), "summary_check": check}
+        if info_1024 is not None:      # resized1024 — 모델별 exact/resampled 경로 기록
+            stats["pred_1024_path"] = info_1024["path"]
+            stats["n_pred_1024_exact"] = info_1024["n_exact"]
+            stats["n_pred_1024_resampled"] = info_1024["n_resampled"]
+        models_stats[name] = stats
         all_ok = all_ok and ok
 
     if len(models_pi) >= 2:
@@ -245,8 +285,14 @@ def main():
     else:
         print("[join] 모델이 1개뿐 — join 생략")
 
-    # 요약 JSON — 사용한 프로토콜과 (resized1024 의) 한계를 남긴다.
-    note = RESIZED1024_NOTE if args.gt_protocol == "resized1024" else NATIVE_NOTE
+    # 요약 JSON — 사용한 프로토콜과 (resized1024 의) 한계를 남긴다. 근사 문구는
+    # 실제로 근사 경로(resampled)를 탄 모델이 하나라도 있을 때만 넣는다(A8).
+    if args.gt_protocol == "resized1024":
+        any_approx = any(s.get("pred_1024_path") == "resampled"
+                         for s in models_stats.values())
+        note = RESIZED1024_NOTE if any_approx else EXACT1024_NOTE
+    else:
+        note = NATIVE_NOTE
     summary = {"split": args.split, "gt_protocol": args.gt_protocol, "note": note,
                "models": models_stats}
     summary_path = out_dir / f"summary_per_image_{args.split}_{args.gt_protocol}.json"
