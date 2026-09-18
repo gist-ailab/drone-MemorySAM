@@ -15,6 +15,10 @@ summary.json 과 대조한다(불일치 시 경고 + exit≠0). 여러 모델을
              dgf80k=.../dgf80k/test/pred \
              dgffinal=.../dgffinal/test/pred \
              caf=.../caf/test/pred
+
+채점 프로토콜(--gt_protocol): 기준선(DGFusion·CAFuser)은 1024²로 리사이즈해 채점하는
+반면 우리 덤프는 native 1042² GT 로 채점한다. `resized1024` 를 주면 GT·예측을 모두
+1024² 최근접으로 맞춰 같은 축에서 재채점한다(파일명에 프로토콜이 붙어 덮어쓰지 않는다).
 """
 import argparse
 import csv
@@ -33,6 +37,15 @@ from tools.baseline_failure import common  # noqa: E402
 N = common.N_CLASSES
 CLASSES = common.CLASSES
 
+GT_PROTOCOLS = ("native", "resized1024")
+
+# resized1024 프로토콜의 한계 — 요약 JSON note 필드와 함수 docstring 에 그대로 남긴다.
+RESIZED1024_NOTE = (
+    "1042→1024 는 정수배 축소가 아니므로, 원본 해상도(예: 1042)로 복원 저장된 예측 PNG 를 "
+    "다시 1024x1024 로 줄이면 기준선 추론 시점의 원래 1024 예측과 픽셀 단위로 완전히 같지는 "
+    "않다(근사 재현). 임의 보정 없이 GT·예측을 같은 규칙(최근접)으로 줄여 채점한다.")
+NATIVE_NOTE = "GT 덤프 원 해상도 그대로 채점 — 기존 프로토콜(덤프·summary.json 검산)과 동일."
+
 
 def _resolve_pred_dir(path):
     """모델 인자가 pred 디렉터리 자체이거나 split 루트일 수 있으니 정규화한다."""
@@ -48,13 +61,22 @@ def _find_summary(pred_dir):
     return cand if cand.exists() else None
 
 
-def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05):
+def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05, gt_protocol="native"):
     """한 모델의 이미지별 CSV 를 쓰고, 전역 mIoU 재계산·summary 대조 결과를 담아
     per-image 요약 dict(image_id→{condition,case,miou_img,thin,large,iou_vec})를 반환.
 
     image_id = 각 디렉터리 기준 **상대 경로**(중첩) — common.index_label_pngs 로
     재귀 인덱싱한다. 평탄 파일명 중복(1차 덤프 결함)을 만나면 그 함수가 에러로 멈춘다.
+
+    gt_protocol='native'(기본) = GT 원 해상도 그대로 채점(기존 동작). 'resized1024' 는
+    GT 와 예측을 모두 1024x1024 최근접으로 맞춘 뒤 채점한다. ⚠️ 1042→1024 는 정수배가
+    아니므로, 이미 1042 로 복원 저장된 예측 PNG 를 다시 1024 로 줄이면 기준선 추론 시점의
+    원래 1024 예측과 픽셀 단위로 완전히 같지는 않다 — 근사이며 임의 보정은 하지 않는다
+    (요약 JSON 의 note 필드에도 같은 문구를 남긴다). 출력 CSV 는 프로토콜별 파일명
+    (native 는 기존 이름 그대로, resized1024 는 접미사)이라 서로 덮어쓰지 않는다.
     """
+    if gt_protocol not in GT_PROTOCOLS:
+        raise ValueError(f"알 수 없는 gt_protocol: {gt_protocol!r} ({GT_PROTOCOLS} 중 하나)")
     pred_dir = _resolve_pred_dir(pred_dir)
     gt_index = common.index_label_pngs(gt_dir, require_nested=True)
     pred_index = common.index_label_pngs(pred_dir, require_nested=True)
@@ -75,7 +97,7 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05):
         print(f"[{name}] ⚠️ 공통 image_id 가 {len(ids)}/{smaller} 로 과소 — "
               f"평탄 덤프와 중첩 GT 처럼 규약이 어긋났을 가능성이 크다.")
 
-    csv_path = Path(out_dir) / f"per_image_{name}_{split}.csv"
+    csv_path = Path(out_dir) / f"per_image_{name}_{split}{_protocol_suffix(gt_protocol)}.csv"
     header = (["image_id", "condition", "case"]
               + [f"IoU_{i}" for i in range(N)]
               + ["mIoU_img", "pixel_acc"]
@@ -89,7 +111,11 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05):
         for image_id in ids:
             gt = common.load_label_png(gt_index[image_id])
             pred = common.load_label_png(pred_index[image_id])
-            if pred.shape != gt.shape:
+            if gt_protocol == "resized1024":
+                # GT·예측을 모두 1024x1024 최근접으로 맞춘 뒤 채점(RESIZED1024_NOTE 참조).
+                gt = common.resize_nearest(gt, 1024, 1024)
+                pred = common.resize_nearest(pred, 1024, 1024)
+            elif pred.shape != gt.shape:
                 pred = common.resize_nearest(pred, gt.shape[0], gt.shape[1])
             cm = common.confusion_matrix(pred, gt, N, common.IGNORE_LABEL)
             global_hist += cm
@@ -111,10 +137,18 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05):
             }
 
     _, miou = common.global_miou_from_cm(global_hist)
-    print(f"[{name}] {len(ids)} imgs  전역 재계산 mIoU={miou:.2f}  -> {csv_path.name}")
+    print(f"[{name}] gt_protocol={gt_protocol}  {len(ids)} imgs  "
+          f"전역 재계산 mIoU={miou:.2f}  -> {csv_path.name}")
 
     ok = True
+    check_status = "no_summary"
     summ = _find_summary(pred_dir)
+    if gt_protocol != "native":
+        # summary.json 의 mIoU 는 native 프로토콜로 계산된 값 — 프로토콜이 다르면
+        # 비교 자체가 성립하지 않으므로 대조를 건너뛴다(결과 무효가 아님).
+        print(f"[{name}] gt_protocol={gt_protocol} — summary.json 대조 생략(프로토콜 상이)")
+        check_status = "skipped_protocol"
+        return per_image, miou, ok, check_status
     if summ is not None:
         ref = json.loads(summ.read_text(encoding="utf-8")).get("mIoU")
         if ref is not None:
@@ -122,13 +156,19 @@ def score_model(name, pred_dir, gt_dir, split, out_dir, tol=0.05):
             tag = "OK" if delta <= tol else "MISMATCH"
             print(f"[{name}] summary.json mIoU={ref:.2f} Δ={delta:.3f} → {tag}")
             ok = delta <= tol
+            check_status = "ok" if ok else "mismatch"
     else:
         print(f"[{name}] summary.json 없음 — 전역 mIoU 대조 생략")
 
-    return per_image, miou, ok
+    return per_image, miou, ok, check_status
 
 
-def write_join(models_pi, split, out_dir):
+def _protocol_suffix(gt_protocol):
+    """파일명 접미사 — native 는 기존 이름을 그대로 쓰고(하위 호환), 그 외는 붙인다."""
+    return "" if gt_protocol == "native" else f"_{gt_protocol}"
+
+
+def write_join(models_pi, split, out_dir, gt_protocol="native"):
     """공통 image_id 로 모델별 mIoU·ΔmIoU·얇은/큰 영역 평균 IoU join CSV 를 쓴다."""
     names = list(models_pi.keys())
     common_ids = None
@@ -144,7 +184,7 @@ def write_join(models_pi, split, out_dir):
     header += [f"dmIoU_{ref}_minus_{n}" for n in others]
     header += [f"thin_{n}" for n in names] + [f"large_{n}" for n in names]
 
-    join_path = Path(out_dir) / f"joined_{split}.csv"
+    join_path = Path(out_dir) / f"joined_{split}{_protocol_suffix(gt_protocol)}.csv"
     with open(join_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(header)
@@ -174,6 +214,9 @@ def main():
     ap.add_argument("--split", default="test")
     ap.add_argument("--out", required=True)
     ap.add_argument("--tol", type=float, default=0.05)
+    ap.add_argument("--gt_protocol", default="native", choices=list(GT_PROTOCOLS),
+                    help="채점 GT 프로토콜: native=GT 원 해상도(기존 동작), "
+                         "resized1024=GT·예측을 모두 1024x1024 최근접으로 맞춰 채점")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -187,16 +230,29 @@ def main():
         models.append((name, d))
 
     models_pi = {}
+    models_stats = {}
     all_ok = True
     for name, d in models:
-        pi, _miou, ok = score_model(name, d, args.gt, args.split, out_dir, args.tol)
+        pi, miou, ok, check = score_model(name, d, args.gt, args.split, out_dir,
+                                          args.tol, gt_protocol=args.gt_protocol)
         models_pi[name] = pi
+        models_stats[name] = {"global_miou": miou, "n_images": len(pi),
+                              "summary_check": check}
         all_ok = all_ok and ok
 
     if len(models_pi) >= 2:
-        write_join(models_pi, args.split, out_dir)
+        write_join(models_pi, args.split, out_dir, gt_protocol=args.gt_protocol)
     else:
         print("[join] 모델이 1개뿐 — join 생략")
+
+    # 요약 JSON — 사용한 프로토콜과 (resized1024 의) 한계를 남긴다.
+    note = RESIZED1024_NOTE if args.gt_protocol == "resized1024" else NATIVE_NOTE
+    summary = {"split": args.split, "gt_protocol": args.gt_protocol, "note": note,
+               "models": models_stats}
+    summary_path = out_dir / f"summary_per_image_{args.split}_{args.gt_protocol}.json"
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2),
+                            encoding="utf-8")
+    print(f"[per_image_metrics] gt_protocol={args.gt_protocol} 요약 -> {summary_path.name}")
 
     if not all_ok:
         print("[per_image_metrics] ⚠️ summary.json 과 mIoU 불일치 — exit 1")

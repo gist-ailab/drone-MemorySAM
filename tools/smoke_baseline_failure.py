@@ -11,6 +11,13 @@ tools/baseline_failure/ 합성 스모크 (CPU, 1분 이내).
   (E1) 합성 RLE JSON(3장, 두 조건 폴더에 같은 basename) → PNG 변환 →
        장수·값 범위·중복 basename 의 상대 경로 보존을 assert
   (E2) 오프셋 +1 로 일부러 어긋난 GT 에서 check_label_convention 이 이동량 +1 을 잡는지
+A2~A6 확장 항목:
+  (A2) per_image_metrics --gt_protocol native·resized1024 두 경로 모두 실행 — 완전히
+       같은 예측·GT 에서는 두 프로토콜 모두 이미지별 mIoU 100, 파일명이 프로토콜별로
+       갈라 서로 덮어쓰지 않는다
+  (A5) 합성 체크포인트 3개(항상 나쁨·항상 좋음·절반만 좋음)로 ckpt_stability 가
+       always_fail/always_pass/flip 을 규칙대로 분류하는지
+  (A6) depth_bin_iou — 로그 5분위 경계·구간별 픽셀수 합·완벽 예측 pacc=1·diff 정합성
 파일 1·2·6·7 은 실서버 전용이라 import·인자 파싱(+id 규약 동치성)만 검사.
 
 실행: /home/jemo/anaconda3/envs/MMSS_SAM/bin/python tools/smoke_baseline_failure.py
@@ -222,6 +229,215 @@ def smoke_label_offset(tmp):
     print("[smoke] (E2) check_label_convention 이 이동량 +1/0 을 정확히 판정 ✓")
 
 
+# ---------------------------------------------------------------------------
+# A2 — per_image_metrics 의 GT 프로토콜(native vs resized1024)
+# ---------------------------------------------------------------------------
+def smoke_gt_protocol(tmp):
+    """(A2) 두 프로토콜 모두 end-to-end 실행 — 같은 예측·GT 에서 mIoU 100,
+    프로토콜별 파일명 분리, 요약 JSON 프로토콜 기록을 확인한다."""
+    import csv as _csv
+    from tools.baseline_failure import per_image_metrics as pim
+
+    ids = ["img/night/test/s1/000001_rgb_front", "img/fog/test/s2/000002_rgb_front"]
+    gt = {k: np.full((64, 64), ROAD, np.uint8) for k in ids}
+    for k in ids:
+        gt[k][20:36, 20:36] = WATER                      # Road + Water 2클래스
+    perfect = {k: v.copy() for k, v in gt.items()}       # 예측 == GT
+    degraded = {k: np.full((64, 64), ROAD, np.uint8) for k in ids}  # Water 전부 놓침
+
+    gt_dir = tmp / "a2_gt"
+    save_dir(gt, gt_dir)
+    save_dir(perfect, tmp / "a2_perfect")
+    save_dir(degraded, tmp / "a2_degraded")
+    out = tmp / "a2_out"
+    out.mkdir(parents=True, exist_ok=True)
+
+    for proto in ("native", "resized1024"):
+        argv = ["per_image_metrics.py", "--gt", str(gt_dir),
+                "--models", f"ours={tmp}/a2_perfect", f"dgf={tmp}/a2_degraded",
+                "--split", SPLIT, "--out", str(out), "--gt_protocol", proto]
+        old = sys.argv
+        try:
+            sys.argv = argv
+            pim.main()
+        finally:
+            sys.argv = old
+
+    # 파일명이 프로토콜별로 갈라 서로 덮어쓰지 않는다(native 는 기존 이름 그대로).
+    sfx = {"native": "", "resized1024": "_resized1024"}
+    for proto, s in sfx.items():
+        assert (out / f"per_image_ours_{SPLIT}{s}.csv").exists(), f"{proto} per_image CSV 없음"
+        assert (out / f"joined_{SPLIT}{s}.csv").exists(), f"{proto} joined CSV 없음"
+        summ = json.loads((out / f"summary_per_image_{SPLIT}_{proto}.json")
+                          .read_text(encoding="utf-8"))
+        assert summ["gt_protocol"] == proto, summ
+        if proto == "resized1024":
+            assert "정수배" in summ["note"], f"한계 note 없음: {summ['note']}"
+        # 완전히 같은 예측·GT — 이미지별 mIoU(도구 규약 0~1)가 두 프로토콜 모두 1.0,
+        # 즉 백분율 100 이다.
+        with open(out / f"per_image_ours_{SPLIT}{s}.csv", encoding="utf-8") as f:
+            rows = list(_csv.DictReader(f))
+        assert rows and all(float(r["mIoU_img"]) * 100 == 100.0 for r in rows), \
+            f"{proto}: mIoU_img != 100(%) — {[r['mIoU_img'] for r in rows]}"
+        # 전역 mIoU(부재 클래스 0 포함 25클래스 평균)도 두 프로토콜이 같다(2/25*100=8).
+        assert abs(summ["models"]["ours"]["global_miou"] - 8.0) < 1e-6, summ["models"]["ours"]
+        # 열화 예측은 확실히 아래로 — 두 프로토콜 모두 수치가 타당하게 갈린다.
+        assert summ["models"]["dgf"]["global_miou"] < summ["models"]["ours"]["global_miou"]
+    n_summ = json.loads((out / f"summary_per_image_{SPLIT}_native.json")
+                        .read_text(encoding="utf-8"))
+    r_summ = json.loads((out / f"summary_per_image_{SPLIT}_resized1024.json")
+                        .read_text(encoding="utf-8"))
+    assert abs(n_summ["models"]["ours"]["global_miou"]
+               - r_summ["models"]["ours"]["global_miou"]) < 1e-6, "완벽 예측인데 프로토콜 간 격차 발생"
+    print("[smoke] (A2) gt_protocol native·resized1024 모두 동작 + mIoU 100 ✓")
+
+
+# ---------------------------------------------------------------------------
+# A5 — ckpt_stability 분류(항상 나쁨·항상 좋음·절반만 좋음 체크포인트 3개)
+# ---------------------------------------------------------------------------
+CKPT_IDS = ["img/night/test/s1/000001_rgb_front",
+            "img/night/test/s1_lidarjitter/000002_rgb_front",
+            "img/fog/test/s2/000003_rgb_front",
+            "img/fog/test/s2/000004_rgb_front",
+            "img/sun/test/s3/000005_rgb_front",
+            "img/rain/test/s4/000006_rgb_front"]
+
+
+def _ck_quality_maps(gts):
+    """품질 3단계 예측 맵 — q0(성분 전부 놓침)·q1(절반만 적중)·q2(완벽).
+
+    GT 는 Road 배경 + 16x16 Water 블록으로 모든 이미지가 동일하므로 각 품질의
+    이미지별 mIoU 도 정확히 같아진다(중앙값 비교가 결정적).
+    """
+    q0 = {k: np.full((H, W), ROAD, np.uint8) for k in gts}
+    q1 = {k: v.copy() for k, v in gts.items()}
+    q2 = {k: v.copy() for k, v in gts.items()}
+    for k in gts:
+        q1[k][20:36, 20:28] = ROAD                      # Water 블록 절반만 적중
+    return {"q0": q0, "q1": q1, "q2": q2}
+
+
+def smoke_ckpt_stability(tmp):
+    """(A5) bad=[q0,q0,q0,q1,q1,q1] / good=[q1,q1,q1,q2,q2,q2] / half=[q0,q0,q1,q1,q2,q2]
+    로 만든 3개 체크포인트에서 규칙대로 always_fail·flip·always_pass 가 나오는지."""
+    import csv as _csv
+    from tools.baseline_failure import ckpt_stability as cs
+
+    gts = {k: np.full((H, W), ROAD, np.uint8) for k in CKPT_IDS}
+    for k in CKPT_IDS:
+        gts[k][20:36, 20:36] = WATER
+    q = _ck_quality_maps(gts)
+    plans = {"bad": ["q0", "q0", "q0", "q1", "q1", "q1"],
+             "good": ["q1", "q1", "q1", "q2", "q2", "q2"],
+             "half": ["q0", "q0", "q1", "q1", "q2", "q2"]}
+
+    gt_dir = tmp / "a5_gt"
+    save_dir(gts, gt_dir)
+    for tag, plan in plans.items():
+        save_dir({k: q[plan[i]][k] for i, k in enumerate(CKPT_IDS)},
+                 tmp / f"a5_{tag}")
+
+    out = tmp / "a5_out"
+    argv = ["ckpt_stability.py", "--gt", str(gt_dir),
+            "--preds", *[f"{t}={tmp}/a5_{t}" for t in plans],
+            "--split", SPLIT, "--out", str(out)]
+    old = sys.argv
+    try:
+        sys.argv = argv
+        cs.main()
+    finally:
+        sys.argv = old
+
+    # 기대 라벨 — 손계산: bad 중앙값=(q0+q1)/2, good 중앙값=(q1+q2)/2, half 중앙값=q1.
+    # q0 은 bad·good 중앙값의 아래(둘 다 미만), q1 은 half 중앙값(q1)과 같아 미만이 아님.
+    # CSV 행은 image_id 정렬순이므로 기대값도 정렬된 id 순서로 맞춘다.
+    plan_by_id = {CKPT_IDS[i]: {t: plans[t][i] for t in plans} for i in range(len(CKPT_IDS))}
+    with open(out / f"ckpt_stability_{SPLIT}.csv", encoding="utf-8") as f:
+        rows = list(_csv.DictReader(f))
+    got, exp, got_n = [], [], []
+    for r in rows:                       # r["image_id"] 는 정렬순
+        qsel = plan_by_id[r["image_id"]]
+        vals = {"q0": 42.0, "q1": 70.652174, "q2": 100.0}
+        med = {"bad": 56.326087, "good": 85.326087, "half": 70.652174}
+        n_below = sum(vals[qsel[t]] < med[t] for t in plans)
+        exp.append(cs.classify(len(plans), n_below, 9.0 / 11.0))
+        got.append(r["label"])
+        got_n.append(int(r["n_below_median"]))
+    assert got == exp, f"라벨 불일치: {got} != {exp}"
+    assert sorted(got) == ["always_fail", "always_fail", "always_pass",
+                           "always_pass", "always_pass", "flip"], got
+    assert got_n.count(3) == 2 and got_n.count(0) == 3 and got_n.count(2) == 1, got_n
+    summ = json.loads((out / f"ckpt_stability_{SPLIT}.json").read_text(encoding="utf-8"))
+    assert summ["label_counts"] == {"always_fail": 2, "always_pass": 3, "flip": 1}, summ
+    night_labels = {lab for lab, n in summ["label_dist_by_condition"]["night"].items() if n}
+    assert night_labels == {"always_fail"}, summ["label_dist_by_condition"]
+    assert len(summ["per_class_iou_std_across_ckpts"]) == common.N_CLASSES
+    print("[smoke] (A5) ckpt_stability always_fail/always_pass/flip 분류 ✓")
+
+
+# ---------------------------------------------------------------------------
+# A6 — depth_bin_iou(로그 5분위 경계·구간별 IoU·모델 간 diff)
+# ---------------------------------------------------------------------------
+def smoke_depth_bin(tmp):
+    """(A6) 합성 depth 로 로그 5분위 구간 — 경계 단조성·구간 픽셀수 합(독립 손계산)·
+    완벽 예측의 구간별 pacc=1·diff 열 정합성을 확인한다."""
+    import csv as _csv
+    from tools.baseline_failure import depth_bin_iou as dbi
+
+    gts = {k: np.full((H, W), ROAD, np.uint8) for k in CKPT_IDS}
+    for k in CKPT_IDS:
+        gts[k][20:36, 20:36] = WATER
+        gts[k][0:4, :] = 255                             # ignore 영역(제외 검증용)
+    bad = {k: np.full((H, W), ROAD, np.uint8) for k in CKPT_IDS}
+
+    # depth: 행 기반 계단값(100 + 50r), 상단 8행은 0(무효 depth). uint16 PNG 로 저장
+    # (common.save_label_png 는 uint8 로 캐스팅하므로 여기선 PIL 로 직접 저장).
+    depth_arr = (100 + 50 * np.arange(H, dtype=np.int64)[:, None]).repeat(W, axis=1)
+    depth_arr[0:8, :] = 0
+    depth_root = tmp / "a6_root" / "depth"
+    for k in CKPT_IDS:
+        rel = k[len("img/"):].replace("_rgb", "_depth")
+        p = depth_root / f"{rel}.png"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(depth_arr.astype(np.uint16)).save(p)
+
+    gt_dir = tmp / "a6_gt"
+    save_dir(gts, gt_dir)
+    save_dir({k: v.copy() for k, v in gts.items()}, tmp / "a6_perfect")
+    save_dir(bad, tmp / "a6_bad")
+
+    out = tmp / "a6_out"
+    argv = ["depth_bin_iou.py", "--gt", str(gt_dir),
+            "--depth_root", str(tmp / "a6_root"),
+            "--models", f"perfect={tmp}/a6_perfect", f"bad={tmp}/a6_bad",
+            "--split", SPLIT, "--out", str(out), "--bins", "5"]
+    old = sys.argv
+    try:
+        sys.argv = argv
+        dbi.main()
+    finally:
+        sys.argv = old
+
+    summ = json.loads((out / f"depth_bin_iou_{SPLIT}.json").read_text(encoding="utf-8"))
+    assert len(summ["log_edges"]) == 4 and np.all(np.diff(summ["log_edges"]) > 0), summ["log_edges"]
+    assert np.allclose(np.exp(summ["log_edges"]), summ["depth_edges"]), "depth_edges != exp(log_edges)"
+    # 구간별 픽셀수 합 == 독립 손계산((depth>0) & (gt!=255)).
+    valid = (depth_arr > 0) & (gts[CKPT_IDS[0]] != 255)
+    assert sum(summ["bin_pixels"]) == int(valid.sum()) * len(CKPT_IDS), \
+        f"{sum(summ['bin_pixels'])} != {int(valid.sum()) * len(CKPT_IDS)}"
+    assert all(b > 0 for b in summ["bin_pixels"]), "빈 구간 있음(분포 대비 이상)"
+
+    with open(out / f"depth_bin_iou_{SPLIT}.csv", encoding="utf-8") as f:
+        rows = list(_csv.DictReader(f))
+    assert len(rows) == 5 and all(float(r["pacc_perfect"]) == 1.0 for r in rows), \
+        "완벽 예측의 구간별 pixel_acc != 1"
+    for r in rows:
+        d_expect = float(r["miou_perfect"]) - float(r["miou_bad"])
+        assert abs(float(r["diff_perfect_minus_bad"]) - d_expect) <= 2e-4, r
+        assert float(r["miou_bad"]) <= float(r["miou_perfect"]), r
+    print("[smoke] (A6) depth_bin_iou 로그 5분위·구간별 지표·diff 정합 ✓")
+
+
 def run():
     tmp = Path(tempfile.mkdtemp(prefix="bf_smoke_"))
     gts = build_gt()
@@ -242,7 +458,7 @@ def run():
     from tools.baseline_failure import per_image_metrics as pim
     models_pi = {}
     for name in preds:
-        pi, miou, _ok = pim.score_model(name, pred_dirs[name], gt_dir, SPLIT, d2_out)
+        pi, miou, _ok, _chk = pim.score_model(name, pred_dirs[name], gt_dir, SPLIT, d2_out)
         models_pi[name] = pi
         # (a) 혼동행렬 합 mIoU == 독립 계산값
         ind = independent_global_miou(preds[name], gts)
@@ -319,6 +535,11 @@ def run():
     # ---- 요구 E: RLE 변환 + 라벨 규약 이동량 ----
     smoke_rle(tmp)
     smoke_label_offset(tmp)
+
+    # ---- A2~A6 확장: GT 프로토콜 · 체크포인트 안정성 · depth 구간 IoU ----
+    smoke_gt_protocol(tmp)
+    smoke_ckpt_stability(tmp)
+    smoke_depth_bin(tmp)
 
     # ---- 파일 1·2·6·7: import + argparse + 규약 동치성 ----
     from tools.baseline_failure import dump_preds_ours, d2_dump_evaluator, \

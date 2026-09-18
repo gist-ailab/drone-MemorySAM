@@ -157,7 +157,9 @@ python tools/baseline_failure/viz_panels.py \
   ```
   라우터/트렁크 등 우리 모듈 진단은 `tools/module_diagnostics.py` · `tools/viz_features.py`.
 - **기준선 모달 zero-out**: `d2_zero_modality.patch` 적용 후 위 test 명령에
-  `BF_ZERO_MODAL=lidar|event|depth|img` 를 앞에 붙여 4회 실행(각 결과 mIoU 를 base 와 비교).
+  `BF_ZERO_MODAL=CAMERA|LIDAR|EVENT|DEPTH` 를 앞에 붙여 4회 실행(각 결과 mIoU 를 base 와
+  비교). 입력 dict 의 모달 키는 `CAMERA`,`LIDAR`,`EVENT`,`DEPTH`(+주 모달 중복 `image`)이며
+  `CAMERA` 지정 시 `image` 까지 함께 0 으로 채운다.
 - **DGFusion/CAFuser 내부 프로브**(저장소 안에서):
   ```bash
   # 먼저 모듈 이름 확인 후 정규식을 맞춘다(추측 금지)
@@ -167,8 +169,34 @@ python tools/baseline_failure/viz_panels.py \
     --depth-head-regex '<...>' --depth-token-regex '<...>' \
     --xattn-regex '<...>' --split test --out probe_dgf_test.csv
   # depth 토큰 0 치환 대조: BF_ZERO_DEPTH_TOKEN=1 python .../probe_dgfusion.py ...
+  # 모달 zero-out 기제 측정(A4): --zero-modal CAMERA|LIDAR|EVENT|DEPTH — 해당 모달 입력을
+  # 0 으로 채운 추론에서 이미지별 depth AbsRel·delta1(+분할 mIoU)를 같은 CSV 행에 기록.
+  # depth GT 는 DELIVER depth/ 원본, 로그 스케일 여부는 MODEL.DEPTH_HEAD.LOSS.LOG_SCALE 를 읽어 처리.
+  python .../probe_dgfusion.py --config-file <cfg> --weights <ckpt> \
+    --zero-modal DEPTH --split test --out probe_dgf_zero_depth.csv
   python .../probe_cafuser.py --config-file <cfg> --weights <ckpt> --out probe_caf_test.csv
   ```
+
+## D2b — 채점 프로토콜 대조(A2) · 체크포인트 안정성(A5) · depth 구간 IoU(A6)
+```bash
+# A2: 기준선(1024² 채점)과 우리(native 1042² GT)를 같은 축에서 재채점. 파일명에 프로토콜이
+# 붙어 두 결과가 덮어쓰지 않는다(native 는 기존 이름 그대로). 요약 JSON 에 프로토콜·한계 note 기록.
+python tools/baseline_failure/per_image_metrics.py --gt <ROOT>/ours/test/gt \
+  --split test --out <ROOT>/analysis/test --gt_protocol resized1024 \
+  --models ours=<ROOT>/ours/test/pred dgffinal=<ROOT>/dgffinal/test/pred
+
+# A5: 체크포인트별 예측 덤프로 이미지가 일관되게 나쁜지(always_fail)/좋은지/흔들리는지 분류.
+# 라벨 규칙 = 이미지별 mIoU 가 그 체크포인트의 중앙값 미만인 비율 ≥ 9/11(≈0.818, --fail_ratio).
+python tools/baseline_failure/ckpt_stability.py --gt <ROOT>/ours/test/gt \
+  --split test --out <ROOT>/analysis/test \
+  --preds ep40=<ROOT>/ours_ep40/test/pred ep55=<ROOT>/ours_ep55/test/pred ep70=<ROOT>/ours_ep70/test/pred
+
+# A6: 원본 depth 의 로그 5분위 구간별 IoU·pixel acc + 모델 간 차이(dgf−caf 등).
+# depth==0 또는 GT==255 픽셀 제외, 구간 경계는 split 전체 유효 depth 픽셀에서 계산해 JSON 기록.
+python tools/baseline_failure/depth_bin_iou.py --gt <ROOT>/ours/test/gt \
+  --depth_root /ailab_mat2/dataset/DELIVER --split test --out <ROOT>/analysis/test \
+  --models ours=<ROOT>/ours/test/pred dgf=<ROOT>/dgffinal/test/pred caf=<ROOT>/caf/test/pred
+```
 
 ## 스모크
 ```bash
