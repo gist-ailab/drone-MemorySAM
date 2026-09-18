@@ -9,6 +9,8 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+📝 2026-09-18 (판정 반영) — 생각정리 세션 판정 4건 집행: ① N1(MUSES 시드 분산) 카드 정정 채택(공식 test 2시드 std 0.71·범위 1.00, 이후 MUSES test 주장은 2시드 이상 mean±std, 단일 제출은 best 단일 런 표기) ② MUSES 헤드라인 문장 교체 = "공식 test 79.29 ± 0.71(P39.1-rank 3모달, 시드2·20260825, PhysAug-on), best 79.788, DGFusion 79.5 대비 mean −0.21 / best +0.29", 융합 계보 1위는 best 한정 각주로 강등, 공정선 안의 헤드라인은 PhysAug-off 풀 런 셋(E7·E1M·E13M) 공식 val 최고를 test 제출(user 승인 후) ③ 시드 20260824 재학습 안 함 ④ 노션 논문 페이지 §0·§3.6·§4·§6 + 차트(fig1 SOTA 격차·fig3 MUSES 리더보드) 재생성·교체(audit 통과). current.md MUSES 행 3곳 같은 문장으로 갱신.
+
 📊 2026-09-18 — **MUSES 공식 test 시드 분산 첫 실측**: P39.1-rank 3모달 시드 20260825(ep168, 공식 val 81.47) Codabench test **78.786**, 시드2 79.788 대비 −1.00(2점 mean 79.29±0.71). 손실은 clear_day −2.98·snow_night −4.68에 집중, fog_night 69.2(시드2 동수준)·snow 역전 4회·night truck 26.63 병목 재현. 2점 mean은 DGFusion 79.5보다 −0.21이라 "융합 계보 1위"는 시드2 단일 런 기준으로만 성립. 판독 `experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md`, registry·plan·current·MUSES 인덱스 갱신. 헤드라인 표기(best vs mean±std) 판정은 생각정리 세션에 전달.
 
 🏁 2026-09-14 — **DGFusion 재학습 완주**(yeon, 19:22, 80k 이후 bf16, NaN 0). 정본 final-iter **val 65.62 / test 55.56**(공개 66.51/56.71 대비 −0.89/−1.15), val-best 80k val 66.54 / test 55.68. 20개 ckpt 전부 test 평가(서버 내 `after_train_sweep.sh`가 학습 종료 4분 만에 GPU 4장으로 자동 병렬 평가). 한 런 안에서 후반 test std 0.74·val→test Pearson 0.52 — 공개 단일 수치 56.71도 ±0.7 수준의 선택 잡음을 안고 있다는 근거. 재현 격차 원인(seed·bf16·기종)은 분리 불가. CAFuser(lecun)는 9/15 02:00경 완주 예정, 같은 방식으로 자동 평가 대기.
