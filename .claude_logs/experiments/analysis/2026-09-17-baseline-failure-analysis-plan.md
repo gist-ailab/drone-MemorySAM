@@ -200,3 +200,66 @@ D4 의 모달 제거에서 depth 의존이 RGB 의존의 약 3 배로 나왔는�
 - 남는 한계: 이 측정은 DELIVER 한 데이터셋, 한 체크포인트(80k)에서 얻은 것이다. depth 가
   입력에 없는 데이터셋(MUSES 등)에서는 같은 보조 감독이 다른 역할을 할 수 있으므로 그대로
   옮겨 적용할 수 없다.
+
+---
+
+## D4 비교 (2026-09-19) — 기준선 둘과 우리 모델의 모달 의존 구조
+
+집행: 재학습 담당 세션(jarvis). 판정 문구는 넣지 않고 수치와 해석까지만 적는다.
+
+D4 에서 DGFusion 한 모델만 보았을 때는 "depth 보조 감독이 depth 의존을 키운 것인가" 를
+가릴 수 없다. 그래서 같은 개입 축으로 **depth 보조 헤드가 없는 CAFuser** 와 **우리 모델**을
+같이 쟀다. 세 측정 모두 모달을 하나씩 정규화 후 0 으로 채우고 DELIVER test 1,897 장을 돌렸다.
+
+### 입력
+
+- DGFusion: 재학습본 `model_0079999.pth`(학습기 val-best, val 66.54), 공식 config, 공식 채점.
+- CAFuser: lecun 학습본의 val-best `model_0169999.pth`(val 67.04@170k), 공식 config, 공식 채점.
+  NAS 사본과 jarvis 사본의 md5 가 `70f15f0695bf8607082bdceb4929a810` 로 일치함을 확인한 뒤 실행했다.
+- 우리 모델: E1(백본 블록 6/12/18/24 중간층 4탭 카드) 확정 시드1 본 런의 학습기 val-best
+  `epoch140_68.9_top1_checkpoint.pth`, 평가 config `configs/eval/jarvis-deliver_rgbdel_P46_c3only_seed20260821_eval1024_E1_confirm200.yaml`.
+- 도구: 기준선은 `tools/baseline_failure/d2_zero_modality.patch`(BF_ZERO_MODAL), 우리 모델은
+  `tools/baseline_failure/modality_zero_ablation.py`. 우리 파이프라인은 데이터셋 변환에서 정규화를
+  마친 텐서를 모델에 넘기므로, 그 텐서를 0 으로 두는 것이 기준선의 normalized 개입과 같은 축이다.
+- 실행 스크립트: `run_cafuser_modal_zero.sh`, `run_ours_modal_zero_parallel.sh`. 코드 develop `4754ec4`.
+
+### 배치 등가와 채점 재현 확인
+
+- CAFuser 기준값은 배치 8 에서 55.22828, 배치 1 에서 55.22859 로 편차 0.0003 이다(허용 0.01).
+- 우리 모델 기준값 54.633 은 판정 대장에 적힌 같은 체크포인트의 legal v1 test **54.63** 과 같다.
+  즉 이 도구는 정규 채점 경로를 그대로 재현한다. 다만 이 값은 **legal v1 축**이며, 헤드라인으로
+  쓰는 v2 재채점값(같은 ckpt 55.97)과는 다른 축이므로 섞어 인용하지 말 것.
+
+### 모달 제거 Δ (test mIoU)
+
+| 제거 모달 | DGFusion (기준 55.68) | CAFuser (기준 55.23) | 우리 모델 (기준 54.63) |
+|---|---|---|---|
+| DEPTH(HHA) | 22.43 (**−33.25**) | 23.76 (**−31.47**) | 37.01 (**−17.63**) |
+| CAMERA(RGB) | 44.13 (−11.55) | 45.12 (−10.11) | 46.67 (−7.97) |
+| EVENT | 55.51 (−0.17) | 55.19 (−0.04) | 55.13 (**+0.49**) |
+| LIDAR | 55.74 (+0.06) | 55.21 (−0.01) | 54.54 (−0.10) |
+
+depth 의존과 RGB 의존의 비: DGFusion 2.88 배, CAFuser 3.11 배, 우리 모델 2.21 배.
+
+### 읽기
+
+- **depth 보조 감독은 이 편중을 만든 원인이 아니다.** depth 헤드가 아예 없는 CAFuser 도 depth
+  제거 −31.47, RGB 제거 −10.11 로 DGFusion 과 사실상 같은 모양이다. 두 모델의 차이(−1.78,
+  −1.44)는 같은 학습 안 후반 체크포인트 사이의 test 표준편차 0.74 의 두 배 남짓이라 구조적
+  차이로 보기 어렵다.
+- **event 와 lidar 는 세 모델 모두에서 쓰이지 않는다.** 지워도 ±0.5 안쪽이고, 우리 모델은 event 를
+  지웠을 때 오히려 +0.49 다. DELIVER 4모달이라는 설정이 실제로는 2모달로 작동한다는 뜻이며,
+  이는 우리 계보에서 이미 관측한 모달 잉여와 같은 방향이다.
+- **우리 모델은 depth 편중이 기준선의 절반 수준이다**(−17.63 대 −31.47/−33.25). RGB 의존도 더
+  작다(−7.97). 같은 벤치에서 한 모달에 덜 기대고도 비슷한 성능을 낸다는 뜻이므로, 이것이 우리
+  쪽 기제가 기준선과 다르게 작동하는 지점이다. 다만 이 비교는 절대 mIoU 축이 서로 다르므로
+  (기준선은 각자의 공식 프로토콜, 우리는 legal v1) Δ 의 크기끼리만 견주어야 한다.
+- 남는 한계: 우리 모델 쪽은 시드 하나에서만 쟀다. 세 모델 모두 DELIVER 한 벤치의 결과이며,
+  depth 가 입력에 없는 벤치에는 그대로 옮길 수 없다.
+
+### 산출물
+
+- 기준선 로그·요약: NAS `analysis/baseline_failure_20260917/reports/modal_zero_dgf80k/`(DGFusion),
+  jarvis `/SSDb/jemo_maeng/dgfusion_train/cafuser_modal_zero/`(CAFuser).
+- 우리 모델: jarvis `/SSDb/jemo_maeng/src/drone-MemorySAM/modal_zero_ours_par/*.json`.
+- depth 헤드 프로브 원자료: NAS `analysis/baseline_failure_20260917/reports/depth_head_probe_dgf80k/`.
