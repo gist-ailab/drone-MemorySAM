@@ -1760,3 +1760,42 @@ motorcycle 52.63 · rider 60.10 · pole 62.56 · night truck 41.44
 **기동검증 통과**: `[E-LORA] mode=per_modal lora_trainable=6,291,456 total_trainable=57,705,247`(r16 파라미터 수, 스모크에서 예측한 값과 일치), GPU0,1 정상 가동.
 
 **미착수 항목**: E-LoRA arm B(shared r16)·arm C(shared8+resid8)는 아직 미착수 — bengio/lecun은 develop 대비 각각 436·190커밋 뒤처지고 다른 세션 미커밋 WIP가 있어 보류 중, yeon/hpca100의 다음 해방 슬롯을 기다린다.
+
+---
+
+## 2026-09-18 MUSES 공식 test — P39.1-rank 3모달 시드 20260825 = 78.786 (시드 분산 첫 실측)
+
+**제출**: `muses_P39_1_seed20260825_3modal_ep168_submission.zip` (P39.1-rank 3모달 img/lidar/event, 시드2 레시피에서 `TRAIN.SEED`만 20260825, val-best ep168 트레이너 81.7 / 공식 val 81.4653). 제출 지시 = 생각정리 세션(N1 = MUSES 시드 분산 카드 2번째 시드).
+**공식 test mIoU = 78.786** — 시드2 79.788 대비 **−1.002**. 2시드 mean 79.287 / std 0.709. 공식 val→test 낙차 −2.68(시드2 −2.34).
+
+### per-condition (괄호 = 시드2 대비 Δ)
+
+| 축 | 값 |
+|---|---|
+| clear | 77.140 (−2.16) |
+| fog | 78.877 (+0.17) |
+| rain | 78.858 (−0.21) |
+| snow | 77.673 (−1.37) |
+| day | 79.129 (−1.12) |
+| night | 75.112 (−1.71, 주야 격차 −4.02) |
+| clear_day | 77.046 (**−2.98**) |
+| clear_night | 75.481 (−0.58) |
+| fog_day | 78.141 (+1.78) |
+| **fog_night** | **69.217** (−0.39, 시드2 69.61과 동수준 = 병목 재현) |
+| rain_day | 78.854 (+0.11) |
+| rain_night | 73.901 (−0.45) |
+| snow_day | 69.965 (−1.19) |
+| snow_night | 72.731 (**−4.68**, snow 역전 4회째 재현) |
+
+### 약클래스 (full)
+
+motorcycle 55.99 · rider 59.89 · pole 62.59 · **fence 62.34** · **wall 76.51** · night truck **26.63**(전 제출 최악). P38-m2f 대비 손실은 wall −3.9 / fence −4.3 / terrain −1.4에 집중, 얇은 클래스(pole·rider·bicycle)는 +1~2.
+
+### 판정
+
+- **MUSES test 시드 분산 1.00** — 우리 제출 간 아키텍처 격차(P43 −0.44, P38 −0.76 등)가 전부 이 폭 안. 시드 통제 없는 제출 간 비교 서술 무효.
+- **"융합 계보 1위(DGFusion 79.5 상회)"는 시드2 단일 런에서만 성립** — 2점 mean 79.29는 −0.21. 헤드라인 표기 방식(best 병기 vs mean±std)은 생각정리 판정 대상.
+- fog_night·snow 역전·night truck 붕괴는 시드 무관 재현 → 구조적 병목 근거 강화.
+- 시드 20260824 ckpt 소실로 3점째는 재학습 필요(보류, 생각정리 결정).
+- 상세: `analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md`. 원문 사본: NAS `analysis_logs/muses_test/2026-09-18-P39_1-seed20260825-78.786.md`.
+

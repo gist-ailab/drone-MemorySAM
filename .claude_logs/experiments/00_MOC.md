@@ -23,6 +23,7 @@
 
 | 파일 | 한줄설명 |
 |------|----------|
+| [analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md](analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md) | MUSES 공식 test 시드 20260825 = 78.786(시드2 79.788 −1.00) — MUSES test 시드 분산 첫 실측(2점 mean 79.29±0.71), 융합 계보 1위는 best 단일 런 한정, fog_night·snow 역전·night truck 병목은 시드 무관 재현 |
 | [analysis/2026-09-18-baseline-failure-d3-test-findings.md](analysis/2026-09-18-baseline-failure-d3-test-findings.md) | 기준선 실패 분석 D3(test) — 얇은 객체는 검출이 아니라 경계에서 지고, 손실은 전 조건에 고르게 깔려 있다 |
 | [analysis/2026-09-04-p52-unibal-calibration.md](analysis/2026-09-04-p52-unibal-calibration.md) | P52 UniBal-adaptive 캘리브레이션 — P47-2 UniBal 고정런(완주, val-best 82.06@ep164, G2=81.42) 실측 기반, CAP 기본 2.0→**0.7** 권고(LAMBDA_U_MAX/EMA_M/WARMUP_EP 유지) |
 | [analysis/2026-08-16-c2-mcc-ab-verdict.md](analysis/2026-08-16-c2-mcc-ab-verdict.md) | C2-MCC A/B 유해 확정(Δ−1.67) — DELIVER SOTA 경로 종결, 캠페인 종결 선언(H15) |

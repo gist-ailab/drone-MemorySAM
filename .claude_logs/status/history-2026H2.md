@@ -9,6 +9,8 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+📊 2026-09-18 — **MUSES 공식 test 시드 분산 첫 실측**: P39.1-rank 3모달 시드 20260825(ep168, 공식 val 81.47) Codabench test **78.786**, 시드2 79.788 대비 −1.00(2점 mean 79.29±0.71). 손실은 clear_day −2.98·snow_night −4.68에 집중, fog_night 69.2(시드2 동수준)·snow 역전 4회·night truck 26.63 병목 재현. 2점 mean은 DGFusion 79.5보다 −0.21이라 "융합 계보 1위"는 시드2 단일 런 기준으로만 성립. 판독 `experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md`, registry·plan·current·MUSES 인덱스 갱신. 헤드라인 표기(best vs mean±std) 판정은 생각정리 세션에 전달.
+
 🏁 2026-09-14 — **DGFusion 재학습 완주**(yeon, 19:22, 80k 이후 bf16, NaN 0). 정본 final-iter **val 65.62 / test 55.56**(공개 66.51/56.71 대비 −0.89/−1.15), val-best 80k val 66.54 / test 55.68. 20개 ckpt 전부 test 평가(서버 내 `after_train_sweep.sh`가 학습 종료 4분 만에 GPU 4장으로 자동 병렬 평가). 한 런 안에서 후반 test std 0.74·val→test Pearson 0.52 — 공개 단일 수치 56.71도 ±0.7 수준의 선택 잡음을 안고 있다는 근거. 재현 격차 원인(seed·bf16·기종)은 분리 불가. CAFuser(lecun)는 9/15 02:00경 완주 예정, 같은 방식으로 자동 평가 대기.
 
 📝 2026-09-13 (정정) — **DGFusion NaN 원인 확정 = OneFormer `task_mlp` fp16 넘침 → bf16으로 재개.** 오전 NaN 건너뛰기 패치로 yeon 재개했으나 89,855부터 20회 연속 NaN으로 안전장치 종료 — "드문 배치 넘침" 1차 진단이 틀렸음. `act_probe.py`로 체크포인트별 모듈 활성값을 재 보니 `task_mlp` 출력 최대가 52.6k@50k→62.9k@80k로 단조 증가(fp16 최대 65,504의 96%), 입력이 과제 문장이라 입력 무관 → 넘기면 모든 배치 NaN. 가중치는 멀쩡(최대 |57|). `DGFUSION_AMP_BF16=1`(train_net.py opt-in)로 bf16 autocast 전환, 80k부터 재개(10:09, yeon GPU0~3, 0.97 s/iter, 완주 예상 9/14 18:30경). 80k 이후 bf16은 공식 레시피와의 차이로 보고 의무. 부수 발견: 1차 진단의 "BatchNorm 없음"도 틀림(`depth_feature_fusion/concat.py`에 BatchNorm2d). 10k~80k test 전이 곡선 확보(val→test Pearson 0.33, test std 0.64) — registry DGFusion 행.

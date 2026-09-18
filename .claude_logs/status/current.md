@@ -33,7 +33,7 @@ moved: 2026-07-08
 > 이유 = 일일 카드와 E1·E13 확정 판정(§5-24 포함)이 모두 이 규칙이고, 공개 기준선도 학습 루프 안의 val 로 고른다(CMNeXt val-best · CAFuser·DGFusion final-iter).
 > 이 규칙으로 **DELIVER test 우리 최고 = 56.99**(P46 C3-only 본런 ep70, 768 학습·1024 평가, 우리 하네스 native-GT·BS1; CMNeXt 식 리사이즈 GT 로도 56.99 동일) 🔴 **각주(2026-09-17 user 질문 반영): 이 56.99 본 런은 시드 고정 기능이 없던 시점의 무작위 시드 런이다.** 같은 코드로 시드를 고정해 다시 돌린 런들은 이 값을 재현하지 못했다 — 정본 하네스 val 재선택 규칙(N6)으로 5시드 평균 **54.39±0.76**, 학습기 val-best top1 규칙으로 5시드 평균 **53.83**. 즉 56.99 는 단일 런의 상단 꼬리이지 재현된 수준이 아니다. → **DGFusion 56.71 대비 +0.28 · MM SAM-adapter 57.35 대비 −0.36**. 5시드 평균은 이 규칙으로 53.83(24클래스 54.66).
 > P34 56.62 는 더 이상 최고가 아니다. N6 legal-val 재선택 수치(평균 54.39 · 최고 55.29)는 **규칙 이름을 붙여 보조로만** 병기한다 — 결과를 보고 유리한 쪽을 고르지 않기 위해 규칙을 하나로 고정한다.
-> **MUSES 우리 최고 = Codabench 공식 test 79.788**(`jarvis_muses_rgbel_P39_1_rank_seed2`, 3모달, val-best 82.62@ep208) → GtA 82.39 대비 **−2.60**. 79.025(P38-m2f)는 7월 기록이다. 융합 계보 1위(DGFusion 79.5 상회) 서술은 유지.
+> **MUSES 우리 최고 = Codabench 공식 test 79.788**(`jarvis_muses_rgbel_P39_1_rank_seed2`, 3모달, val-best 82.62@ep208) → GtA 82.39 대비 **−2.60**. 79.025(P38-m2f)는 7월 기록이다. 융합 계보 1위(DGFusion 79.5 상회) 서술은 **시드2 단일 런 한정으로 유지** — 09-18 시드 20260825 공식 test **78.786**(−1.00) 수신, 2점 mean **79.287±0.709**는 DGFusion 79.5 −0.21(판독 `experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md`).
 
 
 | 벤치 | 우리 최선 | vs SOTA | 판정 |
@@ -43,13 +43,13 @@ moved: 2026-07-08
 > | 벤치 | 우리 최고(모달·시드) | 같은 계열 최고 | 격차 | 적은 모달 최고(2차) |
 > |---|---|---|---|---|
 > | DELIVER test | 56.99, 4모달, 단일 런(5시드 평균 53.83) | DGFusion 56.71, 4모달 | +0.28 | MM SAM-adapter 57.35, RGB+D |
-> | MUSES test 공식 | 79.788, 3모달, 단일 런 | DGFusion 79.5, 4모달 | +0.29 | MM SAM-adapter 81.07, RGB+L · GtA 82.39, 카메라 단독 |
+> | MUSES test 공식 | 79.788, 3모달, 단일 런(시드2) · 2시드 mean 79.29±0.71(09-18) | DGFusion 79.5, 4모달 | +0.29(best) / −0.21(mean) | MM SAM-adapter 81.07, RGB+L · GtA 82.39, 카메라 단독 |
 > | MCubeS | 58.07, 4모달, 3시드 | StitchFusion 55.9, 4모달 | +2.17 | — |
 >
 > 세 최고치는 구조(ReliaDINO P39.1 트렁크)는 같으나 손실 설정이 다르다(DELIVER C3 on / MUSES·MCubeS C3 off — MUSES C3 mfeat λ0.2 −0.97, MCubeS C3-on −0.24). E1·E13 확정 런은 우리 최고 단일 런보다 낮아 SOTA 거리 게이트(카드 §0-2) 미달. MUSES 200ep 풀 런 셋(기준선·E1·E13, 시드 3407·902)은 09-18~19 완주.
 
 | DELIVER | 🔴 **1차 규칙 = 학습기 val-best top1 (2026-09-16 고정)**: test 최고 **56.99**(P46 C3-only 본런 ep70) · 5시드 평균 53.83(24클래스 54.66) · legal val 최고 **67.89**(E1 확정 시드3, 단일 시드·확정 전) | test: DGFusion 56.71 **+0.28** · MM SAM-adapter 57.35 −0.36 / val: CAFuser-CAA 68.79 −0.90 · MM SAM-adapter 69.60 −1.71 | 보조(규칙명 필수) = N6 legal-val 재선택 평균 54.39±0.76 · 최고 55.29(seed816). 확정 3페어 판정 09-17 |
-| MUSES | **P39.1-rank seed2 3모달** Codabench 공식 test **79.788**(val 82.62@ep208) — 정본(79.025 = 7월 P38-m2f 기록) | GtA(camera-only) 82.39 대비 **−2.60** · **융합 계보 1위**(DGFusion 79.5 상회) | 정면 돌파 비현실 → 포지셔닝 = 융합 계보 1위 + 악조건 강건성 |
+| MUSES | **P39.1-rank seed2 3모달** Codabench 공식 test **79.788**(val 82.62@ep208) — 정본(79.025 = 7월 P38-m2f 기록) | GtA(camera-only) 82.39 대비 **−2.60** · **융합 계보 1위**(DGFusion 79.5 상회, **best 단일 런 기준**; 2시드 mean 79.29는 −0.21) | 정면 돌파 비현실 → 포지셔닝 = 융합 계보 1위 + 악조건 강건성 |
 | MUSES PQ | things 22.87 / All 35.55 (P47-D1 ep172) | SOTA(CAFuser) 59.26 −23점대 | PQ 축 비교 불가 — limitation 절 소재 |
 | **MCubeS** | **통일 레시피(C3-off) 3-seed: 58.07±0.49** {57.93, 57.67, 58.62} — 커뮤니티 표준 test split(102장, 로더 val→test.txt 검증) | published 최고 Mul-VMamba 54.65 대비 **+3.42 / min +3.02** | 🏆 **1등 확정** — 3번째 벤치 첫 진입(2026-08-25~31). C3-on(N4b) = rubber +9.76·overall −0.10(dose-response 적중) |
 | Det | D1-recovered(ViT-L) AP50 **0.9321**@ep6 | 목표 0.85 **+0.08** | 종결 국면 |
