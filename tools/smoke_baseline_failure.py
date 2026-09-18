@@ -31,6 +31,10 @@ A2~A7 확장 항목:
        1024² 입력은 보정 없이 에러. floor(torch nearest) vs 중심(PIL NEAREST) 정렬이
        실제로 다른 결과를 냄을 가는 줄무늬로 단언. dump_preds_ours --save_1024 는
        모델이 필요해 argparse 인자 존재만 단언.
+  (A10) d2_eval_batch.patch(BF_EVAL_BATCH — 평가 배치) — zero 패치와 양방향 병합 적용이
+       합성 train_net/test_net 사본에서 모두 성공·패치 산출 블록이 복원 킷 정본과 byte
+       정합. run_eval_autobatch.sh --dry_run — 24GB 가정 후보(16 12 8 6 4 2 1)·최종
+       명령 전달·인자 파싱 에러를 GPU·모델 없이 단언.
 파일 1·2·6·7 은 실서버 전용이라 import·인자 파싱(+id 규약 동치성)만 검사.
 
 실행: /home/jemo/anaconda3/envs/MMSS_SAM/bin/python tools/smoke_baseline_failure.py
@@ -751,6 +755,149 @@ def smoke_a9_dump_arg():
     print("[smoke] (A9-1) dump_preds_ours --save_1024 인자 등록 ✓")
 
 
+# ---------------------------------------------------------------------------
+# A10 — 평가 배치 옵션 패치 충돌 검증 · autobatch dry-run
+# ---------------------------------------------------------------------------
+# 두 패치(d2_eval_batch: build_test_loader, d2_zero_modality: main)의 컨텍스트만 갖춘
+# 합성 기준선 entry 최소 파일. 실제 원격 저장소(yeon dgfusion_train/lecun cafuser_train)
+# 원본은 이 박스에 없어 스모크는 이 합성 사본으로 검증한다.
+A10_SYNTH = (
+    '"""\n'
+    '합성 기준선 entry — 두 패치의 컨텍스트만 갖춘 최소 파일.\n'
+    '"""\n'
+    "import os\n"
+    "\n"
+    "\n"
+    "class Trainer(DefaultTrainer):\n"
+    "    @classmethod\n"
+    "    def build_test_loader(cls, cfg, dataset_name):\n"
+    '        """\n'
+    "        Returns:\n"
+    "            iterable\n"
+    "        It now calls :func:`detectron2.data.build_detection_test_loader`.\n"
+    "        Overwrite it if you'd like a different data loader.\n"
+    '        """\n'
+    '        if cfg.INPUT.DATASET_MAPPER_NAME == "muses_unified":\n'
+    "            mapper = MUSESTestDatasetMapper(cfg, False)\n"
+    '        elif cfg.INPUT.DATASET_MAPPER_NAME == "deliver_semantic":\n'
+    "            mapper = DELIVERSemanticDatasetMapper(cfg, False)\n"
+    "        else:\n"
+    "            mapper = DatasetMapper(cfg, False)\n"
+    "        return build_detection_test_loader(cfg, dataset_name, mapper=mapper)\n"
+    "\n"
+    "\n"
+    "def main(args):\n"
+    "    cfg = setup(args)\n"
+    "\n"
+    "    if args.inference_only and args.eval_only:\n"
+    '        raise Exception("You can only run inference or evaluation, not both at the same time.")\n'
+    "\n"
+    "    elif args.eval_only or args.inference_only:\n"
+    "        model = Trainer.build_model(cfg)\n"
+    "        net_params = sum(p.numel() for p in model.parameters() if p.requires_grad)\n"
+    '        print("Total Params: {} M".format(net_params/1e6))\n'
+    "        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(\n"
+    "            cfg.MODEL.WEIGHTS, resume=args.resume\n"
+    "        )\n"
+    "        res = Trainer.test(cfg, model, eval_only=args.eval_only, inference_only=args.inference_only)\n"
+    "        if cfg.TEST.AUG.ENABLED:\n"
+    "            res.update(Trainer.test_with_TTA(cfg, model))\n")
+
+
+def smoke_a10_patch(tmp):
+    """(A10-1) d2_eval_batch.patch 가 d2_zero_modality.patch 와 함께 적용될 때 충돌하지
+    않는지 — 합성 train_net.py/test_net.py 사본에 두 순서로 각각 적용해 모두 성공함을
+    단언한다. 추가로 패치 산출 블록이 복원 킷 정본에 byte 일치하고, zero 패치가 배치
+    옵션 반영 후의 킷 정본에도 적용되는지 확인한다."""
+    import subprocess
+    bf = _REPO_ROOT / "tools/baseline_failure"
+    patch_b = bf / "d2_eval_batch.patch"
+    patch_z = bf / "d2_zero_modality.patch"
+    assert patch_b.exists() and patch_z.exists(), "A10 패치 파일 없음"
+
+    # 실제 기준선 저장소 원본(원격 yeon/lecun)은 로컬에 없다 — 원본 대상 적용 검증은
+    # 건너뛰고 아래 합성 사본으로 검증한다(킷 정본 대조는 리포 안 파일로 수행).
+    print("[smoke] (A10-1) 실제 기준선 저장소 원본 없음 — 합성 파일로 패치 검증(원본 적용은 서버에서)")
+
+    def apply_dir(tag, order):
+        d = tmp / tag
+        d.mkdir(parents=True)
+        (d / "train_net.py").write_text(A10_SYNTH, encoding="utf-8")
+        (d / "test_net.py").write_text(A10_SYNTH, encoding="utf-8")
+        for p in order:
+            r = subprocess.run(["git", "apply", str(p)], cwd=d,
+                               capture_output=True, text=True)
+            assert r.returncode == 0, f"{tag}/{p.name} 적용 실패:\n{r.stdout}{r.stderr}"
+        return (d / "train_net.py").read_text(encoding="utf-8")
+
+    o_bz = apply_dir("a10_bz", [patch_b, patch_z])
+    o_zb = apply_dir("a10_zb", [patch_z, patch_b])
+    assert o_bz == o_zb, "두 순서의 적용 결과가 다르다"
+    for token in ("BF_EVAL_BATCH", "batch_size=_bf_eval_batch", "BF_ZERO_MODAL",
+                  "register_forward_pre_hook"):
+        assert token in o_bz, f"병합 결과에 {token} 없음"
+
+    kit = _REPO_ROOT / "third_party/dgfusion_train_restore/train_net.py"
+    if not kit.exists():
+        print("[smoke] (A10-1) 복원 킷 정본이 없어 킷 대조를 건너뛴다: " + str(kit))
+        return
+    kit_text = kit.read_text(encoding="utf-8")
+    patch_text = patch_b.read_text(encoding="utf-8")
+    added = [l[1:] for l in patch_text.splitlines(keepends=True)
+             if l.startswith("+") and not l.startswith("+++")]
+    assert len(added) == 34, f"추가 줄 수 {len(added)} != 34(두 파일 × 17)"
+    assert added[17:] == added[:17], "train_net/test_net 두 hunk 본문이 다르다"
+    assert "".join(added[:17]) in kit_text, "킷 정본에 패치 추가 블록이 byte 일치하지 않는다"
+    # 배치 옵션 반영 후의 킷 정본에 zero 패치도 그대로 적용돼야 한다(공존 확인).
+    d = tmp / "a10_kit_zero"
+    d.mkdir(parents=True)
+    (d / "train_net.py").write_text(kit_text, encoding="utf-8")
+    r = subprocess.run(["git", "apply", str(patch_z)], cwd=d,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, f"킷 정본에 zero 패치 적용 실패:\n{r.stderr}"
+    print("[smoke] (A10-1) eval_batch·zero 패치 양방향 병합 + 킷 정본 byte 정합 ✓")
+
+
+def smoke_a10_autobatch(tmp):
+    """(A10-2) run_eval_autobatch.sh —dry_run — GPU·모델 없이 인자 파싱과 배치 후보
+    계산을 확인한다. 24GB(24576MiB) 를 가정한 후보 목록이 16 12 8 6 4 2 1 인지,
+    최종 명령에 config·weights·오버라이드가 그대로 실리는지, 잘못된 인자(홀수
+    오버라이드·필수 인자 누락)가 명확한 에러(종료 코드 1)로 멈추는지 단언한다."""
+    import os
+    import subprocess
+    script = _REPO_ROOT / "tools/baseline_failure/run_eval_autobatch.sh"
+    assert script.exists(), f"스크립트 없음: {script}"
+    env = dict(os.environ, BF_AUTOBATCH_TOTAL_MIB="24576")
+    r = subprocess.run(
+        ["bash", str(script), "--dry_run",
+         "--repo", "/fake/dgfusion_train", "--cfg", "fake.yaml",
+         "--weights", "model_final.pth", "--out", str(tmp / "ab_out"),
+         "--log", str(tmp / "ab.log"), "MODEL.TEST.DEPTH_ON", "False"],
+        capture_output=True, text=True, env=env)
+    assert r.returncode == 0, f"dry_run 실패:\n{r.stdout}{r.stderr}"
+    assert "candidates: 16 12 8 6 4 2 1" in r.stdout, r.stdout
+    for token in ("BF_EVAL_BATCH=16", "train_net.py", "--config-file fake.yaml",
+                  "--eval-only", "MODEL.WEIGHTS model_final.pth",
+                  "MODEL.TEST.DEPTH_ON False"):
+        assert token in r.stdout, f"최종 명령에 {token} 없음:\n{r.stdout}"
+    # 홀수 오버라이드 — KEY VALUE 쌍이 아니면 에러.
+    r = subprocess.run(["bash", str(script), "--dry_run", "--repo", "r", "--cfg", "c",
+                        "--weights", "w", "--out", "o", "--log", "l", "SOME.KEY"],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 1 and "KEY VALUE" in r.stderr, (r.returncode, r.stderr)
+    # 필수 인자 누락 — 에러.
+    r = subprocess.run(["bash", str(script), "--dry_run", "--cfg", "c"],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 1, r.returncode
+    # 48GB 급(48688MiB) 후보도 급 테이블대로 갈린다.
+    env48 = dict(os.environ, BF_AUTOBATCH_TOTAL_MIB="48688")
+    r = subprocess.run(["bash", str(script), "--dry_run", "--repo", "r", "--cfg", "c",
+                        "--weights", "w", "--out", "o", "--log", "l"],
+                       capture_output=True, text=True, env=env48)
+    assert "candidates: 32 24 16 12 8 6 4 2 1" in r.stdout, r.stdout
+    print("[smoke] (A10-2) autobatch dry-run 후보(24GB=16..1)·명령 전달·인자 에러 ✓")
+
+
 def run():
     tmp = Path(tempfile.mkdtemp(prefix="bf_smoke_"))
     gts = build_gt()
@@ -859,6 +1006,10 @@ def run():
     smoke_a9_recover(tmp)
     smoke_a9_alignment()
     smoke_a9_dump_arg()
+
+    # ---- A10 확장: 평가 배치 패치 충돌 검증 · autobatch dry-run ----
+    smoke_a10_patch(tmp)
+    smoke_a10_autobatch(tmp)
 
     # ---- 파일 1·2·6·7: import + argparse + 규약 동치성 ----
     from tools.baseline_failure import dump_preds_ours, d2_dump_evaluator, \
