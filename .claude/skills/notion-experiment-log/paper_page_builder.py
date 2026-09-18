@@ -68,7 +68,7 @@ def _hl_ours(entry):
 
 def sec_summary():
     b = _hl()["benchmarks"]
-    dl, mc = b["deliver"]["ours"][0], b["mcubes"]["ours"][0]
+    dl, dlv, mc = b["deliver"]["ours"][0], b["deliver"]["ours"][1], b["mcubes"]["ours"][0]
     mu = b["muses"]["ours"][0]
     rows = [["벤치·분할", "우리 최고(값·근거·규칙·상태)", "1차 = 같은 모달 계열 최고", "격차", "2차 = 적은 모달 최고", "격차", "손실 설정"]]
     for key, bench in b.items():
@@ -81,13 +81,13 @@ def sec_summary():
     return [
         CO([B("연구 대상 "), T("드론·주행 야간/악천후 멀티모달(RGB + LiDAR + Event + Depth/Thermal/Radar) 시맨틱 세그멘테이션과 객체 검출. 벤치 = DELIVER · MUSES · MCubeS(세그) / poongsan indoor(검출) / MULTIAQUA(챌린지, 종료).")], "📌", "blue_background"),
         CO([B(f"현재 최선(체크포인트 선택 1차 규칙 = {dl['ckpt_rule']}, test-best 금지) "),
-            T(f"DELIVER test {dl['value']}({dl['protocol_short']}, 5시드 평균 {dl['seed_mean']['value']}) — {dl['status']}; 병기 {dl['value_alt']}({dl.get('protocol_short_alt','')}) · {dl['value_alt2']}({dl.get('protocol_short_alt2','')}) · vs 2차 SOTA MM SAM-adapter {b['deliver']['sota2']['value']} = {dl['gap_2nd']} · 1차 융합 기준선 DGFusion {b['deliver']['sota']['value']} 대비 {dl['gap_1st']} · MUSES 공식 test {mu['value']} ± {mu['std']}({mu['protocol_short']}), best 단일 런 {mu['best']}. 융합 계보 최고 DGFusion {b['muses']['sota']['value']} 대비 {mu['gap_1st']}, 카메라 단독 1위 GtA {b['muses']['sota2']['value']} 대비 best −2.60. 각주: '융합 계보 1위'는 best 단일 런 한정 주장이며 본문 주장에서 내린다. 수치 정본 = headline.yaml(레포) 이 절은 그 생성물")], "🏁", "green_background"),
+            T(f"DELIVER test {dl['value']} · best {dl.get('best','—')}({dl['protocol_short']}; {dl.get('basis','')}) — {dl['status']} · 1차 융합 기준선 DGFusion {b['deliver']['sota']['value']} 대비 {dl['gap_1st']} · 2차 SOTA MM SAM-adapter {b['deliver']['sota2']['value']} 대비 {dl['gap_2nd']} · DELIVER val {dlv['value']} · best {dlv.get('best','—')}({dlv['protocol_short']}) — CAFuser-CAA {b['deliver']['sota_val']['value']} 대비 {dlv['gap_1st']} · MUSES 공식 test {mu['value']} ± {mu['std']}({mu['protocol_short']}), best 단일 런 {mu['best']}. 융합 계보 최고 DGFusion {b['muses']['sota']['value']} 대비 {mu['gap_1st']}, 카메라 단독 1위 GtA {b['muses']['sota2']['value']} 대비 best −2.60. 각주: '융합 계보 1위'는 best 단일 런 한정 주장이며 본문 주장에서 내린다. 수치 정본 = headline.yaml(레포) 이 절은 그 생성물")], "🏁", "green_background"),
         P(B("모달리티 정합 벤치 비교 (2026-09-17 규약). "),
           T("우리는 벤치가 주는 모달리티를 전부 쓴다. 그래서 1차 비교 상대는 같은 모달리티 집합을 쓰는 방법이고, 더 적은 모달로 더 높은 점수를 내는 방법은 2차로 병기한다. 체크포인트 선택 1차 규칙은 학습기 val-best(top1)이며, 단일 런 최고와 시드 평균을 함께 적는다.")),
         table(rows),
         P(T("세 최고치는 구조(ReliaDINO P39.1 트렁크)가 같지만 손실 설정이 다르다 — DELIVER 는 C3 를 켜고 MUSES·MCubeS 는 끈다. 그래서 "),
           B("같은 구조인 것은 맞아도 같은 레시피는 아니며, 논문 표에서 손실 설정 열을 숨기지 않는다"),
-          T(f". DELIVER 는 단일 런 최고 legal v2 {dl['value']} 도 5시드 평균 {dl['seed_mean']['value']} 도 DGFusion {b['deliver']['sota']['value']} 에 미달한다({dl['gap_1st']}). 옛 56.99 는 학습기 복제 1024 격자 채점이라 헤드라인에서 제외(ISSUE-036 하네스 편차, 2026-09-18). MCubeS {mc['value']} ±{mc['std']} 는 {mc['gap_1st']} 로 1위.")),
+          T(f". DELIVER test 는 E1 확정 3시드 평균 {dl['value']} 이 DGFusion {b['deliver']['sota']['value']} 에 미달하고 best {dl.get('best','—')} 만 동률({dl['gap_1st']}) — 평균으로 SOTA 를 주장하지 않는다. 옛 56.99 는 학습기 복제 1024 격자 채점이라 헤드라인에서 제외(ISSUE-036 하네스 편차, 2026-09-18). MCubeS {mc['value']} ±{mc['std']} 는 {mc['gap_1st']} 로 1위.")),
         CO([B("캠페인 결론(2026-06~09) "),
             T("추론 경로 안에서 모달을 적응적으로 가중하는 기제(학습 게이트 · 신뢰도→attention logit bias · 추론 재가중 · 패치별 라우팅 · cross-attention 트렁크 · 인코딩-시간 결합)는 전부 반증됨. 성능을 실제로 움직인 축 = 백본 표현력(SAM2→DINOv3 +11.6) · 학습 해상도(768→1024 test +2.0) · 학습 전용 클래스 prototype 손실(C3, DELIVER +1.4) · 어댑터 정렬 사전학습(+0.74, 재현 대기).")], "🧭", "yellow_background"),
         CO([B("지금 하는 것(2026-09-07~) "),
@@ -109,7 +109,7 @@ def sec_problem():
         h2("1.2 공식 목표 (2026-07-03 설정)"),
         table([
             ["트랙", "목표", "현재(합법)", "판정"],
-            ["Seg — DELIVER (4모달 CLDE)", "논문 publish: SOTA 상회 (MM SAM-adapter val 69.60 / test 57.35)", f"1차 규칙(학습기 val-best top1): test 최고 {dl['value']}({dl['protocol_short']}, 2026-09-18 채택) · 5시드 평균 {dl['seed_mean']['value']} · legal val 최고 {dlv['value']}(E1 확정 시드3 — 09-18 확정 3쌍 판정에서 헤드라인 카드 = E1). 보조(정본 하네스 val 재선택 규칙): 평균 54.39 · 최고 55.29(v1)", f"1차(같은 4모달 DGFusion 56.71): 단일 런 최고 {dl['value']}({dl['protocol_short']}) −0.32 미달 · 5시드 평균 {dl['seed_mean']['value']} 미달. 옛 56.99 는 학습기 복제 1024 격자 채점이라 헤드라인 제외(ISSUE-036 하네스 편차, 2026-09-18). 2차(2모달 MM SAM-adapter 57.35): −0.96. val 은 1차 −0.90 · 2차 −1.71"],
+            ["Seg — DELIVER (4모달 CLDE)", "논문 publish: SOTA 상회 (MM SAM-adapter val 69.60 / test 57.35)", f"1차 규칙(학습기 val-best top1, legal v2 채택 2026-09-18): test = E1(중간층 4탭 읽기) 확정 3시드 평균 {dl['value']} · best {dl.get('best','—')} · legal val 3시드 평균 {dlv['value']} · best {dlv.get('best','—')} (09-18 확정 3쌍 판정에서 헤드라인 카드 = E1). 옛 무작위 시드 단일 런 56.99 는 1024 격자 채점이라 제외(v2 56.39 는 참고값)", f"1차(같은 4모달 DGFusion 56.71): {dl['gap_1st']}. 2차(2모달 MM SAM-adapter 57.35): {dl['gap_2nd']}. val 은 1차 CAFuser-CAA 68.79 대비 {dlv['gap_1st']} · 2차 MM SAM-adapter 69.60 대비 {dlv['gap_2nd']}"],
             ["Seg — MUSES (3모달 CLE)", "SOTA 수준 (GtA 82.39 camera-only / 융합 DGFusion 79.5)", f"공식 test 2시드 평균 {mu['value']} ± {mu['std']} · best 단일 런 {mu['best']} (val 82.13, 5-seed val 82.03±)", "융합 계보 1위(best 단일 런 한정) / 전체 −2.60"],
             ["Seg — MCubeS (4모달)", "3번째 벤치 진입", "3-seed 58.07±0.49", "1위 (+3.42)"],
             ["Det — poongsan indoor", "국가 R&D mAP50 0.85", "0.9321 @ep6 (D1-recovered ViT-L)", "달성 (+0.08)"],
@@ -367,14 +367,14 @@ def sec_plan():
           T("우리는 벤치가 주는 모달리티를 전부 쓴다. 그래서 1차 비교 상대는 같은 모달리티 집합을 쓰는 방법이고, 더 적은 모달로 더 높은 점수를 내는 방법은 2차로 병기한다. 체크포인트 선택 1차 규칙은 학습기 val-best(top1)이며, 단일 런 최고와 시드 평균을 함께 적는다.")),
         table([
             ["벤치", "우리 최고(모달 · 시드)", "1차 = 같은 모달 계열 최고", "격차", "2차 = 적은 모달 최고", "격차", "손실 설정"],
-            ["DELIVER test", f"{dl['value']}({dl['protocol_short']}) · 4모달 · 단일 런(5시드 평균 {dl['seed_mean']['value']}) — 옛 {dl['value_alt2']} 는 학습기 복제 1024 격자 채점이라 헤드라인 제외(ISSUE-036, 2026-09-18)", "DGFusion 56.71 · 4모달", dl["gap_1st"], "MM SAM-adapter 57.35 · RGB+D 2모달", dl["gap_2nd"], "C3 on"],
+            ["DELIVER test", f"{dl['value']} · best {dl.get('best','—')}({dl['protocol_short']}) · 4모달 · {dl.get('basis','')} — 옛 56.99 는 학습기 복제 1024 격자 채점이라 헤드라인 제외(ISSUE-036, 2026-09-18)", "DGFusion 56.71 · 4모달", dl["gap_1st"], "MM SAM-adapter 57.35 · RGB+D 2모달", dl["gap_2nd"], "C3 on"],
             ["DELIVER val", f"{dlv['value']} · 4모달 · 단일 시드(E1 확정 시드3 — 09-18 확정 3쌍 판정에서 헤드라인 카드 = E1 · {dlv['protocol_short']}, val v2 재채점 진행 중)", "CAFuser-CAA 68.79 · 4모달", "−0.90", "MM SAM-adapter 69.60 · 2모달", "−1.71", "C3 on"],
             ["MUSES 공식 test", "79.29 ± 0.71 · 3모달 · 2시드(시드2·20260825) 평균 · best 단일 런 79.788 · PhysAug-on", "DGFusion 79.5 · 4모달", "mean −0.21 · best +0.29", "MM SAM-adapter 81.07 · RGB+L · GtA 82.39 · 카메라 단독", "−1.28 · −2.60", "C3 off"],
             ["MCubeS", "58.07 · 4모달 · 3시드 평균", "StitchFusion 55.9 · 4모달", "+2.17", "—", "—", "C3 off"],
         ]),
         P(T("세 최고치는 구조(ReliaDINO P39.1 트렁크)가 같지만 손실 설정이 다르다 — DELIVER 는 C3 를 켜고 MUSES·MCubeS 는 끈다. 그래서 "),
           B("같은 구조인 것은 맞아도 같은 레시피는 아니며, 논문 표에서 손실 설정 열을 숨기지 않는다"),
-          T(f". 단일 런 최고 legal v2 {dl['value']} 도 5시드 평균 {dl['seed_mean']['value']} 도 DGFusion {b['deliver']['sota']['value']} 에 미달한다 — 옛 56.99 는 학습기 복제 1024 격자 채점이라 제외(2026-09-18).")),
+          T(f". DELIVER test 는 E1 확정 3시드 평균 {dl['value']}(best {dl.get('best','—')})이 DGFusion {b['deliver']['sota']['value']} 대비 {dl['gap_1st']} — 평균으로 SOTA 를 주장하지 않는다. 옛 56.99 는 학습기 복제 1024 격자 채점이라 제외(2026-09-18).")),
         h2("6.1 진행 중 (서버별)"),
         P(B("다섯 서버 실측(2026-09-18 11:20 KST). "),
           T("jarvis 8장은 학습이 아니라 평가·재채점(legal v2 재채점, 모달 누락·열화 평가) 중이다. MUSES PhysAug-off 풀 런은 E7·E1M(시드 3407)이 완주해 공식 val 81.88 / 81.70, E13M(시드 3407)이 09-18 23:40 완주 예정이다. DELIVER 채점 하네스를 legal v2 로 채택(09-18)해 확정 런 재채점이 대기열에 있다. "),
