@@ -18,12 +18,14 @@ A2~A7 확장 항목:
   (A5) 합성 체크포인트 3개(항상 나쁨·항상 좋음·절반만 좋음)로 ckpt_stability 가
        always_fail/always_pass/flip 을 규칙대로 분류하는지
   (A6) depth_bin_iou — 로그 5분위 경계·구간별 픽셀수 합·완벽 예측 pacc=1·diff 정합성
-  (A7) zero_modal_in_batch 두 방식 — normalized 는 모달 평균 채움((x-mean)/std → 0),
-       raw 는 0 채움(옛 동작), 평균을 찾지 못하는 cfg 는 에러
+  (A7·A12) zero_modal_in_batch — normalized 는 모델 버퍼 pixel_mean[3i:3i+3] 채움
+       ((x-mean)/std → 0), raw 는 0 채움(옛 동작). 모달 인덱스 계산(probe·패치 동치),
+       모델 슬라이스==cfg 검증 통과/불일치 에러, 버퍼 길이·모달 부재·버퍼 부재 에러 포함
   (A11) 모달 PIXEL_MEAN 탐색 — 마지막 세그먼트 정확 일치(부분일치 부정: EVENT_CAMERA 는
        CAMERA·EVENT 어느 쪽 후보도 아님) + 우선순위 채택(DELIVER 특화 > DATASETS.* >
        MODEL.*) + 같은 우선순위 값 불일치 모호 에러. probe_dgfusion 탐색과
-       d2_zero_modality.patch 본문에서 추출한 탐색이 같은 입력에 같은 결과를 내는지.
+       d2_zero_modality.patch 본문에서 추출한 탐색이 같은 입력에 같은 결과를 내는지
+       (추출 영역에 A12 모달 순서 helper 도 포함 — A7 이 probe 와 동치 검증).
   (A8) rle_json_to_png — 저장은 항상 RLE 해상도(1024²) 그대로(--gt_dir 가 있어도
        변경 없음). --keep_1024 는 1024 단언 검증(1024² 면 통과, 아니면 에러) +
        요약 pred_resolution·keep_1024 기록.
@@ -460,63 +462,153 @@ def smoke_depth_bin(tmp):
 
 
 # ---------------------------------------------------------------------------
-# A7 — zero_modal_in_batch 개입 방식(normalized|raw)
+# A7·A12 — zero_modal_in_batch 개입 방식(normalized|raw) · 모델 버퍼 구조
 # ---------------------------------------------------------------------------
+# A12 구조 — 모델은 모달별 3채널 평균을 하나의 긴 pixel_mean 버퍼로 이어 붙여 갖고
+# 모달 순서(주 모달 먼저 + cfg.DATASETS.MODALITIES.ORDER 나머지)로 슬라이스해 쓴다.
+A7_MODAL_ORDER = ("CAMERA", "LIDAR", "EVENT", "DEPTH")
+A7_BUF_MEANS = {"CAMERA": (0.485, 0.456, 0.406),
+                "LIDAR": (0.35, 0.36, 0.37),
+                "EVENT": (0.1, 0.2, 0.3),
+                "DEPTH": (0.7, 0.71, 0.72)}
+
+
+def _a7_zero_cfg(order=("LIDAR", "EVENT", "DEPTH"), main="CAMERA", cfg_means=None):
+    """가짜 cfg — DATASETS.MODALITIES(ORDER·MAIN_MODALITY) + DELIVER 모달별 PIXEL_MEAN.
+    cfg_means 로 특정 모달의 cfg 평균을 덮어쓸 수 있다(모델 슬라이스 불일치 검증용)."""
+    means = {k: list(v) for k, v in A7_BUF_MEANS.items()}
+    for k, v in (cfg_means or {}).items():
+        means[k] = list(v)
+    return {"DATASETS": {"MODALITIES": {"ORDER": list(order), "MAIN_MODALITY": main},
+                         "DELIVER": {"PIXEL_MEAN": means}}}
+
+
+def _a7_fake_model(buf_means=None, n_modals=4):
+    """가짜 모델 — pixel_mean 버퍼 = 모달 순서×3채널을 이어 붙인 긴 텐서(4모달=12).
+    buf_means 로 일부 모달 슬라이스를 덮어쓰거나, n_modals 로 모달 수를 줄여 버퍼
+    길이 불일치 상태를 만들 수 있다."""
+    import torch
+
+    class _Model:
+        def __init__(self, pm):
+            self.pixel_mean = pm
+
+    means = {k: list(v) for k, v in A7_BUF_MEANS.items()}
+    for k, v in (buf_means or {}).items():
+        means[k] = list(v)
+    vals = [x for m in A7_MODAL_ORDER[:n_modals] for x in means[m]]
+    return _Model(torch.tensor(vals, dtype=torch.float32))
+
+
 def smoke_zero_mode():
-    """(A7) 실제 모델 없이 합성 텐서·가짜 cfg 로 두 방식을 검증 — normalized 는 채운
-    값이 모달 평균이고 (x-mean)/std 를 적용하면 0, raw 는 채운 값이 0, 평균을 찾지
-    못하면 에러로 멈춘다."""
+    """(A7·A12) 가짜 모델 버퍼(pixel_mean 길이 12, 모달 4개)·가짜 cfg 로: 모달 인덱스
+    계산(probe·패치 추출본 동치), 모델 슬라이스==cfg 평균이면 검증 통과·다르면 에러,
+    normalized 채움이 그 슬라이스 값이고 (x-mean)/std → 0, 버퍼 길이 불일치·모달 부재·
+    버퍼 부재는 에러, raw 는 0 채움(옛 동작)을 단언한다."""
+    import contextlib
+    import io
     import torch
     from tools.baseline_failure import probe_dgfusion as pdg
 
-    class _ModelCfg:                       # 가짜 cfg.MODEL — 평균·표준편차만 가진 객체
-        PIXEL_MEAN = [0.485, 0.456, 0.406]
-        PIXEL_STD = [0.229, 0.224, 0.225]
-    class _Cfg:
-        MODEL = _ModelCfg()
-        LIDAR_PIXEL_MEAN = [0.5]           # 보조 모달별 통계 키(탐색 경로 확인용)
-    mean = torch.tensor(_ModelCfg.PIXEL_MEAN).view(-1, 1, 1)
-    std = torch.tensor(_ModelCfg.PIXEL_STD).view(-1, 1, 1)
+    cfg = _a7_zero_cfg()
+    model = _a7_fake_model()
 
     def _batch():
         return [{"CAMERA": torch.randn(3, 8, 10) + 10.0,   # 0 이 아닌 값들
                  "image": torch.randn(3, 8, 10) + 10.0,
-                 "LIDAR": torch.randn(1, 8, 10) + 10.0}]
+                 "LIDAR": torch.randn(3, 8, 10) + 10.0,
+                 "EVENT": torch.randn(3, 8, 10) + 10.0}]
 
-    # raw — 옛 동작 그대로: 지정 모달(+image)만 원본이 0, 다른 모달은 그대로.
-    b = _batch()
-    pdg.zero_modal_in_batch(b, "CAMERA", mode="raw", cfg=_Cfg())
-    assert (b[0]["CAMERA"] == 0).all() and (b[0]["image"] == 0).all()
-    assert not (b[0]["LIDAR"] == 0).any(), "raw 가 지정 밖 모달을 건드렸다"
+    # 모달 순서·인덱스 — 주 모달 먼저, 나머지는 ORDER 순(ORDER 순서를 바꿔도 규칙 유지).
+    order = pdg.modal_order_from_cfg(cfg)
+    assert order == list(A7_MODAL_ORDER), order
+    perm = _a7_zero_cfg(order=("DEPTH", "LIDAR", "EVENT"))
+    assert pdg.modal_order_from_cfg(perm) == ["CAMERA", "DEPTH", "LIDAR", "EVENT"]
+    patch_order = _a11_patch_ns()["_bf_modal_order"]
+    assert patch_order(cfg) == order, "패치 추출본 모달 순서가 probe 와 다르다(cfg)"
+    assert patch_order(perm) == pdg.modal_order_from_cfg(perm), \
+        "패치 추출본 모달 순서가 probe 와 다르다(perm)"
+    idx, mean = pdg.model_modal_mean(model, cfg, "LIDAR")
+    assert idx == 1, idx
+    assert all(abs(a - b) < 1e-6 for a, b in zip(mean, A7_BUF_MEANS["LIDAR"])), mean
 
-    # normalized — 원본이 채널별 평균으로 차고, (x-mean)/std 를 적용하면 정확히 0.
+    # 검증 통과 — 모델 슬라이스 == cfg 평균(DELIVER 특화 경로)이면 통과하고 로그를 남긴다.
+    logbuf = io.StringIO()
+    with contextlib.redirect_stdout(logbuf):
+        pdg.assert_normalized_fill_is_zero(model, "LIDAR", cfg)
+    assert "모달 LIDAR 인덱스 1" in logbuf.getvalue(), logbuf.getvalue()
+
+    # 검증 에러 — 모델 슬라이스와 cfg 값이 다르면 멈추고 양쪽 값을 에러에 보인다.
+    # (12.5 는 float32 로 정확히 표현되는 값 — 문자열 단언이 반올림에 흔들리지 않게.)
+    try:
+        pdg.assert_normalized_fill_is_zero(
+            _a7_fake_model(buf_means={"LIDAR": (12.5, 12.5, 12.5)}), "LIDAR", cfg)
+        raise AssertionError("모델 슬라이스≠cfg 평균인데 검증이 통과했다")
+    except RuntimeError as e:
+        assert "12.5" in str(e) and "0.35" in str(e), str(e)
+
+    # normalized — 채움 값의 출처는 모델 버퍼 슬라이스. (x-mean)/std 를 적용하면 0.
     b = _batch()
-    pdg.zero_modal_in_batch(b, "CAMERA", mode="normalized", cfg=_Cfg())
+    pdg.zero_modal_in_batch(b, "CAMERA", mode="normalized", cfg=cfg, model=model)
+    mc = torch.tensor(A7_BUF_MEANS["CAMERA"]).view(-1, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
     for k in ("CAMERA", "image"):
-        assert torch.allclose(b[0][k], mean.expand_as(b[0][k])), k
-        assert torch.allclose((b[0][k] - mean) / std, torch.zeros_like(b[0][k])), k
-    assert not (b[0]["LIDAR"] == 0).any(), "normalized 가 지정 밖 모달을 건드렸다"
+        assert torch.allclose(b[0][k], mc.expand_as(b[0][k])), k
+        assert torch.allclose((b[0][k] - mc) / std, torch.zeros_like(b[0][k])), k
+    assert not (b[0]["LIDAR"] == 0).any() and not (b[0]["EVENT"] == 0).any(), \
+        "normalized 가 지정 밖 모달을 건드렸다"
 
-    # 보조 모달 키 탐색(LIDAR_PIXEL_MEAN) — LIDAR 도 모달 평균으로 채워진다.
+    # cfg 와 값이 다른 모델 버퍼라도 채움은 그 모델의 슬라이스 값으로 한다(출처=버퍼).
     b = _batch()
-    pdg.zero_modal_in_batch(b, "LIDAR", mode="normalized", cfg=_Cfg())
-    assert torch.allclose(b[0]["LIDAR"], torch.full_like(b[0]["LIDAR"], 0.5))
-    assert not (b[0]["CAMERA"] == 0).all(), "LIDAR 지정이 CAMERA 를 건드렸다"
+    pdg.zero_modal_in_batch(b, "LIDAR", mode="normalized", cfg=cfg,
+                            model=_a7_fake_model(buf_means={"LIDAR": (12.5, 12.5, 12.5)}))
+    assert torch.allclose(b[0]["LIDAR"], torch.full_like(b[0]["LIDAR"], 12.5))
 
-    # 기본 모드는 normalized — cfg 없이는 호출 자체가 거부된다.
+    # 버퍼 길이 불일치(9 != 3*4) — 에러로 멈춘다.
+    try:
+        pdg.zero_modal_in_batch(_batch(), "CAMERA", mode="normalized", cfg=cfg,
+                                model=_a7_fake_model(n_modals=3))
+        raise AssertionError("버퍼 길이가 모달 수와 안 맞는데 에러가 나지 않았다")
+    except RuntimeError:
+        pass
+
+    # 모달 부재 — cfg 모달 순서에 없는 모달은 에러로 멈춘다.
+    try:
+        pdg.zero_modal_in_batch(_batch(), "DEPTH", mode="normalized",
+                                cfg=_a7_zero_cfg(order=("LIDAR", "EVENT")),
+                                model=model)
+        raise AssertionError("모달이 cfg 순서에 없는데 에러가 나지 않았다")
+    except RuntimeError:
+        pass
+
+    # 버퍼 부재(구조가 다른 모델) — 에러에 BF_ZERO_MODE=raw 대안 안내가 있다(구현 3).
+    class _NoBufModel:
+        pass
+    try:
+        pdg.zero_modal_in_batch(_batch(), "CAMERA", mode="normalized", cfg=cfg,
+                                model=_NoBufModel())
+        raise AssertionError("pixel_mean 버퍼가 없는데 에러가 나지 않았다")
+    except RuntimeError as e:
+        assert "BF_ZERO_MODE=raw" in str(e), str(e)
+
+    # 기본 모드는 normalized — cfg·model 없이는 호출 자체가 거부된다.
     try:
         pdg.zero_modal_in_batch(_batch(), "CAMERA")
-        raise AssertionError("기본 모드가 normalized 인데 cfg 없이 통과했다")
+        raise AssertionError("기본 모드가 normalized 인데 cfg·model 없이 통과했다")
     except ValueError:
         pass
 
-    # 평균 부재 — EVENT 통계는 가짜 cfg 에 없다 → 명확한 에러(임의값 대입 금지).
-    try:
-        pdg.zero_modal_in_batch(_batch(), "EVENT", mode="normalized", cfg=_Cfg())
-        raise AssertionError("EVENT 평균이 없는데 에러가 나지 않았다")
-    except RuntimeError:
-        pass
-    print("[smoke] (A7) zero-modal normalized/raw·평균 부재 에러 ✓")
+    # raw — 옛 동작 그대로: 지정 모달(+image)만 원본이 0, 다른 모달은 그대로.
+    b = _batch()
+    pdg.zero_modal_in_batch(b, "CAMERA", mode="raw", cfg=cfg, model=model)
+    assert (b[0]["CAMERA"] == 0).all() and (b[0]["image"] == 0).all()
+    assert not (b[0]["LIDAR"] == 0).any() and not (b[0]["EVENT"] == 0).any(), \
+        "raw 가 지정 밖 모달을 건드렸다"
+    b = _batch()
+    pdg.zero_modal_in_batch(b, "LIDAR", mode="raw")     # raw 는 cfg·model 불필요
+    assert (b[0]["LIDAR"] == 0).all()
+    assert not (b[0]["CAMERA"] == 0).any(), "LIDAR 지정이 CAMERA 를 건드렸다"
+    print("[smoke] (A7·A12) zero-modal 모델 버퍼 슬라이스 채움·검증·에러·raw ✓")
 
 
 # ---------------------------------------------------------------------------
@@ -539,9 +631,10 @@ def _a11_failure_cfg():
                                                     "LIDAR": [0.35]}}}}
 
 
-def _a11_patch_finder():
-    """d2_zero_modality.patch 본문에서 PIXEL_MEAN 탐색 함수들을 추출해 실행 가능하게
-    만든다 — 패치 쪽 규칙이 probe 쪽과 갈라지지 않았는지 같은 입력으로 검증하기 위함."""
+def _a11_patch_ns():
+    """d2_zero_modality.patch 본문에서 PIXEL_MEAN 탐색·모달 순서 helper 블록을 추출해
+    실행 가능하게 만든다 — 패치 쪽 규칙이 probe 쪽과 갈라지지 않았는지 같은 입력으로
+    검증하기 위함(탐색=A11, 모달 순서=A7·A12)."""
     import textwrap
     patch = (_REPO_ROOT / "tools/baseline_failure/d2_zero_modality.patch"
              ).read_text(encoding="utf-8")
@@ -549,11 +642,11 @@ def _a11_patch_finder():
                       if l.startswith("+") and not l.startswith("+++"))
     start = added.index("def _bf_iter_cfg")
     start = added.rfind("\n", 0, start) + 1   # 함수 정의 줄 맨 앞(들여쓰기 포함)부터
-    end = added.index("_bf_mean = None")   # 탐색 helper 블록은 이 대입 직전까지
+    end = added.index("_bf_mean = None")   # helper 블록은 이 대입 직전까지
     ns = {}
     exec(compile(textwrap.dedent(added[start:end]),
                  "<d2_zero_modality.patch>", "exec"), ns)
-    return ns["_bf_find_modal_pixel_mean"]
+    return ns
 
 
 def smoke_a11_mean_search():
@@ -567,7 +660,7 @@ def smoke_a11_mean_search():
 
     cfg = _a11_failure_cfg()
     finders = (("probe", pdg.find_modal_pixel_mean),
-               ("patch", _a11_patch_finder()))
+               ("patch", _a11_patch_ns()["_bf_find_modal_pixel_mean"]))
 
     # CAMERA — DELIVER 특화 경로를 골라 로그로 남기고, EVENT_CAMERA 값은 배제된다.
     for tag, finder in finders:

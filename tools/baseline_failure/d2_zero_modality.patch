@@ -1,22 +1,26 @@
 --- a/train_net.py
 +++ b/train_net.py
-@@ -513,6 +513,247 @@ def main(args):
+@@ -513,6 +513,259 @@ def main(args):
          DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
              cfg.MODEL.WEIGHTS, resume=args.resume
          )
-+        # [baseline_failure D4/6·A7·A11] BF_ZERO_MODAL 이 있으면 해당 모달 입력 텐서를 채우는
-+        # forward pre-hook 을 건다(zero-out ablation). 모델 입력 dict 의 모달 키는
++        # [baseline_failure D4/6·A7·A11·A12] BF_ZERO_MODAL 이 있으면 해당 모달 입력 텐서를
++        # 채우는 forward pre-hook 을 건다(zero-out ablation). 모델 입력 dict 의 모달 키는
 +        # CAMERA·LIDAR·EVENT·DEPTH 이고 주 모달(RGB)은 image 키에도 중복 저장된다.
 +        # CAMERA 를 다룰 때는 image 까지 함께 채운다(두 키가 서로 다른 텐서를 가리킬 수
 +        # 있으므로 둘 다 처리). 환경변수가 없으면 공식 경로 그대로.
 +        #
-+        # 개입 방식(A7) — 환경변수 BF_ZERO_MODE(normalized|raw, 기본 normalized):
-+        #   normalized: 원본 입력을 그 모달의 PIXEL_MEAN 으로 채운다. detectron2 정규화
-+        #     (x-mean)/std 를 지나면 모델이 보는 값이 0 — 우리 modality_zero_ablation
-+        #     (정규화 후 0) 과 같은 개입 규약.
++        # 개입 방식(A7·A12) — 환경변수 BF_ZERO_MODE(normalized|raw, 기본 normalized):
++        #   normalized: 원본 입력을 **모델 버퍼** model.pixel_mean[3i:3i+3] 으로 채운다.
++        #     모델은 모달별 3채널 평균·표준편차를 하나의 긴 버퍼(pixel_mean·pixel_std)로
++        #     이어 붙여 갖고 모달 순서 i 로 잘라 (x-mean)/std 정규화를 쓴다(dgfusion.py:
++        #     347-348) — 그 슬라이스로 채우면 모델이 보는 값이 0, 우리
++        #     modality_zero_ablation(정규화 후 0) 과 같은 개입 규약.
 +        #   raw: 원본을 0 으로 채운다(옛 동작 — 정규화 후 -PIXEL_MEAN/PIXEL_STD 상수).
-+        # 평균은 cfg 에서만 읽는다(추측 금지). 못 찾거나 정규화가 표준 (x-mean)/std 임을
-+        # 확인하지 못하면 에러로 멈춘다.
++        # 모달 순서는 주 모달(cfg.DATASETS.MODALITIES.MAIN_MODALITY) 먼저, 나머지가
++        # cfg.DATASETS.MODALITIES.ORDER 순(dgfusion.py:108-132 버퍼 구성과 동일). cfg 의
++        # PIXEL_MEAN(A11 탐색)은 모델 슬라이스와의 대조용으로만 쓴다. 버퍼를 못 찾거나
++        # 구조가 다르면 에러로 멈춘다(추측 금지).
 +        #
 +        # 모달 PIXEL_MEAN 탐색 규칙(A11 — probe_dgfusion.find_modal_pixel_mean 과 동일,
 +        # 두 곳이 갈라지면 smoke_baseline_failure A11 이 잡는다):
@@ -151,68 +155,76 @@
 +                      + (repr(_same) if _same else "없음") + " -> " + str(list(_mean)))
 +                return _mean
 +
-+            _bf_mean = None
-+            if _bf_mode == "normalized":
-+                _bf_mean = _bf_find_modal_pixel_mean(cfg, _bf_modal)
-+
-+                # 정규화가 detectron2 표준 (x-mean)/std 인지 확인 — 못 확인하면 에러.
-+                _bf_norm = getattr(model, "normalize_image", None)
-+                if not callable(_bf_norm):
++            def _bf_modal_order(_cfg):
++                # A12 — 모델 pixel_mean 버퍼의 모달 순서: 주 모달(MAIN_MODALITY) 먼저,
++                # 나머지는 cfg.DATASETS.MODALITIES.ORDER 순. probe_dgfusion.
++                # modal_order_from_cfg 과 같은 규칙(두 곳이 갈라지면 smoke_baseline_
++                # failure A7 이 같은 입력으로 잡는다).
++                try:
++                    _node = _cfg
++                    for _k in ("DATASETS", "MODALITIES", "ORDER"):
++                        _node = (_node[_k] if isinstance(_node, dict)
++                                 else getattr(_node, _k))
++                    _order = _node
++                    _node = _cfg
++                    for _k in ("DATASETS", "MODALITIES", "MAIN_MODALITY"):
++                        _node = (_node[_k] if isinstance(_node, dict)
++                                 else getattr(_node, _k))
++                    _main = _node
++                except (AttributeError, KeyError, TypeError):
 +                    raise RuntimeError(
-+                        "model.normalize_image 가 없다 — 정규화가 표준 (x-mean)/std 인지 "
-+                        "확인 불가. BF_ZERO_MODE=raw 로 돌리거나 모델 정규화 코드를 확인해 "
-+                        "도구를 확장하라(추측 금지).")
-+                if _bf_modal == "CAMERA":
-+                    # 주 모달: 평균 채움 텐서를 실제 normalize_image 에 넣어 0 확인.
-+                    _bf_p = next(model.parameters(), None)
-+                    _bf_x = _bf_torch.as_tensor(_bf_mean, dtype=_bf_torch.float32)
-+                    _bf_x = _bf_x.view(-1, 1, 1).expand(-1, 2, 2)
-+                    if _bf_p is not None:
-+                        _bf_x = _bf_x.to(device=_bf_p.device, dtype=_bf_p.dtype)
-+                    try:
-+                        with _bf_torch.no_grad():
-+                            _bf_y = _bf_norm(_bf_x)
-+                        _bf_ok = bool(_bf_torch.allclose(
-+                            _bf_y.float(), _bf_torch.zeros_like(_bf_y.float()),
-+                            atol=1e-3))
-+                    except Exception as _bf_e:
-+                        raise RuntimeError(
-+                            "normalize_image 호출 실패(" + repr(_bf_e)
-+                            + ") — 비표준 정규화 가능성. normalized 로 두지 말고 "
-+                              "모델 정규화 코드를 확인하라.")
-+                    if not _bf_ok:
-+                        raise RuntimeError(
-+                            "CAMERA 평균 채움의 normalize_image 결과가 0 이 아니다 — "
-+                            "cfg PIXEL_MEAN 과 모델 pixel_mean 이 다르거나 정규화식이 "
-+                            "표준 (x-mean)/std 가 아니다.")
-+                else:
-+                    # 보조 모달: 모델이 같은 값의 MEAN 버퍼·파라미터를 보유하는지.
-+                    _bf_hit = None
-+                    for _n, _t in (list(model.named_buffers())
-+                                   + list(model.named_parameters())):
-+                        if "MEAN" not in _n.upper() or "STD" in _n.upper():
-+                            continue
-+                        _bv = _t.detach().float().cpu().reshape(-1)
-+                        if (_bv.numel() == len(_bf_mean)
-+                                and bool(_bf_torch.allclose(
-+                                    _bv,
-+                                    _bf_torch.as_tensor(_bf_mean,
-+                                                        dtype=_bf_torch.float32),
-+                                    atol=1e-5))):
-+                            _bf_hit = _n
-+                            break
-+                    if _bf_hit is None:
-+                        raise RuntimeError(
-+                            "모델에서 모달 " + _bf_modal + " 의 PIXEL_MEAN("
-+                            + str(_bf_mean) + ") 과 같은 값을 가진 MEAN 버퍼·파라미터를 "
-+                              "찾지 못했다 — 이 모달의 정규화가 (x-mean)/std 인지 확인 "
-+                              "불가(추측 금지). BF_ZERO_MODE=raw 로 돌리거나 모델 코드를 "
-+                              "확인하라.")
-+                    print("[baseline_failure] " + _bf_modal + " 정규화 평균 버퍼 확인: "
-+                          + _bf_hit)
++                        "cfg.DATASETS.MODALITIES.ORDER·MAIN_MODALITY 를 읽을 수 없다 — "
++                        "모델 pixel_mean 버퍼의 모달 순서를 알 수 없다(추측 금지). "
++                        "BF_ZERO_MODE=raw 로 돌리거나 config 를 확인하라.")
++                _mo = [str(_m).strip().upper() for _m in _order]
++                _ma = str(_main).strip().upper()
++                return [_ma] + [_m for _m in _mo if _m != _ma]
++
++            _bf_mean = None       # A12 — 채움 값(모델 버퍼 슬라이스). raw 면 None.
++            _bf_modal_idx = None
++            if _bf_mode == "normalized":
++                # A12 — 채움 값의 출처는 모델 버퍼, cfg 값(PIXEL_MEAN)은 대조용.
++                _bf_modals = _bf_modal_order(cfg)
++                if _bf_modal not in _bf_modals:
++                    raise RuntimeError(
++                        "BF_ZERO_MODAL(" + _bf_modal + ") 이 cfg 모달 순서("
++                        + str(_bf_modals) + ") 에 없다 — config 의 DATASETS."
++                          "MODALITIES.ORDER·MAIN_MODALITY 를 확인하라(추측 금지).")
++                _bf_modal_idx = _bf_modals.index(_bf_modal)
++                _bf_pm = getattr(model, "pixel_mean", None)
++                if not _bf_torch.is_tensor(_bf_pm):
++                    raise RuntimeError(
++                        "model.pixel_mean 버퍼가 없다(또는 tensor 가 아니다) — 이 모델의 "
++                        "정규화는 dgfusion.py:347-348 구조(모달별 3채널 평균·표준편차를 "
++                        "하나의 긴 버퍼로 이어 붙인 pixel_mean·pixel_std)가 아니다. "
++                        "BF_ZERO_MODE=raw 로 돌리면 정규화 전 0 채움이 된다(추측 금지).")
++                _bf_pm_flat = _bf_pm.detach().float().cpu().reshape(-1)
++                if _bf_pm_flat.numel() != 3 * len(_bf_modals):
++                    raise RuntimeError(
++                        "model.pixel_mean 길이(" + str(_bf_pm_flat.numel())
++                        + ") 가 3*모달수(" + str(3 * len(_bf_modals)) + ") 가 아니다 — "
++                          "버퍼 구조가 다르다. BF_ZERO_MODE=raw 로 돌리면 정규화 전 0 "
++                          "채움이 된다(추측 금지).")
++                _bf_slice = _bf_pm_flat[3 * _bf_modal_idx:3 * _bf_modal_idx + 3]
++                _bf_mean = tuple(float(_v) for _v in _bf_slice)
++                _bf_cfg_mean = _bf_find_modal_pixel_mean(cfg, _bf_modal)
++                if not _bf_torch.allclose(
++                        _bf_slice,
++                        _bf_torch.as_tensor(_bf_cfg_mean, dtype=_bf_torch.float32),
++                        atol=1e-4):
++                    raise RuntimeError(
++                        "모델 버퍼 pixel_mean[" + str(3 * _bf_modal_idx) + ":"
++                        + str(3 * _bf_modal_idx + 3) + "]=" + str(list(_bf_mean))
++                        + " 와 cfg 평균 " + str(list(_bf_cfg_mean))
++                        + " 이 다르다(허용오차 1e-4) — 모달 순서나 통계 정의를 확인하라"
++                          "(추측 금지). BF_ZERO_MODE=raw 로 돌리면 정규화 전 0 채움이 된다.")
++                print("[baseline_failure] 모달 " + _bf_modal + " 인덱스 "
++                      + str(_bf_modal_idx) + ", 모델 평균 " + str(list(_bf_mean))
++                      + " = cfg 평균 " + str(list(_bf_cfg_mean))
++                      + " — 평균으로 채우면 정규화 후 0")
 +
 +            def _bf_fill(_v):
-+                # 원본 텐서를 채널별 PIXEL_MEAN 으로 채운다(정규화 후 0 이 되도록).
++                # 원본 텐서를 채널별 모델 버퍼 평균으로 채운다(정규화 후 0 이 되도록).
 +                _m = _bf_torch.as_tensor(_bf_mean, dtype=_v.dtype,
 +                                         device=_v.device).reshape(-1)
 +                if _v.ndim == 3 and _m.numel() == _v.shape[0]:
@@ -238,13 +250,13 @@
 +                return _inp
 +            model.register_forward_pre_hook(_bf_zero_hook)
 +            if _bf_mode == "normalized":
-+                print(f"[baseline_failure] BF_ZERO_MODAL={_bf_zero} "
-+                      f"BF_ZERO_MODE={_bf_mode} -> keys {sorted(_bf_keys)} 를 "
-+                      f"PIXEL_MEAN {list(_bf_mean)} 로 채운다(정규화 후 0)")
++                print(f"[baseline_failure] 모달 {_bf_modal} 인덱스 {_bf_modal_idx} "
++                      f"zero_mode={_bf_mode} -> keys {sorted(_bf_keys)} 를 모델 버퍼 평균 "
++                      f"{list(_bf_mean)} 로 채운다(정규화 후 0)")
 +            else:
-+                print(f"[baseline_failure] BF_ZERO_MODAL={_bf_zero} "
-+                      f"BF_ZERO_MODE={_bf_mode} -> keys {sorted(_bf_keys)} 를 0 으로 "
-+                      f"채운다(정규화 후 -PIXEL_MEAN/PIXEL_STD 상수, 옛 동작)")
++                print(f"[baseline_failure] 모달 {_bf_modal} zero_mode={_bf_mode} "
++                      f"-> keys {sorted(_bf_keys)} 를 0 으로 채운다(정규화 후 "
++                      f"-PIXEL_MEAN/PIXEL_STD 상수, 옛 동작)")
          res = Trainer.test(cfg, model, eval_only=args.eval_only, inference_only=args.inference_only)
          if cfg.TEST.AUG.ENABLED:
              res.update(Trainer.test_with_TTA(cfg, model))
