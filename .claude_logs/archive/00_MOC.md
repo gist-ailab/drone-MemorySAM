@@ -8,3 +8,4 @@
 | [result-analysis-p13.md](result-analysis-p13.md) | P13 심층 분석 | 06 |
 | [result-analysis-p14.md](result-analysis-p14.md) | P14 분석 | 07 |
 | [p13-design-guide.md](p13-design-guide.md) | P13 설계 시점 가이드 | P13_design_guide |
+| [2026-09-18-claude-md-legacy-notes.md](2026-09-18-claude-md-legacy-notes.md) | CLAUDE.md 에서 이동한 MULTIAQUA/P9 시대 주의사항 4건 원문(ckpt 포맷·Val/Test 갭·MoE gate·NIGHT_AUG) — 2026-09-18 구조 감사 조치 | — |

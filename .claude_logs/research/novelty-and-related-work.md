@@ -6,7 +6,7 @@ moved: 2026-07-08
 
 # 노벨티 & 관련 연구 (Canonical) — RBMA 포지셔닝
 
-> 이 문서가 **공식(canonical) 요약**이다. `10_related_work.md`는 deep-research 원시 로그(시계열),
+> 이 문서가 **공식(canonical) 요약**이다. `related-work-raw.md`는 deep-research 원시 로그(시계열),
 > `02_model_arch.md`는 모델 상세. 새 에이전트는 **이 문서를 먼저** 읽고 필요 시 10/02로 내려간다.
 > 최종 업데이트: 2026-06-23
 
@@ -180,8 +180,8 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 - **최신 지형 전수 스윕 (2026-09-08)**: `related-work-raw.md` §"2026-09-08" — 세그 27편·검출 24편·SAM/메모리 축 웹 병렬 조사. 헤드라인: ① MemorySAM(2503.06700)은 여전히 preprint(ICCV 게재 표기 1차 출처 미확인), ② "training-free 신뢰도→memory-attn additive bias" 셀 점유자 이번에도 미발견(단 PRIMED/SAE 위협 유효), ③ 신규 must-cite DFormerv2(depth를 attention 변조로 주입), ④ 검출 쪽 신뢰도-가중 융합 급증(전부 게이팅, logit bias 아님), ⑤ Fusion Degradation(M²D-LIF) 등 융합 회의론 실증화 — poongsan RGB-only 관찰과 수렴. **[같은 날 추가 2]** CVPR 2026 본회의 4,042편 제목 전수 + ECCV 2026 공식 accepted 리스트(~2,864건) 전수 스캔 — **RBMA 직접 충돌 0건 확정**(양대 학회 커버리지 확보), 단 "신뢰도/품질 기반 융합" 상위 스토리는 채택 클러스터로 혼잡(RAF·InfraNet·GIML·CoRiM 등)이라 메커니즘 차별화 전면 배치 필요; 신규 must-cite = M4-SAM(CVPR 본회의 확정)·RobustSeg(DELIVER missing SOTA, 결측 실험 직접 비교 대상)·SENTRY(training-free SAM2 memory 개입 선례)·CoRiM(scalar confidence 한계 이론). raw log §"2026-09-08 (추가 2)".
 - **차세대 아키텍처 브레인스토밍 + 신규 deep-research (2026-07-08)**: `research_vault/material/brainstorm_next_arch_20260708.md` — VFM 후보(DINOv3/SAM3/C-RADIOv4/V-JEPA2.1/Mamba) × adaptive fusion 신규 문헌(MG-MTTA/AECF/CLoE/PCDF/DAMSDet 등), 후보 카드 5개+추천 top-2(DINOv3-RBMA, SAM2-RBMA v2)+검증 실험. **RBMA 4축 셀 미점유 재확인 + det-head additive-bias 빈 셀 재확인** (near-miss 워치: UGDDL 2605.09600, MG-MTTA 2604.24602).
 - **옵시디언 리서치 볼트 (외부 사전조사, 2026-07-02 동기화)**: `/nas_jm/Research/26_MultimodalSeg/` — relatedworks 30노트(논문별 synthesis, Priority-A PDF 원문표 추출), 벤치마크 canonical = `relatedworks/09_benchmark_tables_deliver_muses_mcubes.md`, 노벨티 방어 = `relatedworks/42_attention_logit_bias_novelty_defense.md`, 병렬 리서치 프롬프트 = `sources/07_parallel_research_prompts_2026-07-02.md`. 정량 인용은 볼트 `09`를 우선 참조.
-- RBMA 신규성 deep-research 원문·판정: `10_related_work.md` §"신규성 조사 A vs B"(L329~), §"A 신호 신규성 확정"(L367~).
-- SAM3 이식 분석: `10_related_work.md` §"SAM3 이식성"(L392~), `11_sam3_rbma_plan.md`.
+- RBMA 신규성 deep-research 원문·판정: `related-work-raw.md` §"신규성 조사 A vs B"(L329~), §"A 신호 신규성 확정"(L367~).
+- SAM3 이식 분석: `related-work-raw.md` §"SAM3 이식성"(L392~), `11_sam3_rbma_plan.md`.
 - 모델 상세(P8~P28 forward/한계): `02_model_arch.md`.
 - 실험 수치: `03_experiment_log.md`.
 - 출처(웹): DGFusion [arXiv:2509.09828](https://arxiv.org/abs/2509.09828), 코드 `github.com/timbroed/DGFusion`. StitchFusion [arXiv:2408.01343](https://arxiv.org/pdf/2408.01343). U3M [arXiv:2405.15365](https://arxiv.org/pdf/2405.15365).

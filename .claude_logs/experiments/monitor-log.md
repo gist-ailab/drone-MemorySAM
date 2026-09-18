@@ -17,7 +17,7 @@ moved: 2026-07-08
 - **서버/소유자**: B200 (unix user `gm_huis`), repo `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`
 - **config**: `configs/b200-deliver_rgbdel_P28_physaug.yaml` (순수 RBMA, AMF_MODE=uniform, λ_bias init 1.0, 4모달 img/depth/event/lidar, 목표 200 ep)
 - **출력**: `outputs/MMSamP28/b200_deliver_rgbdel_P28_physaug/DELIVER_CMNeXt-B2_idel/` (`train.log`, `epochN_<val>_topK…pth`, `test_epochN_<test>…pth`)
-- **비교 기준**: 직접 경쟁군(Cluster B, test) DGFusion 56.7 / CAFuser 55.6 · 구조적 base(Cluster A) MemorySAM val 65.38 — 자세히는 [12_novelty_and_related_work.md](../synthesis/12_novelty_and_related_work.md).
+- **비교 기준**: 직접 경쟁군(Cluster B, test) DGFusion 56.7 / CAFuser 55.6 · 구조적 base(Cluster A) MemorySAM val 65.38 — 자세히는 [12_novelty_and_related_work.md](../research/novelty-and-related-work.md).
 
 | 점검 시각(KST) | epoch | Val mIoU | Test mIoU | best | GPU(util/mem) | 프로세스 | 상태 판정 |
 |---|---|---|---|---|---|---|---|
@@ -51,7 +51,7 @@ moved: 2026-07-08
 - **서버/소유자**: B200 (`gm_huis`), repo `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`
 - **config**: `configs/b200-deliver_rgbdel_P29_physaug.yaml` (P29 seg, 4모달 img/depth/event/lidar). torchrun nproc=3, GPU 4-7 사용(공유 박스, G0-3은 타 사용자).
 - **출력**: `outputs/MMSamP29/b200_deliver_rgbdel_P29_physaug/DELIVER_CMNeXt-B2_idel/` (`train.log`, `test_epochN_*_topK_checkpoint.pth`, `last_checkpoint.pth`)
-- **비교 기준**: 직접경쟁군 DGFusion test 56.7 / CAFuser 55.6 — [12_novelty_and_related_work.md](../synthesis/12_novelty_and_related_work.md).
+- **비교 기준**: 직접경쟁군 DGFusion test 56.7 / CAFuser 55.6 — [12_novelty_and_related_work.md](../research/novelty-and-related-work.md).
 
 | 점검 시각(KST) | epoch | Day-Val mIoU | Test mIoU | best | GPU(util/mem) | 프로세스 | 상태 판정 |
 |---|---|---|---|---|---|---|---|

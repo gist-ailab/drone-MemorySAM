@@ -30,4 +30,4 @@ type: MUSES 공식 프로토콜 판정 (P49 계열 종결)
 
 원시: yeon `~/p491_muses_officialval_{3m,4m}/report.json` + 로그. PYTHONPATH 함정 재발 기록(절대경로 `/SSDb/jemo_maeng/pylibs_p34` 필수).
 
-관련: [2026-08-14-p49-1-fair-eval-metric-protocol.md](2026-08-14-p49-1-fair-eval-metric-protocol.md) · [decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md](../decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md) §6
+관련: [2026-08-14-p49-1-fair-eval-metric-protocol.md](2026-08-14-p49-1-fair-eval-metric-protocol.md) · [decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md](../../decisions/2026-08-10-p49-air-asymmetric-injection-proposal.md) §6

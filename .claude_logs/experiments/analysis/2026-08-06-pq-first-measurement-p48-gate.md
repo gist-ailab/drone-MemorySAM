@@ -61,5 +61,5 @@ stuff 참고: road 81.3 · sky 64.6 · vegetation 59.0.
 
 ## 관련 문서
 
-- 제안 원문: [../decisions/2026-08-05-p48-instance-supervision-proposal.md](../decisions/2026-08-05-p48-instance-supervision-proposal.md) (상단에 폐기 판정 표기)
+- 제안 원문: [../../decisions/2026-08-05-p48-instance-supervision-proposal.md](../../decisions/2026-08-05-p48-instance-supervision-proposal.md) (상단에 폐기 판정 표기)
 - PQ 코드 도입: 커밋 `e0890d6` / 폴더 페어링 버그 수정: 커밋 `b6d3da0`

@@ -99,19 +99,13 @@
 
 ---
 
-## 프로젝트 개요
+## 프로젝트 개요 (2026-09-18 갱신)
 
-**목표**: MACVi MULTIAQUA Challenge — 드론 촬영 야간 수상 환경에서 RGB + LiDAR + Thermal 멀티모달 세그멘테이션
+**현재 트랙**: 단일 아키텍처(ReliaDINO: 동결 DINOv3-L + 센서별 LoRA + cross-modal 융합 + FPN·쿼리 헤드)로 멀티센서 세그멘테이션 벤치 세 곳(**DELIVER** 4모달 RGB·Depth·Event·LiDAR / **MUSES** 3모달 RGB·Event·LiDAR / **MCubeS** 4모달)에서 "전 모달 융합 계열 1위"를 목표로 하는 논문 트랙 + 드론 검출(det, 국책과제 mAP50 0.85 달성) 트랙. **현재 정본 수치·규칙·대기열은 `.claude_logs/status/current.md`가 단일 출처**이며 여기 적지 않는다(수치가 여러 곳에 복제되면 판정이 뒤집힐 때 갱신이 누락된다).
 
-**핵심 아이디어**: SAM2의 시간축 메모리 어텐션을 모달리티 축으로 전용하여, 멀티모달 Cross-Modal Fusion을 수행. 각 모달리티를 별도 "프레임"으로 인코딩 후, SAM2의 memory attention으로 상호 참조.
+**종료된 트랙**: MACVi MULTIAQUA Challenge(RGB+LiDAR+Thermal, 야간 수상, M-score) — SAM2 메모리 어텐션 계보(P8~P28)의 출발점. 기록은 `.claude_logs/archive/`와 `models/arch-evolution.md` 초반부.
 
-**데이터셋**: MULTIAQUA
-- 클래스: Static(0), Dynamic(1), Water(2), Sky(3), ignore(255)
-- Val = 주간 145장, Test = 야간만 (challenge server 평가)
-- 모달리티: RGB (`img`), LiDAR (`lidar`), Thermal (`thermal`)
-- 경로: `/ailab_mat2/personal/jemo_maeng/dset/Drone/MULTIAQUA_night`
-
-**평가 지표**: M-score = 0.75 × val_mIoU + 0.25 × test_mIoU (MACVi Challenge)
+**세션 분담(2026-09 기준)**: 판정·설계 = "MMSAM | 생각정리"(fable) · 기동·감시·재채점 집행·기록 = "MMSAM | monitoring" · 새 체크포인트 측정·보고 = 분석 세션(지침 `.claude_logs/meta/analysis-session-protocol.md`) · 기준선 재학습·실패 분석 보강 = "dgfusion deliver training". 세션 간 전달은 SendMessage로, 판정은 생각정리 세션만 한다.
 
 ---
 
@@ -125,18 +119,19 @@ conda activate MMSS_SAM
 # 정량 지표 재현 (대표 ckpt로 mIoU/AP 재측정 — 경로·기대수치는 REPRODUCE.md)
 bash scripts/reproduce_eval.sh <deliver|muses|muses-official|multiaqua|det>
 
-# 학습
-python train_sam2_lora_paper.py --cfg configs/<config>.yaml
+# 학습 (ReliaDINO, DDP; eff-batch 16 은 accumulation 으로 고정)
+torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg configs/<서버접두어>-<dataset>_<modal>_<version>_<변수>.yaml
 
-# 평가 (val)
-python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode val --model_path <checkpoint_path>
+# legal 재채점 (DELIVER: 1024·BS1·native GT — 하네스 가드 선행. 🔴 ISSUE-036: 2026-09-18 현재 v1(nearest)과 v2(tools/legal_rescore_v2.py, nearest-exact) 병기)
+python tools/eval_harness_guard.py --check
+PYTHONPATH=semseg/models/sam2:. python val.py --cfg configs/eval/<config>.yaml --mode {val,test} --model_path <ckpt>
+PYTHONPATH=semseg/models/sam2:. python tools/legal_rescore_v2.py --cfg configs/eval/<config>.yaml --mode {val,test} --model_path <ckpt>
 
-# 평가 (test + challenge 제출)
-python val_multiaqua.py --cfg configs/eval/<config>.yaml --mode test --model_path <checkpoint_path> --macvi
+# MUSES 공식 채점 (native 1080×1920 val 250장; test 는 Codabench 제출, user 승인 후)
+python tools/eval_muses_official.py --cfg <config> --model_path <ckpt>
 
-# P9 전용 시각화 평가 (MoE routing 분석 포함)
-python val_multiaqua_P9.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode val
-python val_multiaqua_P9.py --cfg configs/eval/levine-multiaqua_rgbtl_P9_hardaug4.yaml --mode test
+# 결측·열화 모달 강건성 (EMM/RMM/NM, 2503.18445 프로토콜)
+python tools/missing_modality_eval.py --cfg configs/eval/<config>.yaml --model_path <ckpt> --split val --protocol emm --expected_clean_miou <legal val>
 ```
 
 ### 원격 서버에서 실험 실행 (tmux 세션 `jemo`)
@@ -163,64 +158,39 @@ bash scripts/remote_exp.sh log bengio bengio-multiaqua_rgbtl_P9_hardaug6
 
 ---
 
-## 핵심 코드 구조
+## 핵심 코드 구조 (2026-09-18 실측)
 
 ```
 drone-MemorySAM/
-├── CLAUDE.md                          # 이 파일
-├── .claude_logs/                      # AI 세션 로그 (front door = 00_INDEX.md)
-│   ├── 00_INDEX.md                    # 폴더 구조 안내 + 구번호→새경로 매핑표
-│   ├── status/                        # current.md(현재 스냅샷) + history-2026H1/H2
-│   ├── models/                        # arch-evolution.md, figures-ascii.md, explain/
-│   ├── experiments/                   # registry.md, log.md, monitor-log.md, analysis/
-│   ├── det/  datasets/  research/     # det 진단 · 데이터셋 · 관련연구(vault 포함)
-│   ├── decisions/  infra/  issues/    # 설계 제안 · 서버/환경 · 이슈
-│   └── meta/  archive/                # 봇 역할·태스크보드 · 동결 문서
-├── train_sam2_lora_paper.py           # 메인 학습 스크립트
-├── val_multiaqua.py                   # 범용 평가 스크립트 (P8~P12)
-├── val_multiaqua_P9.py                # P9 전용 시각화 + MoE routing 분석
-├── diagnose_moe_gate.py               # MoE gate 진단 스크립트
-├── configs/
-│   ├── deliver/ · multiaqua/ · det/   # 학습 configs (분류 기준: configs/README.md)
-│   └── eval/                          # 평가 configs (MODEL_PATH 포함, 구 eval_config/)
-├── semseg/
-│   └── models/sam2/sam2/
-│       ├── sam_lora_image_encoder_seg.py  # LoRA_Sam_P8~P12 모델 정의
-│       ├── sam_lola_utils.py              # SoftMoE_LoRA_Layer 등 유틸리티
-│       └── checkpoints/
-│           └── sam2.1_hiera_base_plus.pt  # SAM2 pretrained weight
-└── outputs/
-    ├── MMSamP8/   # P8 실험 결과들
-    ├── MMSamP9/   # P9 실험 결과 (현재 최선)
-    ├── MMSamP10/  # P10 실험 결과 (취소됨)
-    └── MMSamP11/  # P11 실험 결과 (취소됨)
+├── CLAUDE.md                      # 이 파일
+├── .claude_logs/                  # 프로젝트 로그 정본 (front door = 00_INDEX.md; 폴더마다 00_MOC.md)
+├── train_reliadino.py             # ReliaDINO 학습 스크립트 (DDP, C3 prototype·TAPS·DETAIL_BRANCH 등 config 토글)
+├── val.py                         # legal 평가 하네스 (가드 동결 8파일 중 하나 — 수정 시 --freeze 절차)
+├── configs/                       # 학습 config = <서버접두어>-<dataset>_<modal>_<version>_<변수>.yaml, eval/ = 평가 파생
+├── semseg/models/reliadino/       # ReliaDINO 본체: encoder.py(동결 ViT + LoRA + SimpleFPN), fusion.py, model.py, m2f_head.py, detail_branch.py, p4x.py
+├── semseg/models/sam2/            # SAM2 계보(P8~P28, 종료) — PYTHONPATH 로만 필요
+├── semseg/datasets/{deliver,muses,mcubes}.py   # 로더 (가드 동결 대상)
+├── tools/                         # 평가·분석 도구: eval_muses_official.py, eval_per_domain.py, module_diagnostics.py, viz_features.py,
+│                                  #   missing_modality_eval.py, legal_rescore_v2.py, eval_harness_guard.py, baseline_failure/(기준선 대조), smoke_*.py
+├── scripts/                       # remote_exp.sh(원격 기동), servers.conf(서버 레지스트리), nas_analysis_sync.sh
+└── third_party/dgfusion_train_restore/   # DGFusion·CAFuser 재학습 복원 킷
 ```
 
 ---
 
 ## 모델 버전 요약
 
-| 버전 | 핵심 변경 | 최선 M-score | 상태 |
-|------|----------|-------------|------|
-| P8 | ConfidenceHeadV2 + sigmoid UAMM | 78.45 | hardaug 기반실험 완료 |
-| **P9** | CrossModalFusionHead + max-norm UAMM | **81.98** (hardaug8 ep131) | **현재 최선** |
-| P10 | CrossModalFusionHeadV2 + ModalAuxHead + oracle KL | 79.27 | 취소 (test 성능 하락) |
-| P11 | P10 + MI routing loss | 77.09 | 취소 (MoE gate 진단 우선) |
-| P12 | Input-Conditioned Soft MoE LoRA (cond_dim) | - | 설계만 완료 |
-| P24 | P9 + SpatialQualityGating (scalar UAMM/AMF + CE teacher) | - | 학습 중 |
-| P25 | Unified Spatial Quality Fusion (spatial UAMM/AMF, no CrossModalFusionHead) | - | 구현 완료 (학습 대기) |
-
-**현재 최선 모델: P9 hardaug8_physaug ep131** — `outputs/MMSamP9/levine_multiaqua_rgbtl_P9_hardaug8_physaug/MULTIAQUA_CMNeXt-B2_ilt/epoch131_94.41_top1_checkpoint.pth`
+이 절에 수치를 두지 않는다. 계보(P8~P53)와 각 세대의 판정은 `models/arch-evolution.md`(P47-2까지)·`decisions/`(P48 이후 제안서)·`status/current.md`(현재 최선·헤드라인 규칙)가 정본이다. 약어(E1·E13·G1·C3·P53 등)는 반드시 설명을 붙여 쓴다(`meta/experiment-glossary.md`).
 
 ---
 
 ## 주의사항
 
-1. **Checkpoint 포맷 차이**: `.pth` = raw state_dict, `_checkpoint.pth` = `{'model_state_dict': ..., 'optimizer_state_dict': ..., ...}` 형태. `val_multiaqua.py`는 `_checkpoint.pth`를 기대하고, `val_multiaqua_P9.py`는 `.pth`를 직접 로드.
-2. **Val vs Test 갭**: Val mIoU ~93-94% (주간) vs Test mIoU 58-70% (야간). 모든 모델이 이 갭을 보임.
-3. **MoE Gate "Uniform" 문제**: 공간 평균(`_gate_callback`) 결과 uniform으로 보이지만, per-token 분석 시 실제로는 분화되어 있음 (entropy_ratio=0.55, max_weight=0.72). 측정 artifact임.
-4. **NIGHT_AUG**: 야간 시뮬레이션 증강. hardaug4가 최종 튜닝 버전. `BRIGHTNESS_SAMPLING: dark_biased`로 극저조도 편향.
-5. **DDP 학습**: `TRAIN.DDP: True`로 멀티GPU 학습. 단일 GPU 시 `train_sam2_lora_paper_singlegpu.py` 사용.
+1. **현재 지배적인 함정은 `issues/issues-and-fixes.md` 상단 인덱스 표가 정본**이다 — 채점 드라이버(ISSUE-033), eval 덤프 파일명 평탄화(ISSUE-034), 헤드라인 ckpt 경로 미기록(ISSUE-035), legal 하네스 재샘플 편차(ISSUE-036). MULTIAQUA/P9 시대의 주의사항 4건(ckpt 포맷·Val/Test 갭·MoE gate·NIGHT_AUG)은 `archive/2026-09-18-claude-md-legacy-notes.md`로 이동했다.
+2. **판정 규약**: 체크포인트 = 학습기 val-best top1, test-best 인용 금지, 중간 epoch 비교 금지, 단일 런 최고와 시드 평균 병기, PhysAug·TTA 헤드라인 금지, 프로토콜·하네스 버전 병기 — 단일 출처 `decisions/2026-09-07-daily-cycle-experiment-cards.md` §0.
+3. **DDP 학습**: `TRAIN.DDP: True`. eff-batch 16 = BS×world_size×accumulation 으로 고정(LR 불변).
+4. **lecun 은 배치 금지**(user 2026-09-17), hpca100 은 기동 env 4종 필수(`infra/servers-and-launch.md`), 실행 중 학습이 있는 체크아웃은 pull 금지(파일 단위 전송 + md5).
+5. **실험 약어는 매번 풀어 쓴다**(무엇을 보는 실험인지·왜·바꾼 변수·결과가 말해 주는 것) — user 지시 2026-09-17.
 6. **🔴 GPU 가용성 확인 (모든 학습 실행 전 필수)**: 어떤 실험이든 돌리기 **전에 반드시 해당 서버의 빈 GPU를 확인하고, 비어 있는 GPU에만** 배치한다(사용 중 GPU에 얹지 않는다 → OOM/타인 작업 방해).
    - **로컬 런처**(`run_sam.sh` / `run_sam3_train.sh` / `run_sam3_rbma.sh`): `CUDA_VISIBLE_DEVICES`를 직접 주지 않으면 **`scripts/pick_free_gpus.sh`로 빈 GPU를 자동 선택**한다. 개수는 `NGPU=` (SAM2/3 train) 또는 `NPROC=` (rbma)로 지정. 빈 GPU가 부족하면 실행을 거부한다.
      - 예: `NGPU=4 bash run_sam.sh` · `NGPU=1 bash run_sam3_train.sh` · `CUDA_VISIBLE_DEVICES=0,1 NPROC=2 bash run_sam3_rbma.sh <cfg>`(직접 지정은 그대로 존중).
