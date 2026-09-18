@@ -20,26 +20,29 @@ benchmarks:
       - id: "E1(중간층 4탭 읽기 카드) 확정 3시드 — legal v2 test"
         describe: "E1 = 동결 DINOv3 블록 6/12/18/24 의 중간층 토큰 4탭을 센서별 1×1 투영으로 합쳐 FPN 에 함께 읽는 카드(C3 prototype 손실 on). 200ep 확정 런 시드821·902·903. 09-18 확정 3쌍 판정에서 헤드라인 카드 = E1."
         value: 56.24
-        best: 56.72
-        basis: "3시드 평균(감시 세션 보고값, std 미수신) · best = 시드2(56.72) · 시드별 {55.97, 56.72, 56.03}"
+        std: 0.42
+        best: 56.73
+        value_24cls: 56.85
+        basis: "3시드 평균 ± std(감시 세션 보고값) · best = 시드2(56.73) · 시드별 {55.97, 56.73, 56.03} · 24클래스 평균 56.85(std 0.36) · 얇은 4클래스 49.10(std 1.67)"
         split: test
         ckpt_rule: "학습기 val-best(top1)"
         protocol: "legal v2(tools/legal_rescore_v2.py, nearest-exact) — 2026-09-18 채택. 배치 16(BS1 등가 확인: E13 시드3 57.29 동일)"
         protocol_short: "legal v2"
         status: "유효(v2, 3시드)"
-        gap_1st: "mean −0.47 · best +0.01(DGFusion 56.71)"
+        gap_1st: "mean −0.47 · best +0.02(DGFusion 56.71)"
         gap_2nd: "mean −1.11 · best −0.63(MM SAM-adapter 57.35)"
         loss: "C3 on"
         source:
           - {label: "judgment-ledger 2026-09-18 확정 6건 v2 행", path: ".claude_logs/experiments/judgment-ledger.md"}
           - {label: "카드 W38 2026-09-18 legal v2 채택 항목", path: ".claude_logs/decisions/cards/2026-W38-verdicts.md"}
         date: 2026-09-18
-        note: "변형 병기 — E13(4탭 + 센서별 클래스 prototype) 확정 3시드 v2 test {56.95, 55.21, 57.29} 평균 56.48 · best 57.29(DGFusion +0.58); val 은 E1 이 +0.69 앞서 지표가 갈림(§5-33 단일 구조 원칙: DELIVER 헤드라인 카드 = E1, E13 은 MUSES 우위 변형). 옛 헤드라인 P46 C3-only 본 런 ep70(무작위 시드 단일 런): 1024 격자 56.99(제외) / legal v1 55.18 / legal v2 56.39 — 3시드 확정 런에 밀려 참고값(NAS ckpts/P46_c3only_base_ep70_test5699_20260730/)."
+        note: "변형 병기 — E13(4탭 + 센서별 클래스 prototype) 확정 3시드 v2 test {56.95, 55.21, 57.29} 평균 56.48(std 1.12, RailTrack 20.40~68.42 요동 때문; 24클래스 56.73 std 0.30) · best 57.29(DGFusion +0.58); val 은 E1 이 +0.69 앞서 지표가 갈림(§5-33 단일 구조 원칙: DELIVER 헤드라인 카드 = E1, E13 은 MUSES 우위 변형). 옛 헤드라인 P46 C3-only 본 런 ep70(무작위 시드 단일 런): 1024 격자 56.99(제외) / legal v1 55.18 / legal v2 56.39 — 3시드 확정 런에 밀려 참고값(NAS ckpts/P46_c3only_base_ep70_test5699_20260730/)."
       - id: "E1(중간층 4탭 읽기 카드) 확정 3시드 — legal v2 val"
         describe: "위 test 와 같은 세 런의 legal v2 val(2005장)."
         value: 69.51
+        std: 0.15
         best: 69.68
-        basis: "3시드 평균(감시 세션 보고값, std 미수신) · best = 시드3(69.68) · 시드별 {69.39, 69.45, 69.68}"
+        basis: "3시드 평균 ± std(감시 세션 보고값) · best = 시드3(69.68) · 시드별 {69.39, 69.45, 69.68}"
         split: val
         ckpt_rule: "학습기 val-best(top1)"
         protocol: "legal v2(tools/legal_rescore_v2.py, nearest-exact) — 2026-09-18 채택"
@@ -54,7 +57,7 @@ benchmarks:
         source:
           - {label: "judgment-ledger 2026-09-18 확정 6건 v2 행", path: ".claude_logs/experiments/judgment-ledger.md"}
         date: 2026-09-18
-        note: "E13 변형 v2 val {68.74, 68.67, 69.04} 평균 68.82. E17(4탭 + 고해상도 세부 가지) 40ep 스크린 v2 val 70.03 / test 56.82 는 스크린 단일 런이라 헤드라인 자격 없음(확정 200ep 3페어 기동 예정)."
+        note: "E13 변형 v2 val {68.74, 68.67, 69.04} 평균 68.82(std 0.20). E17(4탭 + 고해상도 세부 가지) 40ep 스크린 v2 val 70.03 / test 56.82 는 스크린 단일 런이라 헤드라인 자격 없음(확정 200ep 3페어 기동 예정)."
   muses:
     label: "MUSES"
     task: "MUSES 3모달(RGB·LiDAR·Event) 19클래스 세그멘테이션 — 공식 test mIoU(Codabench comp 14005)"

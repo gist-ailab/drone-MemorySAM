@@ -50,7 +50,7 @@ depends: decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md §3.5
 | 항목 | 값 |
 |---|---|
 | 매칭 페어 분모 | P46 C3-only 시드 20260821 200ep val-best `epoch90_67.3_top1` 의 legal test = **53.57** |
-| 분모 출처 | 2026-09-08 E9 τ=0 재채점(`val.py` native 1024·BS1, bengio E0 eval config). 원본 ckpt = jarvis, 보존본 = NAS `ckpts/…p46_c3only_seed20260821/` |
+| 분모 출처 | 2026-09-08 E9 τ=0 재채점(`val.py` native 1024·BS1, bengio E0 eval config). 원본 ckpt = jarvis, 보존본 = NAS `ckpts/p46_c3only_seed20260821_200ep_20260918/epoch90_67.3_top1_checkpoint.pth`(md5 854a2c9d…; 2026-09-18 확인 결과 옛 기록 경로 `ckpts/…p46_c3only_seed20260821/` 은 NAS 에 없었고 bengio·yeon 평가 스테이징 사본에서 회수 — ISSUE-035 유형) |
 | 참고 분모 | 5시드 평균 **54.39 ± 0.76** — 매칭 페어가 아니므로 **독립 비교에만** 쓴다 |
 | 확정 게이트 | **3페어 mean Δtest ≥ +1.0** **그리고** **24클래스 mean Δ ≥ +0.5** |
 | 24클래스 계산 | §0 보강 규칙대로 매번 클래스별 원자료에서 `(25 × mean − RailTrack) / 24` 로 재계산한다 |
