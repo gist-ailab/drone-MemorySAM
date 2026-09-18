@@ -4,6 +4,6 @@
 
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
-| [current.md](current.md) | **현재 상태 스냅샷 (single source of truth)** — 갱신 시 이 파일만 덮어쓴다 | 01 (상단 스냅샷) |
+| [current.md](current.md) | **현재 상태 스냅샷** — 네 블록(벤치 표·지금 도는 것·블로커·판정 대기) 상한 60줄. 벤치 표는 [../experiments/headline.yaml](../experiments/headline.yaml)의 생성물(`tools/gen_headline_tables.py`), 수치·규칙 정본은 headline.yaml·[../experiments/protocol.md](../experiments/protocol.md)(2026-09-18 재설계) | 01 (상단 스냅샷) |
 | [history-2026H2.md](history-2026H2.md) | 2026-07-01~ 역시간순 진행 로그 — **새 이력 엔트리는 여기 최상단에 append** | 01 (하단 history, H2) |
 | [history-2026H1.md](history-2026H1.md) | ~2026-06-30 역시간순 진행 로그 (동결) | 01 (하단 history, H1) |

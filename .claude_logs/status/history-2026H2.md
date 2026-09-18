@@ -9,6 +9,110 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+## 2026-09-18 — current.md 재설계로 이관된 내용
+
+> 아래는 2026-09-18 current.md 재설계(감사 R2·권고 #11·#13 — 60줄 스냅샷으로 축소) 때 내용물을 걷어내며 **그대로** 옮긴 구 스냅샷 본문이다. 수치·판정의 정본은 [headline.yaml](../experiments/headline.yaml)·[protocol.md](../experiments/protocol.md)·[judgment-ledger.md](../experiments/judgment-ledger.md)로 이관됐다(이하 구문은 당시 기준).
+
+> **역할**: 프로젝트 **현재 상태 스냅샷의 단일 출처(single source of truth)** — 매 갱신 시 아래 스냅샷 블록만 덮어쓴다.
+> 날짜 붙은 진행 엔트리(📝/🏆/⚠️/🛠)는 **이 파일에 쌓지 말고** [history-2026H2.md](history-2026H2.md) 최상단에 append한다 (2026-08-08 재확립 — 이전에 22개 엔트리가 여기 적층돼 스냅샷 기능을 잃었던 사고의 재발 방지).
+> 과거 이력: [history-2026H2.md](history-2026H2.md)(2026-07-01~) · [history-2026H1.md](history-2026H1.md)(~2026-06-30)
+
+# 프로젝트 현황 (Project Status)
+
+> 최종 업데이트: **2026-08-08** (스냅샷 전면 재작성 — 문서 정리 경위는 history 2026-08-08 엔트리 참조)
+> 📊 **사용자용 상황판(artifact)**: https://claude.ai/code/artifact/11924e8a-12fc-4dbc-a174-ead7259b0228 — 갱신 규약 [meta/conventions.md](../meta/conventions.md) §4 (판정 변화 시 `meta/status-report.html` 갱신 + 동일 URL 재배포)
+> 📓 **노션 논문 페이지(랩 공용, 2026-09-08 리팩토링)**: https://app.notion.com/p/gistailab/Drone-Object-Detection-for-RGB-IR-Fusion-33d05310a165408ab0b8ec4427d1fe2c — §4(일일 카드)·§6(한 것/할 것)은 [experiments/plan.md](../experiments/plan.md)와 같은 날 동기화(CLAUDE.md §3 상시규칙). 빌더 = `.claude/skills/notion-experiment-log/paper_page_builder.py`(절 단위 교체, 멱등) + `paper_page_charts.py`(차트 7종).
+
+---
+
+## 📌 현재 상태 스냅샷 (CURRENT — 여기만 읽으면 됨)
+
+**연구 정체성 (2026-08-08 개정)**: 계보 12세대의 공통 가설은 "모달 신뢰도/유용도에 따른 적응적 가중". 검증 결과 — **추론 경로 안의 가중(학습 게이트·SoftMoE·RBMA attn-bias·추론 재가중)은 전부 반증**됐고, 성능을 실제로 움직인 축은 ① frozen 백본 + per-modal LoRA(SAM2→DINOv3, 계보 최대 단일 변수 +11.6) ② 트렁크 rank 복원(P39.1 gated-MLP+VICReg) ③ **학습 전용 손실**(P46-C3 prototype, deep supervision)이다. 구 정체성 문구(RBMA attn-bias)는 폐기 — 근거는 [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md) §1과 SOTA 진단 artifact(2026-08-08).
+
+**🎯 공식 목표 (user 2026-07-03 설정, 기준선 2026-08-08 갱신)**: ① **Seg = 논문 publish** — DELIVER 현행 SOTA = **MM SAM-adapter val 69.60 / test 57.35** (구 기준 DGFusion 66.51/56.71은 이미 상회); MUSES test SOTA = **GtA 82.39(camera-only)**, 융합계보 기준 DGFusion 79.5. ② **Det = 국책과제 mAP50 0.85 — 달성 완료**(0.9321). ③ MULTIAQUA 확장 예정.
+
+### 벤치별 현재 최선 (legal 프로토콜: val-best 또는 final-iter만, test-best 금지)
+
+> 🔴 **2026-09-16 갱신 — DELIVER legal val 내부 최고 = 67.89** (E1 확정 런 시드3, val-best `epoch70_68.53_top1`, 1024·BS1 로드 0/0, 카드 §5-29).
+> 기존 67.74(P36 fair)를 대체한다. SOTA 대비 **−1.71**(MM SAM-adapter 69.60 기준) · 괄호로 −0.90(CAFuser-CAA 68.79 기준).
+> ⚠️ 단일 시드이고 **확정 판정 전**이다 — 같은 코드 매칭 기준선 C3-only 902·903(09-17 완주) 뒤에 3페어로 확정한다.
+>
+> 🔴 **2026-09-16 체크포인트 선택 규칙 고정(생각정리 판정)**: 벤치 표의 1차 수치는 **학습기 val-best(top1) 체크포인트**로 고정한다.
+> 이유 = 일일 카드와 E1·E13 확정 판정(§5-24 포함)이 모두 이 규칙이고, 공개 기준선도 학습 루프 안의 val 로 고른다(CMNeXt val-best · CAFuser·DGFusion final-iter).
+> 이 규칙으로 **DELIVER test 우리 최고 = 56.99**(P46 C3-only 본런 ep70, 768 학습·1024 평가, 우리 하네스 native-GT·BS1; CMNeXt 식 리사이즈 GT 로도 56.99 동일) 🔴 **각주(2026-09-17 user 질문 반영): 이 56.99 본 런은 시드 고정 기능이 없던 시점의 무작위 시드 런이다.** 같은 코드로 시드를 고정해 다시 돌린 런들은 이 값을 재현하지 못했다 — 정본 하네스 val 재선택 규칙(N6)으로 5시드 평균 **54.39±0.76**, 학습기 val-best top1 규칙으로 5시드 평균 **53.83**. 즉 56.99 는 단일 런의 상단 꼬리이지 재현된 수준이 아니다. → **DGFusion 56.71 대비 +0.28 · MM SAM-adapter 57.35 대비 −0.36**. 5시드 평균은 이 규칙으로 53.83(24클래스 54.66).
+> P34 56.62 는 더 이상 최고가 아니다. N6 legal-val 재선택 수치(평균 54.39 · 최고 55.29)는 **규칙 이름을 붙여 보조로만** 병기한다 — 결과를 보고 유리한 쪽을 고르지 않기 위해 규칙을 하나로 고정한다.
+> **MUSES 공식 test 79.29 ± 0.71(P39.1-rank 3모달, 시드2·20260825, PhysAug-on 레시피), best 단일 런 79.788. 융합 계보 최고 DGFusion 79.5 대비 mean −0.21, best +0.29.** (생각정리 판정 2026-09-18: 08-20 원칙 "mean±std 주 + best 병기 + 비교 비대칭 명시" 적용. "융합 계보 1위"는 best 단일 런 한정 각주로 내리고 본문 주장에서 제외.) best = `jarvis_muses_rgbel_P39_1_rank_seed2`(val-best 82.62@ep208), 둘째 시드 = 20260825(공식 val 81.47, ep168) test 78.786, 판독 `experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md`. GtA 82.39 대비 best −2.60. 79.025(P38-m2f)는 7월 기록이다. ⚠️ 이 헤드라인 레시피는 **PhysAug-on**이라 공정선(카드 §3.5-1, PhysAug-off 통일) 밖 — 공정선 안의 헤드라인은 PhysAug-off 풀 런 셋(E7·E1M·E13M)의 공식 val 최고를 test 제출(user 승인 후)해 얻는다. 시드 20260824 재학습은 하지 않는다.
+
+
+| 벤치 | 우리 최선 | vs SOTA | 판정 |
+|---|---|---|---|
+
+> 🔴 **모달리티 정합 비교(2026-09-17, user 지적 반영)** — 우리는 벤치의 모달리티를 전부 쓴다. 1차 비교 = 같은 모달리티 집합 방법, 2차 = 적은 모달 방법.
+>
+> | 벤치 | 우리 최고(모달·시드) | 같은 계열 최고 | 격차 | 적은 모달 최고(2차) |
+> |---|---|---|---|---|
+> | DELIVER test | 56.99, 4모달, 단일 런(5시드 평균 53.83) | DGFusion 56.71, 4모달 | +0.28 | MM SAM-adapter 57.35, RGB+D |
+> | MUSES test 공식 | 79.29 ± 0.71, 3모달, 2시드(시드2·20260825) 평균 · best 단일 런 79.788 · PhysAug-on | DGFusion 79.5, 4모달 | mean −0.21 · best +0.29 | MM SAM-adapter 81.07, RGB+L · GtA 82.39, 카메라 단독 |
+> | MCubeS | 58.07, 4모달, 3시드 | StitchFusion 55.9, 4모달 | +2.17 | — |
+>
+> 세 최고치는 구조(ReliaDINO P39.1 트렁크)는 같으나 손실 설정이 다르다(DELIVER C3 on / MUSES·MCubeS C3 off — MUSES C3 mfeat λ0.2 −0.97, MCubeS C3-on −0.24). E1·E13 확정 런은 우리 최고 단일 런보다 낮아 SOTA 거리 게이트(카드 §0-2) 미달. MUSES 200ep 풀 런 셋(기준선·E1·E13, 시드 3407·902)은 09-18~19 완주.
+
+| DELIVER | 🔴 **1차 규칙 = 학습기 val-best top1 (2026-09-16 고정)**: test 최고 **56.99**(P46 C3-only 본런 ep70) · 5시드 평균 53.83(24클래스 54.66) · legal val 최고 **67.89**(E1 확정 시드3, 단일 시드·확정 전) | test: DGFusion 56.71 **+0.28** · MM SAM-adapter 57.35 −0.36 / val: CAFuser-CAA 68.79 −0.90 · MM SAM-adapter 69.60 −1.71 | 보조(규칙명 필수) = N6 legal-val 재선택 평균 54.39±0.76 · 최고 55.29(seed816). 확정 3페어 판정 09-17 |
+| MUSES | **P39.1-rank 3모달 공식 test 79.29 ± 0.71**(2시드 평균, best 단일 런 79.788 = seed2 val 82.62@ep208, PhysAug-on) — 정본(79.025 = 7월 P38-m2f 기록) | GtA(camera-only) 82.39 대비 best **−2.60** · DGFusion 79.5 대비 mean **−0.21** / best +0.29 (융합 계보 1위 주장은 best 단일 런 한정 각주) | 정면 돌파 비현실 → 포지셔닝 = 융합 계보 동급 + 악조건 강건성 + 시드 분산 정직 보고 |
+| MUSES PQ | things 22.87 / All 35.55 (P47-D1 ep172) | SOTA(CAFuser) 59.26 −23점대 | PQ 축 비교 불가 — limitation 절 소재 |
+| **MCubeS** | **통일 레시피(C3-off) 3-seed: 58.07±0.49** {57.93, 57.67, 58.62} — 커뮤니티 표준 test split(102장, 로더 val→test.txt 검증) | published 최고 Mul-VMamba 54.65 대비 **+3.42 / min +3.02** | 🏆 **1등 확정** — 3번째 벤치 첫 진입(2026-08-25~31). C3-on(N4b) = rubber +9.76·overall −0.10(dose-response 적중) |
+| Det | D1-recovered(ViT-L) AP50 **0.9321**@ep6 | 목표 0.85 **+0.08** | 종결 국면 |
+| MULTIAQUA | P9 ep131 / P22 ep120 M-score **82.10** | (챌린지 종료, 고정) | 고정 |
+
+### 🔴 제안 모델 확정 = RxDINO (P52, 2026-08-31 개정·user 승인) — 세션 재시작 시 이 절이 정본
+
+**RxDINO = 단일-config 자기-적응 처방 멀티모달 세그멘테이션.** 추론 그래프(3벤치 완전 동일) = frozen DINOv3-L + 모달별 LoRA(Q/V r16) + gated-MLP trunk(+VICReg) + SimpleFPN/픽셀헤드(+M2F-lite aux). 학습 전용: ① **C3-adaptive**(train 혼동 EMA→클래스 붕괴점수 s_c→per-class λ_c prototype 당김) ② **UniBal-adaptive**(모달별 aux head 손실갭→per-modal λ_u) ③ **P50 정렬-사전학습 init**(Places365 pseudo-모달, 어댑터만). 벤치별 config 차이 0 — 거동은 λ 궤적으로 창발(G4 게이트). 컨트롤러 구현·검수 완료(`semseg/models/reliadino/p52.py`, `MODEL.C3_ADAPTIVE`/`UNIBAL_ADAPTIVE`, 기본 off=byte-동일).
+- **개정 사유**: 구 P52(오프라인 진단이 벤치별 C3 on/off 결정)는 per-dataset 튜닝과 구분 불가(user 지적) → 진단의 온라인화. 정본 = [decisions/2026-08-31-p52-rxdino-adaptive-amendment.md](../decisions/2026-08-31-p52-rxdino-adaptive-amendment.md)
+- **게이트(사전등록)**: G1 DELIVER ≥54.95−0.3 · G2 MUSES ≥(UniBal 판정 후 확정)−0.3 · G3 MCubeS ≥58.07−0.3 · G4 λ 창발(DELIVER RailTrack↑/MUSES ≈0·radar λ_u↑/MCubeS rubber↑)
+- **노벨티 4축(P51 반증 후 재중심화)**: 자기-처방 학습(H20 dose-response 2/2 적중) · 어댑터-만 정렬 사전학습(H22 +0.74, 미점유) · 소거-증명 체인(믹서 4갈래: 선택 H16·attn H17·평균 H21·결합 H19 전부 폐쇄) · 통일 레시피 일반성(MCubeS +3.42)
+- **아티팩트 3부작**: 상황판 🛰️ `11924e8a` · 노벨티맵 🧩 `0a7113b8` · 모델카드 💊 `f396bfe9`(논문구조+SVG 도판4) — 원본 전부 `meta/*.html`(git)
+- **측정 정본 프로토콜(ISSUE-033 이후)**: legal = `val.py` native-GT·BS1·**하네스 가드 `tools/eval_harness_guard.py --check` 필수**(8파일 SHA256 동결). ERC(eval_reliadino_ckpt)는 리사이즈-GT 낙관(+2.56)이라 진단용. MUSES 공식 = `tools/eval_muses_official.py`. MUSES 제출 게이트 = 공식 val ≥ 82.62일 때만 1회
+
+### 활성 런 / 대기 (2026-09-02 — 실시간은 plan.md)
+
+- ✅ **P47-2 UniBal 고정런 완주**(yeon 2,3, 2026-09-03 17:16, epoch 300/300): 4모달 laziness 처방 — val-best **82.06@ep164**(게이트 82.62 −0.56), **G2 = 81.42 확정**(공식 harness-guard 재평가 81.72 기준). λ_u 캘리브레이션 완료 — [analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md)(CAP 기본 2.0→0.7 권고). 사고이력: hpca100 ep174 OOM 크래시(타테넌트)→yeon 무-GC 재개 성공(ISSUE-027로 GC 불가, 전례 기반 22GB 안착)
+- 🟢 **N7 VICReg-off 완주**(yeon 0,1, 2026-09-06, epoch 200/200): 컴포넌트 표 마지막 행. val-best 66.56@ep32, test 56.31@ep36(⚠️ test-best — 인용 금지, val-best(ep32) 시점 test 미측정). 총 학습시간 14:49:24, 에러 없음. 중간 궤적이 seed821(VICReg-on)과 동대역 = DELIVER에서 VICReg 순기여 ≈0 가능성
+- 🔴 **P50-EXT Phase2 사전학습 — 완주했으나 채택 게이트 기각(REJECTED, user 결정 2026-09-07)**: 사전학습 자체는 2026-09-05 완주(hpca100 1,3, step 375000/375000, 어댑터 226개 텐서 저장). 이후 DELIVER 채택 게이트 파인튠(`configs/hpca100-deliver_rgbdel_P46_c3only_p50ext_seed821.yaml`, hpca100 GPU1,3, seed20260821 매칭) 착수 → epoch30 체크포인트(트레이너 내부 val 65.41)를 조기 추출해 공식 legal test eval 실행(yeon GPU0, harness-guard 통과 확인 후 `val.py --mode test`, 임시 config `configs/_tmp_yeon_eval_p50ext_gate_ep30.yaml`—git 미커밋, yeon 로컬 전용) → **legal test mIoU 53.10**, 게이트 기준(Phase1 legal test 54.95+0.3=55.25) 대비 크게 미달, 무사전학습 seed821 베이스라인(53.57~54.21)보다도 낮음. 근거: 이 실험 계열은 항상 ep30이 트레이너 val 최고점이고 이후 하락하는 패턴이 반복 확인됨(P50-MAP Phase1 게이트도 동일 패턴 → 그때는 ep30이 실제 최종 최고점이었음) → ep30 조기 판정으로 최종 판정을 갈음할 근거가 있다고 보고 user 확인, **user가 "Phase1(프로브) init으로 P52 바로 착수"를 승인(2026-09-07)**. hpca100의 200-epoch 풀 파인튠 자체는 배경 확인용으로 계속 완주시킨다(P52 착수를 막지 않음, 결과가 다르게 나오면 재검토).
+- 🔵 **P52 본런 5개 착수**(양대 선행조건 완료 — UniBal 판정 + P50-EXT 판정): hpca100 MUSES seed1(GPU0,2, tmux `p52_muses_s1`, ep19/300 val best 77.16@ep14) · hpca100 MUSES seed2(GPU1,3, tmux `p52_muses_s2`, P50-EXT 게이트런 조기종료로 슬롯 확보, 기동검증 5항목 PASS — iter 26/750→65/750, GPU1,3 util/mem 정상, C3_ADAPTIVE/UNIBAL_ADAPTIVE ENABLE 확인, 에러 없음) · yeon DELIVER seed1(GPU2,3, tmux `p52_deliver_s1`, ep4 val 52.78) · yeon DELIVER seed2(GPU4,5, tmux `p52_deliver_s2`, ep4 val 53.85) · yeon MCubeS seed1(GPU6,7, tmux `p52_mcubes_s1`, ep45 val best 55.27@ep38, 가장 앞섬). 게이트: G1 DELIVER 54.65 · G2 MUSES 81.12 · G3 MCubeS 57.77(모두 −0.3 여유 반영). UniBal 판정=[analysis/2026-09-04-p52-unibal-calibration.md](../experiments/analysis/2026-09-04-p52-unibal-calibration.md)(G2=81.42, CAP=0.7 반영) 완료. **P50 init = Phase1(프로브, 200k, legal test 54.95) 채택 확정**(Phase2 EXT는 위 게이트 기각)
+- 🔵 **베이스라인 직접 학습 2건 착수(2026-09-08, user 지시)**: ① **DGFusion Swin-T DELIVER CLDE 공식 설정 재학습**(jarvis GPU1,2,4,5, bs8·LR 1e-4·200k iter, ETA ~1.3일) — 공개판에서 의도적으로 제거된 학습 코드(train_net.py·forward 학습 분기·criterion 유틸 4종)를 CAFuser 대조로 복원해 기동(복원 킷 = `third_party/dgfusion_train_restore/`), 기동검증 통과(iter 전진·loss_depth 0.081 반영·18.2GiB×4). ② **CAFuser Swin-T DELIVER CLDE 대조군 학습**(lecun GPU0,1,2, ⚠️3 GPU 제약으로 bs6·LR 0.75e-4·266,667 iter=총 샘플 동일, ETA ~3일). 목적 = 통계적으로 확실한 재현 수치 확보 후 DGFusion(depth-guided fusion) 한계 분석 → 우리 모델 반영. DELIVER config에선 두 모델 LR 동일(1e-4)이라 아키텍처 차이만의 깨끗한 대조임. registry 행 2건 참조
+- 🔵 **E-LoRA arm A(per-modal) r16 착수**(yeon GPU0,1, tmux `elora_a_r16`, 2026-09-07, config `configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_permodal_r16.yaml`, develop 커밋 047e951) — 기동검증 PASS(`lora_trainable=6,291,456 total_trainable=57,705,247`, GPU0,1 정상 가동). ⏸ arm B(공유 r16)·arm C(공유8+잔차8)는 미착수(bengio/lecun이 develop 대비 각각 436·190커밋 뒤처지고 타 세션 미커밋 WIP 존재 — yeon/hpca100 다음 해방 슬롯 대기) / N9 정성패키지(rank 스펙트럼·confusion 전후) / N5 TTA
+### 논문 트랙 (CVPR 2027 마감 ~2026-11 중순 / RA-L rolling)
+
+- **분기 게이트 = P46 @1024² 판정(08-09)**: 돌파 + 3-seed 재현 → CVPR 도전 / 미달 → RA-L 확정.
+- 스토리(2026-08-08 논의): "test 전이 실패는 단일 병리가 아니다 — 클래스축(DELIVER)·조건축(MUSES)은 다른 처방을 요구한다" — 기둥 = per-modal LoRA 트렁크(P39.1) + 학습 전용 prototype 손실(P46-C3) + drop-modal 인과 분석. C3의 MUSES 이식 실패(−0.765)는 대조 실험으로 재활용.
+- 🔴 **RA-L 초안(ReliaDINO v1, 볼트 `_paper_submission/`) 재중심화 필요** — 현재 RBMA 중심 서사는 반증된 상태. [research/ral-paper-plan.md](../research/ral-paper-plan.md)의 슬롯 3(MUSES 제출)·5(multi-seed)는 이미 충족됨(문서에 미반영).
+
+### 열린 블로커 / 미결
+
+0. ✅ **DELIVER 채점 프로토콜 확정 완료(2026-08-14)** — MM-SA(현 SOTA)=native GT(**우리와 동일, SOTA 비교 유효**) / CMNeXt·CAFuser·DGFusion 계열=1024-리사이즈 GT(낙관 지표 — 이들 대비 우리 수치는 과소). 잔여 작업 = P46 ep70의 1024-GT 재채점 1건(학습 0, DGFusion 비교 각주용). [analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md](../experiments/analysis/2026-08-14-p49-1-fair-eval-metric-protocol.md)
+
+1. **P48 폐기 판정 재확정 필요** — 08-06 게이트 적용 시점 오류 지적([experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md](../experiments/analysis/2026-08-06-pq-perclass-vs-instance-density.md)) 후 상위 재판정 기록 없음. 논문 스코프 밖으로 두되 기록은 닫을 것.
+2. **C2(MCC) 순기여 미측정** — 유일하게 결과를 모르는 조합 (40GB급 필요).
+3. **RGB-D 2모달 fair-eval(학습 0)** — SOTA 최고 구성 대비 직접 비교, 기존 ckpt @1024 재평가만 남음.
+4. MUSES RGB-L 2모달 런(~1일) — 상위권 실구성과 직접 비교.
+5. 반증 확정(재제안 금지) 목록 = artifact D절: attn-bias 계열·추론 재가중·CEFR·zero-init 잔차·rank/η² 개입·모달 드롭·gradient 균형화·radar(MUSES)·NORM_ALL.
+
+### 산출물 위치 (2026-09-09 hpca100 2차 이관)
+
+- hpca100의 작업 볼륨 `~/SSDb`가 95%까지 차서 학습이 휘발성 `/tmp`로 우회하던 상태를 풀기 위해, 내 체크포인트 158G를 `/drone_nas/.../ckpts/hpca100_archive_20260909/`로 옮겼다(run 단위 tar 15건). **SSDb 여유 121G → 287G**(95% → 87%).
+- ⚠️ 정리 중 확인: **일일 카드 E1M(카드 E1의 중간층 4탭 읽기를 MUSES로 이식)이 2026-09-08 22:44에 완주**했다 — 트레이너 val-best **80.64@ep35**(E7 기준선 80.29 대비 +0.35). 공식 native 채점과 판정 기록은 미실시. 이 완주로 **hpca100 GPU 0·3이 유휴** 상태다.
+- 🔴 **서버에서 체크포인트가 안 보이면 지워진 것이 아니라 이관된 것이다. 재학습하기 전에 [infra/artifact-locations.md](../infra/artifact-locations.md)를 먼저 확인하라** — 실험별 위치·서버에 남긴 것과 그 이유·복원 명령이 정리돼 있다. 이관 대상 실험 행에는 `experiments/registry.md`에도 표기를 붙였다.
+- 보류 상태인 P52 MUSES 시드1·시드2는 아카이브에서 `last_checkpoint.pth`를 서버로 되돌리면 `AUTO_RESUME`으로 재개할 수 있다(11G 기준 약 11분).
+
+### 재현성 규약 (전 세션 공통, 논문 표 작성 시 재검증)
+
+- **test-best ckpt 인용 금지** (철회 사고 2회: P34 57.60, P46 57.05). val-best 선택 민감도 큼(ep20→26에서 test −2.76) → 3-seed mean±std 필수.
+- 학습 @768 / 평가 @1024 mismatch는 논문에 명시 (P46 @1024² 학습 완주 시 해소).
+- 진행보고 포맷 = user auto-memory `progress-report-format` (2블록 + 벤치 baseline 표).
+
+---
+
+
 📝 2026-09-18 (판정 반영) — 생각정리 세션 판정 4건 집행: ① N1(MUSES 시드 분산) 카드 정정 채택(공식 test 2시드 std 0.71·범위 1.00, 이후 MUSES test 주장은 2시드 이상 mean±std, 단일 제출은 best 단일 런 표기) ② MUSES 헤드라인 문장 교체 = "공식 test 79.29 ± 0.71(P39.1-rank 3모달, 시드2·20260825, PhysAug-on), best 79.788, DGFusion 79.5 대비 mean −0.21 / best +0.29", 융합 계보 1위는 best 한정 각주로 강등, 공정선 안의 헤드라인은 PhysAug-off 풀 런 셋(E7·E1M·E13M) 공식 val 최고를 test 제출(user 승인 후) ③ 시드 20260824 재학습 안 함 ④ 노션 논문 페이지 §0·§3.6·§4·§6 + 차트(fig1 SOTA 격차·fig3 MUSES 리더보드) 재생성·교체(audit 통과). current.md MUSES 행 3곳 같은 문장으로 갱신.
 
 📊 2026-09-18 — **MUSES 공식 test 시드 분산 첫 실측**: P39.1-rank 3모달 시드 20260825(ep168, 공식 val 81.47) Codabench test **78.786**, 시드2 79.788 대비 −1.00(2점 mean 79.29±0.71). 손실은 clear_day −2.98·snow_night −4.68에 집중, fog_night 69.2(시드2 동수준)·snow 역전 4회·night truck 26.63 병목 재현. 2점 mean은 DGFusion 79.5보다 −0.21이라 "융합 계보 1위"는 시드2 단일 런 기준으로만 성립. 판독 `experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md`, registry·plan·current·MUSES 인덱스 갱신. 헤드라인 표기(best vs mean±std) 판정은 생각정리 세션에 전달.

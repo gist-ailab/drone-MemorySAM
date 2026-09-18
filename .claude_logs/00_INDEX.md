@@ -65,8 +65,11 @@
 | 20_train_eval_optimization_audit.md | [decisions/2026-07-03-train-eval-optimization-audit.md](decisions/2026-07-03-train-eval-optimization-audit.md) |
 | 21_egofill_dataset.md | [datasets/lidar-egofill.md](datasets/lidar-egofill.md) |
 | 22_supervisor_taskboard.md | [archive/2026-07-03-supervisor-taskboard.md](archive/2026-07-03-supervisor-taskboard.md) |
+| 24_p32_phase0_results.md | [experiments/analysis/p32-phase0-results.md](experiments/analysis/p32-phase0-results.md) |
+| 27_p32_verification_p33v2.md | [experiments/analysis/p32-verification-p33v2.md](experiments/analysis/p32-verification-p33v2.md) |
 | P13_design_guide.md | [archive/p13-design-guide.md](archive/p13-design-guide.md) |
 | research_vault/ | [research/vault/](research/vault/) |
+| research_vault/architecture/P34_ReliaDINO_design_20260712.md | 🟡 처리 대기(감사 #17, 2026-09-18 확인: NAS 볼트 `architecture/` 에 없음 — 볼트 이동 또는 archive 동결은 user 결정) |
 | (repo) outputs_model_explain/*.md | [models/explain/](models/00_MOC.md) (kebab-case 사본) |
 
 > ⚠️ "doc 20"은 두 문서(20_p31_design_proposal / 20_train_eval_optimization_audit)를 가리킬 수 있음 — 문맥으로 구별 (P31 설계 얘기면 전자).

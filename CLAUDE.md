@@ -20,7 +20,7 @@
 #### Step 1 — 프로젝트 상태 파악 (2026-09-18 개정: 이 순서로 읽으면 첫 5분에 정본 수치·규칙·대기열·금지 축·GPU 규칙·세션 분담을 모두 안다)
 1. **`00_INDEX.md`** — 폴더 구조 front door + 구번호→새경로 매핑표. 각 폴더의 `00_MOC.md`가 문서를 안내한다.
 2. **`status/current.md`** — 현재 상태 스냅샷(단일 출처): 헤드라인 수치와 그 규칙(체크포인트 선택·프로토콜·하네스 버전), 벤치 baseline 표, 활성 런, 미결. 🔴 헤드라인 수치는 여기와 `experiments/judgment-ledger.md`에서만 인용하고 다른 곳의 복제본을 믿지 않는다.
-3. **`decisions/2026-09-07-daily-cycle-experiment-cards.md` §0·§0-1·§0-2** — 판정 규약(24클래스 계산, 시드 평균 병기, 중간 epoch 금지, SOTA 거리 게이트, MUSES 조건별 표본 규칙). 최신 판정은 §5 최상단.
+3. **`decisions/2026-09-07-daily-cycle-experiment-cards.md` §0·§0-1·§0-2** — 판정 규약(24클래스 계산, 시드 평균 병기, 중간 epoch 금지, SOTA 거리 게이트, MUSES 조건별 표본 규칙). 최신 판정은 §5 "최신 판정 3개" 링크와 `decisions/cards/2026-Www-verdicts.md`(주 단위 분할본, 최하단 append; 옛 §5-NN 번호는 앵커로 보존).
 4. **`experiments/plan.md`** — 실행 중·대기열·GPU 배치(실측 기준). **`experiments/judgment-ledger.md`** — 판정 대장(런별 클래스별 Δ·판정·원본).
 5. **`meta/experiment-glossary.md`** — 약어(E1·E13·G1·C3·P53 등) 설명. 🔴 보고·문서에서 약어는 매번 설명을 붙인다.
 6. **`issues/issues-and-fixes.md` 상단 인덱스 표** — 열린 이슈(ISSUE-033~036) — **코드·평가 전 반드시 확인**.

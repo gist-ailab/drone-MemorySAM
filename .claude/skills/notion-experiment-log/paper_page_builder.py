@@ -24,23 +24,70 @@ def IMG(name, caption):
     return image_block(fid, caption)
 
 # ───────────────────────────────────────────── 0. 한눈에 보기
+def _hl():
+    """headline.yaml(헤드라인 수치 단일 정본) 읽기 — tools/gen_headline_tables.py 의 load_headline 경유.
+
+    후보 루트: (1) REPO(메인 체크아웃, develop 병합 후 정상 경로) (2) 이 파일 기준 워크트리 루트.
+    headline.yaml 이 없으면 load_headline 이 FileNotFoundError 로 안내한다(2026-09-18 신설).
+    """
+    import importlib
+    here_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    for root in (REPO, here_root):
+        tools_dir = os.path.join(root, "tools")
+        if os.path.isfile(os.path.join(tools_dir, "gen_headline_tables.py")):
+            if tools_dir not in sys.path:
+                sys.path.insert(0, tools_dir)
+            return importlib.import_module("gen_headline_tables").load_headline()
+    raise SystemExit("headline.yaml 읽기 실패: tools/gen_headline_tables.py 없음(develop 병합·체크아웃 확인)")
+
+
+def _hl_sota(bench, entry, secondary=False):
+    """SOTA 셀 문자열 — split: val 엔트리는 *_val 변형(카드 §0-2 1차/2차 규약)."""
+    val = entry.get("split") == "val"
+    s = bench.get(("sota2_val" if val else "sota2") if secondary else ("sota_val" if val else "sota"))
+    return f"{s['name']} {s['value']}" if s else "—"
+
+
+def _hl_ours(entry):
+    """우리 최고 셀 문자열 — 값(±std·best·병기값)·프로토콜·근거·규칙·상태."""
+    head = f"{entry['value']}"
+    if entry.get("std") is not None:
+        head += f" ±{entry['std']}"
+    if entry.get("best") is not None:
+        head += f" · best {entry['best']}"
+    if entry.get("protocol_short"):
+        head += f"({entry['protocol_short']})"
+    for i in ("", "2"):
+        alt = entry.get(f"value_alt{i}")
+        if alt is not None:
+            tag = entry.get(f"protocol_short_alt{i}", "")
+            head += f" / {alt}({tag})" if tag else f" / {alt}"
+    tail = [x for x in (entry.get("basis"), entry.get("status")) if x]
+    return head + (" — " + " · ".join(tail) if tail else "")
+
+
 def sec_summary():
+    b = _hl()["benchmarks"]
+    dl, mc = b["deliver"]["ours"][0], b["mcubes"]["ours"][0]
+    mu = b["muses"]["ours"][0]
+    rows = [["벤치·분할", "우리 최고(값·근거·규칙·상태)", "1차 = 같은 모달 계열 최고", "격차", "2차 = 적은 모달 최고", "격차", "손실 설정"]]
+    for key, bench in b.items():
+        for i, e in enumerate(bench.get("ours", [])):
+            label = bench.get("label", key) + (f" · {e['split']}" if e.get("split") else "")
+            if len(bench.get("ours", [])) > 1 and not e.get("split"):
+                label += f" #{i + 1}"
+            rows.append([label, _hl_ours(e), _hl_sota(bench, e), e.get("gap_1st", "—"),
+                         _hl_sota(bench, e, secondary=True), e.get("gap_2nd", "—"), e.get("loss", "—")])
     return [
         CO([B("연구 대상 "), T("드론·주행 야간/악천후 멀티모달(RGB + LiDAR + Event + Depth/Thermal/Radar) 시맨틱 세그멘테이션과 객체 검출. 벤치 = DELIVER · MUSES · MCubeS(세그) / poongsan indoor(검출) / MULTIAQUA(챌린지, 종료).")], "📌", "blue_background"),
-        CO([B("현재 최선(합법 ckpt = val-best 또는 final-iter만, test-best 금지) "),
-            T("DELIVER test 56.99 (체크포인트 선택 1차 규칙 = 학습기 val-best top1, 5시드 평균 53.83) vs SOTA MM SAM-adapter 57.35 = −0.36 · 융합 기준선 DGFusion 56.71 대비 +0.28 상회 · MUSES 공식 test 79.29 ± 0.71(P39.1-rank 3모달, 시드2·20260825, PhysAug-on 레시피), best 단일 런 79.788. 융합 계보 최고 DGFusion 79.5 대비 mean −0.21, best +0.29 (카메라 단독 1위 GtA 82.39 대비 best −2.60). 각주: '융합 계보 1위'는 best 단일 런 한정 주장이며 본문 주장에서 내린다")], "🏁", "green_background"),
+        CO([B(f"현재 최선(체크포인트 선택 1차 규칙 = {dl['ckpt_rule']}, test-best 금지) "),
+            T(f"DELIVER test {dl['value']}({dl['protocol_short']}, 5시드 평균 {dl['seed_mean']['value']}) — {dl['status']}; 병기 {dl['value_alt']}({dl.get('protocol_short_alt','')}) · {dl['value_alt2']}({dl.get('protocol_short_alt2','')}) · vs 2차 SOTA MM SAM-adapter {b['deliver']['sota2']['value']} = {dl['gap_2nd']} · 1차 융합 기준선 DGFusion {b['deliver']['sota']['value']} 대비 {dl['gap_1st']} · MUSES 공식 test {mu['value']} ± {mu['std']}({mu['protocol_short']}), best 단일 런 {mu['best']}. 융합 계보 최고 DGFusion {b['muses']['sota']['value']} 대비 {mu['gap_1st']}, 카메라 단독 1위 GtA {b['muses']['sota2']['value']} 대비 best −2.60. 각주: '융합 계보 1위'는 best 단일 런 한정 주장이며 본문 주장에서 내린다. 수치 정본 = headline.yaml(레포) 이 절은 그 생성물")], "🏁", "green_background"),
         P(B("모달리티 정합 벤치 비교 (2026-09-17 규약). "),
           T("우리는 벤치가 주는 모달리티를 전부 쓴다. 그래서 1차 비교 상대는 같은 모달리티 집합을 쓰는 방법이고, 더 적은 모달로 더 높은 점수를 내는 방법은 2차로 병기한다. 체크포인트 선택 1차 규칙은 학습기 val-best(top1)이며, 단일 런 최고와 시드 평균을 함께 적는다.")),
-        table([
-            ["벤치", "우리 최고(모달 · 시드)", "1차 = 같은 모달 계열 최고", "격차", "2차 = 적은 모달 최고", "격차", "손실 설정"],
-            ["DELIVER test", "56.99 · 4모달 · 단일 런(5시드 평균 53.83)", "DGFusion 56.71 · 4모달", "+0.28", "MM SAM-adapter 57.35 · RGB+D 2모달", "−0.36", "C3 on"],
-            ["DELIVER val", "67.89 · 4모달 · 단일 런(E1 확정 시드3, 확정 판정 전)", "CAFuser-CAA 68.79 · 4모달", "−0.90", "MM SAM-adapter 69.60 · 2모달", "−1.71", "C3 on"],
-            ["MUSES 공식 test", "79.29 ± 0.71 · 3모달 · 2시드(시드2·20260825) 평균 · best 단일 런 79.788 · PhysAug-on", "DGFusion 79.5 · 4모달", "mean −0.21 · best +0.29", "MM SAM-adapter 81.07 · RGB+L · GtA 82.39 · 카메라 단독", "−1.28 · −2.60", "C3 off"],
-            ["MCubeS", "58.07 · 4모달 · 3시드 평균", "StitchFusion 55.9 · 4모달", "+2.17", "—", "—", "C3 off"],
-        ]),
+        table(rows),
         P(T("세 최고치는 구조(ReliaDINO P39.1 트렁크)가 같지만 손실 설정이 다르다 — DELIVER 는 C3 를 켜고 MUSES·MCubeS 는 끈다. 그래서 "),
           B("같은 구조인 것은 맞아도 같은 레시피는 아니며, 논문 표에서 손실 설정 열을 숨기지 않는다"),
-          T(". 5시드 평균 53.83 은 DGFusion 에 미달하므로 단일 런 최고만 인용하지 않는다.")),
+          T(f". DELIVER 5시드 평균 {dl['seed_mean']['value']} 은 DGFusion {b['deliver']['sota']['value']} 에 미달하므로 단일 런 최고만 인용하지 않는다. MCubeS {mc['value']} ±{mc['std']} 는 {mc['gap_1st']} 로 1위.")),
         CO([B("캠페인 결론(2026-06~09) "),
             T("추론 경로 안에서 모달을 적응적으로 가중하는 기제(학습 게이트 · 신뢰도→attention logit bias · 추론 재가중 · 패치별 라우팅 · cross-attention 트렁크 · 인코딩-시간 결합)는 전부 반증됨. 성능을 실제로 움직인 축 = 백본 표현력(SAM2→DINOv3 +11.6) · 학습 해상도(768→1024 test +2.0) · 학습 전용 클래스 prototype 손실(C3, DELIVER +1.4) · 어댑터 정렬 사전학습(+0.74, 재현 대기).")], "🧭", "yellow_background"),
         CO([B("지금 하는 것(2026-09-07~) "),
