@@ -11,7 +11,7 @@
 1. `../CLAUDE.md` — 세션 규칙 + 프로젝트 개요 (역할 키워드 시 [meta/bot-roles.md](meta/bot-roles.md) 먼저)
 2. **이 인덱스(00_INDEX)** — 어디에 뭐가 있는지
 3. [status/current.md](status/current.md) — **현재 상태 스냅샷 (단일 출처)**: 지금 무엇을 하는 중인지
-4. [meta/taskboard.md](meta/taskboard.md) — 내 세션에 할당된 태스크 확인
+4. [experiments/plan.md](experiments/plan.md) — 실행 중·대기열·GPU 배치 / [experiments/judgment-ledger.md](experiments/judgment-ledger.md) — 판정 대장 (구 taskboard 는 archive)
 5. 작업 폴더의 `00_MOC.md` → 해당 문서로 이동
 
 > ✋ **파일 생성·코드 추가·브랜치 생성 전**: [meta/conventions.md](meta/conventions.md) — 구조 유지 규칙(git develop 기준, 문서 배치, MODEL_REGISTRY, configs 명명) 필수 확인.
@@ -25,13 +25,13 @@
 | [status/](status/00_MOC.md) | **현재 상태 + 진행 이력** (구 01 분할) | [current.md](status/current.md) = 스냅샷 단일 출처 · history-2026H2/H1 |
 | [models/](models/00_MOC.md) | 모델 아키텍처 | [arch-evolution.md](models/arch-evolution.md)(canonical) · figures-ascii · explain/(버전별 노트) · [p44-bmr-implementation.md](models/p44-bmr-implementation.md) |
 | [experiments/](experiments/00_MOC.md) | 실험 기록 | [registry.md](experiments/registry.md)(허브) · [log.md](experiments/log.md)(canonical) · monitor-log · analysis/ · [benchmark_roadmap.md](experiments/benchmark_roadmap.md)(벤치마크·모달리티 확장 로드맵) · [plan.md](experiments/plan.md)(GPU 잡기 전 필독) · [launch-runbook.md](experiments/launch-runbook.md) |
-| [det/](det/00_MOC.md) | Detection 트랙 진단 | [diagnosis-plan.md](det/diagnosis-plan.md)(det 작업 전 필독) · p29det-data-fix · [det-cert-D1-realtime.md](det/det-cert-D1-realtime.md)·[det-cert-D1-vitsp-handoff.md](det/det-cert-D1-vitsp-handoff.md)(D1 인증 트랙) · [det-architecture-map.md](det/det-architecture-map.md) |
+| [det/](det/00_MOC.md) | Detection 트랙 진단 | diagnosis-plan(archive 로 이동, det 종결 국면) · p29det-data-fix · [det-cert-D1-realtime.md](det/det-cert-D1-realtime.md)·[det-cert-D1-vitsp-handoff.md](det/det-cert-D1-vitsp-handoff.md)(D1 인증 트랙) · [det-architecture-map.md](det/det-architecture-map.md) |
 | [datasets/](datasets/00_MOC.md) | 데이터셋 구축/수리 | [lidar-egofill.md](datasets/lidar-egofill.md) · [muses-dataset.md](datasets/muses-dataset.md) |
 | [research/](research/00_MOC.md) | 관련연구·노벨티 | [novelty-and-related-work.md](research/novelty-and-related-work.md)(canonical) · vault-digest · vault/ · related-work-raw |
 | [decisions/](decisions/00_MOC.md) | 설계 제안·감사 (날짜 prefix) | P39~P49 설계 제안 계보 (최신: 2026-08-08 condexpert-adapter-probe) — 목록은 00_MOC |
 | [infra/](infra/00_MOC.md) | 서버·환경 | [servers-and-launch.md](infra/servers-and-launch.md)(원격 실행 시 먼저) · environment |
 | [issues/](issues/00_MOC.md) | 이슈 트래킹 | [issues-and-fixes.md](issues/issues-and-fixes.md)(코딩 전 상단 상태표 확인) |
-| [meta/](meta/00_MOC.md) | 세션 운영 | **[conventions.md](meta/conventions.md)(구조 유지 규칙)** · bot-roles · taskboard |
+| [meta/](meta/00_MOC.md) | 세션 운영 | **[conventions.md](meta/conventions.md)(구조 유지 규칙)** · [analysis-session-protocol.md](meta/analysis-session-protocol.md)(분석 세션 지침) · [experiment-glossary.md](meta/experiment-glossary.md)(약어) · bot-roles |
 | [archive/](archive/00_MOC.md) | 🗄 동결 문서 | P9~P14 분석 · P13 설계 가이드 |
 
 ---
@@ -60,11 +60,11 @@
 | 16_failure_analysis_P28_P29.md | [experiments/analysis/2026-06-30-p28-p29-failure-analysis.md](experiments/analysis/2026-06-30-p28-p29-failure-analysis.md) |
 | 17_p29det_data_fix.md | [det/p29det-data-fix.md](det/p29det-data-fix.md) |
 | 18_research_digest.md | [research/vault-digest.md](research/vault-digest.md) |
-| 19_det_diagnosis_plan.md | [det/diagnosis-plan.md](det/diagnosis-plan.md) |
+| 19_det_diagnosis_plan.md | [archive/2026-07-02-det-diagnosis-plan.md](archive/2026-07-02-det-diagnosis-plan.md) |
 | 20_p31_design_proposal.md | [decisions/2026-07-02-p31-redesign-proposal.md](decisions/2026-07-02-p31-redesign-proposal.md) |
 | 20_train_eval_optimization_audit.md | [decisions/2026-07-03-train-eval-optimization-audit.md](decisions/2026-07-03-train-eval-optimization-audit.md) |
 | 21_egofill_dataset.md | [datasets/lidar-egofill.md](datasets/lidar-egofill.md) |
-| 22_supervisor_taskboard.md | [meta/taskboard.md](meta/taskboard.md) |
+| 22_supervisor_taskboard.md | [archive/2026-07-03-supervisor-taskboard.md](archive/2026-07-03-supervisor-taskboard.md) |
 | P13_design_guide.md | [archive/p13-design-guide.md](archive/p13-design-guide.md) |
 | research_vault/ | [research/vault/](research/vault/) |
 | (repo) outputs_model_explain/*.md | [models/explain/](models/00_MOC.md) (kebab-case 사본) |

@@ -17,6 +17,8 @@ created: 2026-07-08
 - 병합 후 **로컬 허브 체크아웃**(이 리포의 메인 체크아웃 — 원격 서버들이 여기서 pull)도 pull로 최신화. 미커밋분은 wip 커밋으로 보존 후 pull.
 - **원격 서버(B200/jarvis/bengio 등)는 진행 중 학습이 있는 동안 pull 금지.** 학습 종료 후 pull → 스크립트 무결성 확인(taskboard R3).
 - 시크릿(.wandb_key 등) 커밋 금지 — .gitignore에 이미 등록됨.
+- **워크트리 격리 세션(백그라운드 job)의 git 제약(2026-09-18 명문화)**: rtk 훅이 워크트리 밖을 건드릴 수 있는 명령을 거부하므로 `/usr/bin/git` 절대경로의 **단순 명령**(변수·eval·복합 파이프 금지)으로만 실행한다. `.claude/` 아래 새 파일은 `add -f`. 허브 체크아웃 pull은 워크트리 안에서 불가 → `ExitWorktree(keep)` 후 허브에서 `pull --ff-only`, 다시 `EnterWorktree(path)`. `reset --hard`·bare stash 금지(다른 세션 편집 유실 사고 2026-09-15).
+- **워커 위임 규칙(user 2026-09-18, 전역 GLM.md 보다 우선)**: 코드 작성·수정은 `labcode`(연구실 계정 Claude)에 위임하되 **매번 사용자에게 워커를 묻지 않는다.** labcode 실패·한도 소진 시 `glmcode`로 폴백, 사소하고 반복적인 작업은 처음부터 `glmcode`. 위임 결과는 이 세션이 반드시 diff·스모크로 검수한 뒤 develop 병합.
 
 ## 2. 문서 규칙 (`.claude_logs/`)
 

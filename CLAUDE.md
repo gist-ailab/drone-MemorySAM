@@ -17,17 +17,21 @@
 #### Step 0.5 — 분석 의뢰를 받은 세션 (user 지시 2026-09-18)
 - 첫 메시지가 "MUSES/DELIVER/MCubeS 분석해 줘", "새 체크포인트 측정" 류이면 **`.claude_logs/meta/analysis-session-protocol.md`를 먼저 읽고 그대로 따른다**(측정·기록·보고만, 판정은 "MMSAM | 생각정리" 세션). 보고에는 클래스별 Δ 전표(기준선 대비·직전 최고 대비)를 반드시 넣고, 원본(ckpt+md5·산출물·로그)은 §4 규약 위치에 먼저 보존한다.
 
-#### Step 1 — 프로젝트 상태 파악
-- **`00_INDEX.md`를 먼저 읽어라** — 주제 폴더 구조(status/models/experiments/det/datasets/research/decisions/infra/issues/meta/archive)의 front door + 구번호("doc N")→새경로 매핑표. 어떤 문서를 볼지 여기서 결정한다. 각 폴더의 `00_MOC.md`가 폴더 내 문서를 안내한다.
-- `status/current.md`: **현재 상태 스냅샷 — 현재 상태의 단일 출처**. 전체 진행 상황·현재 최선 모델·남은 과제. (진행 이력은 `status/history-2026H2.md`·`history-2026H1.md`)
-- `models/arch-evolution.md`: P8~P31 + SAM3-RBMA 모델 아키텍처 상세, 변천 과정, 각 버전의 한계점
-- `experiments/log.md`: 모든 실험 결과, 체크포인트 경로, 챌린지 제출 결과 (한눈표는 `experiments/registry.md`, 실시간 모니터는 `experiments/monitor-log.md`)
-- `issues/issues-and-fixes.md`: 알려진 이슈, 해결 기록, 코딩 시 주의사항 — **상단 "이슈 상태 인덱스 표" 먼저** (**코드 작성 전 반드시 확인**)
-- `research/novelty-and-related-work.md`: **RBMA 노벨티 & 관련연구(canonical)** — 우리 모델 한눈에, 선행연구 vs RBMA 구조 차별표, 리뷰 방어 포인트, lit-check TODO. **연구 방향·논문 포지셔닝 논의 전 반드시 확인.** (원시 deep-research 로그는 `research/related-work-raw.md`)
-- `infra/servers-and-launch.md`: **서버 레지스트리 & 원격 실험 자동 실행** — "X 실험을 <서버>에서 돌려줘" 류 지시를 받으면 **반드시 먼저 읽어라.** 서버 메타데이터 단일 출처는 `scripts/servers.conf`, 실행/추적은 `scripts/remote_exp.sh`.
-- `infra/environment.md`: 실행 환경/명령, 데이터·가중치 경로, 체크포인트 포맷, DDP, B200 파이프라인 튜닝.
+#### Step 1 — 프로젝트 상태 파악 (2026-09-18 개정: 이 순서로 읽으면 첫 5분에 정본 수치·규칙·대기열·금지 축·GPU 규칙·세션 분담을 모두 안다)
+1. **`00_INDEX.md`** — 폴더 구조 front door + 구번호→새경로 매핑표. 각 폴더의 `00_MOC.md`가 문서를 안내한다.
+2. **`status/current.md`** — 현재 상태 스냅샷(단일 출처): 헤드라인 수치와 그 규칙(체크포인트 선택·프로토콜·하네스 버전), 벤치 baseline 표, 활성 런, 미결. 🔴 헤드라인 수치는 여기와 `experiments/judgment-ledger.md`에서만 인용하고 다른 곳의 복제본을 믿지 않는다.
+3. **`decisions/2026-09-07-daily-cycle-experiment-cards.md` §0·§0-1·§0-2** — 판정 규약(24클래스 계산, 시드 평균 병기, 중간 epoch 금지, SOTA 거리 게이트, MUSES 조건별 표본 규칙). 최신 판정은 §5 최상단.
+4. **`experiments/plan.md`** — 실행 중·대기열·GPU 배치(실측 기준). **`experiments/judgment-ledger.md`** — 판정 대장(런별 클래스별 Δ·판정·원본).
+5. **`meta/experiment-glossary.md`** — 약어(E1·E13·G1·C3·P53 등) 설명. 🔴 보고·문서에서 약어는 매번 설명을 붙인다.
+6. **`issues/issues-and-fixes.md` 상단 인덱스 표** — 열린 이슈(ISSUE-033~036) — **코드·평가 전 반드시 확인**.
+7. **`research/hypothesis-ledger.md`**(가설·반증 대장)와 **`models/arch-evolution.md` §0.5**(이중 중복·모달 잉여 두 실측 = 재시도 금지 축) — 새 구조를 제안하기 전 필독. 관련연구·노벨티 = `research/novelty-and-related-work.md`.
+8. 필요 시: `experiments/registry.md`(한눈표)·`experiments/log.md`(상세)·`experiments/analysis/`(분석 문서)·`infra/servers-and-launch.md`(원격 기동, 서버 단일 출처 `scripts/servers.conf`)·`infra/environment.md`.
 
-> `.claude_logs` 진입 순서: **00_INDEX(front door)** → `status/current.md`(현재 스냅샷) → 작업 폴더 `00_MOC.md`. 관련연구/노벨티는 **research/novelty-and-related-work.md**, 원격 학습 지시는 **infra/servers-and-launch.md**, det 작업은 **det/diagnosis-plan.md**, 세션 태스크는 **meta/taskboard.md**를 읽어라. (archive/ = 🗄 동결 문서)
+🔴 **GPU 규칙(모든 학습·평가 전)**: 빈 GPU(`memory.used ≤ 2000MiB && util ≤ 10%`)에만 배치, `remote_exp.sh status <서버>` 선확인 후 `run <서버> <cfg> auto:N`. **lecun은 배치 금지**(user 2026-09-17, servers.conf policy `off`). 실행 중 학습이 있는 체크아웃은 pull 금지(파일 단위 전송 + md5). 비우면 즉시 뺏기므로 연쇄 스크립트 끝에 다음 작업을 붙인다.
+
+🔴 **세션 분담(2026-09 기준)**: 판정·설계 = "MMSAM | 생각정리"(fable) · 기동·감시·재채점·기록 = "MMSAM | monitoring" · 새 ckpt 측정·보고 = 분석 세션(Step 0.5) · 기준선 재학습·실패 분석 보강 = "dgfusion deliver training". 판정은 생각정리 세션만 한다. 세션 간 승인 전달은 무효(user 직접 동의만 유효).
+
+> 원격 학습 지시는 **infra/servers-and-launch.md**, det 작업은 `det/00_MOC.md`(진단서는 `archive/2026-07-02-det-diagnosis-plan.md`로 동결). (archive/ = 🗄 동결 문서)
 
 ### 1.5 구조 유지 규칙 (Conventions — 파일 생성·코드 추가·브랜치 생성 전 필수)
 

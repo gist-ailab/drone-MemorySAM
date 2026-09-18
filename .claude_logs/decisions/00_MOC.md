@@ -18,7 +18,7 @@
 | [2026-08-08-probea2-backbone-scaling-request.md](2026-08-08-probea2-backbone-scaling-request.md) | **실험 의뢰서** — ProbeA2 백본 스케일링(S+/B/L/H+, RGB 단독): 상한=표현력 천장, 하한=Swin-T 용량정합 공정성 방어. 게이트 G-A2 사전 등록 | 승인됨·배정 대기 |
 | [2026-08-08-h10-readjudication-experiment-request.md](2026-08-08-h10-readjudication-experiment-request.md) | **실험 의뢰서** — H10(P48 인스턴스 감독) 재판정 미니 실험. 실행 세션이 이 문서만 읽고 기동 가능(게이트·기록처 명시) | 의뢰 등재 |
 | [2026-08-08-condexpert-adapter-probe-proposal.md](2026-08-08-condexpert-adapter-probe-proposal.md) | **조건×클래스 어댑터(CEA) 방향 — oracle 프로브 선행 제안** (가칭 P49) — 상태: 제안, 프로브 게이트 대기(학습 미기동) | — |
-| [2026-08-05-p48-instance-supervision-proposal.md](2026-08-05-p48-instance-supervision-proposal.md) | P48 — 쿼리 경로 인스턴스 감독(Instance Supervision) 제안 — 🔴 **상태: 폐기(2026-08-06)**, 사전등록 게이트(things PQ>30) 미달(실측 22.87) | — |
+| ~~2026-08-05-p48-instance-supervision-proposal.md~~ (🗄 archive/ 로 이동 2026-09-18) | P48 — 쿼리 경로 인스턴스 감독(Instance Supervision) 제안 — 🔴 **상태: 폐기(2026-08-06)**, 사전등록 게이트(things PQ>30) 미달(실측 22.87) | — |
 | [2026-08-03-p47-mub-muses-proposal.md](2026-08-03-p47-mub-muses-proposal.md) | **P47-MUB MUSES Uni-modal Balance & 투영 밀도화** — 진단 재정의(병목=clear/day RGB under-optimization, 야간 아님). D-1 lidar projected_to_rgb_dgf 교체(비용0) + D-2 modality-laziness 억제 aux head. 게이트: val≥82.62(seed2 초과) | - |
 | [2026-07-28-p46-classtransfer-recovery-proposal.md](2026-07-28-p46-classtransfer-recovery-proposal.md) | P46-CTR Class-Transfer Recovery — DELIVER SOTA 공략 제안, per-class 도메인 전이 붕괴가 지배 원인이라는 진단 기반 | — |
 | [2026-07-24-p43-p45-cvpr-sota-proposal.md](2026-07-24-p43-p45-cvpr-sota-proposal.md) | **P43 PanopticDual(PQ SOTA 축)·P44 BMR(모달 재균형)·P45 FogStyle** — 딥리서치 6축 교차, MUSES PQ가 유일한 현실적 SOTA 축 판정(Codabench 실측) | - |
