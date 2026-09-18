@@ -298,6 +298,8 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
   - 56.99가 native로도 재현되면: current.md 그대로.
   current.md 헤드라인 문장은 재채점 전까지 "프로토콜 확정 중" 각주를 단다.
 
+**(2-확정, 2026-09-18 10:30)** — 같은 ckpt(md5 d340e3fe…)·같은 config로 두 경로를 돌린 결과: legal(val.py, 가드 통과, native 1042 GT) **test 55.18 / val 66.88**, 학습기 복제 경로(08-14 Job1 스크립트 원본, `Resize(1024)`로 이미지·라벨 동시 축소 후 그 격자에서 채점) **56.99**. 덤프한 native 예측과 GT를 1024로 되돌려 재채점해도 55.18(변화 0)이므로 **격자 차이가 아니라 예측·라벨 경로 차이**다. 재학습 기준선은 native 환산 시 0.02밖에 안 움직였으므로(DGFusion 80k 55.68→55.66) 이 1.81은 우리 복제 경로에만 있는 산물이다. **판정: 헤드라인은 legal native로 통일.** P46 C3-only 본 런의 정본 = test 55.18 / val 66.88. 우리 DELIVER legal native 최고 = **E13(4탭+센서별 prototype) 확정 시드3 test 55.88**(val-best 규칙, 덤프 재현). "4모달 계열 +0.28 우위" 철회: 재학습 DGFusion 80k 55.68 대비 +0.20(노이즈 내), 공개 DGFusion 56.71 대비 −0.83. 1.81의 원인(패딩·언패드·라벨 보간·배치)은 두 경로를 줄 단위로 대조해 별도 기록한다(생각정리 담당). 08-14 분석 문서의 "native도 56.99" 문장은 오기로 정정.
+
 **(3) 결측·열화 모달 첫 실측** — E1 확정 시드1, DELIVER val 5장당 1장(401장, 벤치마크 비교용 아님), presence_renorm 끔, 도구 `tools/missing_modality_eval.py`(2503.18445 프로토콜). clean 67.30(legal val 67.37과 일치).
 - 4모달 vs RGB+depth: **−0.37**(66.94 vs 67.30). 8장 미리보기의 +1.18은 폐기. event·LiDAR를 빼도 손해가 거의 없다.
 - 단일 모달: depth 57.17 · RGB 35.83 · event 6.62 · LiDAR 3.79. depth 결측 7조합 평균 25.80 vs 존재 62.35.
