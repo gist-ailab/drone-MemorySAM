@@ -1,0 +1,148 @@
+updated: 2026-09-18
+# 헤드라인 수치 단일 정본 (2026-09-18 신설 — docs-structure-audit R2·R3·권고 #11·#13)
+# 규칙:
+#   - 값은 근거 문서에서 "옮겨 적기만" 한다(차감·평균 등 재계산 금지). 근거 없는 값 금지.
+#   - 문서끼리 어긋나면 status: 불일치 로 두고 note 에 두 값을 병기한다.
+#   - 상태 = 유효 | 보류 | 철회 | 불일치. DELIVER test 는 ISSUE-036 으로 보류(값 2개 병기).
+#   - 파생물: status/current.md 벤치 표 = tools/gen_headline_tables.py 생성물(마커 블록).
+#     노션 빌더 sec_summary() 도 load_headline() 으로 이 파일을 읽는다.
+#   - 벤치 표기: sota = 1차 비교(같은 모달 집합) · sota2 = 2차 비교(적은 모달) — 카드 §0-2.
+#     *_val 변형은 split: val 엔트리의 SOTA 열용.
+benchmarks:
+  deliver:
+    label: "DELIVER"
+    task: "DELIVER 4모달(RGB·depth·event·LiDAR) 25클래스 세그멘테이션 — mIoU(test 1897장 / val 2005장)"
+    sota: {name: "DGFusion", value: 56.71, split: test, note: "Swin-T, 같은 4모달 계열(1차 비교). 재학습 200k final-iter val 65.62/test 55.56 · 80k val-best val 66.54/test 55.68 — registry DGFusion 행"}
+    sota2: {name: "MM SAM-adapter", value: 57.35, split: test, note: "RGB+D 2모달(2차 비교). val 69.60"}
+    sota_val: {name: "CAFuser-CAA", value: 68.79, split: val, note: "같은 4모달 계열(1차, val)"}
+    sota2_val: {name: "MM SAM-adapter", value: 69.60, split: val, note: "2모달(2차, val)"}
+    ours:
+      - id: "P46 C3-only 본 런 ep70(56.99 런)"
+        describe: "P46-CTR 중 클래스 prototype 대조 손실(C3)만 켠 레시피(C1 RCS·C2 MCC off)의 원본 런 — 768 학습·1024 평가. DELIVER test 종전 헤드라인."
+        value: 56.39
+        value_24cls: 55.91
+        protocol: "legal v2(tools/legal_rescore_v2.py = val.py 1024·BS1·native GT, nearest-exact 중심 정렬) — 2026-09-18 12:10 채택"
+        protocol_short: "legal v2"
+        value_alt: 55.18
+        protocol_alt: "legal v1(val.py 1024·BS1·native GT, nearest floor 정렬 — ISSUE-036 편차 포함)"
+        protocol_short_alt: "legal v1(구)"
+        value_alt2: 56.99
+        protocol_alt2: "학습기 복제 1024 격자 채점(이미지·라벨 동시 축소) — legal 아님, 헤드라인 제외"
+        protocol_short_alt2: "1024 격자(제외)"
+        split: test
+        basis: "단일 런(시드 고정 기능이 없던 시점의 무작위 시드)"
+        ckpt_rule: "학습기 val-best(top1)"
+        ckpt: "NAS ckpts/P46_c3only_base_ep70_test5699_20260730/epoch70_67.79_top1_checkpoint.pth (md5 d340e3fe…)"
+        status: "유효(legal v2 채택 2026-09-18; E1 시드2·3·E13 시드1~3 v2 재채점 5건·val 재채점 대기)"
+        gap_1st: "−0.32(legal v2 56.39, DGFusion 56.71) — SOTA 미달"
+        gap_2nd: "−0.96(MM SAM-adapter 57.35)"
+        loss: "C3 on"
+        seed_mean: {value: 53.83, value_24cls: 54.66, rule: "학습기 val-best(top1)", note: "시드 고정 재런들이 56.99를 재현 못 함(상단 꼬리). N6 legal-val 재선택 규칙 = 평균 54.39±0.76·최고 55.29 — 규칙명 없이 '5시드 평균' 금지"}
+        source:
+          - {label: "카드 §5-34 (2-정정)", path: ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md"}
+          - {label: "ISSUE-036", path: ".claude_logs/issues/issues-and-fixes.md"}
+          - {label: "judgment-ledger 2026-09-18 행", path: ".claude_logs/experiments/judgment-ledger.md"}
+        date: 2026-09-18
+        note: "판정(생각정리 2026-09-18 12:10, judgment-ledger 행): legal v1 의 floor 정렬 편차(ISSUE-036)를 nearest-exact 로 고친 legal v2 를 채택. 같은 ckpt 가 v1 55.18 → v2 56.39(+1.21, 하락 클래스 0, 얇은 4클래스 +2.72). 56.99 는 legal 프로토콜이 아니므로 헤드라인에서 제외(v2 와의 잔여 −0.60 은 격자 프로토콜 차이, 추적 안 함). 카드 §5-34 (2-정정)의 '보류' 는 이 판정으로 해소 — 카드 분할 파일에 후속 판정 항목으로 추가 예정."
+      - id: "E1 확정 시드1(4탭 읽기 카드) legal v2 val — 잠정"
+        describe: "E1(백본 블록 6/12/18/24 중간층 4탭을 FPN에 함께 읽는 카드) 확정 런 시드1 — legal v2(nearest-exact) val. 시드2·3 v2 val 재채점 대기 중이라 잠정(v1 최고는 시드3 67.89)."
+        value: 69.39
+        split: val
+        basis: "단일 시드(시드1 val-best epoch140_68.9_top1) — 시드2·3 v2 val 대기, 3시드 전 확정 금지"
+        ckpt_rule: "학습기 val-best(top1)"
+        protocol: "legal v2(tools/legal_rescore_v2.py, nearest-exact) — 2026-09-18 채택"
+        protocol_short: "legal v2"
+        value_alt: 67.37
+        protocol_alt: "같은 ckpt legal v1(nearest floor 정렬)"
+        protocol_short_alt: "v1 같은 ckpt"
+        value_alt2: 67.89
+        protocol_alt2: "legal v1 내부 최고 = E1 확정 시드3(카드 §5-29)"
+        protocol_short_alt2: "v1 최고 시드3"
+        status: "잠정(단일 시드; 시드2·3 v2 val 후 확정)"
+        gap_1st: "+0.60(CAFuser-CAA 68.79) — 단일 시드라 주장 보류"
+        gap_2nd: "−0.21(MM SAM-adapter 69.60)"
+        loss: "C3 on"
+        source:
+          - {label: "judgment-ledger 2026-09-18 v2 val 행", path: ".claude_logs/experiments/judgment-ledger.md"}
+          - {label: "카드 §5-29(v1 시드3)", path: ".claude_logs/decisions/2026-09-07-daily-cycle-experiment-cards.md"}
+        date: 2026-09-18
+        note: "감시 세션 보고 2026-09-18 14:00: P46 본 런 val v1 66.88→v2 68.64(+1.76), E1 시드1 67.37→69.39(+2.02). val 상승폭이 test(+1.2~1.3)보다 큰 이유(주간 위주라 얇은 객체 픽셀 비중?)는 미검증. E1 3시드 v1: test 평균 54.93 · 24클래스 55.49 · legal val 평균 67.58(§5-34·§5-29)."
+  muses:
+    label: "MUSES"
+    task: "MUSES 3모달(RGB·LiDAR·Event) 19클래스 세그멘테이션 — 공식 test mIoU(Codabench comp 14005)"
+    sota: {name: "DGFusion", value: 79.5, split: test, note: "4모달 융합 계보 최고(1차 비교)"}
+    sota2: {name: "GtA", value: 82.39, split: test, note: "camera-only 전체 1위(2차 비교). MM SAM-adapter RGB+L 81.07(2차)"}
+    ours:
+      - id: "P39.1-rank 3모달(시드2·시드20260825)"
+        describe: "P39.1 트렁크(gated-MLP + VICReg) 레시피 제출본 2시드 — MUSES 공식 test 헤드라인. mean±std 주 + best 단일 런 병기."
+        value: 79.29
+        std: 0.71
+        best: 79.788
+        basis: "2시드 평균 ± 표준편차 · best 단일 런 병기"
+        split: test
+        ckpt_rule: "학습기 val-best(top1)"
+        protocol: "MUSES 공식(tools/eval_muses_official.py, native 1080×1920 val 250장 / test = Codabench 제출)"
+        protocol_short: "MUSES 공식"
+        status: "유효"
+        gap_1st: "mean −0.21 · best +0.29(DGFusion 79.5)"
+        gap_2nd: "best −2.60(GtA 82.39) · best −1.28(MM SAM-adapter 81.07)"
+        loss: "C3 off"
+        source:
+          - {label: "judgment-ledger 2026-09-18 행", path: ".claude_logs/experiments/judgment-ledger.md"}
+          - {label: "analysis 시드20260825 판독", path: ".claude_logs/experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md"}
+        date: 2026-09-18
+        note: "PhysAug-on 레시피라 공정선(카드 §3.5-1, PhysAug-off 통일) 밖 — '융합 계보 1위'는 best 단일 런 한정 각주(생각정리 09-18). 공정선 헤드라인은 PhysAug-off 풀 런 셋(E7·E1M·E13M) 공식 val 최고를 test 제출(user 승인 후)해 얻는다. 시드2 = jarvis_muses_rgbel_P39_1_rank_seed2(val-best 82.62@ep208 → 79.788) · 20260825 = ep168(공식 val 81.47 → 78.786)."
+  mcubes:
+    label: "MCubeS"
+    task: "MCubeS 4모달(RGB·AoLP·DoLP·NIR) 20클래스 세그멘테이션 — test mIoU(커뮤니티 표준 test split 102장)"
+    sota: {name: "StitchFusion", value: 55.9, split: test, note: "4모달(1차 비교). published 최고 Mul-VMamba 54.65"}
+    ours:
+      - id: "N4 통일 레시피(P39.1-rank, C3-off) 3-seed"
+        describe: "3번째 벤치 첫 진입(2026-08-25~31) — P39.1 통일 레시피의 3시드 확정."
+        value: 58.07
+        std: 0.49
+        basis: "3시드 {57.93, 57.67, 58.62} 평균 ± 표준편차"
+        split: test
+        ckpt_rule: "학습기 val-best(registry N4 행 표기)"
+        protocol: "커뮤니티 표준 test split(102장, 로더 val→test.txt 검증)"
+        protocol_short: "커뮤니티 test 102장"
+        status: "유효(1등 확정)"
+        gap_1st: "+2.17(StitchFusion 55.9)"
+        gap_2nd: "+3.42(published 최고 Mul-VMamba 54.65)"
+        loss: "C3 off"
+        source:
+          - {label: "registry N4 행(yeon_mcubes_rgbadn_P39_1_rank)", path: ".claude_logs/experiments/registry.md"}
+        date: 2026-08-31
+        note: "MCubeS는 이중드라이버 문제 없음(trainer-internal = legal). C3-on(N4b)은 overall −0.10·rubber +9.76(dose-response 적중)."
+  det:
+    label: "det(poongsan)"
+    task: "poongsan 실내 드론 검출 — mAP50(국책과제 목표 0.85)"
+    goal: 0.85
+    ours:
+      - id: "D1-recovered(ViT-L)"
+        describe: "det 트랙 계보 최고 — 재현 패키지로 복원 검증된 D1 ViT-L 런."
+        value: 0.9321
+        basis: "ep6"
+        ckpt_rule: "재현 패키지 기록값"
+        protocol: "val_det.py 재현 패키지(score_thresh 0.0 명시 — 기본 0.3이면 재현 안 됨)"
+        protocol_short: "val_det.py 재현"
+        status: "유효(종결 국면)"
+        gap_1st: "목표 0.85 대비 +0.08 — 달성 완료"
+        source:
+          - {label: "det 인증 문서 D1 스윕 표", path: ".claude_logs/det/det-cert-D1-realtime.md"}
+        note: "5fps 인증 요건에는 미달(정확도 계보 최고, 인증 대상 아님)."
+  multiaqua:
+    label: "MULTIAQUA"
+    task: "MULTIAQUA(MACVi Challenge, RGB+Thermal+LiDAR 야간 수상) — M-score(챌린지 종료·고정)"
+    ours:
+      - id: "P9 ep131 / P22 ep120"
+        describe: "종료된 챌린지 트랙의 최종 제출본 — 공동 1위."
+        value: "82.10"
+        basis: "P9 Val 93.29/Test 70.91(재제출 #16710) · P22 Val 93.42/Test 70.77(#16932)"
+        ckpt_rule: "챌린지 제출 마스크 기준"
+        protocol: "MACVi 챌린지 서버 M-score"
+        protocol_short: "챌린지 서버"
+        status: "유효(종료·고정)"
+        gap_1st: "—(챌린지 종료·고정)"
+        source:
+          - {label: "registry MULTIAQUA 표", path: ".claude_logs/experiments/registry.md"}

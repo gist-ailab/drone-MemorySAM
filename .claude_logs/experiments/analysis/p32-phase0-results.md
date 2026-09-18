@@ -1,7 +1,7 @@
 # P32 Phase 0 결과 — Corroboration vs Self-Entropy AUROC (무학습 진단)
 
 > 실행: 2026-07-05, B200 GPU 2/3, DELIVER test 5조건 × 100장. 도구 `tools/eval_reliability_auroc.py`
-> (roadmap [23_seg_arch_proposals_P32.md](23_seg_arch_proposals_P32.md) §7 GATE #1의 구현).
+> (roadmap [2026-07-05-p32-seg-arch-proposals.md](../../decisions/2026-07-05-p32-seg-arch-proposals.md) §7 GATE #1의 구현).
 > 산출물: `/mnt/HDD2/src/logs/P32_phase0_20260705/{P28_test178,P31_test182}.json` + 로그.
 > 모달 순서 m0..m3 = **[img, depth, event, lidar]** (DELIVER rgbdel).
 

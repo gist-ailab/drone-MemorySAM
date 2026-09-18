@@ -23,6 +23,8 @@
 | [analysis/2026-08-27-n4b-dose-response-confirmed.md](analysis/2026-08-27-n4b-dose-response-confirmed.md) | N4b 판정 — MCubeS C3-on: 사전등록 예측 2/2 적중, dose-response 성립 (2026-08-27) (2026-09-18 MOC 일괄 등록 — 감사 보고서 §②) | — |
 | [analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md](analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md) | P50 게이트 통과(+0.74) · N2 "평균 ≥ 우리 트렁크"(H21) — 2026-08-31 (2026-09-18 MOC 일괄 등록 — 감사 보고서 §②) | — |
 | [analysis/2026-09-08-daily-cards-E0-feature-probe.md](analysis/2026-09-08-daily-cards-E0-feature-probe.md) | E0 판정 — "어댑터가 백본 정보를 버린다"는 전역 가설은 기각, 단 depth 중간층에 fused가 잃는 붕괴 클래스 근거가 남아 있다 (2026-09-18 MOC 일괄 등록 — 감사 보고서 §②) | — |
+| [headline.yaml](headline.yaml) | **헤드라인 수치 단일 정본** — 벤치별 SOTA·우리 최고·격차·ckpt 규칙·상태(유효/보류/철회/불일치)·근거 링크. current.md 벤치 표·노션 sec_summary 는 전부 이 파일의 생성물(2026-09-18 신설 — 감사 R2·R3·권고 #11·#13) | — |
+| [protocol.md](protocol.md) | **판정·측정 규칙 색인** — 체크포인트 선택(val-best top1 고정)·벤치별 측정 프로토콜(legal v1/v2·MUSES 공식)·카드 게이트 §0/§0-1/§0-2 링크 목록(정본은 카드 문서, 2026-09-18 신설) | — |
 | [judgment-ledger.md](judgment-ledger.md) | **판정 대장** — 분석 세션 보고마다 판정 세션이 한 행 append: 런·프로토콜·하네스 버전·비교 대상·전체/묶음 Δ·클래스별 상승/하락 상위·판정·원본 링크(2026-09-18 신설, user 지시) | — |
 | [analysis/2026-06-30-p28-p29-failure-analysis.md](analysis/2026-06-30-p28-p29-failure-analysis.md) | P28(RBMA)·P29(SDC) 체계적 실패분석 + P30 커버리지 판정 + P31 프로토타입 | 16 |
 | [analysis/2026-07-07-p32-perimage-analysis.md](analysis/2026-07-07-p32-perimage-analysis.md) | **P32(CoRB) ep108 per-image 전체 test(1897장) 분석** — corroboration ON/OFF diff(flip 0.046%, ΔmIoU −0.013), UAMM 균일·misalloc 51.6%, event/LiDAR competence≈16. 도구=[`tools/viz_features_full.py`](../../tools/viz_features_full.py) | — (2026-07-28 회수) |

@@ -12,6 +12,7 @@
 | **2. 모달별 추출 피쳐** | 각 모달 피쳐가 어떤가 (수치+시각화, 전체 테스트셋) | `feature_stats.py` (D2N: full-testset norm/dead-ch/eff-rank/CKA + PCA png) + `viz_features.py` (D2/D4: per-image 패널) + `module_diagnostics.py` B (modal competence) |
 | **3. fusion/제안 모듈 전후 비교** | 모듈이 수치·피쳐를 어떻게 바꾸나 | `module_ablation.py` (D5: toggle 전후 ΔmIoU per-class + fused-feat cos/shift + **no-op 모듈 감지**) + `module_diagnostics.py` D/E (UAMM alloc, drop-Δ) + `eval_reliability_auroc.py` (신호 대체 비교) |
 | **4. 모델별 클래스×도메인 격차 → 극복 지점** | 어디를 극복해야 하나 | `eval_per_domain.py`→`analyze_per_domain.py` (D1) + **`compare_models.py`** (N모델 통합: STRUCTURAL/DESIGN-GAP/DOMAIN-GAP/SOLVED 자동 분류) |
+| **5. 문서 체계 린트** (모델 무관, 2026-09-18 감사 R4) | `.claude_logs` md가 구조 규칙을 지키는가 | `docs_lint.py` — 9종 검사(MOC 등록·링크·1,200줄 상한·frontmatter 신선도·표 파손·`owns:` 중복·헤드라인 수치 확산·명명·루트 스텁 보호). 커밋 전 실행, ERROR 0이어야 병합 |
 
 한 방에 전부: `seg_analysis_pipeline.py --stages D1,D2,D2N,D3,D3B,D4,D5` (capability probe가
 모델이 지원 안 하는 스테이지는 사유와 함께 자동 skip → 어느 P 버전이든 안전).
