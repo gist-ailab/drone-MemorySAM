@@ -220,6 +220,40 @@ python tools/baseline_failure/depth_bin_iou.py --gt <ROOT>/ours/test/gt \
   --models ours=<ROOT>/ours/test/pred dgf=<ROOT>/dgffinal/test/pred caf=<ROOT>/caf/test/pred
 ```
 
+## A10 — 평가 배치 자동 조정(VRAM 최대 활용)
+기준선 `--eval-only` 는 배치 1 로 돌아 24GB 카드에서 ~4.1GB(약 17%)만 쓴다. `d2_eval_batch.patch` 가
+`train_net.py`(우리 복원본)·`test_net.py` 의 `build_test_loader` 에서 환경변수 `BF_EVAL_BATCH`(기본 1)를
+`build_detection_test_loader(..., batch_size=N)` 로 넘기게 열어 준다. 미설정·`"1"` 이면 공식 호출 그대로,
+정수가 아니거나 1 미만이면 명확한 에러로 멈춘다. 복원 킷 `third_party/dgfusion_train_restore/train_net.py`
+에는 이미 반영돼 있고(킷이 정본 — 새로 환경을 만들면 패치 불필요), `d2_dump.patch`(build_evaluator)·
+`d2_zero_modality.patch`(main)와는 서로 다른 함수를 건드리므로 적용 순서 무관하게 공존한다.
+
+```bash
+# 기존에 만든 기준선 저장소에는 패치로 반영:
+cd /SSDb/jemo_maeng/dgfusion_train && git apply <repo_hub>/tools/baseline_failure/d2_eval_batch.patch
+# 빈 GPU 1장에서 가능한 큰 배치로 평가(24GB 급 후보: 16 12 8 6 4 2 1, OOM 시 다음 후보로 재시도):
+bash <repo_hub>/tools/baseline_failure/run_eval_autobatch.sh \
+  --repo /SSDb/jemo_maeng/dgfusion_train \
+  --cfg configs/deliver/swin/dgfusion_swin_tiny_bs8_200k_deliver_clde.yaml \
+  --weights $RUN/model_final.pth --out $RUN/ab_test --log $RUN/autobatch.log \
+  DATASETS.TEST_SEMANTIC "('deliver_semantic_test',)" MODEL.TEST.DEPTH_ON False
+```
+- 인자: `--repo --cfg --weights --out --log` + 뒤에 붙는 `KEY VALUE` 오버라이드(detectron2 명령 끝에 그대로
+  전달). `CUDA_VISIBLE_DEVICES` 를 주면 그 GPU 를 존중하고, 없으면 빈 GPU(memory.used≤2000MiB &&
+  util≤10%, `GPU_MAXMEM`/`GPU_MAXUTIL` 로 조정) 1장을 자동 선택한다(2장 이상 지정은 에러).
+- 성공하면 로그와 `<out>/autobatch_summary.json` 에 `eval_batch`(성공 배치)와 `peak_mem_MiB`(실행 중
+  nvidia-smi 관측 최대 사용량)을 남긴다. OOM 이외의 에러는 재시도 없이 원문 로그와 함께 실패한다.
+- 종료 코드: 0 성공 · 1 사용법/환경 에러 · 2 전 후보 OOM · 3 아래 등가성 검사 실패 · 그 외 = 평가 원본 코드.
+- 총 메모리 급별 후보(heuristic — 실제 배치는 OOM 재시도가 결정): 80GB 급 `64 48 32 24 16 12 8 6 4 2 1`,
+  48GB 급 `32 24 16 12 8 6 4 2 1`, 24GB 급(≥22528MiB) `16 12 8 6 4 2 1`, 11GB 급 `8 6 4 2 1`, 8GB 이하 `4 2 1`.
+  GPU 없는 환경에서는 `BF_AUTOBATCH_TOTAL_MIB=<MiB> ... --dry_run` 으로 후보 목록과 최종 명령만 확인한다.
+
+### 등가성 검증 절차(배치 확대 첫 실행 의무)
+배치를 키운 **첫 실행**에서는 같은 체크포인트·같은 split 의 **전역 mIoU** 를 배치 1 결과와 대조해
+**±0.01 이내**인지 확인한다. 벗어나면 그 배치로는 쓰지 않고 **배치 1 로 되돌린다**. 이 규칙은 사람이
+실행할 때 지키는 절차이므로 코드로 강제하지 않는다. 다만 `run_eval_autobatch.sh --expect_miou <배치1 mIoU>`
+를 주면 실행 후 로그의 mIoU(마지막 등장값)와 자동 비교해 ±0.01 밖이면 종료 코드 3 으로 실패시킨다.
+
 ## 스모크
 ```bash
 python tools/smoke_baseline_failure.py   # CPU, ~수초. 파일 3·4·5 end-to-end + 1·2·6·7 import/argparse
@@ -246,3 +280,11 @@ python tools/smoke_baseline_failure.py   # CPU, ~수초. 파일 3·4·5 end-to-e
 6. **기대 장수**: val 2005 / test 1897 을 상수로 둔다(설계서 D2). 데이터셋 등록이 다르면
    `--expected_count` 로 덮어쓴다. 실제 RGB 파일 수와 대조해 확인하라.
 7. 이 작업은 **코드·스모크만** 작성했다 — 학습·원격 서버 실행·git 커밋은 하지 않았다.
+8. **`d2_eval_batch.patch` 의 실제 저장소 적용**(A10): 스모크는 합성 파일과 복원 킷 정본으로만 검증한다.
+   원격 DGFusion `test_net.py`·CAFuser 두 파일의 `build_test_loader` 꼬리(`else:
+   mapper = DatasetMapper(cfg, False)` + `return build_detection_test_loader(cfg, dataset_name, mapper=mapper)`)가
+   이와 같은지 첫 적용 때 확인하라 — 다르면 `git apply` 가 명확히 실패한다(실패 시 수동 반영하고 원인 기록).
+9. **`--expect_miou` 의 mIoU 파싱**(A10): 로그에서 "mIoU" 뒤 첫 숫자(마지막 등장값)를 읽는 heuristic 이다.
+   기준선 로그가 표 형태(mIoU 가 헤더 행에만 있고 숫자가 다음 행)면 못 찾아 에러로 멈춘다 — 그때는 로그를
+   직접 대조하라. `run_eval_autobatch.sh` 실행 모드(빈 GPU 선택·OOM 재시도·peak 관측)도 실서버 첫 사용 때
+   동작을 확인해야 한다(스모크는 `--dry_run` 까지만 검증).

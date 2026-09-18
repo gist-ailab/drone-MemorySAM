@@ -402,8 +402,25 @@ class Trainer(DefaultTrainer):
             mapper = DELIVERSemanticDatasetMapper(cfg, False)
         else:
             mapper = DatasetMapper(cfg, False)
+        # [baseline_failure A10] BF_EVAL_BATCH — 평가 로더 배치(기본 1 = 공식 그대로).
+        # detectron2 build_detection_test_loader 의 batch_size 인자(기본 1)로 넘긴다.
+        # 환경변수가 없거나 "1" 이면 아래 if 를 건너뛰고 공식 return 그대로다.
+        _bf_raw = os.environ.get("BF_EVAL_BATCH")
+        if _bf_raw is not None and _bf_raw.strip() != "1":
+            try:
+                _bf_eval_batch = int(_bf_raw.strip())
+            except ValueError:
+                raise ValueError(
+                    "BF_EVAL_BATCH 는 1 이상 정수여야 한다: " + repr(_bf_raw))
+            if _bf_eval_batch < 1:
+                raise ValueError(
+                    "BF_EVAL_BATCH 는 1 이상 정수여야 한다: " + repr(_bf_raw))
+            print(f"[baseline_failure] BF_EVAL_BATCH={_bf_eval_batch} — "
+                  f"평가 로더 배치를 {_bf_eval_batch} 로 올린다")
+            return build_detection_test_loader(cfg, dataset_name, mapper=mapper,
+                                               batch_size=_bf_eval_batch)
         return build_detection_test_loader(cfg, dataset_name, mapper=mapper)
-    
+
     @classmethod
     def test(cls, cfg, model, evaluators=None, eval_only=False, inference_only=False):
         """
