@@ -63,6 +63,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--batch", type=int, default=1)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--only", nargs="*", default=[],
+                    help="돌릴 조건만 고른다(예: --only base zero_depth). 생략하면 전부. "
+                         "조건 이름은 base 와 zero_<모달> 이다.")
     args = ap.parse_args()
 
     import val as valmod
@@ -91,15 +94,27 @@ def main():
     n_classes = dataset.n_classes
     ignore = dataset.ignore_label
 
-    results = {"base": _run_once(valmod, model, loader, device, n_classes, ignore, model_size, None)}
-    for i, m in enumerate(modals):
-        results[f"zero_{m}"] = _run_once(
-            valmod, model, loader, device, n_classes, ignore, model_size, i)
+    # 조건 목록 = 기준 + 모달별 제거. --only 로 일부만 돌리면 조건 하나를 GPU 한 장에
+    # 맡겨 동시에 처리할 수 있다(전량을 한 프로세스로 돌리면 모달 수만큼 직렬로 걸린다).
+    conditions = [("base", None)] + [(f"zero_{m}", i) for i, m in enumerate(modals)]
+    if args.only:
+        wanted = set(args.only)
+        unknown = wanted - {name for name, _ in conditions}
+        if unknown:
+            raise SystemExit(f"--only 에 없는 조건: {sorted(unknown)} "
+                             f"(가능한 값: {[n for n, _ in conditions]})")
+        conditions = [(name, idx) for name, idx in conditions if name in wanted]
+
+    results = {}
+    for name, zero_idx in conditions:
+        results[name] = _run_once(valmod, model, loader, device, n_classes, ignore,
+                                  model_size, zero_idx)
 
     report = {"cfg": args.cfg, "model_path": args.model_path, "split": mode,
-              "modals": modals, "mIoU": results,
-              "drop_vs_base": {k: round(results["base"] - v, 3)
-                               for k, v in results.items() if k != "base"}}
+              "modals": modals, "conditions": [n for n, _ in conditions], "mIoU": results}
+    if "base" in results:
+        report["drop_vs_base"] = {k: round(results["base"] - v, 3)
+                                  for k, v in results.items() if k != "base"}
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(report["mIoU"], indent=2, ensure_ascii=False))

@@ -533,6 +533,9 @@ def main():
     ap.add_argument("--deliver-root", default=None,
                     help="DELIVER 데이터셋 루트(GT depth/semantic 위치). 못 주면 "
                          "file_name 의 '/img/' 마커에서 유도한다.")
+    ap.add_argument("--opts", nargs="*", default=[],
+                    help="detectron2 config 덮어쓰기(KEY VALUE 쌍). 예: "
+                         "--opts DATASETS.TEST_SEMANTIC \"('deliver_semantic_test',)\"")
     args = ap.parse_args()
 
     if not args.config_file or not args.weights:
@@ -545,7 +548,7 @@ def main():
 
     class _A:
         config_file = args.config_file
-        opts = ["MODEL.WEIGHTS", args.weights, "MODEL.IS_TRAIN", "False"]
+        opts = ["MODEL.WEIGHTS", args.weights, "MODEL.IS_TRAIN", "False"] + list(args.opts)
         eval_only = True
         inference_only = False
         resume = False
@@ -599,9 +602,10 @@ def main():
     print(f"[probe_dgfusion] depth 헤드 로그 스케일 = {log_scale}"
           + (" (exp 로 되돌려 비교)" if log_scale else ""))
 
-    from detectron2.data import build_detection_test_loader
     ds_name = cfg.DATASETS.TEST_SEMANTIC[0] if hasattr(cfg.DATASETS, "TEST_SEMANTIC") else cfg.DATASETS.TEST[0]
-    loader = build_detection_test_loader(cfg, ds_name)
+    # 기준선 Trainer 의 test 로더를 그대로 쓴다. detectron2 기본 DatasetMapper 를 쓰면
+    # 모달 입력(batched_inputs[0]['modalities'])이 없어 모델 forward 가 즉시 실패한다.
+    loader = Trainer.build_test_loader(cfg, ds_name)
 
     rows = []
     for i, batch in enumerate(loader):
@@ -623,9 +627,21 @@ def main():
                 rec[f"{tag}_mean"], rec[f"{tag}_var"] = st["mean"], st["var"]
         # (a) depth 헤드 AbsRel·delta1 + (2) 분할 mIoU — DELIVER GT 원본으로 채점.
         depth_gt_path, sem_gt_path = deliver_gt_paths(file_name, args.deliver_root)
-        depth_caps = probe.captured.get("depth_head", {})
-        if depth_caps:
-            pred_d = depth_pred_2d(next(iter(depth_caps.values())))
+        # 모델이 내보낸 pred_depth 가 있으면 그것을 쓴다. 후처리(패딩 제거 + 원본
+        # 해상도 보간)를 이미 거쳤으므로 GT 와 좌표계가 맞는다. depth_head 훅의 원출력은
+        # 패딩된 입력 좌표계라 GT 로 늘리면 내용이 어긋난다(dgfusion.py:505-513).
+        depth_src = None
+        if isinstance(outputs, (list, tuple)) and outputs and isinstance(outputs[0], dict) \
+                and outputs[0].get("pred_depth") is not None:
+            depth_src = outputs[0]["pred_depth"]
+            rec["depth_src"] = "pred_depth"
+        else:
+            depth_caps = probe.captured.get("depth_head", {})
+            if depth_caps:
+                depth_src = next(iter(depth_caps.values()))
+                rec["depth_src"] = "hook_padded"
+        if depth_src is not None:
+            pred_d = depth_pred_2d(depth_src)
             if log_scale:
                 pred_d = np.exp(pred_d)
             gt_d = load_depth_gt(depth_gt_path)
