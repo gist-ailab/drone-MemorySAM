@@ -86,3 +86,64 @@ D1→D2→D3(1·2·4·6)이 핵심이며 2일 안에 나와야 E17/E18 우선순
 | A6 | depth GT 거리 구간별 IoU(DGFusion−CAFuser 차이가 먼 거리에 몰리는지) | ✅ 채택 — D3-8 신설 | 원본 depth를 5구간(로그 스케일)으로 나눠 픽셀 단위 IoU, 모델별 |
 
 산출물 공유 위치는 user 결정대로 `/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/analysis/baseline_failure_20260917/`(서버 간 연동)로 하고, NAS `analysis_logs/`에는 사본을 둔다. 분담: 감시 세션 = 이미 완료한 D1·D2·D3(test) 유지, 재학습 담당 세션(GLM 실행·자체 검수) = A2~A6 코드 보강과 실행, 생각정리 세션 = 코드 검수·D6 판정.
+
+---
+
+## D4 결과 (2026-09-19) — DGFusion 80k 모달 zero-out
+
+집행: 재학습 담당 세션(jarvis). 판정 문구는 넣지 않고 수치와 해석까지만 적는다.
+
+### 입력
+
+- 체크포인트: DGFusion 재학습본 `model_0079999.pth`(학습기 val-best, val 66.54). NAS 사본 md5 `4bb241faf3a3684078b12337c4a0c6b4`.
+- 평가: 공식 config(`dgfusion_swin_tiny_bs8_200k_deliver_clde.yaml`) + `DATASETS.TEST_SEMANTIC=('deliver_semantic_test',)`, `MODEL.TEST.DEPTH_ON=False`. DELIVER test 1,897장, 기준선 공식 채점(GT 1024 축소).
+- 개입 두 가지를 병기한다. **normalized** 는 모델의 모달별 평균 버퍼(`model.pixel_mean[3i:3i+3]`)로 입력을 채워 정규화 후 값이 0 이 되게 한 것으로, 우리 `tools/baseline_failure/modality_zero_ablation.py` 와 같은 축이다. **raw** 는 정규화 전 입력을 0 으로 채운 종전 방식이며 모델이 보는 값은 `-mean/std` 상수다.
+- 정규화 검증 통과: 예를 들어 LiDAR 는 모달 인덱스 1, 모델 버퍼 평균 `[1.79695]×3` 이 config `DATASETS.DELIVER.PIXEL_MEAN.LIDAR` 와 일치한다.
+- 평가 배치 8(24GB 중 23,634MiB 사용), CAMERA-normalized 만 메모리 부족으로 배치 6. 배치 등가 확인: 배치 1 = 55.68073, 배치 8 = 55.68042(편차 0.0003, 허용 0.01).
+- 코드: develop `e1ec255`(평가 배치화) · `42546e8`(평균 탐색 정정) · `4477b46`(정규화 구조 정합). 로그·산출물은 NAS `analysis/baseline_failure_20260917/reports/modal_zero_dgf80k/`.
+
+### 모달별 Δ (test mIoU, 기준 55.68)
+
+| 제거 모달 | normalized | Δ | raw | Δ |
+|---|---|---|---|---|
+| DEPTH(HHA) | 22.43 | **−33.25** | 29.67 | −26.01 |
+| CAMERA(RGB) | 44.13 | −11.55 | 44.45 | −11.23 |
+| EVENT | 55.51 | −0.17 | 55.40 | −0.28 |
+| LIDAR | 55.74 | +0.06 | 55.75 | +0.07 |
+
+두 개입 방식이 순위와 결론을 같게 준다. 크기는 depth 에서만 벌어지는데(−33.25 대 −26.01), raw 는 정규화 후 상수가 남아 depth 채널에 약한 신호가 남기 때문으로 본다. 인용 축은 normalized 로 통일한다.
+
+### 클래스별 Δ (normalized 기준)
+
+**DEPTH 제거 — 물체 클래스가 무너진다**
+
+| 가장 많이 떨어진 5개 | 기준 → 제거 후 | Δ |
+|---|---|---|
+| Cars | 94.57 → 13.28 | −81.29 |
+| Bus | 93.52 → 22.03 | −71.49 |
+| GroundRail | 79.09 → 11.11 | −67.98 |
+| Pedestrian | 83.11 → 18.65 | −64.46 |
+| Truck | 91.73 → 28.66 | −63.06 |
+
+가장 덜 변한 5개는 Bridge +0.01, Wall −0.55, Ground −3.83, Water −4.06, Other −4.25 이며, 이들은 기준값 자체가 0~6 으로 이미 낮다.
+
+**CAMERA 제거 — 노면 표시와 질감으로 정의되는 영역이 무너진다**
+
+| 가장 많이 떨어진 5개 | 기준 → 제거 후 | Δ |
+|---|---|---|
+| RoadLine | 77.98 → 4.02 | −73.96 |
+| RailTrack | 50.36 → 0.13 | −50.23 |
+| Terrain | 60.99 → 27.55 | −33.43 |
+| SideWalk | 73.75 → 55.81 | −17.94 |
+| TwoWheeler | 66.35 → 50.66 | −15.70 |
+
+가장 덜 변한 5개는 Bridge ±0.00, Wall −0.29, Water −0.47, Other −1.20, Dynamic −1.40 이다.
+
+**EVENT·LIDAR 제거** 는 전 클래스에서 ±2.6 안쪽이며, 오른 클래스도 있다(LiDAR 제거 시 TrafficSign +2.31, Truck +1.15 / EVENT 제거 시 Static +0.77). 기준값 5 이상에서 1 미만으로 붕괴한 클래스는 두 경우 모두 0 개다.
+
+### 해석
+
+- DELIVER 에서 DGFusion 의 네 모달 융합은 **실질적으로 RGB 와 Depth 두 모달**로 작동한다. Event 0.17, LiDAR 0.06 은 같은 학습 안 후반 체크포인트 간 test 표준편차 0.74 보다 훨씬 작아 측정 잡음과 구분되지 않는다.
+- **두 모달의 역할이 분업돼 있다.** Depth 는 물체(Cars·Bus·Truck·Pedestrian·GroundRail)를, RGB 는 노면 표시와 질감 영역(RoadLine·RailTrack·Terrain·SideWalk)을 담당한다. 한쪽을 지우면 그 담당 묶음만 무너지고 반대쪽은 거의 그대로다.
+- **depth 의존이 RGB 의존의 약 3배**다(−33.25 대 −11.55). DELIVER 에서 depth 는 입력(HHA)이면서 보조 감독의 정답이기도 하므로(`cafuser/data/datasets/register_deliver_semantic.py:98-120`), 이 비대칭은 D4-(iv)(HHA 입력을 0 으로 둔 채 depth 헤드 정확도가 유지되는지)의 결과와 함께 읽어야 한다.
+- 기준선 자체가 이미 못 하는 클래스가 있다. Bridge 0.00, Wall 2.21, Water 4.06, Other 5.31 은 개입 전에도 바닥이며, 모달을 지워도 더 내려갈 여지가 없다.
