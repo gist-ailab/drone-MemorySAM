@@ -82,7 +82,7 @@ benchmarks:
           - {label: "judgment-ledger 2026-09-18 행", path: ".claude_logs/experiments/judgment-ledger.md"}
           - {label: "analysis 시드20260825 판독", path: ".claude_logs/experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md"}
         date: 2026-09-18
-        note: "PhysAug-on 레시피라 공정선(카드 §3.5-1, PhysAug-off 통일) 밖 — '융합 계보 1위'는 best 단일 런 한정 각주(생각정리 09-18). 공정선 헤드라인은 PhysAug-off 풀 런 셋(E7·E1M·E13M) 공식 val 최고를 test 제출(user 승인 후)해 얻는다. 시드2 = jarvis_muses_rgbel_P39_1_rank_seed2(val-best 82.62@ep208 → 79.788) · 20260825 = ep168(공식 val 81.47 → 78.786)."
+        note: "PhysAug-on 레시피라 공정선(카드 §3.5-1, PhysAug-off 통일) 밖 — '융합 계보 1위'는 best 단일 런 한정 각주(생각정리 09-18). 공정선(PhysAug-off) 풀 런 5건 공식 val(2026-09-20): E13M 3407 81.95 · E13M 902 81.68 · E1M 3407 81.70 · E1M 902 81.93 · E7(기준선 카드) 81.88 — 카드 셋 구분 불가, 전부 제출본 82.13 미만. 공정선 test 제출 후보 = E13M 3407 81.95(user 승인 필요). 시드2 = jarvis_muses_rgbel_P39_1_rank_seed2(val-best 82.62@ep208 → 79.788) · 20260825 = ep168(공식 val 81.47 → 78.786)."
   mcubes:
     label: "MCubeS"
     task: "MCubeS 4모달(RGB·AoLP·DoLP·NIR) 20클래스 세그멘테이션 — test mIoU(커뮤니티 표준 test split 102장)"
