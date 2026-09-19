@@ -32,19 +32,31 @@ from tools.baseline_failure import common  # noqa: E402
 
 
 def _run_once(valmod, model, loader, device, n_classes, ignore, model_size, zero_idx,
-              per_image=None):
+              per_image=None, ratio=1.0, generator=None):
     """전역 혼동행렬 기준 mIoU 를 돌려준다.
 
     per_image 에 리스트를 주면 이미지별 mIoU 도 같이 담는다(조건별 Δ 산출용). 이미지별
     값은 그 이미지 한 장의 혼동행렬로 계산한 것이라 전역 mIoU 와 집계가 다르다 —
     두 수치를 섞어 인용하면 안 된다.
+
+    ratio 는 모달 열화 비율(RMM r)이다. 1.0 이면 완전 zero-out, 1.0 미만이면 그 비율만큼
+    픽셀×채널 독립 드롭으로 열화한다. generator 는 드롭 마스크 재현용 난수 생성기.
     """
     hist = np.zeros((n_classes, n_classes), dtype=np.int64)
     with torch.no_grad():
         for images, labels, metas in tqdm(loader, desc=f"zero={zero_idx}", leave=False):
             images = [x.to(device) for x in images]
             if zero_idx is not None:
-                images[zero_idx] = torch.zeros_like(images[zero_idx])
+                if ratio >= 1.0:
+                    images[zero_idx] = torch.zeros_like(images[zero_idx])
+                else:
+                    # 부분 열화: 정규화된 텐서에서 원소별로 rand<ratio 인 자리만 0 으로
+                    # 만든다(missing_modality_eval.rmm_mask 와 같은 규약, 픽셀×채널 독립).
+                    # CPU 생성기로 마스크를 뽑은 뒤 device/dtype 로 옮긴다.
+                    keep = (torch.rand(images[zero_idx].shape, generator=generator)
+                            >= ratio).to(dtype=images[zero_idx].dtype,
+                                         device=images[zero_idx].device)
+                    images[zero_idx] = images[zero_idx] * keep
             output, _ = model(images, multimask_output=True)
             probs = output.softmax(dim=1)
             pred_labels = valmod._argmax_pred(probs, n_classes, None)
@@ -84,7 +96,17 @@ def main():
     ap.add_argument("--only", nargs="*", default=[],
                     help="돌릴 조건만 고른다(예: --only base zero_depth). 생략하면 전부. "
                          "조건 이름은 base 와 zero_<모달> 이다.")
+    ap.add_argument("--ratio", type=float, default=1.0,
+                    help="모달 열화 비율(RMM r). 1.0(기본)이면 지금처럼 완전 제거(zero-out), "
+                         "1.0 미만이면 그 비율만큼 픽셀·채널 독립으로 0 으로 드롭해 열화한다.")
+    ap.add_argument("--ratio_seed", type=int, default=0,
+                    help="부분 열화(ratio<1.0) 드롭 마스크의 시드. 모든 조건이 같은 난수 "
+                         "스트림을 공유해 모달 간 비교가 공정해진다.")
     args = ap.parse_args()
+
+    if not (0 < args.ratio <= 1.0):
+        raise SystemExit(f"--ratio 는 0 초과 1 이하의 값이어야 합니다(입력: {args.ratio}). "
+                         "1.0 = 완전 제거, 1.0 미만 = 그 비율만큼 부분 열화입니다.")
 
     import val as valmod
     with open(args.cfg) as f:
@@ -123,12 +145,20 @@ def main():
                              f"(가능한 값: {[n for n, _ in conditions]})")
         conditions = [(name, idx) for name, idx in conditions if name in wanted]
 
+    # 부분 열화 마스크용 생성기는 한 번만 만들어 모든 조건 호출에 이어 쓴다. 기준선 쪽
+    # 개입(d2_zero_modality.patch 의 BF_ZERO_SEED)도 같은 방식이라 규약이 맞는다.
+    # 조건을 한 번에 여러 개 돌리면 뒤 조건은 앞 조건이 쓰고 남은 난수를 이어받는다 —
+    # 모달 사이의 마스크를 똑같이 맞추고 싶으면 --only 로 조건 하나씩 따로 돌려라
+    # (프로세스마다 같은 시드에서 시작하므로 같은 마스크가 나온다).
+    ratio_generator = torch.Generator().manual_seed(args.ratio_seed)
+
     results = {}
     per_image_rows = []
     for name, zero_idx in conditions:
         rows = [] if args.per_image_csv else None
         results[name] = _run_once(valmod, model, loader, device, n_classes, ignore,
-                                  model_size, zero_idx, per_image=rows)
+                                  model_size, zero_idx, per_image=rows,
+                                  ratio=args.ratio, generator=ratio_generator)
         for r in (rows or []):
             r["condition"] = name
             per_image_rows.append(r)
@@ -143,7 +173,8 @@ def main():
         print(f"[modality_zero] 이미지별 {len(per_image_rows)} 행 -> {out_csv}")
 
     report = {"cfg": args.cfg, "model_path": args.model_path, "split": mode,
-              "modals": modals, "conditions": [n for n, _ in conditions], "mIoU": results}
+              "modals": modals, "conditions": [n for n, _ in conditions],
+              "ratio": args.ratio, "ratio_seed": args.ratio_seed, "mIoU": results}
     if "base" in results:
         report["drop_vs_base"] = {k: round(results["base"] - v, 3)
                                   for k, v in results.items() if k != "base"}
