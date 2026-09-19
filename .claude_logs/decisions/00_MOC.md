@@ -7,6 +7,7 @@
 | 파일 | 한줄설명 | legacy_id |
 |------|----------|-----------|
 | [2026-09-17-strategy-exploration-moe-lora-fusion-training.md](2026-09-17-strategy-exploration-moe-lora-fusion-training.md) | **성능 개선 전략 탐색(user 요청)** — MoE-LoRA(미사용, 문헌상 도입 근거 없음·"중반부터 라우팅" 일정 근거 없음)·융합 대안(시드 분산 이하)·경쟁 SOTA 해부(백본 FT·세부 특징·depth가 원천)·학습 전략. 후보 카드 E18 Lovász·E19 EMA·E17x extractor·D0 진단·E20~E22 + 사용자 결정 항목(depth 보조 감독·토큰 밀도) | — |
+| [2026-09-20-p54-quality-aware-fusion-proposal.md](2026-09-20-p54-quality-aware-fusion-proposal.md) | **P54 후보 QAF(품질 인지 융합) 제안** — 합성 열화로 감독한 모달·토큰별 품질 토큰이 cross-modal attention key 를 마스킹(clean 항등 제약), 동결 E1 교사 두 패스 학습, depth-anchor·품질 조건부 잔차 LoRA 는 후속 카드. 반증 대장 대조표 + 게이트 사전 등록(G-clean ≥ −0.3 / RMM 손실 절반 / EMM ≥ 48.22 / NM 고노이즈 ≥ 15 / 치환 검정). user 검토 대기 | — |
 | [2026-09-17-p53-detail-branch-proposal.md](2026-09-17-p53-detail-branch-proposal.md) | **P53 후보: 고해상도 세부 가지(Detail Branch)** — user 렌즈 결정(전 모달 융합 계열 1위)의 약점(DELIVER 시드 평균 < DGFusion)을 얇은 객체(Pole·TrafficLight·Pedestrian·Static, DGFusion 대비 −7~−15) 직격으로 메우는 제안. MODEL.DETAIL_BRANCH(기본 off), 스크린 카드 E17, 게이트 G1~G4 사전 등록 | — |
 | [2026-08-18-spatial-modality-oracle-probe-proposal.md](2026-08-18-spatial-modality-oracle-probe-proposal.md) | Spatial-Modality Oracle Probe 제안 — SoftMoE 재개방의 천장 측정 (2026-08-18) (2026-09-18 MOC 일괄 등록) | — |
 | [2026-08-21-p51-crossmodal-lora-coupling-proposal.md](2026-08-21-p51-crossmodal-lora-coupling-proposal.md) | P51 제안 — Cross-modal LoRA Coupling (CMLC): 인코딩-시간 결합 (2026-08-21) (2026-09-18 MOC 일괄 등록) | — |

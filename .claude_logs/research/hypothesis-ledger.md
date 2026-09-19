@@ -42,6 +42,9 @@ author: fable (MMSAM discussion 세션)
 | H24 | C3-adaptive의 train 혼동 신호가 val→test 붕괴 클래스(RailTrack)에서 발화한다 | 학습0 프로브(기존 ckpt, train 1ep) | 🟡 예약(2026-09-07) | — | 동상 §1.3·축 1-a |
 | H25 | P50 스케일업(500k·6모달) 역전의 원인 = pseudo-모달=f(RGB) / 망각 / 용량 경쟁 중 하나로 수렴 | 학습0 진단 D1~D5 | 🟡 예약(2026-09-07) | — | 동상 축 3 |
 | H26 | DINOv3 고정 특징에 패치별 센서 라우팅을 학습할 수 있는 단서가 존재한다 (user 제안: 공유 전문가 LoRA + 패치·클래스별 가중) | 오라클 지도 라우터 프로브(라우터 헤드만 학습, val 정확도 vs 우연) | 🟡 예약 — **E0 부분 결과(2026-09-08)**: 원 특징 선형 판독이 어댑터·융합 후보다 열세(test 27.8 vs 45.1)라 "원 특징에 단서가 풍부" 기대 하향; 오라클 선택 프로브 자체는 미실행 | — | [decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md](../decisions/2026-09-07-p52-validity-audit-and-bottleneck-program.md) §3.5-3 · H16 반증 직접 반박용 |
+| H27 | 합성 열화 라벨로 감독한 모달·토큰별 품질 토큰을 cross-modal attention key 마스크로 쓰면(clean 항등 제약) 존재-열화 모달의 오염이 줄어 강건 벤치(EMM/RMM/NM)가 오르고 clean 은 유지된다 | P54-QAF Q3 vs T′(증류만) 3시드 + 치환 검정 | 🟡 예약(2026-09-20 제안) | 게이트: clean Δ ≥ −0.3 · RMM r=.5 손실 절반 · EMM ≥ 48.22 · NM 고 ≥ 15 · 셔플 시 열화 Δ > +1.0 | [decisions/2026-09-20-p54-quality-aware-fusion-proposal.md](../decisions/2026-09-20-p54-quality-aware-fusion-proposal.md) §4 |
+| H28 | 모달 내 self-attention 1층 → 모달 간 set-attention 순서가 현행(대칭 cross 만)보다 clean 무손실이고 열화 이득이 있다 | Q3 토글 어블레이션(F 의 self 층 on/off) | 🟡 예약 | EQUISeg cross-attn 제거 EMM −5.41 이 외삽 근거 | 동상 §2-2 |
+| H29 | 동결 E1 교사 + clean 패스 CE 상시 + 모달 단위 열화의 두 패스 학습은 clean 을 보존한다(H15 EMA+마스킹 −1.67 과 대비) | Q2(T′) 3시드 | 🟡 예약 | RMMSS 2단계 −0.07 · CHARM +0.18 · MISS ±0.5 외삽 | 동상 §2-5 |
 
 ## 종합 — 계보가 확립한 명제 (2026-08-09 갱신)
 

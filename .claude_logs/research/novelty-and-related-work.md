@@ -150,6 +150,13 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 
 **[decisions/2026-07-16-p36-novelty-critical-review.md](../decisions/2026-07-16-p36-novelty-critical-review.md)** — legal 수치로 P34 test −0.09/val −0.60 = SOTA 미달, **RBMA bias 계열 4세대·2백본 전부 Δ≈0(사망, negative finding으로 전환)**, 유일 생존 모듈 = per-class reliability-anchored router(+0.76, 이중 백본 재현, thin-class 부활 Wall/Water/RailTrack). 포지셔닝 권고 = A(백본 지배변수 실증연구) / B(MUSES modality-efficient robustness) / C(P36+physaug 완주 or TTA 후 on-par). "RBMA" 성능 브랜딩과 val 68.76 헤드라인은 내려놓을 것.
 
+## 2.10 P54 후보 QAF(품질 인지 융합) — 2026-09-20 딥리서치 3축 판정 요약
+
+정본 = [decisions/2026-09-20-p54-quality-aware-fusion-proposal.md](../decisions/2026-09-20-p54-quality-aware-fusion-proposal.md) §5, 원시 조사 = [related-work-raw.md](related-work-raw.md) 2026-09-20 절 A·B·C(65편).
+- 결론: 융합·MoE-LoRA 축의 노벨티는 clean SOTA 가 아니라 **존재-열화 모달 축(2503.18445 EMM/RMM/NM)** 에서만 성립. 성공 사례는 예외 없이 라벨(합성 열화·결측 지시자)로 감독한 품질 신호(RobuMTL 2601.10921·GIML 2607.06943·RAF 2607.04587·AW-MoE 2603.16261), 무감독 신호는 셔플해도 Δ≈0(2606.26473).
+- 가능한 first(좁힌 형태): 멀티모달 세그에서 합성 열화 감독 모달·토큰별 품질 토큰 → attention key 마스크 + clean 항등 제약 + EMM/RMM/NM 전수 보고 + 동결 파운데이션 백본. 최근접 = RobuMTL·GIML·RAF·EQUISeg(2509.24505)·CAFuser(2410.10791).
+- 강건 벤치 SOTA(DELIVER, MiT-B2 프로토콜): clean 최고 StitchFusion 68.20, EMM 평균 최고 EQUISeg 48.22, RMM r=.5 최고 ≈50.96, NM 고노이즈 전 모델 ≤ 9.25.
+
 ## 3. 노벨티 판정 (deep-research verdict, 리뷰 방어용)
 
 - **헤드라인 = 기구(B)**: "reliability를 **SAM memory-attention pre-softmax logit에 additive bias**로". feature-multiply / output-scale / loss-level 일색인 선행연구에 **logit-additive bias 전례 0건**. + MemorySAM 핵심 메커니즘 개조 서사.
