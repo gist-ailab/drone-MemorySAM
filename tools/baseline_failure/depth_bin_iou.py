@@ -13,8 +13,16 @@ A6 — 원본 depth 구간별 IoU. 각 픽셀을 DELIVER `depth/` 원본 depth �
 출력:
 - `<out>/depth_bin_iou_<split>.csv` — 구간별 행: bin, depth_lo, depth_hi, log_depth_lo,
   log_depth_hi, n_pixels, [miou_<model>, pacc_<model> ...], [diff_<a>_minus_<b> ...].
+- `<out>/depth_bin_class_iou_<split>.csv` — (구간, 클래스) 행: bin, depth_lo, depth_hi,
+  class_id, class_name, gt_pixels, n_images, [iou_<model> ...]. "먼 구간에서 어느
+  클래스가 기준선에 지는가"를 보기 위한 표다.
 - `<out>/depth_bin_iou_<split>.json` — 구간 경계(로그·원본 단위), 구간별 픽셀 수,
-  모델별 구간별 지표, 모델 간 차이.
+  모델별 구간별 지표, 모델 간 차이, 그리고 구간×클래스 IoU·GT 픽셀·이미지 수.
+
+⚠️ 모든 수치의 축은 **"구간 안에서 누적한 혼동행렬"**이다. 구간별 클래스 IoU 는 그
+구간에 속한 픽셀만으로 계산한 값이므로, 서로 다른 구간의 절대값을 그대로 비교하면
+안 된다 — 구간마다 등장하는 클래스 수(존재 클래스)가 달라 25클래스 평균의 기준이
+달라지기 때문이다. 같은 구간 안에서의 모델 간 비교(어느 모델이 지는가)만 성립한다.
 
 예:
   python tools/baseline_failure/depth_bin_iou.py \
@@ -174,6 +182,9 @@ def main():
     # ---- 패스 2: 구간별 혼동행렬 누적 ----
     hists = {m: np.zeros((args.bins, N, N), dtype=np.int64) for m in names}
     bin_pixels = np.zeros(args.bins, dtype=np.int64)
+    # (구간, 클래스)마다 GT 픽셀을 한 개라도 가진 이미지 수. 순회 중 이미지별로 존재
+    # 여부(불리언)를 세어 더한다 — 모델과 무관한 GT 기반 집계라서 모델 루프 밖에서 한다.
+    n_images_bc = np.zeros((args.bins, N), dtype=np.int64)
     resized_depth = resized_pred = False
     for image_id in image_ids:
         depth = load_depth(depth_path_for(depth_dir, image_id))
@@ -183,6 +194,13 @@ def main():
             resized_depth = True
         valid = (depth > 0) & (gt != common.IGNORE_LABEL)
         bidx = np.searchsorted(log_edges, np.log(depth[valid]), side="right")
+        # 이 이미지에서 (구간, 클래스)별 GT 픽셀 존재 여부를 세어 n_images 에 누적한다.
+        # 혼동행렬과 같은 유효 픽셀 규약(0≤gt<N)을 써야 gt_pixels 행합과 축이 맞는다.
+        gv = gt[valid].astype(np.int64)
+        kgt = (gv >= 0) & (gv < N)
+        gt_hist = np.bincount(bidx[kgt] * N + gv[kgt],
+                              minlength=args.bins * N).reshape(args.bins, N)
+        n_images_bc += (gt_hist > 0).astype(np.int64)
         for m, _d in models:
             pred = common.load_label_png(pred_indices[m][image_id])
             if pred.shape != gt.shape:
@@ -196,13 +214,27 @@ def main():
         bin_pixels += np.bincount(bidx, minlength=args.bins)
 
     # ---- 지표·출력 ----
-    stats = {m: {"miou": [], "pacc": []} for m in names}
+    stats = {m: {"miou": [], "pacc": [], "iou_per_class": []} for m in names}
     for m in names:
         for b in range(args.bins):
-            _, miou = common.global_miou_from_cm(hists[m][b])
+            # global_miou_from_cm 은 (부재 클래스 IoU=0 포함) per-class IoU 리스트도 준다.
+            # 클래스별 표는 이 값을 재사용한다 — 채점 규약을 새로 구현하지 않는다.
+            pc_iou, miou = common.global_miou_from_cm(hists[m][b])
             stats[m]["miou"].append(miou)
             stats[m]["pacc"].append(round(common.pixel_acc_from_cm(hists[m][b]), 6))
+            stats[m]["iou_per_class"].append(pc_iou)
     pairs = [(names[i], names[j]) for i in range(len(names)) for j in range(i + 1, len(names))]
+
+    # (구간, 클래스)별 GT 픽셀 수 = 혼동행렬의 gt 축(pred 로 합산) 행합. 모델과 무관하니
+    # 첫 모델 것을 정본으로 쓰되, 채점 대상 픽셀 집합이 어긋나면(예측 값 범위 문제 등)
+    # 모델 간 값이 달라질 수 있으므로 불일치를 경고한다.
+    gt_px_per_model = {m: hists[m].sum(axis=2) for m in names}   # (bins, N)
+    gt_pixels_bc = gt_px_per_model[names[0]]
+    for m in names[1:]:
+        if not np.array_equal(gt_px_per_model[m], gt_pixels_bc):
+            print(f"[depth_bin_iou] ⚠️ gt_pixels 가 모델 간 불일치({m} ≠ {names[0]}) — "
+                  f"채점 대상 픽셀 집합이 다르다. {names[0]} 기준으로 기록한다.")
+    class_names = common.CLASSES
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -226,6 +258,27 @@ def main():
             row += [round(stats[a]["miou"][b] - stats[b_]["miou"][b], 4) for a, b_ in pairs]
             w.writerow(row)
 
+    # ---- 구간×클래스 CSV (한 행 = (구간, 클래스)) ----
+    # GT 가 그 구간에 전혀 없는 클래스는 iou 칸을 비운다(0 으로 채우면 "완전 오분류"와
+    # "표본 없음"이 구분되지 않는다). IoU 값은 위에서 재사용한 per-class 리스트에서 꺼낸다.
+    class_csv_path = out_dir / f"depth_bin_class_iou_{args.split}.csv"
+    class_header = (["bin", "depth_lo", "depth_hi", "class_id", "class_name",
+                     "gt_pixels", "n_images"] + [f"iou_{m}" for m in names])
+    with open(class_csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(class_header)
+        for b in range(args.bins):
+            lo = 0.0 if b == 0 else float(depth_edges[b - 1])
+            hi = float("inf") if b == args.bins - 1 else float(depth_edges[b])
+            for c in range(N):
+                gt_px = int(gt_pixels_bc[b, c])
+                row = [b, round(lo, 4), ("" if np.isinf(hi) else round(hi, 4)),
+                       c, class_names[c], gt_px, int(n_images_bc[b, c])]
+                # GT 표본이 없으면 IoU 는 정의되지 않으므로 빈칸으로 둔다.
+                row += [("" if gt_px == 0 else stats[m]["iou_per_class"][b][c])
+                        for m in names]
+                w.writerow(row)
+
     notes = ["구간 경계는 split 전체 유효 depth(depth>0) 픽셀의 로그 값 분위수(선형 보간).",
              "채점에서 depth==0 또는 GT==255 픽셀 제외. mIoU 는 부재 클래스 IoU=0 포함 25클래스 평균(common 규약)."]
     if resized_depth:
@@ -240,7 +293,19 @@ def main():
         "n_valid_depth_pixels_edges": n_valid,
         "bin_pixels": bin_pixels.tolist(),
         "per_model": {m: {"miou25_per_bin": stats[m]["miou"],
-                          "pixel_acc_per_bin": stats[m]["pacc"]} for m in names},
+                          "pixel_acc_per_bin": stats[m]["pacc"],
+                          # 구간×클래스 IoU(2차원). GT 표본이 없는 칸은 CSV 와 동일하게
+                          # null 로 두어 "완전 오분류"와 "표본 없음"을 구분한다.
+                          "iou_per_class_per_bin": [
+                              [(None if int(gt_pixels_bc[b, c]) == 0
+                                else stats[m]["iou_per_class"][b][c])
+                               for c in range(N)]
+                              for b in range(args.bins)]}
+                      for m in names},
+        # 구간×클래스 GT 픽셀 수·이미지 수(모델 무관). 절대값은 같은 구간 안에서만 비교.
+        "gt_pixels_per_class_per_bin": gt_pixels_bc.tolist(),
+        "n_images_per_class_per_bin": n_images_bc.tolist(),
+        "class_names": class_names,
         "diff": {f"{a}_minus_{b}": [round(stats[a]["miou"][k] - stats[b]["miou"][k], 4)
                                      for k in range(args.bins)] for a, b in pairs},
         "notes": notes,
@@ -248,7 +313,7 @@ def main():
     json_path = out_dir / f"depth_bin_iou_{args.split}.json"
     json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2),
                          encoding="utf-8")
-    print(f"[depth_bin_iou] -> {csv_path.name}, {json_path.name}")
+    print(f"[depth_bin_iou] -> {csv_path.name}, {class_csv_path.name}, {json_path.name}")
 
 
 if __name__ == "__main__":
