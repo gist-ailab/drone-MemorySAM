@@ -79,6 +79,31 @@ def test_c_label_shapes():
     check("(c) mask16 이진", bool(((lab['mask16'] == 0) | (lab['mask16'] == 1)).all()))
 
 
+def test_c2_op_labels():
+    B, H, W = 4, 64, 64
+    x = [torch.randn(B, 3, H, W) for _ in MODALS]
+    _, lab = Degrader(cfg={'p_per_modal': 1.0}, seed=5)(x, MODALS)
+    M = len(MODALS)
+    op = lab['op']
+    n_names = len(D.OP_NAMES)
+    check("(c2) op shape", tuple(op.shape) == (B, M))
+    check("(c2) op dtype long", op.dtype == torch.long)
+    check("(c2) op 범위 [0,len-1]",
+          bool((op >= 0).all() and (op < n_names).all()))
+    check("(c2) OP_NAMES[0]=clean,[1]=missing",
+          D.OP_NAMES[0] == 'clean' and D.OP_NAMES[1] == 'missing')
+    held_idx = {D.OP_NAMES.index(n) for n in D.HELDOUT_OPS}
+    train_used = set(op.reshape(-1).tolist())
+    check("(c2) 학습 경로 op 라벨에 held-out 인덱스 없음",
+          train_used.isdisjoint(held_idx), f"used={sorted(train_used)} held={sorted(held_idx)}")
+    # held-out Degrader 는 held-out 인덱스(+clean/missing)만 쓴다
+    _, labh = Degrader(cfg={'p_per_modal': 1.0}, seed=5, heldout=True)(x, MODALS)
+    oph = set(labh['op'].reshape(-1).tolist())
+    allowed = {0, 1} | held_idx
+    check("(c2) held-out 경로 op 라벨은 held-out 인덱스만",
+          oph.issubset(allowed), f"used={sorted(oph)} allowed={sorted(allowed)}")
+
+
 def test_d_heldout_not_called():
     orig_g, orig_s = D.gaussian_noise, D.salt_pepper
 
@@ -144,14 +169,35 @@ def test_f_fp32():
           str(pred['eta_token'].dtype))
 
 
+def test_g_dry_run_table():
+    # probe 모듈의 dry_run 이 모달×연산자 표를 만드는지 검사(데이터·ckpt 불필요).
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import probe_quality_head as P
+    table = P.dry_run(MODALS, hidden=16)
+    ok_type = isinstance(table, dict) and set(table.keys()) == set(MODALS)
+    check("(g) dry_run 표 = 모달 키 dict", ok_type)
+    # 셀에 채워진 연산자가 있고, 전부 OP_NAMES(clean 제외) 안이며 held-out 도 포함
+    all_ops = set()
+    for mn in MODALS:
+        cells = table.get(mn, {})
+        check(f"(g) {mn} 셀 dict", isinstance(cells, dict))
+        all_ops |= set(cells.keys())
+    valid = set(D.OP_NAMES[1:])
+    check("(g) 표에 연산자 셀 존재", len(all_ops) > 0, f"ops={sorted(all_ops)}")
+    check("(g) 표 op 이름 유효(OP_NAMES 내)", all_ops.issubset(valid),
+          f"unexpected={sorted(all_ops - valid)}")
+
+
 def main():
     print("== smoke_quality_head ==")
     test_a_p0_identity()
     test_b_reproducible()
     test_c_label_shapes()
+    test_c2_op_labels()
     test_d_heldout_not_called()
     test_e_head_shapes_grad()
     test_f_fp32()
+    test_g_dry_run_table()
     print()
     if _FAILS:
         print(f"FAILED: {_FAILS}")

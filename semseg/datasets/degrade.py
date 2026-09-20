@@ -204,6 +204,21 @@ HELDOUT_OP_MODALS: Dict[str, Tuple[str, ...]] = {
 }
 
 
+# ===========================================================================
+# 연산자 인덱스 공간 — 라벨 `op` (B,M) 정수 텐서가 참조한다.
+#   0 = clean(열화 없음), 1 = 완전 결측, 나머지 = OPS 목록 순서(+2 오프셋).
+# 학습 연산자와 held-out 연산자를 **같은 인덱스 공간**에 둔다(학습 경로에서
+# held-out 은 여전히 호출하지 않지만, 분석·프로브가 동일 축으로 분해할 수 있게).
+# ===========================================================================
+OPS: Tuple[str, ...] = (
+    'patch_drop', 'gaussian_blur', 'gamma_gain', 'color_shift',
+    'depth_hole', 'lidar_beamdrop', 'event_lowres',     # 학습 연산자
+    'gaussian_noise', 'salt_pepper',                    # held-out 연산자(같은 축)
+)
+OP_NAMES: Tuple[str, ...] = ('clean', 'missing') + OPS
+_OP_INDEX: Dict[str, int] = {name: i for i, name in enumerate(OP_NAMES)}
+
+
 def _dispatch(name: str, x: Tensor, g: torch.Generator, modal: str):
     """이름으로 모듈 전역 연산자를 찾아 호출한다 — monkeypatch(스모크 d)가 보이도록
     호출 시점에 getattr 로 해석한다. held-out 함수는 modal 인자를 받는다."""
@@ -258,6 +273,7 @@ class Degrader:
         presence = torch.ones(B, M, device=dev)
         severity = torch.zeros(B, M, device=dev)
         mask = torch.zeros(B, M, H, W, device=dev)
+        op = torch.zeros(B, M, dtype=torch.long, device=dev)   # 0 = clean
 
         p = self.cfg['p_per_modal']
         mfrac = self.cfg['missing_frac']
@@ -271,12 +287,14 @@ class Degrader:
                     presence[b, m] = 0.0
                     severity[b, m] = 1.0
                     mask[b, m] = 1.0
+                    op[b, m] = 1                       # 1 = 완전 결측
                     continue
-                op = _choice(self.g, self._ops_for(modal_names[m]))
-                x_out, sev, mk = _dispatch(op, out[m][b], self.g, modal_names[m])
+                op_name = _choice(self.g, self._ops_for(modal_names[m]))
+                x_out, sev, mk = _dispatch(op_name, out[m][b], self.g, modal_names[m])
                 out[m][b] = x_out
                 severity[b, m] = float(sev)
                 mask[b, m] = mk
+                op[b, m] = _OP_INDEX[op_name]
 
         mask16 = torch.stack(
             [torch.stack([_patchify(mask[b, m]) for m in range(M)]) for b in range(B)])
@@ -285,4 +303,5 @@ class Degrader:
             'severity': severity,
             'mask': mask,
             'mask16': mask16.to(dev),
+            'op': op,
         }

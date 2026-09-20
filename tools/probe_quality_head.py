@@ -37,7 +37,7 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from semseg.datasets.degrade import Degrader                       # noqa: E402
+from semseg.datasets.degrade import Degrader, OP_NAMES             # noqa: E402
 from semseg.models.reliadino.quality_head import QualityHead, quality_loss  # noqa: E402
 
 
@@ -55,6 +55,76 @@ def rank_auroc(scores: np.ndarray, labels: np.ndarray) -> float:
     ranks = np.empty_like(order, dtype=np.float64)
     ranks[order] = np.arange(1, scores.size + 1)
     return float((ranks[labels].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
+
+
+def per_operator_stats(tok_scores, tok_labels, tok_op,
+                       sev_pred, sev_true, sev_mod, sev_op, modal_names):
+    """모달×연산자 표를 만든다. 셀 = {'auroc', 'mae', 'n_pos'}.
+
+    - AUROC = 해당 연산자로 열화된 패치(op==oi & mask16==1)를 양성,
+      clean 샘플의 패치(op==0 & mask16==0)를 음성으로 둔 판별 AUROC.
+      (전역 열화 연산자는 자기 샘플 안에 음성 패치가 없으므로 음성은 항상
+       clean 샘플에서 가져온다.)
+    - MAE = 존재 모달(presence=1)에서 해당 연산자 샘플의 |η̂_m - severity|.
+    clean(op 0)은 baseline 이라 열로 넣지 않는다.
+    """
+    M = len(modal_names)
+    table = {}
+    for m in range(M):
+        s = np.concatenate(tok_scores[m]) if tok_scores[m] else np.zeros(0)
+        l = np.concatenate(tok_labels[m]) if tok_labels[m] else np.zeros(0)
+        o = np.concatenate(tok_op[m]) if tok_op[m] else np.zeros(0)
+        neg = s[(o == 0) & (l == 0)] if s.size else np.zeros(0)
+        cells = {}
+        for oi in range(1, len(OP_NAMES)):
+            oname = OP_NAMES[oi]
+            pos = s[(o == oi) & (l == 1)] if s.size else np.zeros(0)
+            if pos.size == 0:
+                continue
+            if neg.size == 0:
+                au = float('nan')
+            else:
+                sc = np.concatenate([pos, neg])
+                lb = np.concatenate([np.ones(pos.size), np.zeros(neg.size)])
+                au = rank_auroc(sc, lb)
+            cells[oname] = {'auroc': au, 'n_pos': int(pos.size)}
+        table[modal_names[m]] = cells
+
+    sp = np.concatenate(sev_pred) if sev_pred else np.zeros(0)
+    st = np.concatenate(sev_true) if sev_true else np.zeros(0)
+    sm = np.concatenate(sev_mod) if sev_mod else np.zeros(0)
+    so = np.concatenate(sev_op) if sev_op else np.zeros(0)
+    for m in range(M):
+        cells = table[modal_names[m]]
+        for oi in range(1, len(OP_NAMES)):
+            oname = OP_NAMES[oi]
+            mm = (sm == m) & (so == oi) if sp.size else np.zeros(0, dtype=bool)
+            if np.any(mm):
+                cells.setdefault(oname, {'auroc': float('nan'), 'n_pos': 0})
+                cells[oname]['mae'] = float(np.mean(np.abs(sp[mm] - st[mm])))
+    return table
+
+
+def format_op_table(table, modal_names):
+    """모달×연산자 표를 AUROC 격자·MAE 격자 두 개의 문자열로 만든다."""
+    present = [OP_NAMES[i] for i in range(1, len(OP_NAMES))
+              if any(OP_NAMES[i] in table.get(mn, {}) for mn in modal_names)]
+    if not present:
+        return "  (표에 채워진 연산자 셀이 없음)"
+    lines = []
+    for metric in ('auroc', 'mae'):
+        lines.append(f"  [{metric}] 모달\\연산자")
+        lines.append("    " + f"{'modal':>8s} " +
+                     " ".join(f"{op[:10]:>10s}" for op in present))
+        for mn in modal_names:
+            cells = table.get(mn, {})
+            row = []
+            for op in present:
+                v = cells.get(op, {}).get(metric)
+                row.append(f"{v:>10.3f}" if isinstance(v, float) and v == v else
+                           f"{'-':>10s}")
+            lines.append("    " + f"{mn:>8s} " + " ".join(row))
+    return "\n".join(lines)
 
 
 def train_step(head: QualityHead, opt, feats, labels) -> dict:
@@ -124,14 +194,21 @@ def run_encoder(model, batched_input, hook):
 # 평가
 # ===========================================================================
 def evaluate(model, head, loader, degrader, modal_names, device, hook,
-             subset_every=1, save_eta_path=None):
-    """패치 AUROC·severity MAE·모달별 분해를 계산한다."""
+             subset_every=1, modal_eval_idx=None, save_eta_path=None):
+    """패치 AUROC·severity MAE·모달별·연산자별 분해를 계산한다.
+
+    modal_eval_idx : 게이트(가중 평균)를 계산할 모달 인덱스 목록. None 이면 전 모달.
+                     표는 항상 전 모달을 유지한다.
+    """
     head.eval()
     M = len(modal_names)
+    if modal_eval_idx is None:
+        modal_eval_idx = list(range(M))
     tok_scores = [[] for _ in range(M)]     # 모달별 패치 점수
     tok_labels = [[] for _ in range(M)]
-    sev_pred, sev_true, sev_mod = [], [], []
-    eta_scalar_all, eta_token_all = [], []
+    tok_op = [[] for _ in range(M)]         # 모달별 패치 op 인덱스(샘플 op 브로드캐스트)
+    sev_pred, sev_true, sev_mod, sev_op = [], [], [], []
+    eta_scalar_all = []
     seen = 0
     with torch.no_grad():
         for bi, batch in enumerate(loader):
@@ -150,9 +227,14 @@ def evaluate(model, head, loader, degrader, modal_names, device, hook,
                     eta_t.reshape(B * M, 1, *eta_t.shape[-2:]),
                     size=mask16.shape[-2:], mode='bilinear',
                     align_corners=False).reshape(B, M, *mask16.shape[-2:])
+            op = labels['op'].to(device)                          # (B,M)
+            B = eta_t.shape[0]
             for m in range(M):
-                tok_scores[m].append(eta_t[:, m].reshape(-1).cpu().numpy())
+                et_flat = eta_t[:, m].reshape(B, -1)             # (B,P)
+                op_patch = op[:, m].unsqueeze(1).expand(-1, et_flat.shape[1])
+                tok_scores[m].append(et_flat.reshape(-1).cpu().numpy())
                 tok_labels[m].append(mask16[:, m].reshape(-1).cpu().numpy())
+                tok_op[m].append(op_patch.reshape(-1).cpu().numpy())
             presence = labels['presence'].to(device)
             severity = labels['severity'].to(device)
             eta_s = pred['eta_scalar'].float()
@@ -163,27 +245,34 @@ def evaluate(model, head, loader, degrader, modal_names, device, hook,
                     sev_pred.append(eta_s[sel, m].cpu().numpy())
                     sev_true.append(severity[sel, m].cpu().numpy())
                     sev_mod.append(np.full(int(sel.sum()), m))
+                    sev_op.append(op[sel, m].cpu().numpy())
             eta_scalar_all.append(eta_s.cpu().numpy())
-            eta_token_all.append(pred['eta_token'].float().cpu().numpy())
             seen += images[0].shape[0]
 
-    # 집계
+    # 집계 — 모달 집합을 pool 하면 그 자체가 패치수 가중 평균이다.
     def _auroc(mods):
         s = np.concatenate([np.concatenate(tok_scores[m]) for m in mods])
         l = np.concatenate([np.concatenate(tok_labels[m]) for m in mods])
         return rank_auroc(s, l)
 
     auroc_all = _auroc(range(M))
+    auroc_eval = _auroc(modal_eval_idx)
     auroc_per_modal = {modal_names[m]: _auroc([m]) for m in range(M)}
     sp = np.concatenate(sev_pred) if sev_pred else np.zeros(0)
     st = np.concatenate(sev_true) if sev_true else np.zeros(0)
     sm = np.concatenate(sev_mod) if sev_mod else np.zeros(0)
     mae_all = float(np.mean(np.abs(sp - st))) if sp.size else float('nan')
+    eval_msk = np.isin(sm, list(modal_eval_idx)) if sp.size else np.zeros(0, dtype=bool)
+    mae_eval = (float(np.mean(np.abs(sp[eval_msk] - st[eval_msk])))
+                if np.any(eval_msk) else float('nan'))
     mae_per_modal = {}
     for m in range(M):
         msk = sm == m
         mae_per_modal[modal_names[m]] = (
             float(np.mean(np.abs(sp[msk] - st[msk]))) if msk.any() else float('nan'))
+
+    op_table = per_operator_stats(tok_scores, tok_labels, tok_op,
+                                  sev_pred, sev_true, sev_mod, sev_op, modal_names)
 
     if save_eta_path is not None:
         np.savez_compressed(
@@ -192,9 +281,13 @@ def evaluate(model, head, loader, degrader, modal_names, device, hook,
             modal_names=np.array(modal_names))
     return {
         'auroc': auroc_all,
+        'auroc_eval': auroc_eval,
         'auroc_per_modal': auroc_per_modal,
         'severity_mae': mae_all,
+        'severity_mae_eval': mae_eval,
         'severity_mae_per_modal': mae_per_modal,
+        'op_table': op_table,
+        'modal_eval': [modal_names[m] for m in modal_eval_idx],
         'n_samples': seen,
     }
 
@@ -202,10 +295,10 @@ def evaluate(model, head, loader, degrader, modal_names, device, hook,
 # ===========================================================================
 # 드라이런 — 무작위 텐서로 학습 루프 2 스텝
 # ===========================================================================
-def dry_run(modal_names):
+def dry_run(modal_names, hidden=32):
     dim = 64                        # 드라이런 전용 축소 dim(속도)
     M = len(modal_names)
-    head = QualityHead(dim, M, hidden=32)
+    head = QualityHead(dim, M, hidden=hidden)
     opt = torch.optim.AdamW(head.parameters(), lr=1e-3)
     degrader = Degrader(seed=0)
     B, h, w = 2, 8, 8
@@ -218,7 +311,44 @@ def dry_run(modal_names):
         feats = [torch.randn(B, dim, h, w, requires_grad=False) for _ in range(M)]
         log = train_step(head, opt, feats, labels)
         print(f"  step{step}: " + " ".join(f"{k}={v:.4f}" for k, v in log.items()))
+
+    # 모달×연산자 표(구조 검증용). 양성 = 강제 열화(p=1) 배치, 음성 = clean(p=0) 배치.
+    head.eval()
+    tok_scores = [[] for _ in range(M)]
+    tok_labels = [[] for _ in range(M)]
+    tok_op = [[] for _ in range(M)]
+    sev_pred, sev_true, sev_mod, sev_op = [], [], [], []
+    for step, p in enumerate((1.0, 1.0, 0.0, 0.0)):
+        deg = Degrader(cfg={'p_per_modal': p}, seed=100 + step)
+        imgs = [torch.randn(B, 3, h * 16, w * 16) for _ in range(M)]
+        _, labels = deg(imgs, modal_names)
+        feats = [torch.randn(B, dim, h, w) for _ in range(M)]
+        with torch.no_grad():
+            pred = head(feats)
+        eta_t = pred['eta_token'].float()
+        mask16 = labels['mask16'].float()
+        op = labels['op']
+        for m in range(M):
+            et_flat = eta_t[:, m].reshape(B, -1)
+            op_patch = op[:, m].unsqueeze(1).expand(-1, et_flat.shape[1])
+            tok_scores[m].append(et_flat.reshape(-1).cpu().numpy())
+            tok_labels[m].append(mask16[:, m].reshape(-1).cpu().numpy())
+            tok_op[m].append(op_patch.reshape(-1).cpu().numpy())
+        pm = labels['presence'] > 0.5
+        eta_s = pred['eta_scalar'].float()
+        for m in range(M):
+            sel = pm[:, m]
+            if sel.any():
+                sev_pred.append(eta_s[sel, m].cpu().numpy())
+                sev_true.append(labels['severity'][sel, m].cpu().numpy())
+                sev_mod.append(np.full(int(sel.sum()), m))
+                sev_op.append(op[sel, m].cpu().numpy())
+    table = per_operator_stats(tok_scores, tok_labels, tok_op,
+                               sev_pred, sev_true, sev_mod, sev_op, modal_names)
+    print("[dry_run] 모달×연산자 표 (무작위 feats — 구조 검증용):")
+    print(format_op_table(table, modal_names))
     print("[dry_run] OK")
+    return table
 
 
 # ===========================================================================
@@ -232,6 +362,11 @@ def main():
     ap.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     ap.add_argument('--batch_size', type=int, default=2)
     ap.add_argument('--seed', type=int, default=20260920)
+    ap.add_argument('--hidden', type=int, default=256,
+                    help='품질 헤드 히든 폭(파라미터 예산). 기본 256.')
+    ap.add_argument('--modals_eval', default='',
+                    help='게이트(가중 평균)를 잴 모달을 쉼표로 제한(예: img,depth). '
+                         '비우면 전 모달. 표·모달별 값은 항상 전 모달 유지.')
     ap.add_argument('--dry_run', action='store_true')
     args = ap.parse_args()
 
@@ -240,7 +375,7 @@ def main():
         if args.cfg and Path(args.cfg).exists():
             with open(args.cfg) as f:
                 modal_names = yaml.safe_load(f)['DATASET']['MODALS']
-        dry_run(modal_names)
+        dry_run(modal_names, hidden=args.hidden if args.hidden else 32)
         return
 
     assert args.cfg and args.ckpt, "--cfg 와 --ckpt 가 필요하다(또는 --dry_run)"
@@ -251,6 +386,12 @@ def main():
         cfg = yaml.safe_load(f)
     modal_names = cfg['DATASET']['MODALS']
     M = len(modal_names)
+    if args.modals_eval.strip():
+        want = [s.strip() for s in args.modals_eval.split(',') if s.strip()]
+        modal_eval_idx = [modal_names.index(w) for w in want]
+    else:
+        modal_eval_idx = list(range(M))
+    print(f"[probe] 게이트 대상 모달(가중 평균): {[modal_names[i] for i in modal_eval_idx]}")
 
     model = load_frozen_model(cfg, args.ckpt, device)
     hook = FusionInputHook(model)
@@ -266,12 +407,13 @@ def main():
     dim = feats0[0].shape[1]
     print(f"[probe] dim={dim} h,w={tuple(feats0[0].shape[-2:])} modals={modal_names}")
 
-    head = QualityHead(dim, M, hidden=256).to(device)
+    head = QualityHead(dim, M, hidden=args.hidden).to(device)
     opt = torch.optim.AdamW(head.parameters(), lr=1e-3)
 
-    # 학습
-    head.train()
+    # 학습 — epoch 마다 train/held-out AUROC(게이트 대상 모달 pool)를 history 에 기록
+    history = []
     for ep in range(args.epochs):
+        head.train()
         deg_ep = Degrader(seed=args.seed + ep, heldout=False)
         running = {}
         n = 0
@@ -284,42 +426,75 @@ def main():
                 running[k] = running.get(k, 0.0) + v
             n += 1
         print(f"[ep{ep}] " + " ".join(f"{k}={running[k]/max(n,1):.4f}" for k in running))
+        ep_train = evaluate(model, head, val_loader,
+                            Degrader(seed=args.seed + 500 + ep, heldout=False),
+                            modal_names, device, hook, args.subset_every, modal_eval_idx)
+        ep_held = evaluate(model, head, val_loader,
+                           Degrader(seed=args.seed + 700 + ep, heldout=True),
+                           modal_names, device, hook, args.subset_every, modal_eval_idx)
+        history.append({
+            'epoch': ep,
+            'train_auroc_eval': ep_train['auroc_eval'],
+            'train_auroc_all': ep_train['auroc'],
+            'heldout_auroc_eval': ep_held['auroc_eval'],
+            'heldout_auroc_all': ep_held['auroc'],
+        })
+        print(f"  [ep{ep} AUROC] train(eval)={ep_train['auroc_eval']:.4f} "
+              f"train(all)={ep_train['auroc']:.4f} "
+              f"held(eval)={ep_held['auroc_eval']:.4f} held(all)={ep_held['auroc']:.4f}")
 
-    # 평가 — 학습 열화 / held-out 열화 각각
+    # 최종 평가 — 학습 열화 / held-out 열화 각각
     res_train = evaluate(model, head, val_loader,
                          Degrader(seed=args.seed + 999, heldout=False),
-                         modal_names, device, hook, args.subset_every,
+                         modal_names, device, hook, args.subset_every, modal_eval_idx,
                          save_eta_path=str(out / 'eta_val.npz'))
     res_held = evaluate(model, head, val_loader,
                         Degrader(seed=args.seed + 1000, heldout=True),
-                        modal_names, device, hook, args.subset_every)
+                        modal_names, device, hook, args.subset_every, modal_eval_idx)
 
-    # 합격 판정
-    pass_auroc = res_train['auroc'] > 0.9
-    pass_mae = res_train['severity_mae'] < 0.1
-    pass_held = res_held['auroc'] > 0.8
+    # 합격 판정 — 게이트는 modals_eval 대상 모달의 가중 평균(pool)으로, 전 모달 값 병기
+    pass_auroc = res_train['auroc_eval'] > 0.9
+    pass_mae = res_train['severity_mae_eval'] < 0.1
+    pass_held = res_held['auroc_eval'] > 0.8
     report = {
         'gates': {
-            'train_patch_auroc>0.9': {'value': res_train['auroc'], 'pass': bool(pass_auroc)},
-            'severity_mae<0.1': {'value': res_train['severity_mae'], 'pass': bool(pass_mae)},
-            'heldout_auroc>0.8': {'value': res_held['auroc'], 'pass': bool(pass_held)},
+            'train_patch_auroc>0.9': {'value': res_train['auroc_eval'],
+                                      'value_all_modals': res_train['auroc'],
+                                      'pass': bool(pass_auroc)},
+            'severity_mae<0.1': {'value': res_train['severity_mae_eval'],
+                                 'value_all_modals': res_train['severity_mae'],
+                                 'pass': bool(pass_mae)},
+            'heldout_auroc>0.8': {'value': res_held['auroc_eval'],
+                                  'value_all_modals': res_held['auroc'],
+                                  'pass': bool(pass_held)},
         },
         'overall_pass': bool(pass_auroc and pass_mae and pass_held),
+        'modals_eval': [modal_names[i] for i in modal_eval_idx],
+        'history': history,
         'train_degrade': res_train,
         'heldout_degrade': res_held,
+        'op_table_train': res_train['op_table'],
+        'op_table_heldout': res_held['op_table'],
         'cfg': args.cfg, 'ckpt': args.ckpt, 'epochs': args.epochs,
+        'hidden': args.hidden,
         'modal_names': modal_names,
     }
     with open(out / 'probe_report.json', 'w') as f:
         json.dump(report, f, indent=2)
 
     print("\n=== 품질 헤드 프로브 결과 ===")
-    print(f"{'gate':32s} {'value':>8s}  판정")
+    print(f"게이트 대상 모달(가중 평균): {report['modals_eval']}")
+    print(f"{'gate':32s} {'eval':>8s} {'all':>8s}  판정")
     for k, v in report['gates'].items():
-        print(f"{k:32s} {v['value']:8.4f}  {'PASS' if v['pass'] else 'FAIL'}")
+        print(f"{k:32s} {v['value']:8.4f} {v['value_all_modals']:8.4f}  "
+              f"{'PASS' if v['pass'] else 'FAIL'}")
     print(f"\n모달별 train AUROC: {res_train['auroc_per_modal']}")
     print(f"모달별 held-out AUROC: {res_held['auroc_per_modal']}")
     print(f"모달별 severity MAE: {res_train['severity_mae_per_modal']}")
+    print("\n[train 열화] 모달×연산자 표:")
+    print(format_op_table(res_train['op_table'], modal_names))
+    print("\n[held-out 열화] 모달×연산자 표:")
+    print(format_op_table(res_held['op_table'], modal_names))
     print(f"\n종합: {'PASS' if report['overall_pass'] else 'FAIL'}  → {out/'probe_report.json'}")
     hook.remove()
 
