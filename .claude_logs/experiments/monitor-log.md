@@ -12,6 +12,42 @@ moved: 2026-07-08
 
 ---
 
+## 2026-09-20 (E17 확정 2런 취소 + 09-20 재채점 배치 실측)
+
+### A. E17 확정 200에폭 2런 취소
+- **E17** = E1(중간층 4탭 읽기: 블록 6/12/18/24 특징을 얕은 헤드로 보조 감독) 카드에 고해상도 세부 가지(DETAIL_BRANCH, 얇은 객체 픽셀 디테일 복원용 보조 브랜치)를 더한 확정 런. **user 가 직접 중단을 지시**했다(2026-09-20).
+- 시드 20260821(hpca100 GPU0)·시드 20260902(jarvis GPU3,7), **둘 다 ep32 까지 진행 후 중단**.
+- 중단 사유: 40에폭 스크린 게이트(카드 P53 제안서 G1~G4) 수준에 도달하지 못함.
+- 부분 체크포인트는 NAS 에 md5 대조 후 보존:
+  - `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/E17_confirm200_seed20260821_partial_20260920/epoch32_70.24_top1_checkpoint.pth` md5 `08d6f23d773e78624cc2eb0626683b42`
+  - `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/E17_confirm200_seed20260902_partial_20260920/epoch32_69.42_top1_checkpoint.pth` md5 `292ffbec4efb7f3c1ec0241fa61687ee`
+- hpca100 출력은 삭제했고, jarvis 출력 3.6G 는 아직 남아 있다(정리 대기).
+- registry.md 에 취소 행 2건 신설·반영 완료.
+
+### B. 2026-09-20 신규·변경 런 — 전부 legal v2 재채점(학습 아님)
+- **yeon GPU4,5**: **E-LoRA arm C**(공유 LoRA rank8 + 센서별 잔차 LoRA rank8) 시드902 재채점 진행 중. 학습은 p38 체크아웃, 채점은 develop 코드 + 체크포인트 절대경로. 로드 `missing=0 unexpected=0`.
+- **yeon GPU6,7**: **E-LoRA arm A**(센서별 독립 LoRA rank16)·**arm B**(전 센서 완전공유 LoRA rank16) 시드903 재채점 진행 중.
+- **jarvis GPU0,1**: 같은 arm A·arm B 의 시드902 재채점 진행 중.
+- **hpca100 GPU0**: **Q1**(품질 헤드 프로브 — 예측 신뢰도를 직접 회귀하는 보조 헤드, 5에폭) 진행 중. **GPU1**: **R1**(경계 prior refinement — 클래스 경계 부근 예측을 사전 지식으로 다듬는 모듈, 40ep 스크린) 진행 중. **GPU2**: **R2**(연결 성분 손실 — 예측 마스크의 연결 요소 개수를 정규화하는 보조 손실, 40ep 스크린) 진행 중. 셋 다 P54(다음 모델 후보) 준비용.
+- **E-LoRA arm C 시드902 학습**(yeon 에서 돌던 것)은 완주했다 — Total Training Time 16:59:24, 트레이너 val 최고 68.69@ep60.
+- **4탭+센서별 프로토타입 확정 시드4(E13)**(4탭 읽기 = 중간층 4탭 보조 감독, 센서별 prototype = 센서마다 클래스 prototype 유지)는 09-20 05:09 완주(트레이너 val 최고 68.35@110), legal v2 재채점도 같은 날 끝났다: **test 55.67 / val 69.40**.
+
+### C. bengio 하드웨어 고장
+- bengio 는 **GPU 전면 고장으로 배치 불가**. GPU6 이 `nvidia-smi` 목록에서 사라졌고, 남은 장도 CUDA 컨텍스트 생성 실패.
+- 리부트는 **user 판단 대기**.
+- 이전에 bengio 에서 돌던 E-LoRA arm A(센서별 r16)·arm B(완전공유 r16) 시드902·903 학습 4쌍은 **고장 이전에 전부 200에폭을 마쳤다**(학습 로그의 `Total Training Time` 확인, 22:25 실측). 고장은 학습 종료 뒤에 드러났고, 학습 산출물은 온전하다.
+  | 런 | 완주 시각 | 학습 시간 | 트레이너 val 최고 |
+  |---|---|---|---|
+  | arm A 시드902 | 09-20 10:08 | 11:16:46 | 68.06@ep70 |
+  | arm B 시드902 | 09-20 09:30 | 10:38:47 | 67.39@ep100 |
+  | arm A 시드903 | 09-20 09:57 | 11:06:10 | 68.57@ep80 |
+  | arm B 시드903 | 09-20 14:02 | 15:10:32 | 66.88@ep80 |
+- 네 런의 val-best 체크포인트는 bengio 에서 jarvis 로 md5 대조 복사했고(시드903 둘은 jarvis 에서 yeon 으로 재복사), 재채점은 jarvis GPU0·1 과 yeon GPU6·7 에서 돌고 있다. bengio 고장으로 잃은 것은 없다.
+
+plan.md 의 "실행 중"·"GPU 예약·점유 현황" 표를 위 B·C 실측으로 전면 교체(구 항목: E17 확정 2런, bengio E-LoRA arm A/B 4쌍, hpca100 E17 스크린·MUSES 풀 런 3건 — 전부 취소/완주/서버 고장으로 제거).
+
+---
+
 ## RUN-1 · B200 P28 RBMA (DELIVER)
 
 - **서버/소유자**: B200 (unix user `gm_huis`), repo `/NHNHOME/ailab/Workspaces/jemo_maeng/src/drone-MemorySAM`
