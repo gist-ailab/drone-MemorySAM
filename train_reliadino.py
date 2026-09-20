@@ -49,6 +49,7 @@ from semseg.datasets import *                                    # noqa: F401,F4
 from semseg.losses import OhemCrossEntropy, get_loss
 from semseg.metrics import Metrics
 from semseg.models.reliadino import build_reliadino
+from semseg.models.reliadino.component_loss import ComponentLoss   # [R2]
 from semseg.models.reliadino import p46 as P46
 from semseg.models.reliadino import p47 as P47
 from semseg.models.reliadino.p50 import load_pretrained_adapters   # [P50-MAP]
@@ -326,6 +327,33 @@ def main(cfg, gpu, save_dir, logger):
         if is_rank0:
             logger.info(f"[LOSS] OHEM CE on — thresh={loss_cfg.get('OHEM_THRESH', 0.7)} "
                         f"min_kept={loss_cfg.get('OHEM_MIN_KEPT', 100000)}")
+    # ── [R2] 연결 성분 단위 손실 (LOSS.COMPONENT, 기본 OFF → 기존 경로 무변경) ──
+    # GT 클래스별 연결 성분마다 soft-IoU 를 계산해 작은(면적^−1/2)·원거리(depth 구간)
+    # 성분에 가중을 두는 손실. 픽셀 헤드 로짓(모델 반환 logits)에 더한다(component_loss.py).
+    # off면 이 블록이 어떤 텐서도 만들지 않는다.
+    _comp_cfg = loss_cfg.get('COMPONENT', {}) or {}
+    component_loss_fn = None
+    component_w = 0.0
+    component_depth_idx = -1
+    if _comp_cfg.get('ENABLE', False):
+        _cmods = dataset_cfg['MODALS']
+        component_depth_idx = _cmods.index('depth') if 'depth' in _cmods else -1
+        component_w = float(_comp_cfg.get('W', 0.3))
+        component_loss_fn = ComponentLoss(
+            num_classes=num_classes, ignore_index=trainset.ignore_label,
+            min_area=int(_comp_cfg.get('MIN_AREA', 1)),
+            size_weight=str(_comp_cfg.get('SIZE_WEIGHT', 'inv_sqrt')),
+            dist_weight=_comp_cfg.get('DIST_WEIGHT', [1., 1., 1.5, 2., 2.]),
+            depth_bins=_comp_cfg.get('DEPTH_BINS', [8., 47., 111., 255.]),
+            dist_weight_enable=bool(_comp_cfg.get('DIST_WEIGHT_ENABLE', True)),
+            max_comp=int(_comp_cfg.get('MAX_COMP', 256)))
+        if is_rank0:
+            logger.info(
+                f"[R2] ComponentLoss on — W={component_w} "
+                f"size_weight={_comp_cfg.get('SIZE_WEIGHT', 'inv_sqrt')} "
+                f"dist_weight_enable={_comp_cfg.get('DIST_WEIGHT_ENABLE', True)} "
+                f"depth_idx={component_depth_idx} "
+                f"(depth_idx<0 이면 거리 가중 off)")
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)
     lambda_aux_ce = (model_cfg.get('FUSION', {}) or {}).get('AUX_CE_WEIGHT', 0.5)
     # [P37b] class-token aux CE weight (only produced when CLASS_TOKEN.ENABLE)
@@ -664,6 +692,7 @@ def main(cfg, gpu, save_dir, logger):
         cefr_accum = ctd_accum = m2f_accum = rce_accum = vic_accum = rca_accum = 0.0
         fcr_accum = 0.0   # [P41-F1]
         p43_accum = 0.0   # [P43-T1] mask-cls 주손실
+        comp_accum = 0.0; comp_nc_sum = 0; comp_nc_n = 0   # [R2] 성분 손실 + 성분 수
         p42_mask_sum = 0.0; p42_tot = 0   # [P42-M1/D] 실현 마스킹률
         # [P44/P45] 손실항 + 실현 마스킹률 + MMPareto 진단
         mkl_accum = rc_accum = hard_accum = sty_accum = 0.0
@@ -732,6 +761,16 @@ def main(cfg, gpu, save_dir, logger):
                              + vicreg + rca_ce + fcr + p43_mask
                              + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto
                              + p46_cm + p47_uni)
+
+                    # ── [R2] 연결 성분 단위 손실 (픽셀 헤드 로짓 기반) ──────────
+                    comp = _zero
+                    if component_loss_fn is not None:
+                        _cdepth = (sample[component_depth_idx]
+                                   if component_depth_idx >= 0 else None)
+                        _comp_raw, _comp_nc = component_loss_fn(logits, lbl, depth=_cdepth)
+                        comp = component_w * _comp_raw
+                        total = total + comp
+                        _last_comp_nc = _comp_nc
 
                     # ── [P46-C2/C3] 보조 branch (스타일 2-view → 패치 마스킹) ──
                     # ⚠️ DDP: 같은 iteration의 2번째 forward. 두 forward의
@@ -880,6 +919,9 @@ def main(cfg, gpu, save_dir, logger):
             rca_accum += float(rca_ce)
             fcr_accum += float(fcr)   # [P41-F1]
             p43_accum += float(p43_mask)   # [P43-T1]
+            if component_loss_fn is not None:      # [R2]
+                comp_accum += float(comp)
+                comp_nc_sum += int(_last_comp_nc); comp_nc_n += 1
             mkl_accum += float(p44_mkl)     # [P44-B2]
             rc_accum += float(p44_rc)       # [P44-B2]
             hard_accum += float(p44_hard)   # [P44-M3]
@@ -1035,6 +1077,12 @@ def main(cfg, gpu, save_dir, logger):
                 log_extra['p43/lambda'] = _p43_lam
                 logger.info(f"[P43] mask_loss:{p43_accum / (it + 1):.4f} "
                             f"lambda:{_p43_lam:.3f}")
+            if component_loss_fn is not None:      # [R2]
+                _comp_avg = comp_accum / (it + 1)
+                _nc_avg = (comp_nc_sum / comp_nc_n) if comp_nc_n > 0 else 0.0
+                writer.add_scalar('train/component_loss', _comp_avg, epoch)
+                log_extra['train/component_loss'] = _comp_avg
+                logger.info(f"[COMP] loss={_comp_avg:.4f} n_comp={_nc_avg:.1f}")
             if getattr(_core, 'p42_mask_img', False):   # [P42-M1/D] 실현 마스킹률 (k=0 무음 탐지)
                 _mr = p42_mask_sum / max(p42_tot, 1)
                 writer.add_scalar('train/p42_mask_rate', _mr, epoch)

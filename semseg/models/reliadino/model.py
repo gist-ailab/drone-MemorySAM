@@ -27,6 +27,7 @@ from . import p44 as P44
 from . import p46 as P46
 from . import p47 as P47
 from . import p52 as P52
+from .boundary_refine import BoundaryRefine
 from .cmlc import CrossModalLoRACoupling
 from .classtoken import ClassTokenLiteHead
 from .detail_branch import DetailStem
@@ -285,7 +286,14 @@ class ReliaDINO(nn.Module):
                  detail_mode: str = 'shared_stem',
                  detail_gate_init: float = 0.1,
                  detail_input_norm: str = 'same',
-                 detail_norm: str = 'gn'):
+                 detail_norm: str = 'gn',
+                 # [BOUNDARY_REFINE/R1] depth 에지-prior FPN 정제 (default OFF —
+                 # off면 아래 블록이 모듈/RNG/버퍼를 전혀 건드리지 않아 forward·
+                 # state_dict 가 baseline 과 byte-동일). boundary_refine.py 참조.
+                 brefine_enable: bool = False,
+                 brefine_levels: Sequence[int] = (4,),
+                 brefine_k_init: float = 10.0,
+                 brefine_gamma_init: float = 0.1):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -880,6 +888,25 @@ class ReliaDINO(nn.Module):
                 num_modalities=self.num_modalities, norm=detail_norm,
                 gate_init=detail_gate_init)
 
+        # ── [BOUNDARY_REFINE/R1] depth 에지-prior FPN 정제 (default OFF) ───────
+        # depth 모달의 불연속(에지)을 경계 prior 로 삼아 SimpleFPN stride-4(/8)
+        # 특징을 정제한다(depth 를 특징으로 융합하지 않는다 — 반증된 축). off면
+        # self.boundary_refine=None → _apply_boundary_refine 가 no-op(byte-동일).
+        # **가장 마지막에 생성**(P47-2/CMLC/P52/DETAIL 규약 — off 경로 init RNG 불변).
+        self._depth_idx = (self.modalities.index('depth')
+                           if 'depth' in self.modalities else -1)
+        self.boundary_refine = None
+        self._brefine_depth = None       # per-forward depth 텐서 캐시(에지원)
+        if brefine_enable:
+            if self._depth_idx < 0:
+                # 조용한 no-op 금지: depth 모달이 없으면 에지 prior 를 만들 수 없다.
+                raise ValueError(
+                    "[BREFINE] MODEL.BOUNDARY_REFINE.ENABLE=true 는 DATASET.MODALS 에 "
+                    "'depth' 가 있어야 한다 (depth 에지를 경계 prior 로 쓴다).")
+            self.boundary_refine = BoundaryRefine(
+                fpn_dim=fpn_dim, levels=brefine_levels,
+                k_init=brefine_k_init, gamma_init=brefine_gamma_init)
+
         # [E-LORA] 학습가능 파라미터 수 보고(plan.md "파라미터 수 보고"). LoRA 항은
         # qkv 래퍼 안의 어댑터 텐서(.base 제외)만 센다. rank0 에서 한 줄만 출력한다.
         _rank0 = (not torch.distributed.is_initialized()
@@ -888,6 +915,13 @@ class ReliaDINO(nn.Module):
             _dp = sum(p.numel() for p in self.detail.parameters())
             print(f"[DETAIL] mode={detail_mode} levels={list(detail_levels)} "
                   f"params={_dp:,} gate_init={detail_gate_init}", flush=True)
+        if _rank0 and self.boundary_refine is not None:
+            _bp = sum(p.numel() for p in self.boundary_refine.parameters())
+            print(f"[BREFINE] levels={self.boundary_refine.strides} "
+                  f"gate={self.boundary_refine.gate_values()} "
+                  f"k={float(self.boundary_refine.k):.2f} "
+                  f"tau={float(self.boundary_refine.tau):.2f} params={_bp:,}",
+                  flush=True)
         if _rank0:
             n_lora = sum(p.numel() for n, p in self.named_parameters()
                          if p.requires_grad and '.attn.qkv.' in n and '.base.' not in n)
@@ -1090,6 +1124,19 @@ class ReliaDINO(nn.Module):
                 d, size=out[idx].shape[-2:], mode='bilinear', align_corners=False)
         return out
 
+    def _apply_boundary_refine(self, pyramid: List[torch.Tensor]
+                               ) -> List[torch.Tensor]:
+        """[BOUNDARY_REFINE/R1] depth 에지-prior 로 FPN 레벨을 정제한다.
+
+        `self._brefine_depth`(forward 에서 캐시한 depth 모달 텐서)의 Sobel 에지를
+        경계 prior 로 stride-4(/8) 레벨에 얹는다(boundary_refine.py). off(모듈 미생성)
+        또는 depth 미캐시면 pyramid 를 그대로 돌려준다(no-op, byte-동일). detail·p43
+        lateral 과 독립 경로이며, 픽셀 헤드 직전(이 함수가 _decode 의 마지막 정제)이다.
+        추론 시에도 동일 경로(추론 전용 후처리 아님)."""
+        if self.boundary_refine is None or self._brefine_depth is None:
+            return pyramid
+        return self.boundary_refine(pyramid, self._brefine_depth)
+
     def _apply_trunk_exp(self, fused: torch.Tensor,
                          feats: List[torch.Tensor]) -> torch.Tensor:
         """[P39-V1/P39.1-R1] modal subspace restoration — seg/det 공용 단일
@@ -1218,8 +1265,9 @@ class ReliaDINO(nn.Module):
         `pyramid_out`, when given, receives the (P43-lateral-augmented) pyramid
         so the [P43] mask-cls head can read the SAME trunk levels the pixel
         head just consumed — the only thing the two heads share."""
-        pyramid = self._apply_detail_branch(
-            self._apply_p43_lateral(self.fpn(fused)))    # [DETAIL] (no-op if off)
+        pyramid = self._apply_boundary_refine(
+            self._apply_detail_branch(
+                self._apply_p43_lateral(self.fpn(fused))))  # [DETAIL/BREFINE] (no-op if off)
         if pyramid_out is not None:
             pyramid_out.extend(pyramid)
         logits, m_feat = self.head(pyramid)
@@ -1338,6 +1386,10 @@ class ReliaDINO(nn.Module):
         # off면 None → _apply_detail_branch 가 no-op. 학습 시 grad 는 _decode(2nd
         # pass)에서 게이트·스템·투영으로 흐른다.
         self._detail_feats = self.detail(x) if self.detail is not None else None
+        # [BOUNDARY_REFINE/R1] 백본과 같은 전처리 입력(마스킹/드롭 반영 후 x)의 depth
+        # 모달을 에지원으로 캐시한다. _decode 두 번(CEFR two-pass)에서 재사용, off면 None.
+        self._brefine_depth = (x[self._depth_idx]
+                               if self.boundary_refine is not None else None)
         if not self.training:
             self._last_per_modal_feats = [f.detach() for f in feats]
         # [P40-C1] lidar 리턴 유효성(입력 유도, 내부 신호) — RCA 가드 + 분석용
@@ -1819,6 +1871,9 @@ class ReliaDINO(nn.Module):
         # 세부 특징을 계산·캐시한다(내부 _decode 호출과 최종 pyramid 모두 소비).
         self._detail_feats = (self.detail(list(batched_input))
                               if self.detail is not None else None)
+        # [BOUNDARY_REFINE/R1] det pyramid 도 seg 와 동일한 에지 정제를 받도록 캐시.
+        self._brefine_depth = (batched_input[self._depth_idx]
+                               if self.boundary_refine is not None else None)
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
         cefr_ctx = aux.get('cefr_ctx', None) if isinstance(aux, dict) else None
@@ -1837,8 +1892,9 @@ class ReliaDINO(nn.Module):
             fused = (1.0 - mix) * fused + mix * fused_p
         # [P39-V1] seg forward와 동일 순서(CEFR blend 이후)·동일 게이트로 적용
         fused = self._apply_trunk_exp(fused, feats)
-        pyramid = self._apply_detail_branch(
-            self._apply_p43_lateral(self.fpn(fused)))        # [P43-T2/DETAIL] (no-op if off)
+        pyramid = self._apply_boundary_refine(
+            self._apply_detail_branch(
+                self._apply_p43_lateral(self.fpn(fused))))   # [P43-T2/DETAIL/BREFINE] (no-op if off)
         if routed is not None and getattr(self, 'det_router_proj', None) is not None:
             r = self.det_router_proj(routed)
             pyramid = [
@@ -1872,6 +1928,9 @@ class ReliaDINO(nn.Module):
         # [DETAIL_BRANCH] feat_s4(내부 _decode)가 seg 와 같은 세부 잔차를 받도록 캐시.
         self._detail_feats = (self.detail(list(batched_input))
                               if self.detail is not None else None)
+        # [BOUNDARY_REFINE/R1] feat_s4(내부 _decode)가 seg 와 같은 에지 정제를 받도록 캐시.
+        self._brefine_depth = (batched_input[self._depth_idx]
+                               if self.boundary_refine is not None else None)
         fused, aux = self.fusion(feats, None)
         routed = aux.get('routed_logits', None) if isinstance(aux, dict) else None
         fused = self._apply_trunk_exp(fused, feats)   # seg와 동일 게이트 경로
@@ -1916,6 +1975,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     p43 = mc.get('P43', {}) or {}                               # [P43] PanopticDual
     taps = mc.get('TAPS', {}) or {}                             # [E1] 다중 레벨 탭 단독 토글
     detail = mc.get('DETAIL_BRANCH', {}) or {}                  # [DETAIL] 고해상도 세부 가지
+    brefine = mc.get('BOUNDARY_REFINE', {}) or {}               # [R1] depth 에지-prior FPN 정제
     p44 = mc.get('P44', {}) or {}                      # [P44-BMR]
     p44_lm = p44.get('LOCAL_MASK', {}) or {}           #   B-3 국소 마스킹
     p44_hp = p44.get('HARD_PIXEL_AUX', {}) or {}       #   M-3 hard-pixel aux
@@ -2150,4 +2210,9 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         detail_gate_init=detail.get('GATE_INIT', 0.1),
         detail_input_norm=detail.get('INPUT_NORM', 'same'),
         detail_norm=detail.get('NORM', 'gn'),
+        # [BOUNDARY_REFINE/R1] depth 에지-prior FPN 정제 (기본 OFF → 키 없으면 byte-동일)
+        brefine_enable=brefine.get('ENABLE', False),
+        brefine_levels=tuple(brefine.get('LEVELS', (4,))),
+        brefine_k_init=brefine.get('K_INIT', 10.0),
+        brefine_gamma_init=brefine.get('GAMMA_INIT', 0.1),
     )
