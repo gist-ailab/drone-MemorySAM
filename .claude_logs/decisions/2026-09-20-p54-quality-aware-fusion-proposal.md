@@ -125,10 +125,11 @@ falsifiable 예측: (a) T′(증류만)는 RMM 손실을 20~40% 줄이되 NM 고
 |---|---|---|
 | CMNeXt·CMX·MAGIC·MAGIC++·Any2Seg·StitchFusion·GeminiFusion·Sigma·MemorySAM·DPLNet | **없음**(resize·flip·color jitter·blur·crop 만) | — |
 | CAFuser(MUSES 20%)·MUSES 기준선(20%)·MISS/FPT(모달별 스위치)·AnySeg·RMMSS/RobustSeg·CHARM(취약 모달 편향)·MetaBEV(1/3) | 있음 | **모달 드롭(완전 결측)만** |
-| DGFusion | CAFuser 승계로 추정, 명시 문장 없음 | 미확인 → 재학습 세션에 config 확인 지시(2026-09-20) |
+| DGFusion·CAFuser(우리 재학습본, DELIVER) | **없음** — 기본값 `RANDOM_DROP=[0.2]*4`(cafuser/config.py:255)를 DELIVER 학습 config 가 `[0,0,0,0]` 으로 덮어씀(configs/deliver/swin/dgfusion_…clde.yaml:34, cafuser_…clde.yaml:29; 저장 config 로 확인). `MODALITIES.AUGMENTATIONS`(CUTMIX·EXTREME·MIXUP·PATCH) 전부 `ENABLED: false`. 켜진 증강 = Resize·Crop·**ColorAugSSD(RGB 에만, 나머지 모달은 항등)**·Flip | 결측 드롭도 열화도 없음 — depth 는 학습 중 한 번도 빠지거나 망가진 적 없음(재학습 세션 코드 확인 2026-09-20) |
 | EQUISeg | 드롭 없음, 무작위 교사-학생 프로토타입 KL | — |
 | 존재-열화(노이즈·블러·픽셀 손상)를 학습에 넣은 DELIVER/MUSES seg | **0건** | — |
 - DELIVER train split 자체에 코너 케이스(MB 600·OE 200·UE 199·LJ 199·EL 200장)가 들어 있어 조건별 열은 "미학습 부식" 이 아니다. 진짜 미학습 열화는 2503.18445 의 zero-fill·Gaussian·S&P 뿐.
+- 🔴 공정성 함의(2026-09-20): 기준선의 depth 는 학습 중 교란을 받은 적이 없으므로, 우리가 존재-열화를 학습에 넣고 강건 벤치에서 이기는 것은 "학습 증강 차이" 로 설명될 수 있다. 따라서 G-robust-vs-DGFusion 은 두 행으로 판정한다: (a) 기준선 발표 config 그대로(드롭·열화 없음) (b) **기준선을 우리와 같은 열화 커리큘럼으로 재학습한 행** — 진짜 주장은 (b) 를 이겨야 성립한다. (b) 재학습은 재학습 세션이 복원 킷으로 가능(DELIVER 200k, 약 2일/런).
 - 함의: "결측" 은 우리 모델에 이미 무해(±0.05)이므로 결측 드롭 학습은 얻을 것이 없고, 우리가 열어야 할 축은 **존재-열화**다. 이것이 기존 방법과의 차이이자 리뷰어에게 설명해야 할 지점이다.
 
 ## 7. user 결정이 필요한 것
