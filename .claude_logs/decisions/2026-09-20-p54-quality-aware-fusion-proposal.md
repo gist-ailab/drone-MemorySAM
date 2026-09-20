@@ -81,7 +81,8 @@ author: 생각정리(판정) 세션, 딥리서치 3축(2026-09-20, 원문 = rese
 
 | 게이트 | 기준 | 판정 규칙 |
 |---|---|---|
-| G-clean | 3시드 legal v2 test Δ ≥ **−0.3**, 24클래스 Δ ≥ −0.3 | 미달 시 F 폐기(T′ 만 남김) |
+| G-clean(user 2026-09-20 상향) | 3시드 legal v2 test **평균 ≥ DGFusion 56.71**(현 E1 56.24 → +0.47 필요) 그리고 E1 대비 Δ ≥ −0.3 | 미달 시 F 폐기. ⚠️ 문헌상 품질 게이팅의 clean 이득은 0 이므로 이 조건은 QAF 단독으로는 못 채울 가능성이 높다 — 원거리·얇은 객체 회복 카드(D6 판정, 경계 prior·성분 손실)와 **같은 런에 결합**해 채우는 것을 전제로 한다 |
+| G-robust-vs-DGFusion(user 2026-09-20 신설) | 같은 프로토콜(재학습 세션 훅, 정규화 후 0 채움·RMM r=.5·EMM·held-out NM)로 잰 DGFusion 80k 대비 **모든 강건 셀에서 우위**(완전 제거·절반 열화·EMM 평균·NM 저/중/고 각각) | 기준값 = D4 실측(DGFusion depth 제거 −33.25 / 절반 −11.28, RGB −11.55 / −6.56) + Q0 에서 추가 측정할 DGFusion EMM·NM. 절대값(우리 clean 기준)과 상대 손실 둘 다 우위여야 한다 |
 | G-RMM | RMM r=0.5(test, 2503.18445 정의) depth 손실 **절반 이하**(현 −6.01 → ≥ −3.0), RGB 손실 절반 이하 | 3시드 평균 |
 | G-EMM | EMM 15조합 평균 ≥ **48.22**(EQUISeg, MiT-B2) — 백본이 달라 "같은 프로토콜 최고" 로만 표기 | 3시드 평균 |
 | G-NM | held-out NM 고노이즈 ≥ **15**(현 SOTA 9.25), 저노이즈 ≥ 35.23(CMNeXt) | 학습에 안 쓴 열화 |
@@ -113,6 +114,22 @@ falsifiable 예측: (a) T′(증류만)는 RMM 손실을 20~40% 줄이되 NM 고
 - 구현은 코드 검수 파이프라인(`meta/conventions.md` 🔴, fresh-eyes 7종 + 스모크 grad/등가 assert: F·Q off 시 forward·state_dict byte-동일 확인)을 거친다.
 - 비용: 두 패스라 스텝당 2배. jarvis 4090 BS1 은 E1 16.2GiB 기준 여유, 40 epoch ≈ 1.5일/런(추정, 미실측).
 - 등재: `experiments/plan.md` 대기열 N-P54(Q0~Q3), `research/hypothesis-ledger.md` H27(감독 품질 토큰이 오염을 막는다)·H28(순서 self→set-attn 이 clean 무손실)·H29(동결 교사 두 패스가 clean 을 보존한다) 예약 행.
+
+## 6.5 user 결정 (2026-09-20)
+- ① 강건 벤치를 포함하되 **DGFusion 성능(clean test 56.71)까지 나와야 하고, 그때 DGFusion 보다 강건해야 한다** → §4 G-clean 상향·G-robust-vs-DGFusion 신설. QAF 는 단독 카드가 아니라 원거리·얇은 객체 회복 카드와 결합한 런으로 판정한다.
+- ② "학습 열화가 열화 벤치 이미지를 넣는 게 아니라 modality missing 문제를 푸는 것 아닌지" → 확인 결과(§1-bis) 맞다: 기존 DELIVER 방법의 학습 열화는 전부 **모달 드롭(결측)** 이고, 존재-열화(노이즈·블러·픽셀 손상)를 학습에 넣은 dense seg 선례는 없다. NM 벤치는 clean 학습 모델에 평가만 한다. 우리 제안은 존재-열화를 학습에 넣되 벤치 NM 열화(Gaussian+S&P)는 held-out 으로 둔다.
+- ③ MUSES 제출은 user 가 직접(zip 경로 요구), ④ hpca100 미사용 웨이트는 drone_nas 로 이동(검증 이동).
+
+### §1-bis. 확인: 기존 방법의 "학습 열화" 는 무엇인가 (딥리서치 C 표 4·표 2, 2026-09-20)
+| 방법 | 학습 시 열화 | 종류 |
+|---|---|---|
+| CMNeXt·CMX·MAGIC·MAGIC++·Any2Seg·StitchFusion·GeminiFusion·Sigma·MemorySAM·DPLNet | **없음**(resize·flip·color jitter·blur·crop 만) | — |
+| CAFuser(MUSES 20%)·MUSES 기준선(20%)·MISS/FPT(모달별 스위치)·AnySeg·RMMSS/RobustSeg·CHARM(취약 모달 편향)·MetaBEV(1/3) | 있음 | **모달 드롭(완전 결측)만** |
+| DGFusion | CAFuser 승계로 추정, 명시 문장 없음 | 미확인 → 재학습 세션에 config 확인 지시(2026-09-20) |
+| EQUISeg | 드롭 없음, 무작위 교사-학생 프로토타입 KL | — |
+| 존재-열화(노이즈·블러·픽셀 손상)를 학습에 넣은 DELIVER/MUSES seg | **0건** | — |
+- DELIVER train split 자체에 코너 케이스(MB 600·OE 200·UE 199·LJ 199·EL 200장)가 들어 있어 조건별 열은 "미학습 부식" 이 아니다. 진짜 미학습 열화는 2503.18445 의 zero-fill·Gaussian·S&P 뿐.
+- 함의: "결측" 은 우리 모델에 이미 무해(±0.05)이므로 결측 드롭 학습은 얻을 것이 없고, 우리가 열어야 할 축은 **존재-열화**다. 이것이 기존 방법과의 차이이자 리뷰어에게 설명해야 할 지점이다.
 
 ## 7. user 결정이 필요한 것
 
