@@ -518,6 +518,45 @@ def setup(args):
     return cfg
 
 
+def _maybe_register_degrade_step_hook(cfg, trainer):
+    """열화 커리큘럼용 '현재 iteration' 을 데이터로더 워커에 공유하는 훅을 단다.
+
+    데이터로더 워커는 학습 루프의 현재 step 을 직접 알 수 없다. 그래서 학습 쪽에서
+    `multiprocessing.Value('i', ...)` 를 만들어 `degradation.set_shared_step` 으로 심고,
+    매 iteration 그 값을 갱신한다. 워커는 fork(리눅스 기본 start method)로 이 공유 값을
+    물려받으므로, 별도 IPC 없이 현재 severity 상한을 계산할 수 있다.
+
+    🔴 `DEGRADE.ENABLED` 가 꺼져 있으면 아무것도 하지 않는다(기존 재현 런과 완전히 동일).
+    DEGRADE 키 자체가 없는(패치 미적용) config 도 꺼짐으로 취급한다.
+
+    호출 순서 주의: 데이터로더 워커는 `trainer.train()` 이 이터레이터를 만들 때 fork 된다.
+    따라서 이 함수는 그 전에(= train 호출 전에) 불러 SHARED_STEP 을 미리 심어야 한다.
+    """
+    try:
+        enabled = bool(cfg.DATASETS.DELIVER.DEGRADE.ENABLED)
+    except AttributeError:
+        enabled = False
+    if not enabled:
+        return
+
+    import multiprocessing
+    from detectron2.engine import HookBase
+    # 워커가 mapper 를 통해 import 하는 것과 동일한 모듈 객체여야 SHARED_STEP 이 공유된다.
+    from dgfusion.data import degradation as _degradation
+
+    shared_step = multiprocessing.Value("i", int(trainer.start_iter))
+    _degradation.set_shared_step(shared_step)
+
+    class _DegradeStepHook(HookBase):
+        def before_step(self):
+            shared_step.value = int(self.trainer.iter)
+
+    trainer.register_hooks([_DegradeStepHook()])
+    logging.getLogger("dgfusion").info(
+        "열화 커리큘럼 활성 — 현재 iteration 을 multiprocessing.Value 로 데이터로더 워커에 공유한다"
+    )
+
+
 def main(args):
     cfg = setup(args)
 
@@ -545,6 +584,9 @@ def main(args):
     if os.environ.get("DGFUSION_AMP_BF16") == "1" and hasattr(trainer._trainer, "precision"):
         trainer._trainer.precision = torch.bfloat16
         logging.getLogger("detectron2.trainer").info("AMP autocast precision overridden to bfloat16 (DGFUSION_AMP_BF16=1)")
+    # 열화 커리큘럼 step 공유(꺼져 있으면 무동작). 데이터로더 워커 fork 전에 심어야 하므로
+    # train() 호출 전에 등록한다.
+    _maybe_register_degrade_step_hook(cfg, trainer)
     trainer.resume_or_load(resume=args.resume)
     if args.machine_rank == 0:
         net_params = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
