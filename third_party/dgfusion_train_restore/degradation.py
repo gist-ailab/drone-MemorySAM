@@ -25,7 +25,6 @@ DGFusion 의 DELIVER 학습 config 는 모달 드롭도 열화 증강도 꺼 둔
 (아래 `SHARED_STEP` / `set_shared_step` / `current_severity` 참조).
 """
 
-import logging
 import os
 import warnings
 
@@ -332,10 +331,13 @@ def _record_applied(modality, op_name, sev, before, after):
         changed = float((before != after).mean())
     except Exception:
         changed = float("nan")
-    logging.getLogger("dgfusion").info(
-        "[degrade] pid=%d 적용 %d 회째 · 모달=%s · 연산자=%s · severity상한=%.3f · "
-        "바뀐 화소 비율=%.4f",
-        os.getpid(), _APPLIED_COUNT, modality, op_name, float(sev), changed)
+    # 🔴 logging 이 아니라 print 로 찍는다. 이 함수는 데이터로더 워커에서 도는데, 워커의
+    # logging 출력은 학습 로그 파일로 오지 않는다(2026-09-20 DGFusion (b) 런에서 확인 —
+    # 표식이 0 회였고 열화는 정상 적용 중이었다). print 는 상속된 stdout 으로 나가므로
+    # nohup 이 받는 로그 파일에 그대로 남는다.
+    print(f"[degrade] pid={os.getpid()} 적용 {_APPLIED_COUNT} 회째 · 모달={modality} · "
+          f"연산자={op_name} · severity상한={float(sev):.3f} · "
+          f"바뀐 화소 비율={changed:.4f}", flush=True)
 
 
 def degrade_sample(images, means, cfg, rng, max_iter):
