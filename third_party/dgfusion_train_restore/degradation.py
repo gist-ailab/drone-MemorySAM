@@ -25,6 +25,8 @@ DGFusion 의 DELIVER 학습 config 는 모달 드롭도 열화 증강도 꺼 둔
 (아래 `SHARED_STEP` / `set_shared_step` / `current_severity` 참조).
 """
 
+import logging
+import os
 import warnings
 
 import cv2
@@ -306,7 +308,34 @@ def apply_degradation(img, modality, mean, sev, rng, cfg=None):
         return img  # 모르는 모달은 건드리지 않는다
     candidates = MODAL_DEGRADATIONS[key]
     choice = candidates[int(rng.integers(0, len(candidates)))]
-    return _DEGRADE_FUNCS[choice](img, mean, sev, rng)
+    out = _DEGRADE_FUNCS[choice](img, mean, sev, rng)
+    _record_applied(key, choice, sev, img, out)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 적용 표식 로그 — "열화가 실제로 걸리고 있는가" 를 학습 로그에서 확인하기 위한 것이다.
+# 학습을 띄운 뒤에는 못 고치므로 기동 전에 넣어 둔다(판정 세션 요청 2026-09-20).
+# 데이터로더 워커마다 독립으로 세며, LOG_EVERY 번에 한 번만 찍어 로그를 더럽히지 않는다.
+# 찍는 것: 모달 · 고른 연산자 · severity 상한 · 실제로 값이 바뀐 화소 비율.
+# ---------------------------------------------------------------------------
+LOG_EVERY = int(os.environ.get("DEGRADE_LOG_EVERY", "500"))
+_APPLIED_COUNT = 0
+
+
+def _record_applied(modality, op_name, sev, before, after):
+    global _APPLIED_COUNT
+    _APPLIED_COUNT += 1
+    if LOG_EVERY <= 0 or (_APPLIED_COUNT % LOG_EVERY) != 1:
+        return
+    try:
+        changed = float((before != after).mean())
+    except Exception:
+        changed = float("nan")
+    logging.getLogger("dgfusion").info(
+        "[degrade] pid=%d 적용 %d 회째 · 모달=%s · 연산자=%s · severity상한=%.3f · "
+        "바뀐 화소 비율=%.4f",
+        os.getpid(), _APPLIED_COUNT, modality, op_name, float(sev), changed)
 
 
 def degrade_sample(images, means, cfg, rng, max_iter):
