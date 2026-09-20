@@ -38,6 +38,81 @@ CAFuser의 LR이 1e-4로 동일**하다 (과거 기록의 "1.8×" 교란은 MUSE
 - `dgfusion_test_sweep.sh` — 저장된 체크포인트들을 공식 README의 test 평가 명령으로 차례로 평가
   (`bash dgfusion_test_sweep.sh <gpu> 0009999 0019999 ...`). val→test 전이 곡선용.
 
+## 열화 커리큘럼 (기준선 재학습용, 2026-09-20)
+
+기준선의 DELIVER 학습은 모달 드롭도 열화 증강도 꺼져 있다(`cafuser/config.py` 의 기본 0.2 를 학습
+config 가 `[0.,0.,0.,0.]` 로 덮어쓴다). 우리 모델과 같은 조건에서 강건성을 비교하려면 기준선도 같은
+열화 커리큘럼으로 재학습해야 한다. 아래 세 파일이 그 커리큘럼을 복원한다. **모두 기본 꺼짐이라, 설정
+키를 주지 않으면 기존 재현 런과 완전히 동일하게 동작한다.**
+
+- `degradation.py` — 서버의 `dgfusion/data/degradation.py` 로 **복사**할 새 모듈. 여섯 가지 열화
+  (패치 드롭·가우시안 블러·노출(감마)·depth 홀·LiDAR jitter·event 저해상)를 원본(정규화 전) 공간에서
+  건다. "지운다" = 그 모달의 채널별 평균으로 채우기(정규화 후 정확히 0). 모달별 후보는
+  `MODAL_DEGRADATIONS` 사전(CAMERA·DEPTH·LIDAR·EVENT). numpy·cv2 만 쓰고 torch 를 쓰지 않는다
+  (데이터로더 워커에서 돌기 때문). 🔴 **가우시안 노이즈·salt-and-pepper 는 일부러 넣지 않았다** — 평가
+  벤치(NM 프로토콜)가 바로 그 두 열화를 쓰므로 학습에 넣으면 시험 문제 유출(leakage)이다(모듈 docstring 참조).
+- `deliver_degradation.patch` — 서버 두 파일 패치. (1) `cafuser/config.py` 에 `DATASETS.DELIVER.DEGRADE`
+  키(ENABLED·PER_MODAL_PROB·CURRICULUM·CURRICULUM_FRACTIONS·SEED, 전부 기본 꺼짐) 추가, (2)
+  `deliver_semantic_dataset_mapper.py` 배선(모달을 다 읽은 직후이자 **기하 증강 앞**에서 `degrade_sample`
+  호출 — 기하 증강 뒤에 넣으면 크롭·플립과 열화 위치가 어긋난다). `is_train` 일 때만 적용.
+- `train_net.py` — 이 킷 파일에 커리큘럼 step 공유 훅(`_maybe_register_degrade_step_hook`)이 이미 들어 있다
+  (패치가 아니라 파일 자체). `DEGRADE.ENABLED` 가 꺼져 있으면 아무것도 하지 않는다.
+- `smoke_degradation.py` — 스모크 4종(꺼짐 불변·비율 정확·재현·커리큘럼 단조). 2026-09-20 로컬(MMSS_SAM
+  env)에서 **4/4 PASS**.
+
+### 커리큘럼 step 을 워커가 아는 법
+
+데이터로더 워커는 학습 루프의 현재 iteration 을 직접 알 수 없다(커리큘럼 severity 상한 계산에 필요).
+`degradation.py` 에 모듈 전역 `SHARED_STEP` 과 `set_shared_step()` / `current_severity()` 를 두고, 학습
+쪽(`train_net.py` 훅)에서 `multiprocessing.Value('i', 0)` 를 만들어 `set_shared_step` 으로 심은 뒤 매
+iteration 갱신한다. 워커는 fork(리눅스 기본)로 이 공유 값을 물려받아 읽는다. 공유 값이 없으면(평가 경로
+등) **경고를 한 번 찍고 severity 상한 1.0** 으로 동작한다(조용히 다른 값을 쓰지 않음).
+
+### 서버 적용 절차
+
+```bash
+cd <저장소 루트>          # 예: /SSDb/jemo_maeng/dgfusion_train
+cp <킷>/degradation.py dgfusion/data/degradation.py
+cp <킷>/train_net.py train_net.py          # step 공유 훅 포함본
+git apply --recount <킷>/deliver_degradation.patch   # 또는 patch -p1 --fuzz=3 < ...
+```
+
+✅ **패치는 서버 실제 파일에서 뽑았다**(2026-09-20). jarvis `/SSDb/jemo_maeng/dgfusion_train` 의
+`cafuser/config.py` 와 `dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py` 원본을 가져와
+수정한 뒤 `diff -u` 로 생성했고, 되돌린 사본에 `patch -p1 --dry-run` 으로 다시 붙여 6 개 hunk 가 fuzz
+없이 적용되는 것을 확인했다. 따라서 `--fuzz` 나 수동 삽입이 필요 없다.
+
+(경위: 처음 만든 패치는 서버 원본을 보지 못한 채 문맥을 추정해, 6 개 중 3 개가 붙지 않았다. 실제
+파일로 다시 만들면서 변수명도 바로잡았다 — 매퍼의 모달 dict 는 `modal_images` 가 아니라
+`modality_images` 이고, 증강 목록은 `self.augmentations` 가 아니라 `self.tfm_gens` 다.)
+
+배선의 실제 모양은 다음과 같다.
+
+- `config.py`: `add_deliver_config()` 의 `DILATION` 정의 뒤에 `DATASETS.DELIVER.DEGRADE` 블록 추가.
+- 매퍼 상단: `from dgfusion.data.degradation import degrade_sample`.
+- 매퍼 `__init__`: 위치 인자 `degrade_ctx=None` 추가 + `self.degrade_ctx = degrade_ctx`.
+- 매퍼 `from_config`: `"degrade_ctx"` 를 `ret` 에 넣는다. 학습이고 `DEGRADE.ENABLED` 일 때만
+  `(DEGRADE, {모달: 채널평균}, SOLVER.MAX_ITER)` 세 쪽을, 아니면 `None` 을 넣는다.
+- 매퍼 `__call__`: `modality_images = self.deliver_loader(dataset_dict)` **직후**, 그리고
+  `image = modality_images[self.main_modality]` 앞에서 `degrade_sample(...)` 을 부른다. 기하 증강
+  (`apply_transform_gens`)보다 앞이라 크롭·플립 좌표계와 열화 위치가 어긋나지 않는다.
+  `gt_depth` 는 감독 신호이므로 열화 대상에서 제외한다(모달 평균 dict 에 없는 키는 건너뛴다).
+
+### 학습에서 켜는 법 (config)
+
+```yaml
+DATASETS:
+  DELIVER:
+    DEGRADE:
+      ENABLED: True
+      PER_MODAL_PROB: 0.5
+      CURRICULUM: [0.3, 0.6, 1.0]
+      CURRICULUM_FRACTIONS: [0.33, 0.66, 1.0]
+      SEED: 0
+```
+
+이번 작업은 **구현만** 한다(학습 미기동). 재학습 기동은 별도 지시로 한다.
+
 ## 실행 (jarvis 검증 커맨드)
 
 ```bash
