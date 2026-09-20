@@ -1,0 +1,27 @@
+# DGFusion DELIVER 재학습 (b) — 모달 드롭 + 열화 커리큘럼.
+#
+# 왜 이 런이 필요한가. 발표 config 로 재현한 (a) 런은 모달 드롭도 열화 증강도 꺼져 있었다
+# (`cafuser/config.py:255` 의 기본값 0.2 를 DELIVER 학습 config 가 0 으로 덮어쓴다). 그래서
+# 강건성 비교를 (a) 와만 하면 "기준선은 열화를 배운 적이 없다" 는 이유로 우리 우위가 생긴다.
+# 이 런은 기준선을 우리와 같은 열화 조건에 두고 다시 학습해, 주장이 (b) 를 이겨야 성립하도록
+# 한다(판정 세션 결정 2026-09-20, user 승인).
+#
+# (a) 와 달라지는 것은 두 가지뿐이다. 나머지(학습 스케줄·배치·LR·저장 주기)는 그대로 둔다.
+#   1. RANDOM_DROP 을 발표 기본값 0.2 로 되돌린다.
+#   2. DEGRADE 커리큘럼을 켠다.
+# 🔴 가우시안 노이즈와 salt-and-pepper 는 넣지 않는다. 평가 벤치(NM)가 쓰는 열화라 학습에
+#    넣으면 시험 문제를 미리 보여 주는 셈이다. 구현 자체에 없다(degradation.py docstring 참조).
+_BASE_: dgfusion_swin_tiny_bs8_200k_deliver_clde.yaml
+
+DATASETS:
+  DELIVER:
+    # 발표 기본값. (a) 런은 이것을 [0., 0., 0., 0.] 로 껐다.
+    RANDOM_DROP: [0.2, 0.2, 0.2, 0.2]
+    DEGRADE:
+      ENABLED: True
+      # 샘플마다 모달별로 독립하게 이 확률로 열화를 건다.
+      PER_MODAL_PROB: 0.5
+      # severity 상한 단계와 그 상한을 적용할 전체 iteration 대비 누적 비율.
+      CURRICULUM: [0.3, 0.6, 1.0]
+      CURRICULUM_FRACTIONS: [0.33, 0.66, 1.0]
+      SEED: 0
