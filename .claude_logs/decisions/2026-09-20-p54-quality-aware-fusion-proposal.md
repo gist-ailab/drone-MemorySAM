@@ -112,6 +112,7 @@ falsifiable 예측: (a) T′(증류만)는 RMM 손실을 20~40% 줄이되 NM 고
 | Q5 | 품질 조건부 잔차 LoRA M | E-LoRA 3갈래 판정 + Q3 통과 후 | — | — |
 
 - 구현은 코드 검수 파이프라인(`meta/conventions.md` 🔴, fresh-eyes 7종 + 스모크 grad/등가 assert: F·Q off 시 forward·state_dict byte-동일 확인)을 거친다.
+- 기준선 (b) 재학습 견적(재학습 세션 2026-09-20, 실측 4장 30h 외삽): 구현 = `dgfusion/data/degradation.py` 신규 + 매퍼·config 배선 + 스모크 ≈ 200~230줄(워커 위임·검수), 기본값 전부 off 로 기존 재현 불변. 학습 = DGFusion 200k jarvis 4090 **4장 30시간**(2장 60h, A100 1장 약 117h 비실용) + val-best 사후 스윕(ckpt 20개, 몇 시간). 모델 둘이면 60h+스윕. 권고 순서 = DGFusion 먼저(더 강한 기준선), CAFuser 는 그 결과 본 뒤.
 - 비용: 두 패스라 스텝당 2배. jarvis 4090 BS1 은 E1 16.2GiB 기준 여유, 40 epoch ≈ 1.5일/런(추정, 미실측).
 - 등재: `experiments/plan.md` 대기열 N-P54(Q0~Q3), `research/hypothesis-ledger.md` H27(감독 품질 토큰이 오염을 막는다)·H28(순서 self→set-attn 이 clean 무손실)·H29(동결 교사 두 패스가 clean 을 보존한다) 예약 행.
 
