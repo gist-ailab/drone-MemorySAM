@@ -354,8 +354,105 @@ def test_c_two_pass():
     _pass_equiv("교사 있음", True)
 
 
+def test_f_autocast_guard():
+    """quality_loss 가 autocast 활성 중 금지 연산(F.binary_cross_entropy)을 부르지 않는다.
+
+    CUDA autocast 는 binary_cross_entropy 를 RuntimeError 로 막지만 CPU autocast 는
+    통과시켜 스모크가 못 잡았다(2026-09-21 Q3 첫 스텝 사망). 여기서는 F.* 를 monkeypatch
+    해 'autocast 활성 중 호출되면 예외' 로 CUDA 검사를 CPU 에서 재현한다.
+    값도 수식(직접 BCE)이 F.binary_cross_entropy 와 같은지 autocast 밖에서 대조한다.
+    """
+    import torch.nn.functional as F
+    from semseg.models.reliadino import quality_head as QH
+    torch.manual_seed(0)
+    B, M, h, w = 2, 4, 6, 6
+    pred = {'eta_scalar': torch.rand(B, M), 'eta_token': torch.rand(B, M, h, w),
+            'presence_logit': torch.randn(B, M)}
+    labels = {'presence': torch.ones(B, M), 'severity': torch.rand(B, M),
+              'mask16': (torch.rand(B, M, h, w) > 0.5).float()}
+    orig = F.binary_cross_entropy
+
+    def _guard(*a, **k):
+        if torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled():
+            raise RuntimeError("binary_cross_entropy called under autocast (banned on CUDA)")
+        return orig(*a, **k)
+    F.binary_cross_entropy = _guard
+    try:
+        ok_raise = False
+        try:
+            with torch.autocast('cpu', dtype=torch.bfloat16):
+                out = QH.quality_loss(pred, labels)
+            loss_ac = float(out['mask'])
+        except RuntimeError:
+            ok_raise = True
+            loss_ac = float('nan')
+        check("(f) autocast 활성 중 quality_loss 가 금지 BCE 미호출", not ok_raise)
+        out2 = QH.quality_loss(pred, labels)
+        ref = float(orig(pred['eta_token'].clamp(1e-6, 1 - 1e-6), labels['mask16']))
+        check("(f) 직접 BCE == F.binary_cross_entropy(autocast 밖)",
+              abs(float(out2['mask']) - ref) < 1e-6, f"Δ={abs(float(out2['mask']) - ref):.2e}")
+        check("(f) autocast 안팎 mask 손실 일치", abs(loss_ac - float(out2['mask'])) < 1e-4,
+              f"ac={loss_ac:.6f} plain={float(out2['mask']):.6f}")
+        with torch.autocast('cpu', dtype=torch.bfloat16):
+            out3 = QH.quality_loss(pred, labels)
+        check("(f) total 이 fp32", out3['total'].dtype == torch.float32, str(out3['total'].dtype))
+    finally:
+        F.binary_cross_entropy = orig
+
+
+def test_g_cuda_autocast_step():
+    """실제 CUDA autocast(bf16) 에서 QAF 두 패스 1 스텝(forward+손실+backward)이 도는지.
+
+    CPU autocast 는 CUDA 전용 금지 연산(예: binary_cross_entropy)을 못 잡아 Q3 가 첫 스텝에서
+    죽은 것을 스모크가 놓쳤다. CUDA 가 있으면 tiny 모델로 진짜 autocast 스텝을 돌린다.
+    (허브 GPU 를 수 MB 만 쓴다.) CUDA 없으면 SKIP.
+    """
+    if not torch.cuda.is_available():
+        print("\n[SKIP] (g) CUDA 없음 — 실제 autocast 스텝 건너뜀")
+        return
+    print("\n[g] CUDA autocast(bf16) 두 패스 스텝")
+    from train_reliadino import _qaf_kd_kl
+    dev = 'cuda'
+    model = _seeded(lambda: _build(_qaf_cfg())).train().to(dev)
+    teacher = _seeded(lambda: _build(_qaf_cfg())).eval().to(dev)
+    for p_ in teacher.parameters():
+        p_.requires_grad_(False)
+    x = _inputs()
+    gt = torch.randint(0, NUM_CLASSES, (1, 64, 64))
+    deg, lab = Degrader(cfg={'p_per_modal': 1.0}, seed=0)([s_.detach() for s_ in x], MODALS)
+    xd = [t.to(dev) for t in x]
+    dd = [t.to(dev) for t in deg]
+    lab = {k: (v.to(dev) if torch.is_tensor(v) else v) for k, v in lab.items()}
+    gtd = gt.to(dev)
+    try:
+        with torch.autocast('cuda', dtype=torch.bfloat16):
+            with torch.no_grad():
+                t_logits = teacher(xd, True)[0]
+            cl, _, caux = model(xd, True, gt_mask=gtd)
+            loss_c = torch.nn.functional.cross_entropy(cl.float(), gtd) + 0.1 * caux['qaf_identity_loss']
+        loss_c.backward()
+        with torch.autocast('cuda', dtype=torch.bfloat16):
+            dl, _, daux = model(dd, True, gt_mask=gtd, qaf_labels=lab)
+            kd = _qaf_kd_kl(t_logits, dl, 2.0)
+            loss_d = (torch.nn.functional.cross_entropy(dl.float(), gtd)
+                      + 0.1 * daux['qaf_quality_loss'] + 0.5 * kd)
+        loss_d.backward()
+        ok = bool(torch.isfinite(loss_c)) and bool(torch.isfinite(loss_d))
+        g = sum(p_.grad.abs().sum().item() for p_ in model.fusion.quality_head.parameters()
+                if p_.grad is not None)
+        check("(g) CUDA autocast 두 패스 스텝 예외 없이 완료", ok,
+              f"loss_c={float(loss_c):.3f} loss_d={float(loss_d):.3f}")
+        check("(g) quality_head grad 흐름(CUDA)", g > 0, f"gnorm={g:.3e}")
+    except RuntimeError as e:
+        check("(g) CUDA autocast 두 패스 스텝 예외 없이 완료", False, str(e)[:100])
+    finally:
+        del model, teacher
+        torch.cuda.empty_cache()
+
+
 def main():
     print("== smoke_qaf ==")
+    test_f_autocast_guard()
     test_b_qaf_forward()
     test_e_fp32()
     test_d_schedule()
@@ -368,6 +465,7 @@ def main():
     if _has_timm:
         test_a_off_byte_identical()
         test_c_two_pass()
+        test_g_cuda_autocast_step()
     print()
     if _FAILS:
         print(f"FAILED: {_FAILS}")

@@ -118,7 +118,14 @@ def quality_loss(pred: Dict[str, Tensor], labels: Dict[str, Tensor],
         l_severity = eta_s.sum() * 0.0
 
     # 3) 패치 마스크 BCE — 토큰별 열화 여부
-    l_mask = F.binary_cross_entropy(eta_t.clamp(1e-6, 1 - 1e-6), mask16)
+    # 🔴 F.binary_cross_entropy 는 CUDA autocast 안에서 금지(RuntimeError "unsafe to
+    # autocast") — 두 패스 열화 forward 가 autocast 블록 안이라 첫 스텝에서 죽었다
+    # (2026-09-21 Q3 재기동). 수식을 fp32 로 직접 계산(autocast 비활성): 값은
+    # binary_cross_entropy(clamp(η̂,1e-6,1−1e-6), mask16) 평균과 동일.
+    with torch.autocast(device_type=eta_t.device.type, enabled=False):
+        _et = eta_t.float().clamp(1e-6, 1 - 1e-6)
+        _mk = mask16.float()
+        l_mask = -(_mk * torch.log(_et) + (1.0 - _mk) * torch.log1p(-_et)).mean()
 
     # 4) 순위 힌지 — 같은 배치에서 severity 라벨이 큰 쪽의 η̂ 가 작으면 벌점.
     #    존재 모달만 대상, 배치·모달을 평탄화해 쌍 비교.
