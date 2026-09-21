@@ -556,6 +556,10 @@ class ReliabilityGatedFusion(nn.Module):
         self.qaf_self_attn_on = bool(qaf_self_attn)
         self.qaf_eps = float(qaf_eps)
         self.qaf_detach_mask = bool(qaf_detach_mask)
+        # [G-signal 치환 검정] η̂ 오버라이드 훅. None(기본)이면 forward 무변경.
+        # callable(qaf_pred: dict) -> qaf_pred: dict 을 넣으면 quality_head 예측을
+        # 교체한다(tools/qaf_permutation_test.py 가 셔플/0 함수를 주입). off 경로 불변.
+        self._qaf_eta_override = None
         self.qaf_mask_idx: List[int] = []
         self.quality_head = None
         self.qaf_self_layer = None
@@ -801,6 +805,10 @@ class ReliabilityGatedFusion(nn.Module):
         # [P54-QAF] 품질 토큰(융합 직전 feats 에서, fp32). off 면 None → 아래 분기가
         # 기존 "나머지 모달 concat" 경로를 그대로 탄다(코드 경로 분기, 무수정 원칙).
         qaf_pred = self.quality_head(feats) if self.qaf_enable else None
+        if qaf_pred is not None and self._qaf_eta_override is not None:
+            # [G-signal 치환 검정] η̂ 를 외부(도구)에서 교체. override None(정상)이면
+            # 이 분기를 타지 않아 기존 QAF 경로와 byte-동일.
+            qaf_pred = self._qaf_eta_override(qaf_pred)
         if self.qaf_enable:
             fused_tokens = self._qaf_cross_attend(
                 tokens, qaf_pred, (bias_flat if self.attn_bias else None), B, C, h, w)
