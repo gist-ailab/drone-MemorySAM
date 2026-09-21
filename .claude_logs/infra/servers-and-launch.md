@@ -148,3 +148,39 @@ WANDB:
 ```
 `WANDB` 블록이 없으면 위 기본값으로 동작(=켜짐). 단일 GPU 폴백
 `train_sam2_lora_paper_singlegpu.py`도 동일 규칙으로 로깅(단 이 스크립트는 별개의 기존 import 이슈가 있음).
+
+## 빈 GPU 자동 배치 파이프라인 (2026-09-21)
+
+**목적**: 서버를 비워 두면 다른 사용자가 가져가므로, 주기적으로 빈 GPU 를 찾아 대기열의 다음 작업을 자동으로 올린다. user 지시(2026-09-21 "서버 비어있으면 그냥 배치해서 돌려주면 된다")로 만들었다. 구현은 GLM 워커가, 검수는 모니터링 세션이 했다. 커밋 `c1e1f97`.
+
+**위치**: `scripts/autoplace/`
+
+| 파일 | 역할 |
+|---|---|
+| `probe_free_gpus.sh` | 서버별 빈 GPU 탐색. 빈 GPU = 메모리 ≤2000MiB 이고 util ≤10% (`GPU_MAXMEM`·`GPU_MAXUTIL` 로 조정). `servers.conf` policy 가 `off` 인 서버는 탐색하지 않고, `ban:` 표시된 GPU 는 제외한다. |
+| `queue.tsv` | 대기열. 탭 구분 9열 = id · priority · hosts · ngpu · repo · config · session · epochs · note. priority 가 작을수록 먼저 나간다. |
+| `hostenv.tsv` | 서버별 기동 환경 = host · conda_sh · pylibs · master_port_base. `FILL_ME` 가 있는 서버에는 배치하지 않는다. |
+| `place.py` | 배정과 기동. 기본은 계획만 출력하고 `--launch` 를 줘야 실제로 띄운다. state 파일(`scripts/autoplace/state/launched.tsv`)로 같은 id 의 중복 기동을 막는다. |
+| `verify.py` | 기동 검증 네 항목(파라미터 수·모듈 로그 / 오류 없음 / 반복 전진 / GPU 메모리 ≥3000MiB)을 PASS/FAIL 로 판정한다. |
+| `run_cycle.sh` | 배치 → 4분 대기 → 검증 → 요약. `--dry` 는 계획만 출력한다. |
+
+**hostenv 실측 값** (2026-09-21 각 서버에서 존재 확인):
+- conda 초기화 스크립트: bengio·yeon = `/home/jemo_maeng/anaconda3/etc/profile.d/conda.sh`, jarvis = `/home/jemo_maeng/miniconda3/etc/profile.d/conda.sh`.
+- pylibs: 세 서버 공통 `/SSDb/jemo_maeng/pylibs_p34` (bengio 도 `/SSDb` 다. `/SSDe` 가 아니다).
+- 포트 기준(master_port_base): bengio 29600 · yeon 29740 · jarvis 29800.
+- hpca100 은 venv 서버라 conda 템플릿과 맞지 않고 user 지시로 비워 둔 상태여서 `FILL_ME` 다. lecun 은 policy off 다.
+
+**운영**: 세션 크론이 매시 :17 에 sonnet 서브에이전트로 `run_cycle.sh` 를 돌리고, 모니터링 세션이 기동 검증을 직접 판정한다. 크론은 세션 전용이라 세션이 재기동되면 사라지고 7일 뒤 자동 만료된다.
+
+**안전 규칙**:
+- 빈 GPU 판정을 통과하지 못한 GPU 에는 배치하지 않는다.
+- 같은 id 를 두 번 기동하지 않는다.
+- policy off 서버에는 배치하지 않는다.
+- sudo·pip·git·삭제는 하지 않는다.
+- 모르는 값은 `FILL_ME` 로 두어 배치를 막는다.
+
+**함정 기록** (같은 실수 반복 방지): 서버별 경로를 손으로 적다 틀린 사고가 2026-09-21 에 두 번 있었다.
+1. bengio 여덟 런이 백본 빌드에 실패했다. timm 오버레이 경로를 `/SSDe/jemo_maeng/pylibs_p34` 로 적었으나 실제는 `/SSDb/jemo_maeng/pylibs_p34` 였다.
+2. jarvis QAF 두 런이 로그도 없이 사망했다. tmux 명령에 conda 를 `anaconda3` 로 하드코딩했으나 jarvis 는 `miniconda3` 다.
+
+새 기동 스크립트는 경로를 `hostenv.tsv` 에서 읽거나, 서버에서 직접 확인한 값만 쓴다.

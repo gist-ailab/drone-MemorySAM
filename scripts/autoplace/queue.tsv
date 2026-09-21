@@ -13,4 +13,3 @@
 # 예시(아래 두 줄은 주석이며 실제 행은 비워 둔다):
 # muphys_826	1	bengio,yeon	2	/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM	configs/muses/muses_P52_E1_seed902.yaml	muses_p52_e1_s902	40	E1(공유 임베딩) 3시드 계열, 시드 902 배치 예시
 # deliver_r1_903	2	any	1	/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM	configs/deliver/deliver_P52_R1_seed903.yaml	deliver_p52_r1_s903	40	R1 시드 확장(903) 1GPU 스크린 배치 예시
-muphys_826	1	yeon	2	/SSDb/jemo_maeng/src/Project/Drone/detection/drone-MemorySAM-develop	/SSDb/jemo_maeng/queue_cfg/cfg_musesphysoff_seed20260826.yaml	muphys_826	300	MUSES PhysAug-off 3페어 중 셋째(user 2026-09-07 공정성 정정). 바꾼 키는 PHYSAUG.ENABLE·SEED·SAVE_DIR 뿐
