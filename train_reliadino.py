@@ -764,6 +764,7 @@ def main(cfg, gpu, save_dir, logger):
                         f"kd_t={qaf_kd_t} q_w={qaf_q_w} id_w={qaf_id_w} "
                         f"clean_pass={qaf_clean_pass} model_qaf={qaf_model_on} "
                         f"teacher={'yes' if qaf_teacher is not None else 'no'}")
+    _qaf_pareto_warned = False   # [P54-QAF] MMPareto 동시 사용 경고 1회용
 
     # ── train loop ──────────────────────────────────────────────────────────
     for epoch in range(start_epoch, epochs):
@@ -931,7 +932,16 @@ def main(cfg, gpu, save_dir, logger):
                     # clean 패스(위 주 forward)와 파라미터 사용 집합이 같아야 DDP
                     # reducer 가 산다 → arbiter path-dropout 추첨을 replay 로 재생한다
                     # (p46 2-forward 와 동일 규약). 교사는 별도 동결 모델(DDP 밖).
-                    if qaf_two_pass:
+                    # 🔴 메모리: window_pareto 이면 여기서 total 에 합산해 아래
+                    # 단일 backward(MMPareto autograd.grad 결합) 로 처리한다.
+                    # window_pareto 가 아니면 이 블록을 건너뛰고, autocast 종료 후
+                    # "패스별 backward"(clean → 열화 순차)로 처리해 두 패스의
+                    # 활성화 그래프가 동시에 살지 않게 한다(peak 메모리 절반).
+                    if qaf_two_pass and window_pareto:
+                        if is_rank0 and not _qaf_pareto_warned:
+                            logger.info("[QAF-T] QAF 두 패스 + MMPareto 는 "
+                                        "단일 backward 경로")
+                            _qaf_pareto_warned = True
                         qaf_step_n += 1
                         _cap = _qaf_sev_cap(qaf_sev_sched, epoch)
                         _t_logits = None
@@ -972,7 +982,66 @@ def main(cfg, gpu, save_dir, logger):
                     if qaf_model_on:
                         qaf_id_accum += float(aux.get('qaf_identity_loss', _zero))
                     loss = total / accumulation_steps
-                if window_pareto:
+                if qaf_two_pass and not window_pareto:
+                    # ── [P54-QAF] 패스별 backward (peak 메모리 절반) ─────────────
+                    # (1) clean 패스: 이미 계산된 `total`(clean 손실)을 먼저
+                    #     backward → clean 활성화 그래프가 해제된 뒤 (3) 열화
+                    #     forward 가 활성화를 새로 잡는다. 총 gradient 는 기존
+                    #     합산 backward 와 동일(선형성: grad(a)+grad(b)=grad(a+b),
+                    #     DDP mean-allreduce 도 선형). loss 스칼라 값은 detach 로
+                    #     보존해 기존 로깅/텐서보드 출력이 바뀌지 않게 한다.
+                    _clean_loss = (loss if qaf_clean_pass
+                                   else (total - loss_seg) / accumulation_steps)
+                    scaler.scale(_clean_loss).backward()
+                    _total_clean_val = total.detach()
+                    _loss_seg_val = loss_seg.detach()
+                    # 열화 forward 전, clean 패스의 큰 출력 텐서·aux 참조 해제
+                    # (backward 가 저장 활성화는 이미 해제; empty_cache 는 느려서
+                    # 쓰지 않고 참조만 끊는다).
+                    del _clean_loss, loss, total, logits, m_feat, aux
+                    # (2) 교사 forward 는 no_grad → 활성화 즉시 해제(로짓만 보관).
+                    qaf_step_n += 1
+                    _cap = _qaf_sev_cap(qaf_sev_sched, epoch)
+                    _t_logits = None
+                    if qaf_teacher is not None:
+                        with torch.no_grad():
+                            _t_logits = qaf_teacher(sample, True)[0]
+                    _clean = [s.detach() for s in sample]
+                    _deg, _qlab = qaf_degrader(_clean, modals)
+                    _deg, _qlab = _qaf_apply_cap(_clean, _deg, _qlab, _cap)
+                    with torch.no_grad():
+                        _dg = float(((_qlab['severity'] > 0)
+                                     | (_qlab['presence'] < 0.5)).float().mean())
+                    qaf_deg_sum += _dg; qaf_deg_n += 1
+                    # (3) 열화 패스 forward → backward (clean 그래프는 해제된 상태)
+                    with autocast(enabled=train_cfg['AMP'], dtype=AMP_DTYPE):
+                        _core._p46_replay_path = True
+                        try:
+                            _dlogits, _, _daux = model(_deg, True, gt_mask=lbl,
+                                                       qaf_labels=_qlab)
+                        finally:
+                            _core._p46_replay_path = False
+                        _d_ce = loss_fn(_dlogits, lbl)
+                        _d_q = _daux.get('qaf_quality_loss', _zero)
+                        _d_total = _d_ce + qaf_q_w * _d_q
+                        _kd_val = 0.0
+                        if _t_logits is not None:
+                            _kd = _qaf_kd_kl(_t_logits, _dlogits, qaf_kd_t)
+                            _d_total = _d_total + qaf_kd_w * _kd
+                            _kd_val = float(_kd)
+                            del _kd, _t_logits
+                        _loss_deg = _d_total / accumulation_steps
+                    scaler.scale(_loss_deg).backward()
+                    qaf_dce_accum += float(_d_ce)
+                    qaf_q_accum += float(_d_q)
+                    qaf_kd_accum += _kd_val
+                    # 로깅용 total 재구성: 기존 합산 backward 와 동일한 스칼라 값
+                    # (train_loss += total.item() 이 바뀌지 않도록; grad 없음).
+                    total = _total_clean_val + _d_total.detach()
+                    if not qaf_clean_pass:
+                        total = total - _loss_seg_val
+                    del _dlogits, _daux, _deg, _clean, _qlab, _d_total, _loss_deg
+                elif window_pareto:
                     # per-modal 브랜치 목표(deep-sup aux CE + peer 증류 + hard-pixel
                     # + fog-style)와 주 목표를 분리해 각각 미분한다. 이 분할이
                     # MMPareto의 "unimodal vs multimodal" 목표쌍에 대응한다.

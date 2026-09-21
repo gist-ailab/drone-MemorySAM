@@ -306,6 +306,53 @@ def test_c_two_pass():
              for p in model2.fusion.quality_head.parameters() if p.grad is not None)
     check("(c) 교사 경로 quality_head grad 흐름", g2 > 0, f"g2={g2:.3e}")
 
+    # ── train_reliadino 의 "패스별 backward" 가 기존 "합산 backward" 와 같은
+    #    파라미터 grad 를 내는지(선형성) 검증. 두 방식이 같은 forward 그래프를
+    #    재사용하도록 retain_graph 로 고정한다. accumulation=2. 교사 없음/있음.
+    import torch.nn.functional as F
+
+    def _grads(m):
+        return {n: p.grad.detach().clone()
+                for n, p in m.named_parameters() if p.grad is not None}
+
+    def _pass_equiv(tag, use_teacher):
+        acc = 2
+        mm = _seeded(lambda: _build(_qaf_cfg())).train()
+        tch = None
+        if use_teacher:
+            tch = _seeded(lambda: _build(_qaf_cfg())).eval()
+            for p in tch.parameters():
+                p.requires_grad_(False)
+        cl_logits, _, caux = mm(x, True, gt_mask=gt)               # clean 패스
+        dl_logits, _, daux = mm(deg, True, gt_mask=gt, qaf_labels=lab)  # 열화 패스
+        L_clean = (F.cross_entropy(cl_logits, gt)
+                   + 0.1 * caux['qaf_identity_loss']) / acc
+        L_deg = (F.cross_entropy(dl_logits, gt)
+                 + 0.1 * daux['qaf_quality_loss']) / acc
+        if use_teacher:
+            with torch.no_grad():
+                t_logits = tch(x, True)[0]
+            L_deg = L_deg + 0.5 * _qaf_kd_kl(t_logits, dl_logits, 2.0) / acc
+        # (A) 합산 backward
+        mm.zero_grad(set_to_none=True)
+        (L_clean + L_deg).backward(retain_graph=True)
+        g_comb = _grads(mm)
+        # (B) 패스별 backward (clean → 열화 순차, 같은 그래프)
+        mm.zero_grad(set_to_none=True)
+        L_clean.backward(retain_graph=True)
+        L_deg.backward()
+        g_split = _grads(mm)
+        keys = set(g_comb) & set(g_split)
+        maxd = max((float((g_comb[k] - g_split[k]).abs().max()) for k in keys),
+                   default=float('inf'))
+        ok = len(keys) > 0 and all(
+            torch.allclose(g_comb[k], g_split[k], atol=1e-5, rtol=1e-4) for k in keys)
+        check(f"(c) 패스별 backward == 합산 backward grad allclose [{tag}]", ok,
+              f"params={len(keys)} max|Δ|={maxd:.2e}")
+
+    _pass_equiv("교사 없음", False)
+    _pass_equiv("교사 있음", True)
+
 
 def main():
     print("== smoke_qaf ==")
