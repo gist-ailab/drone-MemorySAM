@@ -116,7 +116,8 @@ def check_log(host, log_path):
         f"f={q(log_path)}; "
         f"if [ -f \"$f\" ]; then "
         f"grep -m1 -E 'total_trainable|lora_params_total' \"$f\"; echo __SEP__; "
-        f"grep -m1 -E 'Traceback|OutOfMemory|Error' \"$f\"; echo __SEP__; "
+        f"s=$(grep -anE 'total_trainable|lora_params_total' \"$f\" | tail -1 | cut -d: -f1); [ -z \"$s\" ] && s=1; "
+        f"tail -n +$s \"$f\" | grep -m1 -aE 'Traceback|OutOfMemory|Error'; echo __SEP__; "
         f"grep -E 'Epoch \\[' \"$f\" | tail -5; "
         f"else echo __NOFILE__; fi"
     )
