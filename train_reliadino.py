@@ -221,6 +221,45 @@ def _p49_llrd_groups(model, lr: float, decay: float,
     return groups
 
 
+# ── [P54-QAF] 두 패스 학습 헬퍼(모듈 레벨 — smoke_qaf 가 import 해 검증한다) ──────
+def _qaf_sev_cap(schedule, epoch):
+    """SEVERITY_SCHEDULE [[ep, 상한], …] 에서 현재 epoch 상한. 단조 증가 스케줄이면
+    반환값도 단조 비감소다(smoke (d) 가 이를 검사한다)."""
+    cap = float(schedule[0][1])
+    for _ep, _c in schedule:
+        if epoch >= int(_ep):
+            cap = float(_c)
+    return cap
+
+
+def _qaf_apply_cap(clean_list, deg_list, labels, cap):
+    """열화 강도를 상한 cap 으로 스케일한다. degrade.py 를 못 고치므로 연산자 내부
+    severity 범위를 직접 자르는 대신, 존재-열화 표본의 clean↔열화 진폭을 cap 으로
+    보간하고(완전 결측은 0 유지) severity 라벨도 함께 스케일한다."""
+    if cap >= 1.0:
+        return deg_list, labels
+    presence = labels['presence']                           # (B,M)
+    out = []
+    for m in range(len(deg_list)):
+        c, d = clean_list[m], deg_list[m]
+        pres = presence[:, m].view(-1, *([1] * (c.dim() - 1)))
+        blended = c + cap * (d - c)                          # 존재-열화: 진폭 축소
+        out.append(torch.where(pres > 0.5, blended, d))      # 결측(0): 그대로
+    lab = dict(labels)
+    _sev = labels['severity'].clone()
+    lab['severity'] = torch.where(presence > 0.5, _sev * cap, _sev)  # 결측 sev=1 유지
+    return out, lab
+
+
+def _qaf_kd_kl(teacher_logits, student_logits, T):
+    """KL(교사 clean ‖ 학생 열화), 온도 T. 교사는 detach. fp32."""
+    tl = teacher_logits.detach().float()
+    sl = student_logits.float()
+    logp_s = F.log_softmax(sl / T, dim=1)
+    logp_t = F.log_softmax(tl / T, dim=1)
+    return F.kl_div(logp_s, logp_t, log_target=True, reduction='batchmean') * (T * T)
+
+
 def main(cfg, gpu, save_dir, logger):
     start = time.time()
     device = torch.device(cfg['DEVICE'])
@@ -678,6 +717,54 @@ def main(cfg, gpu, save_dir, logger):
                         f"(src={_core.p46_cm_source} m={_core.p46_cm_margin} "
                         f"λ={_core.p46_cm_lambda} val_images={_core.p46_cm_val_images})")
 
+    # ── [P54-QAF] 품질 인지 융합 두 패스 학습 세팅 ────────────────────────────
+    # MODEL.QAF.ENABLE 만 켜고 TRAIN.QAF.ENABLE 은 꺼도 된다(품질 헤드는 forward
+    # 에서 항등 손실만 생성). TRAIN.QAF.ENABLE 이 켜지면 매 스텝 clean 패스(기존
+    # 경로) + 열화 패스(Degrader → CE + KD + 품질 손실)를 함께 돈다.
+    import copy as _copy
+    from semseg.datasets.degrade import Degrader                    # [P54] import 만
+    _qaf_mc = model_cfg.get('QAF', {}) or {}
+    _qaf_tc = train_cfg.get('QAF', {}) or {}
+    qaf_model_on = bool(_qaf_mc.get('ENABLE', False))
+    qaf_two_pass = bool(_qaf_tc.get('ENABLE', False))
+    # 항등 손실 가중: 두 패스면 TRAIN.QAF.IDENTITY_W, 단일 패스면 MODEL.QAF.IDENTITY_W.
+    qaf_id_w = float(_qaf_tc.get('IDENTITY_W', _qaf_mc.get('IDENTITY_W', 0.1))
+                     if qaf_two_pass else _qaf_mc.get('IDENTITY_W', 0.1))
+    qaf_q_w = float(_qaf_tc.get('QUALITY_W', 0.1))
+    qaf_degrader = None
+    qaf_teacher = None
+    qaf_sev_sched = _qaf_tc.get('SEVERITY_SCHEDULE', [[0, 0.3], [10, 0.6], [20, 1.0]])
+    qaf_kd_w = float(_qaf_tc.get('KD_W', 0.5))
+    qaf_kd_t = float(_qaf_tc.get('KD_T', 2.0))
+    qaf_clean_pass = bool(_qaf_tc.get('CLEAN_PASS', True))
+    if qaf_two_pass:
+        qaf_degrader = Degrader(cfg={'p_per_modal': float(_qaf_tc.get('DEGRADE_P', 0.5)),
+                                     'missing_frac': float(_qaf_tc.get('MISSING_FRAC', 0.2))},
+                                seed=int(_qaf_tc.get('SEED', 0)))
+        _tck = str(_qaf_tc.get('TEACHER_CKPT', '') or '')
+        if _tck and os.path.isfile(_tck):
+            # 교사 = 동결 E1(QAF off). 같은 cfg 로 QAF 를 켜면 미로드 품질 헤드가
+            # 무작위로 clean 로짓을 오염시키므로 반드시 QAF off 아키텍처로 만든다.
+            _tcfg = _copy.deepcopy(cfg)
+            _tcfg['MODEL'].setdefault('QAF', {})['ENABLE'] = False
+            qaf_teacher = build_reliadino(_tcfg, num_classes).to(device).eval()
+            _ts = torch.load(_tck, map_location='cpu')
+            _sd = _ts.get('model_state_dict', _ts)
+            _ld = qaf_teacher.load_state_dict(_sd, strict=False)
+            for _p in qaf_teacher.parameters():
+                _p.requires_grad_(False)
+            if is_rank0:
+                logger.info(f"[QAF-T] teacher(E1, QAF off) 로드: {_tck} "
+                            f"missing={len(_ld.missing_keys)} unexpected={len(_ld.unexpected_keys)}")
+        elif _tck and is_rank0:
+            logger.info(f"[QAF-T] TEACHER_CKPT={_tck} 파일 없음 — KD 항 0 으로 진행")
+        if is_rank0:
+            logger.info(f"[QAF-T] two-pass on — degrade_p={_qaf_tc.get('DEGRADE_P', 0.5)} "
+                        f"missing_frac={_qaf_tc.get('MISSING_FRAC', 0.2)} kd_w={qaf_kd_w} "
+                        f"kd_t={qaf_kd_t} q_w={qaf_q_w} id_w={qaf_id_w} "
+                        f"clean_pass={qaf_clean_pass} model_qaf={qaf_model_on} "
+                        f"teacher={'yes' if qaf_teacher is not None else 'no'}")
+
     # ── train loop ──────────────────────────────────────────────────────────
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -701,6 +788,9 @@ def main(cfg, gpu, save_dir, logger):
         mcc_accum = proto_accum = xview_accum = 0.0
         mcc_rate_sum = 0.0; mcc_rate_n = 0
         cm_accum = 0.0                         # [E4] 혼동 쌍 margin 손실
+        # [P54-QAF] 품질/항등/KD 손실 + 열화 비율 진단
+        qaf_q_accum = qaf_id_accum = qaf_kd_accum = qaf_dce_accum = 0.0
+        qaf_deg_sum = 0.0; qaf_deg_n = 0; qaf_step_n = 0
         # [P47-2] uni-modal balance: 손실 + 모달별 CE/정확도 + OGM 계수
         uni_accum = 0.0
         uni_ce_sum = np.zeros(len(modals)); uni_acc_sum = np.zeros(len(modals))
@@ -755,12 +845,15 @@ def main(cfg, gpu, save_dir, logger):
                     p46_proto = aux.get('p46_proto', _zero)     # [P46-C3] pre-scaled (LAMBDA in model)
                     p46_cm = aux.get('p46_confmargin', _zero)   # [E4] pre-scaled (LAMBDA in model)
                     p47_uni = aux.get('p47_2_uni', _zero)       # [P47-2] pre-scaled (LAMBDA_U in model)
+                    qaf_id = aux.get('qaf_identity_loss', _zero)  # [P54-QAF] raw (clean 패스)
+                    qaf_q_main = aux.get('qaf_quality_loss', _zero)  # [P54-QAF] raw (단일 패스 열화 시)
                     total = (loss_seg + lambda_cal * cal_loss
                              + lambda_aux_ce * aux_ce + gate_ent + router_reg
                              + cefr_reg + lambda_ctd * ctd_ce + m2f_loss + router_ce
                              + vicreg + rca_ce + fcr + p43_mask
                              + p44_mkl + p44_rc + p44_hard + p45_sty + p46_proto
-                             + p46_cm + p47_uni)
+                             + p46_cm + p47_uni
+                             + qaf_id_w * qaf_id + qaf_q_w * qaf_q_main)
 
                     # ── [R2] 연결 성분 단위 손실 (픽셀 헤드 로짓 기반) ──────────
                     comp = _zero
@@ -833,6 +926,51 @@ def main(cfg, gpu, save_dir, logger):
                         # 손실 텐서가 필요한 그래프를 이미 잡고 있다 → 출력 텐서
                         # 참조는 여기서 끊는다((B,K,768,768) fp32 ≈ 56MiB/장).
                         del _blogits, _bproto, _bx, _bm
+
+                    # ── [P54-QAF] 열화 패스 (같은 iteration 의 2번째 forward) ─────
+                    # clean 패스(위 주 forward)와 파라미터 사용 집합이 같아야 DDP
+                    # reducer 가 산다 → arbiter path-dropout 추첨을 replay 로 재생한다
+                    # (p46 2-forward 와 동일 규약). 교사는 별도 동결 모델(DDP 밖).
+                    if qaf_two_pass:
+                        qaf_step_n += 1
+                        _cap = _qaf_sev_cap(qaf_sev_sched, epoch)
+                        _t_logits = None
+                        if qaf_teacher is not None:
+                            with torch.no_grad():
+                                _t_logits = qaf_teacher(sample, True)[0]
+                        _clean = [s.detach() for s in sample]
+                        _deg, _qlab = qaf_degrader(_clean, modals)
+                        _deg, _qlab = _qaf_apply_cap(_clean, _deg, _qlab, _cap)
+                        # 열화 비율 진단: 존재-열화 또는 결측된 (샘플,모달) 비율
+                        with torch.no_grad():
+                            _dg = float(((_qlab['severity'] > 0)
+                                         | (_qlab['presence'] < 0.5)).float().mean())
+                        qaf_deg_sum += _dg; qaf_deg_n += 1
+                        _core._p46_replay_path = True
+                        try:
+                            _dlogits, _, _daux = model(_deg, True, gt_mask=lbl,
+                                                       qaf_labels=_qlab)
+                        finally:
+                            _core._p46_replay_path = False
+                        _d_ce = loss_fn(_dlogits, lbl)
+                        _d_q = _daux.get('qaf_quality_loss', _zero)
+                        _d_total = _d_ce + qaf_q_w * _d_q
+                        _kd_val = 0.0
+                        if _t_logits is not None:
+                            _kd = _qaf_kd_kl(_t_logits, _dlogits, qaf_kd_t)
+                            _d_total = _d_total + qaf_kd_w * _kd
+                            _kd_val = float(_kd)
+                            del _kd, _t_logits
+                        total = total + _d_total
+                        if not qaf_clean_pass:
+                            # CLEAN_PASS=false: clean CE 는 빼고 항등·열화만 남긴다.
+                            total = total - loss_seg
+                        qaf_dce_accum += float(_d_ce)
+                        qaf_q_accum += float(_d_q)
+                        qaf_kd_accum += _kd_val
+                        del _dlogits, _daux, _deg, _clean, _qlab
+                    if qaf_model_on:
+                        qaf_id_accum += float(aux.get('qaf_identity_loss', _zero))
                     loss = total / accumulation_steps
                 if window_pareto:
                     # per-modal 브랜치 목표(deep-sup aux CE + peer 증류 + hard-pixel
@@ -991,6 +1129,17 @@ def main(cfg, gpu, save_dir, logger):
             writer.add_scalar('train/cal_loss', cal_accum / (it + 1), epoch)
             writer.add_scalar('train/aux_ce', aux_accum / (it + 1), epoch)
             writer.add_scalar('train/lr', avg_lr, epoch)
+            if qaf_two_pass or qaf_model_on:
+                _den = max(it + 1, 1)
+                _degf = (qaf_deg_sum / qaf_deg_n) if qaf_deg_n > 0 else 0.0
+                writer.add_scalar('qaf/quality_loss', qaf_q_accum / _den, epoch)
+                writer.add_scalar('qaf/identity_loss', qaf_id_accum / _den, epoch)
+                writer.add_scalar('qaf/kd_loss', qaf_kd_accum / _den, epoch)
+                writer.add_scalar('qaf/deg_frac', _degf, epoch)
+                logger.info(
+                    f"[QAF-T] sev_max={_qaf_sev_cap(qaf_sev_sched, epoch):.2f} deg_frac={_degf:.3f} "
+                    f"kd={qaf_kd_accum / _den:.4f} q={qaf_q_accum / _den:.4f} "
+                    f"id={qaf_id_accum / _den:.4f} dce={qaf_dce_accum / _den:.4f}")
             # 감사 2026-07-21: wandb 전용이던 항들을 tb에도 (오프라인 서버에서
             # gate 붕괴/router reg 궤적이 소실되던 문제)
             writer.add_scalar('train/gate_entropy', gate_ent_accum / (it + 1), epoch)

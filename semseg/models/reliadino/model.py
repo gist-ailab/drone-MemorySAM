@@ -293,7 +293,17 @@ class ReliaDINO(nn.Module):
                  brefine_enable: bool = False,
                  brefine_levels: Sequence[int] = (4,),
                  brefine_k_init: float = 10.0,
-                 brefine_gamma_init: float = 0.1):
+                 brefine_gamma_init: float = 0.1,
+                 # [P54-QAF] 품질 인지 융합 (default OFF → 융합이 QualityHead·self-attn
+                 # 층을 만들지 않아 forward·state_dict 가 QAF 미도입본과 byte-동일).
+                 qaf_enable: bool = False,
+                 qaf_mask_modals: Optional[Sequence] = None,
+                 qaf_self_attn: bool = True,
+                 qaf_key_mask: bool = True,
+                 qaf_weighted_mean: bool = True,
+                 qaf_head_hidden: int = 256,
+                 qaf_eps: float = 1e-4,
+                 qaf_detach_mask: bool = False):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -345,7 +355,13 @@ class ReliaDINO(nn.Module):
             p44_rc_pairs=p44_rc_pairs, p44_rc_mode=p44_rc_mode,
             p44_rc_warmup_ep=p44_rc_warmup_ep,
             p44_validity_renorm=p44_validity_renorm,
-            p44_export_train_aux=bool(p44_hard_pixel_aux or p45_fogstyle))
+            p44_export_train_aux=bool(p44_hard_pixel_aux or p45_fogstyle),
+            # [P54-QAF] default off → 위 QualityHead·self-attn 미생성 = byte-동일
+            qaf_enable=qaf_enable, qaf_mask_modals=qaf_mask_modals,
+            qaf_self_attn=qaf_self_attn, qaf_key_mask=qaf_key_mask,
+            qaf_weighted_mean=qaf_weighted_mean, qaf_head_hidden=qaf_head_hidden,
+            qaf_eps=qaf_eps, qaf_detach_mask=qaf_detach_mask,
+            qaf_modal_names=list(modalities))
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
         # [P36-Det] Router->detection seam. The seg path adds routed_logits to the
@@ -928,6 +944,15 @@ class ReliaDINO(nn.Module):
             n_train = sum(p.numel() for p in self.parameters() if p.requires_grad)
             print(f"[E-LORA] mode={self.encoder.lora_mode} "
                   f"lora_trainable={n_lora:,} total_trainable={n_train:,}")
+        if _rank0 and getattr(self.fusion, 'qaf_enable', False):
+            _qp = sum(p.numel() for p in self.fusion.quality_head.parameters())
+            _sp = (sum(p.numel() for p in self.fusion.qaf_self_layer.parameters())
+                   if self.fusion.qaf_self_layer is not None else 0)
+            _mn = [self.modalities[i] for i in self.fusion.qaf_mask_idx]
+            print(f"[QAF] modals={_mn} self_attn={self.fusion.qaf_self_attn_on} "
+                  f"key_mask={self.fusion.qaf_key_mask} "
+                  f"wmean={self.fusion.qaf_weighted_mean} "
+                  f"head_params={_qp:,} self_attn_params={_sp:,}", flush=True)
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -1373,7 +1398,8 @@ class ReliaDINO(nn.Module):
         return li if n > 0 else None
 
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
-                gt_mask: Optional[torch.Tensor] = None):
+                gt_mask: Optional[torch.Tensor] = None,
+                qaf_labels: Optional[dict] = None):   # [P54-QAF] Degrader 라벨(열화 패스)
         # `multimask_output` kept for call-site compatibility with the SAM2 fleet.
         self._last_dropped_modality = None
         x = self._maybe_drop_modality(batched_input)
@@ -1446,7 +1472,8 @@ class ReliaDINO(nn.Module):
             else self._last_p42_mask
         fused, aux = self.fusion(feats, gt_mask if self.training else None,
                                  img_mask=_img_mask, img_idx=self._img_idx,   # [P42-M1/C][P44-B3]
-                                 presence=presence, epoch=self._current_epoch)
+                                 presence=presence, epoch=self._current_epoch,
+                                 qaf_labels=qaf_labels)                        # [P54-QAF]
         if self.p45_fogstyle and self.training:
             # [P45-F1] img 브랜치 feature의 style을 흔들고 예측 일관성을 요구.
             # 픽셀 공간을 건드리지 않으므로 physaug 공정성 라인을 넘지 않는다.
@@ -1976,6 +2003,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     taps = mc.get('TAPS', {}) or {}                             # [E1] 다중 레벨 탭 단독 토글
     detail = mc.get('DETAIL_BRANCH', {}) or {}                  # [DETAIL] 고해상도 세부 가지
     brefine = mc.get('BOUNDARY_REFINE', {}) or {}               # [R1] depth 에지-prior FPN 정제
+    qaf = mc.get('QAF', {}) or {}                               # [P54-QAF] 품질 인지 융합
     p44 = mc.get('P44', {}) or {}                      # [P44-BMR]
     p44_lm = p44.get('LOCAL_MASK', {}) or {}           #   B-3 국소 마스킹
     p44_hp = p44.get('HARD_PIXEL_AUX', {}) or {}       #   M-3 hard-pixel aux
@@ -2215,4 +2243,13 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         brefine_levels=tuple(brefine.get('LEVELS', (4,))),
         brefine_k_init=brefine.get('K_INIT', 10.0),
         brefine_gamma_init=brefine.get('GAMMA_INIT', 0.1),
+        # [P54-QAF] 품질 인지 융합 (기본 OFF → 키 없으면 byte-동일)
+        qaf_enable=qaf.get('ENABLE', False),
+        qaf_mask_modals=qaf.get('MASK_MODALS', ['depth', 'lidar']),
+        qaf_self_attn=qaf.get('SELF_ATTN', True),
+        qaf_key_mask=qaf.get('KEY_MASK', True),
+        qaf_weighted_mean=qaf.get('WEIGHTED_MEAN', True),
+        qaf_head_hidden=qaf.get('HEAD_HIDDEN', 256),
+        qaf_eps=qaf.get('EPS', 1.0e-4),
+        qaf_detach_mask=qaf.get('DETACH_MASK', False),
     )

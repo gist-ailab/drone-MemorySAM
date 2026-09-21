@@ -34,6 +34,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from . import p44 as P44
+from .quality_head import QualityHead, quality_loss   # [P54-QAF] import 만(수정 금지)
 
 EPS = 1e-6
 
@@ -477,7 +478,20 @@ class ReliabilityGatedFusion(nn.Module):
                  # [P44-V1] presence 재정규화 (결정론적, 추론에도 적용). Default OFF.
                  p44_validity_renorm: bool = False,
                  # [P44-M3/P45] 학습 시 grad-attached aux logit을 model이 재사용
-                 p44_export_train_aux: bool = False):
+                 p44_export_train_aux: bool = False,
+                 # [P54-QAF] 품질 인지 융합 (default OFF → 아래 블록이 QualityHead·
+                 # self-attn 층을 생성조차 하지 않아 forward·state_dict 가 QAF 미도입본과
+                 # byte-동일. on 이면 융합 직전 feats 에서 감독된 품질 토큰 η̂ 를 계산해
+                 # (a) set-attention 의 key 를 막고 (b) 융합 평균을 가중한다).
+                 qaf_enable: bool = False,
+                 qaf_mask_modals: Optional[List] = None,   # η̂ 를 쓰는 모달(이름/인덱스)
+                 qaf_self_attn: bool = True,               # 모달 내 self-attn 1층(공유)
+                 qaf_key_mask: bool = True,                # key 로짓 += log(1−η̂+eps)
+                 qaf_weighted_mean: bool = True,           # 융합 후 (1−η̂_m) 가중 평균
+                 qaf_head_hidden: int = 256,
+                 qaf_eps: float = 1e-4,
+                 qaf_detach_mask: bool = False,            # true 면 key 마스크에 grad 미전달
+                 qaf_modal_names: Optional[List] = None):  # 이름→인덱스 대조용
         super().__init__()
         self.num_modalities = num_modalities
         self.num_classes = num_classes
@@ -534,6 +548,38 @@ class ReliabilityGatedFusion(nn.Module):
         self.p44_validity_renorm = bool(p44_validity_renorm)
         self.p44_export_train_aux = bool(p44_export_train_aux)
         self._train_aux_logits = None     # 학습 시 grad-attached aux logits (opt-in)
+
+        # [P54-QAF] 품질 인지 융합. off 면 QualityHead·self-attn 층을 만들지 않는다.
+        self.qaf_enable = bool(qaf_enable)
+        self.qaf_key_mask = bool(qaf_key_mask)
+        self.qaf_weighted_mean = bool(qaf_weighted_mean)
+        self.qaf_self_attn_on = bool(qaf_self_attn)
+        self.qaf_eps = float(qaf_eps)
+        self.qaf_detach_mask = bool(qaf_detach_mask)
+        self.qaf_mask_idx: List[int] = []
+        self.quality_head = None
+        self.qaf_self_layer = None
+        if self.qaf_enable:
+            names = list(qaf_modal_names) if qaf_modal_names else []
+            want = list(qaf_mask_modals) if qaf_mask_modals is not None else []
+            idx = []
+            for wnm in want:
+                if isinstance(wnm, int):
+                    if 0 <= wnm < num_modalities:
+                        idx.append(int(wnm))
+                elif wnm in names:
+                    idx.append(names.index(wnm))
+                else:
+                    # 조용한 no-op 금지: MASK_MODALS 원소가 실제 모달과 대조되지 않으면
+                    # 품질 마스크가 아무 key 에도 안 걸린다 → 시끄럽게 막는다.
+                    raise ValueError(
+                        f"[QAF] MASK_MODALS 원소 {wnm!r} 가 DATASET.MODALS({names})에 "
+                        f"없다 (이름 대조 실패, 하드코딩 금지).")
+            self.qaf_mask_idx = sorted(set(idx))
+            self.quality_head = QualityHead(dim, num_modalities, hidden=qaf_head_hidden)
+            if self.qaf_self_attn_on:
+                # CrossModalAttentionLayer 재사용(kv=자기 토큰) — 가중치 1벌 공유.
+                self.qaf_self_layer = CrossModalAttentionLayer(dim, num_heads, mlp_ratio)
 
         self._last_rel_auroc = None
         self._last_rel_stats = None
@@ -668,13 +714,60 @@ class ReliabilityGatedFusion(nn.Module):
         self._last_rel_stats = (rel_mu, rel_sd)
         return total / len(aux_logits_list)
 
+    # ── [P54-QAF] set-attention + key 마스크 ─────────────────────────────────
+    def _qaf_cross_attend(self, tokens: List[torch.Tensor], qaf_pred: dict,
+                          bias_flat: Optional[List[torch.Tensor]],
+                          B: int, C: int, h: int, w: int) -> List[torch.Tensor]:
+        """QAF 융합 경로. off 경로(_qaf_enable=False)에서는 절대 호출되지 않는다.
+
+        1) 모달 내 self-attention 1층(공유) — cross 앞.
+        2) 모달 간 set-attention: 모달 i query, key/value = **모든 모달 토큰**(자기
+           포함). MASK_MODALS 의 key 토큰 (m,t) 로짓에 log(1 − η̂_{m,t} + eps) 를
+           pre-softmax 로 더한다(η̂=0 → 0 = 항등). 다른 모달 key 는 0. attn_bias 가
+           켜져 있으면 RBMA 바이어스도 같은 key 에 더한다(별도 축, 무손실 결합).
+        """
+        m = len(tokens)
+        if self.qaf_self_layer is not None:
+            tokens = [self.qaf_self_layer(tokens[i], tokens[i], None)
+                      for i in range(m)]
+        eta_tok = qaf_pred['eta_token']                      # (B,m,h,w) fp32
+        mask_bias: List[Optional[torch.Tensor]] = [None] * m
+        if self.qaf_key_mask:
+            for j in self.qaf_mask_idx:
+                et = eta_tok[:, j].reshape(B, -1)            # (B,N)
+                # log(1 − η̂) 의 eps-floor 판: η̂=0 → log(1)=0 (정확한 항등),
+                # η̂→1 → log(eps) (−∞ 대신 유한). 제안서 §2-2 "η̂=0 → 0 = 항등".
+                eb = torch.log((1.0 - et).clamp_min(self.qaf_eps))
+                mask_bias[j] = eb.detach() if self.qaf_detach_mask else eb
+        need_bias = (bias_flat is not None) or any(mb is not None for mb in mask_bias)
+        key_bias = None
+        if need_bias:
+            parts = []
+            for j in range(m):
+                b = tokens[j].new_zeros(B, tokens[j].shape[1])
+                if bias_flat is not None:
+                    b = b + bias_flat[j]
+                if mask_bias[j] is not None:
+                    b = b + mask_bias[j].to(b.dtype)
+                parts.append(b)
+            key_bias = torch.cat(parts, dim=1)               # (B, N_total)
+        kv = torch.cat(tokens, dim=1)                        # 전 모달(자기 포함)
+        fused_tokens = []
+        for i in range(m):
+            x = tokens[i]
+            for layer in self.layers:
+                x = layer(x, kv, key_bias)
+            fused_tokens.append(x.transpose(1, 2).reshape(B, C, h, w))
+        return fused_tokens
+
     # ── forward ──────────────────────────────────────────────────────────────
     def forward(self, feats: List[torch.Tensor],
                 gt_mask: Optional[torch.Tensor] = None,
                 img_mask: Optional[torch.Tensor] = None,   # [P42-M1/발견C] (B,) 또는 [P44-B3] (B,1,H,W)
                 img_idx: int = -1,                         # img 모달 인덱스
                 presence: Optional[torch.Tensor] = None,   # [P44-V1] (m,B,1,h,w)
-                epoch: int = 0                             # [P44-B2] warmup 게이팅용
+                epoch: int = 0,                            # [P44-B2] warmup 게이팅용
+                qaf_labels: Optional[dict] = None          # [P54-QAF] Degrader 라벨(열화 패스)
                 ) -> Tuple[torch.Tensor, dict]:
         m = len(feats)
         assert m == self.num_modalities, f"got {m} modalities, expected {self.num_modalities}"
@@ -705,19 +798,37 @@ class ReliabilityGatedFusion(nn.Module):
             if self.consistency_bias:
                 bias_maps = bias_maps + self.lambda2 * b_cons       # secondary term
             bias_flat = [bias_maps[j].flatten(1) for j in range(m)]  # m x (B, N)
-        fused_tokens = []
-        for i in range(m):
-            kv = torch.cat([tokens[j] for j in range(m) if j != i], dim=1)
-            key_bias = None
-            if self.attn_bias:
-                key_bias = torch.cat([bias_flat[j] for j in range(m) if j != i], dim=1)
-            x = tokens[i]
-            for layer in self.layers:
-                x = layer(x, kv, key_bias)
-            fused_tokens.append(x.transpose(1, 2).reshape(B, C, h, w))
+        # [P54-QAF] 품질 토큰(융합 직전 feats 에서, fp32). off 면 None → 아래 분기가
+        # 기존 "나머지 모달 concat" 경로를 그대로 탄다(코드 경로 분기, 무수정 원칙).
+        qaf_pred = self.quality_head(feats) if self.qaf_enable else None
+        if self.qaf_enable:
+            fused_tokens = self._qaf_cross_attend(
+                tokens, qaf_pred, (bias_flat if self.attn_bias else None), B, C, h, w)
+        else:
+            fused_tokens = []
+            for i in range(m):
+                kv = torch.cat([tokens[j] for j in range(m) if j != i], dim=1)
+                key_bias = None
+                if self.attn_bias:
+                    key_bias = torch.cat([bias_flat[j] for j in range(m) if j != i], dim=1)
+                x = tokens[i]
+                for layer in self.layers:
+                    x = layer(x, kv, key_bias)
+                fused_tokens.append(x.transpose(1, 2).reshape(B, C, h, w))
 
         # 4) output fusion: competence gate (calibrated self-entropy, veto floor)
-        if self.gate_enable and m >= 2:
+        if self.qaf_enable and self.qaf_weighted_mean and m >= 2:
+            # [P54-QAF] (1 − η̂_m) 정규화 가중 평균. MASK_MODALS 만 가중, 나머지 1.
+            # 가중은 η̂ 의 고정 함수(학습 파라미터 아님) — H1(학습 게이트 상수수렴) 재발 차단.
+            eta_s = qaf_pred['eta_scalar']                       # (B,m) fp32
+            cols = [(1.0 - eta_s[:, i]) if i in self.qaf_mask_idx
+                    else eta_s.new_ones(B) for i in range(m)]
+            wts = torch.stack(cols, dim=1)                       # (B,m)
+            wts = wts / wts.sum(dim=1, keepdim=True).clamp_min(self.qaf_eps)
+            fused = sum(wts[:, i].to(fused_tokens[i].dtype).view(B, 1, 1, 1)
+                        * fused_tokens[i] for i in range(m))
+            self._last_gate_mean = wts.detach().float().mean(dim=0)   # (m,) 로깅 호환
+        elif self.gate_enable and m >= 2:
             wgt, gate_ent = self._gate(rel_cal, corr_veto, presence)
             fused = sum(wgt[i] * fused_tokens[i] for i in range(m))
             if gate_ent is not None:
@@ -809,4 +920,14 @@ class ReliabilityGatedFusion(nn.Module):
             if self.p44_rel_corr and m >= 2 and epoch >= self.p44_rc_warmup_ep:
                 aux['p44_rel_corr'] = self.p44_rc_w * P44.relational_correspondence(
                     feats, num_pairs=self.p44_rc_pairs, mode=self.p44_rc_mode)
+        # [P54-QAF] 품질/항등 손실(raw — 가중은 트레이너). 라벨(열화 패스)이 있으면
+        # quality_loss, 없으면(clean 패스) L_id = mean(η̂). 두 손실은 서로 다른
+        # 패스에서만 나오므로 같은 배치에서 항등과 품질이 충돌하지 않는다.
+        if self.qaf_enable and self.training:
+            if qaf_labels is not None:
+                aux['qaf_quality_loss'] = quality_loss(qaf_pred, qaf_labels)['total']
+            else:
+                aux['qaf_identity_loss'] = 0.5 * (
+                    qaf_pred['eta_scalar'].float().mean()
+                    + qaf_pred['eta_token'].float().mean())
         return fused, aux
