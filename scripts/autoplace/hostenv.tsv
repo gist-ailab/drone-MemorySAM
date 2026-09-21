@@ -1,0 +1,16 @@
+# scripts/autoplace/hostenv.tsv — 서버별 기동 환경 (탭 구분 4열)
+# 열: host | conda_sh | pylibs | master_port_base
+#   host              servers.conf 의 alias.
+#   conda_sh          'source <conda.sh>' 에 쓸 conda.sh 절대경로.
+#   pylibs            PYTHONPATH 앞에 붙는 외부 라이브러리 경로(예: timm 용 pylibs_p34). 없으면 '-'.
+#   master_port_base  torchrun --master_port 기준값. 실제 포트 = base + 배정 GPU 첫 인덱스.
+# FILL_ME 가 하나라도 있는 서버에는 배치하지 않는다(place.py 가 강제).
+# jarvis conda_sh 은 servers.conf 기록('conda at /home/jemo_maeng/miniconda3')에서 표준 경로를 유추해 채움 — 사용 전 확인 요망.
+# hpca100 은 conda 가 없는 venv 서버라 이 파이프라인의 명령 템플릿과 맞지 않음(FILL_ME 유지).
+gyuri	FILL_ME	FILL_ME	FILL_ME
+bengio	/home/jemo_maeng/anaconda3/etc/profile.d/conda.sh	/SSDb/jemo_maeng/pylibs_p34	29600
+levine	FILL_ME	FILL_ME	FILL_ME
+yeon	/home/jemo_maeng/anaconda3/etc/profile.d/conda.sh	/SSDb/jemo_maeng/pylibs_p34	29740
+B200	FILL_ME	FILL_ME	FILL_ME
+jarvis	/home/jemo_maeng/miniconda3/etc/profile.d/conda.sh	/SSDb/jemo_maeng/pylibs_p34	29800
+hpca100	FILL_ME	FILL_ME	FILL_ME
