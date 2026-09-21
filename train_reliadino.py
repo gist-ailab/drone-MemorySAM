@@ -257,7 +257,11 @@ def _qaf_kd_kl(teacher_logits, student_logits, T):
     sl = student_logits.float()
     logp_s = F.log_softmax(sl / T, dim=1)
     logp_t = F.log_softmax(tl / T, dim=1)
-    return F.kl_div(logp_s, logp_t, log_target=True, reduction='batchmean') * (T * T)
+    # 🔴 reduction='batchmean' 은 (B,K,H,W) 의 클래스·**모든 픽셀**을 합산해 배치 크기로만
+    #    나눈다 → KD 가 픽셀 수(768² ≈ 59만)에 비례해 폭주(첫 스텝 손실 수백만, 2026-09-21).
+    #    픽셀 단위 KL(클래스 합) 을 픽셀 평균한다.
+    kl = (logp_t.exp() * (logp_t - logp_s)).sum(dim=1)      # (B,H,W)
+    return kl.mean() * (T * T)
 
 
 def main(cfg, gpu, save_dir, logger):
@@ -998,7 +1002,16 @@ def main(cfg, gpu, save_dir, logger):
                     # 열화 forward 전, clean 패스의 큰 출력 텐서·aux 참조 해제
                     # (backward 가 저장 활성화는 이미 해제; empty_cache 는 느려서
                     # 쓰지 않고 참조만 끊는다).
-                    del _clean_loss, loss, total, logits, m_feat, aux
+                    # 🔴 이름을 del 하지 않는다: 루프 끝 메모리 정리(`del logits, m_feat, aux,
+                    #    total, loss`)와 RCS(`p46_class_ema.update_from_logits(logits, …)`)가 이 이름을
+                    #    다시 읽는다 → UnboundLocalError(2026-09-21 Q2/Q3 스텝 직후 사망).
+                    #    참조만 끊어(None/detach) 메모리는 그대로 해제한다. total 은 아래에서 재대입.
+                    _clean_loss = None
+                    loss = None
+                    m_feat = None
+                    aux = None
+                    logits = logits.detach()
+                    total = None
                     # (2) 교사 forward 는 no_grad → 활성화 즉시 해제(로짓만 보관).
                     qaf_step_n += 1
                     _cap = _qaf_sev_cap(qaf_sev_sched, epoch)

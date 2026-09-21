@@ -450,8 +450,33 @@ def test_g_cuda_autocast_step():
         torch.cuda.empty_cache()
 
 
+def test_h_kd_scale_and_del():
+    """(h1) KD 크기가 공간 해상도에 무관(픽셀 평균) (h2) 두 패스 분기 후에도 루프 끝 메모리 정리
+    `del logits, m_feat, aux, total, loss` 와 RCS 의 logits 읽기가 안전 — 소스 정적 검사.
+    (스모크가 main 루프를 못 돌려 UnboundLocalError 를 두 번 놓쳤다: 2026-09-21)"""
+    import re
+    from train_reliadino import _qaf_kd_kl
+    torch.manual_seed(0)
+    K = 8
+    t_small = torch.randn(1, K, 32, 32); s_small = torch.randn(1, K, 32, 32)
+    t_big = t_small.repeat(1, 1, 4, 4); s_big = s_small.repeat(1, 1, 4, 4)   # 같은 분포, 16배 픽셀
+    k1 = float(_qaf_kd_kl(t_small, s_small, 2.0)); k2 = float(_qaf_kd_kl(t_big, s_big, 2.0))
+    check("(h1) KD 가 해상도 무관(픽셀 평균)", abs(k1 - k2) / max(abs(k1), 1e-9) < 1e-4,
+          f"32²={k1:.4f} 128²={k2:.4f}")
+    check("(h1) KD 가 클래스당 O(1) 스케일(수백만 아님)", 0.0 < k2 < 100.0, f"kd={k2:.3f}")
+    src = open(_REPO / 'train_reliadino.py', encoding='utf-8').read()
+    # 두 패스 분기(패스별 backward)에서 정리 대상 5개 이름을 del 하는 줄이 없어야 한다
+    bad = re.findall(r'^\s*del\s+[^\n#]*\b(logits|m_feat|aux|total|loss)\b[^\n]*$', src, flags=re.M)
+    lines = [ln for ln in src.splitlines()
+             if re.match(r'^\s*del\s+', ln) and re.search(r'\b(logits|m_feat|aux)\b', ln)]
+    # 루프 끝 정리(단 한 줄) 외에는 이 이름들을 del 하는 줄이 없어야 한다
+    check("(h2) logits/m_feat/aux 를 del 하는 줄이 루프 끝 정리 하나뿐", len(lines) == 1,
+          f"n={len(lines)} lines={[l.strip()[:60] for l in lines]}")
+
+
 def main():
     print("== smoke_qaf ==")
+    test_h_kd_scale_and_del()
     test_f_autocast_guard()
     test_b_qaf_forward()
     test_e_fp32()
