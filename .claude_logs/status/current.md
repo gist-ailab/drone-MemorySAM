@@ -36,7 +36,7 @@ updated: 2026-09-23
 
 1. 🔴 **ISSUE-038** hpca100 repo(cddc319)의 R1/R2·QAF 구현이 **미커밋 로컬 수정(+566줄)** 로만 존재 — pull 금지(날아감), develop 커밋 시급. [../issues/issues-and-fixes.md](../issues/issues-and-fixes.md)
 2. 🔴 **ISSUE-036** legal 하네스 재샘플 floor 정렬 편차 — legal v2(nearest-exact) 채택 완료, v2 래퍼 가드 등재 잔여.
-3. **yeon GPU0-3 상실**(09-22 리부트 직후 타인 선점, [../experiments/plan.md](../experiments/plan.md) GPU 표) — 4장 운용, e1scr_s903 재개 대기. **bengio GPU 전면 고장**(09-20) 도 배치 불가.
+3. **yeon GPU0-3 상실**(09-22 리부트 직후 타인 선점, [../experiments/plan.md](../experiments/plan.md) GPU 표) — 4장 운용, e1scr_s903 재개 대기. ~~bengio GPU 전면 고장~~ → 09-23 감시 세션 실측으로 **정정**: bengio 에서 40ep 스크린 6런이 완주했고 legal v2 재채점 6건이 GPU 0·1·2·3·4·7 에서 돌고 있다(인수인계 문서의 "고장"은 낡은 정보). e1scr_s903 은 인수인계 §1 기준 jarvis 에서 완주(65.80@40, 재채점 대기).
 4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 — test 1270/1897장만 남음. 과거 이미지별 분석 점검 필요.
 5. **ISSUE-035** 헤드라인 ckpt 경로 기록 — NAS 정본 이관 완료, 이슈 표 갱신 대기.
 6. **lecun 배치 금지**(user 2026-09-17) · **hpca100 공유 볼륨 감시**(09-15 Errno 28 전례).
