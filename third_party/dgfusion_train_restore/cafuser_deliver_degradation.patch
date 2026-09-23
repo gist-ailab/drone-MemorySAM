@@ -1,0 +1,63 @@
+--- a/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py
++++ b/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py
+@@ -16,6 +16,9 @@
+ from oneformer.data.tokenizer import SimpleTokenizer, Tokenize
+ import pycocotools.mask as mask_util
+ import cv2
++# 열화 커리큘럼(2026-09-23). DEGRADE.ENABLED 가 꺼져 있으면 아무 일도 하지 않는다.
++# DGFusion (b) 와 같은 모듈을 재사용한다(cafuser/config.py 가 DEGRADE 키의 단일 출처다).
++from dgfusion.data.degradation import degrade_sample
+ 
+ __all__ = ["DELIVERSemanticDatasetMapper"]
+ 
+@@ -33,6 +36,8 @@
+         condition_classifer=False,
+         condition_text_entries=[],
+         is_train=True,
++        # (열화 설정, 모달별 채널 평균, 전체 iteration) 세 쪽. None 이면 열화를 걸지 않는다.
++        degrade_ctx=None,
+         *,
+         name,
+         num_queries,
+@@ -52,6 +57,7 @@
+             "The number of modalities, random_drop, and dilation should be the same"
+         
+         # Rest of the initialization is unchanged
++        self.degrade_ctx = degrade_ctx
+         self.random_drop = {mod: rd for mod, rd in zip(self.modalities, random_drop)}
+         self.dilation = {mod: dil for mod, dil in zip(self.modalities, dilation)}
+         self.missing_mod = [missing_mod.upper() for missing_mod in missing_mod]
+@@ -125,6 +131,16 @@
+             "modalities": cfg.DATASETS.DELIVER.MODALITIES,
+             "main_modality": cfg.DATASETS.DELIVER.MAIN_MODALITY.upper(),
+             "random_drop": cfg.DATASETS.DELIVER.RANDOM_DROP,
++            # 열화 커리큘럼. 학습일 때만, 그리고 켜져 있을 때만 세 쪽을 넘긴다.
++            "degrade_ctx": (
++                (cfg.DATASETS.DELIVER.DEGRADE,
++                 {m: list(cfg.DATASETS.DELIVER.PIXEL_MEAN[m])
++                  for m in cfg.DATASETS.DELIVER.MODALITIES},
++                 cfg.SOLVER.MAX_ITER)
++                if (is_train and cfg.DATASETS.DELIVER.get("DEGRADE", None) is not None
++                    and cfg.DATASETS.DELIVER.DEGRADE.ENABLED)
++                else None
++            ),
+             "dilation": cfg.DATASETS.DELIVER.DILATION,
+             "missing_mod": missing_mod,
+             "condition_classifer": cfg.MODEL.CONDITION_CLASSIFIER.ENABLED,
+@@ -227,6 +243,16 @@
+         """
+         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
+         modality_images = self.deliver_loader(dataset_dict)
++        # 열화는 모달을 다 읽은 직후이자 **기하 증강 앞**에서 건다. 기하 증강(크롭·플립)
++        # 뒤에 걸면 증강이 바꾼 좌표계와 열화 위치(패치 드롭·홀 등)가 어긋난다.
++        if self.degrade_ctx is not None:
++            _deg_cfg, _deg_means, _deg_max_iter = self.degrade_ctx
++            _deg_in = {k: v for k, v in modality_images.items() if k in _deg_means}
++            _deg_rng = np.random.default_rng(
++                np.random.SeedSequence([int(_deg_cfg.SEED),
++                                        abs(hash(dataset_dict["file_name"])) % (2 ** 31)]))
++            modality_images.update(
++                degrade_sample(_deg_in, _deg_means, _deg_cfg, _deg_rng, _deg_max_iter))
+         image = modality_images[self.main_modality]
+         utils.check_image_size(dataset_dict, image)
+ 
