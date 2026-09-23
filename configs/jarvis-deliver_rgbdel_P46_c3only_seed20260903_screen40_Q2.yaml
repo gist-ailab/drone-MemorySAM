@@ -1,0 +1,270 @@
+# [P54-Q2 파생 2026-09-24] 원본 = jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2.yaml.
+#   바뀐 키: SAVE_DIR, TRAIN.SEED → 20260903. 목적 = Q2 s821 의 Δ24 +1.30 이 시드 재현되는지(3시드 판정).
+#   TEACHER_CKPT 는 s821 과 같은 동결 E1 확정 시드1 을 서버 경로로 채운다(교사 고정, 학생 시드만 변경).
+# [P54-Q2] 대조군 T′ — 동결 E1 교사 증류 + 두 패스만(품질 헤드 없음). QAF 의 순기여 분리용.
+#   원본 = configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_R1.yaml.
+#   R1 대비 바뀐 키(3축, yaml 로드로 대조): (1) SAVE_DIR (2) MODEL.BOUNDARY_REFINE.ENABLE true→false
+#   (3) MODEL.QAF 블록(신규, ENABLE false) + TRAIN.QAF 블록(신규, ENABLE true). 그 외 전부 동일.
+#
+# ── 진단(제안서 2026-09-20 §2-5) ────────────────────────────────────────────
+#   품질 헤드(F·Q)의 순기여를 재려면 "두 패스 + KD 만" 대조군이 필요하다. 문헌상 증류만으로도
+#   RMM 손실은 20~40% 줄되 NM 고노이즈는 12 이하에 머문다(falsifiable 예측 a). Q3 이 이 위에
+#   NM 고노이즈 ≥ +3 을 더하는지가 품질 토큰의 순기여다.
+# ── 가설(H29) ────────────────────────────────────────────────────────────────
+#   동결 E1 교사 두 패스(clean CE 상시 + 열화 CE + KD)만으로 clean 을 보존하며 존재-열화 내성을
+#   일부 회복한다. 품질 헤드(η̂·key 마스크·가중 평균)는 여기 없다.
+# ── 게이트 ──────────────────────────────────────────────────────────────────
+#   G-clean: legal v2 test 24클래스 Δ vs E1 ≥ −0.3. RMM depth 손실이 E1 대비 줄어드는지(20~40%).
+#   [QAF] 로그는 뜨지 않아야 한다(MODEL.QAF off) · [QAF-T] deg_frac ~0.5, q·id=0(품질 헤드 없음).
+# ── 공정성 ──────────────────────────────────────────────────────────────────
+#   PHYSAUG off · DGFUSION_AUG on · val-best ckpt · TTA 금지 (E1 계승).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260903_screen40_Q2'  # [대조군 T′ 40ep 스크린]
+
+# Trainer = train_reliadino.py.
+#   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  TAPS:
+    ENABLE  : true                          # off(기본)면 B0 와 forward·state_dict byte-동일
+    LAYERS  : [6, 12, 18, 24]               # 1-indexed 블록(24블록에서 24=마지막). resolve_taps 규약
+    MODE    : per_modal                     # per_modal(센서별 탭 유지·FPN 레벨 합산) | mean(P43 식 모달 평균)
+
+  # ═══ [Q2] DETAIL_BRANCH off (E1 base) ═══
+  DETAIL_BRANCH:
+    ENABLE     : false
+
+  # ═══ [Q2] BOUNDARY_REFINE off — R1 대비 base 차이 ═══
+  BOUNDARY_REFINE:
+    ENABLE     : false                      # off → forward·state_dict byte-동일 (boundary_refine.py)
+    LEVELS     : [4]
+    K_INIT     : 10.0
+    GAMMA_INIT : 0.1
+
+  # ═══ [P54-QAF] 품질 헤드 off — 대조군 T′(두 패스+KD 만) ═══
+  QAF:
+    ENABLE        : false                   # off → QualityHead·self-attn 미생성 = base 와 byte-동일
+    MASK_MODALS   : ['depth', 'lidar']
+    SELF_ATTN     : true
+    KEY_MASK      : true
+    WEIGHTED_MEAN : true
+    HEAD_HIDDEN   : 256
+    IDENTITY_W    : 0.1
+    EPS           : 1.0e-4
+    DETACH_MASK   : false
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — C3 단독(C1/C2 off, E1 동일) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+    C2_MCC:
+      ENABLE        : false
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+    C3_PROTO:
+      ENABLE        : true
+      FEATURE       : mfeat      # mfeat(stride-4 head feature, 256) | fused(1/16, 1024)
+      LAMBDA        : 0.1        # λ3
+      TEMPERATURE   : 0.1        # cosine logit 온도 τ
+      EMA           : 0.999      # prototype EMA 계수
+      PIXELS        : 4096       # 손실당 서브샘플 픽셀 수
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/SSDb/jemo_maeng/dset/DELIVER'   # jarvis DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 20260903
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1                 # jarvis 4090 24GB. 두 패스라 스텝당 forward 2회 — 기동 전 P46_MEM_LOG=1 권장
+  EPOCHS        : 40   # [스크린] 40ep 조기 판정. 확정은 200ep 3페어
+  EVAL_START    : 0
+  EVAL_INTERVAL : 5
+  SAVE_TOPK     : 1                 # [스크린] val 상위 1개만 보관
+  SAVE_TEST_CKPT : false            # [스크린] test 상위 체크포인트 미보관(평가·로그는 유지)
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+  # ═══ [P54-QAF] 두 패스 학습(대조군 T′ — 품질 헤드 없이 KD·두 패스만) ═══
+  QAF:
+    ENABLE            : true
+    DEGRADE_P         : 0.5          # 샘플·모달당 독립 열화 확률
+    MISSING_FRAC      : 0.2          # 열화 중 완전 결측 비율
+    SEVERITY_SCHEDULE : [[0, 0.3], [10, 0.6], [20, 1.0]]   # [epoch, 상한] 단조
+    TEACHER_CKPT      : ''           # 동결 E1(QAF off) val-best top1 경로를 여기에. '' 이면 KD 0.
+    #   플레이스홀더 예: '/drone_nas/.../ckpts/E1_deliver_seed20260821_screen40/val_best.pth'
+    KD_W              : 0.5
+    KD_T              : 2.0
+    QUALITY_W         : 0.1          # (MODEL.QAF off 이라 품질 손실 0 — 효과 없음)
+    IDENTITY_W        : 0.1          # (MODEL.QAF off 이라 항등 손실 0 — 효과 없음)
+    CLEAN_PASS        : true         # clean 패스 CE 상시 유지
+    SEED              : 0
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false
