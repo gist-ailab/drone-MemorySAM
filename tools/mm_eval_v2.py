@@ -34,6 +34,19 @@ def main():
             return kept
 
         mme.build_cases = filtered
+        orig_md = mme._write_summary_md
+
+        def relabeled_md(path, *a, **k):
+            # 필터 실행에서 summary.md 의 "15조합 평균" 틀 문구가 단일 부분집합 값을 전체 평균으로
+            # 오독하게 만든다(2026-09-24). 문구를 부분집합 이름으로 바꾸고 머리에 경고 줄을 넣는다.
+            orig_md(path, *a, **k)
+            t = Path(path).read_text(encoding="utf-8")
+            t = t.replace("15조합", f"필터 부분집합(present={only})")
+            t = (f"> ⚠️ MM_PRESENT_ONLY={only}: 아래 값은 15조합 평균이 아니라 "
+                 f"이 부분집합 하나(+clean)의 값이다.\n\n") + t
+            Path(path).write_text(t, encoding="utf-8")
+
+        mme._write_summary_md = relabeled_md
     mme.main()
 
 
