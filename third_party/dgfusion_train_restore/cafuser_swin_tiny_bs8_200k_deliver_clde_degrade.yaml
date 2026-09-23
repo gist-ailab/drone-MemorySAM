@@ -1,0 +1,18 @@
+# CAFuser DELIVER 재학습 (b) — 모달 드롭 + 열화 커리큘럼.
+#
+# DGFusion (b)(dgfusion_swin_tiny_bs8_200k_deliver_clde_degrade.yaml)와 같은 이유·같은
+# 두 가지 변경이다(판정 세션 승인, DGFusion (b) 완주 val-best 90k 확인 후 2026-09-23 기동).
+# CAFuser 는 depth 보조 헤드가 없으므로 D4 에서 확인한 "depth 편중은 보조 감독 탓이 아니라
+# 벤치 성질" 판독의 대조군 역할이다.
+_BASE_: cafuser_swin_tiny_bs8_200k_deliver_clde.yaml
+
+DATASETS:
+  DELIVER:
+    # 발표 기본값. (a) 재현 런은 이것을 [0., 0., 0., 0.] 로 껐다.
+    RANDOM_DROP: [0.2, 0.2, 0.2, 0.2]
+    DEGRADE:
+      ENABLED: True
+      PER_MODAL_PROB: 0.5
+      CURRICULUM: [0.3, 0.6, 1.0]
+      CURRICULUM_FRACTIONS: [0.33, 0.66, 1.0]
+      SEED: 0
