@@ -9,6 +9,27 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+## 2026-09-23 — R1/R2 스크린 legal v2 확정(R1이 DGFusion 초과) · ZCode→클로드코드 인수인계
+
+> **인수인계 정본 = [handoff-2026-09-23-zcode.md](handoff-2026-09-23-zcode.md)** — 사고·재개·결과·남은 일·경로 전부 거기에 있다. 아래는 요약.
+
+- ⚠️ 생각정리 판정(09-23): "DGFusion 초과" 문구 철회 — 같은 시드의 R1 이 두 사본(jarvis test 56.58 / hpca100 56.80)으로 존재하고 유리한 쪽만 고를 수 없음, 얇은4 56.39·50.81 은 TrafficSign 을 넣은 비정본 정의(정본 = Pole·Pedestrian·Static·TrafficLight). 판정은 3시드 후([judgment-ledger 09-23 행](../experiments/judgment-ledger.md))
+- **R1 legal v2 확정: test 56.80 · val 69.09**(24클 56.65·얇은4 56.39) — 짝(E1 스크린 55.94/68.56) 대비 **Δ +0.86/+0.53, DGFusion 56.71 초과**를 40ep 스크린에서 달성.
+- **R2 확정: test 56.56 · val 68.88**(24클 56.46·얇은4 50.81) — 짝 대비 +0.62/+0.32. 단 얇은4(TrafficLight 27.11)에서 R1에 크게 밀림 → 손실 재가중만으로 윤곽 결함 못 막는 방증.
+- **E1-shared s821 완주**(best 65.72@35 trainer) — 부진, legal·RMM 검정 전 판정 불가. **e1scr_s903 완주**(65.80@40). **muphys_826 기동**(jarvis 1,2). Q2/Q3는 ~ep32-34, 완주 오늘 밤~내일 새벽.
+- 사고 1건: R2 재채점 config YAML 들여쓰기로 즉사 → 그룹 tee 패턴으로 수복(상세 handoff §5).
+- 가용 GPU: hpca100 1,2,3 전부 해방 · jarvis 3,5,6,7 해방.
+
+## 2026-09-22 — yeon 리부트 사고·중단 런 재개 / hpca100 죽은 세션 원상 복구 (ZCode 코딩 세션)
+
+> **user가 09-23 15:00 에 클로드 코드에서 업무 재개 예정** — 이 날짜 이하 항목이 그 인수인계 기록이다. 상세 = [experiments/monitor-log.md](../experiments/monitor-log.md) 2026-09-22 엔트리 · [experiments/plan.md](../experiments/plan.md) GPU 표·"실행 중" 표(17:50 갱신).
+
+- **yeon 리부트 사고**(12:55 셧다운 → 13:28 부팅, 원인 미확인): tmux 전소실로 muphys_824·825(MUSES PhysAug-off 공정선, ep75/300)·e1scr_s903(E1 40ep 스크린 시드903, ep20/40) 사망. ckpt 는 전부 보존(매-에폭 원자적 `last_checkpoint.pth`). **GPU0-3 을 sangtae_park(dice-rl)이 리부트 직후 선점** → GPU4-7 만으로 17:39 muphys_824·825 AUTO_RESUME 재개(~09-25 오전 완주 예상, tmux `muphys_824`·`muphys_825`). **e1scr_s903 만 미재개** — ckpt 보존, jarvis 빈 슬롯(GPU 1·3·5·6·7)에 옮겨 재개 가능(승인 대기).
+- **hpca100**: user가 09-21 새벽(06:40/07:05)에 직접 종료한 **R1(BOUNDARY_REFINE)·R2(COMPONENT 손실) 40ep 스크린을 17:40 원상 재기동**(tmux `r1_s821` GPU1·`r2_s821` GPU2) — ckpt 가 서브디렉터리 안에 살아 있어(초기 "무ckpt" 판단은 1단계 ls 만 봐서 놓친 오류) **ep38/40 부터 재개**, 당일 저녁 완주. config = hpca100 `/home/jovyan/SSDb/jemo_maeng/queue_cfg/cfg_{R1,R2}_hpca100.yaml`(DELIVER 로컬 경로·BS2 원복).
+- 🔴 **ISSUE-038 등록**: hpca100 repo(오래된 cddc319)의 R1/R2·QAF 구현이 **미커밋 로컬 수정**(fusion·model·train_reliadino +566줄)으로만 존재 — **pull 금지**, develop 커밋 시급.
+- **jarvis**: P54 **Q2(증류 대조군)·Q3(QAF 본 카드)** 생존(09-21 저녁 기동, Q2 가 policy ban:0 GPU0 에 있음 — 확인 요청), probe_quality_head 21h+ 실행 중(Q1b-2 결과 회수 필요). **DGFusion 기준선 (b) 열화 재학습 09-22 02:47 완주**(200k, `model_final.pth`, `/SSDb/jemo_maeng/dgfusion_train/`) — val-best 사후 스윕 대기.
+- 대기 목록: e1scr_s903 재개(jarvis) · muphys_826(autoplace queue) · E1-shared 3시드 스크린(config 9종 중 미기동분) · DGFusion (b) val-best 스윕 · DELIVER 넷째 페어(시드4 3런) 판정.
+
 ## 2026-09-18 — current.md 재설계로 이관된 내용
 
 > 아래는 2026-09-18 current.md 재설계(감사 R2·권고 #11·#13 — 60줄 스냅샷으로 축소) 때 내용물을 걷어내며 **그대로** 옮긴 구 스냅샷 본문이다. 수치·판정의 정본은 [headline.yaml](../experiments/headline.yaml)·[protocol.md](../experiments/protocol.md)·[judgment-ledger.md](../experiments/judgment-ledger.md)로 이관됐다(이하 구문은 당시 기준).

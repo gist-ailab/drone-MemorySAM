@@ -6444,3 +6444,62 @@ hpca100 | — | — | 🔴 자원 0 (약 25시간째) | — | — | —
 > ✅ 오프셋 실측 완결: P36 val −1.48 / test −1.04 · P46 val −2.29 / test −1.55(val-best), −1.94~−2.00(final-iter) · MUSES val −0.49. **EVAL.IMAGE_SIZE 와 데이터셋에 따라 −0.5~−2.9 로 다름 → 일괄 보정·외삽 금지.**
 > ℹ️ **hpca100 미사용 사유 확정**: `joonhui_been` 의 GR00T-N1.7-3B 파인튜닝 2잡(각 `--nproc_per_node=2`, `--max_steps 50000`)이 A100 4장 전부 점유. 잔여 메모리 GPU0,1=3.0GB / GPU2,3=6.6GB. **학습 불가**(15~30GB 필요), 평가(2.9GB)는 물리적으로 가능하나 상대가 98~100% util 이라 방해가 되므로 미실행. 우리 P47-1 이 08-05 15:29 완주하며 반납한 직후 확장됨.
 > ⚠️ CLE 의 val↓/test↑ 역행 지속 — test-best 55.44@106 vs val-best 60.28@30(그 ep test 53.49).
+
+## 2026-09-22 17:50 KST — yeon 리부트 사고 + 중단 런 재개 (코딩 세션 직접 처리)
+
+### 사고
+- **yeon 12:55 셧다운 → 13:28 부팅**(원인 미확인, 서버 단 로그 없음). tmux 전소실로 학습 3런 사망: muphys_824(ep75/300, best 80.66@68)·muphys_825(ep75/300, best 81.30@74)·e1scr_s903(ep20/40). ckpt 는 전부 보존(매-에폭 원자적 last_checkpoint.pth).
+- **GPU0-3 을 sangtae_park(dice-rl)이 리부트 직후 선점** → e1scr_s903 재개 자리 없음(ckpt 보존, jarvis 슬롯 대기).
+- hpca100 R1·R2 는 user가 09-21 06:40/07:05 에 직접 종료한 세션 — **ckpt 가 살아 있어**(서브디렉터리 내) AUTO_RESUME 원상 재개. 첫 보고의 "ckpt 없음"은 1단계 ls 만 봐서 놓친 오류.
+
+### 재개 (전부 기동검증 통과, Traceback 0)
+| 런 | 서버/GPU | tmux | 재개 에폭 | 비고 |
+|---|---|---|---|---|
+| R1(BOUNDARY_REFINE 스크린 s821) | hpca100 1 | r1_s821 | ep38/40 | cfg_R1_hpca100.yaml(경로·BS2 원복), 27.3GiB 94% |
+| R2(COMPONENT 손실 스크린 s821) | hpca100 2 | r2_s821 | 재개 직후 eval | cfg_R2_hpca100.yaml, total_trainable=E1 과 동일(손실만 추가) 확인 |
+| muphys_824(MUSES PhysAug-off s82624) | yeon 4,5 | muphys_824 | ep77/300 | 18.4GiB×2 100% |
+| muphys_825(〃 s20260825) | yeon 6,7 | muphys_825 | ep76/300 | 〃 |
+
+- ⚠️ hpca100 repo(cddc319)의 R1/R2·QAF 구현은 **미커밋 로컬 수정**(+566줄) — pull 하면 날아감, 죽은 세션 "그대로"의 실체.
+- jarvis: Q2·Q3(P54) 생존(etime 19h/21h), probe_quality_head 21h+ 실행 중, **DGFusion (b) 09-22 02:47 완주**(200k, model_final.pth) — val-best 사후 스윕 대기.
+- 대기: e1scr_s903 재개(jarvis 후보), muphys_826(autoplace queue), E1-shared 3시드 스크린, DGFusion (b) val-best 스윕.
+
+### 09-22 19:2x 추기 — R1 완주
+- **R1(BOUNDARY_REFINE 스크린 s821) 완주**: 40/40, 트레이너 val 최고 **67.62@ep25** · test 56.04@ep40, Total 02:55:53(09-22 19:17 KST 완료, 재개분 포함). ckpt = `…_screen40_R1/DELIVER_ReliaDINO-ViTL16_idel/epoch25_67.62_top1_checkpoint.pth`. GPU1 해방.
+- R2 는 ep25 이후 학습 중(~21:00 완주 예상). muphys_824·825 정상 진행(ep77/76→).
+- **09-23 15:00 클로드 코드 업무 재개 예정(user)** — 인수인계 기록: history-2026H2 09-22 엔트리 · current.md ③④ · plan.md GPU 표·실행 중 표 · ISSUE-038(hpca100 미커밋 코드, pull 금지).
+
+### 09-22 19:5x — 빈 GPU 실험 배치 (빈 슬롯: jarvis 1,2 / hpca100 1,3)
+- **hpca100 GPU1: R1 legal v2 재채점 기동**(tmux `r1_rescore`, val+test). 하네스 가드 `--check` PASS(8파일 매칭), 모델 로드 missing=0 unexpected=0(BREFINE params 1,182,211 = 학습 시와 동일). 첫 기동에서 tee가 test 에만 걸려 val 기록이 안 남는 결함 → 5분 만에 발견, 그룹 tee로 재기동(체인 동시 정지·재설치).
+- **hpca100 체인**: R1 재채점 종료 → **E1-shared s821**(GPU1,3, cfg `cfg_E1shared_s821_hpca100.yaml` — 로컬 develop bengio 본에서 ROOT/SAVE_DIR만 교체, LORA_MODE shared r16 + TAPS, hpca100 repo에 shared 코드 있음 확인). R2 학습 종료 → **R2 legal v2 재채점**(GPU2, top1 자동선택).
+- **jarvis GPU1,2: e1scr_s903 AUTO_RESUME 재개**(19:57) — ckpt 2개(last+epoch15 top1)를 yeon→jarvis md5 대조 이송(둘 다 OK), config도 이관(ROOT/FILE 경로 jarvis와 동일해 무수정). ep20/40 재개 확인(Traceback 0). 종료 시 체인이 **muphys_826**(셋째 시드, autoplace queue에 있던 것) 기동.
+- 배경: jarvis GPU3,5,6,7 을 minkyoung_chun(dgss)이 저녁에 점유 → 빈 슬롯 4장으로 재배치. probe_quality_head(Q1b-2 추정)는 저녁에 자연 종료 — 결과 회수는 담당 세션 몫.
+- 미배치 대기: E1-shared 902·903, R1/R2 902·903(판정 후), DGFusion (b) val-best 스윕.
+
+## 2026-09-23 10:2x KST — 밤새 완주·재채점 결과 (ZCode 코딩 세션)
+
+### 완주·확정 결과
+- 🔴 **R1 legal v2 재채점 완료**(09-22 22:48): **test 56.80(mAcc 67.27) · val 69.09(mAcc 78.06)** — 24클래스 **56.65**(RailTrack 60.5 제외) · 얇은4 **56.39**(Pedestrian 76.28·Pole 51.81·TrafficSign 50.94·TrafficLight 46.54). **E1 40ep 스크린 짝(55.94/68.56) 대비 Δtest +0.86 · Δval +0.53. test 56.80 = DGFusion 56.71 초과(+0.09, 25클래스 legal v2 축) — 40ep 스크린 단계에서.** 잔여 판정 재료 = 짝의 24클래스·얇은4 집계 + "찾고도 못 그린 비율" 러너. 로그 `logs/r1_rescore_v2_20260922.log`, ckpt epoch25_67.62_top1.
+- **R2 학습 완주**(09-23 07:14): best trainer val **67.60@ep40**, ckpt `epoch40_67.6_top1`.
+- **e1scr_s903 완주**(09-23 01:30): trainer val **65.80@ep40**(legal 재채점 전) — jarvis GPU1,2 → 체인이 muphys_826 기동(01:40).
+
+### 사고·수복
+- ⚠️ **R2 재채점 1차 기동 즉사**: 체인(09-23 07:15)이 띄운 재채점이 세션만 만들고 즉시 종료 — 원인 = R2 평가 config 의 COMPONENT 블록 들여쓰기 오류(YAML 파싱 실패) + tee가 마지막 명령에만 걸려 원인이 로그에 안 남음. **10:15 들여쓰기 수정(yaml.safe_load 검증) + 그룹 tee로 재기동**(GPU2, val 2% 진행 확인, ~13:30 완료 예상). 로그 `logs/r2_rescore_v2_20260923.log`.
+
+### 진행 중 (10:10 실측)
+| 런 | 서버/GPU | 상태 | ETA |
+|---|---|---|---|
+| E1-shared s821 | hpca100 1,3 | ep33/40, best 65.02@15(부진) | ~12:30 |
+| R2 legal v2 재채점 | hpca100 2 | val 2%(재기동분) | ~13:30 |
+| muphys_826 | jarvis 1,2 | 01:40 기동(300ep) | ~09-25 |
+| muphys_824·825 | yeon 4-7 | 재개 후 진행 | ~09-25 오전 |
+| Q2·Q3(P54) | jarvis 0🔴·4 | 생존(에폭 미실측) | — |
+
+## 2026-09-23 15:30 KST — R2/E1-shared 확정 + 인수인계 문서 (ZCode 코딩 세션 종료)
+
+- ✅ **R2 legal v2 재채점 확정**(수복분, 15:0x 완료): **test 56.56(mAcc 67.21) · val 68.88(mAcc 77.59)** — 24클래스 **56.46**(RailTrack 59.01 제외) · 얇은4 **50.81**(Ped 77.7·Pole 48.41·Sign 50.0·Light 27.11). 짝 대비 Δtest +0.62 · Δval +0.32. 얇은4에서 R1(56.39)에 크게 밀림 → "손실 재가중만으로 윤곽 결함 못 막는다" 방증. 로그 `logs/r2_rescore_v2_20260923.log`.
+- ✅ **E1-shared s821 완주**(Total 14:05:54): trainer val best **65.72@ep35** — 부진(E1 스크린 ~66-67 대비). 게이트(legal Δ24 ≥ −0.3 + RMM depth 절반) 판정 전. GPU1,3 해방.
+- Q2/Q3: ~ep32-34/40(10:30에 ep30) — 완주 예상 Q2 ~22:00 · Q3 ~내일 01:00. **재채점 체인 없음(수동)**.
+- muphys_824/825: ep163/162/300 — 완주 ETA ~09-24 낮으로 단축.
+- 가용 GPU: hpca100 1,2,3 전부 · jarvis 3,5,6,7(minkyoung_chun 종료).
+- **인수인계 정본 등재**: `status/handoff-2026-09-23-zcode.md`(결과·체인·할 일·사고·경로 전체) + history 09-23 엔트리 + current.md ④ 상단 링크.

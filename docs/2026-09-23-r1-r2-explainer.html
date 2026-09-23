@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R1 vs R2 — 같은 병, 다른 처방 (경계 prior vs 연결 성분 손실)</title>
+<style>
+  :root{
+    --ink:#1a2233; --sub:#5a6478; --line:#dfe4ec; --bg:#f7f9fc; --card:#ffffff;
+    --r1:#0f6db8; --r1bg:#e8f2fb; --r2:#b8540f; --r2bg:#fbf0e6;
+    --ok:#177a3d; --warn:#a8760a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+       font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;
+       line-height:1.65;font-size:15px;}
+  .wrap{max-width:980px;margin:0 auto;padding:36px 22px 64px;}
+  header{border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:28px;}
+  h1{font-size:25px;margin:0 0 6px;}
+  .sub{color:var(--sub);font-size:13.5px;}
+  h2{font-size:19px;margin:42px 0 12px;padding-left:11px;border-left:4px solid var(--ink);}
+  h3{font-size:15.5px;margin:20px 0 8px;}
+  p{margin:8px 0;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+  .r1c{border-top:4px solid var(--r1);background:var(--r1bg);}
+  .r2c{border-top:4px solid var(--r2);background:var(--r2bg);}
+  .tag{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;color:#fff;margin-bottom:8px;letter-spacing:.4px;}
+  .t1{background:var(--r1);} .t2{background:var(--r2);}
+  .formula{font-family:'JetBrains Mono',Consolas,monospace;background:#101623;color:#dce6f5;
+           border-radius:8px;padding:12px 15px;font-size:13.5px;overflow-x:auto;white-space:pre;margin:10px 0;}
+  .cmt{color:#7fd0a0;} .dim{color:#8b97ad;}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--card);}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;}
+  th{background:#eef2f8;font-size:12.5px;}
+  td.c1{color:var(--r1);font-weight:650;} td.c2{color:var(--r2);font-weight:650;}
+  .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0;}
+  @media(max-width:760px){.stat{grid-template-columns:1fr;}}
+  .stat>div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 15px;}
+  .stat b{display:block;font-size:21px;margin-bottom:2px;}
+  .note{font-size:12.5px;color:var(--sub);}
+  .hl{background:#fff3bf;padding:0 4px;border-radius:3px;}
+  .ok{color:var(--ok);font-weight:650;} .wa{color:var(--warn);font-weight:650;}
+  ul{margin:6px 0 6px 2px;padding-left:20px;}
+  li{margin:3.5px 0;}
+  svg{width:100%;height:auto;display:block;margin:8px 0 2px;}
+  footer{margin-top:44px;border-top:1px solid var(--line);padding-top:14px;color:var(--sub);font-size:12px;}
+</style>
+</head>
+<body>
+<p style="background:#fff3cd;color:#5c4400;padding:8px 12px;border:1px solid #e0c060">⚠️ 2026-09-23 생각정리 판정: 이 문서의 "DGFusion 초과"와 얇은4(TrafficSign 포함) 수치는 철회·비정본이다. 정본 얇은4 = Pole·Pedestrian·Static·TrafficLight. 정본 기록은 judgment-ledger 09-23 행.</p>
+
+<div class="wrap">
+
+<header>
+  <h1>R1 vs R2 — 같은 병, 다른 처방</h1>
+  <div class="sub">P54 결합 카드(R) 후보 · 2026-09-23 기준 · DELIVER 4모달 · 둘 다 E1 스크린 레시피(4탭 TAPS + C3 prototype) 위의 <b>1축(단일 변수) 실험</b></div>
+</header>
+
+<h2>① 공통 출발점 — 무엇을 고치려나</h2>
+<div class="card">
+  <p>D6 판정(2026-09-20, 기준선 실패 분석 종합)의 결론: 우리 모델의 결함 축은 <b>"얇고 작고 먼 객체를 <span class="hl">찾고도 윤곽을 못 그리는 것</span>"</b>이다. 검출·클래스 지식은 기준선과 같고, 결함은 <b>경계·영역 묘사</b>에 있다.</p>
+  <div class="stat">
+    <div><b>0.77 ≈ 0.75</b><span class="note">얇은 객체 <b>찾음률</b> — 우리 vs 기준선(거의 동일)</span></div>
+    <div><b>0.43 vs 0.25</b><span class="note">원거리 <b>찾고도 못 그린 비율</b> — 우리가 2배 나쁨(0.429 vs 0.253)</span></div>
+    <div><b>−0.17</b><span class="note">원거리 경계 F 격차(TrafficLight) — 멀수록 윤곽이 뭉개짐</span></div>
+  </div>
+  <p class="note">면적을 고정해도 거리가 멀수록 격차가 커짐(0.07→0.20→0.43 대 0.05→0.09→0.25) → 해상도·기하 문제이지 클래스 지식 문제가 아니다. 참고로 비슷한 목표의 E17(RGB 합성곱 스템 세부 가지)은 큰 영역만 올리고 얇은 두 클래스는 하락해 축 종결 — "어디에 정보를 보탤 것인가"가 갈림길이었다.</p>
+  <p>R1과 R2는 이 결함을 <b>정반대 위치에서</b> 공격한다:</p>
+  <ul>
+    <li><b>R1</b>: 표현(특징) 자체에 "경계가 어디다"라는 <b>재료</b>를 준다 — <b>구조 개입</b></li>
+    <li><b>R2</b>: 같은 표현력으로 두고 "얇고 먼 경계를 <b>우선해서</b> 배우게 한다" — <b>학습 신호 개입</b></li>
+  </ul>
+</div>
+
+<h2>② 개입 위치 — 파이프라인에서 만나는 곳이 다르다</h2>
+<div class="card">
+<svg viewBox="0 0 920 300" xmlns="http://www.w3.org/2000/svg" font-family="Pretendard,Apple SD Gothic Neo,Malgun Gothic,sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5a6478"/>
+    </marker>
+  </defs>
+  <!-- 기본 파이프라인 -->
+  <g font-size="12.5" fill="#1a2233" text-anchor="middle">
+    <rect x="14"  y="88" width="108" height="58" rx="8" fill="#ffffff" stroke="#9aa6ba"/>
+    <text x="68" y="112">4모달 입력</text><text x="68" y="128" fill="#5a6478" font-size="11">RGB·depth·event·LiDAR</text>
+
+    <rect x="152" y="88" width="128" height="58" rx="8" fill="#ffffff" stroke="#9aa6ba"/>
+    <text x="216" y="106">동결 백본 + LoRA</text><text x="216" y="122" fill="#5a6478" font-size="11">TAPS 4탭(6/12/18/24)</text><text x="216" y="136" fill="#5a6478" font-size="11">DINOv3 ViT-L</text>
+
+    <rect x="310" y="88" width="120" height="58" rx="8" fill="#ffffff" stroke="#9aa6ba"/>
+    <text x="370" y="112">모달 간 융합</text><text x="370" y="128" fill="#5a6478" font-size="11">set-attention 2층</text>
+
+    <rect x="460" y="88" width="118" height="58" rx="8" fill="#e8f2fb" stroke="#0f6db8" stroke-width="2"/>
+    <text x="519" y="106">SimpleFPN</text><text x="519" y="122" fill="#0f6db8" font-size="11">stride-4 특징 s</text><text x="519" y="136" fill="#0f6db8" font-size="11">여기서 R1 개입</text>
+
+    <rect x="610" y="88" width="118" height="58" rx="8" fill="#ffffff" stroke="#9aa6ba"/>
+    <text x="669" y="106">세그 헤드(M2F)</text><text x="669" y="122" fill="#5a6478" font-size="11">마스크 분류</text>
+
+    <rect x="760" y="88" width="146" height="58" rx="8" fill="#ffffff" stroke="#9aa6ba"/>
+    <text x="833" y="106">예측 마스크</text><text x="833" y="122" fill="#5a6478" font-size="11">얇은 객체 윤곽?</text>
+
+    <line x1="122" y1="117" x2="150" y2="117" stroke="#5a6478" stroke-width="1.6" marker-end="url(#ar)"/>
+    <line x1="280" y1="117" x2="308" y2="117" stroke="#5a6478" stroke-width="1.6" marker-end="url(#ar)"/>
+    <line x1="430" y1="117" x2="458" y2="117" stroke="#5a6478" stroke-width="1.6" marker-end="url(#ar)"/>
+    <line x1="578" y1="117" x2="608" y2="117" stroke="#5a6478" stroke-width="1.6" marker-end="url(#ar)"/>
+    <line x1="728" y1="117" x2="758" y2="117" stroke="#5a6478" stroke-width="1.6" marker-end="url(#ar)"/>
+  </g>
+
+  <!-- R1 callout -->
+  <g>
+    <rect x="400" y="10" width="240" height="56" rx="9" fill="#0f6db8"/>
+    <text x="520" y="32" fill="#fff" font-size="13.5" font-weight="700" text-anchor="middle">R1 — 구조 개입 (추론 경로 안)</text>
+    <text x="520" y="50" fill="#cfe4f6" font-size="11" text-anchor="middle">depth 에지 prior 로 stride-4 특징 정제</text>
+    <line x1="520" y1="66" x2="519" y2="86" stroke="#0f6db8" stroke-width="2" marker-end="url(#ar)"/>
+    <path d="M 440 30 C 340 30 300 60 250 84" fill="none" stroke="#0f6db8" stroke-width="1.6" stroke-dasharray="5 4"/>
+    <text x="298" y="46" fill="#0f6db8" font-size="11" font-weight="700">depth(HHA) → Sobel 에지</text>
+  </g>
+
+  <!-- R2 callout -->
+  <g>
+    <rect x="620" y="196" width="286" height="60" rx="9" fill="#b8540f"/>
+    <text x="763" y="218" fill="#fff" font-size="13.5" font-weight="700" text-anchor="middle">R2 — 학습 신호 개입 (손실 단)</text>
+    <text x="763" y="236" fill="#fbe2cc" font-size="11" text-anchor="middle">연결 성분 단위 가중 soft-IoU (CE 옆에 더함)</text>
+    <line x1="763" y1="196" x2="800" y2="148" stroke="#b8540f" stroke-width="2" marker-end="url(#ar)"/>
+  </g>
+  <!-- 학습 루프 표시 -->
+  <g>
+    <path d="M 833 146 C 833 300 300 300 216 148" fill="none" stroke="#b8540f" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+    <text x="520" y="294" fill="#b8540f" font-size="11" font-weight="700" text-anchor="middle">역전파 — R2 는 여기 그래디언트의 배분을 바꾼다 (얇고 먼 성분에 더)</text>
+  </g>
+</svg>
+<p class="note">R1은 <b>모델 안</b>(FPN stride-4)에서, R2는 <b>손실 안</b>에서 개입한다 — R2는 모델 구조가 E1과 완전히 동일(state_dict도 동일)해서 바뀌는 게 "무엇을 배우는가"뿐이다. 그래서 두 카드는 직교하며, 둘 다 통과하면 결합 카드(Q3+R)로 합칠 수 있다.</p>
+</div>
+
+<h2>③ R1 — 경계 prior 정제 (BoundaryRefine)</h2>
+<div class="card r1c">
+  <span class="tag t1">R1 · BOUNDARY_REFINE</span>
+  <p><b>베팅</b>: 윤곽이 뭉개지는 건 특징이 "경계가 어디인지" 모르기 때문이다. depth의 불연속(에지) <b>위치 정보만</b> 주면 특징이 스스로 에지 근처를 선택적으로 갱신할 수 있다.</p>
+  <p class="note">⚠️ depth를 특징 <b>내용</b>으로 융합하는 축은 이미 반증된 계보(기준선의 depth 과의존과 대비되는 점이 노벨티). 오직 "경계 위치"만 빌려 온다.</p>
+  <div class="formula">① 에지 맵  g = |Sobel(depth HHA)|  →  레벨 해상도 축소 → 이미지별 표준화
+② 게이트    e = sigmoid( k·(g − τ) )        <span class="cmt"># k, τ 학습 가능(초기 k=10, τ=0=평균)</span>
+③ 정제      s′ = s + tanh(γ)·Conv3×3([ s ; s⊙e ; e ])   <span class="cmt"># γ 초기 0.1 (zero-init 금지)</span>
+           <span class="dim"># [특징 ; 에지로 게이트된 특징 ; 에지] 를 이어붙여 잔차 생성</span></div>
+  <ul>
+    <li>파라미터 <b>+118만 개</b>(k·τ·Conv·γ) — 전체 trainable 58.79M → <b>59.97M</b></li>
+    <li>학습·추론이 <b>같은 경로</b>(후처리 아님) — 테스트 타임에도 경계 정보를 씀</li>
+    <li><b>off 계약</b>: 스위치를 끄면 모듈 자체를 생성하지 않음 → E1과 state_dict byte-동일</li>
+  </ul>
+</div>
+
+<h2>④ R2 — 연결 성분 단위 손실 (Component Loss)</h2>
+<div class="card r2c">
+  <span class="tag t2">R2 · LOSS.COMPONENT</span>
+  <p><b>베팅</b>: 문제는 표현력이 아니라 <b>학습 목표의 배분</b>이다. 픽셀 평균 CE는 큰 영역(도로·하늘·건물)이 그래디언트를 독점해서, 얇은 성분의 경계 오차는 묻힌다.</p>
+  <div class="formula">L = CE_OHEM(전체 픽셀) + 0.3 × L_comp
+L_comp = 1 − Σ w_i · softIoU(pred_i, gt_i) / Σ w_i        <span class="cmt"># GT 연결 성분 i 별, 성분 bbox 국소 계산</span>
+w_i  = size_w(i) × dist_w(i)
+      size_w = 면적^(−1/2)        <span class="cmt"># 작은 성분일수록 Up</span>
+      dist_w = [1, 1, 1.5, 2, 2]  <span class="cmt"># depth 5분위 [8,47,111,255] — 멀수록 Up (A6 로그 스케일)</span>
+<span class="dim"># 최대 256개 성분, full-res softmax(B=1), 추론 시 비용 0</span></div>
+  <ul>
+    <li><b>파라미터 0개</b> — 모델은 E1과 완전히 동일(total_trainable 58,790,687)</li>
+    <li>바뀌는 것은 역전파 그래디언트가 <b>작고·먼 성분의 경계</b>로 재분배되는 것뿐</li>
+    <li>depth 구간은 정규화 HHA 텐서를 이미지별 0~255로 근사 복원해 적용(component_loss.py)</li>
+  </ul>
+</div>
+
+<h2>⑤ 한눈 비교</h2>
+<table>
+  <tr><th></th><th>R1 — 경계 prior</th><th>R2 — 성분 손실</th></tr>
+  <tr><td><b>개념 한 줄</b></td><td class="c1">경계를 <b>그릴 재료</b>를 준다 (구조적 사전지식)</td><td class="c2">경계를 <b>그리라고 명령</b>한다 (목적함수 재가중)</td></tr>
+  <tr><td><b>개입 위치</b></td><td class="c1">FPN stride-4 특징 (모델 안)</td><td class="c2">손실 (학습 때만)</td></tr>
+  <tr><td><b>정보원</b></td><td class="c1">depth 불연속 = Sobel 에지 맵</td><td class="c2">GT 연결 성분의 크기·거리 통계</td></tr>
+  <tr><td><b>파라미터</b></td><td class="c1">+118만 (k·τ·Conv·γ)</td><td class="c2">0 (아키텍처 E1과 동일)</td></tr>
+  <tr><td><b>추론 시</b></td><td class="c1">동일 경로 사용 — 추론 비용·구조 변함</td><td class="c2">완전 무료 — E1과 byte-동일</td></tr>
+  <tr><td><b>반증 대비</b></td><td class="c1">H17(트렁크 교체)과 달리 기존 구조 위 잔차만; E17(RGB 스템)과 달리 depth 위치 정보</td><td class="c2">픽셀 CE 대체가 아니라 0.3 가중 추가 — 기존 학습 목표 유지</td></tr>
+  <tr><td><b>통과 게이트</b></td><td colspan="2">공통: E1 40ep 스크린 짝(legal v2 test 55.94 / val 68.56) 대비 Δ24 · 얇은4 · "찾고도 못 그린 비율" 개선</td></tr>
+</table>
+
+<h2>⑥ 현재 결과 (2026-09-23 10시 기준)</h2>
+<div class="card">
+  <table>
+    <tr><th>카드</th><th>상태</th><th>legal v2 결과</th><th>읽기</th></tr>
+    <tr>
+      <td class="c1">R1 (s821)</td>
+      <td><span class="ok">재채점 완료</span></td>
+      <td><b>test 56.80 · val 69.09</b><br><span class="note">24클래스 56.65 · 얇은4 56.39<br>Ped 76.28 · Pole 51.81 · Sign 50.94 · Light 46.54</span></td>
+      <td>짝 대비 <b>Δtest +0.86 · Δval +0.53</b><br><b>DGFusion 56.71 초과(+0.09) — ⚠️ 09-23 철회: 같은 시드 R1 의 다른 사본은 56.58 이라 단일 사본 값으로 초과를 주장하지 않는다(3시드 후 판정)</b> — 40ep 스크린 단계에서.<br><span class="wa">잔여: 짝의 24클래스·얇은4 집계 + "찾고도 못 그린 비율" 러너</span></td>
+    </tr>
+    <tr>
+      <td class="c2">R2 (s821)</td>
+      <td><span class="wa">재채점 진행 중</span></td>
+      <td>학습 완주(09-23 07:14)<br>트레이너 val best <b>67.60@ep40</b></td>
+      <td>legal v2 재채점 ~13:30 완료 예상<br><span class="note">(1차 기동이 config YAML 들여쓰기로 즉사했던 것을 10:15 수복)</span></td>
+    </tr>
+  </table>
+  <p class="note">둘 다 통과하면 P54의 결합 카드(Q3+R: R1/R2 + QAF + 원거리 회복)로 합쳐 G-clean(≥ 56.71)을 노린다. 참고: E1-shared 스크린은 trainer val 65.02@15로 부진 — 별개 축(LoRA 공유 구조).</p>
+</div>
+
+<footer>
+  출처 — 코드: semseg/models/reliadino/{boundary_refine.py, component_loss.py} · 진단: 판정 대장 D6(2026-09-20) "원거리 손해 원인 규명" · 제안: decisions/2026-09-20-p54-quality-aware-fusion-proposal.md §6 Q3+R · 결과: logs/r1_rescore_v2_20260922.log(hpca100) · 정리: ZCode 코딩 세션 2026-09-23
+</footer>
+
+</div>
+</body>
+</html>
