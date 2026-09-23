@@ -1,0 +1,202 @@
+--- a/train_net.py
++++ b/train_net.py
+@@ -852,6 +852,199 @@
+                 print(f"[baseline_failure] 모달 {_bf_modal} zero_mode={_bf_mode} "
+                       f"ratio={_bf_ratio} seed={_bf_seed} -> keys {sorted(_bf_keys)} 를 "
+                       f"0 으로 채운다({_bf_scope}, 정규화 후 -PIXEL_MEAN/PIXEL_STD 상수)")
++        # ---------------------------------------------------------------------
++        # [baseline_failure NM/EMM-다중모달] 2026-09-23, 판정 세션 승인.
++        #
++        # 위 BF_ZERO_MODAL 블록(단일 모달, 이미 측정에 쓰인 경로)은 건드리지 않는다.
++        # 여기는 별도 메커니즘 둘을 추가한다. 서로 배타적이며, 위 BF_ZERO_MODAL 과도
++        # 배타적이다(한 번에 하나만 켠다 — 같이 켜면 에러로 멈춘다. 추측으로 겹쳐 쓰지
++        # 않는다).
++        #
++        #   BF_ZERO_MODALS(콤마구분, 예: "CAMERA,LIDAR") + BF_ZERO_RATIO(기본 1.0)
++        #     + BF_ZERO_MODE(normalized|raw, 기본 normalized) + BF_ZERO_SEED
++        #     → EMM(ratio=1.0, 결측 조합 전부 채움)·RMM(ratio<1.0, 픽셀·채널 독립
++        #       부분 열화)를 **여러 모달 동시에** 적용한다. 개입 규약은 위 단일모달
++        #       블록과 완전히 같다(정규화 후 0, rand>=ratio 유지 마스크) — 그냥 모달을
++        #       여러 개 동시에 지운다는 차이뿐이다.
++        #   BF_NM_TYPE(sp|gaussian) + BF_NM_DENSITY(sp 전용, 기본 0.2)
++        #     + BF_NM_STD(gaussian 전용, 기본 0.2) + BF_NM_SEED
++        #     → **결측 없이** 존재하는 전 모달에 노이즈를 건다(우리 tools/
++        #       missing_modality_eval.py 의 NM 프로토콜과 같은 축 — 재구현이 아니라
++        #       tools/baseline_failure/baseline_noise.py 를 통해 그 실제 함수를 그대로
++        #       불러 쓴다. 수식 대조는 verify_baseline_noise.py 가 확인했다: S&P·
++        #       Gaussian 모두 max|Δ| < 1e-4, 실측 2e-7~2e-5).
++        _bf_zero_multi = os.environ.get("BF_ZERO_MODALS")
++        _bf_nm_type = os.environ.get("BF_NM_TYPE")
++        if _bf_zero_multi and _bf_nm_type:
++            raise ValueError(
++                "BF_ZERO_MODALS 와 BF_NM_TYPE 를 동시에 켜지 마라(한 번에 하나만"
++                "측정한다 — 추측으로 겹쳐 적용하지 않는다).")
++        if (_bf_zero_multi or _bf_nm_type) and _bf_zero:
++            raise ValueError(
++                "BF_ZERO_MODAL(단일)과 BF_ZERO_MODALS/BF_NM_TYPE 를 동시에 켜지 마라.")
++
++        def _bf2_modal_order(_cfg):
++            # 위 _bf_modal_order 와 같은 규칙(모델 pixel_mean/std 버퍼의 모달 순서).
++            # BF_ZERO_MODAL 이 꺼져 있어도 쓸 수 있게 이 블록 안에 독립 정의한다.
++            try:
++                _node = _cfg
++                for _k in ("DATASETS", "MODALITIES", "ORDER"):
++                    _node = (_node[_k] if isinstance(_node, dict) else getattr(_node, _k))
++                _order = _node
++                _node = _cfg
++                for _k in ("DATASETS", "MODALITIES", "MAIN_MODALITY"):
++                    _node = (_node[_k] if isinstance(_node, dict) else getattr(_node, _k))
++                _main = _node
++            except (AttributeError, KeyError, TypeError):
++                raise RuntimeError(
++                    "cfg.DATASETS.MODALITIES.ORDER·MAIN_MODALITY 를 읽을 수 없다 — "
++                    "모델 pixel_mean/std 버퍼의 모달 순서를 알 수 없다(추측 금지).")
++            _mo = [str(_m).strip().upper() for _m in _order]
++            _ma = str(_main).strip().upper()
++            return [_ma] + [_m for _m in _mo if _m != _ma]
++
++        def _bf2_modal_stats(_model, _cfg, _modal):
++            # 모델 버퍼(pixel_mean·pixel_std)에서 모달 슬라이스를 뽑는다. 두 버퍼 모두
++            # "모달마다 3채널을 이어 붙인 벡터" 구조다(dgfusion.py:347-348 그대로).
++            import torch as _t
++            _modals = _bf2_modal_order(_cfg)
++            if _modal not in _modals:
++                raise RuntimeError(
++                    "모달 " + _modal + " 이 cfg 모달 순서(" + str(_modals) + ") 에 없다.")
++            _idx = _modals.index(_modal)
++            _pm = getattr(_model, "pixel_mean", None)
++            _ps = getattr(_model, "pixel_std", None)
++            if not (_t.is_tensor(_pm) and _t.is_tensor(_ps)):
++                raise RuntimeError(
++                    "model.pixel_mean/pixel_std 버퍼가 없다 — dgfusion.py:347-348 구조가 "
++                    "아니다(추측 금지).")
++            _pm_flat = _pm.detach().float().cpu().reshape(-1)
++            _ps_flat = _ps.detach().float().cpu().reshape(-1)
++            _n = 3 * len(_modals)
++            if _pm_flat.numel() != _n or _ps_flat.numel() != _n:
++                raise RuntimeError(
++                    "pixel_mean/std 길이가 3*모달수(" + str(_n) + ") 가 아니다 — 버퍼 "
++                    "구조가 다르다(추측 금지).")
++            _mean = _pm_flat[3 * _idx:3 * _idx + 3]
++            _std = _ps_flat[3 * _idx:3 * _idx + 3]
++            return _idx, _mean, _std
++
++        if _bf_zero_multi:
++            import torch as _bf2_torch
++            _bf2_modals = [m.strip().upper() for m in _bf_zero_multi.split(",") if m.strip()]
++            if not _bf2_modals or any(m not in ("CAMERA", "LIDAR", "EVENT", "DEPTH")
++                                       for m in _bf2_modals):
++                raise ValueError(
++                    "BF_ZERO_MODALS 는 CAMERA|LIDAR|EVENT|DEPTH 의 콤마구분 목록이어야 "
++                    "한다(1개 이상): " + str(_bf_zero_multi))
++            _bf2_mode = os.environ.get("BF_ZERO_MODE", "normalized").strip().lower()
++            if _bf2_mode not in ("normalized", "raw"):
++                raise ValueError("BF_ZERO_MODE 는 normalized|raw 중 하나: " + _bf2_mode)
++            _bf2_ratio = float(os.environ.get("BF_ZERO_RATIO", "1.0"))
++            if _bf2_ratio <= 0.0 or _bf2_ratio > 1.0:
++                raise ValueError("BF_ZERO_RATIO 는 (0,1] 범위: " + str(_bf2_ratio))
++            _bf2_seed = int(os.environ.get("BF_ZERO_SEED", "0"))
++            _bf2_gen = _bf2_torch.Generator().manual_seed(_bf2_seed)
++
++            _bf2_key_to_modal = {}
++            for _m in _bf2_modals:
++                _bf2_key_to_modal[_m] = _m
++                if _m == "CAMERA":
++                    _bf2_key_to_modal["image"] = "CAMERA"
++
++            _bf2_fills = {}   # modal -> (C,) 채움값 텐서(raw 모드면 0)
++            for _m in _bf2_modals:
++                if _bf2_mode == "normalized":
++                    _idx, _mean, _std = _bf2_modal_stats(model, cfg, _m)
++                    _bf2_fills[_m] = _mean
++                    print(f"[baseline_failure/multi] 모달 {_m} 인덱스 {_idx} -> "
++                          f"모델 평균 {list(_mean.tolist())} 로 채운다(정규화 후 0)")
++                else:
++                    _bf2_fills[_m] = None   # raw 모드는 0
++
++            def _bf2_zero_hook(_module, _inp):
++                bi = _inp[0]
++                if isinstance(bi, (list, tuple)):
++                    for d in bi:
++                        if isinstance(d, dict):
++                            for k, _m in _bf2_key_to_modal.items():
++                                v = d.get(k)
++                                if _bf2_torch.is_tensor(v):
++                                    if _bf2_fills[_m] is None:
++                                        filled = _bf2_torch.zeros_like(v)
++                                    else:
++                                        _mv = _bf2_fills[_m].to(dtype=v.dtype, device=v.device)
++                                        filled = (_bf2_torch.ones_like(v) * _mv.view(-1, 1, 1)
++                                                  if v.ndim == 3 and _mv.numel() == v.shape[0]
++                                                  else _bf2_torch.full_like(v, float(_mv[0])))
++                                    if _bf2_ratio >= 1.0:
++                                        d[k] = filled
++                                    else:
++                                        keep = (_bf2_torch.rand(
++                                            v.shape, generator=_bf2_gen) >= _bf2_ratio
++                                            ).to(dtype=v.dtype, device=v.device)
++                                        d[k] = v * keep + filled * (1 - keep)
++                return _inp
++            model.register_forward_pre_hook(_bf2_zero_hook)
++            print(f"[baseline_failure/multi] 모달 {_bf2_modals} ratio={_bf2_ratio} "
++                  f"mode={_bf2_mode} seed={_bf2_seed} — EMM/RMM 다중모달 훅 등록")
++
++        if _bf_nm_type:
++            import torch as _bf3_torch
++            from tools.baseline_failure.baseline_noise import (
++                raw_gaussian_noise, raw_sp_noise)
++
++            _bf3_type = _bf_nm_type.strip().lower()
++            if _bf3_type not in ("sp", "gaussian"):
++                raise ValueError("BF_NM_TYPE 은 sp|gaussian 중 하나: " + _bf_nm_type)
++            _bf3_seed = int(os.environ.get("BF_NM_SEED", "0"))
++            _bf3_gen = _bf3_torch.Generator().manual_seed(_bf3_seed)
++            if _bf3_type == "sp":
++                _bf3_density = float(os.environ.get("BF_NM_DENSITY", "0.2"))
++                if not (0.0 < _bf3_density < 1.0):
++                    raise ValueError("BF_NM_DENSITY 는 (0,1) 범위: " + str(_bf3_density))
++                _bf3_param = _bf3_density
++            else:
++                _bf3_std = float(os.environ.get("BF_NM_STD", "0.2"))
++                if _bf3_std <= 0.0:
++                    raise ValueError("BF_NM_STD 는 0 초과: " + str(_bf3_std))
++                _bf3_param = _bf3_std
++
++            _bf3_modal_order = _bf2_modal_order(cfg)
++            _bf3_key_to_modal = {}
++            for _m in _bf3_modal_order:
++                _bf3_key_to_modal[_m] = _m
++                if _m == "CAMERA":
++                    _bf3_key_to_modal["image"] = "CAMERA"
++            _bf3_stats = {}
++            for _m in _bf3_modal_order:
++                _idx, _mean, _std = _bf2_modal_stats(model, cfg, _m)
++                _bf3_stats[_m] = (_mean, _std)
++                print(f"[baseline_failure/nm] 모달 {_m} 인덱스 {_idx} 평균/표준편차 "
++                      f"확보(우리 raw_{_bf3_type}_noise 등가식)")
++
++            def _bf3_nm_hook(_module, _inp):
++                bi = _inp[0]
++                if isinstance(bi, (list, tuple)):
++                    for d in bi:
++                        if isinstance(d, dict):
++                            for k, _m in _bf3_key_to_modal.items():
++                                v = d.get(k)
++                                if _bf3_torch.is_tensor(v) and v.ndim == 3:
++                                    _mean, _std = _bf3_stats[_m]
++                                    if _bf3_type == "sp":
++                                        noised, _ = raw_sp_noise(
++                                            v, _mean, _std, _bf3_param, _bf3_gen)
++                                    else:
++                                        noised, _ = raw_gaussian_noise(
++                                            v, _mean, _std, _bf3_param, _bf3_gen)
++                                    d[k] = noised.to(dtype=v.dtype)
++                return _inp
++            model.register_forward_pre_hook(_bf3_nm_hook)
++            print(f"[baseline_failure/nm] type={_bf3_type} param={_bf3_param} "
++                  f"seed={_bf3_seed} — 존재 전 모달({_bf3_modal_order})에 NM 훅 등록 "
++                  f"(결측 없음, 우리 tools/missing_modality_eval.py 와 같은 함수 재사용)")
++
+         res = Trainer.test(cfg, model, eval_only=args.eval_only, inference_only=args.inference_only)
+         if cfg.TEST.AUG.ENABLED:
+             res.update(Trainer.test_with_TTA(cfg, model))
