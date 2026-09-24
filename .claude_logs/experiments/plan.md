@@ -86,7 +86,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **Q2→Q3 강건성 전 프로토콜**(EMM15·RMM4×3·NM3, Q2 먼저) | hpca100 1 | DELIVER 4모달 | Q2 EMM 진행 중(09-24 01:50 UTC 시작) | 미확인(EMM 1건 과거 8~9h대) | QAF(Q3)가 강건축에서 Q2를 못 넘으면 Q3 종료(판정세션 지시) |
 | **RMM+NM 전 프로토콜**(E1 확정 s821) | hpca100 3 | DELIVER 4모달 | 장기 진행 중(완료 로그 없음) | 20:37 확인 크론(`51f7c601`) | E1 확정 강건성 |
 | **muphys_824 = MUSES PhysAug-off 기준선 시드20260824** | yeon 4,5 | MUSES 3모달 | ep248/300(best 82.71@202) | ~09-25 | 공정선 3페어(재학습 세션 소관) |
-| **muphys_825 = 〃 시드20260825** | yeon 6,7 | MUSES 3모달 | ep247/300(best 82.34@230) | ~09-25 | 〃 |
+| **muphys_825 = 〃 시드20260825**(학습 완주 09-25, 826과 동일 절차로 공식 val 재채점·NAS 보존·제출 zip 준비 완료) | yeon 6 | MUSES 3모달 | 완주 300ep, val-best epoch258_82.4 · 공식 val **82.19** | 완료(09-25) | 공정선 3페어 완결(824 완주 대기) |
 | **muphys_826 legal MUSES 공식 재채점**(val-best ep172, 82.43) | jarvis 1 | MUSES 3모달 | 기동 중(dgfusion 세션, pid 700196) | 미확인 | 공정선 3페어 완결(학습은 09-24 완주) |
 
 > 🔗 **완료(09-24)**: R1 종료(게이트 미달) · E1-shared 게이트1 통과·게이트2 s821 미달(0.67>0.5)·**s903 통과(저하비율 0.46~0.49≤0.5, 902는 e1screen902 재시도 대기)** · R2 902/903 종료 후보(재채점 완료, ckpt md5 NAS `screen40_bengio_20260923/`와 일치 확인) · muphys_826 완주. 판정 상세는 judgment-ledger.md.
