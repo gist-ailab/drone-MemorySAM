@@ -1,0 +1,94 @@
+commit 7ca0c3ed59d1b605d79e0a29acb02a6d4d983aae
+Author: maengjemo <maengjemo@gm.gist.ac.kr>
+Date:   Sun Sep 20 15:01:10 2026 +0900
+
+    feat(restore-kit): 기준선 재학습용 열화 커리큘럼 — 구현만(기동 없음)
+    
+    판정 세션 승인(2026-09-20)에 따라 DGFusion·CAFuser DELIVER 재학습에 쓸 열화 커리큘럼을
+    복원 킷에 넣었다. 학습은 돌리지 않았다.
+    
+    - degradation.py: 여섯 열화(패치 드롭·블러·노출 감마·depth 홀·LiDAR jitter·event 저해상).
+      전부 원본 공간에서 동작하고 "지운다" 는 것은 모달 채널 평균으로 채우는 것이다. 모델이
+      정규화할 때 그 자리가 0 이 되므로 평가 개입과 같은 등가다.
+      🔴 가우시안 노이즈와 salt-and-pepper 는 뺐다. 평가 벤치(NM)가 쓰는 열화라 학습에 넣으면
+      시험 문제를 미리 보여 주는 셈이다. 사유를 모듈 docstring 에 적었다.
+    - deliver_degradation.patch: config 키(전부 기본 꺼짐) + 매퍼 배선. 열화는 모달을 다 읽은
+      직후이자 기하 증강 앞에서 건다(뒤에 걸면 크롭·플립 좌표계와 어긋난다). gt_depth 는 제외.
+    - train_net.py: 데이터로더 워커가 현재 iteration 을 모르는 문제를 multiprocessing.Value
+      공유로 풀었다. 워커가 fork 로 물려받는다. DEGRADE.ENABLED 가 꺼져 있으면 무동작.
+    - smoke_degradation.py: 꺼짐 불변·비율 정확·재현·커리큘럼 단조 네 항목.
+    
+    검수(이 세션):
+    - 스모크 4/4 PASS 를 직접 실행해 확인(r=0.30 측정 0.2969, 같은 시드 바이트 동일,
+      커리큘럼 0.3→0.6→1.0).
+    - 🔴 워커가 만든 패치는 서버 원본을 보지 못해 문맥을 추정했고, jarvis 실제 파일에
+      붙여 보니 6 개 hunk 중 3 개가 실패했다. 실제 파일을 가져와 수정한 뒤 diff 로 다시
+      뽑았고, 되돌린 사본에 dry-run 으로 6/6 fuzz 없이 적용됨을 확인했다. 변수명도
+      바로잡았다(modal_images → modality_images, self.augmentations → self.tfm_gens).
+    - 수정본 두 파일 ast.parse 통과.
+    
+    작성 위임 = labcode, 패치 재생성·검수·합격 판정 = 이 세션.
+    
+    Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_01UTxwXDJ73gPXA9P6g1Ma2N
+
+diff --git a/third_party/dgfusion_train_restore/train_net.py b/third_party/dgfusion_train_restore/train_net.py
+index 13afe31..9d4f551 100644
+--- a/train_net.py
++++ b/train_net.py
+@@ -518,6 +518,45 @@ def setup(args):
+     return cfg
+ 
+ 
++def _maybe_register_degrade_step_hook(cfg, trainer):
++    """열화 커리큘럼용 '현재 iteration' 을 데이터로더 워커에 공유하는 훅을 단다.
++
++    데이터로더 워커는 학습 루프의 현재 step 을 직접 알 수 없다. 그래서 학습 쪽에서
++    `multiprocessing.Value('i', ...)` 를 만들어 `degradation.set_shared_step` 으로 심고,
++    매 iteration 그 값을 갱신한다. 워커는 fork(리눅스 기본 start method)로 이 공유 값을
++    물려받으므로, 별도 IPC 없이 현재 severity 상한을 계산할 수 있다.
++
++    🔴 `DEGRADE.ENABLED` 가 꺼져 있으면 아무것도 하지 않는다(기존 재현 런과 완전히 동일).
++    DEGRADE 키 자체가 없는(패치 미적용) config 도 꺼짐으로 취급한다.
++
++    호출 순서 주의: 데이터로더 워커는 `trainer.train()` 이 이터레이터를 만들 때 fork 된다.
++    따라서 이 함수는 그 전에(= train 호출 전에) 불러 SHARED_STEP 을 미리 심어야 한다.
++    """
++    try:
++        enabled = bool(cfg.DATASETS.DELIVER.DEGRADE.ENABLED)
++    except AttributeError:
++        enabled = False
++    if not enabled:
++        return
++
++    import multiprocessing
++    from detectron2.engine import HookBase
++    # 워커가 mapper 를 통해 import 하는 것과 동일한 모듈 객체여야 SHARED_STEP 이 공유된다.
++    from dgfusion.data import degradation as _degradation
++
++    shared_step = multiprocessing.Value("i", int(trainer.start_iter))
++    _degradation.set_shared_step(shared_step)
++
++    class _DegradeStepHook(HookBase):
++        def before_step(self):
++            shared_step.value = int(self.trainer.iter)
++
++    trainer.register_hooks([_DegradeStepHook()])
++    logging.getLogger("dgfusion").info(
++        "열화 커리큘럼 활성 — 현재 iteration 을 multiprocessing.Value 로 데이터로더 워커에 공유한다"
++    )
++
++
+ def main(args):
+     cfg = setup(args)
+ 
+@@ -545,6 +584,9 @@ def main(args):
+     if os.environ.get("DGFUSION_AMP_BF16") == "1" and hasattr(trainer._trainer, "precision"):
+         trainer._trainer.precision = torch.bfloat16
+         logging.getLogger("detectron2.trainer").info("AMP autocast precision overridden to bfloat16 (DGFUSION_AMP_BF16=1)")
++    # 열화 커리큘럼 step 공유(꺼져 있으면 무동작). 데이터로더 워커 fork 전에 심어야 하므로
++    # train() 호출 전에 등록한다.
++    _maybe_register_degrade_step_hook(cfg, trainer)
+     trainer.resume_or_load(resume=args.resume)
+     if args.machine_rank == 0:
+         net_params = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
