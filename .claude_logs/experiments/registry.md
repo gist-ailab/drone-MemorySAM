@@ -181,3 +181,12 @@ updated: 2026-09-18 (본문은 매일 갱신 — 최신 행 기준)
 | det_P30_v2 | det | poongsan_v2 | P30-Det (router+query decoder) | — | jarvis | 비교 리포트 `/mnt/HDD2/src/logs/P29_vs_P30_v2_20260702/` | 🔴 dead (소물체 붕괴) | mAP50 0.256 (P29 0.446 대비 하락; router↔query-head confound) | [../det/diagnosis-plan.md](../det/diagnosis-plan.md) |
 | YOLO11m RGB-only 기준점 (E1.1b/c) | det | poongsan label-v3 | YOLO11m (외부 head, RGB-only) | `objdet/yolo11m-rgb/` | hinton | — | 🟢 외부 기준점 | **mAP50 0.864** (label-v3) — "데이터 무죄, 스택 유죄" 판정 근거 | [../det/diagnosis-plan.md](../det/diagnosis-plan.md) E1.1, [../meta/taskboard.md](../meta/taskboard.md) §0 |
 | jarvis_muses_probea2_backbone_scaling | probe | MUSES RGB 단독(train 1500 전체·val 250 전체) | ProbeA2(frozen DINOv3 S+/B/L/H+/**7B** + 공용 경량 head, 비교용) | `tools/probe_backbone_scaling.py` | jarvis GPU1(S+/B/L/H+) + hpca100 GPU2(7B) | `/SSDb/jemo_maeng/probea2_out/`(jarvis), `~/SSDb/jemo_maeng/probea2_out/`(hpca100) | 🟢 **완료(5점, 7B 포함) — 축분리 게이트 §⑧ 정식 판정 완료** | 5점 스케일링 곡선 + 최종 게이트 판정(G-A2-상한 H12 ✗ 확정) = [analysis/2026-08-09-probea2-backbone-scaling.md §6·§8](analysis/2026-08-09-probea2-backbone-scaling.md) 참조(수치·판정 원본) | [decisions/2026-08-08-probea2-backbone-scaling-request.md](../decisions/2026-08-08-probea2-backbone-scaling-request.md) |
+
+## 🤖 자동 평가 결과 (lab-plan 생성 블록 — 손으로 고치지 않는다)
+
+> 2026-09-26 추가. 파이프라인 `results.jsonl`의 run별 결과와 연결된 lab-plan id를 10분마다 다시 쓴다. 위의 사람 관리 표는 그대로 둔다.
+
+<!-- lab:registry:begin -->
+| run_id | date | env | config | split·metric=value | 연결된 plan id | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+<!-- lab:registry:end -->

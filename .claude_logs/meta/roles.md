@@ -16,10 +16,10 @@
 ## 기존 구조 대응표
 | LAB STANDARD 파일 | 이 레포의 대응 |
 |---|---|
-| status/current.md (PI 블록) | `status/current.md` ①~④ 블록(헤드라인 표는 `experiments/headline.yaml` 생성물). PI 블록은 아직 없음 |
+| status/current.md (PI 블록) | `status/current.md` ①~④ 블록(헤드라인 표는 `experiments/headline.yaml` 생성물). PI 블록 = frontmatter 바로 아래(2026-09-26 추가, 값은 ①·③·④에서 옮김) |
 | experiments/plan.md | 대기열·판정 = lab-plan(2026-09-26 이관), 실행 중·GPU 현황·사고 기록 = plan.md(사람) |
 | experiments/protocol.md | `experiments/protocol.md` |
-| experiments/registry.md | `experiments/registry.md`(사람이 관리) + 파이프라인 `pipeline/results.jsonl` |
+| experiments/registry.md | `experiments/registry.md`(사람이 관리) + 파일 끝 `lab:registry` 생성 블록(2026-09-26 추가, 파이프라인 `pipeline/results.jsonl`) |
 | experiments/judgment-ledger.md | `experiments/judgment-ledger.md` |
 | research/hypothesis-ledger.md | 없음(카드·판정 문서가 대신함) |
 | 헤드라인 수치 | `experiments/headline.yaml`(정본) |

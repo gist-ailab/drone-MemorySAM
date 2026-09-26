@@ -7,6 +7,15 @@ owns: [status-snapshot]
 updated: 2026-09-23
 ---
 
+<!-- PI:BEGIN -->
+paper_target: 단일 아키텍처(ReliaDINO)로 DELIVER·MUSES·MCubeS 전 모달 융합 계열 1위 — 논문 트랙 (출처: CLAUDE.md 프로젝트 개요)
+headline: DELIVER test 56.24±0.42(best 56.73, legal v2 3시드) · val 69.51±0.15 · MUSES test 79.29±0.71(best 79.788, 2시드) · MCubeS 58.07±0.49 (출처: 아래 ① 표 = headline.yaml)
+sota_gap: DELIVER test mean −0.47 vs DGFusion 56.71 · val mean +0.72 vs CAFuser-CAA 68.79 · MUSES test mean −0.21 vs DGFusion 79.5 · MCubeS +2.17 vs StitchFusion 55.9 (출처: ① 표)
+next_gate: ④ 판정 대기 — R1·R2 legal v2, P54 Q2·Q3, DGFusion (b), muphys 3페어, DELIVER 넷째 페어 (판정 = 생각정리 세션)
+blocker: ③ 기준 — ISSUE-038 hpca100 미커밋 R1/R2·QAF 구현, ISSUE-036 v2 래퍼 가드 잔여, yeon GPU0-3 상실 (③은 2026-09-22 기준)
+last_updated: 2026-09-26 (값은 이 파일 2026-09-23 스냅샷에서 옮김, 새 판정 없음)
+<!-- PI:END -->
+
 > **역할**: 현재 상태 스냅샷 — 네 블록(벤치 표·지금 도는 것·블로커·판정 대기)만 담는다(상한 60줄, 2026-09-18 재설계 — 감사 R2). 이력·경위는 [history-2026H2.md](history-2026H2.md), 날짜 엔트리 적층 금지.
 > 헤드라인 수치 정본 = [../experiments/headline.yaml](../experiments/headline.yaml) · 판정·측정 규칙 = [../experiments/protocol.md](../experiments/protocol.md) · 판정 이력 = [../experiments/judgment-ledger.md](../experiments/judgment-ledger.md)
 

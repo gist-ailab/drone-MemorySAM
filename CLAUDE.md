@@ -86,6 +86,7 @@
 
 ### 2. 실험 및 코드 변경 시 (Execution)
 
+- 🔴 **반복 금지·한 번에 치밀하게 (user 지시 2026-09-26)**: 새 실험·카드를 제안하거나 띄우기 전에 `lab-plan check <repo> "<카드 약어·바꾼 변수·config 경로>"`로 과거 항목을 찾는다(2026-09-26 이관으로 registry 전 행·세대 P8~P53·config 363개가 모두 항목에 연결됨, 대조표 `.claude_logs/plan/migration-map-2026-09-26.md`). 겹치면 그 항목의 원문(question·analysis)과 판정을 읽고 무엇이 다른지 적는다. 등록은 `lab-plan add`로 하고, queued로 올리기 전에 가설·반증 조건·성공 기준·바꾼 변수 하나에 더해 비교 기준선(`--baseline`)·시드 수 근거(`--sample-basis`)·예상 비용(`--expected-cost`)을 채운다('미정'은 게이트가 빈 값으로 본다). `--force`는 user 동의가 있을 때만 쓴다.
 - 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `models/arch-evolution.md` 또는 `experiments/log.md`를 업데이트하여 기록을 남겨라 (새 실험 launch/상태 변화는 `experiments/registry.md` 행도 갱신).
 - 버전(P8, P9, P10 등)을 명시하고, 왜 변경했는지(이전 실험 결과 기반) 타당한 이유를 적어라.
 - 실험 결과 파일 경로는 프로젝트 기준 상대 경로로 기록해라.

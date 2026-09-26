@@ -196,6 +196,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-63 | P114 | E1 40ep 스크린 3시드 짝 기준선 | E1 40ep 스크린 시드 821·902·903 | judging | - | 미정 |
 | DRN-260926-64 | P115 | E3b · E3 + 센서 간 prototype 일치 항(AGREE_LAMBDA 0.1) | AGREE_LAMBDA 0.1 | judging | - | 미정 |
 | DRN-260926-65 | P116 | E4c · 혼동 쌍 margin(RailTrack 3쌍·MARGIN 0.25) | 혼동 쌍을 RailTrack 3쌍으로 좁히고 MARGIN 0.25 | judging | - | 미정 |
+| DRN-260926-290 | P150 | D1 · det 인증 배포 계열(ViT-S/S+/B 백본, poongsan) | D1 검출 백본(ViT-S+ 등) | judging | - | 미정 |
+| DRN-260926-292 | P151 | det 백본 이식 계열 P34~P39-Det·RF-DETR(poongsan) | seg 세대 백본의 검출 이식 | judging | - | 미정 |
+| DRN-260926-304 | P160 | [누락] P39.1 MUSES 3모달 시드4 (yeon) | P39.1-rank 시드4 | judging | - | 미정 |
+| DRN-260926-305 | P161 | [누락] P44-BMR DELIVER 시드2 (yeon) | P44-BMR 시드2 | judging | - | 미정 |
+| DRN-260926-306 | P162 | [누락] P34 MUSES 4모달 DGF 투영 변형 | P34 + DGFusion 투영(4모달) | judging | - | 미정 |
+| DRN-260926-307 | P163 | [누락] MUSES Codabench 공식 test 제출 이력(11건) | 제출본 zip | judging | - | 미정 |
+| DRN-260926-308 | P164 | [누락] DGFusion 기준선 재현 평가(DELIVER test·MUSES val·P39.1 대비 비교) | 공개 DGFusion 가중치/재학습본 평가 | judging | - | 미정 |
 | DRN-260926-87 | P218 | [registry] levine_multiaqua_rgbtl_P9_hardaug8_physaug (ep131) | P9 | judging | - | 미정 |
 | DRN-260926-88 | P219 | [registry] levine_multiaqua_rgbtl_P22_hardaug8_physaug (ep120) | P22 | judging | - | 미정 |
 | DRN-260926-89 | P220 | [registry] levine_multiaqua_rgbtl_P21_hardaug8_physaug (ep94) | P21 | judging | - | 미정 |
@@ -330,6 +337,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-240 | P381 | [registry] det_P30_v2 | P30-Det (router+query decoder) | judging | - | 미정 |
 | DRN-260926-241 | P382 | [registry] YOLO11m RGB-only 기준점 (E1.1b/c) | YOLO11m (외부 head, RGB-only) | judging | - | 미정 |
 | DRN-260926-242 | P383 | [registry] jarvis_muses_probea2_backbone_scaling | ProbeA2(frozen DINOv3 S+/B/L/H+/7B + 공용 경량 head, 비교용) | judging | - | 미정 |
+| DRN-260926-293 | P600 | [세대] MemorySAM 초기 기준선(SAM·LoRASam·P4~P7·재구성) | SAM2 기반 초기 기준선 | judging | - | 미정 |
 | DRN-260926-257 | P608 | [세대] P8: ConfidenceHeadV2 + Sigmoid UAMM | P8: ConfidenceHeadV2 + Sigmoid UAMM | judging | - | 미정 |
 | DRN-260926-258 | P609 | [세대] P9: CrossModalFusionHead + Max-Norm UAMM (현재 최선) | P9: CrossModalFusionHead + Max-Norm UAMM (현재 최선) | judging | - | 미정 |
 | DRN-260926-261 | P612 | [세대] P12: Input-Conditioned Soft MoE LoRA | P12: Input-Conditioned Soft MoE LoRA | judging | - | 미정 |
@@ -346,6 +354,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-276 | P627 | [세대] P27: Additive Attention Bias on Cross-Modal Memory Attention (RBMA 전구체, 2026-04-14) | P27: Additive Attention Bias on Cross-Modal Memory Attention (RBMA 전구체, 2026-04-14) | judging | - | 미정 |
 | DRN-260926-256 | P628 | [세대] P28: RBMA — Reliability-Biased Memory Attention (2026-06-15) | P28: RBMA — Reliability-Biased Memory Attention (2026-06-15) | judging | - | 미정 |
 | DRN-260926-255 | P629 | [세대] P29: SDC — Self-Derived Condition 라우팅 (2026-06-27) | P29: SDC — Self-Derived Condition 라우팅 (2026-06-27) | judging | - | 미정 |
+| DRN-260926-291 | P629 | [세대] P29-Det · RBMA 백본 + FPN/FCOS 검출(poongsan) | P29-Det | judging | - | 미정 |
 | DRN-260926-253 | P630 | [세대] P30-Det — P30 백본 detection 확장: Reliability-router 융합 + Object-Query decoder + FCOS aux (2026-06-30) | P30-Det — P30 백본 detection 확장: Reliability-router 융합 + Object-Query decoder + FCOS aux (2026-06-30) | judging | - | 미정 |
 | DRN-260926-254 | P630 | [세대] P30: Class-token decoder + Reliability-anchored learned router (2026-06-28) | P30: Class-token decoder + Reliability-anchored learned router (2026-06-28) | judging | - | 미정 |
 | DRN-260926-252 | P631 | [세대] P31: Calibrated Dual-Reliability RBMA + Multi-scale HR Class-Token Decoding (2026-07-02) | P31: Calibrated Dual-Reliability RBMA + Multi-scale HR Class-Token Decoding (2026-07-02) | judging | - | 미정 |
@@ -374,6 +383,15 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-82 | P661 | H10 재판정 실험 요청 | H10 재판정 | judging | - | 미정 |
 | DRN-260926-83 | P662 | 공간 모달 오라클 프로브 | 공간 모달 오라클 프로브 | judging | - | 미정 |
 | DRN-260926-84 | P663 | P36 노벨티 비판 검토 | 문서 검토(실험 아님) | judging | - | 미정 |
+| DRN-260926-294 | P700 | 실험 I · P9 Gamma TTA (MULTIAQUA) | 추론 시 감마 TTA | judging | - | 미정 |
+| DRN-260926-295 | P701 | 실험 II·III · I2I Translation (MULTIAQUA) | 야간→주간 I2I 변환 입력 | judging | - | 미정 |
+| DRN-260926-296 | P702 | 실험 IV · P9 CV Heuristic Enhancement | 휴리스틱 영상 보정 후 재추론 | judging | - | 미정 |
+| DRN-260926-298 | P704 | 실험 VI · P9 PhysAug | PhysAug 증강 | judging | - | 미정 |
+| DRN-260926-299 | P705 | P9 증강 ablation 계열(hardaug2~8·night2·noCRM·tta, MULTIAQUA) | NIGHT_AUG·hardaug 수준 | judging | - | 미정 |
+| DRN-260926-300 | P706 | Tiled Inference 실험 (2026-03-17) | 타일 추론 | judging | - | 미정 |
+| DRN-260926-301 | P707 | [진단] P25 Spatial Quality Gating 야간 Pred Q 분석 (2026-06-14) | 학습 0 진단 | judging | - | 미정 |
+| DRN-260926-302 | P708 | P26 DELIVER AMP on + GC off 단일 GPU 메모리 프로브 (2026-04-10) | AMP on·GC off 메모리 측정 | judging | - | 미정 |
+| DRN-260926-303 | P709 | 아키텍처 심층 분석 A·B (UAMM 실효성, P9 vs MMSamBase, 2026-03-24) | 학습 0 분석 | judging | - | 미정 |
 
 최근 14일 종결
 | id | 결론 | 판정 요약 | 분석 경로 |
@@ -395,6 +413,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-26 | - | - | - |
 | DRN-260926-260 | - | - | - |
 | DRN-260926-28 | - | - | - |
+| DRN-260926-297 | - | - | - |
 | DRN-260926-39 | - | - | - |
 | DRN-260926-40 | - | - | - |
 | DRN-260926-41 | - | - | - |

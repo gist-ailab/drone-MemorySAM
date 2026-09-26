@@ -74,7 +74,9 @@ items:
   change: LoRA 공유 구조(A per-modal r16 vs B 완전공유 r16 vs C 공유 r8 + per-modal 잔차 r8),
     시드 20260821 매칭
   baseline: null
-  configs: []
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260902_elora_permodal_r16.yaml
+  - configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260903_elora_permodal_r16.yaml
   launch: null
   success_criteria: C ≥ A(54.21) − 0.3 → 채택 검토 / C·B 모두 A 미달 → 현행 A가 실증 정당화
   sample_basis: null
@@ -340,7 +342,8 @@ items:
   falsification: 미정
   change: 융합 믹서를 평균융합(MLE-SAM)으로 교체
   baseline: null
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_mlesam_meanfusion.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -400,7 +403,9 @@ items:
   falsification: 미정
   change: MCubeS 첫 진입 3-seed
   baseline: null
-  configs: []
+  configs:
+  - configs/yeon-mcubes_rgbadn_P39_1_rank_seed20260827.yaml
+  - configs/yeon-mcubes_rgbadn_P39_1_rank_seed20260828.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -431,7 +436,8 @@ items:
   falsification: 미정
   change: MCubeS에서 C3 on
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-mcubes_rgbadn_P39_1_rank_c3on.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -463,7 +469,11 @@ items:
   falsification: 미정
   change: ckpt 선택을 legal-val 기준으로 재선택(5시드)
   baseline: null
-  configs: []
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260815.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260816.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260822.yaml
+  - configs/yeon-deliver_rgbdel_P46_ctr_c3only_seed3.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -886,7 +896,8 @@ items:
   change: C3-adaptive(per-class λ) + UniBal-adaptive(per-modal λ_u) + P50 init, 벤치별
     config 차이 0
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-mcubes_rgbadn_P52_seed20260902.yaml
   launch: null
   success_criteria: G1/G2/G3 = 각 벤치 최선 고정팔 −0.3 이내(단일 config) + G4 창발(λ 궤적이 RailTrack↑/MUSES≈0/rubber↑
     재현). 실패 시 1회 수정 재시도 후 철회
@@ -1033,6 +1044,7 @@ items:
   baseline: null
   configs:
   - configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b_resume.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -1061,6 +1073,7 @@ items:
   baseline: null
   configs:
   - configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2.yaml
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2_resume.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -1089,6 +1102,7 @@ items:
   baseline: null
   configs:
   - configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2_resume.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -1614,7 +1628,10 @@ items:
   falsification: 미정
   change: 센서별 LoRA → 전 센서 공유 LoRA r16(E1 4탭 위)
   baseline: null
-  configs: []
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared.yaml
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1shared.yaml
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260903_screen40_E1shared.yaml
   launch: null
   success_criteria: 게이트1 clean 24클래스 Δ; 게이트2 depth 부분 열화 저하가 E1의 절반 이하(비율 ≤0.5)
   sample_basis: null
@@ -1730,7 +1747,11 @@ items:
   falsification: 미정
   change: depth 불연속(HHA 에지) 경계 prior stride-4 refinement
   baseline: null
-  configs: []
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_R1.yaml
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260903_screen40_R1.yaml
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_R1.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_R1.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -1759,7 +1780,11 @@ items:
   falsification: 미정
   change: 연결 성분 단위 soft-IoU 손실(원거리 가중)
   baseline: null
-  configs: []
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_R2.yaml
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260903_screen40_R2.yaml
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_R2.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_R2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -1816,7 +1841,9 @@ items:
   falsification: 미정
   change: AGREE_LAMBDA 0.1
   baseline: null
-  configs: []
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E3b.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E3b.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -1845,7 +1872,9 @@ items:
   falsification: 미정
   change: 혼동 쌍을 RailTrack 3쌍으로 좁히고 MARGIN 0.25
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4c.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4c.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -2189,7 +2218,18 @@ items:
   falsification: 미정
   change: P49-AIR
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/deliver_rgbdel_P49_1_air_g01_eval1024.yaml
+  - configs/deliver/deliver_rgbdel_P49_air_smoke.yaml
+  - configs/jarvis-muses_rgbel_P49probe_base_clearday.yaml
+  - configs/jarvis-muses_rgbel_P49probe_base_day.yaml
+  - configs/jarvis-muses_rgbel_P49probe_base_fognight.yaml
+  - configs/jarvis-muses_rgbel_P49probe_base_night.yaml
+  - configs/jarvis-muses_rgbel_P49probe_clearday_lr1e4.yaml
+  - configs/jarvis-muses_rgbel_P49probe_day_lr1e4.yaml
+  - configs/jarvis-muses_rgbel_P49probe_fognight_lr1e4.yaml
+  - configs/jarvis-muses_rgbel_P49probe_fognight_lr3e4.yaml
+  - configs/jarvis-muses_rgbel_P49probe_night_lr1e4.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -2216,7 +2256,8 @@ items:
   falsification: 미정
   change: P50-MAP Phase1/2
   baseline: null
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_p50map_seed821.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -2243,7 +2284,11 @@ items:
   falsification: 미정
   change: P51-CMLC
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-deliver_rgbdel_P51_cmlc_off.yaml
+  - configs/hpca100-deliver_rgbdel_P51_cmlc_on.yaml
+  - configs/jarvis-deliver_rgbdel_P51_cmlc_off_seed2.yaml
+  - configs/jarvis-deliver_rgbdel_P51_cmlc_on_seed2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -2293,7 +2338,7 @@ items:
 - id: DRN-260926-82
   title: H10 재판정 실험 요청
   question: '원문: decisions/2026-08-08-h10-readjudication-experiment-request.md (실행
-    여부 미확인)'
+    여부 미확인) | 누락 보완: 런 이름 jarvis_muses_h10_instsup_mini (decisions 문서 언급)'
   hypothesis: 미정
   falsification: 미정
   change: H10 재판정
@@ -2406,7 +2451,8 @@ items:
   falsification: 미정
   change: P38-det(M2F query head를 detector로)
   baseline: null
-  configs: []
+  configs:
+  - configs/det/det_P38_m2f_yeon.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3112,7 +3158,10 @@ items:
   falsification: 미정
   change: SAM3-RBMA
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/b200-deliver_rgbdel_SAM3RBMA_physaug.yaml
+  - configs/deliver/b200-deliver_rgbdel_SAM3RBMA_physaug_hires.yaml
+  - configs/multiaqua/b200-multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3151,6 +3200,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-deliver_rgbdel_P38_m2f.yaml
+  - configs/bengio-deliver_rgbdel_P38_m2f.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3223,6 +3273,7 @@ items:
   baseline: null
   configs:
   - configs/jarvis-muses_rgbel_P39_1_rank_seed2.yaml
+  - configs/jarvis-muses_rgbel_P39_1_rank.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3268,6 +3319,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-muses_rgbelr_P39_1_rank_4modal_seed2.yaml
+  - configs/yeon-muses_rgbelr_P39_1_rank_4modal.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3391,6 +3443,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-muses_rgbel_P43_pdual.yaml
+  - configs/jarvis-muses_rgbel_P43_pdual.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3654,6 +3707,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-deliver_rgbdel_P46_ctr_c2c3.yaml
+  - configs/hpca100-deliver_rgbdel_P46_ctr.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3733,7 +3787,10 @@ items:
   falsification: 미정
   change: P46 C3 @1024 학습 진짜시드 B(TRAIN.SEED)
   baseline: null
-  configs: []
+  configs:
+  - configs/eliceb200-deliver_rgbdel_P46_ctr_c3only_res1024.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_res1024.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_res1024_seedB.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -3764,7 +3821,8 @@ items:
   falsification: 미정
   change: P46 C3 @1024 학습 진짜시드 C
   baseline: null
-  configs: []
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_res1024_seedC.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4194,7 +4252,9 @@ items:
   falsification: 미정
   change: P39.1-rank @1024²(해상도 교란 대조군, C3 미적용)
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-deliver_rgbdel_P39_1_rank.yaml
+  - configs/jarvis-deliver_rgbdel_P39_1_rank.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4266,7 +4326,8 @@ items:
   change: cross-attn 트렁크 A/B(#12) — XAttnTrunk(대칭 모달간 attn, LayerScale 1.0) vs gated-MLP,
     나머지 byte-동일
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/deliver_rgbdel_P46_c3only_xattn_trunk.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4301,7 +4362,8 @@ items:
   falsification: 미정
   change: N4 통일 레시피(P39.1-rank, C3 off) 이식 파일럿
   baseline: null
-  configs: []
+  configs:
+  - configs/yeon-mcubes_rgbadn_P39_1_rank.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4336,7 +4398,8 @@ items:
   falsification: 미정
   change: N1 진짜-시드 분산 측정(TRAIN.SEED 20260824)
   baseline: null
-  configs: []
+  configs:
+  - configs/jarvis-muses_rgbel_P39_1_rank_seed20260824.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4389,6 +4452,7 @@ items:
   baseline: null
   configs:
   - configs/jarvis-muses_rgbel_P39_1_rank_seed20260825.yaml
+  - configs/yeon-muses_rgbel_P39_1_rank_seed20260825.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4428,7 +4492,8 @@ items:
   change: P50-MAP 정렬 사전학습(#11) — frozen DINOv3-L + LoRA+트렁크 cross-modal masked recon(MultiMAE식),
     trainable 50.4M/frozen 309.6M
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/deliver_rgbdel_P46_c3only_p50map.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4498,7 +4563,8 @@ items:
   falsification: 미정
   change: P49.1-AIR 4모달 — G-4M 쌍의 두 번째 팔
   baseline: null
-  configs: []
+  configs:
+  - configs/muses/muses_rgbelr_P49_1_air_4modal_g01.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4535,7 +4601,8 @@ items:
   falsification: 미정
   change: P49.1-AIR MUSES 본런 — C3 off(H8)·EPOCHS 300·γ0.1
   baseline: null
-  configs: []
+  configs:
+  - configs/muses/muses_rgbel_P49_1_air_g01.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4577,7 +4644,8 @@ items:
   falsification: 미정
   change: C2-MCC 순기여 측정 — C2(masked consistency)+C3(λ0.1) vs C3-only(λ0.1) A/B
   baseline: null
-  configs: []
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c2c3.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4623,7 +4691,8 @@ items:
   falsification: 미정
   change: P49.1 = P49-AIR + γ init 0.1(키1 처방, H13 반증 반영)
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/deliver_rgbdel_P49_1_air_768_g01.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4660,7 +4729,9 @@ items:
   falsification: 미정
   change: P49-AIR 본런(비대칭 주입, @768 학습, 150ep)
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/deliver_rgbdel_P49_air.yaml
+  - configs/deliver/deliver_rgbdel_P49_air_768.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4696,7 +4767,8 @@ items:
   falsification: 미정
   change: RGB-D 완주본(ep66 val-best) @1024 fair-eval
   baseline: null
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbd_P46_c3only_lam005_2modal.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -4891,6 +4963,7 @@ items:
   baseline: null
   configs:
   - configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_permodal_r16.yaml
+  - configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_permodal_r16.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -5045,6 +5118,7 @@ items:
   baseline: null
   configs:
   - configs/yeon-mcubes_rgbadn_P52_seed20260901.yaml
+  - configs/hpca100-mcubes_rgbadn_P52_seed20260901.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -5328,6 +5402,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -5372,6 +5447,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml
+  - configs/bengio-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -5558,6 +5634,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E12.yaml
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E12.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -5742,6 +5819,7 @@ items:
   baseline: null
   configs:
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_E1_confirm200_s2.yaml
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_E1_confirm200_s2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -5849,6 +5927,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260903_screen40_E13s3.yaml
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260903_screen40_E1.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -6111,6 +6190,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-mcubes_rgbadn_P39_1_rank_E13Mc_seed3407.yaml
+  - configs/yeon-mcubes_rgbadn_P39_1_rank_E13Mc_seed3407.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -6152,6 +6232,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-mcubes_rgbadn_P39_1_rank_E13Mc_seed20260827.yaml
+  - configs/yeon-mcubes_rgbadn_P39_1_rank_E13Mc_seed20260827.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -6193,6 +6274,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-mcubes_rgbadn_P39_1_rank_E13Mc_seed20260828.yaml
+  - configs/yeon-mcubes_rgbadn_P39_1_rank_E13Mc_seed20260828.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -6232,6 +6314,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed3407.yaml
+  - configs/yeon-mcubes_rgbadn_P39_1_rank_E1Mc_seed3407.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -6338,6 +6421,8 @@ items:
   baseline: null
   configs:
   - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_shared.yaml
+  - configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_shared.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -6373,6 +6458,8 @@ items:
   baseline: null
   configs:
   - configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_sharedresidual.yaml
+  - configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_sharedresidual.yaml
+  - configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_shared.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7012,6 +7099,7 @@ items:
   baseline: null
   configs:
   - configs/lecun-mcubes_rgbadn_P39_1_rank_B0Mc_seed20260827.yaml
+  - configs/yeon-mcubes_rgbadn_P39_1_rank_B0Mc_seed20260827.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7394,6 +7482,7 @@ items:
   baseline: null
   configs:
   - configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260902_elora_sharedresidual.yaml
+  - configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260902_elora_shared.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7429,6 +7518,7 @@ items:
   baseline: null
   configs:
   - configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260903_elora_sharedresidual.yaml
+  - configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260903_elora_shared.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7498,6 +7588,7 @@ items:
   baseline: null
   configs:
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_E3s2.yaml
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_E3s2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7664,6 +7755,8 @@ items:
   baseline: null
   configs:
   - configs/yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1.yaml
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7881,6 +7974,7 @@ items:
   baseline: null
   configs:
   - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_E17_confirm200.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_E17_confirm200.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7953,6 +8047,7 @@ items:
   baseline: null
   configs:
   - configs/jarvis-…seed20260821_screen40_Q2.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -7987,6 +8082,7 @@ items:
   baseline: null
   configs:
   - configs/jarvis-…seed20260821_screen40_Q3.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q3.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8020,7 +8116,10 @@ items:
   change: Q2 시드 재현(교사 고정, 학생 시드만 변경)
   baseline: null
   configs:
-  - configs/jarvis-…seed2026090{2,3}_screen40_Q2.yaml
+  - configs/jarvis-…seed2026090{2
+  - 3}_screen40_Q2.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_Q2.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260903_screen40_Q2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8055,7 +8154,9 @@ items:
     사실상 2회)'
   baseline: null
   configs:
-  - configs/jarvis-…seed20260821_screen40_Q2{noKD,noDeg}.yaml
+  - configs/jarvis-…seed20260821_screen40_Q2{noKD
+  - noDeg}.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8229,6 +8330,7 @@ items:
   baseline: null
   configs:
   - configs/det/det_P31_v3clip_jarvis.yaml
+  - configs/det/det_P31_v3.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8260,7 +8362,8 @@ items:
   falsification: 미정
   change: P30-Det (router+query decoder)
   baseline: null
-  configs: []
+  configs:
+  - configs/det/det_P30_v2.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8358,7 +8461,11 @@ items:
   falsification: 미정
   change: 'P47-2: UniBal — Uni-modal Balance (구 D-2, 2026-08-04)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-muses_rgbelr_P47_2_unibal_img_4modal.yaml
+  - configs/jarvis-muses_rgbel_P47_2_unibal_all.yaml
+  - configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml
+  - configs/yeon-muses_rgbelr_P47_2_unibal_4modal_recovery.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8386,7 +8493,15 @@ items:
   change: 'P46: CTR — Class-Transfer Recovery (RCS + MCC + Prototype) (2026-07-29
     ~ 2026-08-05)'
   baseline: null
-  configs: []
+  configs:
+  - configs/eliceb200-deliver_rgbdel_P46_c3only_lam005_res1024.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_memprobe.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_smoke.yaml
+  - configs/jarvis-deliver_rgbdel_P46_ctr_smoke_bs1.yaml
+  - configs/jarvis-deliver_rgbdel_P46_lam02_seed2_eval1024.yaml
+  - configs/yeon-deliver_rgbdel_P46_c3only_lam005_res1024.yaml
+  - configs/yeon-deliver_rgble_P46_c3only_lam005_CLE.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8412,7 +8527,9 @@ items:
   falsification: 미정
   change: 'P43: PanopticDual — 독립 주손실 mask-classification 헤드 (2026-07-25)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-deliver_rgbdel_P43_pdual.yaml
+  - configs/yeon-deliver_rgbdel_P43_pdual_smoke.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8438,7 +8555,12 @@ items:
   falsification: 미정
   change: 'P44: BMR — Balanced Multimodal Reliability (+ P45 FogStyle) (2026-07-25)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-deliver_rgbdel_P44_bmr.yaml
+  - configs/hpca100-muses_rgbelr_P44_bmr_4modal.yaml
+  - configs/jarvis-deliver_rgbdel_P44_bmr.yaml
+  - configs/yeon-deliver_rgbdel_P44_bmr.yaml
+  - configs/yeon-deliver_rgbdel_P44_bmr_smoke.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8464,7 +8586,10 @@ items:
   falsification: 미정
   change: 'P38: MaskQueryLite — Mask2Former-lite Query Head (2026-07-18 launch)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-muses_rgbel_P38_m2f_predict.yaml
+  - configs/jarvis-muses_rgbel_P38_m2f.yaml
+  - configs/yeon-deliver_rgbdel_P38_m2f_smoke.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8490,7 +8615,11 @@ items:
   falsification: 미정
   change: 'P39: DPC — Dual-Path Compete (2026-07-20)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-muses_rgbel_P39_dpc_predict.yaml
+  - configs/jarvis-muses_rgbelr_P39_dpc.yaml
+  - configs/jarvis-muses_rgbelr_P39_dpc_radarfix.yaml
+  - configs/yeon-deliver_rgbdel_P39_dpc_smoke.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8516,7 +8645,15 @@ items:
   falsification: 미정
   change: 'P39.1: Rank 수리 — gated_mlp trunk + VICReg (2026-07-21) ★ 현행 기준선'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-muses_rgbel_P39_1_rank_normall.yaml
+  - configs/jarvis-deliver_rgbdel_P39_1_rank_eval1024.yaml
+  - configs/jarvis-deliver_rgbdel_P39_1_rank_res1024.yaml
+  - configs/jarvis-muses_rgbel_P39_1_rank_normall.yaml
+  - configs/jarvis-muses_rgbel_P39_1_rank_seed5.yaml
+  - configs/jarvis-muses_rgbelr_P39_1_rank_4modal_seed3.yaml
+  - configs/muses_P39_1_predict.yaml
+  - configs/yeon-deliver_rgbdel_P39_1_rank_resume.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8542,7 +8679,10 @@ items:
   falsification: 미정
   change: 'P40: RCA-Fusion — Reliability-Conditioned Attenuation (2026-07-21)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-deliver_rgbdel_P40_rca.yaml
+  - configs/jarvis-muses_rgbel_P40_rca.yaml
+  - configs/yeon-deliver_rgbdel_P40_rca_smoke.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8568,7 +8708,8 @@ items:
   falsification: 미정
   change: 'P32: CoRB — Corroboration-Biased Memory Attention (2026-07-06)'
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/b200-deliver_rgbdel_P32_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8624,7 +8765,9 @@ items:
   change: 'P30-Det — P30 백본 detection 확장: Reliability-router 융합 + Object-Query decoder
     + FCOS aux (2026-06-30)'
   baseline: null
-  configs: []
+  configs:
+  - configs/det/det_P30_indoor.yaml
+  - configs/det/det_P30_indoor_yeon.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8702,7 +8845,10 @@ items:
   falsification: 미정
   change: 'P28: RBMA — Reliability-Biased Memory Attention (2026-06-15)'
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/b200-deliver_rgbdel_P28_hiera_l_physaug.yaml
+  - configs/deliver/b200-deliver_rgbdel_P28_physaug.yaml
+  - configs/multiaqua/b200-multiaqua_rgbtl_P28_hardaug8_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8728,7 +8874,15 @@ items:
   falsification: 미정
   change: 'P8: ConfidenceHeadV2 + Sigmoid UAMM'
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/hpc_deliver_rgbdel_P8.yaml
+  - configs/deliver/lecun_deliver_rgbd_P8.yaml
+  - configs/deliver/levine-deliver_rgbde_P8.yaml
+  - configs/multiaqua/lecun_multiaqua_rgbtl_P8.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P8.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P8_hardaug2.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P8_hardaug3.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P8_hardaug4.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8780,7 +8934,9 @@ items:
   falsification: 미정
   change: 'P10: CrossModalFusionHeadV2 + ModalAuxHead + Oracle KL (취소됨)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/levine-multiaqua_rgbtl_P10_hardaug3.yaml
+  - configs/archive/levine-multiaqua_rgbtl_P10_hardaug4.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8805,7 +8961,8 @@ items:
   falsification: 미정
   change: 'P11: P10 + MI Routing Loss (취소됨)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/levine-multiaqua_rgbtl_P11_hardaug4.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8830,7 +8987,8 @@ items:
   falsification: 미정
   change: 'P12: Input-Conditioned Soft MoE LoRA'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/levine-multiaqua_rgbtl_P12_hardaug4.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8856,7 +9014,9 @@ items:
   falsification: 미정
   change: 'P13: Energy Score Fusion + Expert Collapse Fix'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/bengio-multiaqua_rgbtl_P13_hardaug4.yaml
+  - configs/archive/bengio-multiaqua_rgbtl_P13_hardaug5.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8882,7 +9042,8 @@ items:
   falsification: 미정
   change: 'P14: Per-Modality Separate Aux Decoders'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/bengio-multiaqua_rgbtl_P14_hardaug5.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8908,7 +9069,8 @@ items:
   falsification: 미정
   change: 'P15: Calibrated Spatial Entropy Fusion (설계 단계)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/levine-multiaqua_rgbtl_P15_hardaug5.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8934,7 +9096,8 @@ items:
   falsification: 미정
   change: 'P16: Calibrated Spatial Entropy Fusion (P15 설계의 구현 버전)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/bengio-multiaqua_rgbtl_P16_hardaug5.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8955,12 +9118,15 @@ items:
   superseded_by: null
 - id: DRN-260926-266
   title: '[세대] P17: Multi-Scale FPN Aux Decoder + Calibrated Spatial Entropy Fusion'
-  question: 원문 models/arch-evolution.md 줄 1052 — 세대 설계·결과·판정 서술은 해당 절 참조
+  question: '원문 models/arch-evolution.md 줄 1052 — 세대 설계·결과·판정 서술은 해당 절 참조 | 누락 보완:
+    levine-multiaqua_rgbtl_P17_hardaug6 (config 파일 없음)'
   hypothesis: 미정
   falsification: 미정
   change: 'P17: Multi-Scale FPN Aux Decoder + Calibrated Spatial Entropy Fusion'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/levine-multiaqua_rgbtl_P17_hardaug4_night2.yaml
+  - configs/archive/levine-multiaqua_rgbtl_P17_hardaug5.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -8986,7 +9152,8 @@ items:
   falsification: 미정
   change: 'P18: Trainable ResNet-18 Aux Backbone + Configurable Fusion'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/levine-multiaqua_rgbtl_P18_hardaug5.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9012,7 +9179,9 @@ items:
   falsification: 미정
   change: 'P19: Learned Spatial Cross-Modal Fusion (SpatialCrossModalFusionHead)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/levine-multiaqua_rgbtl_P19_hardaug4_night2.yaml
+  - configs/archive/levine-multiaqua_rgbtl_P19_hardaug5.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9038,7 +9207,8 @@ items:
   falsification: 미정
   change: 'P20: Shared MLP Gate + Higher Rank MoE (실험 J-A)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/bengio-multiaqua_rgbtl_P20_hardaug8_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9091,7 +9261,8 @@ items:
   falsification: 미정
   change: 'P22: Multi-Scale DeBA-FP (all FPN levels, Phase 1) (실험 L)'
   baseline: null
-  configs: []
+  configs:
+  - configs/multiaqua/levine-multiaqua_rgbtl_P22_hardaug8_physaug_night.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9117,7 +9288,8 @@ items:
   falsification: 미정
   change: 'P23: MoE DeBA-BB (구현 완료, 학습 대기) (실험 M)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/hpca100-multiaqua_rgbtl_P23_hardaug8_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9145,7 +9317,9 @@ items:
   change: 'P24: P9 + Quality-aware Memory Gating via Per-Modality Decoder Distillation
     (실험 N)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml
+  - configs/archive/hpca100-multiaqua_rgbtl_P24_hardaug8_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9173,7 +9347,9 @@ items:
   change: 'P25: Unified Spatial Quality Fusion — Quality Map으로 UAMM + AMF + Memory
     통합 (설계 중)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml
+  - configs/archive/levine-deliver_rgbdel_P25_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9201,7 +9377,11 @@ items:
   change: 'P26: Per-Modality SQG + Multi-Scale + Per-Modality Decoder + Modal-Cond
     MoE + UAMM Softmax (설계 v5, 2026-03-23)'
   baseline: null
-  configs: []
+  configs:
+  - configs/archive/b200-deliver_rgbde_P26_AblB_physaug.yaml
+  - configs/archive/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml
+  - configs/archive/levine-deliver_rgbdel_P26_AblB_physaug.yaml
+  - configs/archive/levine-deliver_rgbdel_P26_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9223,13 +9403,17 @@ items:
 - id: DRN-260926-276
   title: '[세대] P27: Additive Attention Bias on Cross-Modal Memory Attention (RBMA
     전구체, 2026-04-14)'
-  question: 원문 models/arch-evolution.md 줄 2762 — 세대 설계·결과·판정 서술은 해당 절 참조
+  question: '원문 models/arch-evolution.md 줄 2762 — 세대 설계·결과·판정 서술은 해당 절 참조 | 누락 보완:
+    config 파일 없는 런 이름 levine-/b200-multiaqua_rgbtl_P27_hardaug8_physaug (status·decisions
+    문서 언급)'
   hypothesis: 미정
   falsification: 미정
   change: 'P27: Additive Attention Bias on Cross-Modal Memory Attention (RBMA 전구체,
     2026-04-14)'
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/b200-deliver_rgbdel_P27_physaug.yaml
+  - configs/deliver/b200-deliver_rgbel_P27_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9255,7 +9439,10 @@ items:
   falsification: 미정
   change: 'P33: CG-MoD — Competence-Gated Hard Fusion + Modality Dropout (2026-07-07)'
   baseline: null
-  configs: []
+  configs:
+  - configs/deliver/b200-deliver_rgbdel_P33_1_physaug.yaml
+  - configs/deliver/b200-deliver_rgbdel_P33_2_physaug.yaml
+  - configs/deliver/b200-deliver_rgbdel_P33_3_physaug.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9282,7 +9469,11 @@ items:
   falsification: 미정
   change: 'P34: ReliaDINO — DINOv3-L frozen + per-modal LoRA (계보 전환점, 2026-07-13 완주)'
   baseline: null
-  configs: []
+  configs:
+  - configs/b200-deliver_rgbdel_P34_reliadino.yaml
+  - configs/b200-muses_rgbel_P34_reliadino.yaml
+  - configs/hinton-deliver_rgbdel_P34_reliadino.yaml
+  - configs/hpca100-muses_rgbelr_P34_reliadino.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9308,7 +9499,8 @@ items:
   falsification: 미정
   change: 'P35: 공정 레시피 동결 (P34 − ATTN_BIAS − CONSISTENCY − PhysAug, 2026-07-15)'
   baseline: null
-  configs: []
+  configs:
+  - configs/b200-deliver_rgbdel_P35_paper.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9336,7 +9528,9 @@ items:
   change: 'P36: Per-Class Reliability-Anchored Router (= P35 + router, 2026-07-15
     완주)'
   baseline: null
-  configs: []
+  configs:
+  - configs/b200-deliver_rgbdel_P36_router.yaml
+  - configs/jarvis-deliver_rgbdel_P36_router_eval.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9362,7 +9556,15 @@ items:
   falsification: 미정
   change: 'P37a / P37b: CEFR-Head · ClassToken-lite-Learned (2026-07-17~18)'
   baseline: null
-  configs: []
+  configs:
+  - configs/bengio-deliver_rgbdel_P37a_cefr.yaml
+  - configs/bengio-deliver_rgbdel_P37b_classtoken.yaml
+  - configs/hpca100-muses_rgbel_P37a_cefr.yaml
+  - configs/hpca100-muses_rgbel_P37b_classtoken.yaml
+  - configs/jarvis-deliver_rgbdel_P37a_cefr.yaml
+  - configs/jarvis-deliver_rgbdel_P37b_classtoken.yaml
+  - configs/yeon-smoke_P37a_cefr.yaml
+  - configs/yeon-smoke_P37b_classtoken.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9390,7 +9592,8 @@ items:
   change: 'P41: FCR — Fusion Spectral Collapse / Fused Class-alignment Regularizer
     (2026-07-22~23)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-muses_rgbel_P41_fcr.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9416,7 +9619,11 @@ items:
   falsification: 미정
   change: 'P42: lidar-강제 — 조건부 균형 img 마스킹 (2026-07-23)'
   baseline: null
-  configs: []
+  configs:
+  - configs/hpca100-muses_P42_seed2_hold.yaml
+  - configs/hpca100-muses_rgbel_P42_maskimg.yaml
+  - configs/jarvis-muses_rgbel_P42_maskimg_f03.yaml
+  - configs/yeon-muses_rgbel_P42_maskimg_f07.yaml
   launch: null
   success_criteria: 미정
   sample_basis: null
@@ -9504,6 +9711,670 @@ items:
   status: judging
   tags:
   - generation
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-287
+  title: E2s3 · E2(전 선형층 LoRA r32) 시드3 40ep 스크린
+  question: '원문: config configs/hpca100-deliver_rgbdel_P46_c3only_seed20260903_screen40_E2s3.yaml
+    만 확인(registry·대장에 기록 없음). 카드 문서 판정: E2 축 폐기(2026-09-10)'
+  hypothesis: 미정
+  falsification: 미정
+  change: E2 시드 20260903
+  baseline: null
+  configs:
+  - configs/hpca100-deliver_rgbdel_P46_c3only_seed20260903_screen40_E2s3.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 140
+  owner_role: method
+  status: idea
+  tags:
+  - deliver
+  - screen40
+  - daily-cards
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-288
+  title: E2b · E2 변형 카드 40ep 스크린
+  question: '원문: config configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2b.yaml
+    만 확인(registry·대장에 기록 없음)'
+  hypothesis: 미정
+  falsification: 미정
+  change: E2 변형(config 참조)
+  baseline: null
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2b.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 141
+  owner_role: method
+  status: idea
+  tags:
+  - deliver
+  - screen40
+  - daily-cards
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-289
+  title: E3 확정 200ep (센서별 prototype 단독)
+  question: '원문: config configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_E3_confirm200.yaml
+    만 확인. 카드 문서: 확정 런 1순위 E13·2순위 E1, E3 단독은 24클래스 −0.14'
+  hypothesis: 미정
+  falsification: 미정
+  change: E3 레시피 200ep 확정 런
+  baseline: null
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_E3_confirm200.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 142
+  owner_role: method
+  status: idea
+  tags:
+  - deliver
+  - confirm200
+  - daily-cards
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-290
+  title: D1 · det 인증 배포 계열(ViT-S/S+/B 백본, poongsan)
+  question: '원문: configs/det/det_D1_*.yaml 6개; user 메모리 drone-jemo-cert-deploy(브랜치
+    26-drone-certificate, 야간 mAP50 0.8292)'
+  hypothesis: 미정
+  falsification: 미정
+  change: D1 검출 백본(ViT-S+ 등)
+  baseline: null
+  configs:
+  - configs/det/det_D1_p37b_hpca100.yaml
+  - configs/det/det_D1_p37b_lowlr_yeon.yaml
+  - configs/det/det_D1_recovered_yeon.yaml
+  - configs/det/det_D1_vitb_yeon.yaml
+  - configs/det/det_D1_vits_yeon.yaml
+  - configs/det/det_D1_vitsp_jarvis.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 150
+  owner_role: method
+  status: judging
+  tags:
+  - det
+  - poongsan
+  - review:method
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-291
+  title: '[세대] P29-Det · RBMA 백본 + FPN/FCOS 검출(poongsan)'
+  question: '원문: configs/det/det_P29_*.yaml; registry Det 절 det_P29_* 행; user 메모리
+    p29-det-object-detection'
+  hypothesis: 미정
+  falsification: 미정
+  change: P29-Det
+  baseline: null
+  configs:
+  - configs/det/det_P29_indoor.yaml
+  - configs/det/det_P29_indoor_jarvis.yaml
+  - configs/det/det_P29_indoor_jarvis_v2.yaml
+  - configs/det/det_P29_indoor_jarvis_v3.yaml
+  - configs/det/det_P29_v2_bundle.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 629
+  owner_role: method
+  status: judging
+  tags:
+  - det
+  - generation
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-292
+  title: det 백본 이식 계열 P34~P39-Det·RF-DETR(poongsan)
+  question: '원문: configs/det/det_P34~P39*.yaml·det_P37_rfdetr_full·det_P39rf_*·det_P9_base
+    (registry·대장 기록 없음)'
+  hypothesis: 미정
+  falsification: 미정
+  change: seg 세대 백본의 검출 이식
+  baseline: null
+  configs:
+  - configs/det/det_P34_final_full.yaml
+  - configs/det/det_P34_final_full_local.yaml
+  - configs/det/det_P35_final_full.yaml
+  - configs/det/det_P36_final_full.yaml
+  - configs/det/det_P37_rfdetr_full.yaml
+  - configs/det/det_P37a_cefr_yeon.yaml
+  - configs/det/det_P37b_classtoken_yeon.yaml
+  - configs/det/det_P39_dpc_yeon.yaml
+  - configs/det/det_P39rf_recovered_jarvis.yaml
+  - configs/det/det_P39rf_trunkexp_jarvis.yaml
+  - configs/det/det_P39rf_trunkexp_yeon.yaml
+  - configs/det/det_P9_base.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 151
+  owner_role: method
+  status: judging
+  tags:
+  - det
+  - review:method
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-293
+  title: '[세대] MemorySAM 초기 기준선(SAM·LoRASam·P4~P7·재구성)'
+  question: '원문: configs/deliver/*sam*·*P4~P8*, configs/archive/_REF_*·mcubes_rgbadn_sam,
+    configs/multiaqua/*LoRASam*; arch-evolution ''공통 기반: MemorySAM'' 절(385)'
+  hypothesis: 미정
+  falsification: 미정
+  change: SAM2 기반 초기 기준선
+  baseline: null
+  configs:
+  - configs/archive/_REF_levine-deliver_rgbde_sam.yaml
+  - configs/archive/mcubes_rgbadn_sam.yaml
+  - configs/deliver/bai-deliver_rgbdel_sam.yaml
+  - configs/deliver/bengio_deliver_rgbdel_sam.yaml
+  - configs/deliver/bengio_deliver_rgbdl_sam.yaml
+  - configs/deliver/deliver_rgbdel_sam.yaml
+  - configs/deliver/deliver_rgbdel_sam_recon.yaml
+  - configs/deliver/hpc_deliver_rgbdel_P7.yaml
+  - configs/deliver/hpc_deliver_rgbdel_sam.yaml
+  - configs/deliver/hpca-deliver_rgbdl_sam.yaml
+  - configs/deliver/lecun_deliver_rgbd_P4.yaml
+  - configs/deliver/lecun_deliver_rgbd_P6.yaml
+  - configs/deliver/lecun_deliver_rgbd_P7.yaml
+  - configs/deliver/lecun_deliver_rgbde_sam.yaml
+  - configs/deliver/levine-deliver_rgbde_P6.yaml
+  - configs/deliver/levine-deliver_rgbdel_sam.yaml
+  - configs/deliver/levine_deliver_rgbd_sam_recon.yaml
+  - configs/deliver/levine_deliver_rgbde_sam.yaml
+  - configs/deliver/levine_deliver_rgbdel_sam_eval.yaml
+  - configs/deliver/levine_deliver_rgbdel_sam_recon.yaml
+  - configs/deliver/levine_deliver_rgbdl_sam.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_LoRASam_hardaug8_physaug.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 600
+  owner_role: method
+  status: judging
+  tags:
+  - generation
+  - review:method
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-294
+  title: 실험 I · P9 Gamma TTA (MULTIAQUA)
+  question: '원문: experiments/log.md:594 ''(실험 I — 실패)'''
+  hypothesis: 미정
+  falsification: 미정
+  change: 추론 시 감마 TTA
+  baseline: null
+  configs:
+  - configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_tta.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 700
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-295
+  title: 실험 II·III · I2I Translation (MULTIAQUA)
+  question: '원문: experiments/log.md:641 ''(실험 II, III — 실패)'''
+  hypothesis: 미정
+  falsification: 미정
+  change: 야간→주간 I2I 변환 입력
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 701
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-296
+  title: 실험 IV · P9 CV Heuristic Enhancement
+  question: '원문: experiments/log.md:927, 도구 MISC/heuristic_enhancement_reinference.py'
+  hypothesis: 미정
+  falsification: 미정
+  change: 휴리스틱 영상 보정 후 재추론
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 702
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-297
+  title: 실험 V · P9 FDA Augmentation
+  question: '원문: experiments/log.md:959, config configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml'
+  hypothesis: 미정
+  falsification: 미정
+  change: FDA 증강
+  baseline: null
+  configs:
+  - configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 703
+  owner_role: method
+  status: withdrawn
+  tags:
+  - multiaqua
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: '2026-09-26'
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-298
+  title: 실험 VI · P9 PhysAug
+  question: '원문: experiments/log.md:1146(실험 VI), config configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_physaug.yaml'
+  hypothesis: 미정
+  falsification: 미정
+  change: PhysAug 증강
+  baseline: null
+  configs:
+  - configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_physaug.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 704
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-299
+  title: P9 증강 ablation 계열(hardaug2~8·night2·noCRM·tta, MULTIAQUA)
+  question: '원문: experiments/log.md:558(P9 hardaug6)·703(Augmentation Ablation 종합)·726(Night
+    Aug 포화)·757(NIGHT_AUG 버전 비교)·1016(P9 hardaug8 최선 M=81.98) | 누락 보완: levine-multiaqua_rgbtl_P9_hardaug5
+    (config 파일 없음)'
+  hypothesis: 미정
+  falsification: 미정
+  change: NIGHT_AUG·hardaug 수준
+  baseline: null
+  configs:
+  - configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug4noCRM.yaml
+  - configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug3.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_night2.yaml
+  - configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug7.yaml
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 705
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-300
+  title: Tiled Inference 실험 (2026-03-17)
+  question: '원문: experiments/log.md:1567'
+  hypothesis: 미정
+  falsification: 미정
+  change: 타일 추론
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 706
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-301
+  title: '[진단] P25 Spatial Quality Gating 야간 Pred Q 분석 (2026-06-14)'
+  question: '원문: experiments/log.md:21'
+  hypothesis: 미정
+  falsification: 미정
+  change: 학습 0 진단
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 707
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - analysis
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-302
+  title: P26 DELIVER AMP on + GC off 단일 GPU 메모리 프로브 (2026-04-10)
+  question: '원문: experiments/log.md:70 ''진행 중 실험 계획'''
+  hypothesis: 미정
+  falsification: 미정
+  change: AMP on·GC off 메모리 측정
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 708
+  owner_role: method
+  status: judging
+  tags:
+  - deliver
+  - probe
+  - review:method
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-303
+  title: 아키텍처 심층 분석 A·B (UAMM 실효성, P9 vs MMSamBase, 2026-03-24)
+  question: '원문: experiments/log.md:779'
+  hypothesis: 미정
+  falsification: 미정
+  change: 학습 0 분석
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 709
+  owner_role: method
+  status: judging
+  tags:
+  - multiaqua
+  - analysis
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-304
+  title: '[누락] P39.1 MUSES 3모달 시드4 (yeon)'
+  question: '원문: experiments/monitor-log.md:3693~3775 — yeon-muses_rgbel_P39_1_seed4.yaml,
+    val 81.92@ep198 정체, ~277/300 ''저신뢰, 미완주''. config 파일은 레포에 없음'
+  hypothesis: 미정
+  falsification: 미정
+  change: P39.1-rank 시드4
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 160
+  owner_role: method
+  status: judging
+  tags:
+  - muses
+  - review:method
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-305
+  title: '[누락] P44-BMR DELIVER 시드2 (yeon)'
+  question: '원문: experiments/monitor-log.md:5348·5403 — yeon_deliver_P44_bmr_seed2_run.log
+    ''미완주'''
+  hypothesis: 미정
+  falsification: 미정
+  change: P44-BMR 시드2
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 161
+  owner_role: method
+  status: judging
+  tags:
+  - deliver
+  - review:method
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-306
+  title: '[누락] P34 MUSES 4모달 DGF 투영 변형'
+  question: '원문: experiments/monitor-log.md 1회 언급(muses_rgbelr_P34_dgf_4modal) — 상세
+    미확인'
+  hypothesis: 미정
+  falsification: 미정
+  change: P34 + DGFusion 투영(4모달)
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 162
+  owner_role: method
+  status: judging
+  tags:
+  - muses
+  - review:method
+  - status-unknown
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-307
+  title: '[누락] MUSES Codabench 공식 test 제출 이력(11건)'
+  question: '원문: P34_4modal_ep182(monitor-log:1006)·P38_m2f_ep156(:1187)·P39_4modal_radarfix_ep124(:2054)·P43_pdual_ep156(:3810)·P39_1_seed2_ep208(:5535)·P39_1_rank_4modal_seed2_ep260(:5539)·P44_bmr_ep156(log.md:1645)·P46_c3only_lam02_ep136(log.md:1736)·P39_1_seed20260825_ep168(log.md:1768).
+    제출 경로 규약 = /ailab_mat2/.../submission/muses/ | 누락 보완 2건 추가(총 11건): muses_P39_1_rank_rgbl_2modal_ep136_submission,
+    muses_P47MUB_D1_4modal_ep172_submission (status·decisions 문서)'
+  hypothesis: 미정
+  falsification: 미정
+  change: 제출본 zip
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 163
+  owner_role: method
+  status: judging
+  tags:
+  - muses
+  - submission
+  - review:method
+  created: '2026-09-26'
+  updated: '2026-09-26'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260926-308
+  title: '[누락] DGFusion 기준선 재현 평가(DELIVER test·MUSES val·P39.1 대비 비교)'
+  question: '원문: experiments/monitor-log.md — inference_deliver_dgfusion·inference_deliver_test_dgfusion·dgfusion_deliver_test_clde·inference_muses_val_dgfusion·muses_val_dgfusion_lb·compare_deliver_test_dgfusion_vs_p39_1'
+  hypothesis: 미정
+  falsification: 미정
+  change: 공개 DGFusion 가중치/재학습본 평가
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: 미정
+  sample_basis: null
+  expected_cost: null
+  priority: 164
+  owner_role: method
+  status: judging
+  tags:
+  - deliver
+  - muses
+  - baseline
   - review:method
   created: '2026-09-26'
   updated: '2026-09-26'

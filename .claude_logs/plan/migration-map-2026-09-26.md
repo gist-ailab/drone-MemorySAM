@@ -377,3 +377,297 @@
 | 75 | DRN-260926-23 |
 | 76 | DRN-260926-23 |
 | 77 | DRN-260926-57 |
+
+## 6. 3차 누락 보완(2026-09-26 오후)
+
+config 전수 대조(363개 전부 항목에 연결)와 log.md·monitor-log.md·status·decisions 런 이름 대조로 찾은 항목.
+
+| 원문 | 제목 | DRN |
+|---|---|---|
+| config·log.md | E2s3 · E2(전 선형층 LoRA r32) 시드3 40ep 스크린 | DRN-260926-287 |
+| config·log.md | E2b · E2 변형 카드 40ep 스크린 | DRN-260926-288 |
+| config·log.md | E3 확정 200ep (센서별 prototype 단독) | DRN-260926-289 |
+| config·log.md | D1 · det 인증 배포 계열(ViT-S/S+/B 백본, poongsan) | DRN-260926-290 |
+| config·log.md | [세대] P29-Det · RBMA 백본 + FPN/FCOS 검출(poongsan) | DRN-260926-291 |
+| config·log.md | det 백본 이식 계열 P34~P39-Det·RF-DETR(poongsan) | DRN-260926-292 |
+| config·log.md | [세대] MemorySAM 초기 기준선(SAM·LoRASam·P4~P7·재구성) | DRN-260926-293 |
+| config·log.md | 실험 I · P9 Gamma TTA (MULTIAQUA) | DRN-260926-294 |
+| config·log.md | 실험 II·III · I2I Translation (MULTIAQUA) | DRN-260926-295 |
+| config·log.md | 실험 IV · P9 CV Heuristic Enhancement | DRN-260926-296 |
+| config·log.md | 실험 V · P9 FDA Augmentation | DRN-260926-297 |
+| config·log.md | 실험 VI · P9 PhysAug | DRN-260926-298 |
+| config·log.md | P9 증강 ablation 계열(hardaug2~8·night2·noCRM·tta, MULTIAQUA) | DRN-260926-299 |
+| config·log.md | Tiled Inference 실험 (2026-03-17) | DRN-260926-300 |
+| config·log.md | [진단] P25 Spatial Quality Gating 야간 Pred Q 분석 (2026-06-14) | DRN-260926-301 |
+| config·log.md | P26 DELIVER AMP on + GC off 단일 GPU 메모리 프로브 (2026-04-10) | DRN-260926-302 |
+| config·log.md | 아키텍처 심층 분석 A·B (UAMM 실효성, P9 vs MMSamBase, 2026-03-24) | DRN-260926-303 |
+| monitor-log.md 등 | [누락] P39.1 MUSES 3모달 시드4 (yeon) | DRN-260926-304 |
+| monitor-log.md 등 | [누락] P44-BMR DELIVER 시드2 (yeon) | DRN-260926-305 |
+| monitor-log.md 등 | [누락] P34 MUSES 4모달 DGF 투영 변형 | DRN-260926-306 |
+| monitor-log.md 등 | [누락] MUSES Codabench 공식 test 제출 이력(11건) | DRN-260926-307 |
+| monitor-log.md 등 | [누락] DGFusion 기준선 재현 평가(DELIVER test·MUSES val·P39.1 대비 비교) | DRN-260926-308 |
+
+## 7. config → 항목 연결(이관 전 미연결분 260개)
+
+| config | DRN |
+|---|---|
+| configs/archive/_REF_levine-deliver_rgbde_sam.yaml | DRN-260926-293 |
+| configs/archive/b200-deliver_rgbde_P26_AblB_physaug.yaml | DRN-260926-275 |
+| configs/archive/bengio-multiaqua_rgbtl_P13_hardaug4.yaml | DRN-260926-262 |
+| configs/archive/bengio-multiaqua_rgbtl_P13_hardaug5.yaml | DRN-260926-262 |
+| configs/archive/bengio-multiaqua_rgbtl_P14_hardaug5.yaml | DRN-260926-263 |
+| configs/archive/bengio-multiaqua_rgbtl_P16_hardaug5.yaml | DRN-260926-265 |
+| configs/archive/bengio-multiaqua_rgbtl_P20_hardaug8_physaug.yaml | DRN-260926-269 |
+| configs/archive/bengio-multiaqua_rgbtl_P24_hardaug8_physaug.yaml | DRN-260926-273 |
+| configs/archive/hpca100-multiaqua_rgbtl_P23_hardaug8_physaug.yaml | DRN-260926-272 |
+| configs/archive/hpca100-multiaqua_rgbtl_P24_hardaug8_physaug.yaml | DRN-260926-273 |
+| configs/archive/hpca100-multiaqua_rgbtl_P25_hardaug8_physaug.yaml | DRN-260926-274 |
+| configs/archive/hpca100-multiaqua_rgbtl_P26_hardaug8_physaug.yaml | DRN-260926-275 |
+| configs/archive/levine-deliver_rgbdel_P25_physaug.yaml | DRN-260926-274 |
+| configs/archive/levine-deliver_rgbdel_P26_AblB_physaug.yaml | DRN-260926-275 |
+| configs/archive/levine-deliver_rgbdel_P26_physaug.yaml | DRN-260926-275 |
+| configs/archive/levine-multiaqua_rgbtl_P10_hardaug3.yaml | DRN-260926-259 |
+| configs/archive/levine-multiaqua_rgbtl_P10_hardaug4.yaml | DRN-260926-259 |
+| configs/archive/levine-multiaqua_rgbtl_P11_hardaug4.yaml | DRN-260926-260 |
+| configs/archive/levine-multiaqua_rgbtl_P12_hardaug4.yaml | DRN-260926-261 |
+| configs/archive/levine-multiaqua_rgbtl_P15_hardaug5.yaml | DRN-260926-264 |
+| configs/archive/levine-multiaqua_rgbtl_P17_hardaug4_night2.yaml | DRN-260926-266 |
+| configs/archive/levine-multiaqua_rgbtl_P17_hardaug5.yaml | DRN-260926-266 |
+| configs/archive/levine-multiaqua_rgbtl_P18_hardaug5.yaml | DRN-260926-267 |
+| configs/archive/levine-multiaqua_rgbtl_P19_hardaug4_night2.yaml | DRN-260926-268 |
+| configs/archive/levine-multiaqua_rgbtl_P19_hardaug5.yaml | DRN-260926-268 |
+| configs/archive/mcubes_rgbadn_sam.yaml | DRN-260926-293 |
+| configs/b200-deliver_rgbdel_P34_reliadino.yaml | DRN-260926-278 |
+| configs/b200-deliver_rgbdel_P35_paper.yaml | DRN-260926-279 |
+| configs/b200-deliver_rgbdel_P36_router.yaml | DRN-260926-280 |
+| configs/b200-muses_rgbel_P34_reliadino.yaml | DRN-260926-278 |
+| configs/bengio-deliver_rgbdel_P37a_cefr.yaml | DRN-260926-281 |
+| configs/bengio-deliver_rgbdel_P37b_classtoken.yaml | DRN-260926-281 |
+| configs/bengio-deliver_rgbdel_P38_m2f.yaml | DRN-260926-105 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E12.yaml | DRN-260926-165 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared.yaml | DRN-260926-57 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2.yaml | DRN-260926-159 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E2b.yaml | DRN-260926-288 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E3b.yaml | DRN-260926-64 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1.yaml | DRN-260926-223 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1shared.yaml | DRN-260926-57 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_R1.yaml | DRN-260926-61 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_R2.yaml | DRN-260926-62 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260903_screen40_E1shared.yaml | DRN-260926-57 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260903_screen40_R1.yaml | DRN-260926-61 |
+| configs/bengio-deliver_rgbdel_P46_c3only_seed20260903_screen40_R2.yaml | DRN-260926-62 |
+| configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_permodal_r16.yaml | DRN-260926-148 |
+| configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_shared.yaml | DRN-260926-186 |
+| configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_sharedresidual.yaml | DRN-260926-187 |
+| configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260902_elora_permodal_r16.yaml | DRN-260926-03 |
+| configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260902_elora_shared.yaml | DRN-260926-215 |
+| configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260903_elora_permodal_r16.yaml | DRN-260926-03 |
+| configs/bengio-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260903_elora_shared.yaml | DRN-260926-216 |
+| configs/bengio-muses_rgbel_P39_1_seed2_physaugoff_screen40_E7.yaml | DRN-260926-160 |
+| configs/deliver/b200-deliver_rgbdel_P27_physaug.yaml | DRN-260926-276 |
+| configs/deliver/b200-deliver_rgbdel_P28_hiera_l_physaug.yaml | DRN-260926-256 |
+| configs/deliver/b200-deliver_rgbdel_P28_physaug.yaml | DRN-260926-256 |
+| configs/deliver/b200-deliver_rgbdel_P32_physaug.yaml | DRN-260926-251 |
+| configs/deliver/b200-deliver_rgbdel_P33_1_physaug.yaml | DRN-260926-277 |
+| configs/deliver/b200-deliver_rgbdel_P33_2_physaug.yaml | DRN-260926-277 |
+| configs/deliver/b200-deliver_rgbdel_P33_3_physaug.yaml | DRN-260926-277 |
+| configs/deliver/b200-deliver_rgbdel_SAM3RBMA_physaug.yaml | DRN-260926-104 |
+| configs/deliver/b200-deliver_rgbdel_SAM3RBMA_physaug_hires.yaml | DRN-260926-104 |
+| configs/deliver/b200-deliver_rgbel_P27_physaug.yaml | DRN-260926-276 |
+| configs/deliver/bai-deliver_rgbdel_sam.yaml | DRN-260926-293 |
+| configs/deliver/bengio_deliver_rgbdel_sam.yaml | DRN-260926-293 |
+| configs/deliver/bengio_deliver_rgbdl_sam.yaml | DRN-260926-293 |
+| configs/deliver/deliver_rgbdel_P46_c3only_p50map.yaml | DRN-260926-136 |
+| configs/deliver/deliver_rgbdel_P46_c3only_xattn_trunk.yaml | DRN-260926-132 |
+| configs/deliver/deliver_rgbdel_P49_1_air_768_g01.yaml | DRN-260926-141 |
+| configs/deliver/deliver_rgbdel_P49_1_air_g01_eval1024.yaml | DRN-260926-78 |
+| configs/deliver/deliver_rgbdel_P49_air.yaml | DRN-260926-142 |
+| configs/deliver/deliver_rgbdel_P49_air_768.yaml | DRN-260926-142 |
+| configs/deliver/deliver_rgbdel_P49_air_smoke.yaml | DRN-260926-78 |
+| configs/deliver/deliver_rgbdel_sam.yaml | DRN-260926-293 |
+| configs/deliver/deliver_rgbdel_sam_recon.yaml | DRN-260926-293 |
+| configs/deliver/hpc_deliver_rgbdel_P7.yaml | DRN-260926-293 |
+| configs/deliver/hpc_deliver_rgbdel_P8.yaml | DRN-260926-257 |
+| configs/deliver/hpc_deliver_rgbdel_sam.yaml | DRN-260926-293 |
+| configs/deliver/hpca-deliver_rgbdl_sam.yaml | DRN-260926-293 |
+| configs/deliver/lecun_deliver_rgbd_P4.yaml | DRN-260926-293 |
+| configs/deliver/lecun_deliver_rgbd_P6.yaml | DRN-260926-293 |
+| configs/deliver/lecun_deliver_rgbd_P7.yaml | DRN-260926-293 |
+| configs/deliver/lecun_deliver_rgbd_P8.yaml | DRN-260926-257 |
+| configs/deliver/lecun_deliver_rgbde_sam.yaml | DRN-260926-293 |
+| configs/deliver/levine-deliver_rgbde_P6.yaml | DRN-260926-293 |
+| configs/deliver/levine-deliver_rgbde_P8.yaml | DRN-260926-257 |
+| configs/deliver/levine-deliver_rgbdel_sam.yaml | DRN-260926-293 |
+| configs/deliver/levine_deliver_rgbd_sam_recon.yaml | DRN-260926-293 |
+| configs/deliver/levine_deliver_rgbde_sam.yaml | DRN-260926-293 |
+| configs/deliver/levine_deliver_rgbdel_sam_eval.yaml | DRN-260926-293 |
+| configs/deliver/levine_deliver_rgbdel_sam_recon.yaml | DRN-260926-293 |
+| configs/deliver/levine_deliver_rgbdl_sam.yaml | DRN-260926-293 |
+| configs/det/det_D1_p37b_hpca100.yaml | DRN-260926-290 |
+| configs/det/det_D1_p37b_lowlr_yeon.yaml | DRN-260926-290 |
+| configs/det/det_D1_recovered_yeon.yaml | DRN-260926-290 |
+| configs/det/det_D1_vitb_yeon.yaml | DRN-260926-290 |
+| configs/det/det_D1_vits_yeon.yaml | DRN-260926-290 |
+| configs/det/det_D1_vitsp_jarvis.yaml | DRN-260926-290 |
+| configs/det/det_P29_indoor.yaml | DRN-260926-291 |
+| configs/det/det_P29_indoor_jarvis.yaml | DRN-260926-291 |
+| configs/det/det_P29_indoor_jarvis_v2.yaml | DRN-260926-291 |
+| configs/det/det_P29_indoor_jarvis_v3.yaml | DRN-260926-291 |
+| configs/det/det_P29_v2_bundle.yaml | DRN-260926-291 |
+| configs/det/det_P30_indoor.yaml | DRN-260926-253 |
+| configs/det/det_P30_indoor_yeon.yaml | DRN-260926-253 |
+| configs/det/det_P30_v2.yaml | DRN-260926-240 |
+| configs/det/det_P31_v3.yaml | DRN-260926-239 |
+| configs/det/det_P34_final_full.yaml | DRN-260926-292 |
+| configs/det/det_P34_final_full_local.yaml | DRN-260926-292 |
+| configs/det/det_P35_final_full.yaml | DRN-260926-292 |
+| configs/det/det_P36_final_full.yaml | DRN-260926-292 |
+| configs/det/det_P37_rfdetr_full.yaml | DRN-260926-292 |
+| configs/det/det_P37a_cefr_yeon.yaml | DRN-260926-292 |
+| configs/det/det_P37b_classtoken_yeon.yaml | DRN-260926-292 |
+| configs/det/det_P38_m2f_yeon.yaml | DRN-260926-86 |
+| configs/det/det_P39_dpc_yeon.yaml | DRN-260926-292 |
+| configs/det/det_P39rf_recovered_jarvis.yaml | DRN-260926-292 |
+| configs/det/det_P39rf_trunkexp_jarvis.yaml | DRN-260926-292 |
+| configs/det/det_P39rf_trunkexp_yeon.yaml | DRN-260926-292 |
+| configs/det/det_P9_base.yaml | DRN-260926-292 |
+| configs/eliceb200-deliver_rgbdel_P46_c3only_lam005_res1024.yaml | DRN-260926-244 |
+| configs/eliceb200-deliver_rgbdel_P46_ctr_c3only_res1024.yaml | DRN-260926-119 |
+| configs/hinton-deliver_rgbdel_P34_reliadino.yaml | DRN-260926-278 |
+| configs/hpca100-deliver_rgbdel_P39_1_rank.yaml | DRN-260926-130 |
+| configs/hpca100-deliver_rgbdel_P40_rca.yaml | DRN-260926-250 |
+| configs/hpca100-deliver_rgbdel_P43_pdual.yaml | DRN-260926-245 |
+| configs/hpca100-deliver_rgbdel_P44_bmr.yaml | DRN-260926-246 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4c.yaml | DRN-260926-65 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_R1.yaml | DRN-260926-61 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260821_screen40_R2.yaml | DRN-260926-62 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_E1_confirm200_s2.yaml | DRN-260926-170 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2_resume.yaml | DRN-260926-37 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2.yaml | DRN-260926-223 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260902_screen40_E3s2.yaml | DRN-260926-218 |
+| configs/hpca100-deliver_rgbdel_P46_c3only_seed20260903_screen40_E2s3.yaml | DRN-260926-287 |
+| configs/hpca100-deliver_rgbdel_P46_ctr.yaml | DRN-260926-117 |
+| configs/hpca100-deliver_rgbdel_P51_cmlc_off.yaml | DRN-260926-80 |
+| configs/hpca100-deliver_rgbdel_P51_cmlc_on.yaml | DRN-260926-80 |
+| configs/hpca100-mcubes_rgbadn_P39_1_rank_c3on.yaml | DRN-260926-15 |
+| configs/hpca100-mcubes_rgbadn_P52_seed20260901.yaml | DRN-260926-152 |
+| configs/hpca100-mcubes_rgbadn_P52_seed20260902.yaml | DRN-260926-31 |
+| configs/hpca100-muses_P42_seed2_hold.yaml | DRN-260926-283 |
+| configs/hpca100-muses_rgbel_P37a_cefr.yaml | DRN-260926-281 |
+| configs/hpca100-muses_rgbel_P37b_classtoken.yaml | DRN-260926-281 |
+| configs/hpca100-muses_rgbel_P38_m2f_predict.yaml | DRN-260926-247 |
+| configs/hpca100-muses_rgbel_P39_1_rank_normall.yaml | DRN-260926-249 |
+| configs/hpca100-muses_rgbel_P39_dpc_predict.yaml | DRN-260926-248 |
+| configs/hpca100-muses_rgbel_P41_fcr.yaml | DRN-260926-282 |
+| configs/hpca100-muses_rgbel_P42_maskimg.yaml | DRN-260926-283 |
+| configs/hpca100-muses_rgbelr_P34_reliadino.yaml | DRN-260926-278 |
+| configs/hpca100-muses_rgbelr_P44_bmr_4modal.yaml | DRN-260926-246 |
+| configs/hpca100-muses_rgbelr_P47_2_unibal_img_4modal.yaml | DRN-260926-243 |
+| configs/jarvis-deliver_rgbdel_P36_router_eval.yaml | DRN-260926-280 |
+| configs/jarvis-deliver_rgbdel_P37a_cefr.yaml | DRN-260926-281 |
+| configs/jarvis-deliver_rgbdel_P37b_classtoken.yaml | DRN-260926-281 |
+| configs/jarvis-deliver_rgbdel_P39_1_rank.yaml | DRN-260926-130 |
+| configs/jarvis-deliver_rgbdel_P39_1_rank_eval1024.yaml | DRN-260926-249 |
+| configs/jarvis-deliver_rgbdel_P39_1_rank_res1024.yaml | DRN-260926-249 |
+| configs/jarvis-deliver_rgbdel_P44_bmr.yaml | DRN-260926-246 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_E17_confirm200.yaml | DRN-260926-229 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_E3_confirm200.yaml | DRN-260926-289 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E3b.yaml | DRN-260926-64 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4b_resume.yaml | DRN-260926-36 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E4c.yaml | DRN-260926-65 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2.yaml | DRN-260926-231 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD.yaml | DRN-260926-234 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q3.yaml | DRN-260926-232 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_R1.yaml | DRN-260926-61 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_R2.yaml | DRN-260926-62 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_E1s2_resume.yaml | DRN-260926-38 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_Q2.yaml | DRN-260926-233 |
+| configs/jarvis-deliver_rgbdel_P46_c3only_seed20260903_screen40_Q2.yaml | DRN-260926-233 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c2c3.yaml | DRN-260926-140 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam005.yaml | DRN-260926-244 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260815.yaml | DRN-260926-16 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260816.yaml | DRN-260926-16 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821.yaml | DRN-260926-186 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260822.yaml | DRN-260926-16 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_res1024.yaml | DRN-260926-119 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_res1024_seedB.yaml | DRN-260926-119 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_c3only_res1024_seedC.yaml | DRN-260926-120 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_memprobe.yaml | DRN-260926-244 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_smoke.yaml | DRN-260926-244 |
+| configs/jarvis-deliver_rgbdel_P46_ctr_smoke_bs1.yaml | DRN-260926-244 |
+| configs/jarvis-deliver_rgbdel_P46_lam02_seed2_eval1024.yaml | DRN-260926-244 |
+| configs/jarvis-deliver_rgbdel_P51_cmlc_off_seed2.yaml | DRN-260926-80 |
+| configs/jarvis-deliver_rgbdel_P51_cmlc_on_seed2.yaml | DRN-260926-80 |
+| configs/jarvis-muses_rgbel_P38_m2f.yaml | DRN-260926-247 |
+| configs/jarvis-muses_rgbel_P39_1_rank.yaml | DRN-260926-107 |
+| configs/jarvis-muses_rgbel_P39_1_rank_normall.yaml | DRN-260926-249 |
+| configs/jarvis-muses_rgbel_P39_1_rank_seed20260824.yaml | DRN-260926-134 |
+| configs/jarvis-muses_rgbel_P39_1_rank_seed5.yaml | DRN-260926-249 |
+| configs/jarvis-muses_rgbel_P40_rca.yaml | DRN-260926-250 |
+| configs/jarvis-muses_rgbel_P42_maskimg_f03.yaml | DRN-260926-283 |
+| configs/jarvis-muses_rgbel_P43_pdual.yaml | DRN-260926-111 |
+| configs/jarvis-muses_rgbel_P47_2_unibal_all.yaml | DRN-260926-243 |
+| configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml | DRN-260926-243 |
+| configs/jarvis-muses_rgbel_P49probe_base_clearday.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_base_day.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_base_fognight.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_base_night.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_clearday_lr1e4.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_day_lr1e4.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_fognight_lr1e4.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_fognight_lr3e4.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbel_P49probe_night_lr1e4.yaml | DRN-260926-78 |
+| configs/jarvis-muses_rgbelr_P39_1_rank_4modal_seed3.yaml | DRN-260926-249 |
+| configs/jarvis-muses_rgbelr_P39_dpc.yaml | DRN-260926-248 |
+| configs/jarvis-muses_rgbelr_P39_dpc_radarfix.yaml | DRN-260926-248 |
+| configs/multiaqua/b200-multiaqua_rgbtl_P28_hardaug8_physaug.yaml | DRN-260926-256 |
+| configs/multiaqua/b200-multiaqua_rgbtl_SAM3RBMA_hardaug8_physaug.yaml | DRN-260926-104 |
+| configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug4noCRM.yaml | DRN-260926-299 |
+| configs/multiaqua/bengio-multiaqua_rgbtl_P9_hardaug6.yaml | DRN-260926-299 |
+| configs/multiaqua/lecun_multiaqua_rgbtl_P8.yaml | DRN-260926-257 |
+| configs/multiaqua/levine-multiaqua_rgbtl_LoRASam_hardaug4.yaml | DRN-260926-293 |
+| configs/multiaqua/levine-multiaqua_rgbtl_LoRASam_hardaug8_physaug.yaml | DRN-260926-293 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P22_hardaug8_physaug_night.yaml | DRN-260926-271 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P8.yaml | DRN-260926-257 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P8_hardaug2.yaml | DRN-260926-257 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P8_hardaug3.yaml | DRN-260926-257 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P8_hardaug4.yaml | DRN-260926-257 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug3.yaml | DRN-260926-299 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4.yaml | DRN-260926-299 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_fda.yaml | DRN-260926-297 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_night2.yaml | DRN-260926-299 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_physaug.yaml | DRN-260926-298 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug4_tta.yaml | DRN-260926-294 |
+| configs/multiaqua/levine-multiaqua_rgbtl_P9_hardaug7.yaml | DRN-260926-299 |
+| configs/muses/muses_rgbel_P49_1_air_g01.yaml | DRN-260926-139 |
+| configs/muses/muses_rgbelr_P49_1_air_4modal_g01.yaml | DRN-260926-138 |
+| configs/muses_P39_1_predict.yaml | DRN-260926-249 |
+| configs/yeon-deliver_rgbd_P46_c3only_lam005_2modal.yaml | DRN-260926-143 |
+| configs/yeon-deliver_rgbdel_P38_m2f_smoke.yaml | DRN-260926-247 |
+| configs/yeon-deliver_rgbdel_P39_1_rank_resume.yaml | DRN-260926-249 |
+| configs/yeon-deliver_rgbdel_P39_dpc_smoke.yaml | DRN-260926-248 |
+| configs/yeon-deliver_rgbdel_P40_rca_smoke.yaml | DRN-260926-250 |
+| configs/yeon-deliver_rgbdel_P43_pdual_smoke.yaml | DRN-260926-245 |
+| configs/yeon-deliver_rgbdel_P44_bmr.yaml | DRN-260926-246 |
+| configs/yeon-deliver_rgbdel_P44_bmr_smoke.yaml | DRN-260926-246 |
+| configs/yeon-deliver_rgbdel_P46_c3only_lam005_res1024.yaml | DRN-260926-244 |
+| configs/yeon-deliver_rgbdel_P46_c3only_p50map_seed821.yaml | DRN-260926-79 |
+| configs/yeon-deliver_rgbdel_P46_c3only_seed20260903_screen40_E1.yaml | DRN-260926-173 |
+| configs/yeon-deliver_rgbdel_P46_ctr_c3only_lam01_seed20260821_elora_shared.yaml | DRN-260926-187 |
+| configs/yeon-deliver_rgbdel_P46_ctr_c3only_seed3.yaml | DRN-260926-16 |
+| configs/yeon-deliver_rgbdel_mlesam_meanfusion.yaml | DRN-260926-12 |
+| configs/yeon-deliver_rgble_P46_c3only_lam005_CLE.yaml | DRN-260926-244 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank.yaml | DRN-260926-133 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank_B0Mc_seed20260827.yaml | DRN-260926-204 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank_E13Mc_seed20260827.yaml | DRN-260926-181 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank_E13Mc_seed20260828.yaml | DRN-260926-182 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank_E13Mc_seed3407.yaml | DRN-260926-180 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank_E1Mc_seed3407.yaml | DRN-260926-183 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank_seed20260827.yaml | DRN-260926-14 |
+| configs/yeon-mcubes_rgbadn_P39_1_rank_seed20260828.yaml | DRN-260926-14 |
+| configs/yeon-muses_rgbel_P39_1_rank_seed20260825.yaml | DRN-260926-135 |
+| configs/yeon-muses_rgbel_P42_maskimg_f07.yaml | DRN-260926-283 |
+| configs/yeon-muses_rgbelr_P39_1_rank_4modal.yaml | DRN-260926-108 |
+| configs/yeon-muses_rgbelr_P47_2_unibal_4modal_recovery.yaml | DRN-260926-243 |
+| configs/yeon-smoke_P37a_cefr.yaml | DRN-260926-281 |
+| configs/yeon-smoke_P37b_classtoken.yaml | DRN-260926-281 |
