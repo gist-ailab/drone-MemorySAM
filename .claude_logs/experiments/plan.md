@@ -157,10 +157,51 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 **남겨 둔 것**: E4 ep15 legal test 재채점(GPU0, PID 2506380)은 **끄지 않고 계속 돌린다**(04:14 시점 69%, 04:45 전후 완료 예정). 이것만 GPU 한 장을 쓴다.
 
 ## 📋 대기열 (우선순위 순) — 2026-08-24 전면 재설계 (논문-가치 필터)
+> 2026-09-26부터 대기열·완료 판정의 정본은 `lab-plan`(`.claude_logs/plan/plan.yaml`)이다. 아래 생성 블록은 10분마다 자동 갱신된다. 수정은 `lab-plan add/edit/status/verdict`로 한다.
+<!-- lab:plan-queue:begin -->
+| id | 우선 | 제목 | 바꾼 변수 | 상태 | runs | 예상 비용 |
+| --- | --- | --- | --- | --- | --- | --- |
+| DRN-260926-17 | P17 | N7 · VICReg-off 격리 토글 1런 (seed821 매칭) | MODEL.P39.VICREG.ENABLE off(그 외 동일) | evaluating | - | 미정 |
+| DRN-260926-23 | P23 | MUSES-PhysAug-off · MUSES 최선 레시피(P39.1-rank)에서 PhysAug만 off, 시드 매칭 3페어 | DATASET.PHYSAUG.ENABLE true→false (+ TRAIN.SEED · SAVE_DIR) | evaluating | - | 미정 |
+| DRN-260926-52 | P52 | P43-PanopticDual (MUSES, hpca100) | P43 panoptic dual head | judging | - | 미정 |
+| DRN-260926-53 | P53 | jarvis_muses_rgbl_P39_1_rank_2modal · MUSES RGB-L 2모달 (2026-08-06 완주) | MUSES 2모달(RGB-LiDAR) | judging | - | 미정 |
+
+최근 14일 종결
+| id | 결론 | 판정 요약 | 분석 경로 |
+| --- | --- | --- | --- |
+| DRN-260926-01 | adopt | 원문 판정(ledger 2026-09-20): 게이트(Δ25 ≥ +1.0, Δ24 ≥ +0.5) 두 카드 통과, 순서 불변 → §5-34 판정 확정(헤드라인 카드 = E1, E13 병기), 하네스 v2 전환 완료. G4(56.99·56.71 거리) 미달(ledger 2026-09-18). | .claude_logs/experiments/judgment-ledger.md:34 |
+| DRN-260926-02 | reject | 원문 판정(ledger 2026-09-20): MUSES 판정 정정 — 40ep 스크린 3페어에서 통과했던 E13M(§5-31)의 이득이 200ep 풀 런에서 소실, MUSES 에서 4탭·prototype 카드는 기준선 대비 이득 없음. 공정선 헤드라인 후보 = E13M 3407 81.95(제출은 user 승인 필요, 제출본 교체 근거 없음). | .claude_logs/experiments/judgment-ledger.md:36 |
+| DRN-260926-03 | inconclusive | 원문 판정(ledger 2026-09-21 재판정): 축별로 다르다 — clean·결측에서는 구조 무관, 존재 열화(RMM r=0.5 depth)에서는 완전공유가 손해를 절반 이하로 줄이고 시드 분산도 1/5. clean 대가는 legal v2 val 약 −1. E-LoRA 종결 철회, 후속 = E1-shared 40ep 스크린 3시드. | .claude_logs/experiments/judgment-ledger.md:49 |
+| DRN-260926-04 | reject | 원문 판정(ledger 2026-09-20): G1(Δtest ≥ +1.0) 미달(+0.88) → 보류. 확정 200ep 2런은 user 직접 지시("도달 못했으면 끊고 다른거 돌리자")로 취소 집행. plan.md 신규 대기열 N-P53 = 완료·종결, 재기동 대상 아님. | .claude_logs/experiments/judgment-ledger.md:35 |
+| DRN-260926-10 | reject | 원문(plan.md N-MC, 2026-09-16): 종결 — 4탭 단독 3페어 평균 +0.10, 4탭+prototype 3시드 평균 −0.63 으로 둘 다 게이트(+0.5) 미달, 페어 폭 0.64 가 평균 효과의 여섯 배. 사전 등록 종결 조건대로 MCubeS 시드를 더 늘리지 않는다(카드 §5-30 ② · §5-21 말미). config 12벌은 보관만. | .claude_logs/experiments/plan.md (N-MC 행) |
+| DRN-260926-11 | inconclusive | 원문(plan.md N1, 2026-08-27 완결): 공식 val 3점 {82.13, 81.79(s824), 81.47(s825)} spread 0.66 = MUSES val 시드 안정 확정. 09-18 정정: 공식 test 2점 {79.788(s2), 78.786(s825)} 격차 1.00 = val spread가 test에서 증폭 → 단일제출 방어 근거로 못 쓴다. [분류: 측정 완료 후 정정] | .claude_logs/experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md |
+| DRN-260926-12 | reject | 원문(plan.md N2, 2026-08-31, H21): legal test 55.45 — gated-MLP(54.2~55.4)와 동급 이상 = 우리 트렁크 우위 주장 철회, 믹서 3점 완성(mean≈gated-MLP>xattn). | .claude_logs/experiments/analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md |
+| DRN-260926-14 | adopt | 원문(plan.md N4, 2026-08-31 완결 + 3-seed): {57.93, 57.67, 58.62} = mean 58.07±0.49, published 최고(54.65) +3.42 / min +3.02 = MCubeS 1등 통계 확보. | .claude_logs/experiments/analysis/2026-08-25-n4-mcubes-first-entry-verdict.md |
+| DRN-260926-15 | adopt | 원문(plan.md N4b, 2026-08-27): 사전등록 예측 2/2 적중 — rubber +9.76(18.80→28.56) + overall Δ−0.10(범위 내) → dose-response 3점 성립(H20 ✓). | .claude_logs/experiments/analysis/2026-08-27-n4b-dose-response-confirmed.md |
+| DRN-260926-16 | adopt | 원문(plan.md N6, 2026-08-31 완결): 5/5 mean 53.82→54.39±0.76(816 +2.21·821 +0.63, 선택 아티팩트 2/5런 실재). 최고 단일런 = seed816 55.29. 이후 모든 legal 수치는 하네스 가드 --check 필수. registry·current.md 반영. | .claude_logs/experiments/plan.md (N6 행) |
+| DRN-260926-18 | adopt | 원문(plan.md N8, 2026-09-01 완료): ep30(trainer top1)=legal-val-best 동일, 재선택 변화 없음 → P50 legal test 54.95 최종 확정 = P52 게이트 G1 기준. | .claude_logs/experiments/plan.md (N8 행) |
+| DRN-260926-25 | reject | 원문(plan.md 직전 완결 09-07~08, DAILY-CARDS 'E0 특징 프로브(=S0)'): E0 특징 프로브 기각 — raw 27.8 < adapted 35.6 < fused 45.1, depth 중간층에 Water 47.6·RailTrack 23.9 잔존 → E1·E3 유지, E5·E6 하향. | .claude_logs/experiments/plan.md (직전 완결 09-07~08 절) |
+| DRN-260926-26 | - | - | - |
+| DRN-260926-28 | - | - | - |
+| DRN-260926-32 | reject | 원문(registry hpca100_deliver_rgbdel_P46_c3only_p50ext_seed821): 기각(REJECTED, user 결정 2026-09-07) — Phase2 사전학습 완주(375000 step), ep30 ckpt legal test 53.10 < 게이트 기준 55.2. | .claude_logs/experiments/registry.md (hpca100_deliver_rgbdel_P46_c3only_p50ext_seed821 행) |
+| DRN-260926-39 | - | - | - |
+| DRN-260926-40 | - | - | - |
+| DRN-260926-41 | - | - | - |
+| DRN-260926-42 | - | - | - |
+| DRN-260926-43 | - | - | - |
+| DRN-260926-44 | - | - | - |
+| DRN-260926-45 | inconclusive | 원문(plan.md ✅ 완료·판정): radar(또는 4모달 구조)가 범인. lidar 재투영·event dilation·eff batch 전부 무죄. Arm A ep24 best 73.85@ep18 — 대조군(ep10 74.24)에 앞서지 않음 → DGF 투영 = 중립. [분류: 진단 완료] | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
+| DRN-260926-46 | reject | 원문(plan.md ✅ 완료·판정): 경쟁자 3종 전부 미사용 → 헤드라인 사용 불가. CMNeXt 논문 명시(single-scale test strategy). 우리 MSF는 dead config라 과거 수치 무오염. | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
+| DRN-260926-47 | inconclusive | 원문(plan.md ✅ 완료·판정): DGFusion 파라미터 재현 완료(공개 PIXEL_MEAN 오라클로 −0.1% 적중). 실제 차이는 lidar뿐. 성능 이득 0, 공정성만 확보. [분류: 정합 작업 완료] | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
+| DRN-260926-48 | reject | 원문(plan.md ✅ 완료·판정): 제안 모듈 전부 ≈0(ATTN_BIAS=RBMA 간판 포함). gate+calib만 test +0.26. 성능 출처 = DINOv3 백본 + per-modal LoRA. | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
+| DRN-260926-49 | adopt | 원문(plan.md ✅ 완료·판정): 원인 = BS1의 gradient 노이즈(n_pos 1~3), LR 아님. 처방 = 배치↑ + LR 유지. warmup 5ep 완주로 검증. | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
+| DRN-260926-50 | inconclusive | 원문(plan.md ✅ 완료·판정): 사망 확정 — bengio 노드 CUDA 전체 장애로 ep1~2에서 종료. jarvis 재기동분(P37a→P37b 체인)이 계보 승계. [분류: 런 소실] | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
+| DRN-260926-51 | inconclusive | 원문(plan.md ✅ 완료·판정): 제출 완료·공식 test 78.786 수신(2026-09-18) — 시드2 79.788 대비 −1.00, 2점 mean 79.29(std 0.71) < DGFusion 79.5 → 융합 계보 1위 서술은 시드2 단일 런 한정. 시드 20260824 는 ckpt 부재로 재학습 없이는 제출 불가. [분류: 측정 완료] | .claude_logs/experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md |
+<!-- lab:plan-queue:end -->
 
 > **재설계 기준**: ①논문(accept) 기여 — A(P51 확장)·B(진단-프레임워크) 어느 분기에서도 쓰이는가 ②24GB(yeon 3090/jarvis 4090)에서 도는가 ③원장 반증 경로가 아닌가. 옛 대기열 대부분은 계보 사망·중복으로 종결 처리(하단 🗑).
 
-### 🔵 진행 중 (2026-09-17 재정리 — 옛 3트랙 표는 전부 종결돼 내림)
+### 🔵 진행 중 (2026-09-17 재정리 — 옛 3트랙 표는 전부 종결돼 내림) — (2026-09-26 lab-plan으로 이관, 이하 표는 동결 사본)
 
 | 트랙 | 다음 이벤트 |
 |---|---|
@@ -171,7 +212,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 > 🗑 내린 것: ~~P51-CMLC 페어1~~(08-26 H19 반증으로 종결) · ~~P50-MAP finetune~~(H22 +0.74 로 판정 완료) · ~~시드 n=5~~(N6 5/5 로 완결, 54.39±0.76).
 
-### 🎯 신규 대기열 (논문-가치 순, 여유 GPU 투입 대상)
+### 🎯 신규 대기열 (논문-가치 순, 여유 GPU 투입 대상) — (2026-09-26 lab-plan으로 이관, 이하 표는 동결 사본)
 | # | 실험 | 자원 적합 | 논문 가치 (A/B 분기별) | 상태 |
 |---|---|---|---|---|
 | **N-E18** | **E18 = E1 레시피 + Lovász-Softmax 보조손실**(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) 40ep 스크린 시드 821 — 얇은 객체 손실 직격(문헌 pole +2.2·TrafficLight +3.2). 제안 = decisions/2026-09-17-strategy-exploration-moe-lora-fusion-training.md §2 | 빈 슬롯 1~2장 | 게이트 G1 24클래스 Δ ≥ +0.5 · G2 얇은 객체 4클래스 Δ ≥ +2.0 · G3 · G4. 레포 미시도(losses.py에 Lovász 없음) | 🟡 후보 등재(2026-09-17), labcode 구현 대기 |
@@ -206,13 +247,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **E-LoRA** | **LoRA 구조 ablation** — A. per-modal r16(현행=기존 seed821 재사용, 추가런 0) vs **B. 완전공유 r16** vs **C. 공유 r8 + per-modal 잔차 r8** — 시드 20260821 매칭, DELIVER 프로브, 파라미터 수 보고 | 신규 2런(B·C) × yeon 2장 × ~15h | 🟢 **등재(2026-09-01 user 승인)** — 근거: H22(P50 +0.74)가 "독립 어댑터 미정렬" 증거 → C는 정렬을 아키텍처에 내장하는 대안. ⚠️ **반증 가족 아님 확인**: 라우터/게이트/입력-의존 가중 없음(모달 정체성 정적 배정) — H1/H16(선택 계열)과 무관. 입력-조건부(D형)는 금지 유지 | **게이트(사전등록)**: C ≥ A(54.21) − 0.3 → 채택 검토(+P50 상호작용 팔 후속: C+P50 vs A+P50으로 정렬 기제 상보/중복 판정) / C·B 모두 A 미달 → 현행 A가 실증 정당화(논문 ablation 행). 슬롯 = N7 완주 후 yeon 해방분, P52 본런보다 후순위 |
 | **N5** | TTA-on 실측 (구 #4, 참고용 ablation 행) | yeon/jarvis 1장 ×7h | 낮음 — 헤드라인 불가 확정, ablation 완결성용 | ⏸ 위 소진 후 필러 |
 
-### 🅰️ A100 대기열 (⚠️ 제목의 "P51 완주 후" 조건은 2026-08-26 P51 종결로 소멸 — 현재 A100 4장은 MUSES 풀 런 4종이 09-17~19 까지 점유)
+### 🅰️ A100 대기열 (⚠️ 제목의 "P51 완주 후" 조건은 2026-08-26 P51 종결로 소멸 — 현재 A100 4장은 MUSES 풀 런 4종이 09-17~19 까지 점유) — (2026-09-26 lab-plan으로 이관, 이하 표는 동결 사본)
 | 순위 | 실험 | 근거 |
 |---|---|---|
 | ① | **P47-2 UniBal** (MUSES 4모달 역전 유일 레버, 구현·스모크 완료) | A100 필요(보조 head 메모리). P51 판정 후 슬롯 |
 | ② | P51 후속 (F 추가 재프로브 or MUSES 비회귀) — P51 Δ 판정에 따라 | 게이트 분기 결과 대기 |
 
-### 🗑 종결 처리 (2026-08-24 재설계에서 제거 — 재등재 금지 사유 명시)
+### 🗑 종결 처리 (2026-08-24 재설계에서 제거 — 재등재 금지 사유 명시) — (2026-09-26 lab-plan으로 이관, 이하 표는 동결 사본)
 - ~~#1 P40 RCA-Fusion~~: 계보 사망(P39.1 게이트 자체가 P46/P51로 승계) + C-2 감쇠는 적응계열(H1~H4 폐쇄) 인접 — **원장 저촉**.
 - ~~#2 P39 radar-fix 재실험~~: 이미 충족 — fixed-decoder drop-radar ablation(2026-07-30)이 radar 무익(+0.13)을 재확정. 별도 학습 불요.
 - ~~#5 P47-MUB D-1~~: **이미 실행·폐기**(P47-D1 공식 test 78.790, val 과적합, 08-17). D-2는 위 A100 ①로 승계.
@@ -220,7 +261,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 - ~~A100 ③ P49 @1024 대조~~: P49 계열 종결로 무의미.
 - ~~ProbeA2-7B 추가 측정~~: H12 폐쇄(7B +0.18)로 종결.
 
-## ✅ 완료·판정 (재실행 금지)
+## ✅ 완료·판정 (재실행 금지) — (2026-09-26 lab-plan으로 이관, 이하 표는 동결 사본)
 
 > 🔎 **2026-08-10 발견**: `jarvis_muses_rgbl_P39_1_rank_2modal`(MUSES RGB-L 2모달)이 **이미 2026-08-06 완주**돼 있었음(val 82.00@136, 서버 로컬 미기록 실행) — 재실행 금지, test 제출 여부만 판단 대기. registry 행 참조.
 
