@@ -157,6 +157,13 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 - 가능한 first(좁힌 형태): 멀티모달 세그에서 합성 열화 감독 모달·토큰별 품질 토큰 → attention key 마스크 + clean 항등 제약 + EMM/RMM/NM 전수 보고 + 동결 파운데이션 백본. 최근접 = RobuMTL·GIML·RAF·EQUISeg(2509.24505)·CAFuser(2410.10791).
 - 강건 벤치 SOTA(DELIVER, MiT-B2 프로토콜): clean 최고 StitchFusion 68.20, EMM 평균 최고 EQUISeg 48.22, RMM r=.5 최고 ≈50.96, NM 고노이즈 전 모델 ≤ 9.25.
 
+## 2.11 P55 후보(외부 레이블 없는 자기감독 신뢰도 게이트) — 2026-09-26 Fable 조사 2축 요약
+- 개념("네트워크가 스스로 품질 추정 → 게이팅")은 선행 다수: CMX FRM, CMNeXt SQ-Hub, TokenFusion, GeminiFusion, RSGMamba(2604.12319), MAGIC. 게이트형이 강건 벤치에서 오히려 약하고(2503.18445), 게이트 없는 균형 학습(EQUISeg 2509.24505, RMMSS 2505.12861, AnySeg 2411.17141)이 강하다. CAFuser 는 학습된 정적 가중 = 평균이라고 보고.
+- 빈칸: 열화 보정된 **토큰 단위** 레이블 없는 신뢰도(분할), 동결 파운데이션 백본 위 **모달 간 일치도 공간 지도**, DGFusion/CAFuser 를 넘는 레이블 없는 게이트. → 주장 단위 = 보정 기제 + 토큰 단위 + 치환 검정으로 입증된 비정적 게이트.
+- 게이트 실패는 인코더 공통(MLE-SAM 2412.04220 SAM2 에서도 event 0.74·LiDAR 2.07). DINOv3 는 색·블러 불변 특징이라 깊은 토큰 품질 헤드는 광학 열화를 못 본다 → 얕은 층 스펙트럼·일치도 기술자 필요(2606.01173).
+- 원문 재확인 필요(2026 신규 번호): 2604.12319, 2606.01173, 2607.04587, 2607.06943, 2608.24947, 2609.29235. OGM-GE 정정 ID = 2203.15332.
+- 상세 = decisions/2026-09-26-p55-self-supervised-reliability-gate-proposal.md
+
 ## 3. 노벨티 판정 (deep-research verdict, 리뷰 방어용)
 
 - **헤드라인 = 기구(B)**: "reliability를 **SAM memory-attention pre-softmax logit에 additive bias**로". feature-multiply / output-scale / loss-level 일색인 선행연구에 **logit-additive bias 전례 0건**. + MemorySAM 핵심 메커니즘 개조 서사.
