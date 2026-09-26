@@ -80,12 +80,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **Q2 s902**(P54 증류 대조군 시드 재현, 동결교사+두패스, F·Q off) | hpca100 2 | DELIVER 4모달 | ep2/40(09-24 15:50) — 5차 시도로 정상 기동 확정(표준 env 4종+venv 절대경로 필수, judgment-ledger 참조) | 미확인 | Q2(=T′) 시드 재현 3쌍 중 1 — 게이트 = 짝 시드 대비 Δ24 |
 | **Q2 s903 v2**(〃 시드903) | jarvis 5 | DELIVER 4모달 | epoch1 진행 중(다른 사용자와 GPU 동거, OOM 2회 후 free≥20GB 확보 방식으로 재기동 안정) | 미확인 | 〃 |
 | **Q2noDeg**(원천분리: DEGRADE_P=0, KD 유지 — 증류만의 순기여) | jarvis 3 | DELIVER 4모달 | 진행 중 | 미확인 | Q2 이득 원천 분리 |
-| **Q2noKD**(원천분리: KD_W=0, 열화만 유지) | jarvis (Q2noDeg 완료 후 자동 착수) | DELIVER 4모달 | 대기(체인 걸림) — 09-24 11:26·12:34 **2회 실패**(둘 다 exitcode=1, OOM). Q2noDeg 완료 시 같은 체인(`q2_noKDnoDeg_queue`)에서 3차 자동 재시도 예정. 3차도 실패하면 그 로그의 nvidia-smi·피크 메모리로 OOM 원인 보고할 것(Q2noKD는 교사 없어 Q2보다 메모리 적어야 정상) | 미확인 | 〃 |
+| **Q2noKD**(원천분리: KD_W=0, 열화만 유지) | yeon 0(tmux `jemo`/`q2nokd_s821_gpu0`) | DELIVER 4모달 | **3차 시도 09-26 12:56 기동**(1·2차는 jarvis에서 09-24 11:26·12:34 exitcode=1 OOM). 이번엔 jarvis 체인이 아니라 빈 GPU(yeon 0)에 직접 배치. 기동 검증 4항목 통과 확인: params trainable=58.8M/16.25%(로그) · KD_W=0.0 config 덤프 확인 · 기동 후 무오류 · ep1 iter 6→8 반복 전진 · GPU0 16251MiB/100%util(활성화 수준) | 미확인 | 〃 |
 | 🔴 **tmux 세션명 오해 주의**: `q2_s903_noKD_retry2`(jarvis GPU5)는 이름과 달리 **Q2 s903 재현**(v2 재시도, 노KD 아님)을 돈다 — 판정 세션 지시(09-25)로 명시. **다음 기동부터 세션명을 실제 내용에 맞출 것.** noKD/noDeg의 902·903 전용 config는 만들지 않는다(s821 두 결과 먼저 확인 후 결정, 판정 세션 지시 09-25). | — | — | — | — | — |
 | **E1확정 시드2·3 부분 프로토콜**(RMM 4부분집합×3비율+NM, bengio 소실분) | jarvis 1,2,6 | DELIVER 4모달 | 09-24 15:46 기동(8개 부분집합 작업, hpca100에서 2/5만 하다 중단된 s902 포함 전량 재기동) | 미확인 | E1 확정 강건성 전체 재구성(bengio 고장으로 유실됐던 것) |
 | **e1screen902 재시도**(RMM depth, 09-24 08:44 OOM) | jarvis (여유 GPU 대기) | DELIVER 4모달 | 대기(GPU1/2/6 중 여유 시 자동 착수) | 미확인 | E1-shared 게이트2 s902 짝 완성 |
 | **Q2→Q3 강건성 전 프로토콜**(EMM15·RMM4×3·NM3, Q2 먼저) | hpca100 1 | DELIVER 4모달 | Q2 EMM 진행 중(09-24 01:50 UTC 시작) | 미확인(EMM 1건 과거 8~9h대) | QAF(Q3)가 강건축에서 Q2를 못 넘으면 Q3 종료(판정세션 지시) |
 | **RMM+NM 전 프로토콜**(E1 확정 s821) | hpca100 3 | DELIVER 4모달 | 장기 진행 중(완료 로그 없음) | 20:37 확인 크론(`51f7c601`) | E1 확정 강건성 |
+| **E1-스크린821 EMM+RMM+NM**(40ep 스크린 규약 시드821 짝, Q2s821과 강건성 대조용) | yeon 2(tmux `jemo`/`e1screen821_v2_gpu2`) | DELIVER 4모달 | 09-26 13:33 기동, EMM 15케이스 진행 중. 기동검증 통과: ckpt loaded missing=0/unexpected=0 · guard OK · GPU2 5606MiB/100%util | 미확인(EMM 1건 과거 8~9h대 기준 추정) | Q2s821과 짝 비교(스크린40 규약 기준 강건성) |
 | **muphys_824 = MUSES PhysAug-off 기준선 시드20260824** | yeon 4,5 | MUSES 3모달 | ep248/300(best 82.71@202) | ~09-25 | 공정선 3페어(재학습 세션 소관) |
 | **muphys_825 = 〃 시드20260825**(학습 완주 09-25, 826과 동일 절차로 공식 val 재채점·NAS 보존·제출 zip 준비 완료) | yeon 6 | MUSES 3모달 | 완주 300ep, val-best epoch258_82.4 · 공식 val **82.19** | 완료(09-25) | 공정선 3페어 완결(824 완주 대기) |
 | **muphys_826 legal MUSES 공식 재채점**(val-best ep172, 82.43) | jarvis 1 | MUSES 3모달 | 기동 중(dgfusion 세션, pid 700196) | 미확인 | 공정선 3페어 완결(학습은 09-24 완주) |
