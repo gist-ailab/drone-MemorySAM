@@ -225,7 +225,7 @@ TRAIN:
     DEGRADE_P         : 0.5          # 샘플·모달당 독립 열화 확률
     MISSING_FRAC      : 0.2          # 열화 중 완전 결측 비율
     SEVERITY_SCHEDULE : [[0, 0.3], [10, 0.6], [20, 1.0]]   # [epoch, 상한] 단조
-    TEACHER_CKPT      : ''           # 동결 E1(QAF off) val-best top1 경로를 여기에. '' 이면 KD 0.
+    TEACHER_CKPT      : '/SSDb/jemo_maeng/src/drone-MemorySAM/outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260821_E1_confirm200/DELIVER_ReliaDINO-ViTL16_idel/epoch140_68.9_top1_checkpoint.pth'           # 동결 E1(QAF off) val-best top1 경로를 여기에. '' 이면 KD 0.
     #   플레이스홀더 예: '/drone_nas/.../ckpts/E1_deliver_seed20260821_screen40/val_best.pth'
     KD_W              : 0.5
     KD_T              : 2.0
