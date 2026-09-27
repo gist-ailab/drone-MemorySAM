@@ -18,7 +18,17 @@
 후보 집합(candidate set):
   - emm  : clean + 모든 EMM 케이스(비어있지 않은 모달 부분집합, 나머지 0-fill).
   - drop1: clean + 정확히 한 모달만 결측인 EMM 케이스.
+  - null : clean + K 개의 null 케이스(전 모달 입력에 가법 Gaussian 만 더한 것). 모달 정보가
+           전혀 없는 후보들이므로, 여기서 나오는 headroom 은 순수 선택 편향(GT 로 최댓값을
+           고르는 데서 오는 부풀림)이다. 대조군.
+  - null_n{n}: clean + 앞 n 개 null 케이스. emm/drop1 과 후보 '개수'를 맞춘 대조군
+           (net_headroom_vs_null 계산용).
 Oracle: win{W}(비겹침 W×W 윈도우별 최선 후보) + img(전체 이미지 = 단일 윈도우).
+
+--null_control K (>0) 를 주면 K 개 null 케이스를 만들어 같은 forward pass 에서 함께 평가한다.
+각 null 케이스는 전 모달에 N(0, --null_sigma) 를 더하며(정규화 공간), 케이스별 고정 시드
+(seed=args.seed*1000+i)로 재현된다. summary 에 emm/drop1 의 headroom 에서 개수 맞춘 null
+대조군 headroom 을 뺀 net_headroom_vs_null 을 함께 기록한다(순수 선택 편향 차감치).
 """
 import argparse
 import json
@@ -35,6 +45,7 @@ if str(_REPO) not in sys.path:          # mm_eval_v2 와 같게: `python tools/.
 ORACLE_WINDOWS = [64, 256]
 ORACLE_HISTS = {}          # (candset, oracle) -> 혼동행렬(n,n)
 ORACLE_CHOICES = {}        # (candset, oracle) -> 후보별 선택 윈도우 수
+ORACLE_DISAGREE = {}       # candset -> [clean 과 다른 픽셀 수 합, 비교 픽셀 수 합] (후보 다양성; null 대조군 sigma 가 적절한지 판단용)
 ORACLE_CAND_NAMES = {}     # candset -> [present_names, ...] (후보 순서)
 ORACLE_CLEAN_HIST = None   # clean 케이스 혼동행렬(headroom 기준선)
 
@@ -72,6 +83,36 @@ def oracle_assemble(preds, gt, win, ignore):
 
 
 # ===========================================================================
+# null 대조군 케이스 (선택 편향 측정용) — build_cases 결과에 덧붙인다
+# ===========================================================================
+def _make_null_cases(K, sigma, base_seed):
+    """전 모달에 가법 Gaussian 만 더하는 null 케이스 K 개를 만든다.
+
+    각 케이스는 결측 없이(FULL 입력) 전 모달에 N(0, sigma) 노이즈를 더하며, 케이스별
+    고정 시드(base_seed*1000 + i)로 재현된다. mme.gaussian_noise 를 재사용한다
+    (반환은 (noised, mask) 튜플이므로 [0] 만 취한다). 생성기는 입력 텐서의 device 에
+    올려 CPU/GPU 무관하게 동작하며, 배치를 가로질러 스트림을 이어 써 run-to-run 재현된다.
+    """
+    import torch
+    from tools import missing_modality_eval as mme
+
+    cases = []
+    for i in range(K):
+        seed_i = base_seed * 1000 + i
+
+        def apply(base, _seed=seed_i, _state={}, _s=sigma):
+            g = _state.get("gen")
+            if g is None:
+                g = torch.Generator(device=base[0].device)
+                g.manual_seed(_seed)
+                _state["gen"] = g
+            return [mme.gaussian_noise(x, _s, g)[0] for x in base]
+
+        cases.append(mme.Case(f"null{i}", "null", f"null{i}", 0, apply))
+    return cases
+
+
+# ===========================================================================
 # mme.evaluate 대체 — 시그니처·반환값 동일 + oracle 부산물 누적
 # ===========================================================================
 def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
@@ -85,19 +126,35 @@ def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
 
     clean_case = next(c for c in cases if c.group == "clean")
     emm_cases = [c for c in cases if c.group == "emm"]
+    null_cases = [c for c in cases if c.group == "null"]
     candsets = {}
     if emm_cases:
         candsets["emm"] = [clean_case] + emm_cases
         drop1 = [c for c in emm_cases if c.n_missing == 1]
         if drop1:
             candsets["drop1"] = [clean_case] + drop1
+    if null_cases:
+        # 전체 null 후보군(clean + K null) + emm/drop1 과 후보 개수를 맞춘 대조군.
+        candsets["null"] = [clean_case] + null_cases
+        matched = []
+        if emm_cases:
+            matched.append(len(emm_cases))            # = len(candsets["emm"]) - 1
+        if emm_cases and drop1:
+            matched.append(len(drop1))                # = len(candsets["drop1"]) - 1
+        for n in matched:
+            k = min(len(null_cases), n)
+            if k < n:
+                print(f"[oracle] ⚠️ null_control K={len(null_cases)} < 개수맞춤에 필요한 "
+                      f"{n} — null_n{n} 은 {k} 개만으로 계산(개수 불일치)", flush=True)
+            candsets[f"null_n{n}"] = [clean_case] + null_cases[:k]
     oracles = [(f"win{w}", w) for w in ORACLE_WINDOWS] + [("img", None)]
     for cs_name, cs_cases in candsets.items():
         ORACLE_CAND_NAMES[cs_name] = [c.present_names for c in cs_cases]
         for orc_name, _ in oracles:
             ORACLE_HISTS[(cs_name, orc_name)] = np.zeros((n_classes, n_classes), np.int64)
             ORACLE_CHOICES[(cs_name, orc_name)] = np.zeros(len(cs_cases), np.int64)
-    candidate_ids = {clean_case.id} | {c.id for c in emm_cases}
+    candidate_ids = ({clean_case.id} | {c.id for c in emm_cases}
+                     | {c.id for c in null_cases})
 
     n_seen = 0
     with torch.no_grad():
@@ -129,6 +186,10 @@ def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
                 gt_np = gts[b]
                 for cs_name, cs_cases in candsets.items():
                     preds_list = [per[c.id].astype(np.int64) for c in cs_cases]
+                    d = ORACLE_DISAGREE.setdefault(cs_name, [0, 0])
+                    for pp in preds_list[1:]:
+                        d[0] += int(np.count_nonzero(pp != preds_list[0]))
+                        d[1] += int(pp.size)
                     for orc_name, win in oracles:
                         opred, counts = oracle_assemble(preds_list, gt_np, win, ignore)
                         key = (cs_name, orc_name)
@@ -167,18 +228,45 @@ def _write_oracle_outputs(out_root, split, windows):
             entry["oracles"][orc_name] = {
                 "mIoU": miou, "clean_mIoU": clean_miou,
                 "headroom": round(miou - clean_miou, 4), "choice_fraction": frac}
+        dd = ORACLE_DISAGREE.get(cs_name)
+        entry["disagree_vs_clean"] = round(dd[0] / dd[1], 5) if dd and dd[1] else None
         result["candidate_sets"][cs_name] = entry
+
+    # net_headroom_vs_null = headroom(real) − headroom(개수맞춤 null 대조군).
+    # emm/drop1 은 각각 후보 개수가 같은 null_n{cands-1} 을 대조군으로 쓴다.
+    for cs_name in ("emm", "drop1"):
+        src = result["candidate_sets"].get(cs_name)
+        if src is None:
+            continue
+        matched_name = f"null_n{len(src['candidates']) - 1}"
+        ref = result["candidate_sets"].get(matched_name)
+        if ref is None:
+            continue
+        for orc_name, o in src["oracles"].items():
+            if orc_name in ref["oracles"]:
+                o["net_headroom_vs_null"] = round(
+                    o["headroom"] - ref["oracles"][orc_name]["headroom"], 4)
+        src["null_control"] = matched_name
+
     (base / "oracle_summary.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 
     L = ["# Oracle modality-selector headroom (P55 step-1)", "",
          f"- split: `{split}` · clean mIoU: **{clean_miou}**",
-         "- headroom = oracle mIoU − clean mIoU. 작을수록 학습형 gate 여지가 적다.", ""]
+         "- headroom = oracle mIoU − clean mIoU. 작을수록 학습형 gate 여지가 적다.",
+         "- net_headroom_vs_null = headroom − 개수맞춤 null 대조군 headroom "
+         "(순수 선택 편향 차감치).", ""]
     for cs_name, entry in result["candidate_sets"].items():
-        L += [f"## candidate set `{cs_name}` ({len(entry['candidates'])} 후보)", "",
-              "| oracle | mIoU | clean | headroom |", "|--------|------|-------|----------|"]
+        head = f"## candidate set `{cs_name}` ({len(entry['candidates'])} 후보)"
+        if entry.get("null_control"):
+            head += f" · null 대조군 = `{entry['null_control']}`"
+        L += [head, "",
+              "| oracle | mIoU | clean | headroom | net_vs_null |",
+              "|--------|------|-------|----------|-------------|"]
         for orc_name, o in entry["oracles"].items():
-            L.append(f"| {orc_name} | {o['mIoU']} | {o['clean_mIoU']} | {o['headroom']} |")
+            net = o.get("net_headroom_vs_null", "—")
+            L.append(f"| {orc_name} | {o['mIoU']} | {o['clean_mIoU']} | "
+                     f"{o['headroom']} | {net} |")
         L.append("")
     (base / "oracle_summary.md").write_text("\n".join(L), encoding="utf-8")
     return base, result
@@ -186,15 +274,20 @@ def _write_oracle_outputs(out_root, split, windows):
 
 def main():
     global ORACLE_WINDOWS
-    # --windows 만 먼저 떼어내고 나머지 인자는 mme.main 에 그대로 넘긴다.
+    # --windows / null 대조군 인자만 먼저 떼어내고 나머지는 mme.main 에 그대로 넘긴다.
     strip = argparse.ArgumentParser(add_help=False)
     strip.add_argument("--windows", type=int, nargs="+", default=[64, 256])
+    strip.add_argument("--null_control", type=int, default=0,
+                       help="null 대조군 케이스 수 K(>0 이면 선택 편향 대조군 활성).")
+    strip.add_argument("--null_sigma", type=float, default=0.05,
+                       help="null 케이스 가법 Gaussian std(정규화 공간).")
     ns_w, remaining = strip.parse_known_args()
     ORACLE_WINDOWS = ns_w.windows
     sys.argv = [sys.argv[0]] + remaining
     info = argparse.ArgumentParser(add_help=False)   # 읽기만(argv 불변)
     info.add_argument("--out")
     info.add_argument("--split", default="val")
+    info.add_argument("--seed", type=int, default=0)   # mme 시드(null 케이스 시드 기준)
     ns_i, _ = info.parse_known_args()
 
     import val
@@ -203,6 +296,21 @@ def main():
     val._unpad_resize_to_orig = legal_rescore_v2._unpad_resize_to_orig_v2
     print(f"[oracle] legal-v2 하네스({legal_rescore_v2.RESAMPLE_MODE}) · "
           f"windows={ORACLE_WINDOWS}", flush=True)
+
+    K = ns_w.null_control
+    if K > 0:
+        # mm_eval_v2 와 같은 방식으로 build_cases 를 감싸 null 케이스를 뒤에 덧붙인다.
+        orig_build_cases = mme.build_cases
+
+        def build_cases_with_null(*a, **k):
+            cases = orig_build_cases(*a, **k)
+            cases.extend(_make_null_cases(K, ns_w.null_sigma, ns_i.seed))
+            return cases
+
+        mme.build_cases = build_cases_with_null
+        print(f"[oracle] null-control: K={K} · sigma={ns_w.null_sigma} · "
+              f"seed={ns_i.seed}*1000+i", flush=True)
+
     mme.evaluate = evaluate_with_oracle
     mme.main()
 
