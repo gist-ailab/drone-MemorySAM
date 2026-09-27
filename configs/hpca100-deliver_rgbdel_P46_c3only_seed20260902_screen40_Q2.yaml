@@ -1,6 +1,6 @@
 # [P54-Q2 파생 2026-09-24] 원본 = jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2.yaml.
-#   바뀐 키: SAVE_DIR, TRAIN.QAF.DEGRADE_P 0.5→0.0. 목적 = Q2 이득의 원천 분리(증류만, 열화 없음).
-#   주의: 두 번째 패스가 열화 없는 clean 입력이 되어 clean CE 가 사실상 2회 들어간다(가중 차이는 해석 시 명시).
+#   바뀐 키: SAVE_DIR, TRAIN.SEED → 20260902. 목적 = Q2 s821 의 Δ24 +1.30 이 시드 재현되는지(3시드 판정).
+#   TEACHER_CKPT 는 s821 과 같은 동결 E1 확정 시드1 을 서버 경로로 채운다(교사 고정, 학생 시드만 변경).
 # [P54-Q2] 대조군 T′ — 동결 E1 교사 증류 + 두 패스만(품질 헤드 없음). QAF 의 순기여 분리용.
 #   원본 = configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_R1.yaml.
 #   R1 대비 바뀐 키(3축, yaml 로드로 대조): (1) SAVE_DIR (2) MODEL.BOUNDARY_REFINE.ENABLE true→false
@@ -19,7 +19,7 @@
 # ── 공정성 ──────────────────────────────────────────────────────────────────
 #   PHYSAUG off · DGFUSION_AUG on · val-best ckpt · TTA 금지 (E1 계승).
 DEVICE          : cuda
-SAVE_DIR        : './outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noDeg'  # [대조군 T′ 40ep 스크린]
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260902_screen40_Q2'  # [대조군 T′ 40ep 스크린]
 
 # Trainer = train_reliadino.py.
 #   torchrun --standalone --nproc_per_node=<N> train_reliadino.py --cfg <this>
@@ -180,7 +180,7 @@ MODEL:
 
 DATASET:
   NAME          : DELIVER
-  ROOT          : '/SSDb/jemo_maeng/dset/DELIVER'   # jarvis DELIVER path
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'   # jarvis DELIVER path
   IGNORE_LABEL  : 255
   MODALS        : ['img', 'depth', 'event', 'lidar']
   RGB_SUBROOT   : null
@@ -206,7 +206,7 @@ DATASET:
 
 TRAIN:
   LORA_NORM_CAP : 20.0
-  SEED          : 20260821
+  SEED          : 20260902
   IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
   BATCH_SIZE    : 1                 # jarvis 4090 24GB. 두 패스라 스텝당 forward 2회 — 기동 전 P46_MEM_LOG=1 권장
   EPOCHS        : 40   # [스크린] 40ep 조기 판정. 확정은 200ep 3페어
@@ -222,10 +222,10 @@ TRAIN:
   # ═══ [P54-QAF] 두 패스 학습(대조군 T′ — 품질 헤드 없이 KD·두 패스만) ═══
   QAF:
     ENABLE            : true
-    DEGRADE_P         : 0.0          # [Q2noDeg] 열화 끔(증류만)
+    DEGRADE_P         : 0.5          # 샘플·모달당 독립 열화 확률
     MISSING_FRAC      : 0.2          # 열화 중 완전 결측 비율
     SEVERITY_SCHEDULE : [[0, 0.3], [10, 0.6], [20, 1.0]]   # [epoch, 상한] 단조
-    TEACHER_CKPT      : '/SSDb/jemo_maeng/src/drone-MemorySAM/outputs/ReliaDINO/jarvis_deliver_rgbdel_P46_c3only_seed20260821_E1_confirm200/DELIVER_ReliaDINO-ViTL16_idel/epoch140_68.9_top1_checkpoint.pth'           # 동결 E1(QAF off) val-best top1 경로를 여기에. '' 이면 KD 0.
+    TEACHER_CKPT      : '/home/jovyan/SSDb/jemo_maeng/d4_ours/ckpts/E1_s1_epoch140.pth'           # 동결 E1(QAF off) val-best top1 경로를 여기에. '' 이면 KD 0.
     #   플레이스홀더 예: '/drone_nas/.../ckpts/E1_deliver_seed20260821_screen40/val_best.pth'
     KD_W              : 0.5
     KD_T              : 2.0
@@ -265,6 +265,6 @@ WANDB:
 
 TEST:
   MODEL_PATH    : ''
-  FILE          : '/SSDb/jemo_maeng/dset/DELIVER'
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'
   IMAGE_SIZE    : [768, 768]
   OVERLAY       : false

@@ -79,10 +79,50 @@ def test_partial_windows_6x6():
     assert counts.sum() == 4, f"6x6/win4 윈도우 수 4 != {counts.sum()}"
 
 
+def _miou(pred, gt, n_classes, ignore):
+    """순수 numpy mIoU(존재하지 않는 클래스는 union=0 이라 건너뛴다). headroom 계산용."""
+    valid = gt != ignore
+    ious = []
+    for c in range(n_classes):
+        p = (pred == c) & valid
+        g = (gt == c) & valid
+        union = int(np.count_nonzero(p | g))
+        if union == 0:
+            continue
+        ious.append(int(np.count_nonzero(p & g)) / union)
+    return float(np.mean(ious)) if ious else 0.0
+
+
+def test_headroom_zero_over_identical_candidates():
+    # 동일 후보 N개(=모달 정보 무의미)에서는 oracle 이 clean(index0)만 고르므로 headroom=0.
+    rng = np.random.default_rng(0)
+    n_classes = 4
+    gt = rng.integers(0, n_classes, size=(32, 32)).astype(np.int64)
+    clean = rng.integers(0, n_classes, size=(32, 32)).astype(np.int64)  # 불완전 pred
+    preds = [clean.copy() for _ in range(6)]                            # N개 동일
+    oracle, _ = oracle_assemble(preds, gt, win=4, ignore=IGN)
+    headroom = _miou(oracle, gt, n_classes, IGN) - _miou(preds[0], gt, n_classes, IGN)
+    assert abs(headroom) < 1e-9, f"동일 후보인데 headroom≠0: {headroom}"
+
+
+def test_headroom_positive_over_independent_noise():
+    # 독립 난수 후보 N개는 GT 정보가 전혀 없는데도, 윈도우별 최댓값 선택만으로 headroom>0 이
+    # 나온다 = 선택 편향(selection bias)의 직접 시연.
+    rng = np.random.default_rng(1)
+    n_classes = 4
+    gt = rng.integers(0, n_classes, size=(32, 32)).astype(np.int64)
+    preds = [rng.integers(0, n_classes, size=(32, 32)).astype(np.int64) for _ in range(6)]
+    oracle, _ = oracle_assemble(preds, gt, win=4, ignore=IGN)
+    headroom = _miou(oracle, gt, n_classes, IGN) - _miou(preds[0], gt, n_classes, IGN)
+    assert headroom > 0, f"독립 난수 후보인데 선택 편향 headroom>0 이 아님: {headroom}"
+
+
 if __name__ == "__main__":
     test_win4_reconstructs_gt()
     test_win_none_single_best()
     test_ties_prefer_index0()
     test_ignore_pixels_dont_affect_choice()
     test_partial_windows_6x6()
+    test_headroom_zero_over_identical_candidates()
+    test_headroom_positive_over_independent_noise()
     print("ALL PASS")
