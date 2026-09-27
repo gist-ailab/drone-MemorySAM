@@ -77,7 +77,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 
 | 실험 | 서버/GPU | 데이터셋 | 진행 | ETA | 목적·게이트 |
 |---|---|---|---|---|---|
-| **Q2 s902**(P54 증류 대조군 시드 재현, 동결교사+두패스, F·Q off) | hpca100 2 | DELIVER 4모달 | ep2/40(09-24 15:50) — 5차 시도로 정상 기동 확정(표준 env 4종+venv 절대경로 필수, judgment-ledger 참조) | 미확인 | Q2(=T′) 시드 재현 3쌍 중 1 — 게이트 = 짝 시드 대비 Δ24 |
+| **Q2 s902**(P54 증류 대조군 시드 재현, 동결교사+두패스, F·Q off) | hpca100 2 | DELIVER 4모달 | **학습 완주 + legal v2 재채점 완주(09-27)** — 트레이너 val ep40 66.06(top1) → legal v2 **test 55.98/24cls 56.95/얇은4 51.44, val 67.30/24cls 69.32/얇은4 68.17**. 짝(E1스크린s902 test 56.87/24cls 56.84) 대비 Δ25 −0.89 · Δ24 +0.11 | 완료(1/3쌍) | Q2(=T′) 시드 재현 — 클래스별 상승/하락 전표는 E1스크린s902 원자료 없어 보류, 판정은 생각정리 |
 | **Q2 s903 v2**(〃 시드903) | jarvis 5 | DELIVER 4모달 | epoch1 진행 중(다른 사용자와 GPU 동거, OOM 2회 후 free≥20GB 확보 방식으로 재기동 안정) | 미확인 | 〃 |
 | **Q2noDeg**(원천분리: DEGRADE_P=0, KD 유지 — 증류만의 순기여) | jarvis 3 | DELIVER 4모달 | 진행 중 | 미확인 | Q2 이득 원천 분리 |
 | **Q2noKD**(원천분리: KD_W=0, 열화만 유지) | 대기(4차 미착수) | DELIVER 4모달 | **3차(yeon 0) 09-26 17:49~18:16경 크래시 — ep5 Val mIoU 60.15 기록 후 test-eval(1897장) 100% 완료 시점 checkpoint `torch.save` 중 Traceback, tmux 창·프로세스 소멸.** 🔴 근본원인 확인: OOM 아니라 **디스크 부족** — yeon `/SSDb` 100% 사용, **가용 0바이트**(`df -h /SSDb` 확인). `jemo_maeng` 계정만 1.4TB 점유(`src/` 1.2TB가 최대), 전체 3.6TB 중 타사용자 몫도 큼. 1·2차(jarvis OOM)와 원인이 다르다 — 재시도 전 디스크 확보 필요(대량 삭제라 사용자 판단 대기). | 미확인 | 〃 |
