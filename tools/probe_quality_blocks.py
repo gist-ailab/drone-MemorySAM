@@ -26,6 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 
@@ -33,11 +34,12 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from semseg.datasets.degrade import Degrader                                    # noqa: E402
+from semseg.datasets.degrade import Degrader, OP_NAMES                          # noqa: E402
 from semseg.models.reliadino.quality_head import QualityHead                    # noqa: E402
 from tools.probe_quality_head import (                                          # noqa: E402
     rank_auroc, per_operator_stats, build_loader, load_frozen_model,
     train_step, FusionInputHook)
+from tools.baseline_failure.common import parse_condition_case                  # noqa: E402
 
 CONDS = ('cloud', 'fog', 'night', 'rain', 'sun')     # DELIVER 5조건(day/night 진단용)
 
@@ -106,12 +108,84 @@ def cond_of(path: str):
 
 
 # ===========================================================================
+# Task C — backbone-agnostic 다중깊이 특징원(mixdepth)
+# ===========================================================================
+def frac_to_block(frac: float, n_blocks: int) -> int:
+    """상대 깊이 분수 → 1-indexed 블록 번호 = max(1, round(frac*n_blocks)).
+
+    백본 깊이(n_blocks)에 무관하게 같은 상대 위치를 고른다("block 4" 하드코딩 회피).
+    """
+    return max(1, int(round(frac * n_blocks)))
+
+
+class MixDepthHead(nn.Module):
+    """여러 상대 깊이 블록 토큰을 학습된 softmax 가중합으로 섞어 품질 헤드에 넣는다.
+
+    입력 = **평탄 리스트**(길이 n_fracs*M, frac-major 순서: [f0m0,f0m1,...,fNmM]).
+    train_step 의 `[f.detach() for f in feats]` 가 그대로 동작하도록 리스트를 평탄히
+    받아 내부에서 (n_fracs, M) 로 되돌린다. 분수마다 자기 LayerNorm(채널 정규화) 을
+    거친 뒤 softmax 가중치로 합쳐 모달별 (B,C,h,w) 를 만들고, 내부 QualityHead 로 넘긴다.
+    """
+
+    def __init__(self, dim: int, num_modalities: int, n_fracs: int, hidden: int = 256):
+        super().__init__()
+        self.num_modalities = num_modalities
+        self.n_fracs = n_fracs
+        self.norms = nn.ModuleList(nn.LayerNorm(dim) for _ in range(n_fracs))
+        self.logits = nn.Parameter(torch.zeros(n_fracs))     # softmax → 균등 초기화
+        self.qhead = QualityHead(dim, num_modalities, hidden=hidden)
+
+    def weights(self) -> torch.Tensor:
+        return torch.softmax(self.logits, dim=0)
+
+    def _ln(self, idx: int, x: torch.Tensor) -> torch.Tensor:
+        # (B,C,h,w) → 채널축 LayerNorm → (B,C,h,w)
+        return self.norms[idx](x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2).contiguous()
+
+    def forward(self, flat_feats):
+        M, F_ = self.num_modalities, self.n_fracs
+        assert len(flat_feats) == F_ * M, \
+            f"mixdepth 특징 {len(flat_feats)}개 != n_fracs*M={F_ * M}"
+        w = self.weights()
+        combined = []
+        for m in range(M):
+            acc = None
+            for f in range(F_):
+                xn = self._ln(f, flat_feats[f * M + m])
+                term = w[f] * xn
+                acc = term if acc is None else acc + term
+            combined.append(acc)
+        return self.qhead(combined)
+
+
+# ===========================================================================
+# Task B — 실제 열화 평가(real degradation): 조건/케이스별 그룹
+# 라벨(조건/케이스)은 이 평가에만 쓰고 학습에는 절대 쓰지 않는다.
+# ===========================================================================
+def _real_clean(cond, case):
+    return cond in ('sun', 'cloud') and case == 'none'
+
+
+# (그룹 이름, 이 그룹을 재는 모달, 필터 (cond,case)->bool)
+REAL_GROUPS = (
+    ('motionblur',    'img',   lambda c, cs: cs == 'motionblur'),
+    ('overexposure',  'img',   lambda c, cs: cs == 'overexposure'),
+    ('underexposure', 'img',   lambda c, cs: cs == 'underexposure'),
+    ('night',         'img',   lambda c, cs: c == 'night' and cs == 'none'),
+    ('fog',           'img',   lambda c, cs: c == 'fog' and cs == 'none'),
+    ('rain',          'img',   lambda c, cs: c == 'rain' and cs == 'none'),
+    ('lidarjitter',   'lidar', lambda c, cs: cs == 'lidarjitter'),
+    ('eventlowres',   'event', lambda c, cs: cs == 'eventlowres'),
+)
+
+
+# ===========================================================================
 # 특징원 통계 — probe_quality_head.evaluate 의 누적 로직을 특징원별로 공유
 # ===========================================================================
 def _new_acc(M):
     return dict(tok_scores=[[] for _ in range(M)], tok_labels=[[] for _ in range(M)],
-                tok_op=[[] for _ in range(M)], sev_pred=[], sev_true=[],
-                sev_mod=[], sev_op=[])
+                tok_op=[[] for _ in range(M)], tok_samp=[[] for _ in range(M)],
+                nsamp=0, sev_pred=[], sev_true=[], sev_mod=[], sev_op=[])
 
 
 def _accumulate(acc, pred, labels, M, device):
@@ -124,12 +198,16 @@ def _accumulate(acc, pred, labels, M, device):
                               align_corners=False).reshape(B, M, *mask16.shape[-2:])
     op = labels['op'].to(device)
     B = eta_t.shape[0]
+    base = acc['nsamp']                              # 이 배치 샘플의 전역 인덱스 시작
     for m in range(M):
         et_flat = eta_t[:, m].reshape(B, -1)
         op_patch = op[:, m].unsqueeze(1).expand(-1, et_flat.shape[1])
         acc['tok_scores'][m].append(et_flat.reshape(-1).cpu().numpy())
         acc['tok_labels'][m].append(mask16[:, m].reshape(-1).cpu().numpy())
         acc['tok_op'][m].append(op_patch.reshape(-1).cpu().numpy())
+        # 패치→샘플 귀속(진단의 "음성이 몇 샘플에서 왔나"). reshape(-1) 는 샘플-우선.
+        acc['tok_samp'][m].append(np.repeat(np.arange(base, base + B), et_flat.shape[1]))
+    acc['nsamp'] = base + B
     presence = labels['presence'].to(device)
     severity = labels['severity'].to(device)
     eta_s = pred['eta_scalar'].float()
@@ -141,6 +219,57 @@ def _accumulate(acc, pred, labels, M, device):
             acc['sev_true'].append(severity[sel, m].cpu().numpy())
             acc['sev_mod'].append(np.full(int(sel.sum()), m))
             acc['sev_op'].append(op[sel, m].cpu().numpy())
+
+
+def _cat(lst):
+    return np.concatenate(lst) if lst else np.zeros(0)
+
+
+def _stats(a):
+    """유한값만으로 mean/std. 전부 비유한이면 nan."""
+    a = np.asarray(a, dtype=np.float64)
+    fin = a[np.isfinite(a)] if a.size else a
+    return {'mean': float(fin.mean()) if fin.size else float('nan'),
+            'std': float(fin.std()) if fin.size else float('nan')}
+
+
+def _naninf_frac(a):
+    a = np.asarray(a, dtype=np.float64)
+    return float((~np.isfinite(a)).mean()) if a.size else 0.0
+
+
+def _diagnostics(acc, modal_names):
+    """AUROC 역전(≈0) 진단: 모달×op 별 양성 eta 통계·음성 eta 통계·표본 수·비유한 비율.
+
+    양성 = 그 op 로 열화된 패치(op==oi & mask==1). 음성 = clean 샘플 패치(op==0 & mask==0)
+    — per_operator_stats 의 AUROC 정의와 같은 모집단. AUROC≈0 이면 음성이 양성보다
+    체계적으로 높다는 뜻이므로, 두 집단의 mean/std 를 나란히 보면 원인을 가른다.
+    """
+    M = len(modal_names)
+    out = {}
+    for m in range(M):
+        s = _cat(acc['tok_scores'][m])
+        l = _cat(acc['tok_labels'][m])
+        o = _cat(acc['tok_op'][m])
+        samp = _cat(acc['tok_samp'][m])
+        neg_sel = (o == 0) & (l == 0) if s.size else np.zeros(0, dtype=bool)
+        neg = s[neg_sel]
+        neg_samp = samp[neg_sel] if samp.size else np.zeros(0)
+        entry = {'neg': _stats(neg), 'n_neg': int(neg.size),
+                 'n_neg_samples': int(np.unique(neg_samp).size) if neg_samp.size else 0,
+                 'neg_naninf_frac': _naninf_frac(neg), 'ops': {}}
+        for oi in range(1, len(OP_NAMES)):
+            pos_sel = (o == oi) & (l == 1) if s.size else np.zeros(0, dtype=bool)
+            pos = s[pos_sel]
+            if pos.size == 0:
+                continue
+            pos_samp = samp[pos_sel] if samp.size else np.zeros(0)
+            entry['ops'][OP_NAMES[oi]] = {
+                **_stats(pos), 'n_pos': int(pos.size),
+                'n_pos_samples': int(np.unique(pos_samp).size) if pos_samp.size else 0,
+                'pos_naninf_frac': _naninf_frac(pos)}
+        out[modal_names[m]] = entry
+    return out
 
 
 def _finalize(acc, modal_names):
@@ -163,6 +292,7 @@ def _finalize(acc, modal_names):
         auroc_per_modal=auroc_per_modal,
         severity_mae=float(np.mean(np.abs(sp - st))) if sp.size else float('nan'),
         severity_mae_per_modal=mae_per_modal,
+        diagnostics=_diagnostics(acc, modal_names),
         op_table=per_operator_stats(acc['tok_scores'], acc['tok_labels'], acc['tok_op'],
                                     acc['sev_pred'], acc['sev_true'], acc['sev_mod'],
                                     acc['sev_op'], modal_names))
@@ -197,13 +327,21 @@ class BlockTapHooks:
 
 
 class MultiSource:
-    """융합입력 pre-hook + 블록 hook 을 묶어 한 forward 로 전 특징원을 캡처."""
+    """융합입력 pre-hook + 블록 hook 을 묶어 한 forward 로 전 특징원을 캡처.
 
-    def __init__(self, model, blocks):
+    mix_fracs 를 주면 그 상대 깊이 블록들도 함께 tap 해 `mixdepth` 특징원(평탄
+    frac-major 리스트)을 만든다.
+    """
+
+    def __init__(self, model, blocks, mix_fracs=None):
         self.model = model
         self.M = model.num_modalities
+        self.n_blk = len(model.encoder.backbone.blocks)
+        self.mix_fracs = list(mix_fracs) if mix_fracs else []
+        self.mix_blocks = [frac_to_block(f, self.n_blk) for f in self.mix_fracs]
         self.fusion = FusionInputHook(model)
-        self.bh = BlockTapHooks(model, blocks)
+        hook_blocks = sorted(set(list(blocks)) | set(self.mix_blocks))
+        self.bh = BlockTapHooks(model, hook_blocks)
         self.blocks = list(blocks)
 
     @torch.no_grad()
@@ -218,6 +356,12 @@ class MultiSource:
         for k in self.blocks:
             caps = map_captures_to_modalities(self.bh.buf[k], self.M)
             out[f'block{k}'] = [tokens_to_map(t, h, w) for t in caps]
+        if self.mix_fracs:
+            mix = []                                 # frac-major 평탄 리스트
+            for k in self.mix_blocks:
+                caps = map_captures_to_modalities(self.bh.buf[k], self.M)
+                mix.extend(tokens_to_map(t, h, w) for t in caps)
+            out['mixdepth'] = mix
         return out
 
     def remove(self):
@@ -298,6 +442,104 @@ def daynight_probe(mgr, cfg, blocks, modal_names, device, batch_size, limit):
 
 
 # ===========================================================================
+# Task B — 실제 열화 평가: CLEAN val 이미지에 대해 특징원별 per-image eta 수집 후
+# 조건/케이스 그룹으로 AUROC(합성 열화 없이 실제 악조건 vs 실제 clean)
+# ===========================================================================
+def _collect_real(mgr, heads, loader, files, srcs, modal_names, device, limit):
+    """CLEAN(합성 열화 없음) val 이미지 → 특징원별 per-image eta_token mean·eta_scalar.
+
+    반환: tok[src] (N,M) per-image eta_token 평균, scal[src] (N,M) eta_scalar,
+          conds/cases 길이 N.
+    """
+    assert len(files) == len(loader.dataset), \
+        f"파일 목록 {len(files)} != 데이터셋 {len(loader.dataset)} (순서 정합 실패)"
+    for hd in heads.values():
+        hd.eval()
+    tok = {s: [] for s in srcs}
+    scal = {s: [] for s in srcs}
+    conds, cases, idx = [], [], 0
+    for bi, batch in enumerate(loader):
+        if limit and bi >= limit:
+            break
+        images = [x.to(device) for x in batch[0]]
+        B = images[0].shape[0]
+        cap = mgr.capture(images)                    # clean(열화 주입 없음)
+        with torch.no_grad():
+            for s in srcs:
+                pred = heads[s](cap[s])
+                et = pred['eta_token'].float()       # (B,M,h,w)
+                tok[s].append(et.mean(dim=(-1, -2)).cpu().numpy())   # (B,M)
+                scal[s].append(pred['eta_scalar'].float().cpu().numpy())  # (B,M)
+        for j in range(B):
+            c, cs = parse_condition_case(files[idx + j])
+            conds.append(c)
+            cases.append(cs)
+        idx += B
+    tok = {s: np.concatenate(v) for s, v in tok.items()}
+    scal = {s: np.concatenate(v) for s, v in scal.items()}
+    return tok, scal, conds, cases
+
+
+def compute_real_eval(tok, scal, conds, cases, srcs, modal_names):
+    """조건/케이스 그룹별 per-image eta AUROC(실제 악조건 vs 실제 clean).
+
+    RGB 그룹은 img 모달 eta, lidarjitter 는 lidar, eventlowres 는 event 모달 eta 를
+    쓴다. AUROC 는 높을수록 나쁨(양성=악조건, 음성=clean).
+    """
+    conds = np.asarray(conds)
+    cases = np.asarray(cases)
+    clean = np.array([_real_clean(c, cs) for c, cs in zip(conds, cases)])
+    out = {}
+    for s in srcs:
+        out[s] = {}
+        for gname, mod, fn in REAL_GROUPS:
+            if mod not in modal_names:
+                continue
+            mi = modal_names.index(mod)
+            sel = np.array([fn(c, cs) for c, cs in zip(conds, cases)])
+            pos = tok[s][sel, mi] if sel.any() else np.zeros(0)
+            neg = tok[s][clean, mi] if clean.any() else np.zeros(0)
+            if pos.size and neg.size:
+                sc = np.concatenate([pos, neg])
+                lb = np.concatenate([np.ones(pos.size), np.zeros(neg.size)])
+                au = rank_auroc(sc, lb)
+            else:
+                au = float('nan')
+            out[s][gname] = {
+                'modality': mod, 'auroc': au,
+                'mean_eta': float(pos.mean()) if pos.size else float('nan'),
+                'mean_eta_clean': float(neg.mean()) if neg.size else float('nan'),
+                'mean_eta_scalar': (float(scal[s][sel, mi].mean())
+                                    if sel.any() else float('nan')),
+                'n_pos': int(pos.size), 'n_clean': int(neg.size)}
+    return out
+
+
+def real_eval(mgr, heads, cfg, srcs, modal_names, device, batch_size, limit):
+    va = build_loader(cfg, 'val', batch_size, train_aug=False)   # shuffle=False
+    if not hasattr(va.dataset, 'files'):
+        print("[real_eval] 데이터셋이 .files 를 노출하지 않음 → 평가 생략")
+        return None
+    tok, scal, conds, cases = _collect_real(
+        mgr, heads, va, list(va.dataset.files), srcs, modal_names, device, limit)
+    res = compute_real_eval(tok, scal, conds, cases, srcs, modal_names)
+    n_clean = int(sum(_real_clean(c, cs) for c, cs in zip(conds, cases)))
+    print(f"[real_eval] N={len(conds)} clean={n_clean}")
+    return {'per_source': res, 'n_images': len(conds), 'n_clean': n_clean,
+            'groups': [g for g, _, _ in REAL_GROUPS]}
+
+
+def build_real_eval_md(real):
+    groups = [g for g, _, _ in REAL_GROUPS]
+    lines = ['| source | ' + ' | '.join(groups) + ' |',
+             '|' + '---|' * (len(groups) + 1)]
+    for s, gd in real['per_source'].items():
+        row = [_fmt(gd.get(g, {}).get('auroc')) for g in groups]
+        lines.append(f"| {s} | " + ' | '.join(row) + ' |')
+    return '\n'.join(lines)
+
+
+# ===========================================================================
 # 마크다운 표
 # ===========================================================================
 def _fmt(v):
@@ -330,15 +572,25 @@ def build_markdown(res_train, res_held, srcs, modal_names, daynight):
     return md
 
 
-def _write_out(out, srcs, modal_names, res_train, res_held, daynight, extra):
+def _write_out(out, srcs, modal_names, res_train, res_held, daynight, extra,
+               real=None):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
+    # 진단 블록: 특징원×모달×split(train/heldout) — AUROC 역전 원인 분석용.
+    diagnostics = {s: {'train': res_train[s].get('diagnostics', {}),
+                       'heldout': res_held[s].get('diagnostics', {})}
+                   for s in srcs}
     summary = dict(sources=srcs, modal_names=modal_names, train=res_train,
-                   heldout=res_held, daynight=daynight, **extra)
+                   heldout=res_held, daynight=daynight,
+                   diagnostics=diagnostics, real_eval=real, **extra)
     (out / 'block_probe_summary.json').write_text(json.dumps(summary, indent=2))
     md = build_markdown(res_train, res_held, srcs, modal_names, daynight)
     (out / 'block_probe_table.md').write_text(md)
     print(md)
+    if real is not None:
+        rmd = build_real_eval_md(real)
+        (out / 'real_eval_table.md').write_text(rmd)
+        print('\n## real_eval (실제 악조건 vs 실제 clean, per-image eta AUROC)\n' + rmd)
     print(f"\n→ {out / 'block_probe_summary.json'}")
     return summary
 
@@ -389,6 +641,17 @@ def main():
     ap.add_argument('--hidden', type=int, default=256)
     ap.add_argument('--blocks', type=int, nargs='+', default=[2, 4, 6, 12, 18, 24])
     ap.add_argument('--daynight', action='store_true')
+    ap.add_argument('--real_eval', action='store_true',
+                    help='실제 악조건(조건/케이스) vs 실제 clean per-image eta AUROC.')
+    ap.add_argument('--mix_fracs', type=float, nargs='+',
+                    default=[0.1, 0.25, 0.5, 0.75, 1.0],
+                    help='mixdepth 상대 깊이 분수(블록=max(1,round(f*n_blk))).')
+    ap.add_argument('--no_mixdepth', action='store_true',
+                    help='mixdepth 특징원을 끈다.')
+    ap.add_argument('--save_heads', action='store_true',
+                    help='학습된 헤드 state_dict 를 <out>/heads/<source>.pt 로 저장.')
+    ap.add_argument('--load_heads', default='',
+                    help='이 폴더에서 헤드를 불러와 학습을 건너뛰고 평가만 한다.')
     ap.add_argument('--limit_batches', type=int, default=0)
     ap.add_argument('--dry_run', action='store_true')
     args = ap.parse_args()
@@ -411,9 +674,14 @@ def main():
     model = load_frozen_model(cfg, args.ckpt, device)
     n_blk = len(model.encoder.backbone.blocks)
     blocks = sorted({min(max(int(k), 1), n_blk) for k in args.blocks})
+    use_mix = (not args.no_mixdepth) and bool(args.mix_fracs)
+    mix_fracs = args.mix_fracs if use_mix else None
     print(f"[probe] blocks(1-indexed)={blocks} / n_blk={n_blk} modals={modal_names}")
-    mgr = MultiSource(model, blocks)
+    mgr = MultiSource(model, blocks, mix_fracs=mix_fracs)
     srcs = ['fusion_in'] + [f'block{k}' for k in blocks]
+    if use_mix:
+        srcs.append('mixdepth')
+        print(f"[probe] mixdepth fracs={mix_fracs} → blocks={mgr.mix_blocks}")
 
     train_loader = build_loader(cfg, 'train', args.batch_size, train_aug=True)
     val_loader = build_loader(cfg, 'val', args.batch_size, train_aug=False)
@@ -425,22 +693,41 @@ def main():
     cap0 = mgr.capture(deg0)
     dims = {s: cap0[s][0].shape[1] for s in srcs}
     print(f"[probe] dims={dims} grid={tuple(cap0['fusion_in'][0].shape[-2:])}")
-    heads = {s: QualityHead(dims[s], M, hidden=args.hidden).to(device) for s in srcs}
-    opts = {s: torch.optim.AdamW(heads[s].parameters(), lr=1e-3) for s in srcs}
 
-    for ep in range(args.epochs):
-        for hd in heads.values():
-            hd.train()
-        deg_ep = Degrader(seed=args.seed + ep, heldout=False)
-        for bi, batch in enumerate(train_loader):
-            if args.limit_batches and bi >= args.limit_batches:
-                break
-            images = [x.to(device) for x in batch[0]]
-            deg, labels = deg_ep(images, modal_names)
-            feats_by_src = mgr.capture(deg)
+    def _make_head(s):
+        if s == 'mixdepth':
+            return MixDepthHead(dims[s], M, len(mgr.mix_fracs), hidden=args.hidden).to(device)
+        return QualityHead(dims[s], M, hidden=args.hidden).to(device)
+
+    heads = {s: _make_head(s) for s in srcs}
+
+    if args.load_heads:
+        hd_dir = Path(args.load_heads)
+        for s in srcs:
+            sd = torch.load(hd_dir / f'{s}.pt', map_location=device)
+            heads[s].load_state_dict(sd)
+        print(f"[probe] 헤드 로드 완료 → 학습 생략 ({hd_dir})")
+    else:
+        opts = {s: torch.optim.AdamW(heads[s].parameters(), lr=1e-3) for s in srcs}
+        for ep in range(args.epochs):
+            for hd in heads.values():
+                hd.train()
+            deg_ep = Degrader(seed=args.seed + ep, heldout=False)
+            for bi, batch in enumerate(train_loader):
+                if args.limit_batches and bi >= args.limit_batches:
+                    break
+                images = [x.to(device) for x in batch[0]]
+                deg, labels = deg_ep(images, modal_names)
+                feats_by_src = mgr.capture(deg)
+                for s in srcs:
+                    train_step(heads[s], opts[s], feats_by_src[s], labels)
+            print(f"[ep{ep}] done")
+        if args.save_heads:
+            hd_dir = Path(args.out) / 'heads'
+            hd_dir.mkdir(parents=True, exist_ok=True)
             for s in srcs:
-                train_step(heads[s], opts[s], feats_by_src[s], labels)
-        print(f"[ep{ep}] done")
+                torch.save(heads[s].state_dict(), hd_dir / f'{s}.pt')
+            print(f"[probe] 헤드 저장 완료 → {hd_dir}")
 
     res_train = evaluate_sources(heads, val_loader, Degrader(seed=args.seed + 999, heldout=False),
                                  srcs, modal_names, device, mgr, args.subset_every, args.limit_batches)
@@ -452,9 +739,19 @@ def main():
         daynight = daynight_probe(mgr, cfg, blocks, modal_names, device,
                                   args.batch_size, args.limit_batches)
 
-    _write_out(args.out, srcs, modal_names, res_train, res_held, daynight,
-               {'cfg': args.cfg, 'ckpt': args.ckpt, 'epochs': args.epochs,
-                'blocks': blocks, 'hidden': args.hidden})
+    real = None
+    if args.real_eval:
+        real = real_eval(mgr, heads, cfg, srcs, modal_names, device,
+                         args.batch_size, args.limit_batches)
+
+    extra = {'cfg': args.cfg, 'ckpt': args.ckpt, 'epochs': args.epochs,
+             'blocks': blocks, 'hidden': args.hidden}
+    if use_mix:
+        w = mgr.mix_blocks and heads['mixdepth'].weights().detach().cpu().tolist()
+        extra['mixdepth_weights'] = {
+            'fracs': list(mgr.mix_fracs), 'blocks': list(mgr.mix_blocks), 'softmax': w}
+
+    _write_out(args.out, srcs, modal_names, res_train, res_held, daynight, extra, real=real)
     mgr.remove()
 
 
