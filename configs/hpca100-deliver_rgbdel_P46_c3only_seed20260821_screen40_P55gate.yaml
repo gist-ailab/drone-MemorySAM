@@ -1,0 +1,281 @@
+# [P55] 무감독 다중블록 모달 게이트 — 2단계(게이트만 학습) config.
+#   원본 = configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2.yaml.
+#   Q2 대비 바뀐 키: (1) SAVE_DIR (2) DATASET.ROOT (hpca100) (3) MODEL.QAF.ENABLE
+#   true→(그대로 false; P55 가 QAF 융합 경로를 내부적으로 구동) (4) MODEL.P55 블록(신규, ENABLE true).
+#   그 외 융합·인코더·헤드 구성은 Q2/E1 과 동일하다 — Q2 val-best ckpt 를 초기값으로 로드해
+#   게이트만 학습한다(tools/train_p55_gate.py). 다른 모든 파라미터는 freeze.
+#
+# ── 연구 질문 ────────────────────────────────────────────────────────────────
+#   품질/열화/조건 라벨 없이 세그 손실만 융합을 통해 흘려보내면, 게이트가 상황(밤·비·안개)에 따라
+#   RGB 신뢰를 낮추고 depth/LiDAR/event 를 더 쓰도록 달라지는가, 아니면 상수로 붕괴하는가.
+#   판정 도구 = tools/p55_gate_by_condition.py (조건×케이스별 r 평균·붕괴 std·night-vs-clean AUROC).
+# ── anti-collapse (전부 기본 off) ───────────────────────────────────────────
+#   (a) modality dropout: train_p55_gate --degrade_p (열화 패스, 라벨 미사용)
+#   (b) r 공간 std floor: MODEL.P55.VAR_W>0 (균등으로 밀지 않는 hinge)
+# ── 공정성 ──────────────────────────────────────────────────────────────────
+#   PHYSAUG off · DGFUSION_AUG on · val-best ckpt · TTA 금지 (E1 계승).
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_P55gate'  # [P55 게이트 2단계]
+
+# 2단계 게이트 학습기 = tools/train_p55_gate.py (단일 GPU 가능).
+#   python tools/train_p55_gate.py --cfg <this> --ckpt <Q2 val-best.pth> --epochs 10 --target none
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16          # exp-dir naming only
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null                      # null -> alpha = r (scale 1.0)
+  TAPS:
+    ENABLE  : true                          # off(기본)면 B0 와 forward·state_dict byte-동일
+    LAYERS  : [6, 12, 18, 24]               # 1-indexed 블록(24블록에서 24=마지막). resolve_taps 규약
+    MODE    : per_modal                     # per_modal(센서별 탭 유지·FPN 레벨 합산) | mean(P43 식 모달 평균)
+
+  # ═══ [Q2] DETAIL_BRANCH off (E1 base) ═══
+  DETAIL_BRANCH:
+    ENABLE     : false
+
+  # ═══ [Q2] BOUNDARY_REFINE off — R1 대비 base 차이 ═══
+  BOUNDARY_REFINE:
+    ENABLE     : false                      # off → forward·state_dict byte-동일 (boundary_refine.py)
+    LEVELS     : [4]
+    K_INIT     : 10.0
+    GAMMA_INIT : 0.1
+
+  # ═══ [P54-QAF] 품질 헤드 off — P55 가 QAF 융합 경로를 내부적으로 구동한다 ═══
+  QAF:
+    ENABLE        : false                   # P55 와 동시 on 금지. off 유지.
+    MASK_MODALS   : ['depth', 'lidar']
+    SELF_ATTN     : true
+    KEY_MASK      : true
+    WEIGHTED_MEAN : true
+    HEAD_HIDDEN   : 256
+    IDENTITY_W    : 0.1
+    EPS           : 1.0e-4
+    DETACH_MASK   : false
+
+  # ═══ [P55] 무감독 다중블록 모달 게이트 (2단계에서 이것만 학습) ═══
+  P55:
+    ENABLE        : true
+    FRACTIONS     : [0.1, 0.25, 0.5]        # 상대 깊이(블록=max(1,round(f*n_blk)); 24블록→[2,6,12])
+    HIDDEN        : 64
+    R_FLOOR       : 0.05                     # eta ≤ 1−R_FLOOR → 어떤 모달도 완전 제거 안 됨
+    INIT_BIAS     : 1.0                      # 시작 r≈sigmoid(1)≈0.73. 균일 r 은 융합에서 항등(softmax·가중평균 불변)이라 출력은 같고, +3(기울기 0.045)보다 기울기(0.20)가 커서 게이트가 움직일 수 있다(생각정리 검수 2026-09-29)
+    USE_AGREEMENT : true                     # 타 센서와의 평균 코사인 일치 지도를 입력에 추가
+    MASK_MODALS   : ['img', 'depth', 'event', 'lidar']   # 전 모달을 게이팅
+    KEY_MASK      : true                     # key 로짓 += log(1−eta)
+    WEIGHTED_MEAN : true                     # 융합 (1−eta) 가중 평균
+    SELF_ATTN     : false                    # Q2 는 self-attn 층을 학습하지 않았음 → off(무작위 동결 방지)
+    VAR_W         : 0.0                      # anti-collapse r-std floor 가중(0=off)
+    VAR_FLOOR     : 0.05
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:                              # G0c 동결: 효과≈0 판정(P35/T1)
+      ENABLE       : false
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : false
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : false   # [M-2] fog_night 유해 실증(07-20)
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : false
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : false  # [M-2]
+    LAMBDA : 0.1
+
+  ROUTER:                                   # [P36] 유일 생존 모듈 — 유지
+    ENABLE        : true
+    ANCHOR_LAMBDA : 1.0
+    REG_MODE      : decisive
+    REG_LAMBDA    : 0.01
+    ALPHA_INIT    : 0.0
+    HIDDEN        : 64
+
+  CEFR:
+    ENABLE : false
+  CLASS_TOKEN:
+    ENABLE : false
+
+  M2F:                                      # [P38/P39] 변경 없음 (P39.1과 동일)
+    ENABLE          : true
+    NUM_QUERIES     : 100
+    NUM_LAYERS      : 6
+    DIM             : 256
+    NUM_HEADS       : 8
+    MLP_RATIO       : 2.0
+    BETA_INIT       : 0.0
+    W_CLS           : 2.0
+    W_BCE           : 5.0
+    W_DICE          : 5.0
+    NO_OBJ_W        : 0.1
+    POINTS          : 12544
+    DEEP_SUPERVISION : true
+    LOSS_W          : 0.5
+    SRC             : modal
+    ANCHORED        : true
+    POINT_QUOTA     : 256
+
+  P39:                                      # [P39.1-rank] base — 변경 없음
+    TRUNK_EXP       : true
+    ARBITER         : true
+    PATH_DROPOUT_P  : 0.25
+    ROUTER_CE_W     : 0.4
+    TRUNK_MODE      : gated_mlp
+    TRUNK_HIDDEN    : 256
+    VICREG:
+      ENABLE  : true
+      LVAR    : 0.1
+      LCOV    : 0.01
+      TOKENS  : 2048
+      LIDAR_W : 1.0
+      OTHER_W : 0.25
+
+  # ═══ [P46-CTR] class-transfer recovery — C3 단독(C1/C2 off, E1 동일) ═══
+  P46:
+    C1_RCS:
+      ENABLE        : false
+      MODE          : daformer
+      TEMP          : 0.01
+      MIN_PIXELS    : 1
+      LOSS_BLEND_W  : 1.0
+      EMA_M         : 0.99
+      EMA_INTERVAL  : 1
+      REFRESH       : 32
+      SEED          : 0
+      CACHE_DIR     : ''
+    C2_MCC:
+      ENABLE        : false
+      MASK_RATIO    : 0.5
+      PATCH         : 64
+      MODALS        : all
+      LAMBDA        : 1.0
+      CONF_THRESH   : 0.75
+      LOSS          : ce
+      EMA_ALPHA     : 0.999
+      WARMUP_EP     : 5
+    C3_PROTO:
+      ENABLE        : true
+      FEATURE       : mfeat      # mfeat(stride-4 head feature, 256) | fused(1/16, 1024)
+      LAMBDA        : 0.1        # λ3
+      TEMPERATURE   : 0.1        # cosine logit 온도 τ
+      EMA           : 0.999      # prototype EMA 계수
+      PIXELS        : 4096       # 손실당 서브샘플 픽셀 수
+      WARMUP_EP     : 5
+      CROSS_VIEW    : false
+      CROSS_VIEW_W  : 1.0
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img', 'depth']
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : DELIVER
+  ROOT          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'   # hpca100 DELIVER path
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # DGFusion 공정선: PhysAug OFF + SSD photometric (ColorAugSSD, ISSUE-026 픽스본)
+  DGFUSION_AUG  : true
+  PHYSAUG:
+    ENABLE    : false
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  LORA_NORM_CAP : 20.0
+  SEED          : 20260821
+  IMAGE_SIZE    : [768, 768]      # /16 -> 48x48 tokens
+  BATCH_SIZE    : 1                 # jarvis 4090 24GB. 두 패스라 스텝당 forward 2회 — 기동 전 P46_MEM_LOG=1 권장
+  EPOCHS        : 40   # [스크린] 40ep 조기 판정. 확정은 200ep 3페어
+  EVAL_START    : 0
+  EVAL_INTERVAL : 5
+  SAVE_TOPK     : 1                 # [스크린] val 상위 1개만 보관
+  SAVE_TEST_CKPT : false            # [스크린] test 상위 체크포인트 미보관(평가·로그는 유지)
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : false
+
+  # ═══ [P54-QAF] 두 패스 학습(대조군 T′ — 품질 헤드 없이 KD·두 패스만) ═══
+  QAF:
+    ENABLE            : true
+    DEGRADE_P         : 0.5          # 샘플·모달당 독립 열화 확률
+    MISSING_FRAC      : 0.2          # 열화 중 완전 결측 비율
+    SEVERITY_SCHEDULE : [[0, 0.3], [10, 0.6], [20, 1.0]]   # [epoch, 상한] 단조
+    TEACHER_CKPT      : ''           # 동결 E1(QAF off) val-best top1 경로를 여기에. '' 이면 KD 0.
+    #   플레이스홀더 예: '/drone_nas/.../ckpts/E1_deliver_seed20260821_screen40/val_best.pth'
+    KD_W              : 0.5
+    KD_T              : 2.0
+    QUALITY_W         : 0.1          # (MODEL.QAF off 이라 품질 손실 0 — 효과 없음)
+    IDENTITY_W        : 0.1          # (MODEL.QAF off 이라 항등 손실 0 — 효과 없음)
+    CLEAN_PASS        : true         # clean 패스 CE 상시 유지
+    SEED              : 0
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 10
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [768, 768]
+  BATCH_SIZE    : 1
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : false
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/home/jovyan/SSDb/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE    : [768, 768]
+  OVERLAY       : false

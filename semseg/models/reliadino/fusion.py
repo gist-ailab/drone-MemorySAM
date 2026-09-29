@@ -491,7 +491,11 @@ class ReliabilityGatedFusion(nn.Module):
                  qaf_head_hidden: int = 256,
                  qaf_eps: float = 1e-4,
                  qaf_detach_mask: bool = False,            # true 면 key 마스크에 grad 미전달
-                 qaf_modal_names: Optional[List] = None):  # 이름→인덱스 대조용
+                 qaf_modal_names: Optional[List] = None,   # 이름→인덱스 대조용
+                 # [P55] 무감독 다중블록 모달 게이트. True 면 qaf_pred 를 외부(model 의
+                 # P55Gate)가 forward 인자로 공급하므로 QualityHead 를 만들지 않는다.
+                 # (default False → 기존 QAF 경로/파라미터 그대로 = byte-동일.)
+                 p55_supplies_pred: bool = False):
         super().__init__()
         self.num_modalities = num_modalities
         self.num_classes = num_classes
@@ -556,6 +560,7 @@ class ReliabilityGatedFusion(nn.Module):
         self.qaf_self_attn_on = bool(qaf_self_attn)
         self.qaf_eps = float(qaf_eps)
         self.qaf_detach_mask = bool(qaf_detach_mask)
+        self.p55_supplies_pred = bool(p55_supplies_pred)
         # [G-signal 치환 검정] η̂ 오버라이드 훅. None(기본)이면 forward 무변경.
         # callable(qaf_pred: dict) -> qaf_pred: dict 을 넣으면 quality_head 예측을
         # 교체한다(tools/qaf_permutation_test.py 가 셔플/0 함수를 주입). off 경로 불변.
@@ -580,7 +585,10 @@ class ReliabilityGatedFusion(nn.Module):
                         f"[QAF] MASK_MODALS 원소 {wnm!r} 가 DATASET.MODALS({names})에 "
                         f"없다 (이름 대조 실패, 하드코딩 금지).")
             self.qaf_mask_idx = sorted(set(idx))
-            self.quality_head = QualityHead(dim, num_modalities, hidden=qaf_head_hidden)
+            if not self.p55_supplies_pred:
+                # [P55] p55_supplies_pred 면 QualityHead 를 만들지 않는다 — η̂ 는 model
+                # 의 P55Gate 가 forward 인자로 공급한다(감독 품질 헤드 없음).
+                self.quality_head = QualityHead(dim, num_modalities, hidden=qaf_head_hidden)
             if self.qaf_self_attn_on:
                 # CrossModalAttentionLayer 재사용(kv=자기 토큰) — 가중치 1벌 공유.
                 self.qaf_self_layer = CrossModalAttentionLayer(dim, num_heads, mlp_ratio)
@@ -771,7 +779,8 @@ class ReliabilityGatedFusion(nn.Module):
                 img_idx: int = -1,                         # img 모달 인덱스
                 presence: Optional[torch.Tensor] = None,   # [P44-V1] (m,B,1,h,w)
                 epoch: int = 0,                            # [P44-B2] warmup 게이팅용
-                qaf_labels: Optional[dict] = None          # [P54-QAF] Degrader 라벨(열화 패스)
+                qaf_labels: Optional[dict] = None,         # [P54-QAF] Degrader 라벨(열화 패스)
+                qaf_pred_in: Optional[dict] = None         # [P55] model 의 게이트가 공급한 η̂
                 ) -> Tuple[torch.Tensor, dict]:
         m = len(feats)
         assert m == self.num_modalities, f"got {m} modalities, expected {self.num_modalities}"
@@ -804,7 +813,17 @@ class ReliabilityGatedFusion(nn.Module):
             bias_flat = [bias_maps[j].flatten(1) for j in range(m)]  # m x (B, N)
         # [P54-QAF] 품질 토큰(융합 직전 feats 에서, fp32). off 면 None → 아래 분기가
         # 기존 "나머지 모달 concat" 경로를 그대로 탄다(코드 경로 분기, 무수정 원칙).
-        qaf_pred = self.quality_head(feats) if self.qaf_enable else None
+        # [P55] qaf_pred_in 이 오면 그것을(외부 게이트), 아니면 QualityHead 예측을 쓴다.
+        # QualityHead 가 없고(P55) qaf_pred_in 도 없으면 None → 아래 분기가 감당한다.
+        if self.qaf_enable:
+            if qaf_pred_in is not None:
+                qaf_pred = qaf_pred_in
+            elif self.quality_head is not None:
+                qaf_pred = self.quality_head(feats)
+            else:
+                qaf_pred = None
+        else:
+            qaf_pred = None
         if qaf_pred is not None and self._qaf_eta_override is not None:
             # [G-signal 치환 검정] η̂ 를 외부(도구)에서 교체. override None(정상)이면
             # 이 분기를 타지 않아 기존 QAF 경로와 byte-동일.
@@ -931,7 +950,10 @@ class ReliabilityGatedFusion(nn.Module):
         # [P54-QAF] 품질/항등 손실(raw — 가중은 트레이너). 라벨(열화 패스)이 있으면
         # quality_loss, 없으면(clean 패스) L_id = mean(η̂). 두 손실은 서로 다른
         # 패스에서만 나오므로 같은 배치에서 항등과 품질이 충돌하지 않는다.
-        if self.qaf_enable and self.training:
+        if (self.qaf_enable and self.training and qaf_pred is not None
+                and self.quality_head is not None):
+            # [P55] quality_head 가 없으면(외부 게이트 공급) 감독 품질/항등 손실을 만들지
+            # 않는다 — P55 는 세그 손실만 게이트로 흘려보낸다(제안서 target: none).
             if qaf_labels is not None:
                 aux['qaf_quality_loss'] = quality_loss(qaf_pred, qaf_labels)['total']
             else:
