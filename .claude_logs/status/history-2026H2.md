@@ -9,6 +9,16 @@ period: 2026-07-01 ~ 2026-12-31
 
 ## 역시간순 진행 로그 (History — 2026H2)
 
+## 2026-09-24~29 — R1·Q3 종료, Q2 바탕 레시피 채택, P55 게이트 검토, P56-A(모달 충돌 학습) 기동
+
+- 🔴 아래 09-23 절 제목의 "R1이 DGFusion 초과"는 **철회**됐다(두 사본 중 한쪽·비정본 얇은 객체 정의에 근거). 3시드 최종은 24클래스 Δ −0.09 로 기각.
+- 판정(근거 = judgment-ledger 09-23~29 행): R1 기각 · Q1/Q3(합성 열화 감독 품질 헤드) 종료 · Q2(두 패스 + 동결 E1 교사 증류) 강건 축 3시드 통과 → 이후 카드의 바탕 · E1-shared(공유 LoRA) 게이트 통과·단독 채택 보류 · MUSES PhysAug-off 3시드 공식 val 82.30±0.14.
+- 분석: 기준선(DGFusion·CAFuser)과 우리 Q2 모두 야간·저노출에서 RGB 의존을 줄이고 depth 의존을 늘린다(Q2 val: −RGB sun −8.62 → night −5.15, −depth −3.87 → −10.07). 외부 prior 가 없어도 이동이 생긴다. 조건별 오라클 순 여유 1.1~1.8.
+- P55(무감독 다중 블록 게이트, 분할 손실만): 게이트 값은 조건에 따라 달라졌으나 legal v2 이득 없음(val 68.62 / test 57.59).
+- user 승인 09-29: P56 세 카드(A 모달 충돌 학습 · B 거리 조건화 attention · C 환경 조건 LoRA 전문가 혼합), A 부터. 코드 develop 병합(9e313c0), hpca100 시드821 기동(07:08 UTC).
+- 코드·도구 추가: `tools/oracle_headroom_probe.py` · `tools/probe_quality_blocks.py` · `tools/mm_eval_v2.py` · `semseg/models/reliadino/p55_gate.py` · `tools/train_p55_gate.py` · `semseg/datasets/degrade.py`(충돌·반사광 연산) · `tools/viz_conflict_aug.py`.
+- lab-plan: DRN-260929-01(P56-A) running, 판정 5건 기록(DRN-260926-60·61·63·231·232).
+
 ## 2026-09-23 — R1/R2 스크린 legal v2 확정(R1이 DGFusion 초과) · ZCode→클로드코드 인수인계
 
 > **인수인계 정본 = [handoff-2026-09-23-zcode.md](handoff-2026-09-23-zcode.md)** — 사고·재개·결과·남은 일·경로 전부 거기에 있다. 아래는 요약.

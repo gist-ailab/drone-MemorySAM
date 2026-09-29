@@ -4,16 +4,16 @@ legacy_file: 01_project_status.md
 split_from: 01_project_status.md
 moved: 2026-07-08
 owns: [status-snapshot]
-updated: 2026-09-23
+updated: 2026-09-29
 ---
 
 <!-- PI:BEGIN -->
 paper_target: 단일 아키텍처(ReliaDINO)로 DELIVER·MUSES·MCubeS 전 모달 융합 계열 1위 — 논문 트랙 (출처: CLAUDE.md 프로젝트 개요)
 headline: DELIVER test 56.24±0.42(best 56.73, legal v2 3시드) · val 69.51±0.15 · MUSES test 79.29±0.71(best 79.788, 2시드) · MCubeS 58.07±0.49 (출처: 아래 ① 표 = headline.yaml)
 sota_gap: DELIVER test mean −0.47 vs DGFusion 56.71 · val mean +0.72 vs CAFuser-CAA 68.79 · MUSES test mean −0.21 vs DGFusion 79.5 · MCubeS +2.17 vs StitchFusion 55.9 (출처: ① 표)
-next_gate: ④ 판정 대기 — R1·R2 legal v2, P54 Q2·Q3, DGFusion (b), muphys 3페어, DELIVER 넷째 페어 (판정 = 생각정리 세션)
-blocker: ③ 기준 — ISSUE-038 hpca100 미커밋 R1/R2·QAF 구현, ISSUE-036 v2 래퍼 가드 잔여, yeon GPU0-3 상실 (③은 2026-09-22 기준)
-last_updated: 2026-09-26 (값은 이 파일 2026-09-23 스냅샷에서 옮김, 새 판정 없음)
+next_gate: P56-A(모달 충돌 학습: Q2 레시피의 열화 패스에 "한 센서 영역이 자신 있게 틀린" 표본 추가) 40ep 스크린 2시드 — 사전 기준 = clean 24클래스 Δ vs Q2 ≥ −0.3 그리고 (실제 과노출·저노출·모션블러 케이스 mIoU 평균 Δ ≥ +1.0 또는 RGB 부분 결측 저하 20% 이상 감소), lab-plan DRN-260929-01
+blocker: hpca100 공유 볼륨 98%(여유 49G, 정리는 user 승인 대기) · 기준선(DGFusion) 강건 프로토콜 측정 담당 미정 · MUSES test 제출 보류(user 2026-09-29: 새 4모달 모델로 다시 만들 것)
+last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상태만 갱신)
 <!-- PI:END -->
 
 > **역할**: 현재 상태 스냅샷 — 네 블록(벤치 표·지금 도는 것·블로커·판정 대기)만 담는다(상한 60줄, 2026-09-18 재설계 — 감사 R2). 이력·경위는 [history-2026H2.md](history-2026H2.md), 날짜 엔트리 적층 금지.
@@ -41,23 +41,21 @@ last_updated: 2026-09-26 (값은 이 파일 2026-09-23 스냅샷에서 옮김, �
 - 실행 중 런·대기열·GPU 점유·ETA = [../experiments/plan.md](../experiments/plan.md) "실행 중"·"GPU 예약·점유 현황" 표(여기 복제 금지).
 - 링크: 상황판 artifact https://claude.ai/code/artifact/11924e8a-12fc-4dbc-a174-ead7259b0228 · 노션 논문 페이지 https://app.notion.com/p/gistailab/Drone-Object-Detection-for-RGB-IR-Fusion-33d05310a165408ab0b8ec4427d1fe2c
 
-## ③ 열린 블로커 (2026-09-22)
+## ③ 열린 블로커 (2026-09-29)
 
-1. 🔴 **ISSUE-038** hpca100 repo(cddc319)의 R1/R2·QAF 구현이 **미커밋 로컬 수정(+566줄)** 로만 존재 — pull 금지(날아감), develop 커밋 시급. [../issues/issues-and-fixes.md](../issues/issues-and-fixes.md)
-2. 🔴 **ISSUE-036** legal 하네스 재샘플 floor 정렬 편차 — legal v2(nearest-exact) 채택 완료, v2 래퍼 가드 등재 잔여.
-3. **yeon GPU0-3 상실**(09-22 리부트 직후 타인 선점, [../experiments/plan.md](../experiments/plan.md) GPU 표) — 4장 운용, e1scr_s903 재개 대기. ~~bengio GPU 전면 고장~~ → 09-23 감시 세션 실측으로 **정정**: bengio 에서 40ep 스크린 6런이 완주했고 legal v2 재채점 6건이 GPU 0·1·2·3·4·7 에서 돌고 있다(인수인계 문서의 "고장"은 낡은 정보). e1scr_s903 은 인수인계 §1 기준 jarvis 에서 완주(65.80@40, 재채점 대기).
-4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 — test 1270/1897장만 남음. 과거 이미지별 분석 점검 필요.
-5. **ISSUE-035** 헤드라인 ckpt 경로 기록 — NAS 정본 이관 완료, 이슈 표 갱신 대기.
-6. **lecun 배치 금지**(user 2026-09-17) · **hpca100 공유 볼륨 감시**(09-15 Errno 28 전례).
+1. 🔴 **hpca100 공유 볼륨 98%**(여유 49G, 실측 09-29) — P56-A 두 런이 체크포인트를 쓰는 중. 정리안(체크포인트 검증 이동·덤프 삭제)은 user 승인 대기.
+2. **ISSUE-036** legal 하네스 재샘플 편차 — legal v2(nearest-exact) 채택 완료, v2 래퍼 가드 등재 잔여.
+3. **기준선 강건 측정 공백** — DGFusion·CAFuser 의 모달 결측·부분 열화 프로토콜 측정 담당 세션이 없다(도구 `tools/baseline_failure/robust_bench_eval.py` 동등성 미검증). CAFuser (b) 재학습은 user 가 09-24 중단.
+4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 · **ISSUE-035** 헤드라인 ckpt 경로 기록(이슈 표 갱신 대기).
+5. **lecun 배치 금지**(user 2026-09-17) · jarvis GPU0 예약 · jarvis 에서 `/ailab_mat2` 접근 금지(sshfs 정지).
+6. ~~ISSUE-038 hpca100 미커밋 코드~~ → 09-23 회수·develop 커밋으로 종결.
 
-## ④ 다음 판정 대기 (판정 = "MMSAM | 생각정리" 세션)
+## ④ 판정 현황 (판정 = "MMSAM | 생각정리" 세션, 근거 = judgment-ledger 2026-09-23~29 행)
 
-> 🔴 **09-23 15:30 클로드 코드 재개용 인수인계 정본 = [handoff-2026-09-23-zcode.md](handoff-2026-09-23-zcode.md)** — R1/R2 legal v2 확정 수치·사고·남은 일 전부 거기에.
-
-- **R1(경계 prior)·R2(연결 성분 손실) legal v2 1차 수치(시드821, 잠정)** — R1 test 56.58(jarvis 사본)·56.80(hpca100 사본) / val 68.65·69.09, R2 test 56.56·val 68.88. 짝(E1 스크린) 55.94/68.56. ⚠️ 생각정리 판정(09-23): "DGFusion 초과" 문구 철회 — 같은 시드의 R1 이 두 사본(jarvis test 56.58 / hpca100 56.80)으로 존재하고 유리한 쪽만 고를 수 없음, 얇은4 56.39·50.81 은 TrafficSign 을 넣은 비정본 정의(정본 = Pole·Pedestrian·Static·TrafficLight). 판정은 3시드 후([judgment-ledger 09-23 행](../experiments/judgment-ledger.md)). 판정 잔여 = 정본 얇은4 + "찾고도 못 그린 비율" 러너(21dfb04) + RMM depth Δ + 시드 902·903.
-
-- **P54 Q2(증류 대조군)·Q3(QAF 본 카드)** 40ep — jarvis 09-21 저녁 기동. Q1b-2 probe(RGB 연산자별 분해) 결과 회수 후 RGB 품질 헤드 범위 확정.
-- **DGFusion 기준선 (b) 열화 재학습 완주(09-22 02:47)** — val-best 사후 스윕(ckpt 20개) + Q0 잔여(EMM/NM 기준값) → G-robust-vs-DGFusion 판정 재료.
-- **muphys_824·825**(MUSES PhysAug-off 공정선 3페어) ~09-25 오전 완주 · muphys_826 미기동(autoplace queue) · **e1scr_s903·E1-shared 3시드** 스크린 미기동(배치 승인 대기).
-- **DELIVER 넷째 페어**(E1·E13·C3-only 시드4) — 완주·재채점 완료, 판정 대기.
-- MUSES 공정선 제출본(E13M 81.95, 09-20 생성 `submission/muses/20260920_…zip`) 제출 여부 — user 직접.
+- **종료(기각)**: R1(depth 경계 prior refinement, 3시드 24클래스 Δ −0.09) · Q1/Q3(합성 열화 라벨로 감독하는 품질 헤드 QAF: clean −1.31, 강건도 Q2 이하, 합성→실제 전이 실패) · E17(고해상도 세부 가지). R2(연결 성분 soft-IoU 손실)는 시드821 Δ24 ≈ 0 으로 종료 후보(시드902·903 재채점 미확정).
+- **채택(바탕 레시피)**: Q2(두 패스 = clean CE + 열화 CE + 동결 E1 교사 증류). clean 3시드 Δ24 +0.41(개선 주장 안 함), 강건 3시드 재현: 모달 결측 15조합 평균 48.06 vs E1 스크린 40.40, depth 부분 결측 저하 비율 0.26. RGB 부분 결측에는 이득 없음.
+- **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
+- **P55(자기감독 게이트) 계열**: 오라클 순 여유 +1.0~2.2(조건별 1.1~1.8) · 분할 손실만으로 학습한 무감독 게이트는 상황에 따라 달라지나(RGB 신뢰도 야간 0.307 vs 흐림 0.356) legal v2 이득 없음(val 68.62 / test 57.59, Q2 68.55 / 57.73) → 곱셈 게이트는 주 후보에서 제외. leave-one-out 목표 팔 결과 대기.
+- **실행 중**: P56-A(모달 충돌 학습) 시드821 hpca100 GPU1(09-29 07:08 UTC 기동, 에폭당 약 2.1시간, 완주 예상 10-03 새벽 KST) · 시드902 는 GPU2 대기. P56-B(거리 조건화 attention)·P56-C(환경 조건 LoRA 전문가 혼합)는 A 뒤(user 승인 2026-09-29).
+- **MUSES**: PhysAug-off 공정선 3시드 공식 val 82.30±0.14(824·825·826). test 제출은 보류(user 09-29).
+- **미판정 적체**: lab-plan judging 219건(2026-09-26 전량 이관분, review:method 태그) — 생각정리 세션이 순차 판정.
