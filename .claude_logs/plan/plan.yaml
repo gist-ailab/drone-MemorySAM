@@ -10403,7 +10403,7 @@ items:
   expected_cost: 4090 1장 × 약 2일 × 2시드(통과 시 +1시드), 강건 평가 시드당 약 10 GPU-시간
   priority: 20
   owner_role: method
-  status: idea
+  status: queued
   tags:
   - P56
   - fusion

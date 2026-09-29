@@ -511,3 +511,4 @@
 {"ts": "2026-09-29T03:22:59.785433+00:00", "id": "DRN-260929-01", "action": "add", "fields": {"title": [null, "P56-A · 모달 충돌 학습(한 센서 영역에 틀린 내용을 넣고 나머지 센서와 정답을 따르게)"]}, "reason": null, "actor": "jemo"}
 {"ts": "2026-09-29T03:23:00.693010+00:00", "id": "DRN-260929-02", "action": "add", "fields": {"title": [null, "P56-B · 거리 조건화 attention(depth·LiDAR 입력의 거리값을 융합 attention 의 위치 정보로)"]}, "reason": null, "actor": "jemo"}
 {"ts": "2026-09-29T03:23:01.594402+00:00", "id": "DRN-260929-03", "action": "add", "fields": {"title": [null, "P56-C · 환경 조건 LoRA 전문가 혼합(공유 LoRA 와 센서별 LoRA 를 얕은 블록 통계로 토큰마다 섞음)"]}, "reason": null, "actor": "jemo"}
+{"ts": "2026-09-29T03:34:34.175979+00:00", "id": "DRN-260929-01", "action": "status", "fields": {"status": ["idea", "queued"]}, "reason": "user 직접 승인 2026-09-29: '승인할게, A부터 진행해줘'", "actor": "jemo"}
