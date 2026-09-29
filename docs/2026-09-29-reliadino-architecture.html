@@ -98,13 +98,13 @@ li{max-width:72ch}
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">MemorySAM · ReliaDINO · 2026-09-29 기준</div>
+  <div class="eyebrow">MemorySAM · ReliaDINO · 2026-09-30 기준</div>
   <h1>ReliaDINO: 외부 레이블 없이, 학습 설계로 센서 의존도를 바꾸는 멀티센서 분할 모델</h1>
   <p class="lede">RGB·Depth·Event·LiDAR 네 센서를 하나의 동결 백본으로 읽고 교차 모달 attention 으로 합친다. 기존 강자(DGFusion·CAFuser)가 조건 텍스트와 depth 정답 같은 외부 신호로 융합을 조절하는 것과 달리, 이 모델은 외부 신호를 쓰지 않고 <b>학습 때 센서를 없애고, 망가뜨리고, 틀리게 만들어</b> 네트워크가 스스로 다른 센서를 찾아 쓰게 한다.</p>
   <div class="status">
     <span class="pill">DELIVER test <b>56.24 ± 0.42</b> (DGFusion 56.71)</span>
     <span class="pill">DELIVER val <b>69.51 ± 0.15</b> (CAFuser-CAA 68.79)</span>
-    <span class="pill">센서 결측 15조합 평균 <b>40.4 → 48.1</b></span>
+    <span class="pill">센서 결측 15조합 평균 <b>40.0 → 48.1</b></span>
     <span class="pill">진행 중 <b>모달 충돌 학습 (P56-A)</b></span>
   </div>
 </header>
@@ -277,7 +277,7 @@ li{max-width:72ch}
       </tr>
       <tr>
         <td><b>구조 대신 학습을 바꾼다</b><br><span class="mono">두 패스 + 교사 증류</span></td>
-        <td>구조는 그대로 두고 학습 때 센서를 없애거나 망가뜨리기만 했는데, Event 만 남았을 때 9.6 → 31.0, LiDAR 만 남았을 때 5.4 → 22.9 로 올랐다. 병목은 융합의 표현력이 아니라 강한 센서에만 기대는 학습 유인이었다.</td>
+        <td>구조는 그대로 두고 학습 때 센서를 없애거나 망가뜨리기만 했는데, Event 만 남았을 때 8.6 → 31.0, LiDAR 만 남았을 때 4.9 → 22.9 로 올랐다. 병목은 융합의 표현력이 아니라 강한 센서에만 기대는 학습 유인이었다.</td>
         <td>전 센서 공유 LoRA 로 교체: Depth 열화 시 저하가 절반(비율 0.47)이지만 clean 분산이 커져 단독 채택하지 않음. 설계 C 의 재료로 남김.</td>
       </tr>
       <tr>
@@ -287,7 +287,7 @@ li{max-width:72ch}
       </tr>
       <tr>
         <td><b>충돌 표본을 추가한다</b><br><span class="mono">설계 A</span></td>
-        <td>두 패스 학습은 센서가 없어지는 상황만 가르친다. RGB 가 부분적으로 망가질 때의 저하는 그대로였다(2.88·2.35·2.13, 기준 2.79·2.07). 반사광처럼 RGB 가 자신 있게 틀리는 상황은 가르친 적이 없다.</td>
+        <td>두 패스 학습은 센서가 없어지는 상황만 가르친다. RGB 화소의 75% 가 빠질 때의 저하는 그대로였다(시드별 5.76·4.69·4.26, 기준 4.17·5.57·4.15). 반사광처럼 RGB 가 자신 있게 틀리는 상황은 가르친 적이 없다.</td>
         <td>—</td>
       </tr>
       <tr>
@@ -307,10 +307,10 @@ li{max-width:72ch}
   <figure>
     <h3>센서 하나만 남았을 때의 mIoU (DELIVER test)</h3>
     <div class="legend">
-      <span class="key"><span class="sw old"></span>clean 입력만으로 학습 (2시드 평균)</span>
+      <span class="key"><span class="sw old"></span>clean 입력만으로 학습 (3시드 평균)</span>
       <span class="key"><span class="sw new"></span>두 패스 + 교사 증류 (3시드 평균)</span>
     </div>
-    <svg class="fit" id="chart1" viewBox="0 0 760 300" role="img" aria-label="센서 하나만 남았을 때 mIoU. RGB 39.0에서 53.9, Depth 46.6에서 46.0, Event 9.6에서 31.0, LiDAR 5.4에서 22.9. 센서 결측 15조합 평균은 40.4에서 48.1.">
+    <svg class="fit" id="chart1" viewBox="0 0 760 300" role="img" aria-label="센서 하나만 남았을 때 mIoU. RGB 39.3에서 53.9, Depth 46.3에서 46.0, Event 8.6에서 31.0, LiDAR 4.9에서 22.9. 센서 결측 15조합 평균은 40.0에서 48.1.">
       <!-- 축: y 0~60, 0 → y=250, 60 → y=30. 1 mIoU = 3.6667px -->
       <g>
         <line class="grid" x1="56" y1="250" x2="744" y2="250"/>
@@ -337,7 +337,7 @@ li{max-width:72ch}
       <tr><td><b>MUSES test</b></td><td class="num">79.5 (DGFusion)</td><td class="num">79.29 ± 0.71, 최고 79.79</td><td>평균 −0.21, 동급</td></tr>
       <tr><td><b>MCubeS test</b></td><td class="num">55.9 (StitchFusion)</td><td class="num">58.07 ± 0.49</td><td class="good">+2.17</td></tr>
       <tr><td><b>열화 학습을 넣었을 때 clean 손해</b></td><td class="num">val −4.80 · test −0.91</td><td class="num">24클래스 +0.41 · test +0.01</td><td class="good">손해 없음</td></tr>
-      <tr><td><b>센서 결측 15조합 평균</b></td><td>같은 방식으로 측정한 값 없음</td><td class="num">40.4 → 48.1</td><td>내부 비교만 확정</td></tr>
+      <tr><td><b>센서 결측 15조합 평균</b></td><td>같은 방식으로 측정한 값 없음</td><td class="num">40.0 → 48.1</td><td>내부 비교만 확정</td></tr>
       <tr><td><b>Depth 부분 열화 시 저하</b></td><td>같은 방식으로 측정한 값 없음</td><td class="num">기준의 0.26배</td><td>내부 비교만 확정</td></tr>
       <tr><td><b>Event · LiDAR 활용</b></td><td>제거해도 ±0.4 (어떤 조건에서도 쓰지 않음)</td><td>단독으로 31.0 · 22.9</td><td class="good">보조 센서가 살아 있음</td></tr>
     </tbody>
@@ -422,11 +422,11 @@ li{max-width:72ch}
 <script>
 (function(){
   var data=[
-    {name:"RGB 만",old:39.0,neu:53.9},
-    {name:"Depth 만",old:46.6,neu:46.0},
-    {name:"Event 만",old:9.6,neu:31.0},
-    {name:"LiDAR 만",old:5.4,neu:22.9},
-    {name:"15조합 평균",old:40.4,neu:48.1}
+    {name:"RGB 만",old:39.3,neu:53.9},
+    {name:"Depth 만",old:46.3,neu:46.0},
+    {name:"Event 만",old:8.6,neu:31.0},
+    {name:"LiDAR 만",old:4.9,neu:22.9},
+    {name:"15조합 평균",old:40.0,neu:48.1}
   ];
   var ns="http://www.w3.org/2000/svg",g=document.getElementById("bars");
   if(!g)return;
