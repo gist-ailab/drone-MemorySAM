@@ -10384,3 +10384,101 @@ items:
   verdict: null
   analysis: null
   superseded_by: null
+- id: DRN-260929-01
+  title: P56-A · 모달 충돌 학습(한 센서 영역에 틀린 내용을 넣고 나머지 센서와 정답을 따르게)
+  question: 반사광·번짐처럼 RGB 가 자신 있게 틀릴 때 다른 센서에서 물체를 읽도록, 외부 레이블 없이 학습 설계만으로 가르칠 수 있는가
+  hypothesis: 융합 구조의 표현력이 아니라 학습 유인이 병목이다. 결측(없어짐)만 가르친 Q2 에 충돌(틀린 신호)을 더하면 실제 열화
+    조건에서 의존도가 이동한다
+  falsification: 실제 열화 케이스 Δ < +0.5 이고 조건별 leave-one-out 에서 RGB 의존도가 Q2 와 같으면 기각
+  change: 'Q2 의 열화 패스에 모달 충돌 증강 추가: 한 센서의 임의 영역을 다른 장면 내용·포화 얼룩으로 바꾸고 정답은 그대로(나머지
+    센서가 본 장면)'
+  baseline: 'Q2(두 패스 + 동결 E1 교사 증류) 40ep 스크린 같은 시드 짝 — 3시드 legal v2 test 56.59 / 24클래스
+    57.06, s821 강건: EMM 48.68'
+  configs: []
+  launch: null
+  success_criteria: clean 24클래스 Δ vs Q2 ≥ −0.3 그리고 (DELIVER 실제 과노출·저노출·모션블러 케이스 mIoU
+    평균 Δ ≥ +1.0 또는 RGB 부분 결측 RMM 저하 20% 이상 감소)
+  sample_basis: 40ep 스크린 2시드(821·902) 평균으로 1차 판정(단일 시드 Q2 s821 +1.30 이 3시드 +0.41 로
+    줄어든 전례), 통과 시 셋째 시드(903) 추가. 같은 시드 사본 간 잡음 하한 24클래스 ±0.3
+  expected_cost: 4090 1장 × 약 2일 × 2시드(통과 시 +1시드), 강건 평가 시드당 약 10 GPU-시간
+  priority: 20
+  owner_role: method
+  status: idea
+  tags:
+  - P56
+  - fusion
+  - robust
+  created: '2026-09-29'
+  updated: '2026-09-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260929-02
+  title: P56-B · 거리 조건화 attention(depth·LiDAR 입력의 거리값을 융합 attention 의 위치 정보로)
+  question: 우리 실측 병목인 원거리(111~255m) 얇은 물체 손실을, 융합이 위치별 거리를 알게 하면 줄일 수 있는가
+  hypothesis: DGFusion 의 이득은 조건 토큰이 아니라 지역 depth 토큰에서 나왔다. 입력 depth 에서 얻은 거리 임베딩을
+    attention 에 더하면 거리별로 센서 읽는 방식이 달라진다
+  falsification: 원거리 구간 Δ < +0.5 이고 못 그린 비율 변화 < 0.03 이면 기각(E17·R1·R2 와 같은 축 네 번째
+    반증)
+  change: 교차 모달 attention 의 query·key 에 거리 구간 임베딩(depth 입력을 토큰 격자로 평균, 로그 구간) 추가.
+    depth GT 감독 없음(N-E23 과의 차이)
+  baseline: 'Q2(두 패스 + 동결 E1 교사 증류) 40ep 스크린 같은 시드 짝 — 3시드 legal v2 test 56.59 / 24클래스
+    57.06, s821 강건: EMM 48.68'
+  configs: []
+  launch: null
+  success_criteria: clean 24클래스 Δ vs Q2 ≥ +0.3 그리고 깊이 구간 111~255m mIoU Δ ≥ +1.0, 얇은
+    100~1k 화소 거리3 의 찾고도 못 그린 비율 0.43 → 0.35 이하
+  sample_basis: 40ep 스크린 2시드(821·902) 평균으로 1차 판정(단일 시드 Q2 s821 +1.30 이 3시드 +0.41 로
+    줄어든 전례), 통과 시 셋째 시드(903) 추가. 같은 시드 사본 간 잡음 하한 24클래스 ±0.3
+  expected_cost: 4090 1장 × 약 2일 × 2시드, 세 표 분석 시드당 약 2 GPU-시간
+  priority: 21
+  owner_role: method
+  status: idea
+  tags:
+  - P56
+  - fusion
+  - range
+  created: '2026-09-29'
+  updated: '2026-09-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-260929-03
+  title: P56-C · 환경 조건 LoRA 전문가 혼합(공유 LoRA 와 센서별 LoRA 를 얕은 블록 통계로 토큰마다 섞음)
+  question: 센서별 LoRA(clean 에 유리)와 공유 LoRA(depth 열화 저하 절반)를 상황에 따라 섞으면 두 장점을 함께 얻는가
+  hypothesis: 'E1-shared 3시드: depth 부분 열화 저하 비율 0.47 이지만 clean 분산 증가. 라우터가 clean 에서는
+    센서별, 열화에서는 공유 쪽으로 가면 둘 다 얻는다. 과거 SoftMoE 게이트 붕괴는 학습 유인 부재 탓이므로 P56-A 의 충돌·결측 학습과
+    함께여야 한다'
+  falsification: 라우터 혼합 비율의 이미지 간 표준편차 < 0.02(상수로 굳음) 또는 치환 검정 격차 < 0.1 이면 기각
+  change: 각 블록 LoRA 를 공유 전문가 + 센서별 전문가 두 개로 두고, 얕은 블록(깊이 10~25%) 통계로 만든 라우터가 토큰별 혼합
+    비율을 정함. 라우터 감독 없음(분할 손실만)
+  baseline: 'Q2(두 패스 + 동결 E1 교사 증류) 40ep 스크린 같은 시드 짝 — 3시드 legal v2 test 56.59 / 24클래스
+    57.06, s821 강건: EMM 48.68 · E1-shared 3시드(24클래스 Δ −0.24, depth RMM 저하 비율 0.47)'
+  configs: []
+  launch: null
+  success_criteria: clean 24클래스 Δ vs Q2 ≥ −0.3 그리고 depth 부분 결측 RMM 저하가 Q2 대비 20% 이상
+    감소, 라우터 혼합 비율이 조건(맑음 대 야간·비)별로 다름(이미지 단위 AUROC ≥ 0.7)과 치환 검정 격차 ≥ 0.3 mIoU
+  sample_basis: 40ep 스크린 2시드(821·902) 평균으로 1차 판정(단일 시드 Q2 s821 +1.30 이 3시드 +0.41 로
+    줄어든 전례), 통과 시 셋째 시드(903) 추가. 같은 시드 사본 간 잡음 하한 24클래스 ±0.3
+  expected_cost: 4090 1장 × 약 2일 × 2시드(LoRA 파라미터 2배라 메모리 확인 필요)
+  priority: 22
+  owner_role: method
+  status: idea
+  tags:
+  - P56
+  - lora
+  - moe
+  created: '2026-09-29'
+  updated: '2026-09-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null

@@ -189,4 +189,6 @@ updated: 2026-09-18 (본문은 매일 갱신 — 최신 행 기준)
 <!-- lab:registry:begin -->
 | run_id | date | env | config | split·metric=value | 연결된 plan id | verdict |
 | --- | --- | --- | --- | --- | --- | --- |
+| jarvis_q2_eval1024_20260928_1034 | unknown | unknown | q2_eval1024 | test mIoU=56.07; test mAcc=65.82 | unknown | unknown |
+| jarvis_q2_eval1024_20260928_1127 | unknown | unknown | q2_eval1024 | val mIoU=67.88; val mAcc=76.51 | unknown | unknown |
 <!-- lab:registry:end -->
