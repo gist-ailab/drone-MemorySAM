@@ -180,6 +180,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-16 | P16 | N6 · DELIVER legal-val ckpt 재선택 | ckpt 선택을 legal-val 기준으로 재선택(5시드) | judging | - | 미정 |
 | DRN-260926-17 | P17 | N7 · VICReg-off 격리 토글 1런 (seed821 매칭) | MODEL.P39.VICREG.ENABLE off(그 외 동일) | evaluating | - | 미정 |
 | DRN-260926-18 | P18 | N8 · P50 런 legal-val 재선택 | P50 런 6개 ckpt legal-val 스윕 | judging | - | 미정 |
+| DRN-260929-01 | P20 | P56-A · 모달 충돌 학습(한 센서 영역에 틀린 내용을 넣고 나머지 센서와 정답을 따르게) | Q2 의 열화 패스에 모달 충돌 증강 추가: 한 센서의 임의 영역을 다른 장면 내용·포화 얼룩으로 바꾸고 정답은 그대로(나머지 센서가 본 장면) | running | - | A100 1장 × 약 3.5일(에폭당 약 2.1시간 × 40) × 2시드(통과 시 +1시드), 강건 평가 시드당 약 10 GPU-시간 |
 | DRN-260926-23 | P23 | MUSES-PhysAug-off · MUSES 최선 레시피(P39.1-rank)에서 PhysAug만 off, 시드 매칭 3페어 | DATASET.PHYSAUG.ENABLE true→false (+ TRAIN.SEED · SAVE_DIR) | evaluating | - | 미정 |
 | DRN-260926-25 | P25 | S0-feature-probe · 사다리 출발점(학습 = 선형 헤드만), 원 특징 vs 어댑터 후 특징 프로브 | DINOv3 중간층 원 특징 vs 어댑터 후 특징에서 오라클 센서 선택·클래스 예측 정확도 비교 | judging | - | 미정 |
 | DRN-260926-32 | P32 | P50-EXT · P50 사전학습 확장(코퍼스/에폭 스케일업) | P50 사전학습 코퍼스 500k·등-스텝 확장, EXT-init 파인튠 | judging | - | 미정 |
@@ -197,10 +198,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-56 | P103 | Q2noDeg · 원천분리: DEGRADE_P=0, KD 유지(증류만의 순기여) | DEGRADE_P=0 (KD 유지) | running | - | 미정 |
 | DRN-260926-57 | P104 | E1-shared · E1 레시피 + 전 센서 공유 LoRA r16 40ep 스크린 3시드 | 센서별 LoRA → 전 센서 공유 LoRA r16(E1 4탭 위) | evaluating | - | 미정 |
 | DRN-260926-59 | P110 | D4/D6 · 기준선 실패 분석(DGFusion·CAFuser·우리 모델 모달 zero-out·조건별 Δ·깊이 구간·셀 지도·원거리 원인) | 학습 0 분석 | judging | - | 미정 |
-| DRN-260926-60 | P111 | Q1 · 품질 헤드 실현성 프로브(Q1 5ep·Q1b-1 15ep·Q1b-2 연산자별 분해) | 동결 E1 특징 위 품질 헤드만 학습 | judging | - | 미정 |
-| DRN-260926-61 | P112 | R1 · depth 경계 prior refinement 40ep 스크린 3시드 | depth 불연속(HHA 에지) 경계 prior stride-4 refinement | judging | - | 미정 |
 | DRN-260926-62 | P113 | R2 · 연결 성분 soft-IoU 손실 40ep 스크린 | 연결 성분 단위 soft-IoU 손실(원거리 가중) | judging | - | 미정 |
-| DRN-260926-63 | P114 | E1 40ep 스크린 3시드 짝 기준선 | E1 40ep 스크린 시드 821·902·903 | judging | - | 미정 |
 | DRN-260926-64 | P115 | E3b · E3 + 센서 간 prototype 일치 항(AGREE_LAMBDA 0.1) | AGREE_LAMBDA 0.1 | judging | - | 미정 |
 | DRN-260926-65 | P116 | E4c · 혼동 쌍 margin(RailTrack 3쌍·MARGIN 0.25) | 혼동 쌍을 RailTrack 3쌍으로 좁히고 MARGIN 0.25 | judging | - | 미정 |
 | DRN-260926-290 | P150 | D1 · det 인증 배포 계열(ViT-S/S+/B 백본, poongsan) | D1 검출 백본(ViT-S+ 등) | judging | - | 미정 |
@@ -333,8 +331,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-222 | P358 | [registry] E4_legal_rescore_seed821 | E4 legal 재채점 ckpt epoch15_65.92_top1 | judging | - | 미정 |
 | DRN-260926-226 | P362 | [registry] B0_legal_rescore_seed821 | B0 legal 재채점 ckpt epoch40_65.4_top1 | judging | - | 미정 |
 | DRN-260926-228 | P364 | [registry] hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E17 | E17 = 4탭 읽기 카드에 고해상도 세부 가지(MODEL.DETAIL_BRANCH)를 더한 40에폭 스크린 — 얇은 객체 병목 직격 | judging | - | 미정 |
-| DRN-260926-231 | P367 | [registry] jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2 | P54 Q2 = 증류 대조군: E1 40ep 스크린 레시피 + 두 패스 학습(clean CE 상시 + 열화 입력 CE + 동결 E1 확정 시드1 교사 KD), 품질 헤드·QAF 융합 없음 | judging | - | 미정 |
-| DRN-260926-232 | P368 | [registry] jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_Q3 | P54 Q3 = QAF 본 카드: Q2 + 품질 헤드(η̂)·depth·LiDAR key 마스크·self-attn 1층·가중 평균 | judging | - | 미정 |
 | DRN-260926-233 | P369 | [registry] jarvis_deliver_rgbdel_P46_c3only_seed2026090{2,3}_screen40_Q2 | Q2 시드 재현(교사 고정, 학생 시드만 변경) | running | - | 미정 |
 | DRN-260926-235 | P376 | [registry] det_P29_egofill_bengio | P29-Det | judging | - | 미정 |
 | DRN-260926-236 | P377 | [registry] det_P29_event_bengio | P29-Det | judging | - | 미정 |
@@ -416,6 +412,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-227 | - | - | - |
 | DRN-260926-229 | - | - | - |
 | DRN-260926-230 | - | - | - |
+| DRN-260926-231 | adopt | Q2(두 패스 = clean CE + 열화 CE + 동결 E1 교사 증류) 를 이후 카드의 바탕 레시피로 채택: clean 축은 3시드 24클래스 평균 Δ +0.41 로 사전 기준(+0.6) 미달이라 clean 개선 주장은 하지 않음(손해도 없음). 강건 축은 3시드 재현: 모달 결측 15조합 평균 48.06 vs E1 스크린 40.40(+7.7), depth 부분 결측 저하 비율 0.26, S&P 노이즈 d.2 저하 약 3.8 감소. RGB 부분 결측에는 이득 없음. 헤드라인 교체 없음. 판정 대장 2026-09-28·09-29 행 | experiments/judgment-ledger.md 행 71 |
+| DRN-260926-232 | reject | Q3(품질 헤드 QAF 본 카드) 종료: 시드821 legal v2 에서 Q2(품질 헤드 없는 두 패스+교사 증류) 대비 24클래스 −1.31·얇은 객체 4클래스 −5.67, 강건 축도 모달 결측 15조합 평균 47.09 vs Q2 48.68 로 Q2 이하. 사전 규칙(강건에서 Q2 를 못 넘으면 종료) 적용. 판정 대장 2026-09-24·09-29 행 | experiments/judgment-ledger.md 행 51,53,59,73 |
 | DRN-260926-259 | - | - | - |
 | DRN-260926-26 | - | - | - |
 | DRN-260926-260 | - | - | - |
@@ -427,6 +425,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-42 | - | - | - |
 | DRN-260926-43 | - | - | - |
 | DRN-260926-44 | - | - | - |
+| DRN-260926-60 | reject | Q1(품질 헤드 실현성 프로브) 기각: Q1b-2 에서 RGB 광학 열화(흐림·감마·색 틀어짐) AUROC 0.67~0.73 으로 인식 실패, Q1d 에서 합성 열화로 학습한 헤드가 실제 열화로 전이되지 않음(다중 블록 혼합 헤드의 실제 야간 AUROC 0.002). 합성 열화 라벨로 감독하는 품질 헤드 계열은 재시도 금지. 판정 대장 2026-09-23·09-28·09-29 행 | experiments/judgment-ledger.md 행 43,50,61 |
+| DRN-260926-61 | reject | R1(depth 경계 prior refinement) 종료: 40ep 스크린 3시드 legal v2 test 평균 56.61(E1 스크린 짝 56.58), 24클래스 평균 Δ −0.09, 얇은 객체 4클래스 Δ 시드별 +2.11/−1.57/−1.80 으로 부호 불일치. 기제 게이트(찾고도 못 그린 비율)도 미달. val +1.18 은 test 에서 사라짐. 판정 대장 2026-09-23 행 | experiments/judgment-ledger.md 행 52,54,57,60,65 |
+| DRN-260926-63 | adopt | E1 40ep 스크린 3시드(821·902·903) 를 40ep 스크린 카드의 짝 기준선으로 확정: legal v2 test 56.58±0.55, 24클래스 56.65±0.23, 얇은 객체 4클래스 49.60, val 67.51±0.91. 판정 대장 2026-09-23 행 | experiments/judgment-ledger.md 행 64 |
 | DRN-260926-85 | - | - | - |
 | DRN-260926-86 | - | - | - |
 | DRN-260926-97 | - | - | - |
