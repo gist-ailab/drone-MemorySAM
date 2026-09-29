@@ -726,7 +726,9 @@ def main(cfg, gpu, save_dir, logger):
     # 에서 항등 손실만 생성). TRAIN.QAF.ENABLE 이 켜지면 매 스텝 clean 패스(기존
     # 경로) + 열화 패스(Degrader → CE + KD + 품질 손실)를 함께 돈다.
     import copy as _copy
-    from semseg.datasets.degrade import Degrader                    # [P54] import 만
+    from semseg.datasets.degrade import Degrader, OP_NAMES as _QAF_OP_NAMES  # [P54] import 만
+    _qaf_conf_idx = (_QAF_OP_NAMES.index('region_conflict'),
+                     _QAF_OP_NAMES.index('specular_glare'))          # [P56-A] 충돌 op 인덱스
     _qaf_mc = model_cfg.get('QAF', {}) or {}
     _qaf_tc = train_cfg.get('QAF', {}) or {}
     qaf_model_on = bool(_qaf_mc.get('ENABLE', False))
@@ -741,9 +743,15 @@ def main(cfg, gpu, save_dir, logger):
     qaf_kd_w = float(_qaf_tc.get('KD_W', 0.5))
     qaf_kd_t = float(_qaf_tc.get('KD_T', 2.0))
     qaf_clean_pass = bool(_qaf_tc.get('CLEAN_PASS', True))
+    qaf_conf_p = float(_qaf_tc.get('CONFLICT_P', 0.0))               # [P56-A]
+    qaf_conf_modals = list(_qaf_tc.get('CONFLICT_MODALS', ['img', 'depth']))
+    qaf_conf_glare = float(_qaf_tc.get('CONFLICT_GLARE_FRAC', 0.5))
     if qaf_two_pass:
         qaf_degrader = Degrader(cfg={'p_per_modal': float(_qaf_tc.get('DEGRADE_P', 0.5)),
-                                     'missing_frac': float(_qaf_tc.get('MISSING_FRAC', 0.2))},
+                                     'missing_frac': float(_qaf_tc.get('MISSING_FRAC', 0.2)),
+                                     'conflict_p': qaf_conf_p,
+                                     'conflict_modals': qaf_conf_modals,
+                                     'conflict_glare_frac': qaf_conf_glare},
                                 seed=int(_qaf_tc.get('SEED', 0)))
         _tck = str(_qaf_tc.get('TEACHER_CKPT', '') or '')
         if _tck and os.path.isfile(_tck):
@@ -767,7 +775,9 @@ def main(cfg, gpu, save_dir, logger):
                         f"missing_frac={_qaf_tc.get('MISSING_FRAC', 0.2)} kd_w={qaf_kd_w} "
                         f"kd_t={qaf_kd_t} q_w={qaf_q_w} id_w={qaf_id_w} "
                         f"clean_pass={qaf_clean_pass} model_qaf={qaf_model_on} "
-                        f"teacher={'yes' if qaf_teacher is not None else 'no'}")
+                        f"teacher={'yes' if qaf_teacher is not None else 'no'} "
+                        f"conflict_p={qaf_conf_p} conflict_modals={qaf_conf_modals} "  # [P56-A]
+                        f"conflict_glare_frac={qaf_conf_glare}")
     _qaf_pareto_warned = False   # [P54-QAF] MMPareto 동시 사용 경고 1회용
 
     # ── train loop ──────────────────────────────────────────────────────────
@@ -796,6 +806,7 @@ def main(cfg, gpu, save_dir, logger):
         # [P54-QAF] 품질/항등/KD 손실 + 열화 비율 진단
         qaf_q_accum = qaf_id_accum = qaf_kd_accum = qaf_dce_accum = 0.0
         qaf_deg_sum = 0.0; qaf_deg_n = 0; qaf_step_n = 0
+        qaf_conf_sum = 0.0; qaf_conf_n = 0   # [P56-A] 충돌 표본 비율
         # [P47-2] uni-modal balance: 손실 + 모달별 CE/정확도 + OGM 계수
         uni_accum = 0.0
         uni_ce_sum = np.zeros(len(modals)); uni_acc_sum = np.zeros(len(modals))
@@ -959,7 +970,11 @@ def main(cfg, gpu, save_dir, logger):
                         with torch.no_grad():
                             _dg = float(((_qlab['severity'] > 0)
                                          | (_qlab['presence'] < 0.5)).float().mean())
+                            _cf = float(((_qlab['op'] == _qaf_conf_idx[0])
+                                         | (_qlab['op'] == _qaf_conf_idx[1]))
+                                        .any(dim=1).float().mean())   # [P56-A] 충돌 표본 비율
                         qaf_deg_sum += _dg; qaf_deg_n += 1
+                        qaf_conf_sum += _cf; qaf_conf_n += 1
                         _core._p46_replay_path = True
                         try:
                             _dlogits, _, _daux = model(_deg, True, gt_mask=lbl,
@@ -1025,7 +1040,11 @@ def main(cfg, gpu, save_dir, logger):
                     with torch.no_grad():
                         _dg = float(((_qlab['severity'] > 0)
                                      | (_qlab['presence'] < 0.5)).float().mean())
+                        _cf = float(((_qlab['op'] == _qaf_conf_idx[0])
+                                     | (_qlab['op'] == _qaf_conf_idx[1]))
+                                    .any(dim=1).float().mean())   # [P56-A] 충돌 표본 비율
                     qaf_deg_sum += _dg; qaf_deg_n += 1
+                    qaf_conf_sum += _cf; qaf_conf_n += 1
                     # (3) 열화 패스 forward → backward (clean 그래프는 해제된 상태)
                     with autocast(enabled=train_cfg['AMP'], dtype=AMP_DTYPE):
                         _core._p46_replay_path = True
@@ -1214,12 +1233,15 @@ def main(cfg, gpu, save_dir, logger):
             if qaf_two_pass or qaf_model_on:
                 _den = max(it + 1, 1)
                 _degf = (qaf_deg_sum / qaf_deg_n) if qaf_deg_n > 0 else 0.0
+                _conff = (qaf_conf_sum / qaf_conf_n) if qaf_conf_n > 0 else 0.0  # [P56-A]
                 writer.add_scalar('qaf/quality_loss', qaf_q_accum / _den, epoch)
                 writer.add_scalar('qaf/identity_loss', qaf_id_accum / _den, epoch)
                 writer.add_scalar('qaf/kd_loss', qaf_kd_accum / _den, epoch)
                 writer.add_scalar('qaf/deg_frac', _degf, epoch)
+                writer.add_scalar('qaf/conflict_frac', _conff, epoch)
                 logger.info(
                     f"[QAF-T] sev_max={_qaf_sev_cap(qaf_sev_sched, epoch):.2f} deg_frac={_degf:.3f} "
+                    f"conflict_frac={_conff:.3f} "
                     f"kd={qaf_kd_accum / _den:.4f} q={qaf_q_accum / _den:.4f} "
                     f"id={qaf_id_accum / _den:.4f} dce={qaf_dce_accum / _den:.4f}")
             # 감사 2026-07-21: wandb 전용이던 항들을 tb에도 (오프라인 서버에서

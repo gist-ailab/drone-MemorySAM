@@ -205,6 +205,108 @@ HELDOUT_OP_MODALS: Dict[str, Tuple[str, ...]] = {
 
 
 # ===========================================================================
+# [P56-A] 모달 충돌(conflict) 연산자 — 한 센서가 특정 영역에서 "확신에 차 틀린"
+# 값을 내는 상황을 모사한다(반사·정반사 글레어·잘못된 내용). 학습(TRAIN_OPS)·
+# held-out 어느 집합에도 넣지 않고, Degrader 의 conflict 경로에서만 직접 호출한다.
+# 반환 규약은 학습 연산자와 동일: (x_out(C,H,W), severity∈[0,1], mask(H,W) 0/1).
+# ===========================================================================
+def _odd_le(k: int, dim: int) -> int:
+    """홀수이고 dim 이하인 커널 크기(≥3). 작은 텐서에서 gaussian_blur 가 패딩으로
+    죽지 않도록 커널을 이미지 변 길이 안으로 자른다."""
+    k = int(k)
+    if k % 2 == 0:
+        k += 1
+    m = dim if dim % 2 == 1 else dim - 1
+    return max(3, min(k, m))
+
+
+def region_conflict(x: Tensor, g: torch.Generator,
+                    donor: Optional[Tensor] = None) -> Tuple[Tensor, float, Tensor]:
+    """비정형 영역을 "틀렸지만 그럴듯한" 내용으로 덮는다.
+
+    영역 마스크 = 저해상 랜덤장을 업샘플·블러한 뒤, 목표 면적비(U[0.10,0.40])에
+    해당하는 분위수로 이진화한다. 경계는 ~8–16px 가우시안으로 페더링(soft alpha)해
+    직사각형 경계가 남지 않게 한다. 내용 = donor(다른 표본의 같은 모달, 동일 shape)가
+    있으면 그것, 없으면 x 를 좌우 반전 후 세로·가로로 변당 1/4 이상 롤한 것.
+    출력 = alpha*content + (1−alpha)*x. mask = (alpha>0.5). severity = 면적비/0.40 클립.
+    """
+    C, H, W = x.shape
+    dev = x.device
+    area_frac = _u(g, 0.10, 0.40)
+    # 저해상 랜덤장 → 업샘플 → 블러(부드러운 랜덤 필드). 전부 CPU 생성기에서 뽑는다.
+    # 격자를 거칠게(변당 3~8칸) 잡아 영역이 반사·가림처럼 몇 개의 큰 덩어리가 되게 한다.
+    # (H//16 격자는 16px 크기 얼룩 수십 개로 쪼개져 "한 영역이 틀린 상황"이 되지 않았다 —
+    #  실제 DELIVER 시각화로 확인, 생각정리 검수 2026-09-29)
+    cells = _randint(g, 3, 8)
+    lo_h = max(2, min(cells, H))
+    lo_w = max(2, min(cells, W))
+    field = torch.rand(1, 1, lo_h, lo_w, generator=g)
+    field = F.interpolate(field, size=(H, W), mode='bicubic', align_corners=False)
+    kf = [_odd_le(19, H), _odd_le(19, W)]
+    field = TF.gaussian_blur(field, kernel_size=kf, sigma=[3.0, 3.0])[0, 0]   # (H,W) CPU
+    thr = torch.quantile(field.reshape(-1), 1.0 - area_frac)
+    region = (field >= thr).float()
+    # 경계 페더링(~8–16px) — 이진 영역을 블러해 soft alpha 를 만든다.
+    feather = _randint(g, 8, 16)
+    ka = [_odd_le(2 * feather + 1, H), _odd_le(2 * feather + 1, W)]
+    alpha = TF.gaussian_blur(region[None, None], kernel_size=ka,
+                             sigma=[max(feather / 2.0, 0.5)] * 2)[0, 0].clamp(0.0, 1.0)
+    alpha = alpha.to(dev)
+    if donor is not None:
+        content = donor.to(dev)
+    else:
+        flipped = torch.flip(x, dims=[2])                       # 좌우 반전
+        rh = _randint(g, max(1, H // 4), max(1, H - 1)) if H > 1 else 0
+        rw = _randint(g, max(1, W // 4), max(1, W - 1)) if W > 1 else 0
+        content = torch.roll(flipped, shifts=(rh, rw), dims=(1, 2))
+    a = alpha.unsqueeze(0)                                       # (1,H,W) 브로드캐스트
+    out = a * content + (1.0 - a) * x
+    mask_hw = (alpha > 0.5).float()
+    return out, min(area_frac / 0.40, 1.0), mask_hw
+
+
+def specular_glare(x: Tensor, g: torch.Generator) -> Tuple[Tensor, float, Tensor]:
+    """정반사 글레어(RGB 류). 1–4 개 부드러운 타원 블롭(총 면적 대략 2–15%) 안에서
+    x 를 이 텐서 정규화 공간의 포화 백색(채널별 이미지 최대 + 작은 마진)으로 가우시안
+    감쇠 혼합한다. 선택적으로 옅고 넓은 헤일로. mask = (혼합 가중>0.5). severity =
+    면적비/0.15 클립. 정규화 상수를 하드코딩하지 않고 x 자체의 최대/최소로 백색을 정한다.
+    """
+    C, H, W = x.shape
+    dev = x.device
+    ys = torch.arange(H, dtype=torch.float32).view(H, 1)
+    xs = torch.arange(W, dtype=torch.float32).view(1, W)
+    weight = torch.zeros(H, W)                                   # CPU 혼합 가중
+    n_blobs = _randint(g, 1, 4)
+    for _ in range(n_blobs):
+        cy = _u(g, 0.0, float(max(H - 1, 0)))
+        cx = _u(g, 0.0, float(max(W - 1, 0)))
+        ay = max(_u(g, 0.03, 0.20) * H, 1.0)
+        ax = max(_u(g, 0.03, 0.20) * W, 1.0)
+        theta = _u(g, 0.0, math.pi)                             # 무작위 방향
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        dy = ys - cy
+        dx = xs - cx
+        xr = dx * cos_t + dy * sin_t
+        yr = -dx * sin_t + dy * cos_t
+        d2 = (xr / ax) ** 2 + (yr / ay) ** 2
+        weight = torch.maximum(weight, torch.exp(-0.5 * d2))    # 중심 1, 가우시안 감쇠
+    if _u(g) < 0.5:                                             # 옅고 넓은 헤일로(선택)
+        kh = [_odd_le(min(H, W), H), _odd_le(min(H, W), W)]
+        halo = TF.gaussian_blur(weight[None, None], kernel_size=kh,
+                                sigma=[max(min(H, W) / 6.0, 1.0)] * 2)[0, 0] * 0.3
+        weight = torch.maximum(weight, halo)
+    weight = weight.clamp(0.0, 1.0).to(dev)
+    white = x.amax(dim=(1, 2), keepdim=True)                     # (C,1,1) 채널별 최대
+    margin = 0.05 * (x.amax() - x.amin()).abs()
+    white = white + margin
+    w = weight.unsqueeze(0)                                      # (1,H,W)
+    out = x * (1.0 - w) + white * w
+    mask_hw = (weight > 0.5).float()
+    area = float(mask_hw.mean())
+    return out, min(area / 0.15, 1.0), mask_hw
+
+
+# ===========================================================================
 # 연산자 인덱스 공간 — 라벨 `op` (B,M) 정수 텐서가 참조한다.
 #   0 = clean(열화 없음), 1 = 완전 결측, 나머지 = OPS 목록 순서(+2 오프셋).
 # 학습 연산자와 held-out 연산자를 **같은 인덱스 공간**에 둔다(학습 경로에서
@@ -214,6 +316,7 @@ OPS: Tuple[str, ...] = (
     'patch_drop', 'gaussian_blur', 'gamma_gain', 'color_shift',
     'depth_hole', 'lidar_beamdrop', 'event_lowres',     # 학습 연산자
     'gaussian_noise', 'salt_pepper',                    # held-out 연산자(같은 축)
+    'region_conflict', 'specular_glare',                # [P56-A] 충돌 연산자(끝에 추가 — 기존 인덱스 불변)
 )
 OP_NAMES: Tuple[str, ...] = ('clean', 'missing') + OPS
 _OP_INDEX: Dict[str, int] = {name: i for i, name in enumerate(OP_NAMES)}
@@ -234,6 +337,11 @@ def _dispatch(name: str, x: Tensor, g: torch.Generator, modal: str):
 _DEFAULT_CFG = {
     'p_per_modal': 0.5,     # 샘플·모달당 열화 확률
     'missing_frac': 0.2,    # 열화 표본 중 완전 결측 비율
+    # [P56-A] 모달 충돌 표본. conflict_p=0(기본)이면 아래 경로는 난수를 전혀 뽑지
+    # 않아 기존 코드와 출력·생성기 상태가 bit-동일하다.
+    'conflict_p': 0.0,                     # 표본이 conflict 표본일 확률
+    'conflict_modals': ['img', 'depth'],   # 충돌을 넣을 후보 모달
+    'conflict_glare_frac': 0.5,            # chosen=='img' 표본 중 specular_glare 비율
 }
 
 
@@ -255,6 +363,9 @@ class Degrader:
             self.cfg.update(cfg)
         self.heldout = bool(heldout)
         self.g = torch.Generator().manual_seed(int(seed))
+        # [P56-A] 배치 1 학습에서 "다른 장면" donor 로 쓸 직전 호출의 clean 입력(모달별).
+        # conflict_p==0 이면 채우지 않는다(기존 동작·메모리 불변).
+        self._prev_clean: Optional[List[Tensor]] = None
 
     def _ops_for(self, modal: str) -> Tuple[str, ...]:
         if self.heldout:
@@ -277,7 +388,39 @@ class Degrader:
 
         p = self.cfg['p_per_modal']
         mfrac = self.cfg['missing_frac']
+        conflict_p = float(self.cfg.get('conflict_p', 0.0))
+        conflict_modals = self.cfg.get('conflict_modals', ['img', 'depth'])
+        glare_frac = float(self.cfg.get('conflict_glare_frac', 0.5))
         for b in range(B):
+            # ── [P56-A] 충돌 표본 처리 (heldout 경로엔 없음) ──────────────────
+            # conflict_p==0 이면 아래 _u 도 호출하지 않아 기존과 bit-동일하다.
+            if conflict_p > 0.0 and not self.heldout and _u(self.g) < conflict_p:
+                present = [nm for nm in conflict_modals if nm in modal_names]
+                if present:
+                    chosen = _choice(self.g, present)
+                    mi = modal_names.index(chosen)
+                    if chosen == 'img' and _u(self.g) < glare_frac:
+                        x_out, sev, mk = specular_glare(out[mi][b], self.g)
+                        op_idx = _OP_INDEX['specular_glare']
+                    else:
+                        if B > 1:
+                            donor = tensors[mi][(b + 1) % B]
+                        elif (self._prev_clean is not None
+                              and self._prev_clean[mi].shape[1:] == tensors[mi].shape[1:]):
+                            # 배치 1: 직전 호출의 다른 장면을 donor 로(자기 장면을 뒤집어
+                            # 옮긴 내용은 도로→도로처럼 충돌이 약했다 — 시각화로 확인)
+                            donor = self._prev_clean[mi][0]
+                        else:
+                            donor = None
+                        x_out, sev, mk = region_conflict(out[mi][b], self.g, donor=donor)
+                        op_idx = _OP_INDEX['region_conflict']
+                    out[mi][b] = x_out
+                    severity[b, mi] = float(sev)
+                    mask[b, mi] = mk
+                    op[b, mi] = op_idx
+                    # 나머지 모달은 clean(정상 센서). presence 는 1 그대로.
+                    continue
+                # 후보 모달이 없으면 일반 per-modal 경로로 진행.
             for m in range(M):
                 if _u(self.g) >= p:                    # 이 (샘플,모달)은 clean
                     continue
@@ -296,6 +439,8 @@ class Degrader:
                 mask[b, m] = mk
                 op[b, m] = _OP_INDEX[op_name]
 
+        if conflict_p > 0.0 and not self.heldout:
+            self._prev_clean = [t.detach().clone() for t in tensors]
         mask16 = torch.stack(
             [torch.stack([_patchify(mask[b, m]) for m in range(M)]) for b in range(B)])
         return out, {
