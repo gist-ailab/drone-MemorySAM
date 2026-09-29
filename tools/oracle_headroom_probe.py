@@ -29,6 +29,17 @@ Oracle: win{W}(비겹침 W×W 윈도우별 최선 후보) + img(전체 이미지
 각 null 케이스는 전 모달에 N(0, --null_sigma) 를 더하며(정규화 공간), 케이스별 고정 시드
 (seed=args.seed*1000+i)로 재현된다. summary 에 emm/drop1 의 headroom 에서 개수 맞춘 null
 대조군 headroom 을 뺀 net_headroom_vs_null 을 함께 기록한다(순수 선택 편향 차감치).
+
+--emm_max_missing N (>0) 을 주면 n_missing>N 인 EMM 케이스를 평가 전에 케이스 목록에서
+뺀다(forward 자체를 안 하므로 시간 절약). clean·null 케이스는 유지. N=1·4모달이면
+케이스 = clean 1 + EMM 4(단일 모달 결측, drop1).
+
+--by_condition 를 주면 DELIVER 경로의 condition(cloud/fog/night/rain/sun)·sensor-failure
+case(motionblur/overexposure/underexposure/lidarjitter/eventlowres/none)별로 케이스·
+(candset, oracle) 혼동행렬과 선택 카운트를 그룹에도 누적해 oracle_summary.json 의
+by_condition + oracle_by_condition.md 로 낸다. 이미지 하나는 cond:<조건>, case:<케이스>
+두 그룹에 동시 가입한다. 그룹 mIoU 는 nan-aware(그룹 GT 에 없는 클래스 제외 평균) —
+전역 요약의 부재 클래스 IoU=0 포함 규약과 다르다(단위 % 는 동일).
 """
 import argparse
 import json
@@ -48,6 +59,9 @@ ORACLE_CHOICES = {}        # (candset, oracle) -> 후보별 선택 윈도우 수
 ORACLE_DISAGREE = {}       # candset -> [clean 과 다른 픽셀 수 합, 비교 픽셀 수 합] (후보 다양성; null 대조군 sigma 가 적절한지 판단용)
 ORACLE_CAND_NAMES = {}     # candset -> [present_names, ...] (후보 순서)
 ORACLE_CLEAN_HIST = None   # clean 케이스 혼동행렬(headroom 기준선)
+ORACLE_CASES = None        # evaluate 에 들어온 케이스 목록(by_condition 요약용)
+ORACLE_BY_COND_ON = False  # --by_condition 플래그(evaluate 의 그룹 누적 분기)
+ORACLE_BY_COND = {}        # group -> new_group_state() (cond:<c> / case:<k> 그룹 누적)
 
 
 # ===========================================================================
@@ -80,6 +94,135 @@ def oracle_assemble(preds, gt, win, ignore):
             out[y0:y1, x0:x1] = preds[best_i][y0:y1, x0:x1]
             counts[best_i] += 1
     return out, counts
+
+
+# ===========================================================================
+# by-condition 그룹 누적·요약 (순수 로직 — torch 무관, 스모크가 직접 assert)
+# ===========================================================================
+def condition_group_keys(img_path):
+    """DELIVER 이미지 경로 → 그룹 키 리스트 ['cond:<조건>', 'case:<센서케이스>'].
+
+    파싱은 tools.baseline_failure.common.parse_condition_case(경로의 조건 폴더 +
+    scene 접미사 매칭)를 그대로 쓴다. 비-DELIVER 경로는 ('unknown','none') 으로
+    떨어져 그룹이 몰리므로 by_condition 은 DELIVER 평가에만 쓰는 게 맞다.
+    """
+    from tools.baseline_failure import common
+    cond, case = common.parse_condition_case(img_path)
+    return [f"cond:{cond}", f"case:{case}"]
+
+
+def new_group_state():
+    """그룹 하나분 누적 상태. 행렬은 n_classes² int64 라 그룹 수×케이스 수여도 가볍다."""
+    return {"n_images": 0, "case_hists": {}, "oracle_hists": {}, "oracle_choices": {}}
+
+
+def accum_case_hist(state, case_id, pred, gt, n_classes, ignore):
+    """이미지 한 장의 케이스 혼동행렬을 그룹 상태에 누적(채점 규약 = common 재사용)."""
+    from tools.baseline_failure import common
+    h = state["case_hists"].get(case_id)
+    if h is None:
+        h = state["case_hists"][case_id] = np.zeros((n_classes, n_classes), np.int64)
+    h += common.confusion_matrix(pred, gt, n_classes, ignore)
+
+
+def accum_oracle_hist(state, cs_name, orc_name, n_cands, opred, counts, gt,
+                      n_classes, ignore):
+    """이미지 한 장의 (candset, oracle) 혼동행렬·선택 카운트를 그룹 상태에 누적."""
+    from tools.baseline_failure import common
+    key = (cs_name, orc_name)
+    h = state["oracle_hists"].get(key)
+    if h is None:
+        h = state["oracle_hists"][key] = np.zeros((n_classes, n_classes), np.int64)
+    h += common.confusion_matrix(opred, gt, n_classes, ignore)
+    c = state["oracle_choices"].get(key)
+    if c is None:
+        c = state["oracle_choices"][key] = np.zeros(n_cands, np.int64)
+    c += counts
+
+
+def group_miou_from_cm(cm):
+    """그룹용 nan-aware mIoU(%, 부재 클래스 제외 평균).
+
+    mme._case_miou → common.global_miou_from_cm 는 부재 클래스(union=0) IoU 를 0 으로
+    넣어 전 클래스 평균에 포함한다(전 데이터셋 규약). 그룹(예: cond:night)에서는 GT 에
+    한 번도 없는 클래스가 많아 0 포함 평균이 왜곡되므로, common.per_image_iou 의 NaN
+    규약(GT 에 없는 클래스 = 평균 제외)으로 nanmean 한다.
+    """
+    from tools.baseline_failure import common
+    return common.nanmean(common.per_image_iou(cm)) * 100.0
+
+
+def build_by_condition_summary(by_cond, cases, cand_names, orc_order):
+    """그룹 누적 상태 → oracle_summary.json 의 by_condition dict (순수 로직).
+
+    net_headroom_vs_null 은 전역과 같은 개수맞춤 규칙(emm/drop1 → null_n{후보수−1})을
+    그룹 혼동행렬에 그대로 적용한다. per_case_mIoU 키 = 케이스 present_names.
+    """
+    case_by_id = {c.id: c for c in cases}
+    clean_case = next((c for c in cases if c.group == "clean"), None)
+    out = {}
+    for gname in sorted(by_cond):
+        st = by_cond[gname]
+        if clean_case is None or clean_case.id not in st["case_hists"]:
+            continue
+        clean_miou = group_miou_from_cm(st["case_hists"][clean_case.id])
+        per_case = {}
+        for cid, h in st["case_hists"].items():
+            c = case_by_id.get(cid)
+            # per-case 표는 clean/emm/null 만 — rmm/nm 는 전역 summary·csv 담당.
+            if c is None or c.group not in ("clean", "emm", "null"):
+                continue
+            m = group_miou_from_cm(h)
+            per_case[c.present_names] = {"mIoU": round(m, 4),
+                                         "delta_vs_clean": round(m - clean_miou, 4)}
+        css = {}
+        for cs_name, names in cand_names.items():
+            entry = {"oracles": {}}
+            for orc_name in orc_order:
+                key = (cs_name, orc_name)
+                if key not in st["oracle_hists"]:
+                    continue
+                m = group_miou_from_cm(st["oracle_hists"][key])
+                counts = st["oracle_choices"][key]
+                total = int(counts.sum())
+                frac = {names[i]: (round(float(counts[i]) / total, 4) if total else 0.0)
+                        for i in range(len(names))}
+                entry["oracles"][orc_name] = {
+                    "mIoU": round(m, 4), "clean_mIoU": round(clean_miou, 4),
+                    "headroom": round(m - clean_miou, 4), "choice_fraction": frac}
+            css[cs_name] = entry
+        for cs_name in ("emm", "drop1"):
+            src = css.get(cs_name)
+            if src is None or cs_name not in cand_names:
+                continue
+            matched_name = f"null_n{len(cand_names[cs_name]) - 1}"
+            ref = css.get(matched_name)
+            if ref is None:
+                continue
+            for orc_name, o in src["oracles"].items():
+                if orc_name in ref["oracles"]:
+                    o["net_headroom_vs_null"] = round(
+                        o["headroom"] - ref["oracles"][orc_name]["headroom"], 4)
+            src["null_control"] = matched_name
+        out[gname] = {"n_images": int(st["n_images"]),
+                      "clean_mIoU": round(clean_miou, 4),
+                      "per_case_mIoU": per_case, "candidate_sets": css}
+    return out
+
+
+# ===========================================================================
+# 케이스 목록 후처리 — EMM 결측 개수 상한 (평가 전 필터)
+# ===========================================================================
+def filter_emm_max_missing(cases, max_missing):
+    """n_missing > max_missing 인 EMM 케이스를 뺀 **새 리스트**.
+
+    필터 대상은 EMM 만 — clean·null·rmm·nm 케이스는 그대로 둔다. max_missing 이
+    0/음수면 필터 없음(--emm_max_missing 기본값 0 = 전체 EMM 열거).
+    """
+    if not max_missing or max_missing <= 0:
+        return list(cases)
+    return [c for c in cases
+            if c.group != "emm" or c.n_missing <= max_missing]
 
 
 # ===========================================================================
@@ -120,7 +263,8 @@ def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
     import torch
     from tqdm import tqdm
     from tools.baseline_failure import common
-    global ORACLE_CLEAN_HIST
+    global ORACLE_CLEAN_HIST, ORACLE_CASES
+    ORACLE_CASES = cases
 
     hists = {c.id: np.zeros((n_classes, n_classes), dtype=np.int64) for c in cases}
 
@@ -160,6 +304,20 @@ def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
     with torch.no_grad():
         for images, labels, metas in tqdm(loader, desc="oracle-headroom"):
             base = [x.to(device) for x in images]
+            # by_condition: 이 배치의 이미지별 그룹 키. GT 없는 이미지는 그룹에도 안 넣는다.
+            batch_groups = {}
+            if ORACLE_BY_COND_ON:
+                for b, meta in enumerate(metas):
+                    if meta.get("orig_label") is None:
+                        continue
+                    img_path = (meta.get("paths") or {}).get("img")
+                    if not img_path:
+                        continue
+                    keys = condition_group_keys(img_path)
+                    batch_groups[b] = keys
+                    for g in keys:
+                        ORACLE_BY_COND.setdefault(
+                            g, new_group_state())["n_images"] += 1
             cand_preds, gts = {}, {}     # b -> {case_id: pred int16} / b -> gt int64
             for case in tqdm(cases, desc="cases", leave=False):
                 imgs = case.apply_fn(base)
@@ -181,9 +339,15 @@ def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
                     if case.id in candidate_ids:
                         cand_preds.setdefault(b, {})[case.id] = pred_np.astype(np.int16)
                         gts[b] = gt_np
+                        # by_condition: 케이스 혼동행렬을 이미지의 그룹에도 누적.
+                        if ORACLE_BY_COND_ON:
+                            for g in batch_groups.get(b, ()):
+                                accum_case_hist(ORACLE_BY_COND[g], case.id,
+                                                pred_np, gt_np, n_classes, ignore)
             # 이미지별 oracle 조립 (배치 끝나면 cand_preds 폐기 → 한 배치 분량만 상주)
             for b, per in cand_preds.items():
                 gt_np = gts[b]
+                gkeys = batch_groups.get(b, ()) if ORACLE_BY_COND_ON else ()
                 for cs_name, cs_cases in candsets.items():
                     preds_list = [per[c.id].astype(np.int64) for c in cs_cases]
                     d = ORACLE_DISAGREE.setdefault(cs_name, [0, 0])
@@ -195,6 +359,11 @@ def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
                         key = (cs_name, orc_name)
                         ORACLE_HISTS[key] += common.confusion_matrix(opred, gt_np, n_classes, ignore)
                         ORACLE_CHOICES[key] += counts
+                        # by_condition: oracle 혼동행렬·선택 카운트도 그룹에 누적.
+                        for g in gkeys:
+                            accum_oracle_hist(ORACLE_BY_COND[g], cs_name, orc_name,
+                                              len(cs_cases), opred, counts,
+                                              gt_np, n_classes, ignore)
             n_seen += len(metas)
             if limit and n_seen >= limit:
                 break
@@ -205,7 +374,81 @@ def evaluate_with_oracle(model, loader, cases, n_classes, ignore, device,
 # ===========================================================================
 # oracle 요약 출력
 # ===========================================================================
-def _write_oracle_outputs(out_root, split, windows):
+def _short_cand_label(modals, name):
+    """후보 present_names → 표시용 짧은 라벨. 전체에서 한 모달만 빠지면 '−<모달>'."""
+    if not modals:
+        return name
+    present = name.split("+")
+    if len(present) != len(modals) - 1:
+        return name
+    missing = [m for m in modals if m not in present]
+    return f"−{missing[0]}" if len(missing) == 1 else name
+
+
+def _write_by_condition_md(path, by_cond, cases, cand_names, orc_order):
+    """oracle_by_condition.md — 그룹(조건/센서케이스)별 한눈표.
+
+    열: n_images · clean mIoU · 단일 모달 결측(drop1) 케이스의 clean 대비 Δ(mIoU) ·
+    headroom/net_vs_null(기본 candset=drop1, 없으면 emm·첫 candset / oracle=win64,
+    없으면 첫 win*) · 가장 많이 선택된 non-clean 후보(선택률).
+    """
+    clean_case = next((c for c in cases if c.group == "clean"), None)
+    modals = clean_case.present_names.split("+") if clean_case else []
+    drop_cols = []                      # (열 라벨 '−<모달>', present_names, 모달 인덱스)
+    for c in cases:
+        if c.group != "emm" or c.n_missing != 1:
+            continue
+        missing = [m for m in modals if m not in c.present_names.split("+")]
+        if len(missing) == 1:
+            drop_cols.append((f"−{missing[0]}", c.present_names,
+                              modals.index(missing[0])))
+    drop_cols.sort(key=lambda t: t[2])   # 모달 순서(−img, −depth, ...)
+
+    cs_pref = next((cs for cs in ("drop1", "emm") if cs in cand_names),
+                   next(iter(cand_names), None))
+    orc_pref = ("win64" if "win64" in orc_order
+                else next((o for o in orc_order if o.startswith("win")),
+                          orc_order[0] if orc_order else None))
+
+    L = ["# Oracle headroom by condition / sensor-failure case", "",
+         "- 그룹 키 = `cond:<cloud|fog|night|rain|sun>` · "
+         "`case:<motionblur|overexposure|underexposure|lidarjitter|eventlowres|none>` "
+         "(DELIVER 경로에서 파싱, 이미지 하나는 두 그룹에 동시 가입).",
+         "- 그룹 mIoU 는 nan-aware(그룹 GT 에 없는 클래스 제외 평균) — 전역 요약의 "
+         "부재 클래스 IoU=0 포함 규약과 다르다(단위 % 는 동일).",
+         f"- headroom/net 열 = `{cs_pref}/{orc_pref}` (candset 은 drop1 우선, 없으면 emm).",
+         ""]
+    cols = (["group", "n_images", "clean mIoU"]
+            + [f"Δ{lab}" for lab, _, _ in drop_cols]
+            + ["headroom", "net_vs_null", "top non-clean (frac)"])
+    L.append("| " + " | ".join(cols) + " |")
+    L.append("| " + " | ".join(["---"] * len(cols)) + " |")
+    for gname in sorted(by_cond):
+        e = by_cond[gname]
+        row = [gname, str(e["n_images"]), str(e["clean_mIoU"])]
+        for _, pname, _ in drop_cols:
+            row.append(str(e["per_case_mIoU"].get(pname, {}).get(
+                "delta_vs_clean", "—")))
+        o = None
+        if cs_pref:
+            o = e["candidate_sets"].get(cs_pref, {}).get("oracles", {}).get(orc_pref)
+        if o is None:
+            row += ["—", "—", "—"]
+        else:
+            row.append(str(o["headroom"]))
+            row.append(str(o.get("net_headroom_vs_null", "—")))
+            frac = o["choice_fraction"]
+            non_clean = [(frac.get(n, 0.0), n) for n in cand_names.get(cs_pref, [])[1:]]
+            if non_clean and max(non_clean)[0] > 0:
+                _, top = max(non_clean)
+                row.append(f"{_short_cand_label(modals, top)} ({frac.get(top, 0.0)})")
+            else:
+                row.append("—")
+        L.append("| " + " | ".join(row) + " |")
+    path.write_text("\n".join(L), encoding="utf-8")
+
+
+def _write_oracle_outputs(out_root, split, windows, by_cond=None, cases=None):
     from tools import missing_modality_eval as mme
     base = Path(out_root) / split / "oracle_headroom"
     base.mkdir(parents=True, exist_ok=True)
@@ -248,6 +491,16 @@ def _write_oracle_outputs(out_root, split, windows):
                     o["headroom"] - ref["oracles"][orc_name]["headroom"], 4)
         src["null_control"] = matched_name
 
+    if by_cond and cases:
+        result["by_condition"] = build_by_condition_summary(
+            by_cond, cases, ORACLE_CAND_NAMES, orc_order)
+        _write_by_condition_md(base / "oracle_by_condition.md",
+                               result["by_condition"], cases,
+                               ORACLE_CAND_NAMES, orc_order)
+    elif by_cond is not None:
+        print("[oracle] ⚠️ by_condition: 누적된 그룹이 없다(meta['paths']['img'] 부재?) "
+              "— by_condition 생략", flush=True)
+
     (base / "oracle_summary.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -273,7 +526,7 @@ def _write_oracle_outputs(out_root, split, windows):
 
 
 def main():
-    global ORACLE_WINDOWS
+    global ORACLE_WINDOWS, ORACLE_BY_COND_ON
     # --windows / null 대조군 인자만 먼저 떼어내고 나머지는 mme.main 에 그대로 넘긴다.
     strip = argparse.ArgumentParser(add_help=False)
     strip.add_argument("--windows", type=int, nargs="+", default=[64, 256])
@@ -281,8 +534,15 @@ def main():
                        help="null 대조군 케이스 수 K(>0 이면 선택 편향 대조군 활성).")
     strip.add_argument("--null_sigma", type=float, default=0.05,
                        help="null 케이스 가법 Gaussian std(정규화 공간).")
+    strip.add_argument("--emm_max_missing", type=int, default=0,
+                       help=">0 이면 n_missing>N 인 EMM 케이스를 평가 전에 제외"
+                            "(forward 안 함). N=1·4모달 → clean 1 + EMM 4(drop1).")
+    strip.add_argument("--by_condition", action="store_true",
+                       help="DELIVER 경로의 condition·sensor-failure case 별 그룹 누적 → "
+                            "oracle_summary.json by_condition + oracle_by_condition.md.")
     ns_w, remaining = strip.parse_known_args()
     ORACLE_WINDOWS = ns_w.windows
+    ORACLE_BY_COND_ON = ns_w.by_condition
     sys.argv = [sys.argv[0]] + remaining
     info = argparse.ArgumentParser(add_help=False)   # 읽기만(argv 불변)
     info.add_argument("--out")
@@ -298,27 +558,45 @@ def main():
           f"windows={ORACLE_WINDOWS}", flush=True)
 
     K = ns_w.null_control
-    if K > 0:
-        # mm_eval_v2 와 같은 방식으로 build_cases 를 감싸 null 케이스를 뒤에 덧붙인다.
+    EMM_MAX = ns_w.emm_max_missing
+    if K > 0 or EMM_MAX > 0:
+        # mm_eval_v2 와 같은 방식으로 build_cases 를 감싼다: EMM 필터 → null 덧붙임.
         orig_build_cases = mme.build_cases
 
-        def build_cases_with_null(*a, **k):
+        def build_cases_patched(*a, **k):
             cases = orig_build_cases(*a, **k)
-            cases.extend(_make_null_cases(K, ns_w.null_sigma, ns_i.seed))
+            if EMM_MAX > 0:
+                n_before = sum(1 for c in cases if c.group == "emm")
+                cases = filter_emm_max_missing(cases, EMM_MAX)
+                n_after = sum(1 for c in cases if c.group == "emm")
+                print(f"[oracle] emm_max_missing={EMM_MAX}: EMM {n_before}→{n_after} "
+                      f"(n_missing>{EMM_MAX} 제외, forward 안 함)", flush=True)
+            if K > 0:
+                cases.extend(_make_null_cases(K, ns_w.null_sigma, ns_i.seed))
             return cases
 
-        mme.build_cases = build_cases_with_null
+        mme.build_cases = build_cases_patched
+    if K > 0:
         print(f"[oracle] null-control: K={K} · sigma={ns_w.null_sigma} · "
               f"seed={ns_i.seed}*1000+i", flush=True)
+    if ns_w.by_condition:
+        print("[oracle] by_condition: cond:<condition>/case:<case> 그룹 누적 ON",
+              flush=True)
 
     mme.evaluate = evaluate_with_oracle
     mme.main()
 
-    base, result = _write_oracle_outputs(ns_i.out, ns_i.split, ORACLE_WINDOWS)
+    base, result = _write_oracle_outputs(
+        ns_i.out, ns_i.split, ORACLE_WINDOWS,
+        by_cond=(ORACLE_BY_COND if ns_w.by_condition else None),
+        cases=ORACLE_CASES)
     for cs, e in result["candidate_sets"].items():
         for orc, o in e["oracles"].items():
             print(f"[oracle] {cs}/{orc}: mIoU={o['mIoU']} "
                   f"clean={o['clean_mIoU']} headroom={o['headroom']}")
+    if "by_condition" in result:
+        print(f"[oracle] by_condition: {len(result['by_condition'])} groups "
+              f"-> {base / 'oracle_by_condition.md'}")
     print(f"[oracle] -> {base}")
 
 

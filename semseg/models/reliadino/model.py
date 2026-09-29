@@ -303,7 +303,21 @@ class ReliaDINO(nn.Module):
                  qaf_weighted_mean: bool = True,
                  qaf_head_hidden: int = 256,
                  qaf_eps: float = 1e-4,
-                 qaf_detach_mask: bool = False):
+                 qaf_detach_mask: bool = False,
+                 # [P55] 무감독 다중블록 모달 게이트 (default OFF → 아래 블록이 모듈/hook/
+                 # RNG 를 전혀 만들지 않고 fusion 도 QAF 미도입본과 byte-동일).
+                 p55_enable: bool = False,
+                 p55_fractions: Sequence[float] = (0.1, 0.25, 0.5),
+                 p55_hidden: int = 64,
+                 p55_r_floor: float = 0.05,
+                 p55_init_bias: float = 3.0,
+                 p55_use_agreement: bool = True,
+                 p55_mask_modals: Optional[Sequence] = None,   # None → 전 모달
+                 p55_key_mask: bool = True,
+                 p55_weighted_mean: bool = True,
+                 p55_self_attn: bool = False,
+                 p55_var_w: float = 0.0,        # anti-collapse 분산 floor 가중 (0=off)
+                 p55_var_floor: float = 0.05):  # r 공간 std 하한(이하이면 벌점)
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -327,6 +341,20 @@ class ReliaDINO(nn.Module):
             tap_layers=_e_tap_layers,                             # [E1]
             num_taps=_e_num_taps)                                 # [P43-T2/E1]
         dim = self.encoder.embed_dim
+        # [P55] 무감독 다중블록 게이트. P55 가 켜지면 QAF 융합 경로(self-attn·key 마스크·
+        # 가중 평균)를 그대로 쓰되 η̂ 는 P55Gate 가 공급하고 QualityHead 는 만들지 않는다.
+        self.p55_enable = bool(p55_enable)
+        if self.p55_enable and qaf_enable:
+            raise ValueError(
+                "[P55] MODEL.P55.ENABLE 와 MODEL.QAF.ENABLE 을 동시에 켤 수 없다 — "
+                "둘 다 QAF 융합 경로의 η̂ 를 공급하려 다툰다. P55 는 QAF 를 끈 채로 쓴다.")
+        _p55_mask = (list(p55_mask_modals) if p55_mask_modals is not None
+                     else list(modalities))
+        _eff_qaf_enable = bool(qaf_enable or self.p55_enable)
+        _eff_qaf_mask = _p55_mask if self.p55_enable else qaf_mask_modals
+        _eff_qaf_self_attn = p55_self_attn if self.p55_enable else qaf_self_attn
+        _eff_qaf_key_mask = p55_key_mask if self.p55_enable else qaf_key_mask
+        _eff_qaf_wmean = p55_weighted_mean if self.p55_enable else qaf_weighted_mean
         self.fusion = ReliabilityGatedFusion(
             dim=dim, num_classes=num_classes, num_modalities=self.num_modalities,
             num_layers=fusion_layers, num_heads=fusion_heads,
@@ -357,13 +385,47 @@ class ReliaDINO(nn.Module):
             p44_validity_renorm=p44_validity_renorm,
             p44_export_train_aux=bool(p44_hard_pixel_aux or p45_fogstyle),
             # [P54-QAF] default off → 위 QualityHead·self-attn 미생성 = byte-동일
-            qaf_enable=qaf_enable, qaf_mask_modals=qaf_mask_modals,
-            qaf_self_attn=qaf_self_attn, qaf_key_mask=qaf_key_mask,
-            qaf_weighted_mean=qaf_weighted_mean, qaf_head_hidden=qaf_head_hidden,
+            # [P55] p55_enable 이면 _eff_qaf_* 가 QAF 융합 경로를 켜되 p55_supplies_pred
+            #       로 QualityHead 를 만들지 않는다(η̂ 는 P55Gate 공급).
+            qaf_enable=_eff_qaf_enable, qaf_mask_modals=_eff_qaf_mask,
+            qaf_self_attn=_eff_qaf_self_attn, qaf_key_mask=_eff_qaf_key_mask,
+            qaf_weighted_mean=_eff_qaf_wmean, qaf_head_hidden=qaf_head_hidden,
             qaf_eps=qaf_eps, qaf_detach_mask=qaf_detach_mask,
-            qaf_modal_names=list(modalities))
+            qaf_modal_names=list(modalities),
+            p55_supplies_pred=self.p55_enable)
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
+        # ── [P55] 무감독 다중블록 모달 게이트 ─────────────────────────────────
+        # off(기본)면 이 블록이 모듈·hook·RNG 를 전혀 만들지 않아 baseline byte-동일.
+        self.p55_gate = None
+        self.p55_capture = None
+        self.p55_var_w = float(p55_var_w)
+        self.p55_var_floor = float(p55_var_floor)
+        self._last_p55_r_scalar = None      # (B,M) 로깅 스냅샷
+        self._last_p55_r_token = None       # (B,M,h,w) 로깅/분석 스냅샷(eval)
+        self._last_p55_stats = None         # dict(mean/spatial_std/batch_std per modal)
+        self._p55_r_token_live = None       # 학습 시 grad 살아 있는 r (loo BCE 용)
+        if self.p55_enable:
+            from .p55_gate import P55Gate, P55BlockCapture, frac_to_block
+            n_blk = len(self.encoder.backbone.blocks)
+            # frac → 1-indexed 블록(오름차순 유일). 캡처 hook 은 이 블록에만 건다.
+            _blocks = sorted({frac_to_block(f, n_blk) for f in p55_fractions})
+            if len(_blocks) != len(tuple(p55_fractions)):
+                # 두 분수가 같은 블록으로 접히면 mixdepth n_fracs 규약이 깨진다 — 시끄럽게 막는다.
+                raise ValueError(
+                    f"[P55] FRACTIONS {tuple(p55_fractions)} 가 백본 {n_blk}블록에서 "
+                    f"서로 다른 블록으로 매핑되지 않는다(→ {_blocks}). 분수 간격을 벌려라.")
+            if cmlc_enable:
+                raise ValueError(
+                    "[P55] MODEL.CMLC.ENABLE 와 함께 쓸 수 없다 — CMLC 는 모달을 배치로 "
+                    "합쳐 단일 forward 를 돌려 블록 hook 이 모달 순서로 발화하지 않는다.")
+            self.p55_gate = P55Gate(
+                dim=dim, num_modalities=self.num_modalities,
+                fractions=tuple(p55_fractions), hidden=p55_hidden,
+                r_floor=p55_r_floor, init_bias=p55_init_bias,
+                use_agreement=p55_use_agreement)
+            self.p55_capture = P55BlockCapture(self.encoder, _blocks)
+            self._p55_blocks = _blocks
         # [P36-Det] Router->detection seam. The seg path adds routed_logits to the
         # head logits, which the detection path (extract_det_pyramid) never sees, so
         # without this the router is dead weight for det. Project routed_logits
@@ -945,7 +1007,8 @@ class ReliaDINO(nn.Module):
             print(f"[E-LORA] mode={self.encoder.lora_mode} "
                   f"lora_trainable={n_lora:,} total_trainable={n_train:,}")
         if _rank0 and getattr(self.fusion, 'qaf_enable', False):
-            _qp = sum(p.numel() for p in self.fusion.quality_head.parameters())
+            _qp = (sum(p.numel() for p in self.fusion.quality_head.parameters())
+                   if self.fusion.quality_head is not None else 0)
             _sp = (sum(p.numel() for p in self.fusion.qaf_self_layer.parameters())
                    if self.fusion.qaf_self_layer is not None else 0)
             _mn = [self.modalities[i] for i in self.fusion.qaf_mask_idx]
@@ -953,6 +1016,14 @@ class ReliaDINO(nn.Module):
                   f"key_mask={self.fusion.qaf_key_mask} "
                   f"wmean={self.fusion.qaf_weighted_mean} "
                   f"head_params={_qp:,} self_attn_params={_sp:,}", flush=True)
+        if _rank0 and self.p55_gate is not None:
+            _gp = sum(p.numel() for p in self.p55_gate.parameters())
+            print(f"[P55] blocks(1-idx)={self._p55_blocks} "
+                  f"fractions={self.p55_gate.fractions} "
+                  f"mask_modals={[self.modalities[i] for i in self.fusion.qaf_mask_idx]} "
+                  f"key_mask={self.fusion.qaf_key_mask} wmean={self.fusion.qaf_weighted_mean} "
+                  f"self_attn={self.fusion.qaf_self_attn_on} r_floor={self.p55_gate.r_floor} "
+                  f"gate_params={_gp:,} var_w={self.p55_var_w}", flush=True)
 
     # ── M2: P33._maybe_drop_modality port (zero-input replacement, train only) ─
     def _maybe_drop_modality(self, batched_input):
@@ -1397,6 +1468,45 @@ class ReliaDINO(nn.Module):
             _pf, gt_mask, pairs, self.p46_cm_margin)
         return li if n > 0 else None
 
+    # ── [P55] 게이트 로깅 스냅샷 + leave-one-out 타깃용 융합-헤드 재실행 ────────
+    def _p55_stash(self, r_token: torch.Tensor, r_scalar: torch.Tensor):
+        """게이트 통계(붕괴 감시)를 CPU 스냅샷으로 남긴다. 학습 영향 0."""
+        with torch.no_grad():
+            rt = r_token.detach().float()
+            self._last_p55_r_scalar = r_scalar.detach().float().cpu()
+            _per_img = rt.mean(dim=(-1, -2))                  # (B,M)
+            _batch_std = (_per_img.std(dim=0) if rt.shape[0] > 1
+                          else torch.zeros(rt.shape[1]))      # B=1 이면 std 미정 → 0
+            self._last_p55_stats = {
+                'r_mean_per_modal': rt.mean(dim=(0, 2, 3)).cpu().tolist(),
+                'r_spatial_std_per_modal': rt.std(dim=(-1, -2)).mean(dim=0).cpu().tolist(),
+                'r_batch_std_per_modal': _batch_std.cpu().tolist(),
+            }
+            if not self.training:
+                self._last_p55_r_token = rt.cpu()
+
+    @torch.no_grad()
+    def p55_fused_seg_logits(self, feats: List[torch.Tensor],
+                             zero_idx: Optional[int] = None) -> torch.Tensor:
+        """[P55-loo] η̂=0(항등) 융합 + 트렁크 + 픽셀 헤드로 세그 로짓(B,K,H',W')을 낸다.
+
+        학습된 fusion/트렁크/헤드를 그대로 재사용한다(인코더 재실행 없음 — 캐시한 feats
+        를 쓴다). zero_idx 를 주면 그 모달의 융합 입력 토큰을 0 으로 만든다. m2f/p43 는
+        건너뛴다(loo 타깃은 모달 중요도 순위만 재면 되므로 픽셀 헤드로 충분 — 문서화).
+        loo 팔(target: loo) 전용이며 no_grad 라 학습 경로에 영향이 없다."""
+        f = list(feats)
+        if zero_idx is not None:
+            f[zero_idx] = torch.zeros_like(f[zero_idx])
+        B, C, h, w = f[0].shape
+        M = len(f)
+        qp = {'eta_scalar': f[0].new_zeros(B, M),
+              'eta_token': f[0].new_zeros(B, M, h, w)}
+        fused, aux = self.fusion(f, None, epoch=self._current_epoch, qaf_pred_in=qp)
+        routed = aux.pop('routed_logits', None)
+        fused = self._apply_trunk_exp(fused, f)
+        logits, _ = self._decode(fused, routed)
+        return logits
+
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
                 gt_mask: Optional[torch.Tensor] = None,
                 qaf_labels: Optional[dict] = None):   # [P54-QAF] Degrader 라벨(열화 패스)
@@ -1406,6 +1516,8 @@ class ReliaDINO(nn.Module):
         x = self._p42_mask_img(x)                          # [P42-M1] 조건부 img 마스킹
         x = self._p44_local_mask(x)                        # [P44-B3] 국소 img 마스킹
         H, W = x[0].shape[-2:]
+        if self.p55_capture is not None:
+            self.p55_capture.clear()                       # [P55] 블록 버퍼 초기화(순차 forward 캡처)
         feats = self._encode_all(x)                        # [P43-T2] taps here
         # [DETAIL_BRANCH] 백본과 같은 전처리 입력(마스킹/드롭 반영 후 x)으로 세부
         # 특징을 1회 계산·캐시한다. _decode 두 번(CEFR two-pass)에서 재사용하고,
@@ -1470,10 +1582,27 @@ class ReliaDINO(nn.Module):
         # img 마스킹 정보: P44 국소 마스크(B,1,H,W)가 있으면 그것, 없으면 P42(B,)
         _img_mask = self._last_p44_mask if self._last_p44_mask is not None \
             else self._last_p42_mask
+        # [P55] 다중블록 게이트 → η̂ 공급. 캡처는 _encode_all 중 hook 이 모달 순서로 쌓았다.
+        _qaf_pred_in = None
+        _p55_r_token = None
+        if self.p55_gate is not None:
+            h55, w55 = feats[0].shape[-2:]
+            flat55 = self.p55_capture.collect_flat(h55, w55, self.num_modalities)
+            _qaf_pred_in, _p55_r_token, _p55_r_scalar = self.p55_gate(flat55)
+            self._p55_stash(_p55_r_token, _p55_r_scalar)
+            # [P55-loo] 학습 시 grad 살아 있는 r 를 노출(train_p55_gate 의 BCE 항용).
+            self._p55_r_token_live = _p55_r_token if self.training else None
         fused, aux = self.fusion(feats, gt_mask if self.training else None,
                                  img_mask=_img_mask, img_idx=self._img_idx,   # [P42-M1/C][P44-B3]
                                  presence=presence, epoch=self._current_epoch,
-                                 qaf_labels=qaf_labels)                        # [P54-QAF]
+                                 qaf_labels=qaf_labels,                        # [P54-QAF]
+                                 qaf_pred_in=_qaf_pred_in)                     # [P55]
+        if (self.p55_gate is not None and self.training and self.p55_var_w > 0
+                and _p55_r_token is not None):
+            # [P55] anti-collapse: r 공간 std 가 floor 아래면 벌점(균등으로 밀지 않음).
+            _std = _p55_r_token.float().std(dim=(-1, -2))         # (B,M)
+            aux['p55_var_reg'] = self.p55_var_w * F.relu(
+                self.p55_var_floor - _std).mean()
         if self.p45_fogstyle and self.training:
             # [P45-F1] img 브랜치 feature의 style을 흔들고 예측 일관성을 요구.
             # 픽셀 공간을 건드리지 않으므로 physaug 공정성 라인을 넘지 않는다.
@@ -2004,6 +2133,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     detail = mc.get('DETAIL_BRANCH', {}) or {}                  # [DETAIL] 고해상도 세부 가지
     brefine = mc.get('BOUNDARY_REFINE', {}) or {}               # [R1] depth 에지-prior FPN 정제
     qaf = mc.get('QAF', {}) or {}                               # [P54-QAF] 품질 인지 융합
+    p55 = mc.get('P55', {}) or {}                               # [P55] 무감독 다중블록 모달 게이트
     p44 = mc.get('P44', {}) or {}                      # [P44-BMR]
     p44_lm = p44.get('LOCAL_MASK', {}) or {}           #   B-3 국소 마스킹
     p44_hp = p44.get('HARD_PIXEL_AUX', {}) or {}       #   M-3 hard-pixel aux
@@ -2252,4 +2382,17 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         qaf_head_hidden=qaf.get('HEAD_HIDDEN', 256),
         qaf_eps=qaf.get('EPS', 1.0e-4),
         qaf_detach_mask=qaf.get('DETACH_MASK', False),
+        # [P55] 무감독 다중블록 모달 게이트 (기본 OFF → 키 없으면 byte-동일)
+        p55_enable=p55.get('ENABLE', False),
+        p55_fractions=tuple(p55.get('FRACTIONS', (0.1, 0.25, 0.5))),
+        p55_hidden=p55.get('HIDDEN', 64),
+        p55_r_floor=p55.get('R_FLOOR', 0.05),
+        p55_init_bias=p55.get('INIT_BIAS', 3.0),
+        p55_use_agreement=p55.get('USE_AGREEMENT', True),
+        p55_mask_modals=p55.get('MASK_MODALS', None),
+        p55_key_mask=p55.get('KEY_MASK', True),
+        p55_weighted_mean=p55.get('WEIGHTED_MEAN', True),
+        p55_self_attn=p55.get('SELF_ATTN', False),
+        p55_var_w=p55.get('VAR_W', 0.0),
+        p55_var_floor=p55.get('VAR_FLOOR', 0.05),
     )
