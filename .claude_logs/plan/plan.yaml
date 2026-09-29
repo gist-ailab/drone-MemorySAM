@@ -1725,18 +1725,24 @@ items:
   expected_cost: null
   priority: 111
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - p54
   - probe
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-29'
+  closed: '2026-09-29'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'Q1(품질 헤드 실현성 프로브) 기각: Q1b-2 에서 RGB 광학 열화(흐림·감마·색 틀어짐) AUROC 0.67~0.73
+      으로 인식 실패, Q1d 에서 합성 열화로 학습한 헤드가 실제 열화로 전이되지 않음(다중 블록 혼합 헤드의 실제 야간 AUROC 0.002).
+      합성 열화 라벨로 감독하는 품질 헤드 계열은 재시도 금지. 판정 대장 2026-09-23·09-28·09-29 행'
+    date: '2026-09-29'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 43,50,61
   superseded_by: null
 - id: DRN-260926-61
@@ -1758,18 +1764,24 @@ items:
   expected_cost: null
   priority: 112
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - screen40
   - p54
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-29'
+  closed: '2026-09-29'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'R1(depth 경계 prior refinement) 종료: 40ep 스크린 3시드 legal v2 test 평균 56.61(E1
+      스크린 짝 56.58), 24클래스 평균 Δ −0.09, 얇은 객체 4클래스 Δ 시드별 +2.11/−1.57/−1.80 으로 부호 불일치.
+      기제 게이트(찾고도 못 그린 비율)도 미달. val +1.18 은 test 에서 사라짐. 판정 대장 2026-09-23 행'
+    date: '2026-09-29'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 52,54,57,60,65
   superseded_by: null
 - id: DRN-260926-62
@@ -1820,17 +1832,23 @@ items:
   expected_cost: null
   priority: 114
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - screen40
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-29'
+  closed: '2026-09-29'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'E1 40ep 스크린 3시드(821·902·903) 를 40ep 스크린 카드의 짝 기준선으로 확정: legal v2 test
+      56.58±0.55, 24클래스 56.65±0.23, 얇은 객체 4클래스 49.60, val 67.51±0.91. 판정 대장 2026-09-23
+      행'
+    date: '2026-09-29'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 64
   superseded_by: null
 - id: DRN-260926-64
@@ -8054,18 +8072,25 @@ items:
   expected_cost: null
   priority: 367
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-29'
+  closed: '2026-09-29'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'Q2(두 패스 = clean CE + 열화 CE + 동결 E1 교사 증류) 를 이후 카드의 바탕 레시피로 채택: clean
+      축은 3시드 24클래스 평균 Δ +0.41 로 사전 기준(+0.6) 미달이라 clean 개선 주장은 하지 않음(손해도 없음). 강건 축은
+      3시드 재현: 모달 결측 15조합 평균 48.06 vs E1 스크린 40.40(+7.7), depth 부분 결측 저하 비율 0.26, S&P
+      노이즈 d.2 저하 약 3.8 감소. RGB 부분 결측에는 이득 없음. 헤드라인 교체 없음. 판정 대장 2026-09-28·09-29 행'
+    date: '2026-09-29'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 71
   superseded_by: null
 - id: DRN-260926-232
@@ -8089,18 +8114,24 @@ items:
   expected_cost: null
   priority: 368
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-29'
+  closed: '2026-09-29'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'Q3(품질 헤드 QAF 본 카드) 종료: 시드821 legal v2 에서 Q2(품질 헤드 없는 두 패스+교사 증류) 대비
+      24클래스 −1.31·얇은 객체 4클래스 −5.67, 강건 축도 모달 결측 15조합 평균 47.09 vs Q2 48.68 로 Q2 이하.
+      사전 규칙(강건에서 Q2 를 못 넘으면 종료) 적용. 판정 대장 2026-09-24·09-29 행'
+    date: '2026-09-29'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 51,53,59,73
   superseded_by: null
 - id: DRN-260926-233
@@ -10400,10 +10431,11 @@ items:
     평균 Δ ≥ +1.0 또는 RGB 부분 결측 RMM 저하 20% 이상 감소)
   sample_basis: 40ep 스크린 2시드(821·902) 평균으로 1차 판정(단일 시드 Q2 s821 +1.30 이 3시드 +0.41 로
     줄어든 전례), 통과 시 셋째 시드(903) 추가. 같은 시드 사본 간 잡음 하한 24클래스 ±0.3
-  expected_cost: 4090 1장 × 약 2일 × 2시드(통과 시 +1시드), 강건 평가 시드당 약 10 GPU-시간
+  expected_cost: A100 1장 × 약 3.5일(에폭당 약 2.1시간 × 40) × 2시드(통과 시 +1시드), 강건 평가 시드당 약
+    10 GPU-시간
   priority: 20
   owner_role: method
-  status: queued
+  status: running
   tags:
   - P56
   - fusion
