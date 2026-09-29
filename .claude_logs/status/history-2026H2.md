@@ -18,6 +18,8 @@ period: 2026-07-01 ~ 2026-12-31
 - user 승인 09-29: P56 세 카드(A 모달 충돌 학습 · B 거리 조건화 attention · C 환경 조건 LoRA 전문가 혼합), A 부터. 코드 develop 병합(9e313c0), hpca100 시드821 기동(07:08 UTC).
 - 코드·도구 추가: `tools/oracle_headroom_probe.py` · `tools/probe_quality_blocks.py` · `tools/mm_eval_v2.py` · `semseg/models/reliadino/p55_gate.py` · `tools/train_p55_gate.py` · `semseg/datasets/degrade.py`(충돌·반사광 연산) · `tools/viz_conflict_aug.py`.
 - lab-plan: DRN-260929-01(P56-A) running, 판정 5건 기록(DRN-260926-60·61·63·231·232).
+- hpca100 체크포인트 이관(user 승인 09-29): 32개 59.7G 를 NAS `ckpts/hpca100_archive_20260929/` 로 옮기고(파일별 크기·md5 대조 후 서버 삭제) 3개는 사본만 생성. 여유 46G → 99G. 위치 대장 = `infra/artifact-locations.md` 2b 절 + NAS `MANIFEST.tsv`.
+- 구조·노벨티 정리 페이지 발행: https://claude.ai/artifact/Am5i5hF7CuPQCRuJWibNwc (원본 `docs/2026-09-29-reliadino-architecture.html`).
 
 ## 2026-09-23 — R1/R2 스크린 legal v2 확정(R1이 DGFusion 초과) · ZCode→클로드코드 인수인계
 

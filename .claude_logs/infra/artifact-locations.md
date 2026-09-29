@@ -1,6 +1,6 @@
 # 산출물 위치 지도 (체크포인트·로그·분석) — 모든 세션 공용
 
-updated: 2026-09-09 (hpca100 SSDb 이관)
+updated: 2026-09-29 (hpca100 SSDb 2차 이관, 아래 2b 절)
 
 > **이 문서의 용도**: "그 실험 체크포인트가 어디 갔지?"에 답하는 단일 조회처다.
 > 서버에서 체크포인트가 사라져 있으면 **지워진 것이 아니라 NAS로 이관된 것**이므로, 지우기 전에 여기서 먼저 찾아라.
@@ -140,6 +140,85 @@ run 디렉터리를 통째로 `<run이름>.tar` 로 묶어 저장했다(2026-09-
 `/tmp` 쪽 진행분이 같은 파일을 모두 포함한 상위 집합이라(ep5·10·15·last 크기 동일, /tmp에는 ep20·25가 추가) 별도 회수 없이 정리 대상으로 뒀다.
 
 ---
+
+<!-- hpca100-archive-20260929:begin -->
+## 2b. hpca100(A100×4) 이관 — 2026-09-29 (user 승인 "체크포인트는 이동해두되 … 모두 기록")
+
+### 왜 옮겼나
+
+hpca100 작업 볼륨 `~/SSDb`(2.0T, 다른 사용자와 공유)가 98%(여유 46~49G)까지 찼다. P56-A(모달 충돌 학습) 두 시드가 같은 볼륨에 체크포인트를 쓰므로, 끝난 실험의 체크포인트를 NAS 로 옮겼다.
+
+### 요약
+
+| 항목 | 값 |
+|---|---|
+| 이관 목적지(NAS) | `/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/hpca100_archive_20260929/` |
+| 폴더 구조 | hpca100 `/home/jovyan/SSDb/jemo_maeng/` 아래 상대 경로를 그대로 유지 |
+| 대장 | 같은 폴더의 `MANIFEST.tsv`(기계 판독용) · `README.md`(설명) |
+| 검증 | 파일마다 크기 + md5 를 서버 계산값과 대조. 35개 중 35개 통과 |
+| 서버에서 지운 것 | 32개, 59.7G (검증 통과분만. 삭제 직전에 서버 크기·실행 중 프로세스 사용 여부 재확인) |
+| 서버에 남긴 것 | 사본만 만든 3개 + 제외 2개(아래 표) |
+| 서버 쪽 기록 | `~/SSDb/jemo_maeng/ckpt_inventory_20260929_md5.tsv`(이관 전 전수 목록) · `ckpt_del_result_20260929.tsv`(마지막 삭제 회차) |
+
+### 체크포인트별 위치
+
+경로는 hpca100 `~/SSDb/jemo_maeng/` 기준 상대 경로이며, NAS 에서는 위 목적지 폴더 아래 같은 상대 경로에 있다.
+
+| 상대 경로 | 무엇 | 처리 | md5 | 크기 | 서버 원본 |
+|---|---|---|---|---|---|
+| `rescore_armc/armc821.pth` | 미확인(프로젝트 로그에 기록 없음. 폴더 이름은 재채점용 사본을 뜻함) | 이동 | `c6e9d10cee971c552dc772a419878a31` | 1.87G | 삭제됨(NAS 가 유일본) |
+| `d4_ours/ckpts/E1_s3_epoch70.pth` | E1(중간층 4탭 읽기) 확정 200에폭 시드3, 학습기 val-best epoch70 | 이동 | `d8e3e8babe75d4fdc227f99556cc2e2f` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `d4_ours/ckpts/E13_s1_epoch100.pth` | E13(4탭 + 센서별 클래스 prototype) 확정 200에폭 시드1, val-best epoch100 | 이동 | `1517c12a64ddf7ff23d06965e34c2654` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `d4_ours/ckpts/E1_s2_epoch134.pth` | E1(중간층 4탭 읽기) 확정 200에폭 시드2, 학습기 val-best epoch134 | 이동 | `79a3ff39600610a80aebf0ae2134801b` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `d4_ours/ckpts/E17_s1_epoch35.pth` | E17(E1 + 고해상도 세부 가지) 40에폭 스크린 시드821, val-best epoch35 | 이동 | `eedbd1983ffc6b55c5de64d8e7ac8496` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `ckpt/b0screen821_epoch40_65.4_top1_checkpoint.pth` | B0(탭 없는 기준 구조) 40에폭 스크린 시드821, val-best epoch40(학습기 val 65.4) | 이동 | `cbaa692f154c153eda99a171f548f7a8` | 1.87G | 삭제됨(NAS 가 유일본) |
+| `ckpt/e1shared821_bengio_epoch40_67.03_top1.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821, bengio 학습 사본 val-best epoch40(67.03). 게이트 판정에 쓴 사본 | 이동 | `de6490fb4a22bd6675c1a864166ed876` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `ckpt/e1screen821_epoch35_67.25_top1_checkpoint.pth` | E1(중간층 4탭 읽기) 40에폭 스크린 시드821, val-best epoch35(67.25). 40에폭 카드의 짝 기준선 | 이동 | `e69d7deb20fe04d8d7b86f34aa265421` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `ckpt/epoch90_67.3_top1_checkpoint.pth` | C3-only(클래스 prototype 손실만, 탭 없음) 200에폭 시드821 val-best epoch90. E1·E13 확정 게이트의 분모. NAS 정본은 ckpts/p46_c3only_seed20260821_200ep_20260918/ 에도 있음 | 이동 | `854a2c9d9f772560261ec3725c8b1146` | 1.87G | 삭제됨(NAS 가 유일본) |
+| `ckpt/e13m_full200_s3407_epoch130_82.21_top1_checkpoint.pth` | MUSES E13M(4탭 + 센서별 클래스 prototype, PhysAug off) 200에폭 시드3407, val-best epoch130(82.21). 제출 zip 20260920_E13M 의 원본 | 이동 | `fc71970601c394c335ffd5236407acf9` | 1.86G | 삭제됨(NAS 가 유일본) |
+| `p55_0929/loo_deg0/smoke/p55_gate_full.pth` | P55(무감독 다중 블록 게이트) leave-one-out 목표 팔(모델 자신의 모달 제거 손실을 게이트 목표로), Q2 시드821 위, 기동 점검용 20배치 학습 산출 | 이동 | `1ce3879f07b0b4c26901ecfc88b8ed3e` | 1.45G | 삭제됨(NAS 가 유일본) |
+| `p55_0929/none_deg0/smoke/p55_gate_full.pth` | P55(무감독 다중 블록 게이트) 대조군 팔(분할 손실만으로 게이트 학습), Q2 시드821 위, 기동 점검용 20배치 학습 산출 | 이동 | `58b4411d889859b508521fafed1ab73c` | 1.45G | 삭제됨(NAS 가 유일본) |
+| `p55_0929/none_deg0/train/p55_gate_full.pth` | P55(무감독 다중 블록 게이트) 대조군 팔(분할 손실만으로 게이트 학습), Q2 시드821 위, 게이트 4에폭 학습 산출(전체 모델 + 게이트) | 이동 | `dbe77d29c434f4d98ef6f55ff6ea362b` | 1.45G | 삭제됨(NAS 가 유일본) |
+| `src/dms-hub-develop/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260902_screen40_Q2/DELIVER_ReliaDINO-ViTL16_idel/last_checkpoint.pth` | Q2(두 패스 + 동결 E1 교사 증류) 40에폭 스크린 시드902, 마지막 에폭 체크포인트 | 이동 | `cc5862bd1fcc8d1f9b327113c76fcf48` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `src/dms-hub-develop/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260902_screen40_Q2/DELIVER_ReliaDINO-ViTL16_idel/epoch40_66.06_top1_checkpoint.pth` | Q2(두 패스 + 동결 E1 교사 증류) 40에폭 스크린 시드902, 학습기 val-best epoch40(66.06) | 이동 | `3b892ef3cb6dda07ff52301184879854` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/epoch40_65.64_top2_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, 학습기 val 상위 체크포인트(epoch40_65.64_top2) | 이동 | `c79a14f6f47f450a9d2738e72eb1d16c` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/test_epoch25_55.29_top3_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, test 상위 체크포인트(test_epoch25_55.29_top3). 🔴 test-best 는 판정·헤드라인에 인용 금지 | 이동 | `1396f501b7911c514379ebe53f4f8b50` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/test_epoch30_55.28_top4_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, test 상위 체크포인트(test_epoch30_55.28_top4). 🔴 test-best 는 판정·헤드라인에 인용 금지 | 이동 | `4bbda17045951bc9949ccde8d34fc384` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/test_epoch35_55.46_top2_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, test 상위 체크포인트(test_epoch35_55.46_top2). 🔴 test-best 는 판정·헤드라인에 인용 금지 | 이동 | `c48ca0b535d260544ade36f1b874c78a` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/epoch15_65.02_top3_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, 학습기 val 상위 체크포인트(epoch15_65.02_top3) | 이동 | `ba6839ff54e01f8711d0358c846e6d9d` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/epoch35_65.72_top1_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, 학습기 val 상위 체크포인트(epoch35_65.72_top1) | 이동 | `599e9f6e09afa8230c98ff4ca9b31c60` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/epoch30_65.02_top4_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, 학습기 val 상위 체크포인트(epoch30_65.02_top4) | 이동 | `dd973bb3d9e290af3d679caea8f1f650` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/test_epoch20_55.56_top1_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, test 상위 체크포인트(test_epoch20_55.56_top1). 🔴 test-best 는 판정·헤드라인에 인용 금지 | 이동 | `70025cc7ba6e0a8e32be8cc926ae929e` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/test_epoch15_55.15_top5_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, test 상위 체크포인트(test_epoch15_55.15_top5). 🔴 test-best 는 판정·헤드라인에 인용 금지 | 이동 | `87e8711dfee44ad3f451dce30151d13a` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/epoch20_64.67_top5_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, 학습기 val 상위 체크포인트(epoch20_64.67_top5) | 이동 | `724f7ce9a167aad1f4d347d138b945ad` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_E1shared/DELIVER_ReliaDINO-ViTL16_idel/last_checkpoint.pth` | E1-shared(전 센서 공유 LoRA r16) 40에폭 스크린 시드821 hpca100 학습 사본, 마지막 에폭 체크포인트 | 이동 | `22c0b39c6aa4d383e82e2b49fcc6526e` | 1.90G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_R2/DELIVER_ReliaDINO-ViTL16_idel/last_checkpoint.pth` | R2(연결 성분 soft-IoU 손실) 40에폭 스크린 시드821 hpca100 사본, 마지막 에폭 체크포인트 | 이동 | `a767cad243bd7d30b1df1d552d1f93c0` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_R2/DELIVER_ReliaDINO-ViTL16_idel/epoch40_67.6_top1_checkpoint.pth` | R2(연결 성분 soft-IoU 손실) 40에폭 스크린 시드821 hpca100 사본, 학습기 val 상위 체크포인트(epoch40_67.6_top1) | 이동 | `baa6acd9115ca5a3078cdafecfbfb656` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_R1/DELIVER_ReliaDINO-ViTL16_idel/epoch25_67.62_top1_checkpoint.pth` | R1(depth 경계 prior refinement) 40에폭 스크린 시드821 hpca100 사본. 기각된 카드, 학습기 val 상위 체크포인트(epoch25_67.62_top1) | 이동 | `e749135adcb0e58dfb357cb472fb2a77` | 1.93G | 삭제됨(NAS 가 유일본) |
+| `src/drone-MemorySAM/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_R1/DELIVER_ReliaDINO-ViTL16_idel/last_checkpoint.pth` | R1(depth 경계 prior refinement) 40에폭 스크린 시드821 hpca100 사본. 기각된 카드, 마지막 에폭 체크포인트 | 이동 | `e3b315951c17e6331460cffd41c80f75` | 1.93G | 삭제됨(NAS 가 유일본) |
+| `robust_0923/ckpts/Q3_s821_epoch30_66.74.pth` | Q3(품질 헤드 QAF 본 카드) 40에폭 스크린 시드821, val-best epoch30(66.74). 종료된 카드 | 이동 | `1bafa392ff3a4be268d6dae16b9e16c5` | 2.08G | 삭제됨(NAS 가 유일본) |
+| `dump_e1screen/epoch35_67.25_top1_checkpoint.pth` | E1 40에폭 스크린 시드821 val-best epoch35 의 중복 사본(ckpt/e1screen821_… 과 md5 동일) | 이동 | `e69d7deb20fe04d8d7b86f34aa265421` | 1.92G | 삭제됨(NAS 가 유일본) |
+| `d4_ours/ckpts/E1_s1_epoch140.pth` | E1(중간층 4탭 읽기) 확정 200에폭 시드1(20260821), 학습기 val-best epoch140. 헤드라인 3시드 중 하나이며 P56-A 의 동결 교사 | 사본 | `c648f925fb7c131daf1324af2b1d7e84` | 1.92G | 남아 있음 |
+| `p55_0929/loo_deg0/train/p55_gate_full.pth` | P55(무감독 다중 블록 게이트) leave-one-out 목표 팔(모델 자신의 모달 제거 손실을 게이트 목표로), Q2 시드821 위, 게이트 4에폭 학습 산출(전체 모델 + 게이트) | 사본 | `0106ffd3b4ffa6a895b3bd529be10068` | 1.45G | 남아 있음 |
+| `robust_0923/ckpts/Q2_s821_epoch40_67.0.pth` | Q2(두 패스 + 동결 E1 교사 증류) 40에폭 스크린 시드821, val-best epoch40(67.0). 강건 측정·P55·오라클 분석의 바탕 | 사본 | `c93de37b389a20a77e3bfd369123734c` | 1.92G | 남아 있음 |
+
+### 옮기지 않은 것
+
+| hpca100 경로 | 이유 |
+|---|---|
+| `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM/weights/rf-detr-large-2026.pth` | 사전학습 가중치(학습 산출물 아님) |
+| `/home/jovyan/SSDb/jemo_maeng/src/drone-MemorySAM-develop/outputs/ReliaDINO/hpca100_deliver_rgbdel_P46_c3only_seed20260821_screen40_P56A/DELIVER_ReliaDINO-ViTL16_idel/last_checkpoint.pth` | 학습 중인 SAVE_DIR(파일이 교체됨) |
+
+### 되돌리는 법
+
+```bash
+# 허브에서 실행. <상대경로> 는 위 표의 첫 열
+rsync -t --no-perms --no-owner --no-group "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/hpca100_archive_20260929/<상대경로>" "hpca100:/home/jovyan/SSDb/jemo_maeng/<상대경로>"
+ssh hpca100 "md5sum /home/jovyan/SSDb/jemo_maeng/<상대경로>"   # 표의 md5 와 같아야 한다
+```
+
+서버의 실행 스크립트·eval config 가 가리키던 경로는 바꾸지 않았다. 옮긴 체크포인트를 다시 쓰려면 위 명령으로 같은 경로에 되돌려 놓는다.
+<!-- hpca100-archive-20260929:end -->
 
 ## 3. 복원 방법
 
