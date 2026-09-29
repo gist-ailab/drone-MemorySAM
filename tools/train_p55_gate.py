@@ -95,7 +95,13 @@ def gate_train_step(model, criterion, imgs, gt, *, target='none', tau=0.1,
         with torch.no_grad():
             feats = model._encode_all([x.to(dev) for x in imgs])
             t_target = loo_target(model, feats, gt, tau)
-    logits, _, aux = model(imgs, True, gt_mask=gt)
+    # 학습(train_reliadino)과 같은 AMP 조건으로 forward 한다. fp32 + 가법 key 마스크에서는
+    # SDPA 가 mem-efficient 커널을 골라 backward 가 "LSE is not correctly aligned" 로 죽는다
+    # (torch 2.3, hpca100 2026-09-29 실측) → main() 에서 mem-efficient SDP 를 끄고 bf16 autocast 사용.
+    _amp = bool(getattr(model, '_p55_amp', False)) and gt.is_cuda
+    with torch.autocast('cuda', dtype=torch.bfloat16, enabled=_amp):
+        logits, _, aux = model(imgs, True, gt_mask=gt)
+    logits = logits.float()
     loss = criterion(logits, gt)
     log = {'seg': float(loss.detach())}
     if 'p55_var_reg' in aux:
@@ -170,6 +176,7 @@ def main():
     ap.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     ap.add_argument('--out', default='./p55_gate_out')
     ap.add_argument('--seed', type=int, default=20260929)
+    ap.add_argument('--no_amp', action='store_true', help='cfg TRAIN.AMP 를 무시하고 fp32 로')
     args = ap.parse_args()
 
     from semseg.augmentations_mm import get_train_augmentation
@@ -186,6 +193,9 @@ def main():
     modal_names = list(ds_cfg['MODALS'])
 
     model = load_gate_model(cfg, args.ckpt, device)
+    if device.type == 'cuda':
+        torch.backends.cuda.enable_mem_efficient_sdp(False)   # 위 주석 참조(math/flash 커널만)
+    model._p55_amp = bool(tr_cfg.get('AMP', False)) and not args.no_amp
     train_params = freeze_except_gate(model)
     n_gate = sum(p.numel() for p in train_params)
     print(f"[P55] 학습 파라미터(gate only)={n_gate:,} · target={args.target} "
