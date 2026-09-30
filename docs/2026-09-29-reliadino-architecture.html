@@ -506,6 +506,131 @@ li{max-width:72ch}
 </section>
 
 <section>
+  <h2>MM SAM-adapter(2509.10408)와 무엇이 다른가</h2>
+  <p>MM SAM-adapter(Curti 외, 볼로냐대, 2025-09)는 DELIVER·MUSES test에서 현재 가장 높은 융합 방법이다. 논문을 읽어 확인한 구조와 수치로 비교한다. 이 방법도 외부 레이블(조건 텍스트·depth 감독)을 쓰지 않으므로, "외부 신호 불사용"만으로는 우리와 구별되지 않는다.</p>
+  <figure>
+    <div class="scroll">
+    <svg class="wide" viewBox="0 0 1040 330" role="img" aria-label="왼쪽 MM SAM-adapter: RGB 만 SAM ViT-L 본 가지로 들어가고 미세 조정된다. RGB 와 보조 센서 하나가 각각 ConvNeXt-S 를 거쳐 Road-Fusion 으로 합쳐진 뒤 ViT-adapter 식 injector 와 extractor 로 SAM 블록 사이에 주입된다. 보조 센서는 하나뿐이다. 오른쪽 ReliaDINO: 네 센서가 같은 동결 DINOv3-L 을 센서별 LoRA 와 함께 통과하고 대칭 교차 attention 으로 합쳐진다.">
+      <defs>
+        <marker id="m4" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+      </defs>
+
+      <!-- 왼쪽: MM SAM-adapter -->
+      <g>
+        <text x="10" y="18" class="hd">MM SAM-adapter (2509.10408)</text>
+        <text x="10" y="33" class="sub">RGB 우선 비대칭 · 보조 센서 1개 · SAM 인코더 미세 조정</text>
+
+        <rect class="box" x="10" y="50" width="90" height="34" rx="5"/><text x="55" y="71" text-anchor="middle" class="hd">RGB</text>
+        <rect class="box" x="120" y="50" width="120" height="34" rx="5"/><text x="180" y="71" text-anchor="middle" class="hd">보조 센서 1개</text>
+        <text x="180" y="98" text-anchor="middle" class="sub">Depth 또는 LiDAR 또는 Event</text>
+
+        <rect class="ext" x="300" y="50" width="200" height="60" rx="6"/>
+        <text x="400" y="70" text-anchor="middle" class="hd">SAM ViT-L 인코더 (본 가지)</text>
+        <text x="400" y="86" text-anchor="middle" class="sub">RGB 만 입력 · 전체 미세 조정</text>
+        <text x="400" y="100" text-anchor="middle" class="sub">4블록으로 나눔</text>
+        <path class="ln" d="M100 60 C200 40 260 44 300 66" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="box" x="10" y="124" width="110" height="44" rx="5"/><text x="65" y="142" text-anchor="middle" class="sub">ConvNeXt-S</text><text x="65" y="157" text-anchor="middle" class="sub">RGB 용</text>
+        <rect class="box" x="130" y="124" width="110" height="44" rx="5"/><text x="185" y="142" text-anchor="middle" class="sub">ConvNeXt-S</text><text x="185" y="157" text-anchor="middle" class="sub">보조 센서용</text>
+        <path class="ln" d="M55 84 V124" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M180 84 V124" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="box" x="10" y="190" width="230" height="44" rx="5"/>
+        <text x="125" y="208" text-anchor="middle" class="hd">Road-Fusion (RoadFormer+)</text>
+        <text x="125" y="223" text-anchor="middle" class="sub">두 센서 양방향 교차 attention, 2개까지만</text>
+        <path class="ln" d="M65 168 V190" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M185 168 V190" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="ext" x="300" y="134" width="200" height="100" rx="6"/>
+        <text x="400" y="154" text-anchor="middle" class="hd">어댑터 (ViT-adapter 식)</text>
+        <text x="400" y="171" text-anchor="middle" class="sub">Injector: SAM 토큰이 query,</text>
+        <text x="400" y="185" text-anchor="middle" class="sub">융합 특징이 key·value (변형 가능 attention)</text>
+        <text x="400" y="199" text-anchor="middle" class="sub">Extractor: 반대 방향 + FFN</text>
+        <text x="400" y="213" text-anchor="middle" class="sub">블록마다 1쌍, γ 는 0 으로 초기화</text>
+        <text x="400" y="227" text-anchor="middle" class="sub">SAM 특징에 융합 정보를 "주입"</text>
+        <path class="lnext" d="M240 212 H300" style="color:var(--ext)" marker-end="url(#m4)"/>
+        <path class="lnext" d="M400 110 V134" style="color:var(--ext)" marker-end="url(#m4)"/>
+
+        <rect class="box" x="300" y="258" width="200" height="40" rx="5"/>
+        <text x="400" y="276" text-anchor="middle" class="hd">SegFormer 헤드</text>
+        <text x="400" y="291" text-anchor="middle" class="sub">어댑터 출력 + 융합 특징(1/4)</text>
+        <path class="ln" d="M400 234 V258" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <text x="255" y="320" text-anchor="middle" class="sub">RGB 가 없으면 본 가지가 비므로 RGB 결측은 설계상 다루지 않는다 · 센서 3개 이상은 논문이 밝힌 한계</text>
+      </g>
+
+      <!-- 오른쪽: ReliaDINO -->
+      <g transform="translate(540,0)">
+        <text x="10" y="18" class="hd">ReliaDINO</text>
+        <text x="10" y="33" class="sub">네 센서 대칭 · 동결 백본 · 센서별 LoRA</text>
+
+        <rect class="box" x="10" y="50" width="110" height="34" rx="5"/><text x="65" y="71" text-anchor="middle" class="hd">RGB</text>
+        <rect class="box" x="137" y="50" width="110" height="34" rx="5"/><text x="192" y="71" text-anchor="middle" class="hd">Depth</text>
+        <rect class="box" x="264" y="50" width="110" height="34" rx="5"/><text x="319" y="71" text-anchor="middle" class="hd">Event</text>
+        <rect class="box" x="391" y="50" width="109" height="34" rx="5"/><text x="445" y="71" text-anchor="middle" class="hd">LiDAR</text>
+
+        <rect class="frozen" x="10" y="110" width="490" height="52" rx="6"/>
+        <text x="255" y="130" text-anchor="middle" class="hd">동결 DINOv3 ViT-L (하나) + 센서별 LoRA r8</text>
+        <text x="255" y="148" text-anchor="middle" class="sub">네 센서가 같은 백본을 각자 통과 · 백본 미세 조정 없음 · 4탭</text>
+        <path class="ln" d="M65 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M192 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M319 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M445 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="ours" x="10" y="186" width="490" height="52" rx="6"/>
+        <text x="255" y="206" text-anchor="middle" class="hd">대칭 교차 모달 attention × 2 → 평균 → 하나의 헤드</text>
+        <text x="255" y="224" text-anchor="middle" class="sub">주 센서 없음 · 어느 센서가 빠져도 같은 그래프로 동작</text>
+        <path class="ln" d="M255 162 V186" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="ours" x="10" y="258" width="490" height="40" rx="5"/>
+        <text x="255" y="276" text-anchor="middle" class="hd">학습: 두 패스(clean + 결측·열화·충돌) + 교사 증류</text>
+        <text x="255" y="291" text-anchor="middle" class="sub">센서가 없거나 틀린 상황을 학습 표본으로 가르침</text>
+        <text x="255" y="320" text-anchor="middle" class="sub">학습 파라미터 약 5,900만(백본 3억 동결) · 센서 결측 15조합 평균 48.1</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption><b>그들은 RGB 를 주인으로 두고 보조 센서 하나를 "주입"하고, 우리는 네 센서를 같은 자리에 두고 서로 조회하게 한다.</b> MM SAM-adapter 논문은 대칭 구조(보조 가지를 키운 것)가 비대칭보다 나쁘다는 ablation(55.27 vs 57.14)을 근거로 RGB 우선을 택했다. 우리는 반대 방향의 증거를 내야 한다: RGB 가 망가지거나 없을 때, 그리고 센서가 셋 이상일 때.</figcaption>
+  </figure>
+
+  <div class="tbl">
+  <table>
+    <thead><tr><th style="width:18%">항목</th><th>MM SAM-adapter</th><th>ReliaDINO</th></tr></thead>
+    <tbody>
+      <tr><td><b>백본·학습량</b></td><td>SAM ViT-L 인코더 <b>전체 미세 조정</b>(동결하면 −1.8). 보조 가지 ConvNeXt-S 2개 + 어댑터</td><td>DINOv3-L <b>동결</b>, 센서별 LoRA r8 + 융합·헤드 약 5,900만 학습</td></tr>
+      <tr><td><b>센서 수</b></td><td>RGB + 보조 1개(Road-Fusion 제약, 논문이 밝힌 한계)</td><td>4개 동시(DELIVER), 3개(MUSES), 4개(MCubeS)</td></tr>
+      <tr><td><b>융합 위치·방식</b></td><td>보조 가지에서 먼저 융합한 뒤 ViT-adapter 식 injector/extractor 로 SAM 블록 사이에 주입(변형 가능 교차 attention). RGB 우선 비대칭</td><td>백본 뒤 대칭 교차 attention 2층. 주 센서 없음</td></tr>
+      <tr><td><b>외부 레이블</b></td><td>없음</td><td>없음</td></tr>
+      <tr><td><b>강건성 평가</b></td><td>RGB-easy / RGB-hard 분할(수작업). 센서 결측·열화 프로토콜 없음</td><td>모달 결측 15조합·부분 열화·노이즈(2503.18445 프로토콜) + 실제 조건별</td></tr>
+      <tr><td><b>DELIVER test</b></td><td class="num"><b>57.35</b> (RGB-D) · 57.14 (RGB-L) · 55.70 (RGB-E), 단일 런</td><td class="num">56.24 ± 0.42 (3시드), 최고 56.73 (4모달)</td></tr>
+      <tr><td><b>DELIVER val</b></td><td class="num"><b>69.60</b> (RGB-D)</td><td class="num">69.51 ± 0.15, 최고 69.68</td></tr>
+      <tr><td><b>MUSES test</b></td><td class="num"><b>81.07</b> (RGB-L) · 79.92 (RGB-E)</td><td class="num">79.29 ± 0.71 (2시드), 최고 79.79 (3모달)</td></tr>
+      <tr><td><b>센서 결측 시</b></td><td>RGB 결측은 구조상 불가(본 가지가 RGB). 보고 없음</td><td>Q2: RGB 만 남아도 53.9, depth 만 46.0, event 만 31.0</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="cols">
+    <div class="card line-ours">
+      <h3>주장할 수 있는 것</h3>
+      <ul>
+        <li><b>주 센서 없는 전 센서 융합의 강건성.</b> RGB 가 없거나 틀려도 같은 그래프로 동작하며(Q2: RGB 결측 시 depth 만으로 46.0), 그들의 구조는 RGB 결측을 정의조차 못 한다. 결측·열화 프로토콜에서 그들을 같은 조건으로 재어 비교해야 성립한다.</li>
+        <li><b>백본 동결 + 센서별 LoRA 로 같은 급 성능.</b> ViT-L 미세 조정 없이 val 69.5(그들 69.6), 학습 파라미터 5,900만. 효율·망각 방지 축.</li>
+        <li><b>센서 3개 이상.</b> 그들이 한계로 밝힌 지점. MCubeS 4모달 58.07 은 그들에게 비교 대상이 없다.</li>
+        <li><b>학습 설계로 만든 상황별 의존도 이동(P56-A 결과 시).</b> 그들의 "필요할 때만 보조 센서 사용"은 RGB-hard 분할 결과로만 보였고, 우리는 조건별 센서 제거 표로 정량화한다.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>주장할 수 없는 것 (지금 수치로)</h3>
+      <ul>
+        <li>DELIVER test·MUSES test 의 절대 1위. 그들이 test 에서 +1.1(DELIVER)·+1.3(MUSES) 앞선다. 우리 1위 주장은 "같은 모달 집합(전 모달)을 쓰는 방법 중"과 val·MCubeS 에 한정된다.</li>
+        <li>"외부 레이블 없음"을 차별점으로. 그들도 쓰지 않는다. 차별점은 DGFusion·CAFuser 에 대해서만 유효하다.</li>
+        <li>"대칭이 비대칭보다 낫다"를 일반 명제로. 그들의 ablation 은 clean test 에서 반대다. 우리는 강건 축에서만 뒤집을 수 있다.</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">그들의 MUSES test 81.07(RGB+LiDAR 2모달)은 이 문서의 상단 표(MUSES 1차 비교 상대 DGFusion 79.5)에 아직 반영되지 않았다. 우리 규칙상 2모달 방법은 "2차(적은 모달) 비교" 열에 속하며, 그 열의 1위는 GtA 82.39(카메라 단독)라 표의 값은 바뀌지 않지만, 융합 방법이 우리보다 높다는 사실은 논문에서 숨길 수 없다.</p>
+</section>
+
+<section>
   <h2>왜 이렇게 만들었나</h2>
   <p>각 설계는 실측 결과 하나에 대응한다. 버린 대안도 같은 기준으로 측정해서 버렸다.</p>
   <div class="tbl">

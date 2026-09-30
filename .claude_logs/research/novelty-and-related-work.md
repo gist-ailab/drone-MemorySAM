@@ -164,6 +164,15 @@ P30(구현, [models/arch-evolution.md](../models/arch-evolution.md) P30)는 P28 
 - 원문 재확인 필요(2026 신규 번호): 2604.12319, 2606.01173, 2607.04587, 2607.06943, 2608.24947, 2609.29235. OGM-GE 정정 ID = 2203.15332.
 - 상세 = decisions/2026-09-26-p55-self-supervised-reliability-gate-proposal.md
 
+
+## 2.12 MM SAM-adapter(2509.10408) 정독과 노벨티 포지셔닝 (2026-09-30)
+
+- **구조**: SAM ViT-L 인코더 전체 미세 조정(동결 시 −1.8), RGB 만 본 가지. 보조 센서 1개를 ConvNeXt-S 2개(RGB·보조) + Road-Fusion(RoadFormer+)으로 먼저 융합한 뒤 ViT-adapter 식 injector/extractor(변형 가능 교차 attention, 4블록)로 SAM 특징에 주입. SegFormer 헤드. 외부 레이블 없음. 센서 3개 이상은 논문이 밝힌 한계.
+- **수치(단일 런)**: DELIVER test 57.35(RGB-D)·57.14(RGB-L)·55.70(RGB-E), val 69.60(RGB-D) · **MUSES test 81.07(RGB-L)·79.92(RGB-E)** · FMB 66.10. ablation: 대칭 55.27 < 비대칭 57.14, 동결 SAM 55.35, 다중 모달 LoRA 53.97, 융합 모듈은 concat 56.87 ≈ Road-Fusion 57.14.
+- **우리 대비**: DELIVER test −1.1(평균)·val −0.1, MUSES test −1.3 로 **clean test 절대 1위 주장 불가**. 이 방법도 외부 레이블을 쓰지 않으므로 "외부 신호 불사용"은 DGFusion·CAFuser 상대로만 차별점이다.
+- **주장 가능한 축**: (a) 주 센서 없는 전 센서 융합의 결측·열화 강건성(그들은 RGB 결측을 정의할 수 없음; 같은 프로토콜 측정 필요) (b) 백본 동결 + 센서별 LoRA 로 같은 급 val (c) 센서 3개 이상(MCubeS 4모달 58.07) (d) 학습 설계(Q2·P56-A)로 만든 상황별 의존도 이동의 정량화.
+- **비교표 갱신 필요**: MUSES 2차(적은 모달) 비교 열에 MM SAM-adapter 81.07 을 병기할 것(1위는 GtA 82.39 유지). 판정 대장 2026-09-30 행, 아티팩트 https://claude.ai/artifact/Am5i5hF7CuPQCRuJWibNwc.
+
 ## 3. 노벨티 판정 (deep-research verdict, 리뷰 방어용)
 
 - **헤드라인 = 기구(B)**: "reliability를 **SAM memory-attention pre-softmax logit에 additive bias**로". feature-multiply / output-scale / loss-level 일색인 선행연구에 **logit-additive bias 전례 0건**. + MemorySAM 핵심 메커니즘 개조 서사.
