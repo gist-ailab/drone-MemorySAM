@@ -15,17 +15,24 @@ items:
   expected_cost: null
   priority: 1
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - daily-cards
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'E1(중간층 4탭 읽기)·E13(4탭 + 센서별 클래스 prototype) 확정 3쌍 채택: legal v2 로 C3-only
+      기준선 대비 E1 Δ25 +1.21±0.81 / Δ24 +0.92±0.22, E13 +1.45±0.88 / +0.80±0.38 → 사전
+      게이트(Δ25 ≥ +1.0, Δ24 ≥ +0.5) 두 카드 통과. 헤드라인 카드 = E1, E13 병기. 단 SOTA 거리 게이트(우리
+      최고 단일 런 56.99·DGFusion 56.71)는 미달. 판정 대장 2026-09-20 행(34행) 확인'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/judgment-ledger.md:34
   superseded_by: null
   draft_verdict:
@@ -48,16 +55,23 @@ items:
   expected_cost: null
   priority: 2
   owner_role: method
-  status: judging
+  status: done
   tags:
   - muses
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'MUSES 200에폭 풀 런(E1M·E7·E13M 시드3407, 시드902 짝) 공식 재채점: E13M 3407 81.95
+      · E13M 902 81.68 · E1M 3407 81.70 · E1M 902 81.93 · E7(기준선 카드) 81.88 → 2시드 평균
+      E13M 81.81 ≈ E1M 81.82, 기준선이 그 사이. 40에폭 스크린에서 보였던 E13M 이득이 풀 런에서 사라져 MUSES 에서
+      4탭·prototype 카드는 이득 없음. 제출본 교체 근거 없음. 판정 대장 2026-09-20 행(36행) 확인'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/judgment-ledger.md:36
   superseded_by: null
   draft_verdict:
@@ -83,17 +97,25 @@ items:
   expected_cost: null
   priority: 3
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - e-lora
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'E-LoRA 3갈래(A 센서별 r16 / B 완전공유 r16 / C 공유 r8 + 센서별 잔차 r8): 축별로 결론이 다르다.
+      clean·모달 결측에서는 구조 무관, depth 절반 열화(RMM r=0.5)에서는 B 가 손해를 절반 이하(−6.82 vs A −15.77)로
+      줄이고 시드 분산도 1/5, clean 대가는 legal v2 val 약 −1. C 는 둘을 합치지 못했다. 단독 채택·기각 없이 후속
+      카드 E1-shared(4탭 위 완전공유 LoRA) 로 넘김 → 그 결과는 DRN-260926-57 에서 판정. 판정 대장 2026-09-21
+      행(49행) 확인'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/judgment-ledger.md:49
   superseded_by: null
   draft_verdict:
@@ -119,17 +141,23 @@ items:
   expected_cost: null
   priority: 4
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - screen40
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'E17(E1 레시피 + 고해상도 세부 가지 DETAIL_BRANCH) 40에폭 스크린 시드821: legal v2 Δtest
+      +0.88(사전 게이트 +1.0 미달), Δval +1.47. 확정 200에폭 2런은 user 지시로 취소. 이후 얇은·원거리 객체 결함을
+      겨냥한 R1·R2 도 실패해 세 축 모두 기각. 판정 대장 2026-09-20 행(35행) 확인'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/judgment-ledger.md:35
   superseded_by: null
   draft_verdict:
@@ -284,16 +312,23 @@ items:
   expected_cost: null
   priority: 10
   owner_role: method
-  status: judging
+  status: done
   tags:
   - mcubes
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: '확정 레시피의 MCubeS 이식 3시드(200에폭): 4탭 단독 3짝 평균 +0.10, 4탭 + prototype 3시드
+      평균 −0.63 으로 둘 다 게이트(+0.5) 미달. 짝 간 폭 0.64 가 평균 효과의 여섯 배라 시드를 더 늘려도 판정이 바뀌지 않는다고
+      사전 종결 조건대로 종결. MCubeS 헤드라인은 C3-off 58.07±0.49 유지. plan.md N-MC 행(2026-09-16)
+      확인'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (N-MC 행)
   superseded_by: null
   draft_verdict:
@@ -316,17 +351,23 @@ items:
   expected_cost: null
   priority: 11
   owner_role: method
-  status: judging
+  status: done
   tags:
   - muses
   - seed
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): MUSES 시드 분산. 공식 val 3점 {82.13, 81.79, 81.47}
+      폭 0.66 으로 val 은 안정하나, 공식 test 2점 {79.788, 78.786} 폭 1.00 으로 val 폭이 test 에서 커진다.
+      결론: 단일 제출 방어 근거로 못 쓰며 MUSES 도 시드 평균 병기 필요. 원문 = analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md
   superseded_by: null
   draft_verdict:
@@ -350,17 +391,23 @@ items:
   expected_cost: null
   priority: 12
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - mixer
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'MLE-SAM 식 평균 융합 기준선(믹서를 평균으로 교체): legal test 55.45 로 우리 gated-MLP trunk(54.2~55.4)와
+      동급 이상. ''trunk 가 우위''라는 주장은 철회하고 믹서 3점(평균 ≈ gated-MLP > 교차 attention 만) 을 기록.
+      기각 = 우리 trunk 의 우위 가설 기각. 원문 = analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md
   superseded_by: null
   draft_verdict:
@@ -412,16 +459,23 @@ items:
   expected_cost: null
   priority: 14
   owner_role: method
-  status: judging
+  status: done
   tags:
   - mcubes
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'MCubeS 첫 진입 3시드(P39.1-rank 통일 레시피, C3 off): test {57.93, 57.67, 58.62}
+      = 58.07±0.49, published 최고 54.65 대비 +3.42, StitchFusion 55.9 대비 +2.17 → MCubeS
+      헤드라인으로 채택(3시드 평균 병기). 원문 = analysis/2026-08-25-n4-mcubes-first-entry-verdict.md,
+      plan.md N4 행'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/analysis/2026-08-25-n4-mcubes-first-entry-verdict.md
   superseded_by: null
   draft_verdict:
@@ -444,17 +498,23 @@ items:
   expected_cost: null
   priority: 15
   owner_role: method
-  status: judging
+  status: done
   tags:
   - mcubes
   - c3
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'MCubeS C3(클래스 prototype 손실) on 짝: 사전 등록한 예측 2/2 적중 — rubber 클래스 +9.76(18.80→28.56,
+      published 대역 복귀), 전체 mIoU Δ −0.10(허용 범위 안) → C3 의 용량-반응 3점(DELIVER·MUSES·MCubeS)
+      성립. 채택 = 기제 가설 확인. 헤드라인은 C3 off 3시드 유지. 원문 = analysis/2026-08-27-n4b-dose-response-confirmed.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/analysis/2026-08-27-n4b-dose-response-confirmed.md
   superseded_by: null
   draft_verdict:
@@ -480,17 +540,24 @@ items:
   expected_cost: null
   priority: 16
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - protocol
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'DELIVER 체크포인트 선택을 legal-val 기준으로 재선택(5시드): 평균 53.82 → 54.39±0.76, 선택
+      아티팩트가 2/5런에서 실재(816 +2.21, 821 +0.63), 최고 단일 런 = 시드816 55.29. 채택 = 프로토콜 확정:
+      이후 legal 수치는 하네스 가드 --check 필수, 체크포인트 = 학습기 val-best top1 규칙과 병기. 원문 = plan.md
+      N6 행(2026-08-31)'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (N6 행)
   superseded_by: null
   draft_verdict:
@@ -541,17 +608,23 @@ items:
   expected_cost: null
   priority: 18
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - protocol
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'P50(정렬 사전학습 init) 런 6개 체크포인트 legal-val 스윕: ep30(학습기 top1) = legal-val-best
+      로 동일, 재선택 변화 없음 → P50 legal test 54.95 를 최종 확정하고 P52 게이트 G1 기준으로 채택. 원문 = plan.md
+      N8 행(2026-09-01)'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (N8 행)
   superseded_by: null
   draft_verdict:
@@ -734,17 +807,24 @@ items:
   expected_cost: null
   priority: 25
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - diagnostic
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'E0/S0 특징 프로브(학습 = 선형 헤드만, DINOv3 중간층 원 특징 vs 어댑터 후 특징 vs 융합 특징): 원 특징
+      27.8 < 어댑터 후 35.6 < 융합 45.1 로 ''원 특징만으로 충분하다''는 가설 기각. depth 중간층에 Water 47.6·RailTrack
+      23.9 정보가 남아 있어 중간층 읽기(E1)·prototype(E3) 카드는 유지, E5·E6 은 우선순위 하향. 원문 = cards/2026-W37-verdicts.md
+      E0 행, plan.md 09-07~08 절'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (직전 완결 09-07~08 절)
   superseded_by: null
   draft_verdict:
@@ -935,17 +1015,24 @@ items:
   expected_cost: null
   priority: 32
   owner_role: method
-  status: judging
+  status: done
   tags:
   - p50
   - deliver
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P50-EXT(정렬 사전학습 코퍼스 500k·등-스텝 확장, Phase2 375,000 step 완주): EXT-init
+      파인튠 ep30 legal test 53.10 < 채택 게이트 55.25(= 프로브-init 54.95 + 0.3) → 기각, P52 init
+      은 Phase1(프로브) 로 확정. user 결정 2026-09-07. 원문 = registry hpca100_deliver_rgbdel_P46_c3only_p50ext_seed821
+      행, decisions/2026-08-31-p52-rxdino-adaptive-amendment.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/registry.md (hpca100_deliver_rgbdel_P46_c3only_p50ext_seed821
     행)
   superseded_by: null
@@ -1280,15 +1367,21 @@ items:
   expected_cost: null
   priority: 45
   owner_role: method
-  status: judging
+  status: done
   tags:
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 진단 결과를 기록으로 확정): MUSES 성능 저하 원인 A/B 격리. radar(또는 4모달 구조)가
+      원인이고 lidar 재투영·event dilation·eff batch 는 무관. Arm A ep24 best 73.85@ep18 은 대조군
+      ep10 74.24 에 앞서지 않아 DGFusion 식 투영은 중립. 원문 = plan.md ✅ 완료·판정 표'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (✅ 완료·판정 표)
   superseded_by: null
   draft_verdict:
@@ -1311,15 +1404,21 @@ items:
   expected_cost: null
   priority: 46
   owner_role: method
-  status: judging
+  status: done
   tags:
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'TTA(다중 스케일·플립 시험 시 증강)를 헤드라인에 쓸 수 있는가: 경쟁 논문 3종(CMNeXt·CAFuser·DGFusion)
+      모두 미사용(CMNeXt 는 논문에 single-scale 명시) → 헤드라인 사용 불가로 기각. 우리 MSF config 는 쓰인 적
+      없어 과거 수치 오염 없음. 원문 = plan.md 완료·판정 표, monitor-log.md TTA 조사'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (✅ 완료·판정 표)
   superseded_by: null
   draft_verdict:
@@ -1341,15 +1440,21 @@ items:
   expected_cost: null
   priority: 47
   owner_role: method
-  status: judging
+  status: done
   tags:
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정·정합 항목(채택 = 결과를 기록으로 확정): DGFusion 전처리 파라미터 재현 완료(공개 PIXEL_MEAN 을
+      오라클로 −0.1% 안에서 적중). 실제 남은 차이는 lidar 투영뿐(radar·event 30ms 는 이미 동일). 성능 이득은 0
+      이고 공정 비교 조건만 확보. 원문 = plan.md 완료·판정 표'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (✅ 완료·판정 표)
   superseded_by: null
   draft_verdict:
@@ -1371,15 +1476,21 @@ items:
   expected_cost: null
   priority: 48
   owner_role: method
-  status: judging
+  status: done
   tags:
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'SAM2 계보 제안 모듈 ablation: ATTN_BIAS(RBMA 간판 기제) 포함 제안 모듈 전부 효과 ≈0, gate+calibration
+      만 test +0.26. 성능 출처 = DINOv3 백본 + 센서별 LoRA 로 확정 → 제안 모듈들의 기여 가설 기각(이후 재시도 금지
+      축의 근거). 원문 = plan.md 완료·판정 표'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (✅ 완료·판정 표)
   superseded_by: null
   draft_verdict:
@@ -1401,16 +1512,22 @@ items:
   expected_cost: null
   priority: 49
   owner_role: method
-  status: judging
+  status: done
   tags:
   - det
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 진단 결과를 기록으로 확정): det(poongsan) 학습 붕괴 원인 = BS1 의 gradient
+      잡음(양성 앵커 1~3개), LR 은 원인 아님. 처방 = 배치 증가 + LR 유지, warmup 5에폭 완주로 검증. 원문 = plan.md
+      완료·판정 표'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (✅ 완료·판정 표)
   superseded_by: null
   draft_verdict:
@@ -1432,15 +1549,20 @@ items:
   expected_cost: null
   priority: 50
   owner_role: method
-  status: judging
+  status: done
   tags:
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'seg P37a/P37b(bengio 분): bengio 노드 CUDA 전체 장애로 ep1~2 에서 종료된 런 소실. 결과
+      없음이라 판정 불가. jarvis 재기동분(P37a→P37b 체인)이 계보를 승계함. 원문 = plan.md 완료·판정 표, monitor-log.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/plan.md (✅ 완료·판정 표)
   superseded_by: null
   draft_verdict:
@@ -1462,15 +1584,21 @@ items:
   expected_cost: null
   priority: 51
   owner_role: method
-  status: judging
+  status: done
   tags:
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): MUSES 시드 20260825 공식 test 78.786(2026-09-18
+      수신). 시드2 79.788 대비 −1.00, 2시드 평균 79.29±0.71 < DGFusion 79.5 → ''융합 계열 1위'' 서술은
+      시드2 단일 런 한정으로 제한. 시드 20260824 는 체크포인트 부재로 제출 불가. 원문 = analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: .claude_logs/experiments/analysis/2026-09-18-muses-official-test-p39_1-seed20260825.md
   superseded_by: null
   draft_verdict:
@@ -1494,16 +1622,22 @@ items:
   expected_cost: null
   priority: 52
   owner_role: method
-  status: judging
+  status: done
   tags:
   - muses
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'P43-PanopticDual(MUSES, 분할 헤드에 panoptic 이중 헤드 추가): 학습기 val 82.51@ep156
+      로 완주했으나 MUSES 에 panoptic 정답이 없어 PQ 판정이 불가하고 공식 test 제출도 하지 않았다. 이후 MUSES 헤드라인은
+      P39.1-rank(공식 test 79.788)로 확정돼 P43 은 승계되지 않음. 판정 근거 부족으로 미확정 종결'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-53
@@ -1521,16 +1655,22 @@ items:
   expected_cost: null
   priority: 53
   owner_role: method
-  status: judging
+  status: done
   tags:
   - muses
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): MUSES RGB+LiDAR 2모달(P39.1-rank) 완주 val 82.00@ep136.
+      같은 레시피 3모달(RGB+Event+LiDAR) val 82.22 와 0.22 차이로, MUSES 에서 event 의 기여가 작다는 근거.
+      공식 test 제출은 하지 않았고 재실행 금지. 원문 = plan.md 2026-08-10 절, registry 행'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-54
@@ -1696,18 +1836,25 @@ items:
   expected_cost: null
   priority: 110
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - analysis
   - baseline
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 분석 결과를 기록으로 확정): 기준선(DGFusion·CAFuser)과 우리 모델의 실패 분석 D4/D6.
+      핵심 결과: 우리 depth 의존은 기준선의 절반(모달 zero-out −17.6 vs −31~−33), 기준선은 event·LiDAR
+      를 어떤 조건에서도 쓰지 않음(제거 시 ±0.4), 원거리 얇은 객체 결함(찾고도 못 그리는 비율 거리3 0.44 vs 기준선 0.25)이
+      우리 주 손실 요인. 이 결과가 Q2(두 패스 학습)·P56 설계의 출발점. 원문 = 판정 대장 2026-09-19~20 행 8개, analysis/2026-09-17-baseline-failure-analysis-plan.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 28,29,30,31,32,33,37,38
   superseded_by: null
 - id: DRN-260926-60
@@ -1803,18 +1950,26 @@ items:
   expected_cost: null
   priority: 113
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - screen40
   - p54
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'R2(연결 성분 단위 soft-IoU 손실, 원거리 가중) 40에폭 스크린: 시드821 두 사본 legal v2 24클래스
+      Δ −0.03 / +0.06(효과 없음), 기제 게이트 미달(원거리 못 그림 비율은 줄었으나 찾음률도 하락, mIoU 이득은 근거리 구간에만).
+      시드902·903 은 재채점했다고 기록됐으나 수치가 대장·NAS 에 보존되지 않아 3시드 평균은 미확정 → 시드821 근거와 기제 게이트
+      미달로 종료. 체크포인트는 NAS ckpts/screen40_bengio_20260923/ 에 있어 필요 시 재채점 가능. 원문 = 판정
+      대장 2026-09-23·24 행(55·67·72행)'
+    date: '2026-09-30'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 55,67,72
   superseded_by: null
 - id: DRN-260926-63
@@ -1868,18 +2023,23 @@ items:
   expected_cost: null
   priority: 115
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - screen40
   - daily-cards
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'E3b(E3 센서별 클래스 prototype + 센서 간 prototype 일치 항, AGREE_LAMBDA 0.1) 40에폭
+      스크린: legal test 54.10 으로 E3 보다 낮음 → 센서 간 일치를 강제하면 해롭다는 결론으로 폐기. 원문 = cards/2026-W37-verdicts.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-65
@@ -1899,18 +2059,24 @@ items:
   expected_cost: null
   priority: 116
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - screen40
   - daily-cards
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'E4c(혼동 쌍 margin 을 RailTrack 3쌍으로 좁히고 MARGIN 0.25) 40에폭 스크린: legal test
+      55.32, 24클래스 Δ +0.13 으로 게이트(Δ25 ≥ +1.0, Δ24 ≥ +0.5) 둘 다 미달 → 폐기. 원문 = cards/2026-W37-verdicts.md
+      §5-12'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-66
@@ -2509,18 +2675,24 @@ items:
   expected_cost: null
   priority: 218
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - multiaqua
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'MULTIAQUA 챌린지(RGB+Thermal+LiDAR, 종료 트랙) P9(교차 모달 융합 헤드) hardaug8+PhysAug
+      ep131: M-score 82.10(val 93.29 / test 70.91, 재제출 #16710) = 챌린지 공동 1위 제출본. 종료
+      트랙의 확정 기록으로 채택'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-88
@@ -2543,18 +2715,23 @@ items:
   expected_cost: null
   priority: 219
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - multiaqua
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'MULTIAQUA 챌린지 P22 hardaug8+PhysAug ep120: M-score 82.10(val 93.42 /
+      test 70.77, #16932) = P9 와 공동 1위 제출본. 종료 트랙의 확정 기록으로 채택'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-89
@@ -2577,18 +2754,23 @@ items:
   expected_cost: null
   priority: 220
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - multiaqua
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'MULTIAQUA 챌린지 P21(DEBA-FP) hardaug8+PhysAug ep94: M-score 81.77(val
+      93.17 / test 70.36, #16792) 로 P9·P22(82.10) 에 미달 → 최종 제출본으로 채택되지 않음. 종료 트랙'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-90
@@ -2664,18 +2846,25 @@ items:
   expected_cost: null
   priority: 226
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg-baseline
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 기준선 기록으로 확정): DGFusion Swin-T 재학습 (a), 발표 config 재현, DELIVER
+      4모달 200k(yeon). final-iter(공식 프로토콜) val 65.62 / test 55.56, val-best(80k) val
+      66.54 / test 55.68, 공개 발표값 66.51 / 56.71 대비 −0.89 / −1.15. test-best(100k 55.92)는
+      인용 금지. 이 값이 우리 모델과의 공정 비교 기준선'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-91
@@ -2714,18 +2903,25 @@ items:
   expected_cost: null
   priority: 227
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg-baseline
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 기준선 기록으로 확정): DGFusion Swin-T 재학습 (b) = (a) + 우리와 같은 모달 드롭
+      p=0.2 + 열화 커리큘럼(jarvis). val-best 90k val 61.74 / test 54.77 → (a) 대비 val −4.80
+      / test −0.91. 열화 커리큘럼이 DGFusion clean 을 깎는다는 근거(우리 Q2 는 clean 손해 없음). 판정 대장
+      2026-09-23 행'
+    date: '2026-09-30'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 40,58,63
   superseded_by: null
 - id: DRN-260926-92
@@ -2760,18 +2956,24 @@ items:
   expected_cost: null
   priority: 228
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg-baseline
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 기준선 기록으로 확정): CAFuser Swin-T 공식 학습 코드 재학습, DELIVER 4모달 267k(lecun,
+      2026-09-15 완주). 공식 test 55.38(final), 학습 로그 최종 val 66.04. 체크포인트 스윕 27개의 test
+      예측이 lecun 에 남아 있음(lecun 은 배치 금지 서버, 파일 회수만 가능). DGFusion (a) 와 함께 공정 비교 기준선'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-93
@@ -2797,18 +2999,24 @@ items:
   expected_cost: null
   priority: 229
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P31(SAM2 계보, PhysAug) DELIVER B200 런: 당시 최선이었으나 B200 상실(2026-07-15 마감)
+      뒤 P34~P36(ReliaDINO)·P46/E1 계보가 대체. registry 의 ''학습 중'' 표기는 낡은 것. 계보에서 승계되지
+      않음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-94
@@ -2833,18 +3041,23 @@ items:
   expected_cost: null
   priority: 230
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg-analysis
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 분석 결과를 기록으로 확정): P29·P31·P32·P34 표준분석(lecun, 2026-07-12~13).
+      SAM2 계보 실패-키 문서의 근거. 산출물 NAS analysis_logs'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-95
@@ -2868,18 +3081,23 @@ items:
   expected_cost: null
   priority: 231
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P29(SDC) DELIVER B200 런: val 63.20@ep100 / test 54.34@ep146 로 목표(66.51
+      / 56.71) 대비 −3.31 / −2.37. SAM2 계보 비교 기준선으로만 남고 승계되지 않음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-96
@@ -2902,18 +3120,23 @@ items:
   expected_cost: null
   priority: 232
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P30 DELIVER B200 런: val 49.76 / test 44.10 으로 P29 대비 −13.4 / −10.2 회귀
+      확정(dead). 승계되지 않음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-97
@@ -2968,18 +3191,23 @@ items:
   expected_cost: null
   priority: 234
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg-analysis
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 분석 결과를 기록으로 확정): P37a-CEFR(클래스 기대 특징 라우팅) MUSES 출력 분석(yeon,
+      2026-07-18). 라우팅 분화 실패(19클래스 중 0개 committed) → CEFR 라우팅은 반증 축으로 등재'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-99
@@ -3003,18 +3231,23 @@ items:
   expected_cost: null
   priority: 235
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg-analysis
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 분석 결과를 기록으로 확정): P37a MUSES 표준분석 + 종합 실패-키(yeon, 2026-07-20).
+      fog 62.7 최약, event·lidar 어댑터 기여 확인. 산출물 NAS analysis_logs/P37a_muses_std_20260719/'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-100
@@ -3039,18 +3272,23 @@ items:
   expected_cost: null
   priority: 236
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P39-DPC DELIVER hpca100 런(V1~V5 토글): registry 의 ''학습 중'' 표기는 낡은 것. 이후
+      P39.1-rank → P46 → E1 계보가 대체해 승계되지 않음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-101
@@ -3075,18 +3313,24 @@ items:
   expected_cost: null
   priority: 237
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P39-DPC MUSES jarvis 런: 완주 ep146 val 81.52 / 공식 test 78.881(DRN-260926-103
+      분석 대상). 이후 P39.1-rank(공식 test 79.788)가 대체해 승계되지 않음. registry ''학습 중'' 표기는 낡은
+      것'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-102
@@ -3113,7 +3357,7 @@ items:
   expected_cost: null
   priority: 238
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
@@ -3121,11 +3365,16 @@ items:
   - seg-analysis
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 분석 결과를 기록으로 확정): P39 조기 즉검 + DELIVER 3시점 + 모듈 시각 리포트(yeon,
+      2026-07-20). P39 V1~V5 토글 기여 분해의 근거'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-103
@@ -3150,18 +3399,23 @@ items:
   expected_cost: null
   priority: 239
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg-analysis
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 분석 결과를 기록으로 확정): P39-DPC MUSES 3모달 표준분석(yeon, 2026-07-21),
+      ep146 val 81.52 / 공식 test 78.881. lidar 어댑터 기여와 조건별 약점의 근거'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-104
@@ -3186,18 +3440,23 @@ items:
   expected_cost: null
   priority: 240
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'SAM3-RBMA(DELIVER 25클래스, SAM3 이식) 계열: ''학습/디버깅 중''으로 남았고 완주·판정 기록 없음.
+      B200 상실과 ReliaDINO(DINOv3) 전환으로 중단. 승계되지 않음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-105
@@ -3225,18 +3484,24 @@ items:
   expected_cost: null
   priority: 241
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P38(MaskQueryLite 쿼리 헤드) DELIVER hpca100 런: val 조기 포화·test plateau 로
+      ep78+ 에서 중단, 표준분석(DRN-260926-106)에서 쿼리 헤드 추론 기여 no-op. MUSES 쪽 P38-m2f 는 공식
+      test 79.025 로 7월 기록. DELIVER 는 승계되지 않음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-106
@@ -3261,18 +3526,23 @@ items:
   expected_cost: null
   priority: 242
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg-analysis
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 분석 결과를 기록으로 확정): P38-m2f DELIVER 표준분석(yeon, 2026-07-19).
+      D1 평균 53.66(P36 −1.63·P34 −1.99), 쿼리 헤드 추론 기여 no-op → P38 DELIVER 기각의 근거'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-107
@@ -3298,18 +3568,24 @@ items:
   expected_cost: null
   priority: 243
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'P39.1-rank(라우터 랭크 변형) MUSES 3모달 시드2(jarvis): val-best epoch208 82.62,
+      공식 test 79.788 = 우리 MUSES 공식 최고 단일 런. 헤드라인(best 단일 런 병기)으로 채택. 2시드 평균 79.29
+      는 DGFusion 79.5 미만이라 ''융합 계열 1위''는 단일 런 한정'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-108
@@ -3344,18 +3620,23 @@ items:
   expected_cost: null
   priority: 244
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): P39.1-rank MUSES 4모달(radar 추가) 시드2(hpca100):
+      공식 test 79.571 로 3모달 79.788 대비 −0.22. radar 추가는 이득 없음. 4모달 기록으로 보존'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-109
@@ -3395,18 +3676,24 @@ items:
   expected_cost: null
   priority: 245
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P47-MUB D-1(LiDAR 투영 밀도화, DGFusion 식 projected_to_rgb 7×7 + 모션 보정) MUSES
+      4모달: val 82.58(+0.23)이지만 공식 test 78.790 으로 4모달 base 79.571 대비 −0.78, 3모달 최고
+      대비 −1.00. val→test 낙차 3.79 = 밀도화 val 과적합 → 폐기(user 제출 2026-08-17)'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-110
@@ -3430,18 +3717,23 @@ items:
   expected_cost: null
   priority: 246
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): P39.1-rank MUSES 3모달 시드3(yeon) 완주 val 81.89@ep204.
+      5시드 val 분산 자료의 일부(시드1 82.03 등). 공식 test 미제출'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-111
@@ -3468,18 +3760,23 @@ items:
   expected_cost: null
   priority: 247
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P43-PanopticDual MUSES 3모달(hpca100): val 82.51 → 공식 test 79.351(우리 2위,
+      시드2 79.788 대비 −0.44). PQ 판정 불가·test 미달로 승계되지 않음. DRN-260926-52 와 같은 런'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-112
@@ -3540,18 +3837,23 @@ items:
   expected_cost: null
   priority: 249
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P44-BMR MUSES 3모달(hpca100): val-best 80.71@ep156(외부 선점으로 중단), 공식 test
+      는 P39.1-rank 미달. 승계되지 않음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-114
@@ -3630,18 +3932,24 @@ items:
   expected_cost: null
   priority: 251
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46-CTR C1(희소 클래스 재샘플 RCS)+C3(prototype) DELIVER: ep40 대조에서 C3-only(RailTrack
+      64.13, 전체 55.64)가 C1+C3(59.10, 54.92) 를 앞서 C1 은 순유해 → 2026-07-30 kill. C1 축
+      폐기'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-116
@@ -3689,18 +3997,25 @@ items:
   expected_cost: null
   priority: 252
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'P46-CTR C3-only(λ0.1, 탭 없음) DELIVER 본 런(jarvis, 시드 고정 기능 없던 무작위 시드):
+      val-best ep70 → 1024 평가 val 69.44 / test 56.99 = 우리 최고 단일 런(구기록). DGFusion 66.51
+      / 56.71 동시 상회, MM SAM-adapter(69.60 / 57.35)에는 미달. 체크포인트 정본 NAS ckpts/P46_c3only_base_ep70_test5699_20260730/(md5
+      d340e3fe). 헤드라인은 이후 E1 3시드 legal v2 로 교체됐고 이 값은 단일 런 최고로 병기'
+    date: '2026-09-30'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 16,17
   superseded_by: null
 - id: DRN-260926-117
@@ -3778,18 +4093,24 @@ items:
   expected_cost: null
   priority: 254
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): P46-CTR C3-only 재현성 검증 시드2: val-best ep62 →
+      1024 평가 val 68.90 / test 56.40(본 런 대비 test −0.59). 방향은 재현되나 단일 런 편차 0.6 존재 →
+      이후 3시드 평균 병기 규칙의 근거'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-119
@@ -3815,18 +4136,23 @@ items:
   expected_cost: null
   priority: 255
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46 C3-only 를 1024 해상도로 학습한 시드B: legal test 54.85(학습 로그 test-best 57.43
+      은 비legal). 768 학습 + 1024 평가(56.99)보다 낮아 1024 학습은 폐기'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-120
@@ -3847,18 +4173,22 @@ items:
   expected_cost: null
   priority: 256
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46 C3-only 1024 해상도 학습 시드C: legal test 54.55. 시드B 와 함께 1024 학습 폐기 확정'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-121
@@ -3886,18 +4216,24 @@ items:
   expected_cost: null
   priority: 257
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): C3-only 768 대표 구성(λ0.1) 진짜 시드 2런(20260815·16,
+      jarvis). registry ''학습 중'' 표기는 낡은 것 — N6(DRN-260926-16) 5시드 legal-val 재선택에 포함돼
+      완주·평가됨(5시드 평균 54.39±0.76, 최고 시드816 55.29)'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-122
@@ -3970,18 +4306,23 @@ items:
   expected_cost: null
   priority: 259
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46-CTR C3-only λ=0.2 DELIVER: 완주했으나 SOTA 미달(2026-08-04 정정). λ0.1 이
+      대표 구성으로 확정'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-124
@@ -4028,18 +4369,24 @@ items:
   expected_cost: null
   priority: 260
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46-CTR C3-only λ=0.2 MUSES 3모달(hpca100): val 81.65@ep136 로 base(P39.1-rank
+      시드2 82.62) 대비 −0.97. 손해가 clear/day 에 집중(Δclear −1.72), fog/rain 은 +0.2. DELIVER
+      기제의 MUSES 이식 실패 → P47 D-2(단일 모달 균형) 근거로 전환'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-125
@@ -4073,18 +4420,23 @@ items:
   expected_cost: null
   priority: 261
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46-CTR C3-only λ=0.3 DELIVER: λ 스윕 상단 탐색, λ0.1 대표 구성을 넘지 못함(registry
+      핵심수치 칸). λ 스윕 종결'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-126
@@ -4122,18 +4474,23 @@ items:
   expected_cost: null
   priority: 262
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46-CTR C3-only λ=0.2 시드2 DELIVER: 재현성 검증 실패, SOTA 미달 확정(2026-08-05).
+      λ0.2 폐기'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-127
@@ -4176,18 +4533,24 @@ items:
   expected_cost: null
   priority: 263
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): P47-2 UniBal(모달별 독립 보조 헤드 + 단일 모달 CE) MUSES
+      4모달, yeon 300에폭 완주 val-best 82.06@ep164, 하네스 가드 재평가 81.72 → P52 게이트 G2 = 81.42
+      로 확정. 공식 test 미제출. 캘리브레이션 문서 analysis/2026-09-04-p52-unibal-calibration.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-128
@@ -4210,18 +4573,24 @@ items:
   expected_cost: null
   priority: 264
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46 C3-only 1024 해상도 본 런(elice B200): registry ''학습 중'' 표기는 낡은 것. 1024
+      학습은 시드B·C(DRN-260926-119·120, legal test 54.85·54.55)로 폐기 확정, 768 학습 + 1024
+      평가가 대표 구성'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-129
@@ -4243,18 +4612,23 @@ items:
   expected_cost: null
   priority: 265
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46 C3-only 1024 해상도 런(jarvis GPU6,7): 위 128 과 같은 계열. 1024 학습 폐기 확정,
+      registry ''학습 중'' 표기는 낡은 것'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-130
@@ -4279,18 +4653,23 @@ items:
   expected_cost: null
   priority: 266
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): P39.1-rank 1024 해상도 대조군(C3 미적용, ep126 조기 종료):
+      해상도 순효과 val +1.15 / test +2.01 확정 → 1024 평가 규약(legal)의 근거'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-131
@@ -4316,18 +4695,23 @@ items:
   expected_cost: null
   priority: 267
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): MUSES RGB+LiDAR 2모달(P39.1-rank − event) val
+      82.00@ep136. DRN-260926-53 과 같은 런'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-132
@@ -4352,18 +4736,24 @@ items:
   expected_cost: null
   priority: 268
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'cross-attention trunk A/B(#12, XAttnTrunk 대칭 모달 간 attention vs gated-MLP
+      trunk, 나머지 동일): 믹서 3점 비교에서 평균 ≈ gated-MLP > 교차 attention trunk → XAttnTrunk
+      기각(DRN-260926-12 N2 판정과 같은 근거)'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-133
@@ -4388,18 +4778,23 @@ items:
   expected_cost: null
   priority: 269
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - mcubes
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'MCubeS 첫 진입 파일럿(P39.1-rank 통일 레시피, C3 off, yeon): 3시드 58.07±0.49 의 첫
+      런. DRN-260926-14 와 같은 계열, 헤드라인 채택'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-134
@@ -4424,18 +4819,23 @@ items:
   expected_cost: null
   priority: 270
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): MUSES P39.1-rank 진짜 시드 20260824: 공식 val 81.79(시드2
+      82.13 대비 −0.34). N1 시드 분산 자료. 체크포인트 부재로 test 제출 불가(DRN-260926-51 참조)'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-135
@@ -4477,18 +4877,23 @@ items:
   expected_cost: null
   priority: 271
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): MUSES 시드 20260825 공식 test 78.786(2026-09-18).
+      DRN-260926-51 과 같은 항목. 2시드 평균 79.29±0.71'
+    date: '2026-09-30'
+    by: jemo
   analysis: experiments/judgment-ledger.md 행 15
   superseded_by: null
 - id: DRN-260926-136
@@ -4518,17 +4923,24 @@ items:
   expected_cost: null
   priority: 272
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - seg-pretrain
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: 'P50-MAP 정렬 사전학습(동결 DINOv3-L + LoRA + trunk 의 cross-modal masked reconstruction,
+      Places365 200k 의사 모달, yeon): 완주해 Phase1(프로브) init 이 P52 에 채택됨(P50 legal test
+      54.95 = P52 게이트 G1). 확장 Phase2 는 DRN-260926-32 에서 기각. registry ''학습 중'' 표기는
+      낡은 것'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-137
@@ -4554,17 +4966,22 @@ items:
   expected_cost: null
   priority: 273
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - infra
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '기록 항목(채택 = 완료 확정): P50 의사 모달 생성(depth = Depth-Anything-V2-Small, lidar·event
+      합성, Places365 200k). P50 사전학습 입력으로 사용 완료'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-138
@@ -4589,18 +5006,23 @@ items:
   expected_cost: null
   priority: 274
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'P49.1-AIR(비대칭 주입, γ init 0.1) MUSES 4모달 런(yeon): 기동 검증만 기록되고 완주·판정 기록이
+      없다. DELIVER 쪽 P49.1 이 ''57.68 SOTA'' 철회 후 폐기돼 MUSES 팔도 승계되지 않음. 판정 불가로 종결'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-139
@@ -4627,18 +5049,23 @@ items:
   expected_cost: null
   priority: 275
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'P49.1-AIR MUSES 3모달 본 런(yeon): 기동 검증만 기록되고 완주·판정 기록이 없다. DELIVER 쪽 폐기로
+      승계되지 않음. 판정 불가로 종결'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-140
@@ -4670,18 +5097,24 @@ items:
   expected_cost: null
   priority: 276
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'C2-MCC(masked consistency)+C3 vs C3-only A/B(hpca100 재기동, ep134 조기 종료):
+      1024 평가 55.32 / 768 54.32 vs 본 런 56.99 / 55.91 → Δ −1.67 / −1.59 로 C2 는 유해 확정(가설
+      대장 H15). C2 축 폐기. 원문 = analysis/2026-08-16-c2-mcc-ab-verdict.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-141
@@ -4717,18 +5150,24 @@ items:
   expected_cost: null
   priority: 277
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P49.1-AIR DELIVER 768 본 런(yeon, ep150 완주): 학습 로그 test-best 58.30 은 비legal,
+      fair-eval(val.py) test@768 55.66 으로 ''57.68 SOTA'' 주장 철회(2026-08-14). γ 가 0.10→0.019
+      로 감쇠해 주입 기제가 아니라 RGB full-FT 가 이득 원천일 가능성. 폐기'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-142
@@ -4756,18 +5195,23 @@ items:
   expected_cost: null
   priority: 278
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P49-AIR DELIVER 768 본 런(yeon): ep30 게이트① 위반(γ 정체 0.0006, val 63.83@50
+      열세)으로 ep54 중단(가설 대장 H13). 폐기'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-143
@@ -4793,18 +5237,24 @@ items:
   expected_cost: null
   priority: 279
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'DELIVER RGB+Depth 2모달(P46 C3-only λ0.05, ep66 val-best) 1024 공정 평가:
+      val 65.79 / test 54.14 로 SOTA RGB-D 대비 −3.81 / −3.21, 우리 4모달 대비 −2.85 → ''2모달로
+      충분'' 가설 기각. 원문 = analysis/2026-08-10-rgbd-2modal-fair-eval.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-144
@@ -4833,18 +5283,23 @@ items:
   expected_cost: null
   priority: 280
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P48(쿼리 경로 인스턴스 감독: 클래스 단위 타깃을 연결 성분 인스턴스 단위로 전환) MUSES 4모달 제안: 게이트 미달로
+      폐기(2026-08-06). 이후 R2(연결 성분 손실)도 같은 축에서 실패'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-145
@@ -4870,18 +5325,23 @@ items:
   expected_cost: null
   priority: 281
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): MUSES RGB+LiDAR 2모달(event 제거) P39.1-rank, 2026-08-10
+      미기록 상태로 발견된 완주 런. val 82.00@ep136. DRN-260926-53·131 과 같은 런'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-146
@@ -4907,18 +5367,23 @@ items:
   expected_cost: null
   priority: 282
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg-eval
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): RGB+Depth 2모달 완주 체크포인트의 1024 재평가 작업(학습 0).
+      결과 val 65.79 / test 54.14 는 DRN-260926-143 에 기록. registry ''착수'' 표기는 낡은 것'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-147
@@ -4949,18 +5414,23 @@ items:
   expected_cost: null
   priority: 283
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P46 C3-only + P50-EXT Phase2 init 채택 게이트 파인튠(시드821, hpca100): ep30 legal
+      test 53.10 < 게이트 55.25 → 기각(user 결정 2026-09-07). DRN-260926-32 와 같은 항목'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-148
@@ -4988,18 +5458,24 @@ items:
   expected_cost: null
   priority: 284
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): E-LoRA arm A(센서별 LoRA r16, 시드821 짝, yeon) 완주.
+      3갈래 비교의 A 팔이며 결론은 DRN-260926-03(축별로 다름, 후속 E1-shared)에 기록. registry ''착수'' 표기는
+      낡은 것'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-149
@@ -5063,18 +5539,24 @@ items:
   expected_cost: null
   priority: 286
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P52 RxDINO(적응형 C3·UniBal 단일 config) DELIVER 본 런 시드20260901(yeon): legal
+      test 53.87 / val 66.17 / 24클래스 53.61. 5시드 기준선 평균 54.39 대비 미달 → P52 는 DELIVER
+      에서 이득 없음. 원문 = cards/2026-W37-verdicts.md ③'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-151
@@ -5098,18 +5580,24 @@ items:
   expected_cost: null
   priority: 287
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P52 RxDINO DELIVER 본 런 시드20260902(yeon): legal test 53.07 / val 66.15
+      / 24클래스 53.16. 2시드 평균 53.47 로 기준선 54.39 대비 −0.92 → P52 DELIVER 기각. 원문 = cards/2026-W37-verdicts.md
+      ③'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-152
@@ -5143,18 +5631,23 @@ items:
   expected_cost: null
   priority: 288
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - mcubes
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P52 RxDINO MCubeS 본 런 시드20260901(yeon, 200에폭 완주): val-best 58.18@174(final
+      57.96), C3-off 3시드 정본 58.07±0.49 대역 안 = 동률. 이득 없음 → MCubeS 헤드라인 교체 없음'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-153
@@ -5223,18 +5716,24 @@ items:
   expected_cost: null
   priority: 290
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): N7 VICReg-off 격리(P46 C3-only λ0.1, 시드821 짝,
+      yeon 200에폭): val-best 66.56@ep32(정본 본 런 67.79@70 대비 −1.23 트레이너 val). test-best
+      56.31 은 인용 금지, val-best 시점 legal test 미측정. VICReg 의 기여는 val 축에서만 확인됨'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-155
@@ -5262,18 +5761,24 @@ items:
   expected_cost: null
   priority: 291
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 기준선 기록으로 확정): 일일 카드 B0 기준선(P46 C3-only λ0.1 레시피, 40에폭 스크린
+      시드821, bengio): legal test 53.78 / val 64.97(체크포인트 epoch40_65.4_top1). 카드 통과선
+      = test ≥ 54.78. 원문 = registry 행, cards/2026-W37-verdicts.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-156
@@ -5300,18 +5805,24 @@ items:
   expected_cost: null
   priority: 292
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '일일 카드 E1(중간층 4탭 읽기, MODEL.TAPS per_modal [6,12,18,24]) 40에폭 스크린 시드821(bengio):
+      legal test 54.85(B0 +1.07) 로 첫 통과 카드. 이후 확정 3쌍 채택(DRN-260926-01). 체크포인트 epoch35_67.25_top1(md5
+      e69d7deb)'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-157
@@ -5342,18 +5853,24 @@ items:
   expected_cost: null
   priority: 293
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - 분석(학습 0)
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'E0 특징 정보 프로브(원 4탭 vs 어댑터 후 vs 융합, 선형 프로브, 시드821 ckpt epoch90): test
+      27.8 / 35.6 / 45.1 로 게이트(i) 미달 → ''어댑터가 정보를 버린다'' 가설 기각. DRN-260926-25 와 같은
+      항목. 원문 = analysis/2026-09-08-daily-cards-E0-feature-probe.md'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-158
@@ -5378,18 +5895,23 @@ items:
   expected_cost: null
   priority: 294
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - 평가(학습 0)
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'E9 검증셋 사전 로짓 보정 τ∈{0, 0.5, 1.0}(학습 0): test 53.57 / 53.45 / 51.89 로
+      τ 가 커질수록 단조 하락, 게이트 +0.5 미달 → 폐기. τ=0 은 하네스 재동결용 대표 재채점으로 활용(636e490)'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-159
@@ -5427,18 +5949,25 @@ items:
   expected_cost: null
   priority: 295
   owner_role: manager
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: '일일 카드 E2(전 선형층 LoRA, qkv_full 등으로 확장) 40에폭 스크린 시드821(hpca100): legal
+      val 68.38 / test 54.50, B0 대비 val +3.41 / test +0.72(회색지대 +0.5~+1.0). 이득이 RailTrack·TrafficLight
+      두 클래스에 몰리고 Wall·Water·Static 이 되받음. 시드 판별 대신 E12(E1+E2 결합) 가 test 54.39 로 가산성
+      기각되어 E2 축 종결(§5-9). 단독 판정은 회색지대로 미확정'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-160
@@ -5472,18 +6001,24 @@ items:
   expected_cost: null
   priority: 296
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 기준선 기록으로 확정): 일일 카드 E7 = MUSES PhysAug-off 기준선(P39.1-rank
+      시드2, 40에폭 스크린, hpca100): 학습기 val 80.29@ep40, 공식 native val 80.08. MUSES 40에폭
+      카드의 짝 기준선'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-161
@@ -5510,18 +6045,24 @@ items:
   expected_cost: null
   priority: 297
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - muses
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: '일일 카드 E7c = PhysAug-on 대조군(E7 과 PHYSAUG 만 다름): 학습기 val 80.18@ep40, 공식
+      native val 79.94 로 E7(80.08) 대비 −0.13, 작은 객체 클래스에서 손해 → PhysAug-on 폐기. 이후 MUSES
+      공정선은 PhysAug-off 로 통일'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-162
@@ -5547,18 +6088,24 @@ items:
   expected_cost: null
   priority: 298
   owner_role: method
-  status: judging
+  status: done
   tags:
   - registry
   - deliver
   - seg
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '일일 카드 E3(센서별 클래스 prototype 손실, P46.C3_PROTO.SRC permodal) 40에폭 스크린 시드821(bengio):
+      legal test 55.18(B0 +1.40, 넷 중 최고, val 보다 test 에서 더 버는 유일한 카드) → 스크린 통과. 후속
+      E13(E1+E3 결합) 확정 3쌍 채택(DRN-260926-01)으로 이어짐'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-163
@@ -9862,18 +10409,24 @@ items:
   expected_cost: null
   priority: 150
   owner_role: method
-  status: judging
+  status: done
   tags:
   - det
   - poongsan
   - review:method
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): det 인증 배포 계열 D1(ViT-S/S+/B 백본, poongsan). ViT-S+
+      가 drone-jemo(RTX 5090) 인증 배포본이며 GPU 19.43 fps, 야간 mAP50 0.8292 검증. 국책 목표 mAP50
+      0.85 는 D1 스윕에서 달성(status 표 0.9321). 원문 = det/det-cert-D1-realtime.md, 브랜치 26-drone-certificate'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-291
@@ -9936,17 +10489,23 @@ items:
   expected_cost: null
   priority: 151
   owner_role: method
-  status: judging
+  status: done
   tags:
   - det
   - review:method
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'det 백본 이식 계열(P34~P39-Det, RF-DETR, P9 base; poongsan): config 12개만 남아
+      있고 registry·판정 대장에 결과 기록이 없어 판정 불가. det 트랙은 D1 계열로 목표(mAP50 0.85)를 달성했으므로 이
+      계열은 재실행하지 않고 미확정으로 종결'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-293
@@ -10289,17 +10848,23 @@ items:
   expected_cost: null
   priority: 160
   owner_role: method
-  status: judging
+  status: done
   tags:
   - muses
   - review:method
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'P39.1-rank MUSES 3모달 시드4(yeon): monitor-log 에 val 81.92@ep198 정체·약 277/300
+      에폭에서 ''저신뢰, 미완주''로만 남아 있고 config 도 레포에 없다. 완주 기록·체크포인트·재채점이 없어 판정 불가. MUSES
+      시드 통계는 시드2·824·825·826 으로 대체됨'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-305
@@ -10317,17 +10882,22 @@ items:
   expected_cost: null
   priority: 161
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - review:method
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'P44-BMR DELIVER 시드2(yeon): monitor-log 에 ''미완주''로만 남아 있고 결과·체크포인트 기록
+      없음. 판정 불가. P44 계열은 이후 P46/E1 계보로 대체됨'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-306
@@ -10345,17 +10915,22 @@ items:
   expected_cost: null
   priority: 162
   owner_role: method
-  status: judging
+  status: done
   tags:
   - muses
   - review:method
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: inconclusive
+    summary: 'P34 MUSES 4모달 + DGFusion 투영 변형: monitor-log 에 이름만 1회 언급되고 결과 기록이 없어
+      판정 불가. 투영 정합 자체는 DRN-260926-47 에서 ''성능 이득 0, 공정성만 확보''로 확정됨'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-307
@@ -10374,17 +10949,23 @@ items:
   expected_cost: null
   priority: 163
   owner_role: method
-  status: judging
+  status: done
   tags:
   - muses
   - submission
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '기록 항목(채택 = 이력을 기록으로 확정): MUSES Codabench 공식 test 제출 11건의 이력. 최고 = P39.1-rank
+      시드2 3모달 79.788, 둘째 시드 20260825 78.786(2시드 평균 79.29). 제출 zip 규약 위치 = /ailab_mat2/.../submission/muses/.
+      새 제출은 user 만 하며 2026-09-29 user 결정으로 새 4모달 모델 전까지 보류'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-308
@@ -10401,18 +10982,25 @@ items:
   expected_cost: null
   priority: 164
   owner_role: method
-  status: judging
+  status: done
   tags:
   - deliver
   - muses
   - baseline
   - review:method
   created: '2026-09-26'
-  updated: '2026-09-26'
-  closed: null
+  updated: '2026-09-30'
+  closed: '2026-09-30'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정): DGFusion 기준선 재현 평가. DELIVER 재학습 (a) val-best
+      80k val 66.54 / test 55.68(final-iter 65.62 / 55.56, 공개 66.51 / 56.71 대비 −1.15),
+      MUSES 는 공개 가중치 val 재현이 감시 세션에서 진행 중. 우리 P39.1 과의 비교는 판정 대장 2026-09-19~23 행에
+      기록'
+    date: '2026-09-30'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260929-01
