@@ -105,9 +105,128 @@ li{max-width:72ch}
     <span class="pill">DELIVER test <b>56.24 ± 0.42</b> (DGFusion 56.71)</span>
     <span class="pill">DELIVER val <b>69.51 ± 0.15</b> (CAFuser-CAA 68.79)</span>
     <span class="pill">센서 결측 15조합 평균 <b>40.0 → 48.1</b></span>
-    <span class="pill">진행 중 <b>모달 충돌 학습 (P56-A)</b></span>
+    <span class="pill">진행 중 <b>모달 충돌 학습 (P56-A)</b> · B·C 설계 완료</span>
   </div>
 </header>
+
+<section>
+  <h2>기존 구조의 문제, 우리 방법, 그 원리</h2>
+  <p>세 갈래의 기존 융합 구조가 각각 어디서 막히는지를 우리 실측으로 짚고, 그 막힘에 하나씩 대응하는 설계와 그 설계가 통할 수밖에 없는 이유를 적는다. 근거는 모두 이 프로젝트가 직접 잰 값이다.</p>
+
+  <figure>
+    <div class="scroll">
+    <svg class="wide" viewBox="0 0 1040 470" role="img" aria-label="왼쪽 열은 기존 세 구조의 문제, 가운데 열은 우리 실측 근거, 오른쪽 열은 그 문제에 대응하는 우리 설계. 외부 prior 조건화는 레이블 의존과 depth 과의존으로, RGB 고정 주입은 RGB 결측 불가와 센서 2개 제한으로, 순차 메모리 attention 은 주입한 신뢰도가 무시되고 동적 가중이 상수로 붕괴하는 문제로 이어지며, 우리 설계는 대칭 융합, 학습 유인, 센서 자체 신호로 조건화하는 계산으로 대응한다.">
+      <defs>
+        <marker id="m5" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+      </defs>
+      <text class="lane" x="10" y="18">기존 구조의 문제</text>
+      <text class="lane" x="380" y="18">우리 실측 근거</text>
+      <text class="lane" x="740" y="18">우리 설계</text>
+
+      <!-- 행 1: 외부 prior -->
+      <rect class="ext" x="10" y="34" width="330" height="92" rx="6"/>
+      <text x="22" y="54" class="hd">외부 prior 조건화 · DGFusion / CAFuser</text>
+      <text x="22" y="72" class="sub">조건 텍스트·depth 정답 감독으로 융합을 조절</text>
+      <text x="22" y="88" class="sub">→ 학습에 레이블이 필요하고, depth 한 센서에 과의존</text>
+      <text x="22" y="104" class="sub">→ event·LiDAR 는 어떤 조건에서도 쓰지 않음</text>
+      <text x="22" y="120" class="sub">→ 의존도 이동은 RGB 가 나빠질 때만</text>
+
+      <rect class="box" x="380" y="34" width="330" height="92" rx="6"/>
+      <text x="392" y="54" class="hd">모달 제거 실측 (DELIVER test)</text>
+      <text x="392" y="72" class="sub">DGFusion depth 제거: 맑음 −23.1 · 야간 −32.6 · 저노출 −37.1</text>
+      <text x="392" y="88" class="sub">event·LiDAR 제거: 전 조건 ±0.4 (CAFuser 도 같음)</text>
+      <text x="392" y="104" class="sub">우리 Q2 (prior 없음): 야간 RGB 제거 −5.2, depth 제거 −10.1</text>
+      <text x="392" y="120" class="sub">→ 이동은 외부 prior 없이도 생긴다</text>
+
+      <rect class="ours" x="740" y="34" width="290" height="92" rx="6"/>
+      <text x="752" y="54" class="hd">레이블 없이 학습 유인으로</text>
+      <text x="752" y="72" class="sub">두 패스(clean + 결측·열화·충돌) + 교사 증류</text>
+      <text x="752" y="88" class="sub">센서를 "없애고, 망가뜨리고, 틀리게" 보여 줘</text>
+      <text x="752" y="104" class="sub">네트워크가 스스로 다른 센서를 찾게 함</text>
+      <text x="752" y="120" class="sub">= Q2(채택) · P56-A(학습 중)</text>
+      <path class="ln" d="M340 80 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
+      <path class="lnours" d="M710 80 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
+
+      <!-- 행 2: RGB 고정 주입 -->
+      <rect class="ext" x="10" y="146" width="330" height="92" rx="6"/>
+      <text x="22" y="166" class="hd">RGB 고정 주입 · MM SAM-adapter</text>
+      <text x="22" y="184" class="sub">RGB 만 본 가지(SAM 미세 조정), 보조 센서 1개를 주입</text>
+      <text x="22" y="200" class="sub">→ RGB 가 없거나 틀리면 구조가 정의되지 않음</text>
+      <text x="22" y="216" class="sub">→ 센서 3개 이상 불가(논문이 밝힌 한계)</text>
+      <text x="22" y="232" class="sub">→ "필요할 때만 보조 센서" 는 검증되지 않은 암묵</text>
+
+      <rect class="box" x="380" y="146" width="330" height="92" rx="6"/>
+      <text x="392" y="166" class="hd">센서 하나만 남을 때 (DELIVER test)</text>
+      <text x="392" y="184" class="sub">clean 만 배운 우리 E1: event 8.6 · LiDAR 4.9 (거의 전멸)</text>
+      <text x="392" y="200" class="sub">두 패스 학습 Q2: RGB 53.9 · depth 46.0 · event 31.0 · LiDAR 22.9</text>
+      <text x="392" y="216" class="sub">결측 15조합 평균 40.0 → 48.1, 구조 변경 없음</text>
+      <text x="392" y="232" class="sub">→ 어느 센서든 주인이 될 수 있어야 산다</text>
+
+      <rect class="ours" x="740" y="146" width="290" height="92" rx="6"/>
+      <text x="752" y="166" class="hd">주 센서 없는 대칭 융합</text>
+      <text x="752" y="184" class="sub">동결 백본 하나 + 센서별 LoRA</text>
+      <text x="752" y="200" class="sub">네 센서가 동시에 서로를 조회(교차 attention)</text>
+      <text x="752" y="216" class="sub">센서 수에 무관, 결측 시 같은 그래프</text>
+      <text x="752" y="232" class="sub">= E1 확정(헤드라인) 구조</text>
+      <path class="ln" d="M340 192 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
+      <path class="lnours" d="M710 192 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
+
+      <!-- 행 3: 순차 메모리 + 가중 주입 -->
+      <rect class="ext" x="10" y="258" width="330" height="106" rx="6"/>
+      <text x="22" y="278" class="hd">순차 메모리 attention + 신뢰도 주입 · MemorySAM 계보</text>
+      <text x="22" y="296" class="sub">센서를 순서대로 넣고 앞 센서 메모리를 조회(첫 센서는 조회 없음)</text>
+      <text x="22" y="312" class="sub">우리 SAM2 계보(P8~P33)가 얹은 것: attention 로짓 bias, 곱셈 게이트,</text>
+      <text x="22" y="328" class="sub">   동적 출력 가중, Soft-MoE LoRA</text>
+      <text x="22" y="344" class="sub">→ 주입한 신뢰도를 attention 이 듣지 않고, 동적 가중은 상수로 붕괴</text>
+      <text x="22" y="358" class="sub">→ 가장 좋은 것은 고정 상수(P9)였다</text>
+
+      <rect class="box" x="380" y="258" width="330" height="106" rx="6"/>
+      <text x="392" y="278" class="hd">가중·게이트 계열 실측</text>
+      <text x="392" y="296" class="sub">attention bias: 4세대·2백본에서 ≈0, P32 는 유의한 손해</text>
+      <text x="392" y="312" class="sub">동적 융합 P12~P17: 고정 상수 P9 대비 −0.3 ~ −13</text>
+      <text x="392" y="328" class="sub">합성 라벨 품질 헤드 Q3: clean −1.31, 실제 열화로 전이 실패</text>
+      <text x="392" y="344" class="sub">무감독 게이트 P55: 값이 상수(std 0.003~0.02), 이득 0</text>
+      <text x="392" y="358" class="sub">오라클 여유(센서 끄기 상한) 1.1~1.8 → 게이트의 몫이 작다</text>
+
+      <rect class="ours" x="740" y="258" width="290" height="106" rx="6"/>
+      <text x="752" y="278" class="hd">계산 자체를 센서 신호로 조건화</text>
+      <text x="752" y="296" class="sub">가중을 얹지 않고 attention·어댑터의 계산을 바꿈</text>
+      <text x="752" y="312" class="sub">B · 거리(Depth·LiDAR 측정값)를 attention 기하로</text>
+      <text x="752" y="328" class="sub">C · 얕은 블록 통계로 공유/센서별 LoRA 를 토큰마다 혼합</text>
+      <text x="752" y="344" class="sub">신호는 레이블이 아니라 센서 자체와 손실에서</text>
+      <text x="752" y="358" class="sub">= P56-B·C(설계 완료, 구현 전)</text>
+      <path class="ln" d="M340 311 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
+      <path class="lnours" d="M710 311 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
+
+      <!-- 원리 띠 -->
+      <line class="grid" x1="10" y1="384" x2="1030" y2="384"/>
+      <text class="lane" x="10" y="404">원리</text>
+      <text x="10" y="424" class="sub">① 의존도는 prior 가 말하는 대로가 아니라 손실이 요구하는 대로 학습된다   ② 대칭이어야 어느 센서든 주인이 될 수 있다   ③ 센서 상태 인식은 레이블이 아니라 센서 자체 신호(거리·얕은 통계·일치도)에서 나와야 실제 열화로 전이된다</text>
+      <text x="10" y="444" class="sub">④ 바탕(동결 백본)은 보존하고 센서별 어댑터만 배운다   ⑤ "얼마나 믿을지"를 따로 계산해 곱하는 대신, 융합 계산 자체가 상황에 따라 달라지게 한다(가중은 attention 이 이미 하고 있다)</text>
+    </svg>
+    </div>
+    <figcaption><b>세 문제, 세 대응, 다섯 원리.</b> 왼쪽 문제는 문헌이 아니라 우리가 같은 벤치에서 잰 것이고, 오른쪽 설계는 그 실측에 하나씩 대응한다. 가운데 열의 숫자가 각 대응이 필요한 이유다.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div class="card">
+      <h3>원리 ① 의존도는 손실이 만든다</h3>
+      <p>구조를 그대로 두고 학습 표본만 바꾼 Q2 가 event 단독 8.6 → 31.0, LiDAR 단독 4.9 → 22.9 로 올렸다. 반대로 구조에 신뢰도 prior 를 넣은 시도(attention bias 4세대, 품질 헤드 Q3, 무감독 게이트 P55)는 전부 효과가 없었다. 네트워크는 "믿으라"는 신호가 아니라 "이 센서 없이도 맞혀야 한다"는 손실에 반응한다.</p>
+    </div>
+    <div class="card">
+      <h3>원리 ② 대칭이 강건성의 전제다</h3>
+      <p>RGB 를 주인으로 둔 구조(MM SAM-adapter)는 RGB 결측을 정의할 수 없고, depth 정답에 기댄 구조(DGFusion)는 depth 가 빠지면 23~37 을 잃는다. 우리 대칭 융합은 어느 센서가 빠져도 같은 그래프로 동작하며, 그래서 결측·열화 학습이 먹힌다. 대칭이 clean 에서 손해라는 그들의 ablation 은 맞을 수 있다. 우리는 그 대가를 학습 유인(Q2)으로 되갚았다(clean 24클래스 +0.41).</p>
+    </div>
+    <div class="card">
+      <h3>원리 ③ 인식은 센서 자체 신호에서</h3>
+      <p>합성 열화 라벨로 배운 품질 헤드는 실제 야간을 "깨끗하다"고 판정했다(AUROC 0.002). 반면 얕은 블록 특징에는 야간이 선형으로 분리돼 있다(AUROC 0.99). 즉 정보는 있고, 라벨이 틀렸다. 그래서 B 는 센서가 잰 거리를, C 는 얕은 블록 통계를 입력으로 쓰고, 목표는 라벨이 아니라 분할 손실에서 온다.</p>
+    </div>
+    <div class="card">
+      <h3>원리 ④·⑤ 바탕 보존, 계산 조건화</h3>
+      <p>성능의 원천은 동결 백본 + 센서별 LoRA 였다(P34 판정). 그 위에 "얼마나 믿을지"를 따로 계산해 곱하는 길은 오라클 여유 자체가 1.1~1.8 로 작아 막혀 있다. 남은 길은 attention 과 어댑터의 계산이 센서 상태에 따라 달라지게 하는 것이고, 이것이 B·C 의 자리다. 이 두 카드가 통과해야 "modality-aware 구조"를 주장할 수 있다.</p>
+    </div>
+  </div>
+</section>
 
 <section>
   <h2>모델 구조</h2>
@@ -261,6 +380,373 @@ li{max-width:72ch}
     </div>
     <figcaption><b>몸통은 관용 구조이고, 차이는 읽는 위치와 학습 방식에 있다.</b> 동결 백본과 센서별 LoRA 는 선행 연구에도 있는 기법이라 노벨티로 주장하지 않는다. 청록색이 우리 설계다: 중간층 4탭 읽기(블록 6·12·18·24 특징을 피라미드의 1/4·1/8·1/16·1/32 층에 더함), 두 패스 학습과 교사 증류, 모달 충돌 표본. 점선 상자 B·C 는 승인받았고 A 다음에 구현한다. 학습되는 파라미터는 약 5,900만 개이고 그중 LoRA 가 약 310만 개다.</figcaption>
   </figure>
+</section>
+
+<section>
+  <h2>P55와 P56은 무엇이 다른가</h2>
+  <p>넷 다 같은 몸통(Q2 시드821)에서 출발한다. 달라지는 자리는 셋 중 하나다: 추론 그래프에 모듈을 얹는가(P55), 학습 표본만 바꾸는가(P56-A), 융합·인코더의 계산 자체를 바꾸는가(P56-B·C).</p>
+  <div class="legend">
+    <span class="key"><span class="sw box"></span>바탕과 같은 부분</span>
+    <span class="key"><span class="sw frozen"></span>동결</span>
+    <span class="key"><span class="sw dead"></span>추가했다가 종료된 모듈 (P55)</span>
+    <span class="key"><span class="sw ours"></span>이번 카드가 바꾸는 부분 (학습 중)</span>
+    <span class="key"><span class="sw plan"></span>승인됨, 구현 전</span>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg class="wide" viewBox="0 0 1040 400" role="img" aria-label="네 패널 비교. 바탕 Q2 는 동결 백본, 교차 모달 attention, 헤드로 이어지고 두 패스 학습과 교사 증류로 학습한다. P55 는 얕은 블록 특징을 읽는 게이트를 추가해 attention 의 키와 센서 평균에 곱셈 가중을 주며 본체를 동결하고 게이트만 학습했다. P56-A 는 추론 그래프를 바꾸지 않고 열화 패스에 모달 충돌 표본을 더한다. P56-B 는 거리값을 attention 의 위치 정보로 넣고 P56-C 는 인코더 LoRA 를 공유와 센서별 전문가 혼합으로 바꾼다.">
+      <defs>
+        <marker id="m2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+      </defs>
+
+      <!-- 패널 1: Q2 바탕 -->
+      <g transform="translate(0,0)">
+        <text x="10" y="18" class="hd">바탕 · Q2 시드821</text>
+        <text x="10" y="33" class="sub">구조 = E1(4탭). 학습만 두 패스 + 증류</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text><text x="125" y="130" text-anchor="middle" class="sub">센서별 LoRA r8 · 탭 6/12/18/24</text>
+        <rect class="box" x="10" y="164" width="230" height="52" rx="5"/><text x="125" y="183" text-anchor="middle">교차 모달 attention × 2</text><text x="125" y="200" text-anchor="middle" class="sub">키 = 나머지 세 센서 · 이후 평균</text>
+        <rect class="box" x="10" y="234" width="230" height="40" rx="5"/><text x="125" y="253" text-anchor="middle">피라미드 · 밀집 헤드 · 쿼리 헤드</text><text x="125" y="267" text-anchor="middle" class="sub">분할 결과</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 216 V234" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="ours" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: 두 패스 + 교사 증류</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">clean 패스 + 열화 패스(결측·흐림 등)</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">동결 E1 교사의 clean 예측을 따라감</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">전 파라미터 학습 · 40에폭</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">legal v2 val 68.55 / test 57.73</text>
+      </g>
+
+      <!-- 패널 2: P55 -->
+      <g transform="translate(260,0)">
+        <text x="10" y="18" class="hd">P55 · 무감독 신뢰도 게이트</text>
+        <text x="10" y="33" class="sub">추론 그래프에 모듈 추가 · 종료</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text><text x="125" y="130" text-anchor="middle" class="sub">Q2 의 LoRA 도 동결</text>
+        <rect class="frozen" x="10" y="164" width="130" height="52" rx="5"/><text x="75" y="183" text-anchor="middle">교차 모달 attention</text><text x="75" y="200" text-anchor="middle" class="sub">키 가중 · 가중 평균</text>
+        <rect class="dead" x="152" y="150" width="88" height="80" rx="5"/>
+        <text x="196" y="167" text-anchor="middle" class="hd">게이트</text>
+        <text x="196" y="181" text-anchor="middle" class="sub">블록 2·6·12 특징</text>
+        <text x="196" y="194" text-anchor="middle" class="sub">+ 센서 간 일치도</text>
+        <text x="196" y="207" text-anchor="middle" class="sub">→ 센서별 r∈(0,1)</text>
+        <text x="196" y="221" text-anchor="middle" class="sub">7만 파라미터</text>
+        <path class="lndead" d="M196 146 V150" style="color:var(--dead)"/>
+        <path class="lndead" d="M152 190 H140" style="color:var(--dead)" marker-end="url(#m2)"/>
+        <text x="146" y="245" text-anchor="middle" class="sub" style="fill:var(--dead)">r 로 키를 가리고(1−r 만큼) 평균에 곱함</text>
+        <rect class="frozen" x="10" y="254" width="230" height="30" rx="5"/><text x="125" y="273" text-anchor="middle">피라미드 · 헤드 (동결)</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M75 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M75 216 V254" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="dead" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: 2단계, 게이트만</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">본체 동결 · 합성 열화 없음 · 4에폭</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">팔1 분할 손실만 / 팔2 자기 leave-one-out 목표</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">test 57.59 / 57.67 (Q2 57.73)</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">게이트가 거의 상수 → 이득 없음</text>
+      </g>
+
+      <!-- 패널 3: P56-A -->
+      <g transform="translate(520,0)">
+        <text x="10" y="18" class="hd">P56-A · 모달 충돌 학습</text>
+        <text x="10" y="33" class="sub">추론 그래프 변경 없음 · 학습 중</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text><text x="125" y="130" text-anchor="middle" class="sub">센서별 LoRA r8 · 탭 6/12/18/24</text>
+        <rect class="box" x="10" y="164" width="230" height="52" rx="5"/><text x="125" y="183" text-anchor="middle">교차 모달 attention × 2</text><text x="125" y="200" text-anchor="middle" class="sub">바탕과 동일</text>
+        <rect class="box" x="10" y="234" width="230" height="40" rx="5"/><text x="125" y="253" text-anchor="middle">피라미드 · 밀집 헤드 · 쿼리 헤드</text><text x="125" y="267" text-anchor="middle" class="sub">분할 결과</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 216 V234" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="ours" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: Q2 + 충돌 표본 30%</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">RGB 또는 Depth 한 센서의 덩어리 영역을</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">다른 장면·포화 반사광으로 교체, 정답은 원본</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">"선명하지만 틀린 센서"를 가르침</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">시드 821·902 학습 중, 완주 10-03</text>
+      </g>
+
+      <!-- 패널 4: P56-B/C -->
+      <g transform="translate(780,0)">
+        <text x="10" y="18" class="hd">P56-B · C</text>
+        <text x="10" y="33" class="sub">계산 자체를 바꿈 · 구현 전</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text>
+        <rect class="plan" x="20" y="120" width="210" height="22" rx="4"/><text x="125" y="135" text-anchor="middle" class="sub">C · 공유 LoRA + 센서별 LoRA 를 토큰마다 혼합</text>
+        <rect class="box" x="10" y="164" width="230" height="52" rx="5"/><text x="125" y="183" text-anchor="middle">교차 모달 attention × 2</text>
+        <rect class="plan" x="20" y="190" width="210" height="22" rx="4"/><text x="125" y="205" text-anchor="middle" class="sub">B · Depth·LiDAR 거리값을 위치 정보로</text>
+        <rect class="box" x="10" y="234" width="230" height="40" rx="5"/><text x="125" y="253" text-anchor="middle">피라미드 · 밀집 헤드 · 쿼리 헤드</text><text x="125" y="267" text-anchor="middle" class="sub">분할 결과</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 216 V234" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="plan" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: Q2(+A) 레시피 그대로</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">B: 같은 거리대 토큰끼리 더 잘 찾도록</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">C: 얕은 블록 통계로 혼합 비율을 정함</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">A 판정 뒤 순서대로 착수</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">외부 레이블 불사용은 동일</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption><b>P55는 "융합 뒤에서 센서를 얼마나 믿을지"를 별도 모듈이 정하게 한 것이고, P56은 "융합 자체가 그것을 배우게" 한다.</b> P55의 게이트는 본체를 동결한 채 분할 손실만으로 4에폭 학습했는데, 값이 거의 상수(0.50~0.52)로 머물러 성능이 바뀌지 않았다. P56-A는 추론 때 아무것도 추가하지 않고 학습 표본만 바꾼다.</figcaption>
+  </figure>
+
+  <div class="tbl">
+  <table>
+    <thead><tr><th style="width:16%">항목</th><th>Q2 시드821 (바탕)</th><th>P55</th><th>P56-A</th><th>P56-B · C</th></tr></thead>
+    <tbody>
+      <tr><td><b>추론 그래프</b></td><td>E1 과 동일: 동결 DINOv3-L + 센서별 LoRA r8 + 4탭 + 교차 모달 attention 2층 + 피라미드·밀집 헤드·쿼리 헤드</td><td>바탕 + 게이트 모듈(7만 파라미터). 게이트가 낸 r 로 attention 의 키를 가리고(1−r) 센서 평균에 곱함</td><td>바탕과 완전히 같음</td><td>B: attention 에 거리 기반 위치 정보 추가 · C: 인코더 LoRA 를 공유 + 센서별 전문가 혼합으로</td></tr>
+      <tr><td><b>학습되는 것</b></td><td>LoRA·융합·헤드 전부(5,900만), 40에폭</td><td>게이트만(본체 동결), 4에폭</td><td>바탕과 같음(전부), 40에폭</td><td>바탕과 같음 + 새 모듈</td></tr>
+      <tr><td><b>학습 신호</b></td><td>clean 패스 CE + 열화 패스 CE + 동결 E1 교사 증류</td><td>팔1: 분할 손실만 · 팔2: 자기 leave-one-out 손실(한 센서를 뺐을 때 손실이 얼마나 나빠지는지)을 목표로</td><td>바탕 + 열화 패스의 30% 를 충돌 표본으로(한 센서만 틀리게, 정답은 원본)</td><td>바탕 그대로</td></tr>
+      <tr><td><b>외부 레이블</b></td><td>없음</td><td>없음</td><td>없음</td><td>없음(거리값은 센서 측정치)</td></tr>
+      <tr><td><b>상태·결과</b></td><td>강건 축 3시드 통과, 바탕 레시피 채택. val 68.55 / test 57.73</td><td>종료. val 68.62·68.31 / test 57.59·57.67, 게이트 표준편차 0.020·0.003</td><td>시드 821·902 학습 중(완주 10-03), 사전 기준 = clean 24클래스 Δ ≥ −0.3 그리고 실제 열화 케이스 +1.0 또는 RGB 부분 결측 저하 20% 감소</td><td>구현 전</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>원 MemorySAM과 무엇이 다른가</h2>
+  <p>비교 대상은 원 논문 MemorySAM(arXiv 2503.06700, Liao·Zheng 외, 코드 <span class="mono">LoRA_Sam</span>)이다. 이 프로젝트가 그 위에 얹었던 것(신뢰도 bias, Soft-MoE LoRA, 출력 가중 융합)은 원 논문에 없으므로 따로 뗀다. 아래는 저장소의 원본 클래스(<span class="mono">lora_sam/base.py</span>)와 SAM2 설정(<span class="mono">sam2_hiera_b+.yaml</span>)을 읽어 확인한 내용이다.</p>
+  <figure>
+    <div class="scroll">
+    <svg class="wide" viewBox="0 0 1040 400" role="img" aria-label="왼쪽 원 MemorySAM: 센서를 프레임처럼 순서대로 넣고, 첫 센서는 attention 없이 지나가며, 뒤 센서는 앞 센서들의 메모리 인코더 출력을 조회한다. 각 센서가 마스크를 내고 등가 평균한다. 오른쪽 ReliaDINO: 네 센서가 동시에 서로를 조회하는 대칭 교차 attention 2층 뒤 평균하고 하나의 헤드가 분할한다.">
+      <defs>
+        <marker id="m3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+      </defs>
+
+      <!-- 왼쪽: 원 MemorySAM -->
+      <g>
+        <text x="10" y="18" class="hd">원 MemorySAM (2503.06700)</text>
+        <text x="10" y="33" class="sub">센서를 "프레임"으로 순서대로 넣는 SAM2 메모리 attention</text>
+
+        <rect class="frozen" x="10" y="50" width="500" height="44" rx="6"/>
+        <text x="260" y="68" text-anchor="middle" class="hd">동결 SAM2 Hiera-B+ 인코더 + 센서 공통 LoRA (q·v, rank 4)</text>
+        <text x="260" y="84" text-anchor="middle" class="sub">같은 LoRA 를 모든 센서가 씀 · 전문가 혼합 없음</text>
+
+        <rect class="box" x="10" y="118" width="150" height="56" rx="5"/>
+        <text x="85" y="138" text-anchor="middle" class="hd">센서 1 (RGB)</text>
+        <text x="85" y="154" text-anchor="middle" class="sub">attention 없이 통과</text>
+        <text x="85" y="167" text-anchor="middle" class="sub">no-memory 임베딩만 더함</text>
+
+        <rect class="box" x="185" y="118" width="150" height="56" rx="5"/>
+        <text x="260" y="138" text-anchor="middle" class="hd">센서 2</text>
+        <text x="260" y="154" text-anchor="middle" class="sub">메모리 attention 4층</text>
+        <text x="260" y="167" text-anchor="middle" class="sub">query = 센서 2 특징</text>
+
+        <rect class="box" x="360" y="118" width="150" height="56" rx="5"/>
+        <text x="435" y="138" text-anchor="middle" class="hd">센서 3</text>
+        <text x="435" y="154" text-anchor="middle" class="sub">메모리 attention 4층</text>
+        <text x="435" y="167" text-anchor="middle" class="sub">query = 센서 3 특징</text>
+
+        <rect class="box" x="60" y="200" width="200" height="44" rx="5"/>
+        <text x="160" y="218" text-anchor="middle" class="hd">메모리 인코더</text>
+        <text x="160" y="233" text-anchor="middle" class="sub">특징 + 예측 마스크 → 64차원 메모리</text>
+        <text x="330" y="212" class="sub">키·값 = 앞선 센서들의 메모리</text>
+        <text x="330" y="226" class="sub">+ object pointer 토큰</text>
+        <text x="330" y="240" class="sub">RoPE · 공간·시간 위치 인코딩, 1 head</text>
+
+        <path class="ln" d="M85 174 V200" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M260 174 V200" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M180 200 C200 186 220 180 240 174" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M250 200 C300 190 380 186 420 174" style="color:var(--muted)" marker-end="url(#m3)"/>
+
+        <rect class="box" x="10" y="268" width="150" height="34" rx="5"/><text x="85" y="289" text-anchor="middle" class="sub">SAM2 마스크 디코더</text>
+        <rect class="box" x="185" y="268" width="150" height="34" rx="5"/><text x="260" y="289" text-anchor="middle" class="sub">SAM2 마스크 디코더</text>
+        <rect class="box" x="360" y="268" width="150" height="34" rx="5"/><text x="435" y="289" text-anchor="middle" class="sub">SAM2 마스크 디코더</text>
+        <path class="ln" d="M85 244 V268" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M260 244 V268" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M435 174 V268" style="color:var(--muted)" marker-end="url(#m3)"/>
+
+        <rect class="box" x="135" y="326" width="250" height="40" rx="5"/>
+        <text x="260" y="344" text-anchor="middle" class="hd">센서별 마스크의 등가 평균</text>
+        <text x="260" y="359" text-anchor="middle" class="sub">Mask = (1/M) Σ Mask_i · 가중 없음</text>
+        <path class="ln" d="M85 302 C100 330 120 340 135 344" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M260 302 V326" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M435 302 C420 330 400 340 385 344" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <text x="260" y="388" text-anchor="middle" class="sub">학습: 메모리 attention·메모리 인코더·디코더 풀 튜닝 + 학습 전용 prototype 메모리(SPMM)</text>
+      </g>
+
+      <!-- 오른쪽: ReliaDINO -->
+      <g transform="translate(540,0)">
+        <text x="10" y="18" class="hd">ReliaDINO (Q2 · P56-A 바탕)</text>
+        <text x="10" y="33" class="sub">네 센서가 동시에 서로를 조회하는 대칭 교차 attention</text>
+
+        <rect class="frozen" x="10" y="50" width="490" height="44" rx="6"/>
+        <text x="255" y="68" text-anchor="middle" class="hd">동결 DINOv3 ViT-L + 센서별 LoRA (q·v, rank 8)</text>
+        <text x="255" y="84" text-anchor="middle" class="sub">센서마다 다른 LoRA · 블록 6/12/18/24 탭</text>
+
+        <rect class="box" x="10" y="118" width="110" height="40" rx="5"/><text x="65" y="142" text-anchor="middle" class="hd">RGB</text>
+        <rect class="box" x="137" y="118" width="110" height="40" rx="5"/><text x="192" y="142" text-anchor="middle" class="hd">Depth</text>
+        <rect class="box" x="264" y="118" width="110" height="40" rx="5"/><text x="319" y="142" text-anchor="middle" class="hd">Event</text>
+        <rect class="box" x="391" y="118" width="109" height="40" rx="5"/><text x="445" y="142" text-anchor="middle" class="hd">LiDAR</text>
+
+        <rect class="ours" x="10" y="190" width="490" height="66" rx="6"/>
+        <text x="255" y="210" text-anchor="middle" class="hd">교차 모달 attention × 2층 (가중치 공유, 8 head)</text>
+        <text x="255" y="227" text-anchor="middle" class="sub">각 센서 토큰이 query, 나머지 세 센서의 원래 토큰이 키·값 · 동시에, 순서 없음</text>
+        <text x="255" y="243" text-anchor="middle" class="sub">메모리 인코더·마스크 입력·위치 인코딩 없음 · 이후 네 센서 평균 + 센서별 보정 MLP</text>
+        <path class="ln" d="M65 158 V190" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M192 158 V190" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M319 158 V190" style="color:var(--muted)" marker-end="url(#m3)"/>
+        <path class="ln" d="M445 158 V190" style="color:var(--muted)" marker-end="url(#m3)"/>
+
+        <rect class="box" x="10" y="284" width="490" height="44" rx="5"/>
+        <text x="255" y="302" text-anchor="middle" class="hd">하나의 헤드: 특징 피라미드(4탭) · 밀집 헤드 + 라우터 · 쿼리 헤드</text>
+        <text x="255" y="318" text-anchor="middle" class="sub">센서별 디코더·마스크 평균 없음</text>
+        <path class="ln" d="M255 256 V284" style="color:var(--muted)" marker-end="url(#m3)"/>
+
+        <rect class="ours" x="10" y="344" width="490" height="44" rx="5"/>
+        <text x="255" y="362" text-anchor="middle" class="hd">학습: 두 패스(clean + 열화·충돌) + 동결 교사 증류</text>
+        <text x="255" y="378" text-anchor="middle" class="sub">P56-A 는 여기(열화 패스의 충돌 표본)만 바꾼다</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption><b>역할은 같고 계산은 다르다.</b> 둘 다 "한 센서가 다른 센서를 조회"하지만, 원 MemorySAM은 센서를 순서대로 넣어 앞 센서의 압축 메모리(특징 + 예측 마스크)를 조회하고 마지막에 센서별 마스크를 등가 평균한다. ReliaDINO는 순서 없이 네 센서가 동시에 서로의 원래 토큰을 조회하고 하나의 헤드로 분할한다. 신뢰도 bias(RBMA)·Soft-MoE LoRA·출력 가중 융합(UAMM/AMF)은 원 논문에 없고 이 프로젝트가 SAM2 계보에서 추가했던 것이며, 둘 다 효과가 없어 ReliaDINO에서는 쓰지 않는다.</figcaption>
+  </figure>
+
+  <div class="tbl">
+  <table>
+    <thead><tr><th style="width:16%">항목</th><th>원 MemorySAM (2503.06700)</th><th>우리가 SAM2 계보에서 얹었던 것 (P1~P33, 전부 종료)</th><th>ReliaDINO (Q2 · P56-A)</th></tr></thead>
+    <tbody>
+      <tr><td><b>백본·어댑터</b></td><td>동결 SAM2 Hiera-B+, 센서 공통 LoRA(q·v, rank 4)</td><td>hard top-k MoE-LoRA(P3~P7) → Soft-MoE LoRA(P8~), 조건 게이트(P12·P29)</td><td>동결 DINOv3 ViT-L, 센서별 LoRA(q·v, rank 8), 중간층 4탭</td></tr>
+      <tr><td><b>센서 간 조회</b></td><td>순차·비대칭: 센서 i 가 앞선 센서 &lt;i 의 메모리만 조회, 첫 센서는 조회 없음. 메모리 attention 4층(self + cross + FFN, 1 head)</td><td>같은 메모리 attention 유지</td><td>대칭: 네 센서가 동시에 서로를 조회. 교차 attention 2층(cross + MLP, 8 head), self-attention 없음</td></tr>
+      <tr><td><b>키·값</b></td><td>메모리 인코더 출력(특징 + 예측 마스크를 64차원으로 압축) + object pointer 토큰, RoPE·공간·시간 위치 인코딩</td><td>동일</td><td>다른 센서의 원래 토큰(LayerNorm 만). 메모리 인코더·마스크 입력·위치 인코딩 없음</td></tr>
+      <tr><td><b>신뢰도 가중</b></td><td>없음</td><td>attention 로짓에 가산 bias(P27 품질, P28 RBMA 엔트로피, P31 보정, P32 일치도) → 4세대·2백본에서 효과 ≈0, P32 는 유의한 순손해</td><td>없음(bias 옵션은 off). 게이트 실험 P55 도 이득 없음</td></tr>
+      <tr><td><b>출력 융합</b></td><td>센서별 SAM2 마스크 디코더 → 등가 평균 Mask = (1/M) Σ Mask_i</td><td>confidence head(P1), AMF 가중 평균(P4), UAMM 특징 변조(P5·P6), CrossModalFusionHead softmax 가중(P9) → 고정 상수(P9)가 최선, 동적 가중은 전부 열세</td><td>attention 뒤 평균 + 센서별 보정 MLP, 하나의 헤드(피라미드·밀집·쿼리)</td></tr>
+      <tr><td><b>학습</b></td><td>메모리 attention·메모리 인코더·디코더 풀 튜닝, LoRA, 학습 전용 SPMM prototype 손실. clean 데이터만</td><td>같은 학습 + 증강(hardaug·PhysAug)</td><td>LoRA·융합·헤드 학습. 두 패스(clean + 열화) + 동결 교사 증류. P56-A: 열화 패스에 충돌 표본 추가</td></tr>
+      <tr><td><b>보고 성능</b></td><td>DELIVER 65.38 (논문값, 우리 재현 아님)</td><td>MULTIAQUA M-score 82.10(P9·P22, 챌린지 공동 1위) · DELIVER 최선 P32 test 55.00</td><td>DELIVER test 56.24±0.42 / val 69.51±0.15 (E1 확정 3시드)</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">두 가지를 아직 확인하지 못했다: SAM2 마스크 디코더의 다중 마스크 출력 수를 25로 바꾼 것이 원 논문 저장소의 것인지 이 프로젝트의 것인지, 그리고 원 논문의 게재 상태(1차 출처에서는 preprint). 저장소 문서 <span class="mono">models/arch-evolution.md</span> "공통 기반" 절은 UAMM/AMF·Soft-MoE 를 공통 기반으로 적고 있는데 코드와 맞지 않아 정정 표시를 붙였다.</p>
+</section>
+
+<section>
+  <h2>MM SAM-adapter(2509.10408)와 무엇이 다른가</h2>
+  <p>MM SAM-adapter(Curti 외, 볼로냐대, 2025-09)는 DELIVER·MUSES test에서 현재 가장 높은 융합 방법이다. 논문을 읽어 확인한 구조와 수치로 비교한다. 이 방법도 외부 레이블(조건 텍스트·depth 감독)을 쓰지 않으므로, "외부 신호 불사용"만으로는 우리와 구별되지 않는다.</p>
+  <figure>
+    <div class="scroll">
+    <svg class="wide" viewBox="0 0 1040 330" role="img" aria-label="왼쪽 MM SAM-adapter: RGB 만 SAM ViT-L 본 가지로 들어가고 미세 조정된다. RGB 와 보조 센서 하나가 각각 ConvNeXt-S 를 거쳐 Road-Fusion 으로 합쳐진 뒤 ViT-adapter 식 injector 와 extractor 로 SAM 블록 사이에 주입된다. 보조 센서는 하나뿐이다. 오른쪽 ReliaDINO: 네 센서가 같은 동결 DINOv3-L 을 센서별 LoRA 와 함께 통과하고 대칭 교차 attention 으로 합쳐진다.">
+      <defs>
+        <marker id="m4" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+      </defs>
+
+      <!-- 왼쪽: MM SAM-adapter -->
+      <g>
+        <text x="10" y="18" class="hd">MM SAM-adapter (2509.10408)</text>
+        <text x="10" y="33" class="sub">RGB 우선 비대칭 · 보조 센서 1개 · SAM 인코더 미세 조정</text>
+
+        <rect class="box" x="10" y="50" width="90" height="34" rx="5"/><text x="55" y="71" text-anchor="middle" class="hd">RGB</text>
+        <rect class="box" x="120" y="50" width="120" height="34" rx="5"/><text x="180" y="71" text-anchor="middle" class="hd">보조 센서 1개</text>
+        <text x="180" y="98" text-anchor="middle" class="sub">Depth 또는 LiDAR 또는 Event</text>
+
+        <rect class="ext" x="300" y="50" width="200" height="60" rx="6"/>
+        <text x="400" y="70" text-anchor="middle" class="hd">SAM ViT-L 인코더 (본 가지)</text>
+        <text x="400" y="86" text-anchor="middle" class="sub">RGB 만 입력 · 전체 미세 조정</text>
+        <text x="400" y="100" text-anchor="middle" class="sub">4블록으로 나눔</text>
+        <path class="ln" d="M100 60 C200 40 260 44 300 66" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="box" x="10" y="124" width="110" height="44" rx="5"/><text x="65" y="142" text-anchor="middle" class="sub">ConvNeXt-S</text><text x="65" y="157" text-anchor="middle" class="sub">RGB 용</text>
+        <rect class="box" x="130" y="124" width="110" height="44" rx="5"/><text x="185" y="142" text-anchor="middle" class="sub">ConvNeXt-S</text><text x="185" y="157" text-anchor="middle" class="sub">보조 센서용</text>
+        <path class="ln" d="M55 84 V124" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M180 84 V124" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="box" x="10" y="190" width="230" height="44" rx="5"/>
+        <text x="125" y="208" text-anchor="middle" class="hd">Road-Fusion (RoadFormer+)</text>
+        <text x="125" y="223" text-anchor="middle" class="sub">두 센서 양방향 교차 attention, 2개까지만</text>
+        <path class="ln" d="M65 168 V190" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M185 168 V190" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="ext" x="300" y="134" width="200" height="100" rx="6"/>
+        <text x="400" y="154" text-anchor="middle" class="hd">어댑터 (ViT-adapter 식)</text>
+        <text x="400" y="171" text-anchor="middle" class="sub">Injector: SAM 토큰이 query,</text>
+        <text x="400" y="185" text-anchor="middle" class="sub">융합 특징이 key·value (변형 가능 attention)</text>
+        <text x="400" y="199" text-anchor="middle" class="sub">Extractor: 반대 방향 + FFN</text>
+        <text x="400" y="213" text-anchor="middle" class="sub">블록마다 1쌍, γ 는 0 으로 초기화</text>
+        <text x="400" y="227" text-anchor="middle" class="sub">SAM 특징에 융합 정보를 "주입"</text>
+        <path class="lnext" d="M240 212 H300" style="color:var(--ext)" marker-end="url(#m4)"/>
+        <path class="lnext" d="M400 110 V134" style="color:var(--ext)" marker-end="url(#m4)"/>
+
+        <rect class="box" x="300" y="258" width="200" height="40" rx="5"/>
+        <text x="400" y="276" text-anchor="middle" class="hd">SegFormer 헤드</text>
+        <text x="400" y="291" text-anchor="middle" class="sub">어댑터 출력 + 융합 특징(1/4)</text>
+        <path class="ln" d="M400 234 V258" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <text x="255" y="320" text-anchor="middle" class="sub">RGB 가 없으면 본 가지가 비므로 RGB 결측은 설계상 다루지 않는다 · 센서 3개 이상은 논문이 밝힌 한계</text>
+      </g>
+
+      <!-- 오른쪽: ReliaDINO -->
+      <g transform="translate(540,0)">
+        <text x="10" y="18" class="hd">ReliaDINO</text>
+        <text x="10" y="33" class="sub">네 센서 대칭 · 동결 백본 · 센서별 LoRA</text>
+
+        <rect class="box" x="10" y="50" width="110" height="34" rx="5"/><text x="65" y="71" text-anchor="middle" class="hd">RGB</text>
+        <rect class="box" x="137" y="50" width="110" height="34" rx="5"/><text x="192" y="71" text-anchor="middle" class="hd">Depth</text>
+        <rect class="box" x="264" y="50" width="110" height="34" rx="5"/><text x="319" y="71" text-anchor="middle" class="hd">Event</text>
+        <rect class="box" x="391" y="50" width="109" height="34" rx="5"/><text x="445" y="71" text-anchor="middle" class="hd">LiDAR</text>
+
+        <rect class="frozen" x="10" y="110" width="490" height="52" rx="6"/>
+        <text x="255" y="130" text-anchor="middle" class="hd">동결 DINOv3 ViT-L (하나) + 센서별 LoRA r8</text>
+        <text x="255" y="148" text-anchor="middle" class="sub">네 센서가 같은 백본을 각자 통과 · 백본 미세 조정 없음 · 4탭</text>
+        <path class="ln" d="M65 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M192 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M319 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+        <path class="ln" d="M445 84 V110" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="ours" x="10" y="186" width="490" height="52" rx="6"/>
+        <text x="255" y="206" text-anchor="middle" class="hd">대칭 교차 모달 attention × 2 → 평균 → 하나의 헤드</text>
+        <text x="255" y="224" text-anchor="middle" class="sub">주 센서 없음 · 어느 센서가 빠져도 같은 그래프로 동작</text>
+        <path class="ln" d="M255 162 V186" style="color:var(--muted)" marker-end="url(#m4)"/>
+
+        <rect class="ours" x="10" y="258" width="490" height="40" rx="5"/>
+        <text x="255" y="276" text-anchor="middle" class="hd">학습: 두 패스(clean + 결측·열화·충돌) + 교사 증류</text>
+        <text x="255" y="291" text-anchor="middle" class="sub">센서가 없거나 틀린 상황을 학습 표본으로 가르침</text>
+        <text x="255" y="320" text-anchor="middle" class="sub">학습 파라미터 약 5,900만(백본 3억 동결) · 센서 결측 15조합 평균 48.1</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption><b>그들은 RGB 를 주인으로 두고 보조 센서 하나를 "주입"하고, 우리는 네 센서를 같은 자리에 두고 서로 조회하게 한다.</b> MM SAM-adapter 논문은 대칭 구조(보조 가지를 키운 것)가 비대칭보다 나쁘다는 ablation(55.27 vs 57.14)을 근거로 RGB 우선을 택했다. 우리는 반대 방향의 증거를 내야 한다: RGB 가 망가지거나 없을 때, 그리고 센서가 셋 이상일 때.</figcaption>
+  </figure>
+
+  <div class="tbl">
+  <table>
+    <thead><tr><th style="width:18%">항목</th><th>MM SAM-adapter</th><th>ReliaDINO</th></tr></thead>
+    <tbody>
+      <tr><td><b>백본·학습량</b></td><td>SAM ViT-L 인코더 <b>전체 미세 조정</b>(동결하면 −1.8). 보조 가지 ConvNeXt-S 2개 + 어댑터</td><td>DINOv3-L <b>동결</b>, 센서별 LoRA r8 + 융합·헤드 약 5,900만 학습</td></tr>
+      <tr><td><b>센서 수</b></td><td>RGB + 보조 1개(Road-Fusion 제약, 논문이 밝힌 한계)</td><td>4개 동시(DELIVER), 3개(MUSES), 4개(MCubeS)</td></tr>
+      <tr><td><b>융합 위치·방식</b></td><td>보조 가지에서 먼저 융합한 뒤 ViT-adapter 식 injector/extractor 로 SAM 블록 사이에 주입(변형 가능 교차 attention). RGB 우선 비대칭</td><td>백본 뒤 대칭 교차 attention 2층. 주 센서 없음</td></tr>
+      <tr><td><b>외부 레이블</b></td><td>없음</td><td>없음</td></tr>
+      <tr><td><b>강건성 평가</b></td><td>RGB-easy / RGB-hard 분할(수작업). 센서 결측·열화 프로토콜 없음</td><td>모달 결측 15조합·부분 열화·노이즈(2503.18445 프로토콜) + 실제 조건별</td></tr>
+      <tr><td><b>DELIVER test</b></td><td class="num"><b>57.35</b> (RGB-D) · 57.14 (RGB-L) · 55.70 (RGB-E), 단일 런</td><td class="num">56.24 ± 0.42 (3시드), 최고 56.73 (4모달)</td></tr>
+      <tr><td><b>DELIVER val</b></td><td class="num"><b>69.60</b> (RGB-D)</td><td class="num">69.51 ± 0.15, 최고 69.68</td></tr>
+      <tr><td><b>MUSES test</b></td><td class="num"><b>81.07</b> (RGB-L) · 79.92 (RGB-E)</td><td class="num">79.29 ± 0.71 (2시드), 최고 79.79 (3모달)</td></tr>
+      <tr><td><b>센서 결측 시</b></td><td>RGB 결측은 구조상 불가(본 가지가 RGB). 보고 없음</td><td>Q2: RGB 만 남아도 53.9, depth 만 46.0, event 만 31.0</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="cols">
+    <div class="card line-ours">
+      <h3>주장할 수 있는 것</h3>
+      <ul>
+        <li><b>주 센서 없는 전 센서 융합의 강건성.</b> RGB 가 없거나 틀려도 같은 그래프로 동작하며(Q2: RGB 결측 시 depth 만으로 46.0), 그들의 구조는 RGB 결측을 정의조차 못 한다. 결측·열화 프로토콜에서 그들을 같은 조건으로 재어 비교해야 성립한다.</li>
+        <li><b>백본 동결 + 센서별 LoRA 로 같은 급 성능.</b> ViT-L 미세 조정 없이 val 69.5(그들 69.6), 학습 파라미터 5,900만. 효율·망각 방지 축.</li>
+        <li><b>센서 3개 이상.</b> 그들이 한계로 밝힌 지점. MCubeS 4모달 58.07 은 그들에게 비교 대상이 없다.</li>
+        <li><b>학습 설계로 만든 상황별 의존도 이동(P56-A 결과 시).</b> 그들의 "필요할 때만 보조 센서 사용"은 RGB-hard 분할 결과로만 보였고, 우리는 조건별 센서 제거 표로 정량화한다.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>주장할 수 없는 것 (지금 수치로)</h3>
+      <ul>
+        <li>DELIVER test·MUSES test 의 절대 1위. 그들이 test 에서 +1.1(DELIVER)·+1.3(MUSES) 앞선다. 우리 1위 주장은 "같은 모달 집합(전 모달)을 쓰는 방법 중"과 val·MCubeS 에 한정된다.</li>
+        <li>"외부 레이블 없음"을 차별점으로. 그들도 쓰지 않는다. 차별점은 DGFusion·CAFuser 에 대해서만 유효하다.</li>
+        <li>"대칭이 비대칭보다 낫다"를 일반 명제로. 그들의 ablation 은 clean test 에서 반대다. 우리는 강건 축에서만 뒤집을 수 있다.</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">그들의 MUSES test 81.07(RGB+LiDAR 2모달)은 이 문서의 상단 표(MUSES 1차 비교 상대 DGFusion 79.5)에 아직 반영되지 않았다. 우리 규칙상 2모달 방법은 "2차(적은 모달) 비교" 열에 속하며, 그 열의 1위는 GtA 82.39(카메라 단독)라 표의 값은 바뀌지 않지만, 융합 방법이 우리보다 높다는 사실은 논문에서 숨길 수 없다.</p>
 </section>
 
 <section>

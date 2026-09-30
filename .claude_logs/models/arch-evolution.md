@@ -384,6 +384,12 @@ bias_i = λ·(rel_i − mean_j rel_j)                    # RBMA 배관, λ만 �
 
 ## 공통 기반: MemorySAM
 
+> ⚠️ **정정(2026-09-30, 코드 대조)**: 이 절의 "공통 기반" 서술 중 두 가지는 **원 논문 MemorySAM(arXiv 2503.06700, `lora_sam/base.py` 의 `LoRA_Sam`)이 아니라 이 프로젝트가 추가한 것**이다.
+> ① Soft-MoE LoRA 는 P8 부터(P3~P7 은 hard top-k MoE). 원 논문은 **센서 공통 q·v LoRA(rank 4)** 다. ② UAMM/AMF 출력 가중은 P1·P4·P5/P6 에서 추가된 것이고 원 논문은 **센서별 마스크의 등가 평균**(Eq.6)이다.
+> ③ 메모리에 들어가는 것은 `backbone_feat` 가 아니라 **메모리 인코더 출력(특징 + 예측 마스크, 64차원)** 과 object pointer 토큰이다. 첫 센서는 attention 을 거치지 않는다(`directly_add_no_mem_embed`). 신뢰도 bias(P27~P32)는 원 논문에 없다.
+> 근거 = `semseg/models/sam2/sam2/lora_sam/base.py:170-239`, `sam2_hiera_b+.yaml:57,91,99`, `research/related-work-raw.md` §0. 아래 원문은 그대로 두었다.
+
+
 ### 핵심 아이디어
 
 SAM2의 시간축 메모리 어텐션을 **모달리티 축**으로 전용:
