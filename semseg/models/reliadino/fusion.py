@@ -245,9 +245,13 @@ class CrossModalAttentionLayer(nn.Module):
         self.mlp = nn.Sequential(nn.Linear(dim, hidden), nn.GELU(), nn.Linear(hidden, dim))
 
     def forward(self, x: torch.Tensor, kv: torch.Tensor,
-                key_bias: Optional[torch.Tensor]) -> torch.Tensor:
+                key_bias: Optional[torch.Tensor],
+                pair_bias: Optional[torch.Tensor] = None) -> torch.Tensor:
         """x: (B, Nq, C) queries; kv: (B, Nk, C); key_bias: (B, Nk) additive
-        pre-softmax logit bias, broadcast over heads and queries (RBMA form)."""
+        pre-softmax logit bias, broadcast over heads and queries (RBMA form).
+        [P56-B] pair_bias: (B, h, Nq, Nk) or (B, 1, Nq, Nk) per-(query,key) logit
+        bias (range-conditioned). If both are given they are summed into attn_mask.
+        pair_bias=None → identical path to the pre-P56-B code (SDPA call form kept)."""
         B, Nq, C = x.shape
         h = self.num_heads
         q = self.q(self.norm_q(x)).reshape(B, Nq, h, C // h).transpose(1, 2)
@@ -259,6 +263,10 @@ class CrossModalAttentionLayer(nn.Module):
             # (B, Nk) -> (B, 1, 1, Nk): same bias for every head and query —
             # exactly the RBMA "per-memory-token additive logit bias" shape.
             attn_mask = key_bias[:, None, None, :].to(q.dtype)
+        if pair_bias is not None:
+            # [P56-B] (B, h|1, Nq, Nk) broadcasts over the (B,1,1,Nk) key bias.
+            pb = pair_bias.to(q.dtype)
+            attn_mask = pb if attn_mask is None else attn_mask + pb
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
         out = out.transpose(1, 2).reshape(B, Nq, C)
         x = x + self.proj(out)
@@ -400,6 +408,67 @@ class MeanFusionTrunk(nn.Module):
         return torch.stack(list(feats), dim=0).mean(dim=0)
 
 
+class RangeBias(nn.Module):
+    """[P56-B] Range-conditioned cross-modal attention bias.
+
+    Adds a per-(query,key) additive pre-softmax logit bias to the cross-modal
+    attention so that tokens at similar scene RANGE attract each other:
+
+        bias_ij = −λ_h · |ρ_i − ρ_j| / σ_h ,   ρ = log(r+eps) (LOG_SPACE) or r
+
+    r is the token range map (a scene property, sensor-agnostic) built by the
+    model from Depth/LiDAR. λ_h ≥ 0 via softplus, σ_h via exp; per head when
+    PER_HEAD else a single shared head. INIT_LAMBDA=0 starts at λ≈0 (byte-near
+    identity) but with a LIVE softplus gradient (raw init −18, sigmoid≠0) so λ
+    can grow — the pure −inf inverse-softplus would freeze the gradient at 0.
+
+    A token is skipped (bias 0) when its query OR key position is invalid
+    (no range measurement there). Key = the concatenation of `key_mult`
+    modalities' tokens; ρ is tiled `key_mult` times since range is modal-agnostic.
+    Stashes `_last_range_bias_stats` for trainer logging (no trainer change)."""
+
+    _LAMBDA0_RAW = -18.0   # softplus(−18)≈1.5e-8≈0, sigmoid(−18)≈1.5e-8≠0 (live grad)
+
+    def __init__(self, num_heads: int, log_space: bool = True,
+                 init_lambda: float = 0.0, init_sigma: float = 1.0,
+                 per_head: bool = True, eps: float = 1e-3):
+        super().__init__()
+        self.log_space = bool(log_space)
+        self.per_head = bool(per_head)
+        self.eps = float(eps)
+        H = int(num_heads) if self.per_head else 1
+        if init_lambda > 0:
+            raw0 = math.log(math.expm1(float(init_lambda)))
+        else:
+            raw0 = self._LAMBDA0_RAW
+        self.lambda_h = nn.Parameter(torch.full((H,), float(raw0)))
+        self.sigma_h = nn.Parameter(torch.full((H,), math.log(float(init_sigma))))
+        self._last_range_bias_stats = None
+
+    def rho(self, range_map: torch.Tensor) -> torch.Tensor:
+        """(B,1,h,w) range → (B,N) ρ. LOG_SPACE → log(r+eps), else r."""
+        r = range_map.flatten(2).squeeze(1).float()               # (B,N)
+        return torch.log(r.clamp_min(0.0) + self.eps) if self.log_space else r
+
+    def forward(self, rho: torch.Tensor, valid: torch.Tensor,
+                key_mult: int, dtype: torch.dtype) -> torch.Tensor:
+        """rho: (B,N) log-range; valid: (B,N) bool; key = ρ tiled `key_mult`×.
+        Returns pair_bias (B, H|1, N, N*key_mult) in `dtype`."""
+        lam = F.softplus(self.lambda_h)                           # (H,) ≥0
+        sig = torch.exp(self.sigma_h)                             # (H,) >0
+        coef = -(lam / sig)                                       # (H,)
+        rho_k = rho.repeat(1, key_mult)                           # (B,Nk)
+        valid_k = valid.repeat(1, key_mult)                       # (B,Nk)
+        absd = (rho[:, :, None] - rho_k[:, None, :]).abs()        # (B,N,Nk)
+        vmat = (valid[:, :, None] & valid_k[:, None, :]).to(absd.dtype)
+        absd = absd * vmat                                        # invalid term → 0
+        bias = coef[None, :, None, None] * absd[:, None, :, :]    # (B,H,N,Nk)
+        self._last_range_bias_stats = {
+            'lambda': lam.detach(), 'sigma': sig.detach(),
+            'valid_frac': valid.float().mean().detach()}
+        return bias.to(dtype)
+
+
 class ReliabilityGatedFusion(nn.Module):
     """Cross-modal fusion with RBMA-v2 attention bias + competence output gate.
 
@@ -495,7 +564,15 @@ class ReliabilityGatedFusion(nn.Module):
                  # [P55] 무감독 다중블록 모달 게이트. True 면 qaf_pred 를 외부(model 의
                  # P55Gate)가 forward 인자로 공급하므로 QualityHead 를 만들지 않는다.
                  # (default False → 기존 QAF 경로/파라미터 그대로 = byte-동일.)
-                 p55_supplies_pred: bool = False):
+                 p55_supplies_pred: bool = False,
+                 # [P56-B] 거리 조건화 교차 attention. default OFF → RangeBias 모듈을
+                 # 생성조차 하지 않아 forward·state_dict 가 P56-B 미도입본과 byte-동일.
+                 range_bias_enable: bool = False,
+                 range_bias_log_space: bool = True,
+                 range_bias_init_lambda: float = 0.0,
+                 range_bias_init_sigma: float = 1.0,
+                 range_bias_per_head: bool = True,
+                 range_bias_eps: float = 1e-3):
         super().__init__()
         self.num_modalities = num_modalities
         self.num_classes = num_classes
@@ -592,6 +669,16 @@ class ReliabilityGatedFusion(nn.Module):
             if self.qaf_self_attn_on:
                 # CrossModalAttentionLayer 재사용(kv=자기 토큰) — 가중치 1벌 공유.
                 self.qaf_self_layer = CrossModalAttentionLayer(dim, num_heads, mlp_ratio)
+
+        # [P56-B] 거리 조건화 교차 attention. off → 모듈 미생성 = byte-동일.
+        self.range_bias_enable = bool(range_bias_enable)
+        self.range_bias = None
+        if self.range_bias_enable:
+            self.range_bias = RangeBias(
+                num_heads=num_heads, log_space=range_bias_log_space,
+                init_lambda=range_bias_init_lambda,
+                init_sigma=range_bias_init_sigma,
+                per_head=range_bias_per_head, eps=range_bias_eps)
 
         self._last_rel_auroc = None
         self._last_rel_stats = None
@@ -729,7 +816,8 @@ class ReliabilityGatedFusion(nn.Module):
     # ── [P54-QAF] set-attention + key 마스크 ─────────────────────────────────
     def _qaf_cross_attend(self, tokens: List[torch.Tensor], qaf_pred: dict,
                           bias_flat: Optional[List[torch.Tensor]],
-                          B: int, C: int, h: int, w: int) -> List[torch.Tensor]:
+                          B: int, C: int, h: int, w: int,
+                          pair_bias: Optional[torch.Tensor] = None) -> List[torch.Tensor]:
         """QAF 융합 경로. off 경로(_qaf_enable=False)에서는 절대 호출되지 않는다.
 
         1) 모달 내 self-attention 1층(공유) — cross 앞.
@@ -768,7 +856,7 @@ class ReliabilityGatedFusion(nn.Module):
         for i in range(m):
             x = tokens[i]
             for layer in self.layers:
-                x = layer(x, kv, key_bias)
+                x = layer(x, kv, key_bias, pair_bias)   # [P56-B] 거리 편향(None이면 무변경)
             fused_tokens.append(x.transpose(1, 2).reshape(B, C, h, w))
         return fused_tokens
 
@@ -780,7 +868,9 @@ class ReliabilityGatedFusion(nn.Module):
                 presence: Optional[torch.Tensor] = None,   # [P44-V1] (m,B,1,h,w)
                 epoch: int = 0,                            # [P44-B2] warmup 게이팅용
                 qaf_labels: Optional[dict] = None,         # [P54-QAF] Degrader 라벨(열화 패스)
-                qaf_pred_in: Optional[dict] = None         # [P55] model 의 게이트가 공급한 η̂
+                qaf_pred_in: Optional[dict] = None,        # [P55] model 의 게이트가 공급한 η̂
+                range_map: Optional[torch.Tensor] = None,  # [P56-B] (B,1,h,w) 토큰 거리값
+                range_valid: Optional[torch.Tensor] = None # [P56-B] (B,1,h,w) bool 유효 마스크
                 ) -> Tuple[torch.Tensor, dict]:
         m = len(feats)
         assert m == self.num_modalities, f"got {m} modalities, expected {self.num_modalities}"
@@ -811,6 +901,18 @@ class ReliabilityGatedFusion(nn.Module):
             if self.consistency_bias:
                 bias_maps = bias_maps + self.lambda2 * b_cons       # secondary term
             bias_flat = [bias_maps[j].flatten(1) for j in range(m)]  # m x (B, N)
+        # [P56-B] 거리 편향 텐서 — 장면 거리 ρ 는 모달 무관이라 쿼리 모달·두 층에
+        # 걸쳐 동일하다(한 번만 계산해 재사용). off(range_bias None) 또는 range_map
+        # 미공급이면 None → 아래 두 경로가 기존과 byte-동일하게 흐른다.
+        pair_bias = None
+        if self.range_bias is not None and range_map is not None:
+            rho = self.range_bias.rho(range_map)                     # (B,N)
+            if range_valid is not None:
+                valid_tok = range_valid.flatten(2).squeeze(1).bool()  # (B,N)
+            else:
+                valid_tok = torch.ones_like(rho, dtype=torch.bool)
+            key_mult = m if self.qaf_enable else (m - 1)
+            pair_bias = self.range_bias(rho, valid_tok, key_mult, tokens[0].dtype)
         # [P54-QAF] 품질 토큰(융합 직전 feats 에서, fp32). off 면 None → 아래 분기가
         # 기존 "나머지 모달 concat" 경로를 그대로 탄다(코드 경로 분기, 무수정 원칙).
         # [P55] qaf_pred_in 이 오면 그것을(외부 게이트), 아니면 QualityHead 예측을 쓴다.
@@ -830,7 +932,8 @@ class ReliabilityGatedFusion(nn.Module):
             qaf_pred = self._qaf_eta_override(qaf_pred)
         if self.qaf_enable:
             fused_tokens = self._qaf_cross_attend(
-                tokens, qaf_pred, (bias_flat if self.attn_bias else None), B, C, h, w)
+                tokens, qaf_pred, (bias_flat if self.attn_bias else None), B, C, h, w,
+                pair_bias=pair_bias)
         else:
             fused_tokens = []
             for i in range(m):
@@ -840,7 +943,7 @@ class ReliabilityGatedFusion(nn.Module):
                     key_bias = torch.cat([bias_flat[j] for j in range(m) if j != i], dim=1)
                 x = tokens[i]
                 for layer in self.layers:
-                    x = layer(x, kv, key_bias)
+                    x = layer(x, kv, key_bias, pair_bias)   # [P56-B] 거리 편향(None이면 무변경)
                 fused_tokens.append(x.transpose(1, 2).reshape(B, C, h, w))
 
         # 4) output fusion: competence gate (calibrated self-entropy, veto floor)
