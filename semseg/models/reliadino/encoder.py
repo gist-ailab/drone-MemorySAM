@@ -275,6 +275,96 @@ class SharedLoRAQKV(nn.Module):
         return y
 
 
+class StateRoutedLoRAQKV(nn.Module):
+    """[P56-C] state-routed shared/per-sensor LoRA — SharedLoRAQKV 옆에 신설.
+
+        y[..., :d]  += α·s_s·(x@A_s.T@B_s.T) + (1−α)·s_r·(x@A_r[m].T@B_r[m].T)  (Q)
+        y[..., 2d:] += (V 슬라이스 동일)                                       (K 불변)
+
+    `MultiModalLoRAQKV`(arm A)·`SharedLoRAQKV`(arm B/C)는 이 클래스가 존재해도
+    전혀 영향을 받지 않는다(기존 체크포인트·경로 불변). 공유항 rank=shared_r,
+    센서별항 rank=residual_r. 혼합 계수 α는 (B,N,1) 토큰별 텐서를 외부
+    (p56c_router.attach_state_routed_alpha hook)에서 주입받는다 — `self.alpha`가
+    None 이면 상수 0.5(라우터 초기값 σ(0)=0.5 와 동일한 균등 혼합).
+
+    ⚠️ 이름 주의: 생성자 인자 `alpha`는 LoRA scale(α/r 규약, SharedLoRAQKV 와
+    동일)이고 속성 `self.alpha`는 혼합 계수 텐서다.
+    """
+
+    def __init__(self, base: nn.Linear, num_modalities: int, shared_r: int,
+                 residual_r: int, alpha: float = None):
+        super().__init__()
+        assert base.out_features % 3 == 0, "expected fused qkv linear (out = 3*attn_dim)"
+        self.base = base
+        self.in_features = base.in_features
+        self.out_features = base.out_features
+        self.attn_dim = base.out_features // 3
+        self.num_modalities = num_modalities
+        self.shared_r = shared_r
+        self.residual_r = residual_r
+        d = self.attn_dim
+        # 공유 어댑터(모달 무관) — Q/V 각각. b_*_s zero-init 이라 init 시 delta=0.
+        self.scale_s = (alpha if alpha is not None else float(shared_r)) / float(shared_r)
+        self.a_q_s = nn.Parameter(torch.empty(shared_r, self.in_features))
+        self.b_q_s = nn.Parameter(torch.zeros(d, shared_r))
+        self.a_v_s = nn.Parameter(torch.empty(shared_r, self.in_features))
+        self.b_v_s = nn.Parameter(torch.zeros(d, shared_r))
+        nn.init.kaiming_uniform_(self.a_q_s, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.a_v_s, a=math.sqrt(5))
+        # 센서별 어댑터 — arm A 와 같은 (M,r,in)/(M,d,r) 배열(SharedLoRAQKV 잔차항 동일).
+        self.scale_r = (alpha if alpha is not None else float(residual_r)) / float(residual_r)
+        self.a_q_r = nn.Parameter(torch.empty(num_modalities, residual_r, self.in_features))
+        self.b_q_r = nn.Parameter(torch.zeros(num_modalities, d, residual_r))
+        self.a_v_r = nn.Parameter(torch.empty(num_modalities, residual_r, self.in_features))
+        self.b_v_r = nn.Parameter(torch.zeros(num_modalities, d, residual_r))
+        for m in range(num_modalities):
+            nn.init.kaiming_uniform_(self.a_q_r[m], a=math.sqrt(5))
+            nn.init.kaiming_uniform_(self.a_v_r[m], a=math.sqrt(5))
+        self.active_modality = 0
+        # [P51] 배치-모달 경로용 per-element 모달 인덱스(센서별 항만 사용).
+        self.modality_ids: Optional[torch.Tensor] = None
+        # [E0] LoRA delta on/off 토글 — 기존 래퍼 규약과 동일. 기본 True.
+        self.enabled: bool = True
+        # [P56-C] 토큰별 혼합 계수 (B,N,1). 라우터 hook 이 주입하고 set_modality 가
+        # 모달 전환 시 None 으로 되돌린다(이전 모달의 α 가 새 모달에 새지 않게).
+        self.alpha: Optional[torch.Tensor] = None
+
+    @property
+    def weight(self):  # safety for code paths that touch qkv.weight directly
+        return self.base.weight
+
+    @property
+    def bias(self):
+        return self.base.bias
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.base(x)
+        if not self.enabled:
+            # [E0] 어댑터 비활성 — 공유·센서별 delta 없이 frozen 백본 출력 그대로.
+            return y
+        dq_s = F.linear(F.linear(x, self.a_q_s), self.b_q_s) * self.scale_s
+        dv_s = F.linear(F.linear(x, self.a_v_s), self.b_v_s) * self.scale_s
+        if self.modality_ids is not None:
+            ids = self.modality_ids
+            aq, bq = self.a_q_r[ids], self.b_q_r[ids]      # (B, r, in), (B, d, r)
+            av, bv = self.a_v_r[ids], self.b_v_r[ids]
+            dq_r = torch.einsum('bnr,bdr->bnd',
+                                torch.einsum('bni,bri->bnr', x, aq), bq) * self.scale_r
+            dv_r = torch.einsum('bnr,bdr->bnd',
+                                torch.einsum('bni,bri->bnr', x, av), bv) * self.scale_r
+        else:
+            m = self.active_modality
+            dq_r = F.linear(F.linear(x, self.a_q_r[m]), self.b_q_r[m]) * self.scale_r
+            dv_r = F.linear(F.linear(x, self.a_v_r[m]), self.b_v_r[m]) * self.scale_r
+        a = self.alpha
+        a = 0.5 if a is None else a.to(dtype=dq_s.dtype)   # (B,N,1) broadcast / 상수 폴백
+        dq = a * dq_s + (1.0 - a) * dq_r
+        dv = a * dv_s + (1.0 - a) * dv_r
+        d = self.attn_dim
+        y = torch.cat([y[..., :d] + dq, y[..., d:2 * d], y[..., 2 * d:] + dv], dim=-1)
+        return y
+
+
 class LayerNorm2d(nn.Module):
     """Channel-wise LayerNorm on (B, C, H, W) — ViTDet convention."""
 
@@ -344,9 +434,11 @@ class FrozenViTEncoder(nn.Module):
                  num_modalities: int = 4,
                  lora_r: int = 8,
                  lora_alpha: Optional[float] = None,
-                 lora_mode: str = 'per_modal',       # [E-LORA] per_modal | shared | shared_residual
+                 lora_mode: str = 'per_modal',       # [E-LORA] per_modal | shared | shared_residual | state_routed
                  lora_shared_r: int = 8,             # [E-LORA] shared_residual 공유항 rank
                  lora_residual_r: int = 8,           # [E-LORA] shared_residual 모달별 잔차항 rank
+                 lora_router_shared_r: int = 8,      # [P56-C] state_routed 공유항 rank(LORA_ROUTER.SHARED_R)
+                 lora_router_apply_from_block: int = 7,  # [P56-C] 이 블록(1-indexed)부터 StateRoutedLoRAQKV
                  lora_targets: Optional[Sequence[str]] = None,  # [E2] None → ['qkv'] (byte-동일)
                  tap_layers: Optional[Sequence[int]] = None,
                  num_taps: int = 0):
@@ -362,10 +454,18 @@ class FrozenViTEncoder(nn.Module):
 
         # [E-LORA] LoRA 구조 모드. per_modal(기본) 은 arm A = 기존 MultiModalLoRAQKV
         # 와 byte-동일해야 하므로, 이 분기 밖에서는 어떤 RNG 도 소비하지 않는다.
+        # [P56-C] state_routed : 블록 apply_from~ 은 공유+센서별 혼합(StateRoutedLoRAQKV,
+        # α 는 p56c_router.StateRouter 가 블록 k 출력에서 주입), 그 아래 블록은 per_modal.
         self.lora_mode = lora_mode
-        if lora_mode not in ('per_modal', 'shared', 'shared_residual'):
+        if lora_mode not in ('per_modal', 'shared', 'shared_residual', 'state_routed'):
             raise ValueError(f"[E-LORA] unknown LORA_MODE '{lora_mode}' "
-                             "(per_modal | shared | shared_residual)")
+                             "(per_modal | shared | shared_residual | state_routed)")
+        _apply_from = int(lora_router_apply_from_block)
+        if lora_mode == 'state_routed' and not (2 <= _apply_from <= len(self.backbone.blocks)):
+            raise ValueError(
+                f"[P56-C] APPLY_FROM_BLOCK={_apply_from} 가 백본 블록 범위 "
+                f"[2, {len(self.backbone.blocks)}] 밖이다 — 혼합을 적용할 블록이 "
+                f"없거나 전 블록이 혼합된다.")
 
         # [E2/S2] LoRA 타깃 파싱. None → ['qkv'] = 현행(Q/V), byte-동일.
         #   qkv      = fused qkv 의 Q/V (현행)            qkv_full = Q/K/V
@@ -419,9 +519,19 @@ class FrozenViTEncoder(nn.Module):
                 "per_modal 만 qkv_full/proj/fc1/fc2 를 지원한다. shared 계열은 "
                 "LORA_TARGETS: [qkv] 단독으로만 쓸 것.")
 
-        def _make_lora_qkv(qkv: nn.Linear):
+        def _make_lora_qkv(qkv: nn.Linear, blk_1idx: int):
             rk = target_r[qkv_target]
-            if lora_mode == 'per_modal':
+            if lora_mode == 'state_routed' and blk_1idx >= _apply_from:
+                # [P56-C] 블록 apply_from~ : 공유(shared_r)+센서별(rk=LORA_R) 혼합.
+                # α 는 p56c_router 의 hook 이 주입한다(model.py 배선). 그 아래 블록은
+                # 아래 per_modal 분기로 떨어진다(라우터 입력이 나오기 전 블록).
+                w = StateRoutedLoRAQKV(qkv, num_modalities, lora_router_shared_r,
+                                       rk, lora_alpha)
+                self.state_routed_layers.append(w)
+                return w
+            if lora_mode in ('per_modal', 'state_routed'):
+                # arm A. state_routed 의 블록 1~(apply_from−1) 도 이 경로다 —
+                # 라우터 입력(블록 k 출력)이 나오기 전이므로 센서별 LoRA 만 쓴다.
                 return MultiModalLoRAQKV(qkv, num_modalities, rk, _alpha_for(rk),
                                          include_k=include_k)
             if lora_mode == 'shared':
@@ -443,7 +553,9 @@ class FrozenViTEncoder(nn.Module):
         for p in self.backbone.parameters():
             p.requires_grad = False
         self.lora_layers: List[nn.Module] = []
-        for blk in self.backbone.blocks:
+        # [P56-C] state_routed 래퍼만 담는다(α 주입 대상). off 모드면 빈 리스트.
+        self.state_routed_layers: List[nn.Module] = []
+        for bi, blk in enumerate(self.backbone.blocks):
             attn = blk.attn
             if qkv_target is not None:
                 assert getattr(attn, 'qkv', None) is not None, \
@@ -452,7 +564,7 @@ class FrozenViTEncoder(nn.Module):
                 # by F.linear(x, self.qkv.weight, bias) (see module docstring).
                 if hasattr(attn, 'qkv_bias_separate') and getattr(attn, 'q_bias', None) is not None:
                     attn.qkv_bias_separate = True
-                wrapper = _tag(_make_lora_qkv(attn.qkv), qkv_target)
+                wrapper = _tag(_make_lora_qkv(attn.qkv, bi + 1), qkv_target)
                 attn.qkv = wrapper
                 self.lora_layers.append(wrapper)
             if 'proj' in target_r:
@@ -549,6 +661,11 @@ class FrozenViTEncoder(nn.Module):
     def set_modality(self, idx: int):
         for w in self.lora_layers:
             w.active_modality = idx
+            # [P56-C] 이전 모달 forward 에서 주입된 α 가 새 모달에 새지 않게 즉시
+            # 해제한다(다음 forward 중 블록 k hook 이 이 모달의 α 를 다시 심는다).
+            # state_routed 이외의 래퍼는 alpha 속성이 없어 no-op — off 경로 불변.
+            if getattr(w, 'alpha', None) is not None:
+                w.alpha = None
 
     def set_lora_enabled(self, flag: bool):
         """[E0] 전 블록의 LoRA 어댑터 delta 를 켜거나 끈다. flag=False 면 frozen
@@ -651,6 +768,12 @@ class FrozenViTEncoder(nn.Module):
         last_taps 는 tap 버퍼의 모달 평균으로 채운다 — 순차 경로의
         Σ_m taps/M 와 같은 결정론적 reduction 이라 P43 lateral 계약이 유지된다.
         """
+        if self.lora_mode == 'state_routed':
+            # [P56-C] 단일 배치 forward 라 블록 hook 이 모달 순서로 발화하지 않아
+            # α 를 모달별로 만들 수 없다(model.py 도 CMLC 조합을 거부한다).
+            raise NotImplementedError(
+                "[P56-C] LORA_MODE=state_routed 는 forward_coupled(CMLC)와 호환되지 "
+                "않는다 — 순차 forward(encoder.forward) 경로만 지원한다.")
         M, B = x_stack.shape[0], x_stack.shape[1]
         H, W = x_stack.shape[-2:]
         Hp, Wp = (H // self.patch) * self.patch, (W // self.patch) * self.patch
