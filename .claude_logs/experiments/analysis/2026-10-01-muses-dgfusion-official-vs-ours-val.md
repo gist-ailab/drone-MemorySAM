@@ -104,3 +104,27 @@ NAS `analysis_logs/muses_baseline_dgfusion_official_20261001/`: `official_val/`(
 - test 는 Codabench 가 날씨·주야 축별 19클래스까지만 주므로(8조합별 클래스 표 없음) 클래스×조건 대조는 하지 않았다.
 
 정리: val→test −3.52 의 주 원인은 얇은 클래스가 아니라 **희귀 대형·소형 클래스(motorcycle·truck·fence)의 val 과대평가**이고, 얇은 4클래스 열세는 val 과 test 에서 비슷하게 유지될 것으로 보인다(DGFusion test 클래스별 없이 추정).
+
+## 8. H-M1 "val-best 선택 편향" 검증 — 기각
+
+가설(판정 세션): 250장 val 에서 희귀 클래스 IoU 가 에폭마다 크게 요동해 val-best 선택이 운 좋은 에폭을 고르고(DGFusion 은 final-iter 라 선택이 없다), 그 우위가 test 에서 사라진다. 사전 반증 조건 = motorcycle·truck·fence 의 에폭 간 표준편차가 2 미만이면 기각.
+
+자료: 시드 824·825(yeon)·826(jarvis) `train.log` 의 `[Val]` 줄(2에폭 간격, 학습기 내부 채점 = 레터박스 1024 축이며 공식 native 채점과 클래스 값이 약간 다르다). 824·825 는 09-22 리부트 뒤 재개분이라 로그가 에폭 76~78 부터다. 원본 NAS `analysis_logs/muses_physaugoff_trainlogs_20261001/`(md5 서버 원본과 일치).
+
+| 시드 (val-best 에폭) | 마지막 40에폭 전체 mIoU 평균±sd | val-best | 선택 이득(val-best − 구간 평균) | final(ep300) val | best − final |
+|---|---|---|---|---|---|
+| 824 (ep202) | 82.45±0.11 | 82.71 | +0.26 | 82.37 | +0.34 |
+| 825 (ep258) | 82.15±0.06 | 82.40 | +0.25 | 82.21 | +0.19 |
+| 826 (ep172) | 82.06±0.06 | 82.43 | +0.37 | 82.06 | +0.37 |
+
+세 클래스의 에폭 간 표준편차(마지막 40에폭 / 에폭 120 이후 전체 / val-best ±20에폭):
+- 시드 824: motorcycle 0.30 / 1.63 / 0.73 · truck 0.83 / 1.03 / 1.05 · fence 0.28 / 0.80 / 0.89
+- 시드 825: motorcycle 0.28 / 1.30 / 0.91 · truck 0.14 / 0.45 / 0.23 · fence 0.22 / 0.73 / 0.43
+- 시드 826: motorcycle 0.62 / 1.02 / 0.85 · truck 0.20 / 0.40 / 0.54 · fence 0.41 / 0.88 / 1.07
+
+- **어느 창에서도 표준편차가 2 미만(최대 1.63)이라 사전 반증 조건에 따라 H-M1 은 기각**이다.
+- 선택 이득(val-best 에폭의 클래스 IoU − 그 창의 궤적 평균, 에폭 120 이후): motorcycle −0.43~+1.14 · truck +0.19~+0.56 · fence +0.53~+2.57. 세 클래스를 합쳐도 시드당 +1~+4 포인트로, test 낙차 합계 −54 포인트(§7)의 10% 미만이다. 전체 mIoU 의 선택 이득도 +0.2~+0.5(에폭 120 이후 평균 대비)로 val→test −3.52 에 비해 작다.
+- val-best 와 final 의 val 차이는 +0.19~+0.37 뿐이라 DGFusion 처럼 final 을 골라도 val 우위는 거의 그대로다.
+- **final ckpt 의 Codabench test 결과는 없다**: `MUSES_TEST_RESULTS_INDEX.md` 의 모든 제출이 val-best 한 개다(주석: "전 제출이 val-best ckpt 단일 선택"). 그래서 val-best 대 final 의 test 차이는 측정 불가다(필요하면 final ckpt 로 test 예측을 만들어 제출해야 하며 user 제출 사안).
+
+해석: 에폭 간 요동(sd 0.14~1.6)은 희귀 클래스 낙차(−13~−23)를 설명하기에 한참 작다. 에폭 선택이 아니라, **val 250장 대 test 750장의 표본 차이 또는 여러 레시피를 val 로 고른 과정의 과적합**(레시피 수준 선택, 가설 H-M2)이 남는 후보다. 이 분석으로는 둘을 가르지 못한다. 덧붙여 DGFusion 도 같은 val·test 를 쓰는데 val→test 가 −0.23 뿐이라, 표본 차이만으로는 우리의 −3.52 가 설명되지 않는다(DGFusion 의 희귀 클래스 test IoU 없이는 단정 불가).
