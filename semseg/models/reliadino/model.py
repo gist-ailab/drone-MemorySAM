@@ -85,6 +85,15 @@ class ReliaDINO(nn.Module):
                  lora_shared_r: int = 8,             # [E-LORA] shared_residual 공유항 rank
                  lora_residual_r: int = 8,           # [E-LORA] shared_residual 모달별 잔차항 rank
                  lora_targets: Optional[Sequence[str]] = None,  # [E2] LoRA 타깃 확장(qkv|qkv_full|proj|fc1|fc2)
+                 # [P56-C] state_routed 라우터(LORA_MODE=state_routed 일 때만 모듈·
+                 # hook·RNG 를 만든다 — 그 외 모드는 아래 블록 전체가 no-op, byte-동일).
+                 # BLOCK_FRAC→블록 k 의 토큰 출력(stop-grad)+센서 임베딩으로 α 를 만들어
+                 # APPLY_FROM_BLOCK~ 블록의 공유/센서별 LoRA 를 토큰별 혼합한다.
+                 lora_router_shared_r: int = 8,
+                 lora_router_block_frac: float = 0.25,
+                 lora_router_hidden: int = 64,
+                 lora_router_per_token: bool = True,
+                 lora_router_apply_from_block: int = 7,
                  fpn_dim: int = 256,
                  fusion_layers: int = 2,
                  fusion_heads: int = 8,
@@ -317,7 +326,15 @@ class ReliaDINO(nn.Module):
                  p55_weighted_mean: bool = True,
                  p55_self_attn: bool = False,
                  p55_var_w: float = 0.0,        # anti-collapse 분산 floor 가중 (0=off)
-                 p55_var_floor: float = 0.05):  # r 공간 std 하한(이하이면 벌점)
+                 p55_var_floor: float = 0.05,   # r 공간 std 하한(이하이면 벌점)
+                 # [P56-B] 거리 조건화 교차 attention (기본 OFF → byte-동일)
+                 range_bias_enable: bool = False,
+                 range_bias_source: Sequence[str] = ('depth', 'lidar'),
+                 range_bias_log_space: bool = True,
+                 range_bias_init_lambda: float = 0.0,
+                 range_bias_init_sigma: float = 1.0,
+                 range_bias_per_head: bool = True,
+                 range_bias_eps: float = 1e-3):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -337,6 +354,8 @@ class ReliaDINO(nn.Module):
             lora_r=lora_r, lora_alpha=lora_alpha,
             lora_mode=lora_mode, lora_shared_r=lora_shared_r,      # [E-LORA]
             lora_residual_r=lora_residual_r,
+            lora_router_shared_r=lora_router_shared_r,             # [P56-C]
+            lora_router_apply_from_block=lora_router_apply_from_block,
             lora_targets=lora_targets,                             # [E2]
             tap_layers=_e_tap_layers,                             # [E1]
             num_taps=_e_num_taps)                                 # [P43-T2/E1]
@@ -392,7 +411,18 @@ class ReliaDINO(nn.Module):
             qaf_weighted_mean=_eff_qaf_wmean, qaf_head_hidden=qaf_head_hidden,
             qaf_eps=qaf_eps, qaf_detach_mask=qaf_detach_mask,
             qaf_modal_names=list(modalities),
-            p55_supplies_pred=self.p55_enable)
+            p55_supplies_pred=self.p55_enable,
+            # [P56-B] 거리 조건화 교차 attention (default off → byte-동일)
+            range_bias_enable=range_bias_enable,
+            range_bias_log_space=range_bias_log_space,
+            range_bias_init_lambda=range_bias_init_lambda,
+            range_bias_init_sigma=range_bias_init_sigma,
+            range_bias_per_head=range_bias_per_head,
+            range_bias_eps=range_bias_eps)
+        # [P56-B] model 쪽 거리 맵 생성 상태(off면 forward 에서 아무것도 안 만든다).
+        self.p56b_range_bias = bool(range_bias_enable)
+        self.p56b_source = list(range_bias_source)
+        self._p56b_eps_present = 1e-6      # 모달 존재 판정(전부 0 = 결측) 임계
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
         # ── [P55] 무감독 다중블록 모달 게이트 ─────────────────────────────────
@@ -426,6 +456,40 @@ class ReliaDINO(nn.Module):
                 use_agreement=p55_use_agreement)
             self.p55_capture = P55BlockCapture(self.encoder, _blocks)
             self._p55_blocks = _blocks
+        # ── [P56-C] 센서 상태 조건부 LoRA 전문가 혼합(state_routed) ─────────────
+        # off(기본, lora_mode != 'state_routed')면 이 블록이 모듈·hook·RNG 를 전혀
+        # 만들지 않는다. 설계 = decisions/2026-09-30-p56-bc-modality-aware-design.md §2.
+        self.p56c_router = None
+        self._p56c_block = None
+        self._p56c_apply_from = None
+        self._p56c_block_frac = float(lora_router_block_frac)
+        if lora_mode == 'state_routed':
+            if cmlc_enable:
+                raise ValueError(
+                    "[P56-C] MODEL.LORA_MODE=state_routed 는 MODEL.CMLC.ENABLE 와 함께 "
+                    "쓸 수 없다 — CMLC 는 모달을 배치로 합친 단일 forward 라 블록 hook "
+                    "이 모달 순서로 발화하지 않아 α 를 모달별로 만들 수 없다.")
+            from .p55_gate import frac_to_block
+            from .p56c_router import StateRouter, attach_state_routed_alpha
+            n_blk = len(self.encoder.backbone.blocks)
+            _k = frac_to_block(float(lora_router_block_frac), n_blk)
+            if not (1 <= _k < int(lora_router_apply_from_block)):
+                # α 원천(블록 k 출력)이 나오기 전에 state_routed 블록이 돌면 상수 0.5
+                # 로 조용히 섞인다 — 검증 가능한 설정만 허용한다(기본 k=6 < from=7).
+                raise ValueError(
+                    f"[P56-C] APPLY_FROM_BLOCK({lora_router_apply_from_block}) 는 라우터 "
+                    f"블록(BLOCK_FRAC {lora_router_block_frac} → 블록 {_k})보다 커야 "
+                    f"한다(≥ {_k + 1}). 기본: frac 0.25 → 블록 6, apply_from 7.")
+            if not self.encoder.state_routed_layers:
+                raise RuntimeError(
+                    "[P56-C] encoder.state_routed_layers 가 비었다 — APPLY_FROM_BLOCK "
+                    "이 백본 깊이를 넘었는지 확인하라.")
+            self.p56c_router = StateRouter(
+                dim=dim, num_modalities=self.num_modalities,
+                hidden=int(lora_router_hidden), per_token=bool(lora_router_per_token))
+            attach_state_routed_alpha(self.encoder, self.p56c_router, _k)
+            self._p56c_block = _k
+            self._p56c_apply_from = int(lora_router_apply_from_block)
         # [P36-Det] Router->detection seam. The seg path adds routed_logits to the
         # head logits, which the detection path (extract_det_pyramid) never sees, so
         # without this the router is dead weight for det. Project routed_logits
@@ -1006,6 +1070,12 @@ class ReliaDINO(nn.Module):
             n_train = sum(p.numel() for p in self.parameters() if p.requires_grad)
             print(f"[E-LORA] mode={self.encoder.lora_mode} "
                   f"lora_trainable={n_lora:,} total_trainable={n_train:,}")
+        if _rank0 and self.p56c_router is not None:
+            # [P56-C] 학습 기동 로그 — [E-LORA] 바로 옆에 한 줄(라우터 구성 요약).
+            _rp = sum(p.numel() for p in self.p56c_router.parameters())
+            print(f"[P56-C] router params={_rp:,} "
+                  f"apply_from_block={self._p56c_apply_from} "
+                  f"block_frac={self._p56c_block_frac}", flush=True)
         if _rank0 and getattr(self.fusion, 'qaf_enable', False):
             _qp = (sum(p.numel() for p in self.fusion.quality_head.parameters())
                    if self.fusion.quality_head is not None else 0)
@@ -1507,6 +1577,54 @@ class ReliaDINO(nn.Module):
         logits, _ = self._decode(fused, routed)
         return logits
 
+    @torch.no_grad()
+    def _p56b_range_map(self, batched_input: List[torch.Tensor],
+                        hw: Tuple[int, int]):
+        """[P56-B] stride-16 토큰 거리 맵 + 유효 마스크 생성 (거리 편향용).
+
+        SOURCE(기본 depth→lidar) 우선순위대로, 이미지(배치 원소)마다 첫 번째로
+        '존재'하는 모달을 쓴다. 존재 판정 = 그 모달 텐서가 전부 0 이 아님(Degrader·
+        NM 결측은 정규화 후 정확히 0 텐서다).
+
+        depth: 로더가 /255 만 한 [0,1] HHA 3채널(`deliver.py` 가 /hha 폴더를 읽음).
+          **채널 0 만** 쓴다: 실측(cloud/test/MAP_7_point92/051850_depth_front.png)에서
+          채널 0 은 하늘 242·노면 2 로 거리에 단조(증가), 채널 1 은 높이(하늘 232·노면 10),
+          채널 2 는 각도(≈127 상수)라 채널 평균은 거리에 단조가 아니다(검수 정정 2026-09-30).
+          거리 편향은 |log r_i − log r_j| (대칭)만 쓰므로 이미지별 단조 변환은 토큰 순서를
+          보존한다 → 역변환 없이 채널 0 의 stride-16 평균을 거리 대용값으로 쓴다. 모든 토큰 유효.
+        lidar: 희소 투영([0,1], 0=무반환). 토큰값 = 16×16 패치 안 **반환(0 아님)**
+          화소 평균, 반환 화소가 없으면 그 토큰 무효.
+        반환: (range_map (B,1,h,w) ≥0, valid (B,1,h,w) bool)."""
+        h, w = int(hw[0]), int(hw[1])
+        B = batched_input[0].shape[0]
+        dev = batched_input[0].device
+        r = batched_input[0].new_zeros(B, 1, h, w)
+        valid = torch.zeros(B, 1, h, w, dtype=torch.bool, device=dev)
+        eps = 1e-6
+        for b in range(B):
+            for src in self.p56b_source:
+                if src not in self.modalities:
+                    continue
+                xb = batched_input[self.modalities.index(src)][b]      # (C,H,W)
+                if float(xb.abs().sum()) <= self._p56b_eps_present:    # 결측(전부 0)
+                    continue
+                if src == 'lidar':
+                    val = xb.mean(dim=0)                               # (H,W)
+                    ret = (xb.abs().sum(dim=0) > 0).float()            # 반환 화소
+                    num = F.adaptive_avg_pool2d((val * ret)[None, None], (h, w))[0, 0]
+                    den = F.adaptive_avg_pool2d(ret[None, None], (h, w))[0, 0]
+                    vb = den > 0
+                    rb = torch.where(vb, num / den.clamp_min(eps),
+                                     torch.zeros_like(num)).clamp_min(0.0)
+                else:                                                  # depth(HHA) 등
+                    mch = xb[0:1][None]                                # (1,1,H,W) HHA 채널 0(거리 단조)
+                    rb = F.adaptive_avg_pool2d(mch, (h, w))[0, 0].clamp_min(0.0)
+                    vb = torch.ones(h, w, dtype=torch.bool, device=dev)
+                r[b, 0] = rb
+                valid[b, 0] = vb
+                break                                                  # 첫 존재 소스 채택
+        return r, valid
+
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
                 gt_mask: Optional[torch.Tensor] = None,
                 qaf_labels: Optional[dict] = None):   # [P54-QAF] Degrader 라벨(열화 패스)
@@ -1592,11 +1710,16 @@ class ReliaDINO(nn.Module):
             self._p55_stash(_p55_r_token, _p55_r_scalar)
             # [P55-loo] 학습 시 grad 살아 있는 r 를 노출(train_p55_gate 의 BCE 항용).
             self._p55_r_token_live = _p55_r_token if self.training else None
+        # [P56-B] 거리 맵(off면 None → fusion 이 기존 경로 그대로). x = 드롭·마스킹 반영 입력.
+        _range_map = _range_valid = None
+        if self.p56b_range_bias:
+            _range_map, _range_valid = self._p56b_range_map(x, feats[0].shape[-2:])
         fused, aux = self.fusion(feats, gt_mask if self.training else None,
                                  img_mask=_img_mask, img_idx=self._img_idx,   # [P42-M1/C][P44-B3]
                                  presence=presence, epoch=self._current_epoch,
                                  qaf_labels=qaf_labels,                        # [P54-QAF]
-                                 qaf_pred_in=_qaf_pred_in)                     # [P55]
+                                 qaf_pred_in=_qaf_pred_in,                     # [P55]
+                                 range_map=_range_map, range_valid=_range_valid)  # [P56-B]
         if (self.p55_gate is not None and self.training and self.p55_var_w > 0
                 and _p55_r_token is not None):
             # [P55] anti-collapse: r 공간 std 가 floor 아래면 벌점(균등으로 밀지 않음).
@@ -2114,6 +2237,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         return build_p49(cfg, num_classes)
     fus = mc.get('FUSION', {}) or {}
     ab = fus.get('ATTN_BIAS', {}) or {}
+    rbias = fus.get('RANGE_BIAS', {}) or {}   # [P56-B] 거리 조건화 교차 attention
     fus_xa = fus.get('XATTN', {}) or {}      # [A/B trunk] FUSION.TRUNK: xattn 옵션
     gate = mc.get('GATE', {}) or {}
     veto = gate.get('VETO_FLOOR', {}) or {}
@@ -2150,6 +2274,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     #   OGM_GE(gradient 변조)는 optimizer step 결선이라 train_reliadino.py가
     #   MODEL.P47_2.OGM_GE를 직접 읽는다 (여기서는 head/손실만 만든다).
     cmlc = mc.get('CMLC', {}) or {}                    # [P51] block-경계 cross-modal coupling
+    lrc = mc.get('LORA_ROUTER', {}) or {}              # [P56-C] state_routed 라우터
     c3a = mc.get('C3_ADAPTIVE', {}) or {}              # [P52] C3 λ_c 컨트롤러
     uba = mc.get('UNIBAL_ADAPTIVE', {}) or {}          # [P52] UniBal λ_u,m 컨트롤러
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
@@ -2171,6 +2296,11 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         lora_shared_r=mc.get('LORA_SHARED_R', 8),            # [E-LORA]
         lora_residual_r=mc.get('LORA_RESIDUAL_R', 8),        # [E-LORA]
         lora_targets=mc.get('LORA_TARGETS', None),           # [E2] 기본 None=[qkv] byte-동일
+        lora_router_shared_r=int(lrc.get('SHARED_R', 8)),            # [P56-C]
+        lora_router_block_frac=float(lrc.get('BLOCK_FRAC', 0.25)),   # [P56-C]
+        lora_router_hidden=int(lrc.get('HIDDEN', 64)),               # [P56-C]
+        lora_router_per_token=bool(lrc.get('PER_TOKEN', True)),      # [P56-C]
+        lora_router_apply_from_block=int(lrc.get('APPLY_FROM_BLOCK', 7)),  # [P56-C]
         fpn_dim=mc.get('FPN_DIM', 256),
         fusion_layers=fus.get('NUM_LAYERS', 2),
         fusion_heads=fus.get('NUM_HEADS', 8),
@@ -2395,4 +2525,12 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         p55_self_attn=p55.get('SELF_ATTN', False),
         p55_var_w=p55.get('VAR_W', 0.0),
         p55_var_floor=p55.get('VAR_FLOOR', 0.05),
+        # [P56-B] 거리 조건화 교차 attention (기본 OFF → 키 없으면 byte-동일)
+        range_bias_enable=rbias.get('ENABLE', False),
+        range_bias_source=tuple(rbias.get('SOURCE', ('depth', 'lidar'))),
+        range_bias_log_space=rbias.get('LOG_SPACE', True),
+        range_bias_init_lambda=rbias.get('INIT_LAMBDA', 0.0),
+        range_bias_init_sigma=rbias.get('INIT_SIGMA', 1.0),
+        range_bias_per_head=rbias.get('PER_HEAD', True),
+        range_bias_eps=rbias.get('EPS', 1e-3),
     )

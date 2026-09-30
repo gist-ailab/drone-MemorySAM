@@ -86,6 +86,16 @@ def main():
     diff_rt = (raw_rt - raw).abs().max().item()
     all_pass &= check("정규화 왕복", diff_rt < TOL, f"max|Δ|={diff_rt:.2e}")
 
+    # --- uint8 배치 텐서(실제 기준선 입력)에서도 같은 결과인가: float 로 올려 계산해야 한다 ---
+    raw_u8 = raw.round().clamp(0, 255).to(torch.uint8)
+    gen_a = torch.Generator().manual_seed(11)
+    gen_b = torch.Generator().manual_seed(11)
+    out_u8, _ = raw_sp_noise(raw_u8, mean, std, 0.1, gen_a)
+    out_f, _ = raw_sp_noise(raw_u8.float(), mean, std, 0.1, gen_b)
+    diff_u8 = (out_u8 - out_f).abs().max().item()
+    all_pass &= check("uint8 입력", out_u8.dtype == torch.float32 and diff_u8 < TOL,
+                      f"dtype={out_u8.dtype} max|Δ|={diff_u8:.2e}")
+
     # --- RMM 마스크 수식 대조: rmm_mask(우리 도구) vs BF_ZERO_RATIO 식(keep=rand>=ratio) ---
     ratio = 0.5
     shape = (C, H, W)

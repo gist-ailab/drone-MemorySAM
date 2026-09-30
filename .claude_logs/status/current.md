@@ -12,7 +12,7 @@ paper_target: 단일 아키텍처(ReliaDINO)로 DELIVER·MUSES·MCubeS 전 모�
 headline: DELIVER test 56.24±0.42(best 56.73, legal v2 3시드) · val 69.51±0.15 · MUSES test 79.29±0.71(best 79.788, 2시드) · MCubeS 58.07±0.49 (출처: 아래 ① 표 = headline.yaml)
 sota_gap: DELIVER test mean −0.47 vs DGFusion 56.71 · val mean +0.72 vs CAFuser-CAA 68.79 · MUSES test mean −0.21 vs DGFusion 79.5 · MCubeS +2.17 vs StitchFusion 55.9 (출처: ① 표)
 next_gate: P56-A(모달 충돌 학습: Q2 레시피의 열화 패스에 "한 센서 영역이 자신 있게 틀린" 표본 추가) 40ep 스크린 2시드 — 사전 기준 = clean 24클래스 Δ vs Q2 ≥ −0.3 그리고 (실제 과노출·저노출·모션블러 케이스 mIoU 평균 Δ ≥ +1.0 또는 RGB 부분 결측 저하 20% 이상 감소), lab-plan DRN-260929-01
-blocker: 기준선(DGFusion) 강건 프로토콜 측정 담당 미정 · MUSES test 제출 보류(user 2026-09-29: 새 4모달 모델로 다시 만들 것)
+blocker: MUSES test 제출 보류(user 2026-09-29: 새 4모달 모델로 다시 만들 것)
 last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상태만 갱신)
 <!-- PI:END -->
 
@@ -46,7 +46,7 @@ last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상�
 
 1. **hpca100 공유 볼륨 89%**(여유 244G: 09-29 체크포인트 32개 이관 + 09-30 덤프·캐시 150.9G 삭제. [../infra/artifact-locations.md](../infra/artifact-locations.md) 2b 절). 공유 볼륨이라 계속 감시.
 2. **ISSUE-036** legal 하네스 재샘플 편차 — legal v2(nearest-exact) 채택 완료, v2 래퍼 가드 등재 잔여.
-3. **기준선 강건 측정 공백** — DGFusion·CAFuser 의 모달 결측·부분 열화 프로토콜 측정 담당 세션이 없다(도구 `tools/baseline_failure/robust_bench_eval.py` 동등성 미검증). CAFuser (b) 재학습은 user 가 09-24 중단.
+3. **기준선 강건 측정 진행 중**(09-30 15:58 bengio, dgfusion 세션, DRN-260930-02): DGFusion (a)·(b) 61케이스, 등가검증 통과. CAFuser 는 미측정(재학습 (b)는 user 가 09-24 중단).
 4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 · **ISSUE-035** 헤드라인 ckpt 경로 기록(이슈 표 갱신 대기).
 5. **lecun 배치 금지**(user 2026-09-17) · jarvis GPU0 예약 · jarvis 에서 `/ailab_mat2` 접근 금지(sshfs 정지).
 6. ~~ISSUE-038 hpca100 미커밋 코드~~ → 09-23 회수·develop 커밋으로 종결.
