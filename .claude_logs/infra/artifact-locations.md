@@ -218,6 +218,18 @@ ssh hpca100 "md5sum /home/jovyan/SSDb/jemo_maeng/<상대경로>"   # 표의 md5 
 ```
 
 서버의 실행 스크립트·eval config 가 가리키던 경로는 바꾸지 않았다. 옮긴 체크포인트를 다시 쓰려면 위 명령으로 같은 경로에 되돌려 놓는다.
+
+### 2b-1. 덤프·캐시 삭제 — 2026-09-30 (user 승인 "덤프랑 캐시도 삭제해줘")
+
+보존 없이 삭제했다(재현 가능한 산출물만). 목록 = NAS `ckpts/hpca100_archive_20260929/DUMP_DELETED_20260930.tsv`, 서버 `~/SSDb/jemo_maeng/dump_del_20260930.tsv`.
+
+| 대상 | 용량 | 무엇 | 왜 지워도 되는가 |
+|---|---|---|---|
+| `cache/probea2`, `cache/probea2_7b_smoke` | 55.9G | 2026-08-11 프로브 A2 특징 캐시(파일 18개) | 8월 프로브 종료, 재생성 가능 |
+| 14개 런의 `*_val_pred/seg_viz`·`*_test_pred/seg_viz` | 94.6G | legal 재채점 때 만든 시각화 PNG(런당 val 1,733장·test 1,270장) | 체크포인트가 NAS 에 있어 재생성 가능. 예측 라벨 PNG(`*_pred/seg/`, 런당 약 0.05G)는 남겼다 |
+| `dump_e1screen` | 0.4G | 체크포인트 이관 뒤 남은 잔여 파일 | 체크포인트는 NAS 에 보존 |
+
+대상 런 14개: ckpt/ 의 b0screen821·e1screen821·epoch90(C3-only) · rescore_armc/armc821 · p55_0929 두 팔 · outputs 의 E13s3·E14·E15·E17·E1shared·R1·R2(시드821)·Q2(시드902). 합계 150.9G, hpca100 여유 92G → 244G(96% → 89%). 실행 중 프로세스가 참조하던 경로는 없었다.
 <!-- hpca100-archive-20260929:end -->
 
 ## 3. 복원 방법
