@@ -13,4 +13,4 @@
 # 예시(아래 두 줄은 주석이며 실제 행은 비워 둔다):
 # muphys_826	1	bengio,yeon	2	/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM	configs/muses/muses_P52_E1_seed902.yaml	muses_p52_e1_s902	40	E1(공유 임베딩) 3시드 계열, 시드 902 배치 예시
 # deliver_r1_903	2	any	1	/SSDe/jemo_maeng/src/Project/Drone/drone-MemorySAM	configs/deliver/deliver_P52_R1_seed903.yaml	deliver_p52_r1_s903	40	R1 시드 확장(903) 1GPU 스크린 배치 예시
-# [일시중단 - yeon 파일단위 동기화 시도 중, 09-30 21:1x] p56c_s821	1	jarvis	1	/home/jemo_maeng/src/drone-MemorySAM-develop	configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_P56C.yaml	p56c_s821	40	P56-C(센서 상태 조건부 LoRA 전문가 혼합) 시드821, 생각정리 세션 지시 09-30, teacher ckpt jarvis 로컬 md5 c648f925 확인됨, git pull 최신(ec176da) 확인. GPU0 포함 빈 GPU 규칙(≤2000MiB&&≤10%util)만 적용(user 09-30 직접 확인, ban 해제)
+p56c_s821	1	jarvis	1	/home/jemo_maeng/src/drone-MemorySAM-develop	configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_P56C.yaml	p56c_s821	40	P56-C(센서 상태 조건부 LoRA 전문가 혼합) 시드821, 생각정리 세션 지시 09-30, teacher ckpt jarvis 로컬 md5 c648f925 확인됨, git pull 최신(ec176da) 확인. GPU0 포함 빈 GPU 규칙(≤2000MiB&&≤10%util)만 적용(user 09-30 직접 확인, ban 해제)
