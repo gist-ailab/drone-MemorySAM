@@ -26,7 +26,13 @@ from tools.missing_modality_eval import gaussian_noise, sp_noise
 
 
 def _norm(raw, mean, std):
-    """raw: (C,H,W). mean, std: (C,) 또는 (C,1,1) 텐서. 반환: 정규화된 (C,H,W)."""
+    """raw: (C,H,W). mean, std: (C,) 또는 (C,1,1) 텐서. 반환: 정규화된 (C,H,W) float32.
+
+    기준선 배치 텐서는 uint8 이다. 그대로 두면 평균·표준편차가 정수로 잘리고 (raw-mean) 이
+    0 아래에서 되돌아 감긴다 → 반드시 float32 로 올려서 계산한다(2026-09-30 등가검증에서 clean
+    mIoU 55.68 → 44.39 로 무너진 원인).
+    """
+    raw = raw.to(torch.float32)
     mean_ = mean.to(dtype=raw.dtype, device=raw.device).reshape(-1, 1, 1)
     std_ = std.to(dtype=raw.dtype, device=raw.device).reshape(-1, 1, 1)
     return (raw - mean_) / std_, mean_, std_

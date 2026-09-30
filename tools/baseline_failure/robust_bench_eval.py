@@ -41,7 +41,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from tools.baseline_failure import common  # noqa: E402
 from tools.baseline_failure.probe_dgfusion import (  # noqa: E402
-    MODAL_KEYS, deliver_gt_paths, modal_order_from_cfg)
+    MODAL_KEYS, modal_order_from_cfg)
 from tools.missing_modality_eval import (  # noqa: E402
     _case_miou, _write_combo_csv, build_cases, write_outputs)
 
@@ -110,11 +110,53 @@ def build_all_cases(protocol, modals, rmm_ratios, nm_density, nm_gaussian_std, s
     return cases, gaussian_case
 
 
+def finish_outputs(args, cases, gaussian_case, hists, modals, model_path, cfg_path):
+    """일반 평가와 샤드 병합이 공유하는 CSV/summary 출력 경로."""
+    base_out, summary = write_outputs(
+        args.out, args.split, cases, hists, len(modals), modals, list(common.CLASSES),
+        args.rmm_ratios, args.nm_density, args.protocol, False, False,
+        args.nm_gaussian_std, model_path, cfg_path)
+
+    if gaussian_case is not None:
+        miou, _ = _case_miou(hists[gaussian_case.id])
+        summary["NM_gaussian"] = {"std": args.nm_gaussian_std, "mIoU": round(miou, 4)}
+        _write_combo_csv(base_out / "nm_gaussian.csv", [gaussian_case], hists,
+                         list(common.CLASSES))
+        (base_out / "summary.json").write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"[robust-bench] NM Gaussian(std={args.nm_gaussian_std}) mIoU = {miou:.4f}")
+
+    print(f"[robust-bench] clean mIoU = {summary['clean_mIoU']}")
+    print(f"[robust-bench] -> {base_out}")
+
+
+def merge_hists(paths):
+    """샤드별 케이스 히스토그램을 합치고 중복 id 의 일치 여부를 확인한다."""
+    hists = {}
+    modals = None
+    for path in paths:
+        with np.load(path, allow_pickle=False) as shard:
+            shard_modals = list(shard["modals"].astype(str))
+            if modals is None:
+                modals = shard_modals
+            elif shard_modals != modals:
+                raise RuntimeError(f"샤드 모달 순서가 다르다: {path}: {shard_modals} != {modals}")
+            ids = list(shard["ids"].astype(str))
+            arrays = shard["hists"]
+            if arrays.shape != (len(ids), common.N_CLASSES, common.N_CLASSES):
+                raise RuntimeError(f"샤드 hist shape 이 잘못됐다: {path}: {arrays.shape}")
+            for cid, hist in zip(ids, arrays):
+                if cid in hists and not np.array_equal(hists[cid], hist):
+                    raise RuntimeError(f"중복 케이스 hist 가 다르다: {cid} ({path})")
+                hists[cid] = hist.copy()
+    return hists, modals
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config-file", required=True)
-    ap.add_argument("--weights", required=True)
+    ap.add_argument("--config-file")
+    ap.add_argument("--weights")
     ap.add_argument("--split", default="test", choices=["val", "test"])
     ap.add_argument("--out", required=True)
     ap.add_argument("--protocol", default="all", choices=["emm", "rmm", "nm", "all"])
@@ -129,6 +171,10 @@ def main():
                          "--only clean 'emm|present=LIDAR+EVENT+DEPTH' nm0.1")
     ap.add_argument("--list-cases", action="store_true",
                     help="케이스 id 목록만 찍고 종료(모델 로딩 없이, 스모크용)")
+    ap.add_argument("--opts", nargs="*", default=[], help="detectron2 config override")
+    ap.add_argument("--dump_hists", help="평가한 케이스의 혼동행렬을 npz 샤드로 저장")
+    ap.add_argument("--merge", nargs="+", metavar="SHARD.npz",
+                    help="모델 로딩 없이 npz 샤드를 병합해 출력")
     args = ap.parse_args()
 
     modals_fixed = list(MODAL_KEYS)   # id 목록만 볼 때는 cfg 없이도 케이스를 만들 수 있게
@@ -143,14 +189,34 @@ def main():
                   f"ratio={c.ratio} density={c.density}")
         return
 
+    if args.merge:
+        hists, modals = merge_hists(args.merge)
+        cases, gaussian_case = build_all_cases(
+            args.protocol, modals, args.rmm_ratios, args.nm_density,
+            args.nm_gaussian_std, args.seed)
+        all_cases = cases + ([gaussian_case] if gaussian_case else [])
+        missing = [c.id for c in all_cases if c.id not in hists]
+        if missing:
+            raise RuntimeError(f"샤드에 없는 케이스 id: {missing}")
+        shard_paths = ", ".join(args.merge)
+        finish_outputs(args, cases, gaussian_case, hists, modals,
+                       shard_paths, shard_paths)
+        return
+
+    if not args.config_file or not args.weights:
+        ap.error("일반 평가에는 --config-file 과 --weights 가 필요하다")
+
     # 지연 import — 기준선 repo 에서만 사용 가능.
     import torch  # noqa: F401
     from detectron2.checkpoint import DetectionCheckpointer
+    from detectron2.evaluation import SemSegEvaluator
     from train_net import Trainer, setup
 
     class _A:
         config_file = args.config_file
-        opts = ["MODEL.WEIGHTS", args.weights, "MODEL.IS_TRAIN", "False"]
+        opts = ["MODEL.WEIGHTS", args.weights, "MODEL.IS_TRAIN", "False",
+                "DATASETS.TEST_SEMANTIC", f"('deliver_semantic_{args.split}',)",
+                "OUTPUT_DIR", str(Path(args.out) / "_d2log")] + args.opts
         eval_only = True
         inference_only = False
         resume = False
@@ -190,19 +256,34 @@ def main():
               else cfg.DATASETS.TEST[0])
     loader = Trainer.build_test_loader(cfg, ds_name)
 
-    n_classes = common.N_CLASSES
-    ignore = common.IGNORE_LABEL
-    hists = {c.id: np.zeros((n_classes, n_classes), dtype=np.int64) for c in all_cases}
+    # 공식 평가 경로 그대로 쓴다: DELIVER 의 GT 는 RGBA PNG 라 stock SemSegEvaluator 는 읽지 못하고,
+    # train_net.Trainer.build_evaluator 가 create_deliver_gt_sem_seg_loading_fn 을 꽂아 준다.
+    evaluators = {}
+    for c in all_cases:
+        ev = Trainer.build_evaluator(cfg, ds_name)
+        if not isinstance(ev, SemSegEvaluator):
+            raise RuntimeError(f"build_evaluator 가 SemSegEvaluator 하나가 아니다: {type(ev)}")
+        ev._output_dir = None   # 케이스 61개 x 1897장 예측 RLE 를 메모리에 쌓지 않는다
+        evaluators[c.id] = ev
+    # process 가 GT 배열을 제자리에서 고치므로 마지막 1장만 캐시하고 매번 복제해서 준다.
+    original_loader = next(iter(evaluators.values())).sem_seg_loading_fn
+    last_gt = {"key": None, "arr": None}
+
+    def cached_gt(*a, **k):
+        key = (tuple(str(x) for x in a), tuple(sorted((kk, str(vv)) for kk, vv in k.items())))
+        if last_gt["key"] != key:
+            last_gt["key"], last_gt["arr"] = key, original_loader(*a, **k)
+        return last_gt["arr"].copy()
+
+    for evaluator in evaluators.values():
+        evaluator.sem_seg_loading_fn = cached_gt
+        evaluator.reset()
 
     n_seen = 0
     for bi, batch in enumerate(loader):
         if args.limit and bi >= args.limit:
             break
         d0 = batch[0]
-        file_name = d0.get("file_name", "")
-        _, sem_gt_path = deliver_gt_paths(file_name, args.deliver_root)
-        gt = common.load_gt_deliver(sem_gt_path)
-
         # base_list: 우리 도구의 "정규화된 배치 리스트"와 같은 형태 — 모달 순서대로
         # (1,C,H,W) 정규화 텐서. 배치 차원 1 은 missing_modality_eval 의 BS1 규약과
         # 같다(정규화 텐서 shape 이 같아야 case.apply_fn·gen 의 rand 소비가 등가다).
@@ -212,8 +293,10 @@ def main():
             if v is None:
                 raise RuntimeError(f"배치 dict 에 모달 {m} 키가 없다: {list(d0)}")
             mean, std = stats[m]
-            mean_ = mean.to(v.dtype).view(-1, 1, 1)
-            std_ = std.to(v.dtype).view(-1, 1, 1)
+            # 배치 텐서는 uint8 이다. 그대로 빼면 0 아래에서 되돌아 감기고 평균이 정수로 잘린다 → float32.
+            v = v.to(torch.float32)
+            mean_ = mean.to(torch.float32).view(-1, 1, 1)
+            std_ = std.to(torch.float32).view(-1, 1, 1)
             base_list.append(((v - mean_) / std_).unsqueeze(0))
 
         with torch.no_grad():
@@ -222,47 +305,43 @@ def main():
                 d_case = dict(d0)
                 for j, m in enumerate(modals):
                     mean, std = stats[m]
-                    mean_ = mean.to(imgs[j].dtype).view(-1, 1, 1)
-                    std_ = std.to(imgs[j].dtype).view(-1, 1, 1)
-                    raw_j = (imgs[j].squeeze(0) * std_ + mean_).to(v.dtype)
+                    mean_ = mean.to(torch.float32).view(-1, 1, 1)
+                    std_ = std.to(torch.float32).view(-1, 1, 1)
+                    # float32 그대로 준다(반올림·uint8 캐스트 없음): 우리 도구도 정규화 공간 float 로 주입한다.
+                    raw_j = imgs[j].squeeze(0) * std_ + mean_
                     d_case[m] = raw_j
                     if m == "CAMERA":
                         d_case["image"] = raw_j
                 out = model([d_case])
-                sem = out[0].get("sem_seg")
-                if sem is None:
-                    raise RuntimeError("모델 출력에 sem_seg 가 없다.")
-                sem = sem.float().cpu().numpy()
-                pred = (sem.argmax(0).astype(np.uint8) if sem.ndim == 3
-                       else sem.astype(np.uint8))
-                if pred.shape != gt.shape:
-                    pred = common.resize_nearest(pred, gt.shape[0], gt.shape[1])
-                hists[case.id] += common.confusion_matrix(pred, gt, n_classes, ignore)
+                evaluators[case.id].process([d0], out)
         n_seen += 1
         if n_seen % 200 == 0:
             print(f"[robust-bench] {n_seen} 장 처리", flush=True)
 
     print(f"[robust-bench] 총 {n_seen} 장 완료")
 
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    hists = {}
+    for case in all_cases:
+        evaluator = evaluators[case.id]
+        n = evaluator._num_classes
+        if n != common.N_CLASSES:
+            raise RuntimeError(f"클래스 수 불일치: evaluator={n}, common={common.N_CLASSES}")
+        hists[case.id] = evaluator._conf_matrix[:n, :n].T.astype(np.int64)
 
-    base_out, summary = write_outputs(
-        args.out, args.split, cases, hists, len(modals), modals, list(common.CLASSES),
-        args.rmm_ratios, args.nm_density, args.protocol, False, False,
-        args.nm_gaussian_std, args.weights, args.config_file)
+    if args.dump_hists:
+        dump_path = Path(args.dump_hists)
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(dump_path, ids=np.array([c.id for c in all_cases]),
+                 hists=np.stack([hists[c.id] for c in all_cases]),
+                 modals=np.array(modals), n_seen=n_seen)
 
-    if gaussian_case is not None:
-        miou, _ = _case_miou(hists[gaussian_case.id])
-        summary["NM_gaussian"] = {"std": args.nm_gaussian_std, "mIoU": round(miou, 4)}
-        _write_combo_csv(base_out / "nm_gaussian.csv", [gaussian_case], hists,
-                         list(common.CLASSES))
-        (base_out / "summary.json").write_text(
-            json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"[robust-bench] NM Gaussian(std={args.nm_gaussian_std}) mIoU = {miou:.4f}")
-
-    print(f"[robust-bench] clean mIoU = {summary['clean_mIoU']}")
-    print(f"[robust-bench] -> {base_out}")
+    for cid, h in hists.items():
+        print(f"[robust-bench] CASE {cid} mIoU={_case_miou(h)[0]:.4f}")
+    if args.only or "clean" not in hists:
+        print("shard/only 모드: 요약 파일 생략(--merge 로 합쳐 낸다)")
+        return
+    finish_outputs(args, cases, gaussian_case, hists, modals,
+                   args.weights, args.config_file)
 
 
 if __name__ == "__main__":
