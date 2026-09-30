@@ -36,3 +36,4 @@
 | [2026-07-02-p31-redesign-proposal.md](2026-07-02-p31-redesign-proposal.md) | P31 재설계 제안 — research vault 전수 매핑 기반 (Seg core + 학습 레버 + Det 분리 트랙) | 20 |
 | [2026-06-16-sam3-porting-plan.md](2026-06-16-sam3-porting-plan.md) | SAM3 RBMA 포팅 플랜 & 체크리스트 | 11 |
 - [2026-09-26 P55 자기감독 모달 신뢰도 게이트 제안 초안](2026-09-26-p55-self-supervised-reliability-gate-proposal.md) — 외부 레이블 없이 leave-one-out 손실로 감독되는 토큰 게이트, Q2 위; 1단계 오라클 여유 프로브(학습 0) 선행
+- [2026-09-30 P56-B·C 설계서 — modality-aware 융합 구조](2026-09-30-p56-bc-modality-aware-design.md) — B 거리 조건화 attention(거리 차이 로짓 편향)·C 센서 상태 조건부 LoRA 혼합(얕은 블록 라우터), 사전 게이트, P56-A 의존도 분석, N-RGBX 실행 위험 점검
