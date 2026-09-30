@@ -11732,7 +11732,7 @@ items:
   expected_cost: A100 1장 × 약 3.5일 × 2시드
   priority: 22
   owner_role: method
-  status: queued
+  status: running
   tags:
   - P56
   - lora
@@ -11803,16 +11803,25 @@ items:
     없이 GPU 2장이면 wall 약 7~10시간
   priority: 10
   owner_role: specialist-baseline
-  status: queued
+  status: done
   tags:
   - deliver
   - baseline
   - robust
   created: '2026-09-30'
-  updated: '2026-09-30'
-  closed: null
+  updated: '2026-10-01'
+  closed: '2026-10-01'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 항목(채택 = 결과를 기록으로 확정) + 가설 판정: DGFusion (a) 발표 재현 vs (b) 열화 재학습, 같은
+      프로토콜(test 1,897장·시드0·61케이스). EMM 15조합 평균 31.53 → 45.52 로 가설 전반 채택(열화 학습이 결측
+      강건성을 줌). 후반(depth 의존 유지)은 (b) 에서 반증(depth 통째 결측 −33.3 → −4.7). 우리 Q2 3시드는 (b)
+      대비 clean +1.8, EMM +2.5(48.06), depth 부분 저하 약 절반(0.98/2.04/2.64 vs 2.51/2.88/3.47),
+      노이즈 저하 1/2~1/4 로 모든 축 우위 → 강건 우위 주장 성립(단일 런·백본 차이 각주). 원본 NAS analysis_logs/baseline_robust_dgfusion_{a,b}_20261001,
+      판정 대장 2026-10-01 행'
+    date: '2026-10-01'
+    by: jemo
   analysis: null
   superseded_by: null
