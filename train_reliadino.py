@@ -759,6 +759,14 @@ def main(cfg, gpu, save_dir, logger):
             # 무작위로 clean 로짓을 오염시키므로 반드시 QAF off 아키텍처로 만든다.
             _tcfg = _copy.deepcopy(cfg)
             _tcfg['MODEL'].setdefault('QAF', {})['ENABLE'] = False
+            # [P56-B/C 정정 2026-09-30] 교사는 체크포인트(E1 = 센서별 LoRA, 거리 편향·P55 없음)의
+            # 아키텍처로 만들어야 한다. 학생 cfg 를 그대로 쓰면 state_routed LoRA(블록 7~24 의
+            # 공유/센서별 키가 체크포인트에 없어 LoRA 델타 0 = 어댑터 없는 백본)나 RangeBias 가
+            # 교사에 섞여 KD 목표가 오염된다(yeon P56-C 1차 기동: missing=151 unexpected=72).
+            _tcfg['MODEL']['LORA_MODE'] = str(_qaf_tc.get('TEACHER_LORA_MODE', 'per_modal'))
+            _tcfg['MODEL'].pop('LORA_ROUTER', None)
+            _tcfg['MODEL'].setdefault('FUSION', {}).setdefault('RANGE_BIAS', {})['ENABLE'] = False
+            _tcfg['MODEL'].setdefault('P55', {})['ENABLE'] = False
             qaf_teacher = build_reliadino(_tcfg, num_classes).to(device).eval()
             _ts = torch.load(_tck, map_location='cpu')
             _sd = _ts.get('model_state_dict', _ts)
@@ -768,6 +776,12 @@ def main(cfg, gpu, save_dir, logger):
             if is_rank0:
                 logger.info(f"[QAF-T] teacher(E1, QAF off) 로드: {_tck} "
                             f"missing={len(_ld.missing_keys)} unexpected={len(_ld.unexpected_keys)}")
+            # 교사 아키텍처 ≠ 체크포인트면 즉시 중단(KD 목표 오염 방지). 허용 = 완전 일치.
+            if len(_ld.missing_keys) or len(_ld.unexpected_keys):
+                raise RuntimeError(
+                    f"[QAF-T] teacher 아키텍처가 체크포인트와 불일치: missing={_ld.missing_keys[:5]}... "
+                    f"unexpected={_ld.unexpected_keys[:5]}... — TEACHER_CKPT 가 E1(per_modal LoRA, "
+                    f"QAF/RangeBias/P55 off) 체크포인트인지, TRAIN.QAF.TEACHER_LORA_MODE 가 맞는지 확인")
         elif _tck and is_rank0:
             logger.info(f"[QAF-T] TEACHER_CKPT={_tck} 파일 없음 — KD 항 0 으로 진행")
         if is_rank0:

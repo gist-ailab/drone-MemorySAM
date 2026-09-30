@@ -97,6 +97,12 @@ scripts/remote_exp.sh status bengio
 - **DDP 실패 'marked ready twice'**: SAM3 trainer는 `static_graph=True` 필요(기록상 해결됨).
 - **로그가 안 보임**: 학습이 아직 첫 출력 전이거나 즉시 죽었을 수 있음 → `status`로 해당 window가 살아있는지 확인.
 - **hinton**: 포트 200 복구 시 `ssh-copy-id hinton` 후 `servers.conf`의 hinton 줄 주석 해제 + repo_path 입력.
+- 🔴 **lecun 공유 env `MMSS_SAM`은 P46/ReliaDINO 계열(P46·Q2·P54·P56)을 못 돌린다**(ISSUE-039: timm=0.4.12가 DINOv3 백본 미지원, SAM2 계보 P8-P28 전용으로 세팅됨). P46/ReliaDINO를 lecun에서 돌리려면 **개인 conda env `p56_reliadino`**(2026-09-30 신설, python 3.11.16·torch 2.3.0+cu121·torchvision 0.18.0+cu121·timm 1.0.24, `MMSS_SAM`과 완전 격리)를 쓴다. DINOv3-L 오프라인 로딩 검증 완료(params=303,079,424). 기동 예시:
+  ```bash
+  ssh lecun 'tmux new-session -d -s <세션명> "source ~/miniconda3/etc/profile.d/conda.sh && conda activate p56_reliadino && cd /SSDb/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM && export PYTHONPATH=$PWD:$PWD/semseg/models/sam2 && export HF_HOME=/SSDc/jemo_maeng/hf_cache_p56 && export HF_HUB_OFFLINE=1 && export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python && export CUDA_VISIBLE_DEVICES=<GPU> && torchrun --standalone --nproc_per_node=1 --master_port=<포트> train_reliadino.py --cfg <config> > logs/<세션명>.log 2>&1"'
+  ```
+  HF 캐시(`/SSDc/jemo_maeng/hf_cache_p56/hub/models--timm--vit_large_patch16_dinov3.lvd1689m/`, 약 2.3GB)는 hpca100의 실제 캐시 위치(`/home/jovyan/SSDb/cache/huggingface`, 문서상 `~/.cache/huggingface`가 아님— 혼동 주의)에서 옮겨 온 것. 다른 백본(vit_7b 등)이 필요하면 같은 방식으로 추가 이관.
+  autoplace 큐(`queue.tsv`)는 서버당 conda_env 하나만 지원해 lecun을 이 env로 자동배치하지 못한다 — 기동은 수동으로, GPU는 매번 `nvidia-smi` 재확인 필수(회전이 잦다).
 
 ---
 
