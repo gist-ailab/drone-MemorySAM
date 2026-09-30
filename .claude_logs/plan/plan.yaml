@@ -11699,7 +11699,7 @@ items:
   expected_cost: A100 1장 × 약 3.5일 × 2시드(+ B-2 거리 위치 임베딩 ablation 1시드)
   priority: 21
   owner_role: method
-  status: idea
+  status: running
   tags:
   - P56
   - fusion
@@ -11732,7 +11732,7 @@ items:
   expected_cost: A100 1장 × 약 3.5일 × 2시드
   priority: 22
   owner_role: method
-  status: idea
+  status: queued
   tags:
   - P56
   - lora
