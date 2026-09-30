@@ -317,7 +317,15 @@ class ReliaDINO(nn.Module):
                  p55_weighted_mean: bool = True,
                  p55_self_attn: bool = False,
                  p55_var_w: float = 0.0,        # anti-collapse 분산 floor 가중 (0=off)
-                 p55_var_floor: float = 0.05):  # r 공간 std 하한(이하이면 벌점)
+                 p55_var_floor: float = 0.05,   # r 공간 std 하한(이하이면 벌점)
+                 # [P56-B] 거리 조건화 교차 attention (기본 OFF → byte-동일)
+                 range_bias_enable: bool = False,
+                 range_bias_source: Sequence[str] = ('depth', 'lidar'),
+                 range_bias_log_space: bool = True,
+                 range_bias_init_lambda: float = 0.0,
+                 range_bias_init_sigma: float = 1.0,
+                 range_bias_per_head: bool = True,
+                 range_bias_eps: float = 1e-3):
         super().__init__()
         self.modalities = list(modalities)
         self.num_modalities = len(self.modalities)
@@ -392,7 +400,18 @@ class ReliaDINO(nn.Module):
             qaf_weighted_mean=_eff_qaf_wmean, qaf_head_hidden=qaf_head_hidden,
             qaf_eps=qaf_eps, qaf_detach_mask=qaf_detach_mask,
             qaf_modal_names=list(modalities),
-            p55_supplies_pred=self.p55_enable)
+            p55_supplies_pred=self.p55_enable,
+            # [P56-B] 거리 조건화 교차 attention (default off → byte-동일)
+            range_bias_enable=range_bias_enable,
+            range_bias_log_space=range_bias_log_space,
+            range_bias_init_lambda=range_bias_init_lambda,
+            range_bias_init_sigma=range_bias_init_sigma,
+            range_bias_per_head=range_bias_per_head,
+            range_bias_eps=range_bias_eps)
+        # [P56-B] model 쪽 거리 맵 생성 상태(off면 forward 에서 아무것도 안 만든다).
+        self.p56b_range_bias = bool(range_bias_enable)
+        self.p56b_source = list(range_bias_source)
+        self._p56b_eps_present = 1e-6      # 모달 존재 판정(전부 0 = 결측) 임계
         self.fpn = SimpleFPN(dim, fpn_dim)
         self.head = FPNSegHead(fpn_dim, num_classes)
         # ── [P55] 무감독 다중블록 모달 게이트 ─────────────────────────────────
@@ -1507,6 +1526,53 @@ class ReliaDINO(nn.Module):
         logits, _ = self._decode(fused, routed)
         return logits
 
+    @torch.no_grad()
+    def _p56b_range_map(self, batched_input: List[torch.Tensor],
+                        hw: Tuple[int, int]):
+        """[P56-B] stride-16 토큰 거리 맵 + 유효 마스크 생성 (거리 편향용).
+
+        SOURCE(기본 depth→lidar) 우선순위대로, 이미지(배치 원소)마다 첫 번째로
+        '존재'하는 모달을 쓴다. 존재 판정 = 그 모달 텐서가 전부 0 이 아님(Degrader·
+        NM 결측은 정규화 후 정확히 0 텐서다).
+
+        depth: 로더가 /255 만 한 [0,1] HHA 3채널. 토큰값 = 채널평균의 stride-16
+          평균(adaptive_avg_pool2d). HHA 는 실거리의 **단조** 근사(disparity ~ 1/depth)
+          이고, 거리 편향은 |log r_i − log r_j| (대칭)만 쓰므로 역수를 포함한 임의의
+          이미지별 단조 변환이 토큰 순서를 보존한다 → 거리 역변환 없이 HHA 세기 평균을
+          거리 대용값으로 쓴다. 모든 토큰 유효.
+        lidar: 희소 투영([0,1], 0=무반환). 토큰값 = 16×16 패치 안 **반환(0 아님)**
+          화소 평균, 반환 화소가 없으면 그 토큰 무효.
+        반환: (range_map (B,1,h,w) ≥0, valid (B,1,h,w) bool)."""
+        h, w = int(hw[0]), int(hw[1])
+        B = batched_input[0].shape[0]
+        dev = batched_input[0].device
+        r = batched_input[0].new_zeros(B, 1, h, w)
+        valid = torch.zeros(B, 1, h, w, dtype=torch.bool, device=dev)
+        eps = 1e-6
+        for b in range(B):
+            for src in self.p56b_source:
+                if src not in self.modalities:
+                    continue
+                xb = batched_input[self.modalities.index(src)][b]      # (C,H,W)
+                if float(xb.abs().sum()) <= self._p56b_eps_present:    # 결측(전부 0)
+                    continue
+                if src == 'lidar':
+                    val = xb.mean(dim=0)                               # (H,W)
+                    ret = (xb.abs().sum(dim=0) > 0).float()            # 반환 화소
+                    num = F.adaptive_avg_pool2d((val * ret)[None, None], (h, w))[0, 0]
+                    den = F.adaptive_avg_pool2d(ret[None, None], (h, w))[0, 0]
+                    vb = den > 0
+                    rb = torch.where(vb, num / den.clamp_min(eps),
+                                     torch.zeros_like(num)).clamp_min(0.0)
+                else:                                                  # depth(HHA) 등
+                    mch = xb.mean(dim=0, keepdim=True)[None]           # (1,1,H,W)
+                    rb = F.adaptive_avg_pool2d(mch, (h, w))[0, 0].clamp_min(0.0)
+                    vb = torch.ones(h, w, dtype=torch.bool, device=dev)
+                r[b, 0] = rb
+                valid[b, 0] = vb
+                break                                                  # 첫 존재 소스 채택
+        return r, valid
+
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
                 gt_mask: Optional[torch.Tensor] = None,
                 qaf_labels: Optional[dict] = None):   # [P54-QAF] Degrader 라벨(열화 패스)
@@ -1592,11 +1658,16 @@ class ReliaDINO(nn.Module):
             self._p55_stash(_p55_r_token, _p55_r_scalar)
             # [P55-loo] 학습 시 grad 살아 있는 r 를 노출(train_p55_gate 의 BCE 항용).
             self._p55_r_token_live = _p55_r_token if self.training else None
+        # [P56-B] 거리 맵(off면 None → fusion 이 기존 경로 그대로). x = 드롭·마스킹 반영 입력.
+        _range_map = _range_valid = None
+        if self.p56b_range_bias:
+            _range_map, _range_valid = self._p56b_range_map(x, feats[0].shape[-2:])
         fused, aux = self.fusion(feats, gt_mask if self.training else None,
                                  img_mask=_img_mask, img_idx=self._img_idx,   # [P42-M1/C][P44-B3]
                                  presence=presence, epoch=self._current_epoch,
                                  qaf_labels=qaf_labels,                        # [P54-QAF]
-                                 qaf_pred_in=_qaf_pred_in)                     # [P55]
+                                 qaf_pred_in=_qaf_pred_in,                     # [P55]
+                                 range_map=_range_map, range_valid=_range_valid)  # [P56-B]
         if (self.p55_gate is not None and self.training and self.p55_var_w > 0
                 and _p55_r_token is not None):
             # [P55] anti-collapse: r 공간 std 가 floor 아래면 벌점(균등으로 밀지 않음).
@@ -2114,6 +2185,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         return build_p49(cfg, num_classes)
     fus = mc.get('FUSION', {}) or {}
     ab = fus.get('ATTN_BIAS', {}) or {}
+    rbias = fus.get('RANGE_BIAS', {}) or {}   # [P56-B] 거리 조건화 교차 attention
     fus_xa = fus.get('XATTN', {}) or {}      # [A/B trunk] FUSION.TRUNK: xattn 옵션
     gate = mc.get('GATE', {}) or {}
     veto = gate.get('VETO_FLOOR', {}) or {}
@@ -2395,4 +2467,12 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         p55_self_attn=p55.get('SELF_ATTN', False),
         p55_var_w=p55.get('VAR_W', 0.0),
         p55_var_floor=p55.get('VAR_FLOOR', 0.05),
+        # [P56-B] 거리 조건화 교차 attention (기본 OFF → 키 없으면 byte-동일)
+        range_bias_enable=rbias.get('ENABLE', False),
+        range_bias_source=tuple(rbias.get('SOURCE', ('depth', 'lidar'))),
+        range_bias_log_space=rbias.get('LOG_SPACE', True),
+        range_bias_init_lambda=rbias.get('INIT_LAMBDA', 0.0),
+        range_bias_init_sigma=rbias.get('INIT_SIGMA', 1.0),
+        range_bias_per_head=rbias.get('PER_HEAD', True),
+        range_bias_eps=rbias.get('EPS', 1e-3),
     )

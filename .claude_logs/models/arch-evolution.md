@@ -8,6 +8,12 @@ moved: 2026-07-08
 
 > 최종 업데이트: 2026-08-04
 
+## P56-B — 거리 조건화 교차 attention (2026-09-30 구현)
+
+**상태**: 구현 완료(학습 대기). 설계 = [decisions/2026-09-30-p56-bc-modality-aware-design.md](../decisions/2026-09-30-p56-bc-modality-aware-design.md) §1. **기제**: 교차 attention 로짓에 거리 차 편향 `bias_ij = −softplus(λ_h)·|ρ_i−ρ_j|/exp(σ_h)`(ρ=log(r+eps), head h별)을 더해 같은 거리대 토큰을 묶는다. r = Depth(HHA 세기, 단조 대용) → 없으면 LiDAR(반환 화소 평균, 무반환 토큰 무효) 순의 stride-16 토큰 거리 맵(장면 속성 = 모달 무관, `model._p56b_range_map`). 편향은 쿼리 모달·두 층에 걸쳐 동일해 **한 번만** 계산·공유한다. **파일**: `semseg/models/reliadino/fusion.py`(`CrossModalAttentionLayer.forward`에 `pair_bias` 인자, `RangeBias` 모듈, forward `range_map`/`range_valid`), `model.py`(`_p56b_range_map` + 배선), config `MODEL.FUSION.RANGE_BIAS.{ENABLE,SOURCE,LOG_SPACE,INIT_LAMBDA,INIT_SIGMA,PER_HEAD,EPS}`. **config**: `configs/hpca100-deliver_rgbdel_P46_c3only_seed{20260821,20260902}_screen40_P56B.yaml`(P56-A 계승 + RANGE_BIAS on). **off 등가**: `RANGE_BIAS.ENABLE=false`면 RangeBias 미생성 → forward·state_dict byte-동일; `INIT_LAMBDA=0`(softplus raw −18)이면 λ≈0 으로 초기 forward도 off 와 동일하되 grad 는 살아 있다. **테스트**: `tools/tests/test_range_bias.py`(off·초기 등가·유효 마스크·λ grad·형상 6개 통과).
+
+
+
 ## P47-2 — UniBal (Uni-modal Balance): 모달별 독립 aux head + uni-modal CE (2026-08-04)
 
 **상태**: **구현 완료 (학습 대기)**. 제안 = [decisions/2026-08-03-p47-mub-muses-proposal.md](../decisions/2026-08-03-p47-mub-muses-proposal.md) §3 **D-2**(문서 표기; 네이밍 규칙 변경으로 코드·config는 `P47_2`/`p47_2`). Base = **P39.1-rank 4모달 seed2 동결**(val 82.35 완주분 — gated_mlp trunk + VICReg + P36 router + M2F, 하이퍼 무변경). 파일: `semseg/models/reliadino/p47.py`(신규), `model.py`·`train_reliadino.py`(배선), `tools/smoke_p47.py`(신규 CPU 스모크). config: `configs/hpca100-muses_rgbelr_P47_2_unibal_4modal.yaml`(MUSES **4모달** img/lidar/event/radar, EPOCHS 300).
