@@ -44,7 +44,7 @@ last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상�
 
 ## ③ 열린 블로커 (2026-09-29)
 
-1. **hpca100 공유 볼륨 96%**(여유 99G, 09-29 체크포인트 32개 이관: [../infra/artifact-locations.md](../infra/artifact-locations.md) 2b 절). 공유 볼륨이라 계속 감시.
+1. **hpca100 공유 볼륨 89%**(여유 244G: 09-29 체크포인트 32개 이관 + 09-30 덤프·캐시 150.9G 삭제. [../infra/artifact-locations.md](../infra/artifact-locations.md) 2b 절). 공유 볼륨이라 계속 감시.
 2. **ISSUE-036** legal 하네스 재샘플 편차 — legal v2(nearest-exact) 채택 완료, v2 래퍼 가드 등재 잔여.
 3. **기준선 강건 측정 공백** — DGFusion·CAFuser 의 모달 결측·부분 열화 프로토콜 측정 담당 세션이 없다(도구 `tools/baseline_failure/robust_bench_eval.py` 동등성 미검증). CAFuser (b) 재학습은 user 가 09-24 중단.
 4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 · **ISSUE-035** 헤드라인 ckpt 경로 기록(이슈 표 갱신 대기).
@@ -59,4 +59,4 @@ last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상�
 - **P55(자기감독 게이트) 계열 종료**: 오라클 순 여유 조건별 1.1~1.8 · 분할 손실만으로 학습한 팔 test 57.59, 자기 leave-one-out 손실을 목표로 준 팔 test 57.67(게이트가 사실상 상수) — 둘 다 Q2 57.73 과 같은 수준. 곱셈 게이트는 주 후보에서 제외.
 - **실행 중**: P56-A(모달 충돌 학습) hpca100 시드821 GPU1(09-29 07:08 UTC 기동)·시드902 GPU2(12:24 UTC 기동), 에폭당 약 2.1시간, 완주 예상 10-03. P56-B(거리 조건화 attention)·P56-C(환경 조건 LoRA 전문가 혼합)는 A 뒤(user 승인 09-29).
 - **MUSES**: PhysAug-off 공정선 3시드 공식 val 82.30±0.14(824·825·826). test 제출은 보류(user 09-29).
-- **미판정 적체**: lab-plan judging 219건(2026-09-26 전량 이관분, review:method 태그) — 생각정리 세션이 순차 판정.
+- **적체 판정 완료(09-30)**: 2026-09-26 이관분 judging 219건 전부 lab-plan verdict 로 기록(채택·기각·미확정, 각 항목에 근거 요약). 남은 미판정 없음.
