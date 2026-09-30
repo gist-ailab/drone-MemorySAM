@@ -105,7 +105,7 @@ li{max-width:72ch}
     <span class="pill">DELIVER test <b>56.24 ± 0.42</b> (DGFusion 56.71)</span>
     <span class="pill">DELIVER val <b>69.51 ± 0.15</b> (CAFuser-CAA 68.79)</span>
     <span class="pill">센서 결측 15조합 평균 <b>40.0 → 48.1</b></span>
-    <span class="pill">진행 중 <b>모달 충돌 학습 (P56-A)</b> · B·C 설계 완료</span>
+    <span class="pill">학습 중 <b>P56-A · B · C</b> 각 2시드 (첫 완주 10-03)</span>
   </div>
 </header>
 
@@ -194,7 +194,7 @@ li{max-width:72ch}
       <text x="752" y="312" class="sub">B · 거리(Depth·LiDAR 측정값)를 attention 기하로</text>
       <text x="752" y="328" class="sub">C · 얕은 블록 통계로 공유/센서별 LoRA 를 토큰마다 혼합</text>
       <text x="752" y="344" class="sub">신호는 레이블이 아니라 센서 자체와 손실에서</text>
-      <text x="752" y="358" class="sub">= P56-B·C(설계 완료, 구현 전)</text>
+      <text x="752" y="358" class="sub">= P56-B·C(구현·검수 완료, 학습 중)</text>
       <path class="ln" d="M340 311 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
       <path class="lnours" d="M710 311 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
 
@@ -235,7 +235,7 @@ li{max-width:72ch}
     <span class="key"><span class="sw frozen"></span>동결(학습 안 함)</span>
     <span class="key"><span class="sw box"></span>학습하는 기존 부품</span>
     <span class="key"><span class="sw ours"></span>채택·검증된 우리 설계</span>
-    <span class="key"><span class="sw plan"></span>승인됨, 구현 전</span>
+    <span class="key"><span class="sw plan"></span>학습 중 (B·C, 시드 821·902)</span>
   </div>
   <figure>
     <div class="scroll">
@@ -390,7 +390,7 @@ li{max-width:72ch}
     <span class="key"><span class="sw frozen"></span>동결</span>
     <span class="key"><span class="sw dead"></span>추가했다가 종료된 모듈 (P55)</span>
     <span class="key"><span class="sw ours"></span>이번 카드가 바꾸는 부분 (학습 중)</span>
-    <span class="key"><span class="sw plan"></span>승인됨, 구현 전</span>
+    <span class="key"><span class="sw plan"></span>학습 중 (B·C, 시드 821·902)</span>
   </div>
   <figure>
     <div class="scroll">
@@ -471,7 +471,7 @@ li{max-width:72ch}
       <!-- 패널 4: P56-B/C -->
       <g transform="translate(780,0)">
         <text x="10" y="18" class="hd">P56-B · C</text>
-        <text x="10" y="33" class="sub">계산 자체를 바꿈 · 구현 전</text>
+        <text x="10" y="33" class="sub">계산 자체를 바꿈 · 학습 중</text>
         <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
         <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text>
         <rect class="plan" x="20" y="120" width="210" height="22" rx="4"/><text x="125" y="135" text-anchor="middle" class="sub">C · 공유 LoRA + 센서별 LoRA 를 토큰마다 혼합</text>
@@ -863,7 +863,7 @@ li{max-width:72ch}
       </ul>
     </div>
     <div class="card line-plan">
-      <span class="state todo">B · 구현 전</span>
+      <span class="state todo">B · 학습 중 (2시드)</span>
       <h3>거리 조건화 attention</h3>
       <p>Depth 와 LiDAR 는 값 자체가 거리다. 이 거리값을 교차 모달 attention 의 위치 정보로 넣어, 같은 거리대의 토큰끼리 더 잘 찾도록 한다. 센서가 이미 재고 있는 물리량이므로 외부 레이블이 아니다.</p>
       <ul>
@@ -872,7 +872,7 @@ li{max-width:72ch}
       </ul>
     </div>
     <div class="card line-plan">
-      <span class="state todo">C · 구현 전</span>
+      <span class="state todo">C · 학습 중 (2시드)</span>
       <h3>환경 조건 LoRA 전문가 혼합</h3>
       <p>센서별 LoRA 와 전 센서 공유 LoRA 를 함께 두고, 얕은 블록의 통계로 토큰마다 섞는 비율을 정한다. 공유 LoRA 는 Depth 열화에 강하고 센서별 LoRA 는 clean 에 강하다는 실측에서 출발한다.</p>
       <ul>
@@ -889,7 +889,7 @@ li{max-width:72ch}
       <tr><td>쿼리 분할 헤드, 특징 피라미드</td><td>주장하지 않음</td><td>표준 부품.</td></tr>
       <tr><td>두 패스 학습 + 교사 증류</td><td>바탕 레시피로만</td><td>모달 드롭아웃과 증류는 각각 알려진 기법. 조합이 clean 손해 없이 강건성을 주는 것은 실측으로 확인했다.</td></tr>
       <tr><td>조건별 의존도 분석</td><td>보조 기여</td><td>외부 신호를 쓰는 기준선의 의존도 이동이 외부 신호 덕이 아닐 수 있음을 같은 측정으로 보였다.</td></tr>
-      <tr><td>A · B · C</td><td>주 기여 후보</td><td>셋 다 외부 레이블 없이 작동한다. A 는 검증 중이고 B·C 는 구현 전이다.</td></tr>
+      <tr><td>A · B · C</td><td>주 기여 후보</td><td>셋 다 외부 레이블 없이 작동한다. 셋 다 40에폭 스크린 2시드로 학습 중이며(A 는 hpca100, B·C 는 hpca100·yeon), 판정은 완주 후 사전 기준으로만 한다.</td></tr>
     </tbody>
   </table>
   </div>
@@ -902,7 +902,9 @@ li{max-width:72ch}
     <li>DELIVER test 와 MUSES test 의 clean 성능은 기존 1위와 평균 기준으로 0.2~0.5 낮다. 1위 주장은 DELIVER val 과 MCubeS 에서만 가능하다.</li>
     <li>강건성 수치는 40에폭 스크린 모델 기준이다. 헤드라인 모델(200에폭)에 같은 학습을 적용한 결과는 아직 없다.</li>
     <li>A · B · C 의 최근접 선행 연구 조사가 끝나지 않았다. 조사에서 나온 2026년 논문 식별자는 원문 확인 전이다.</li>
-    <li>모달 충돌 학습은 첫 에폭을 지난 단계다. 효과는 아직 모른다.</li>
+    <li>A · B · C 는 학습 중이라 효과를 아직 모른다. A 의 첫 완주는 10-03, B·C 는 그 뒤다. 중간 에폭 수치는 판정에 쓰지 않는다.</li>
+    <li>같은 센서 조합(RGB+X 2모달)에서 MM SAM-adapter 와 직접 비교한 수치는 구 레시피(P46-CTR, RGB-D test 54.14, −3.21) 뿐이다. 현재 레시피의 2모달 교사 3런(RGB+Depth·LiDAR·Event)이 bengio 에서 학습 중이며, 그 결과가 2모달 비교선과 N-RGBX ablation 의 출발점이 된다.</li>
+    <li>강건 우위가 DGFusion 한 기준선에만 성립하는지는 두 번째 융합 기준선(CAFuser 를 같은 열화 커리큘럼으로 재학습)으로 확인할 예정이며, 아직 착수 전이다.</li>
   </ul>
 </section>
 
