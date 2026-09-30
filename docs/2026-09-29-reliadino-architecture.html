@@ -135,8 +135,8 @@ li{max-width:72ch}
       <text x="392" y="54" class="hd">모달 제거 실측 (DELIVER test)</text>
       <text x="392" y="72" class="sub">DGFusion depth 제거: 맑음 −23.1 · 야간 −32.6 · 저노출 −37.1</text>
       <text x="392" y="88" class="sub">event·LiDAR 제거: 전 조건 ±0.4 (CAFuser 도 같음)</text>
-      <text x="392" y="104" class="sub">우리 Q2 (prior 없음): 야간 RGB 제거 −5.2, depth 제거 −10.1</text>
-      <text x="392" y="120" class="sub">→ 이동은 외부 prior 없이도 생긴다</text>
+      <text x="392" y="104" class="sub">우리 E1 (prior 없음, clean 학습): depth 제거 −23.5 ~ −38.7 — 같은 패턴</text>
+      <text x="392" y="120" class="sub">→ 과의존은 prior 탓이 아니라 clean 학습 탓 · Q2(두 패스)는 −3.9 ~ −13.4</text>
 
       <rect class="ours" x="740" y="34" width="290" height="92" rx="6"/>
       <text x="752" y="54" class="hd">레이블 없이 학습 유인으로</text>
@@ -836,12 +836,13 @@ li{max-width:72ch}
   <table>
     <thead><tr><th>모델</th><th class="num">RGB 제거 · 맑음</th><th class="num">RGB 제거 · 야간</th><th class="num">Depth 제거 · 맑음</th><th class="num">Depth 제거 · 야간</th><th class="num">Depth 제거 · 저노출</th></tr></thead>
     <tbody>
-      <tr><td>DGFusion (외부 신호 사용)</td><td class="num">−9.58</td><td class="num">−9.02</td><td class="num">−23.11</td><td class="num">−32.59</td><td class="num">−37.14</td></tr>
-      <tr><td>ReliaDINO (외부 신호 없음)</td><td class="num">−8.62</td><td class="num">−5.15</td><td class="num">−3.87</td><td class="num">−10.07</td><td class="num">−13.41</td></tr>
+      <tr><td>DGFusion (외부 신호 사용, clean 학습, test)</td><td class="num">−9.58</td><td class="num">−9.02</td><td class="num">−23.11</td><td class="num">−32.59</td><td class="num">−37.14</td></tr>
+      <tr><td>ReliaDINO E1 (외부 신호 없음, clean 학습, val)</td><td class="num">−9.65</td><td class="num">−5.36</td><td class="num">−23.52</td><td class="num">−28.73</td><td class="num">−38.72</td></tr>
+      <tr><td>ReliaDINO Q2 (외부 신호 없음, 두 패스 학습, val)</td><td class="num">−8.62</td><td class="num">−5.15</td><td class="num">−3.87</td><td class="num">−10.07</td><td class="num">−13.41</td></tr>
     </tbody>
   </table>
   </div>
-  <p class="gate"><b>외부 신호가 없어도 의존도는 상황에 따라 움직인다.</b> 우리 모델은 야간에 RGB 의존을 40% 줄이고 Depth 의존을 2.6배로 늘린다. DGFusion 의 RGB 의존은 야간에도 6% 만 줄어든다. 또 DGFusion 은 Depth 하나에 크게 기대고 있어 Depth 가 빠지면 23~37 이 떨어지지만, 우리 모델은 4~13 만 떨어진다.</p>
+  <p class="gate"><b>Depth 과의존은 구조가 아니라 clean 학습의 성질이고, 그것을 푼 것은 학습이다.</b> 외부 신호가 없는 우리 E1 도 clean 으로만 배우면 DGFusion 과 똑같이 Depth 가 빠질 때 24~39 를 잃는다(합성 depth 가 완벽해서 거기에 기댄다). 구조를 그대로 두고 두 패스로 학습한 Q2 는 같은 상황에서 4~13 만 잃는다. 야간에 RGB 의존이 줄어드는 이동은 세 모델 모두에 있어 특정 구조의 공로가 아니다(E1 45%, Q2 40%, DGFusion 6% 감소).</p>
   <p class="note">두 행은 측정 분할이 다르다(DGFusion 은 test 1897장, 우리는 val 2005장). 같은 test 분할 측정이 진행 중이며, 그 결과가 나오기 전까지 이 표는 방향만 보여 준다.</p>
 </section>
 
