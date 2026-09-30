@@ -8,7 +8,7 @@
 
 | 파일 | 역할 |
 |---|---|
-| `scripts/servers.conf` 6번째 `policy` 필드 | launch 정책. `ban:1,2`(GPU 금지) / `off`(서버 금지) / 없음·`-`(무제한). **GPU 예약은 메모리가 아니라 여기 기록** (예: jarvis `ban:0`) |
+| `scripts/servers.conf` 6번째 `policy` 필드 | launch 정책. `ban:1,2`(GPU 금지) / `off`(서버 금지) / 없음·`-`(무제한). **일시 회피 요청은 메모리가 아니라 여기 기록**하고 기간이 끝나면 `-`로 되돌린다(상시 금지 없음, user 2026-09-30) |
 | `scripts/remote_exp.sh` | `run` 시 정책 강제(off 서버 거부, auto-pick banned 제외, 명시적 지정도 banned 겹치면 거부) + launch 성공 시 허브에 `.watchdog/runs/<run_id>/manifest.json` 자동 등록 (로그 파일명 타임스탬프는 허브에서 생성 → 결정론적) |
 | `scripts/watchdog.sh` | cron 5분 주기 scan. 상태 머신 + 알림. `bash scripts/watchdog.sh <subcmd>` |
 | `tests/test_watchdog.sh` | 오프라인 테스트 119개 (ssh는 PATH stub, 실서버 접근 0) |

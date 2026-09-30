@@ -1814,27 +1814,41 @@ items:
   analysis: experiments/judgment-ledger.md 행 56,66,68,69,77
   superseded_by: null
 - id: DRN-260926-58
-  title: CAFuser (b) · 열화 커리큘럼 재학습(detectron2) — 재개 대기
-  question: '원문: plan.md 실행 중 절 주석 — 09-24 12:x user 지시로 중단(iter90000 ckpt 보존), bengio
-    이관 시도했으나 CUDA 불능, 재개 시점 미정'
-  hypothesis: 미정
-  falsification: 미정
-  change: CAFuser 발표 레시피 + 열화 커리큘럼
-  baseline: null
+  title: CAFuser (b) · 열화 커리큘럼 재학습 재개(iter 90k→267k, detectron2) + 같은 강건 프로토콜 61케이스
+    측정 — 두 번째 융합 기준선
+  question: Q2 3시드의 강건 우위(EMM 48.06·depth 부분 저하 절반)가 DGFusion 한 기준선에만 성립하는지, depth
+    보조 감독이 없는 다른 융합 구조(CAFuser)를 같은 열화 커리큘럼으로 재학습해도 성립하는지
+  hypothesis: CAFuser (b) 는 DGFusion (b) 와 같은 수준(EMM 15조합 평균 44~47, depth 통째 결측 저하
+    −5 안팎)으로 강건해지지만 Q2 3시드(EMM 48.06, depth 부분 저하 0.98/2.04/2.64)를 넘지 못한다 — 강건 우위는
+    커리큘럼만의 효과가 아니라 대칭 융합 구조와 결합된 효과
+  falsification: CAFuser (b) 의 EMM 15조합 평균이 Q2 3시드 48.06 이상이거나 depth 부분 저하(r .25/.5/.75)가
+    Q2 이하이면 '강건 우위 = 구조 효과' 주장을 철회하고 커리큘럼 효과로만 기술한다. clean 이 54.38 미만이면 기준선으로 무효(재학습
+    설정 재검토)
+  change: '학습: CAFuser 발표 레시피 + DGFusion (b) 와 같은 열화 커리큘럼(iter 90k 체크포인트에서 재개, 약 177k
+    iter 잔여). 평가: tools/baseline_failure/robust_bench_eval.py 로 test 1897장 61케이스(clean·EMM
+    14·RMM 14×3·NM 3+Gaussian) 측정, 시드0'
+  baseline: CAFuser (a) 공식 재학습(test 55.38 final, DRN-260926-92) · DGFusion (b)(clean
+    54.77, EMM 45.52) · Q2 3시드(clean 56.59, EMM 48.06)
   configs: []
   launch: null
-  success_criteria: 미정
-  sample_basis: null
-  expected_cost: null
-  priority: 105
-  owner_role: manager
-  status: idea
+  success_criteria: '측정 항목: ①재개 런이 완주하고 clean test 가 CAFuser (a) 55.38 − 1.0 이상(열화
+    학습으로 인한 clean 손실이 DGFusion (b) 수준 −0.9 안이어야 유효한 기준선) ②61케이스 결과 JSON·CSV 를 NAS
+    analysis_logs/baseline_robust_cafuser_b_<날짜>/ 에 md5 와 함께 보존 ③판정 대장에 DGFusion (b)·Q2
+    와 같은 표(EMM 평균·depth/RGB 부분 저하·NM 저하)로 한 행 기록'
+  sample_basis: 단일 런(기준선 재학습은 시드 반복 없음 — DGFusion (b) 와 같은 규칙, 각주로 명시). 평가는 test 전수·시드0
+    고정 결정적 계산
+  expected_cost: 학습 약 177k iter × 0.6 s/it ≈ 30 GPU-시간(3090 4장 DDP, OOM 여부 미실측 — 기동
+    전 스모크 필수) + 평가 약 7 GPU-시간. bengio 빈 GPU 가 P56-C 시드902 뒤에도 남을 때만 배치(P56 계열·N-RGBX
+    교사보다 후순위)
+  priority: 40
+  owner_role: specialist-baseline
+  status: queued
   tags:
   - deliver
   - baseline
   - resume-wait
   created: '2026-09-26'
-  updated: '2026-09-26'
+  updated: '2026-10-01'
   closed: null
   runs: []
   results: []
@@ -11823,5 +11837,88 @@ items:
       판정 대장 2026-10-01 행'
     date: '2026-10-01'
     by: jemo
+  analysis: null
+  superseded_by: null
+- id: DRN-261001-01
+  title: MUSES-기준선 · DGFusion 공식 MUSES 가중치(4모달, radar 포함)로 val 250장 재현 → 우리 E1M(P39.1-rank
+    PhysAug-off) val 덤프와 클래스·조건·거리 비교
+  question: MUSES 에서 우리 3모달 모델이 DGFusion(test 79.5)에 못 미치는 원인이 어느 클래스·조건(fog/rain/snow
+    × day/night)·거리 구간에 있는지, DGFusion 공식 가중치를 같은 val 250장에 돌려 덤프를 나란히 놓으면 특정할 수 있는가(user
+    결정 2026-09-26)
+  hypothesis: 차이는 특정 조건(야간·눈)과 원거리 소형 클래스에 집중되고, radar 를 쓰는 DGFusion 이 그 구간에서 앞선다
+    — 즉 격차는 전 클래스 균일 열세가 아니라 조건·거리 국소 열세
+  falsification: 공식 가중치가 README 값 대비 −1.0 초과로 재현되지 않으면 그 덤프로는 원인 특정 불가 → 재학습 경로로 전환.
+    Δ가 전 클래스에 균일(조건·거리 국소성 없음)하면 가설 반증(격차 원인은 구조·백본 전반)
+  change: 학습 없음. ①bengio 에 MUSES val 250장(RGB·event·lidar·radar 투영본) 스테이징 ②DGFusion
+    저장소 README 의 공식 MUSES 가중치로 val 추론 → 클래스별 IoU·조건별·거리 구간별 덤프 ③우리 E1M val 덤프(같은 250장)와
+    표로 대조. 공식 가중치 재현이 실패(README 수치 대비 −1.0 초과)할 때만 DGFusion MUSES 재학습(180k iter, 4090×4
+    약 28시간)
+  baseline: DGFusion README 게시 MUSES val 수치(재현 목표) · 우리 E1M(P39.1-rank PhysAug-off)
+    val 덤프 · 우리 공식 test 최고 79.788(P39.1-rank 시드2)
+  configs: []
+  launch: null
+  success_criteria: '측정 항목: ①공식 가중치 val mIoU 가 README 게시값 ±0.3 안(재현 성립) ②클래스 19개 ×
+    조건 × 거리 구간의 Δ(우리 − DGFusion) 표를 experiments/analysis/ 문서와 판정 대장에 기록 ③덤프·로그를 NAS
+    analysis_logs/muses_baseline_dgfusion_official_<날짜>/ 에 md5 와 함께 보존'
+  sample_basis: val 250장 전수, 추론은 결정적(시드 불필요). 조건별 표본 25~34장이라 조건별 수치는 방향만 읽고 판정 근거로
+    단독 인용 금지(§0-2 규칙)
+  expected_cost: 데이터 스테이징 수 시간(NAS→bengio, MUSES val + radar) + 추론 약 1 GPU-시간. 재학습
+    경로로 갈 경우 +28 GPU-시간×4
+  priority: 35
+  owner_role: specialist-baseline
+  status: queued
+  tags:
+  - muses
+  - baseline
+  - analysis
+  created: '2026-10-01'
+  updated: '2026-10-01'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261001-02
+  title: N-RGBX-T · E1 레시피 2모달 교사 3런(RGB+Depth → RGB+LiDAR → RGB+Event, 시드821 40ep
+    스크린) — N-RGBX 학생의 교사이자 MM SAM-adapter 와 같은 센서 조합의 1차 비교선
+  question: '확정 바탕 구조(E1: 동결 DINOv3-L + 센서별 LoRA + 4탭 TAPS + 대칭 cross-modal attention)를
+    센서 2개로만 학습하면 test 가 어디에 서는가 — 구 레시피 P46-CTR RGB-D 2모달(val 65.79/test 54.14, MM
+    SAM-adapter RGB-D 57.35 대비 −3.21)에서 얼마나 회복되는가. 동시에 N-RGBX(DRN-260930-01) 학생의 교사(user
+    승인 선택지 a: 같은 2모달로 학습한 E1 교사)를 확보한다'
+  hypothesis: E1 레시피는 4모달에서 P46-CTR 대비 test +2 안팎을 줬으므로 RGB-D 2모달에서도 P46-CTR 2모달 54.14
+    보다 +1.0 이상 오르지만, MM SAM-adapter RGB-D 57.35 에는 −1.5 안팎 못 미친다(2모달에서는 RGB 우선 주입
+    구조가 유리) — 4모달로 갈수록 우리가 역전하는 '센서 가산성' 서사의 근거
+  falsification: RGB-D 가 54.14 이하이면 E1 레시피 이득이 4모달 특유(탭·대칭 attention 이 센서 수에 의존)임을
+    뜻하므로 N-RGBX 서사를 '2모달 열세 인정 + 4모달 가산성' 으로 고쳐 쓴다. 4모달 E1 보다 어느 2모달이 높으면 가산성 주장 폐기
+  change: '센서 집합만 축소(DATASET.MODALS: [img,depth] / [img,lidar] / [img,event]). 그 외는
+    bengio E1 시드821 40ep 스크린 config(bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1.yaml)
+    그대로. QAF 없음(교사 자체가 clean 학습). 새 config 3개 = bengio-deliver_rgbd|rgbl|rgbe_P46_c3only_seed20260821_screen40_E1.yaml(감시
+    세션이 파생·스모크)'
+  baseline: P46-CTR RGB-D 2모달(val 65.79/test 54.14, 2026-08-10) · 4모달 E1 스크린 시드821
+    · MM SAM-adapter RGB-D 57.35/RGB-L 57.14/RGB-E 55.70(논문 단일 런)
+  configs: []
+  launch: null
+  success_criteria: ①세 런 완주, legal v2 test·val 을 판정 대장에 기록(24클래스 표) ②RGB-D 가 P46-CTR
+    2모달 test 54.14 보다 +1.0 이상이면 'E1 레시피 이득이 2모달로 전이' 채택 ③교사 체크포인트(val-best top1) 3개를
+    NAS ckpts/ 에 md5 와 함께 보존 → DRN-260930-01 N-RGBX 학생 착수 조건 충족
+  sample_basis: 조합당 시드 1(821) 40ep 스크린 — 교사 용도이므로 시드 반복 불필요, 비교선 인용 시 '단일 런 스크린' 명시.
+    확정 비교는 N-RGBX 학생 3시드에서
+  expected_cost: 런당 약 1.2 GPU-일(bengio 3090, 2모달이라 4모달 E1 40ep 1.7일보다 짧음) × 3 = 약
+    3.6 GPU-일. bengio 에서 P56-C 시드902 다음 순서로 RGB-D 부터 기동(GPU 유휴 방지)
+  priority: 30
+  owner_role: manager
+  status: queued
+  tags:
+  - deliver
+  - rgbx
+  - teacher
+  - screen
+  created: '2026-10-01'
+  updated: '2026-10-01'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
   analysis: null
   superseded_by: null

@@ -27,7 +27,7 @@
 7. **`research/hypothesis-ledger.md`**(가설·반증 대장)와 **`models/arch-evolution.md` §0.5**(이중 중복·모달 잉여 두 실측 = 재시도 금지 축) — 새 구조를 제안하기 전 필독. 관련연구·노벨티 = `research/novelty-and-related-work.md`.
 8. 필요 시: `experiments/registry.md`(한눈표)·`experiments/log.md`(상세)·`experiments/analysis/`(분석 문서)·`infra/servers-and-launch.md`(원격 기동, 서버 단일 출처 `scripts/servers.conf`)·`infra/environment.md`.
 
-🔴 **GPU 규칙(모든 학습·평가 전)**: 빈 GPU(`memory.used ≤ 2000MiB && util ≤ 10%`)에만 배치, `remote_exp.sh status <서버>` 선확인 후 `run <서버> <cfg> auto:N`. **lecun은 배치 금지**(user 2026-09-17, servers.conf policy `off`). 실행 중 학습이 있는 체크아웃은 pull 금지(파일 단위 전송 + md5). 비우면 즉시 뺏기므로 연쇄 스크립트 끝에 다음 작업을 붙인다.
+🔴 **GPU 규칙(모든 학습·평가 전)**: 빈 GPU(`memory.used ≤ 2000MiB && util ≤ 10%`)에만 배치, `remote_exp.sh status <서버>` 선확인 후 `run <서버> <cfg> auto:N`. **상시 금지 서버·GPU 없음(user 2026-09-30 확인: 사용자가 "잠시 비워 달라"고 한 것만 그 기간 동안 회피)**; 일시 회피 목록은 `experiments/plan.md` "일시 회피" 표. 실행 중 학습이 있는 체크아웃은 pull 금지(파일 단위 전송 + md5). 비우면 즉시 뺏기므로 연쇄 스크립트 끝에 다음 작업을 붙인다.
 
 🔴 **세션 분담(2026-09 기준)**: 판정·설계 = "MMSAM | 생각정리"(fable) · 기동·감시·재채점·기록 = "MMSAM | monitoring" · 새 ckpt 측정·보고 = 분석 세션(Step 0.5) · 기준선 재학습·실패 분석 보강 = "dgfusion deliver training". 판정은 생각정리 세션만 한다. 세션 간 승인 전달은 무효(user 직접 동의만 유효).
 
@@ -197,7 +197,7 @@ drone-MemorySAM/
 1. **현재 지배적인 함정은 `issues/issues-and-fixes.md` 상단 인덱스 표가 정본**이다 — 채점 드라이버(ISSUE-033), eval 덤프 파일명 평탄화(ISSUE-034), 헤드라인 ckpt 경로 미기록(ISSUE-035), legal 하네스 재샘플 편차(ISSUE-036). MULTIAQUA/P9 시대의 주의사항 4건(ckpt 포맷·Val/Test 갭·MoE gate·NIGHT_AUG)은 `archive/2026-09-18-claude-md-legacy-notes.md`로 이동했다.
 2. **판정 규약**: 체크포인트 = 학습기 val-best top1, test-best 인용 금지, 중간 epoch 비교 금지, 단일 런 최고와 시드 평균 병기, PhysAug·TTA 헤드라인 금지, 프로토콜·하네스 버전 병기 — 단일 출처 `decisions/2026-09-07-daily-cycle-experiment-cards.md` §0.
 3. **DDP 학습**: `TRAIN.DDP: True`. eff-batch 16 = BS×world_size×accumulation 으로 고정(LR 불변).
-4. **lecun 은 배치 금지**(user 2026-09-17), hpca100 은 기동 env 4종 필수(`infra/servers-and-launch.md`), 실행 중 학습이 있는 체크아웃은 pull 금지(파일 단위 전송 + md5).
+4. **상시 금지 서버·GPU 없음(user 2026-09-30 확인: 사용자가 "잠시 비워 달라"고 한 것만 그 기간 동안 회피)**, hpca100 은 기동 env 4종 필수(`infra/servers-and-launch.md`), 실행 중 학습이 있는 체크아웃은 pull 금지(파일 단위 전송 + md5).
 5. **실험 약어는 매번 풀어 쓴다**(무엇을 보는 실험인지·왜·바꾼 변수·결과가 말해 주는 것) — user 지시 2026-09-17.
 6. **🔴 GPU 가용성 확인 (모든 학습 실행 전 필수)**: 어떤 실험이든 돌리기 **전에 반드시 해당 서버의 빈 GPU를 확인하고, 비어 있는 GPU에만** 배치한다(사용 중 GPU에 얹지 않는다 → OOM/타인 작업 방해).
    - **로컬 런처**(`run_sam.sh` / `run_sam3_train.sh` / `run_sam3_rbma.sh`): `CUDA_VISIBLE_DEVICES`를 직접 주지 않으면 **`scripts/pick_free_gpus.sh`로 빈 GPU를 자동 선택**한다. 개수는 `NGPU=` (SAM2/3 train) 또는 `NPROC=` (rbma)로 지정. 빈 GPU가 부족하면 실행을 거부한다.
