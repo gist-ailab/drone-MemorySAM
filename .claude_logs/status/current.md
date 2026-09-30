@@ -46,7 +46,7 @@ last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상�
 
 1. **hpca100 공유 볼륨 89%**(여유 244G: 09-29 체크포인트 32개 이관 + 09-30 덤프·캐시 150.9G 삭제. [../infra/artifact-locations.md](../infra/artifact-locations.md) 2b 절). 공유 볼륨이라 계속 감시.
 2. **ISSUE-036** legal 하네스 재샘플 편차 — legal v2(nearest-exact) 채택 완료, v2 래퍼 가드 등재 잔여.
-3. **기준선 강건 측정 진행 중**(09-30 15:58 bengio, dgfusion 세션, DRN-260930-02): DGFusion (a)·(b) 61케이스, 등가검증 통과. CAFuser 는 미측정(재학습 (b)는 user 가 09-24 중단).
+3. **기준선 강건 측정 완료**(10-01, DGFusion (a)·(b) 61케이스 같은 프로토콜): Q2 3시드가 (b) 대비 clean +1.8·결측 15조합 +2.5·depth 부분 저하 절반. CAFuser·MM SAM-adapter 는 미측정.
 4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 · **ISSUE-035** 헤드라인 ckpt 경로 기록(이슈 표 갱신 대기).
 5. **lecun 배치 금지**(user 2026-09-17) · jarvis GPU0 예약 · jarvis 에서 `/ailab_mat2` 접근 금지(sshfs 정지).
 6. ~~ISSUE-038 hpca100 미커밋 코드~~ → 09-23 회수·develop 커밋으로 종결.
@@ -54,7 +54,7 @@ last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상�
 ## ④ 판정 현황 (판정 = "MMSAM | 생각정리" 세션, 근거 = judgment-ledger 2026-09-23~29 행)
 
 - **종료(기각)**: R1(depth 경계 prior refinement, 3시드 24클래스 Δ −0.09) · Q1/Q3(합성 열화 라벨로 감독하는 품질 헤드 QAF: clean −1.31, 강건도 Q2 이하, 합성→실제 전이 실패) · E17(고해상도 세부 가지). R2(연결 성분 soft-IoU 손실)는 시드821 Δ24 ≈ 0 으로 종료 후보(시드902·903 재채점 미확정).
-- **채택(바탕 레시피)**: Q2(두 패스 = clean CE + 열화 CE + 동결 E1 교사 증류). clean 3시드 Δ24 +0.41(개선 주장 안 함), 강건 3시드 재현: 모달 결측 15조합 평균 48.06 vs E1 스크린 40.40, depth 부분 결측 저하 비율 0.26. RGB 부분 결측에는 이득 없음.
+- **채택(바탕 레시피)**: Q2(두 패스 = clean CE + 열화 CE + 동결 E1 교사 증류). clean 3시드 Δ24 +0.41(개선 주장 안 함), 강건 3시드 재현: 모달 결측 15조합 평균 48.06 vs E1 스크린 40.01 vs DGFusion 재학습판 45.52·발표판 31.53(같은 프로토콜, 10-01), depth 부분 저하 0.98/2.04/2.64 vs DGFusion (b) 2.51/2.88/3.47. RGB 부분 결측에는 이득 없음.
 - **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
 - **P55(자기감독 게이트) 계열 종료**: 오라클 순 여유 조건별 1.1~1.8 · 분할 손실만으로 학습한 팔 test 57.59, 자기 leave-one-out 손실을 목표로 준 팔 test 57.67(게이트가 사실상 상수) — 둘 다 Q2 57.73 과 같은 수준. 곱셈 게이트는 주 후보에서 제외.
 - **실행 중**: P56-A(모달 충돌 학습) hpca100 시드821 GPU1(09-29 07:08 UTC 기동)·시드902 GPU2(12:24 UTC 기동), 에폭당 약 2.1시간, 완주 예상 10-03. **P56-B(거리 조건화 attention) 시드821 hpca100 GPU3 기동(09-30 08:20 UTC, 감시 세션 검증 7항목 통과, P56-A 무영향 확인)** — 설계·구현 검수는 생각정리 세션이 마쳤고(develop e0ca300·4b5e1b4) user 승인 09-30("응 기동해"). **P56-C(센서 상태 조건부 LoRA 전문가 혼합) 시드821 yeon GPU0 기동(09-30 21:4x KST, 검증 6항목 통과)** — hpca100·jarvis 빈 GPU 부재 + lecun/yeon 공유 `MMSS_SAM` env의 timm 0.4.12(DINOv3 미지원, ISSUE-039)로 4차 시도 끝에 성공. timm 1.0.24로 상향 완료(lecun도 동일 조치, SAM2 계보는 timm 미사용이라 무관 확인). 🔴 **09-30 22:31 KST 재기동**: 최초 기동분은 교사가 학생과 같은 state_routed 아키텍처로 빌드돼 블록7~24 LoRA 없이 로드된 결함 발견(missing=151/unexpected=72, KD 목표 오염 → 무효). `train_reliadino.py` 수정(교사는 항상 E1 아키텍처로 빌드, 키 불일치 시 즉시 RuntimeError, `tools/tests/test_teacher_arch.py` 검사 추가, develop 1f9b83a) 후 같은 GPU0에서 kill+재기동, `missing=0 unexpected=0` 확인. 무효 런 산출물은 `..._P56C_invalid_teacher_20260930`로 보존(삭제 안 함). P56-B는 교사 missing=2(RangeBias만 빠짐, λ≈0)라 유효 — 영향 없음. 둘째 시드(902)는 P56-A 판정 뒤.
