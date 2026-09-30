@@ -731,7 +731,7 @@ li{max-width:72ch}
     <div class="card line-ours">
       <h3>주장할 수 있는 것</h3>
       <ul>
-        <li><b>주 센서 없는 전 센서 융합의 강건성.</b> RGB 가 없거나 틀려도 같은 그래프로 동작하며(Q2: RGB 결측 시 depth 만으로 46.0), 그들의 구조는 RGB 결측을 정의조차 못 한다. 결측·열화 프로토콜에서 그들을 같은 조건으로 재어 비교해야 성립한다.</li>
+        <li><b>주 센서 없는 전 센서 융합의 강건성.</b> RGB 가 없거나 틀려도 같은 그래프로 동작하며(Q2: RGB 결측 시 depth 만으로 46.0), 그들의 구조는 RGB 결측을 정의조차 못 한다. DGFusion 에 대해서는 같은 프로토콜로 우위를 확인했고(결측 15조합 48.1 vs 45.5, clean 손해 없음 vs −0.9), MM SAM-adapter 는 같은 조건으로 재어야 성립한다.</li>
         <li><b>백본 동결 + 센서별 LoRA 로 같은 급 성능.</b> ViT-L 미세 조정 없이 val 69.5(그들 69.6), 학습 파라미터 5,900만. 효율·망각 방지 축.</li>
         <li><b>센서 3개 이상.</b> 그들이 한계로 밝힌 지점. MCubeS 4모달 58.07 은 그들에게 비교 대상이 없다.</li>
         <li><b>학습 설계로 만든 상황별 의존도 이동(P56-A 결과 시).</b> 그들의 "필요할 때만 보조 센서 사용"은 RGB-hard 분할 결과로만 보였고, 우리는 조건별 센서 제거 표로 정량화한다.</li>
@@ -823,8 +823,10 @@ li{max-width:72ch}
       <tr><td><b>MUSES test</b></td><td class="num">79.5 (DGFusion)</td><td class="num">79.29 ± 0.71, 최고 79.79</td><td>평균 −0.21, 동급</td></tr>
       <tr><td><b>MCubeS test</b></td><td class="num">55.9 (StitchFusion)</td><td class="num">58.07 ± 0.49</td><td class="good">+2.17</td></tr>
       <tr><td><b>열화 학습을 넣었을 때 clean 손해</b></td><td class="num">val −4.80 · test −0.91</td><td class="num">24클래스 +0.41 · test +0.01</td><td class="good">손해 없음</td></tr>
-      <tr><td><b>센서 결측 15조합 평균</b></td><td>같은 방식으로 측정한 값 없음</td><td class="num">40.0 → 48.1</td><td>내부 비교만 확정</td></tr>
-      <tr><td><b>Depth 부분 열화 시 저하</b></td><td>같은 방식으로 측정한 값 없음</td><td class="num">기준의 0.26배</td><td>내부 비교만 확정</td></tr>
+      <tr><td><b>센서 결측 15조합 평균</b> (같은 프로토콜, test)</td><td class="num">DGFusion 발표판 31.5 · 열화 재학습판 45.5</td><td class="num">E1 40.0 → Q2 48.1</td><td class="good">+2.5 (열화 재학습판 대비)</td></tr>
+      <tr><td><b>Depth 부분 결측 시 저하</b> (25 / 50 / 75%)</td><td class="num">발표판 6.6 / 11.3 / 16.5 · 재학습판 2.5 / 2.9 / 3.5</td><td class="num">Q2 1.0 / 2.0 / 2.6</td><td class="good">약 절반</td></tr>
+      <tr><td><b>RGB 부분 결측 시 저하</b> (25 / 50 / 75%)</td><td class="num">발표판 5.4 / 6.6 / 8.5 · 재학습판 3.4 / 4.2 / 6.4</td><td class="num">Q2 3.3 / 3.9 / 4.9</td><td>비슷하거나 조금 나음</td></tr>
+      <tr><td><b>노이즈(소금·후추 5 / 10 / 20%) 저하</b></td><td class="num">발표판 17.7 / 39.0 / 50.2 · 재학습판 5.9 / 14.3 / 31.4</td><td class="num">Q2 3.1 / 4.8 / 7.7 (E1 3.1 / 5.7 / 11.2)</td><td>동결 DINOv3 백본의 몫이 큼</td></tr>
       <tr><td><b>Event · LiDAR 활용</b></td><td>제거해도 ±0.4 (어떤 조건에서도 쓰지 않음)</td><td>단독으로 31.0 · 22.9</td><td class="good">보조 센서가 살아 있음</td></tr>
     </tbody>
   </table>
@@ -896,7 +898,7 @@ li{max-width:72ch}
 <section>
   <h2>아직 확인되지 않은 것</h2>
   <ul>
-    <li>기준선(DGFusion·CAFuser)을 우리와 같은 결측·열화 방식으로 잰 값이 없다. 강건성 우위는 지금은 내부 비교로만 확정이다.</li>
+    <li>DGFusion 은 같은 프로토콜로 쟀고(2026-10-01, 단일 런) Q2 가 모든 축에서 앞선다. CAFuser 와 MM SAM-adapter 는 아직 같은 방식으로 재지 않았다.</li>
     <li>DELIVER test 와 MUSES test 의 clean 성능은 기존 1위와 평균 기준으로 0.2~0.5 낮다. 1위 주장은 DELIVER val 과 MCubeS 에서만 가능하다.</li>
     <li>강건성 수치는 40에폭 스크린 모델 기준이다. 헤드라인 모델(200에폭)에 같은 학습을 적용한 결과는 아직 없다.</li>
     <li>A · B · C 의 최근접 선행 연구 조사가 끝나지 않았다. 조사에서 나온 2026년 논문 식별자는 원문 확인 전이다.</li>
