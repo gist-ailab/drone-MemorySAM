@@ -58,3 +58,49 @@ lab-plan DRN-261001-01(user 결정 2026-09-26). 측정·기록만 한다. 판정
 ## 6. 원본
 
 NAS `analysis_logs/muses_baseline_dgfusion_official_20261001/`: `official_val/`(run.log·config·panoptic 예측·sem_seg_predictions.json) · `official_val_scored/`(report.json·혼동행렬 npy) · `compare.txt`·`compare.py`·`score_dgf_muses.py`·`run_muses_official.sh` · `md5_검증.txt`(266파일 bengio 원본과 일치). 가중치 원본: `ckpts/dgfusion_official_20261001/`(MUSES clre·DELIVER clde·cle 3개, md5 3홉 일치).
+
+## 7. val→test 전이 손실은 어느 클래스·조건에서 나나 (우리 모델만, DGFusion 없이)
+
+판정 세션 질문(2026-10-01): 진짜 원인은 val→test 전이 손실이므로, 우리 자신의 val 19클래스와 test 19클래스를 같은 표에 놓는다.
+- val = 우리 PhysAug-off 3시드 평균(공식 재채점 report.json). test = Codabench 원문 시드 20260825(ep168, **PhysAug-on**) Full 750장 19클래스(`analysis_logs/muses_test/2026-09-18-P39_1-seed20260825-78.786.md`).
+- ⚠️ 두 모델이 다르다(PhysAug-off 대 on). 같은 시드 val 전체 mIoU 차이는 +0.72(81.47 대 82.19)라 아래 낙차(최대 −23)에 비해 작지만, 같은 체크포인트의 val 클래스별 표는 아니다(미확보). 시드2(79.788)는 약클래스 4개만 기록돼 있어 교차 확인용으로만 쓴다.
+
+전체 mIoU: val 82.30 → test 78.79, **−3.52**. (DGFusion 은 공식 README 기준 val 79.72 → test 79.49, −0.23.)
+
+클래스별 (test − val), 낙차 큰 순:
+
+| 클래스 | val | test | Δ |
+|---|---|---|---|
+| motorcycle | 79.42 | 55.99 | **−23.43** |
+| truck | 90.28 | 73.12 | **−17.16** |
+| fence | 75.94 | 62.34 | **−13.60** |
+| traffic light | 77.10 | 70.63 | −6.47 |
+| train | 97.75 | 93.94 | −3.81 |
+| bicycle | 71.90 | 68.61 | −3.29 |
+| terrain | 80.24 | 77.92 | −2.32 |
+| vegetation · road · person · wall · sidewalk · pole | — | — | −1.05 ~ −0.23 |
+| sky · building · car · traffic sign | — | — | +0.16 ~ +0.40 |
+| bus | 93.48 | 95.05 | +1.57 |
+| rider | 55.94 | 59.89 | +3.95 |
+
+- **낙차의 대부분은 motorcycle·truck·fence 세 클래스**(합계 −54 포인트, 19클래스 평균으로 −2.8)에서 난다. 이 세 클래스는 §3 에서 val 에서 DGFusion 을 가장 크게 앞섰던 클래스(truck +18.27·motorcycle +12.83·fence +7.79)와 같다 → **val 의 우위 일부는 val 250장에서 이 희귀 클래스가 유리하게 나온 값으로 보이며 test 에서 사라진다**(가설, 클래스별 val 화소 수는 미확인).
+- **얇은·작은 4클래스(pole·person·traffic sign·traffic light)는 전이가 안정적**이다: 평균 낙차 −1.74(pole −0.23·person −0.67·traffic sign +0.40·traffic light −6.47), 나머지 15클래스 평균 −3.99. 즉 val 에서 DGFusion 에 뒤졌던 이 4클래스가 test 에서 더 벌어질 근거는 이 표에 없고, test 에서도 비슷한 폭(약 −3~−6)으로 뒤질 가능성이 높다(DGFusion test 클래스별 IoU 가 없어 직접 확인은 못 함).
+- 시드2 test 약클래스(motorcycle 58.07·rider 59.47·pole 62.07·fence 65.70)도 시드 20260825(55.99·59.89·62.59·62.34)와 같은 자리에서 낮아, motorcycle·fence 낙차는 시드 하나의 일이 아니다(2 test 시드).
+
+조건별 mIoU (val 8조합 3시드 평균 대 test 8조합):
+
+| 조건 | val | test | Δ |
+|---|---|---|---|
+| clear/day | 78.36 | 77.05 | −1.32 |
+| clear/night | 69.87 | 75.48 | +5.61 |
+| fog/day | 87.87 | 78.14 | **−9.73** |
+| fog/night | 75.43 | 69.22 | −6.21 |
+| rain/day | 69.62 | 78.85 | **+9.23** |
+| rain/night | 70.10 | 73.90 | +3.81 |
+| snow/day | 80.36 | 69.97 | **−10.40** |
+| snow/night | 74.52 | 72.73 | −1.79 |
+
+- val 조건별 값은 조합당 25~50장이라 조건 사이 순위가 test 와 자주 뒤바뀐다(fog/day 가장 높음 → test 에서 크게 하락, rain/day 가장 낮음 → test 에서 크게 상승, snow/day 는 test 최약). 조건별 val 열세·우위는 판정 근거가 못 된다(§0-2). 눈 낮 조합이 test 에서 69.97 로 약하다는 것은 기존 "snow_day<snow_night 역전 반복" 기록과 일치한다.
+- test 는 Codabench 가 날씨·주야 축별 19클래스까지만 주므로(8조합별 클래스 표 없음) 클래스×조건 대조는 하지 않았다.
+
+정리: val→test −3.52 의 주 원인은 얇은 클래스가 아니라 **희귀 대형·소형 클래스(motorcycle·truck·fence)의 val 과대평가**이고, 얇은 4클래스 열세는 val 과 test 에서 비슷하게 유지될 것으로 보인다(DGFusion test 클래스별 없이 추정).
