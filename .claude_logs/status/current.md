@@ -45,7 +45,7 @@ last_updated: 2026-10-01 (헤드라인 불변. 감시/판정 구역 분담, 8KB 
 
 1. **hpca100 공유 볼륨 89%**(여유 244G, [artifact-locations](../infra/artifact-locations.md) 2b). 계속 감시.
 2. **ISSUE-036** legal 재샘플 편차 — v2(nearest-exact) 채택 완료, 래퍼 가드 등재 잔여.
-3. **기준선 강건 측정 완료**(10-01, DGFusion (a)·(b) 61케이스 같은 프로토콜): Q2 3시드가 (b) 대비 clean +1.8·결측 15조합 +2.5·depth 부분 저하 절반. CAFuser·MM SAM-adapter 는 미측정.
+3. **기준선 강건 측정 완료**(10-01, DGFusion (a)·(b) 61케이스 같은 프로토콜): Q2 3시드가 (b) 대비 clean +1.8·결측 15조합 +2.5·depth 부분 저하 절반. CAFuser 미측정.
 4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 · **ISSUE-035** 헤드라인 ckpt 경로 기록(이슈 표 갱신 대기).
 5. jarvis `/ailab_mat2` 접근 금지(sshfs 정지). lecun·jarvis GPU0 금지 09-30 해제.
 
