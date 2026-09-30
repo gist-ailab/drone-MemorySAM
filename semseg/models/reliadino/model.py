@@ -85,6 +85,15 @@ class ReliaDINO(nn.Module):
                  lora_shared_r: int = 8,             # [E-LORA] shared_residual 공유항 rank
                  lora_residual_r: int = 8,           # [E-LORA] shared_residual 모달별 잔차항 rank
                  lora_targets: Optional[Sequence[str]] = None,  # [E2] LoRA 타깃 확장(qkv|qkv_full|proj|fc1|fc2)
+                 # [P56-C] state_routed 라우터(LORA_MODE=state_routed 일 때만 모듈·
+                 # hook·RNG 를 만든다 — 그 외 모드는 아래 블록 전체가 no-op, byte-동일).
+                 # BLOCK_FRAC→블록 k 의 토큰 출력(stop-grad)+센서 임베딩으로 α 를 만들어
+                 # APPLY_FROM_BLOCK~ 블록의 공유/센서별 LoRA 를 토큰별 혼합한다.
+                 lora_router_shared_r: int = 8,
+                 lora_router_block_frac: float = 0.25,
+                 lora_router_hidden: int = 64,
+                 lora_router_per_token: bool = True,
+                 lora_router_apply_from_block: int = 7,
                  fpn_dim: int = 256,
                  fusion_layers: int = 2,
                  fusion_heads: int = 8,
@@ -337,6 +346,8 @@ class ReliaDINO(nn.Module):
             lora_r=lora_r, lora_alpha=lora_alpha,
             lora_mode=lora_mode, lora_shared_r=lora_shared_r,      # [E-LORA]
             lora_residual_r=lora_residual_r,
+            lora_router_shared_r=lora_router_shared_r,             # [P56-C]
+            lora_router_apply_from_block=lora_router_apply_from_block,
             lora_targets=lora_targets,                             # [E2]
             tap_layers=_e_tap_layers,                             # [E1]
             num_taps=_e_num_taps)                                 # [P43-T2/E1]
@@ -426,6 +437,40 @@ class ReliaDINO(nn.Module):
                 use_agreement=p55_use_agreement)
             self.p55_capture = P55BlockCapture(self.encoder, _blocks)
             self._p55_blocks = _blocks
+        # ── [P56-C] 센서 상태 조건부 LoRA 전문가 혼합(state_routed) ─────────────
+        # off(기본, lora_mode != 'state_routed')면 이 블록이 모듈·hook·RNG 를 전혀
+        # 만들지 않는다. 설계 = decisions/2026-09-30-p56-bc-modality-aware-design.md §2.
+        self.p56c_router = None
+        self._p56c_block = None
+        self._p56c_apply_from = None
+        self._p56c_block_frac = float(lora_router_block_frac)
+        if lora_mode == 'state_routed':
+            if cmlc_enable:
+                raise ValueError(
+                    "[P56-C] MODEL.LORA_MODE=state_routed 는 MODEL.CMLC.ENABLE 와 함께 "
+                    "쓸 수 없다 — CMLC 는 모달을 배치로 합친 단일 forward 라 블록 hook "
+                    "이 모달 순서로 발화하지 않아 α 를 모달별로 만들 수 없다.")
+            from .p55_gate import frac_to_block
+            from .p56c_router import StateRouter, attach_state_routed_alpha
+            n_blk = len(self.encoder.backbone.blocks)
+            _k = frac_to_block(float(lora_router_block_frac), n_blk)
+            if not (1 <= _k < int(lora_router_apply_from_block)):
+                # α 원천(블록 k 출력)이 나오기 전에 state_routed 블록이 돌면 상수 0.5
+                # 로 조용히 섞인다 — 검증 가능한 설정만 허용한다(기본 k=6 < from=7).
+                raise ValueError(
+                    f"[P56-C] APPLY_FROM_BLOCK({lora_router_apply_from_block}) 는 라우터 "
+                    f"블록(BLOCK_FRAC {lora_router_block_frac} → 블록 {_k})보다 커야 "
+                    f"한다(≥ {_k + 1}). 기본: frac 0.25 → 블록 6, apply_from 7.")
+            if not self.encoder.state_routed_layers:
+                raise RuntimeError(
+                    "[P56-C] encoder.state_routed_layers 가 비었다 — APPLY_FROM_BLOCK "
+                    "이 백본 깊이를 넘었는지 확인하라.")
+            self.p56c_router = StateRouter(
+                dim=dim, num_modalities=self.num_modalities,
+                hidden=int(lora_router_hidden), per_token=bool(lora_router_per_token))
+            attach_state_routed_alpha(self.encoder, self.p56c_router, _k)
+            self._p56c_block = _k
+            self._p56c_apply_from = int(lora_router_apply_from_block)
         # [P36-Det] Router->detection seam. The seg path adds routed_logits to the
         # head logits, which the detection path (extract_det_pyramid) never sees, so
         # without this the router is dead weight for det. Project routed_logits
@@ -1006,6 +1051,12 @@ class ReliaDINO(nn.Module):
             n_train = sum(p.numel() for p in self.parameters() if p.requires_grad)
             print(f"[E-LORA] mode={self.encoder.lora_mode} "
                   f"lora_trainable={n_lora:,} total_trainable={n_train:,}")
+        if _rank0 and self.p56c_router is not None:
+            # [P56-C] 학습 기동 로그 — [E-LORA] 바로 옆에 한 줄(라우터 구성 요약).
+            _rp = sum(p.numel() for p in self.p56c_router.parameters())
+            print(f"[P56-C] router params={_rp:,} "
+                  f"apply_from_block={self._p56c_apply_from} "
+                  f"block_frac={self._p56c_block_frac}", flush=True)
         if _rank0 and getattr(self.fusion, 'qaf_enable', False):
             _qp = (sum(p.numel() for p in self.fusion.quality_head.parameters())
                    if self.fusion.quality_head is not None else 0)
@@ -2150,6 +2201,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     #   OGM_GE(gradient 변조)는 optimizer step 결선이라 train_reliadino.py가
     #   MODEL.P47_2.OGM_GE를 직접 읽는다 (여기서는 head/손실만 만든다).
     cmlc = mc.get('CMLC', {}) or {}                    # [P51] block-경계 cross-modal coupling
+    lrc = mc.get('LORA_ROUTER', {}) or {}              # [P56-C] state_routed 라우터
     c3a = mc.get('C3_ADAPTIVE', {}) or {}              # [P52] C3 λ_c 컨트롤러
     uba = mc.get('UNIBAL_ADAPTIVE', {}) or {}          # [P52] UniBal λ_u,m 컨트롤러
     mdrop = mc.get('MODAL_DROPOUT', {}) or {}
@@ -2171,6 +2223,11 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         lora_shared_r=mc.get('LORA_SHARED_R', 8),            # [E-LORA]
         lora_residual_r=mc.get('LORA_RESIDUAL_R', 8),        # [E-LORA]
         lora_targets=mc.get('LORA_TARGETS', None),           # [E2] 기본 None=[qkv] byte-동일
+        lora_router_shared_r=int(lrc.get('SHARED_R', 8)),            # [P56-C]
+        lora_router_block_frac=float(lrc.get('BLOCK_FRAC', 0.25)),   # [P56-C]
+        lora_router_hidden=int(lrc.get('HIDDEN', 64)),               # [P56-C]
+        lora_router_per_token=bool(lrc.get('PER_TOKEN', True)),      # [P56-C]
+        lora_router_apply_from_block=int(lrc.get('APPLY_FROM_BLOCK', 7)),  # [P56-C]
         fpn_dim=mc.get('FPN_DIM', 256),
         fusion_layers=fus.get('NUM_LAYERS', 2),
         fusion_heads=fus.get('NUM_HEADS', 8),

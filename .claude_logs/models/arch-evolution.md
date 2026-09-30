@@ -6,7 +6,11 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-08-04
+> 최종 업데이트: 2026-09-30
+
+## P56-C — 센서 상태 조건부 LoRA 전문가 혼합 (2026-09-30 구현)
+
+**상태**: 구현 완료(학습 미기동). 설계 = [decisions/2026-09-30-p56-bc-modality-aware-design.md](../decisions/2026-09-30-p56-bc-modality-aware-design.md) §2. `MODEL.LORA_MODE: state_routed` — 블록 7~24의 qkv 를 `StateRoutedLoRAQKV`(encoder.py 신설, 공유 r8 + 센서별 r8)로 감싸 `ΔW x = α·shared(x) + (1−α)·sensor_m(x)` 토큰별 혼합(Q/V 만, K 불변). α 는 `p56c_router.py` 신규 `StateRouter`(LN→Linear(C→64)→GELU→Linear(64→1)→sigmoid, 파라미터 약 7만, 센서 임베딩 입력·최종층 zero-init → α=0.5 출발)가 블록 6(`BLOCK_FRAC 0.25`→`frac_to_block`) 토큰 출력 **stop-grad** + 센서 임베딩으로 만들어 forward-hook 이 블록 k 출력 직후 주입(timm 블록 루프 불변). 블록 1~6 은 기존 `MultiModalLoRAQKV` 그대로(= per_modal 계산). `set_modality` 가 모달 전환 시 α 해제; CMLC 조합은 거부(hook 이 모달 순서로 발화하지 않음). off(기본 per_modal)면 모듈·hook·RNG 미생성 → forward·state_dict byte-동일(단위 테스트 B1·B2: HEAD encoder 와 state_dict·forward bitwise 일치). 검증 = `tools/tests/test_state_routed_lora.py` 27항목 ALL PASS(극단 등가 α=1/0, 초기 α=0.5, 전 파라미터 grad·입력 detach, 모달 전환 α 세척) + `tools/smoke_elora.py` 기존 3-arm ALL PASS. config = `configs/hpca100-deliver_rgbdel_P46_c3only_seed{20260821,20260902}_screen40_P56C.yaml`(P56A 파생, 40에폭 2시드 스크린 대기).
 
 ## P47-2 — UniBal (Uni-modal Balance): 모달별 독립 aux head + uni-modal CE (2026-08-04)
 
