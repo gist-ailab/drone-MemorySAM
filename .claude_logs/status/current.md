@@ -57,7 +57,7 @@ last_updated: 2026-10-01 (헤드라인 수치 변동 없음. P56-B/C 둘째 시�
 - **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
 - **P55(자기감독 게이트) 종료**: 두 팔 test 57.59·57.67(게이트 상수) = Q2 57.73 수준, 오라클 순 여유 0.9~1.8. 곱셈 게이트 제외.
 - **실행 중**: P56-A(모달 충돌 학습) hpca100 GPU1·2 시드821·902(완주 예상 10-03) · P56-B(거리 조건화 attention) 시드821 hpca100 GPU3, 시드902 yeon GPU1(10-01 04:11) · P56-C(상태 조건부 LoRA 혼합) 시드821 yeon GPU0(09-30 22:30 재기동, 1차는 교사 결함으로 무효), 시드902 yeon GPU2(10-01 04:11). 설계서 decisions/2026-09-30-p56-bc-modality-aware-design.md.
-- **배치(user 10-01)**: bengio 4장 N-RGBX-T 연쇄, 나머지·hpca100 빈 GPU·yeon 잔여는 rNs 사용(회수는 user 결정).
+- **배치(user 10-01)**: bengio GPU1·2·3·5 N-RGBX-T 연쇄(04:25 기동, RGB-D 진행 중), 잔여 GPU(bengio·hpca100·yeon)는 rNs 사용.
 - **대기열(bengio, 10-01 등록)**: N-RGBX-T(E1 2모달 교사 3런, DRN-261001-02, P30) → CAFuser (b) 재개(DRN-260926-58, P40, 스모크 선행) → MUSES 기준선 DGFusion 공식 가중치 val 재현(DRN-261001-01, P35, 데이터 스테이징 선행).
 - **MUSES**: PhysAug-off 공정선 3시드 공식 val 82.30±0.14(824·825·826). test 제출은 보류(user 09-29).
 - **적체 판정 완료(09-30)**: 이관분 219건 전부 lab-plan verdict 기록. 미판정 없음.
