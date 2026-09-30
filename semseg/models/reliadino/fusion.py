@@ -856,7 +856,8 @@ class ReliabilityGatedFusion(nn.Module):
         for i in range(m):
             x = tokens[i]
             for layer in self.layers:
-                x = layer(x, kv, key_bias, pair_bias)   # [P56-B] 거리 편향(None이면 무변경)
+                x = (layer(x, kv, key_bias) if pair_bias is None
+                     else layer(x, kv, key_bias, pair_bias))   # [P56-B] None 이면 기존 호출 그대로
             fused_tokens.append(x.transpose(1, 2).reshape(B, C, h, w))
         return fused_tokens
 
@@ -943,7 +944,8 @@ class ReliabilityGatedFusion(nn.Module):
                     key_bias = torch.cat([bias_flat[j] for j in range(m) if j != i], dim=1)
                 x = tokens[i]
                 for layer in self.layers:
-                    x = layer(x, kv, key_bias, pair_bias)   # [P56-B] 거리 편향(None이면 무변경)
+                    x = (layer(x, kv, key_bias) if pair_bias is None
+                         else layer(x, kv, key_bias, pair_bias))   # [P56-B] None 이면 기존 호출 그대로
                 fused_tokens.append(x.transpose(1, 2).reshape(B, C, h, w))
 
         # 4) output fusion: competence gate (calibrated self-entropy, veto floor)

@@ -1586,11 +1586,12 @@ class ReliaDINO(nn.Module):
         '존재'하는 모달을 쓴다. 존재 판정 = 그 모달 텐서가 전부 0 이 아님(Degrader·
         NM 결측은 정규화 후 정확히 0 텐서다).
 
-        depth: 로더가 /255 만 한 [0,1] HHA 3채널. 토큰값 = 채널평균의 stride-16
-          평균(adaptive_avg_pool2d). HHA 는 실거리의 **단조** 근사(disparity ~ 1/depth)
-          이고, 거리 편향은 |log r_i − log r_j| (대칭)만 쓰므로 역수를 포함한 임의의
-          이미지별 단조 변환이 토큰 순서를 보존한다 → 거리 역변환 없이 HHA 세기 평균을
-          거리 대용값으로 쓴다. 모든 토큰 유효.
+        depth: 로더가 /255 만 한 [0,1] HHA 3채널(`deliver.py` 가 /hha 폴더를 읽음).
+          **채널 0 만** 쓴다: 실측(cloud/test/MAP_7_point92/051850_depth_front.png)에서
+          채널 0 은 하늘 242·노면 2 로 거리에 단조(증가), 채널 1 은 높이(하늘 232·노면 10),
+          채널 2 는 각도(≈127 상수)라 채널 평균은 거리에 단조가 아니다(검수 정정 2026-09-30).
+          거리 편향은 |log r_i − log r_j| (대칭)만 쓰므로 이미지별 단조 변환은 토큰 순서를
+          보존한다 → 역변환 없이 채널 0 의 stride-16 평균을 거리 대용값으로 쓴다. 모든 토큰 유효.
         lidar: 희소 투영([0,1], 0=무반환). 토큰값 = 16×16 패치 안 **반환(0 아님)**
           화소 평균, 반환 화소가 없으면 그 토큰 무효.
         반환: (range_map (B,1,h,w) ≥0, valid (B,1,h,w) bool)."""
@@ -1616,7 +1617,7 @@ class ReliaDINO(nn.Module):
                     rb = torch.where(vb, num / den.clamp_min(eps),
                                      torch.zeros_like(num)).clamp_min(0.0)
                 else:                                                  # depth(HHA) 등
-                    mch = xb.mean(dim=0, keepdim=True)[None]           # (1,1,H,W)
+                    mch = xb[0:1][None]                                # (1,1,H,W) HHA 채널 0(거리 단조)
                     rb = F.adaptive_avg_pool2d(mch, (h, w))[0, 0].clamp_min(0.0)
                     vb = torch.ones(h, w, dtype=torch.bool, device=dev)
                 r[b, 0] = rb
