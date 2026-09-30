@@ -11743,3 +11743,34 @@ items:
   verdict: null
   analysis: null
   superseded_by: null
+- id: DRN-260930-01
+  title: N-RGBX · 확정 구조의 RGB+X 2모달 ablation(MM SAM-adapter 2509.10408 과 같은 센서 조합으로
+    비교)
+  question: 확정된 modality-aware 구조를 RGB+Depth·RGB+LiDAR·RGB+Event 2모달로 학습하면 MM SAM-adapter(RGB-D
+    57.35 / RGB-L 57.14 / RGB-E 55.70, val 69.60)와 같은 조건에서 어디에 서는가, 그리고 센서를 더할수록(2→4)
+    우리 구조는 오르고 그들 구조는 못 더하는가
+  hypothesis: 주 센서 없는 대칭 융합은 센서 수가 늘수록 이득이 쌓이고, 2모달에서도 RGB 우선 주입 구조와 동급이다
+  falsification: 2모달이 논문값보다 −1.0 이상 낮거나 4모달이 2모달보다 낮으면 대칭 융합의 가산성 주장 폐기
+  change: 학습 센서 집합만 축소(RGB+X 3조합), 구조·학습 레시피는 확정본 그대로
+  baseline: MM SAM-adapter 논문값(단일 런) + 우리 4모달 확정 3시드
+  configs: []
+  launch: null
+  success_criteria: 2모달 각 조합 legal v2 test 가 논문값 −0.5 이내이고 4모달이 2모달 최고보다 높으면 '센서 가산성'
+    주장 채택
+  sample_basis: 조합당 1시드 40에폭 스크린으로 1차, 통과 조합만 200에폭 3시드
+  expected_cost: 40에폭 3조합 × 4090 1장 약 2일 = 6 GPU-일, 확정 시 +3시드
+  priority: 25
+  owner_role: method
+  status: idea
+  tags:
+  - ablation
+  - rgbx
+  - positioning
+  created: '2026-09-30'
+  updated: '2026-09-30'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
