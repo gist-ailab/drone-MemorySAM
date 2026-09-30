@@ -174,7 +174,7 @@ WANDB:
 - conda 초기화 스크립트: bengio·yeon = `/home/jemo_maeng/anaconda3/etc/profile.d/conda.sh`, jarvis = `/home/jemo_maeng/miniconda3/etc/profile.d/conda.sh`.
 - pylibs: 세 서버 공통 `/SSDb/jemo_maeng/pylibs_p34` (bengio 도 `/SSDb` 다. `/SSDe` 가 아니다).
 - 포트 기준(master_port_base): bengio 29600 · yeon 29740 · jarvis 29800.
-- hpca100 은 venv 서버라 conda 템플릿과 맞지 않고 user 지시로 비워 둔 상태여서 `FILL_ME` 다. lecun 은 policy off 다.
+- hpca100 은 venv 서버라 conda 템플릿과 맞지 않고 user 지시로 비워 둔 상태여서 `FILL_ME` 다. lecun 의 policy off 는 2026-09-30 해제(상시 금지 서버 없음, user 확인).
 
 **운영**: 세션 크론이 매시 :17 에 sonnet 서브에이전트로 `run_cycle.sh` 를 돌리고, 모니터링 세션이 기동 검증을 직접 판정한다. 크론은 세션 전용이라 세션이 재기동되면 사라지고 7일 뒤 자동 만료된다.
 

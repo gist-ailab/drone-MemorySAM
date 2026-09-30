@@ -107,7 +107,7 @@ bash scripts/pick_free_gpus.sh 1                    # 또는 원격: bash script
 | jarvis | conda `MMSS_SAM` | `PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34:<repo>/semseg/models/sam2:.`(timm 1.0.24 = DINOv3 지원) + `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python` |
 | yeon | conda `MMSS_SAM` | `PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34:<repo>/semseg/models/sam2` |
 | hpca100 | venv `/home/jovyan/SSDb/jemo_maeng/venv/p34` (conda 없음) | 넷 다 필요: `PYTHONPATH=<repo>/semseg/models/sam2` · `HF_HOME=/home/jovyan/.cache/huggingface`(셸 기본값은 **타 사용자의 빈 캐시**다) · `HF_HUB_OFFLINE=1` · `LD_LIBRARY_PATH=/home/jovyan/SSDb/jemo_maeng/venv/p34/lib/python3.11/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH` |
-| lecun·levine | — | 🔴 ReliaDINO 실행 불가(timm registry gap). 배치 금지 서버이기도 하다 |
+| lecun·levine | — | 🔴 ReliaDINO 실행 불가(timm registry gap). 상시 배치 금지는 아님(user 2026-09-30) |
 
 - `ModuleNotFoundError: No module named 'sam2'` 는 **평가(`val.py`)에서 주로 걸린다** — 학습은 이 변수 없이도 뜬다.
 - **ckpt 기반 평가는 `HF_HUB_OFFLINE=1` 이어도 안전**하다(백본 가중치가 ckpt 에서 복원되므로 RANDOM INIT 위험 없음). fresh 학습과 다르다.

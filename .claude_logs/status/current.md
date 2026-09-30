@@ -49,6 +49,7 @@ last_updated: 2026-09-29 (헤드라인 수치 변동 없음. 판정·설계 상�
 3. **기준선 강건 측정 완료**(10-01, DGFusion (a)·(b) 61케이스 같은 프로토콜): Q2 3시드가 (b) 대비 clean +1.8·결측 15조합 +2.5·depth 부분 저하 절반. CAFuser·MM SAM-adapter 는 미측정.
 4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 · **ISSUE-035** 헤드라인 ckpt 경로 기록(이슈 표 갱신 대기).
 5. jarvis 에서 `/ailab_mat2` 접근 금지(sshfs 정지). lecun·jarvis GPU0 금지는 09-30 해제(빈 GPU 규칙만 적용).
+6. ~~ISSUE-038 hpca100 미커밋 코드~~ → 09-23 회수·develop 커밋으로 종결.
 
 ## ④ 판정 현황 (판정 = "MMSAM | 생각정리" 세션, 근거 = judgment-ledger 2026-09-23~29 행)
 
