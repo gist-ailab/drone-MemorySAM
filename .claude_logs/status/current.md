@@ -57,6 +57,7 @@ last_updated: 2026-10-01 (헤드라인 불변. 감시/판정 구역 분담, 8KB 
 - **P55(자기감독 게이트) 계열 종료**: 오라클 순 여유 조건별 1.1~1.8 · 분할 손실만으로 학습한 팔 test 57.59, 자기 leave-one-out 손실을 목표로 준 팔 test 57.67(게이트가 사실상 상수) — 둘 다 Q2 57.73 과 같은 수준. 곱셈 게이트는 주 후보에서 제외.
 - **실행 중**(상세=[history](history-2026H2.md), 설계서 decisions/2026-09-30-p56-bc): P56-A(모달충돌학습) hpca100 s821 GPU1·s902 GPU2(완주 10-03). P56-B(거리조건화attn) s821 hpca100 GPU3·s902 yeon GPU1. P56-C(상태조건부LoRA) s821 yeon GPU0(교사버그 수정 재기동)·s902 yeon GPU2. B/C s902 04:11 착수(게이트 앞당김), 검증 PASS.
 - **신규 착수(10-01)**: N-RGBX-T(2모달교사, DRN-261001-02) bengio GPU1,2,3,5 DDP 연쇄(`n_rgbx_t_chain`). oracle_cond_test+E1스크린821 val leave-one-out → yeon GPU3,4,5(ETA ~5h).
+- **재배치(user 10-01 승인)**: P56 6런을 2장 DDP 로 재개(A s821 hpca100 1+3 · B s821 jarvis 0+1 · yeon 3런 2장씩) → 첫 판정 10-02 오후 예상.
 - **배치(user 10-01)**: bengio·hpca100·yeon 잔여 GPU는 rNs 사용(회수는 user 결정).
 - **대기열(bengio, 10-01 등록)**: N-RGBX-T(E1 2모달 교사 3런, DRN-261001-02, P30, 위에서 기동 완료) → CAFuser (b) 재개(DRN-260926-58, P40, 스모크 선행) → MUSES 기준선 DGFusion 공식 가중치 val 재현(DRN-261001-01, P35, 데이터 스테이징 선행).
 - **MUSES**: PhysAug-off 공정선 3시드 공식 val 82.30±0.14(824·825·826). test 제출은 보류(user 09-29).
