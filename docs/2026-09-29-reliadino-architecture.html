@@ -105,9 +105,128 @@ li{max-width:72ch}
     <span class="pill">DELIVER test <b>56.24 ± 0.42</b> (DGFusion 56.71)</span>
     <span class="pill">DELIVER val <b>69.51 ± 0.15</b> (CAFuser-CAA 68.79)</span>
     <span class="pill">센서 결측 15조합 평균 <b>40.0 → 48.1</b></span>
-    <span class="pill">진행 중 <b>모달 충돌 학습 (P56-A)</b></span>
+    <span class="pill">진행 중 <b>모달 충돌 학습 (P56-A)</b> · B·C 설계 완료</span>
   </div>
 </header>
+
+<section>
+  <h2>기존 구조의 문제, 우리 방법, 그 원리</h2>
+  <p>세 갈래의 기존 융합 구조가 각각 어디서 막히는지를 우리 실측으로 짚고, 그 막힘에 하나씩 대응하는 설계와 그 설계가 통할 수밖에 없는 이유를 적는다. 근거는 모두 이 프로젝트가 직접 잰 값이다.</p>
+
+  <figure>
+    <div class="scroll">
+    <svg class="wide" viewBox="0 0 1040 470" role="img" aria-label="왼쪽 열은 기존 세 구조의 문제, 가운데 열은 우리 실측 근거, 오른쪽 열은 그 문제에 대응하는 우리 설계. 외부 prior 조건화는 레이블 의존과 depth 과의존으로, RGB 고정 주입은 RGB 결측 불가와 센서 2개 제한으로, 순차 메모리 attention 은 주입한 신뢰도가 무시되고 동적 가중이 상수로 붕괴하는 문제로 이어지며, 우리 설계는 대칭 융합, 학습 유인, 센서 자체 신호로 조건화하는 계산으로 대응한다.">
+      <defs>
+        <marker id="m5" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+      </defs>
+      <text class="lane" x="10" y="18">기존 구조의 문제</text>
+      <text class="lane" x="380" y="18">우리 실측 근거</text>
+      <text class="lane" x="740" y="18">우리 설계</text>
+
+      <!-- 행 1: 외부 prior -->
+      <rect class="ext" x="10" y="34" width="330" height="92" rx="6"/>
+      <text x="22" y="54" class="hd">외부 prior 조건화 · DGFusion / CAFuser</text>
+      <text x="22" y="72" class="sub">조건 텍스트·depth 정답 감독으로 융합을 조절</text>
+      <text x="22" y="88" class="sub">→ 학습에 레이블이 필요하고, depth 한 센서에 과의존</text>
+      <text x="22" y="104" class="sub">→ event·LiDAR 는 어떤 조건에서도 쓰지 않음</text>
+      <text x="22" y="120" class="sub">→ 의존도 이동은 RGB 가 나빠질 때만</text>
+
+      <rect class="box" x="380" y="34" width="330" height="92" rx="6"/>
+      <text x="392" y="54" class="hd">모달 제거 실측 (DELIVER test)</text>
+      <text x="392" y="72" class="sub">DGFusion depth 제거: 맑음 −23.1 · 야간 −32.6 · 저노출 −37.1</text>
+      <text x="392" y="88" class="sub">event·LiDAR 제거: 전 조건 ±0.4 (CAFuser 도 같음)</text>
+      <text x="392" y="104" class="sub">우리 Q2 (prior 없음): 야간 RGB 제거 −5.2, depth 제거 −10.1</text>
+      <text x="392" y="120" class="sub">→ 이동은 외부 prior 없이도 생긴다</text>
+
+      <rect class="ours" x="740" y="34" width="290" height="92" rx="6"/>
+      <text x="752" y="54" class="hd">레이블 없이 학습 유인으로</text>
+      <text x="752" y="72" class="sub">두 패스(clean + 결측·열화·충돌) + 교사 증류</text>
+      <text x="752" y="88" class="sub">센서를 "없애고, 망가뜨리고, 틀리게" 보여 줘</text>
+      <text x="752" y="104" class="sub">네트워크가 스스로 다른 센서를 찾게 함</text>
+      <text x="752" y="120" class="sub">= Q2(채택) · P56-A(학습 중)</text>
+      <path class="ln" d="M340 80 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
+      <path class="lnours" d="M710 80 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
+
+      <!-- 행 2: RGB 고정 주입 -->
+      <rect class="ext" x="10" y="146" width="330" height="92" rx="6"/>
+      <text x="22" y="166" class="hd">RGB 고정 주입 · MM SAM-adapter</text>
+      <text x="22" y="184" class="sub">RGB 만 본 가지(SAM 미세 조정), 보조 센서 1개를 주입</text>
+      <text x="22" y="200" class="sub">→ RGB 가 없거나 틀리면 구조가 정의되지 않음</text>
+      <text x="22" y="216" class="sub">→ 센서 3개 이상 불가(논문이 밝힌 한계)</text>
+      <text x="22" y="232" class="sub">→ "필요할 때만 보조 센서" 는 검증되지 않은 암묵</text>
+
+      <rect class="box" x="380" y="146" width="330" height="92" rx="6"/>
+      <text x="392" y="166" class="hd">센서 하나만 남을 때 (DELIVER test)</text>
+      <text x="392" y="184" class="sub">clean 만 배운 우리 E1: event 8.6 · LiDAR 4.9 (거의 전멸)</text>
+      <text x="392" y="200" class="sub">두 패스 학습 Q2: RGB 53.9 · depth 46.0 · event 31.0 · LiDAR 22.9</text>
+      <text x="392" y="216" class="sub">결측 15조합 평균 40.0 → 48.1, 구조 변경 없음</text>
+      <text x="392" y="232" class="sub">→ 어느 센서든 주인이 될 수 있어야 산다</text>
+
+      <rect class="ours" x="740" y="146" width="290" height="92" rx="6"/>
+      <text x="752" y="166" class="hd">주 센서 없는 대칭 융합</text>
+      <text x="752" y="184" class="sub">동결 백본 하나 + 센서별 LoRA</text>
+      <text x="752" y="200" class="sub">네 센서가 동시에 서로를 조회(교차 attention)</text>
+      <text x="752" y="216" class="sub">센서 수에 무관, 결측 시 같은 그래프</text>
+      <text x="752" y="232" class="sub">= E1 확정(헤드라인) 구조</text>
+      <path class="ln" d="M340 192 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
+      <path class="lnours" d="M710 192 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
+
+      <!-- 행 3: 순차 메모리 + 가중 주입 -->
+      <rect class="ext" x="10" y="258" width="330" height="106" rx="6"/>
+      <text x="22" y="278" class="hd">순차 메모리 attention + 신뢰도 주입 · MemorySAM 계보</text>
+      <text x="22" y="296" class="sub">센서를 순서대로 넣고 앞 센서 메모리를 조회(첫 센서는 조회 없음)</text>
+      <text x="22" y="312" class="sub">우리 SAM2 계보(P8~P33)가 얹은 것: attention 로짓 bias, 곱셈 게이트,</text>
+      <text x="22" y="328" class="sub">   동적 출력 가중, Soft-MoE LoRA</text>
+      <text x="22" y="344" class="sub">→ 주입한 신뢰도를 attention 이 듣지 않고, 동적 가중은 상수로 붕괴</text>
+      <text x="22" y="358" class="sub">→ 가장 좋은 것은 고정 상수(P9)였다</text>
+
+      <rect class="box" x="380" y="258" width="330" height="106" rx="6"/>
+      <text x="392" y="278" class="hd">가중·게이트 계열 실측</text>
+      <text x="392" y="296" class="sub">attention bias: 4세대·2백본에서 ≈0, P32 는 유의한 손해</text>
+      <text x="392" y="312" class="sub">동적 융합 P12~P17: 고정 상수 P9 대비 −0.3 ~ −13</text>
+      <text x="392" y="328" class="sub">합성 라벨 품질 헤드 Q3: clean −1.31, 실제 열화로 전이 실패</text>
+      <text x="392" y="344" class="sub">무감독 게이트 P55: 값이 상수(std 0.003~0.02), 이득 0</text>
+      <text x="392" y="358" class="sub">오라클 여유(센서 끄기 상한) 1.1~1.8 → 게이트의 몫이 작다</text>
+
+      <rect class="ours" x="740" y="258" width="290" height="106" rx="6"/>
+      <text x="752" y="278" class="hd">계산 자체를 센서 신호로 조건화</text>
+      <text x="752" y="296" class="sub">가중을 얹지 않고 attention·어댑터의 계산을 바꿈</text>
+      <text x="752" y="312" class="sub">B · 거리(Depth·LiDAR 측정값)를 attention 기하로</text>
+      <text x="752" y="328" class="sub">C · 얕은 블록 통계로 공유/센서별 LoRA 를 토큰마다 혼합</text>
+      <text x="752" y="344" class="sub">신호는 레이블이 아니라 센서 자체와 손실에서</text>
+      <text x="752" y="358" class="sub">= P56-B·C(설계 완료, 구현 전)</text>
+      <path class="ln" d="M340 311 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
+      <path class="lnours" d="M710 311 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
+
+      <!-- 원리 띠 -->
+      <line class="grid" x1="10" y1="384" x2="1030" y2="384"/>
+      <text class="lane" x="10" y="404">원리</text>
+      <text x="10" y="424" class="sub">① 의존도는 prior 가 말하는 대로가 아니라 손실이 요구하는 대로 학습된다   ② 대칭이어야 어느 센서든 주인이 될 수 있다   ③ 센서 상태 인식은 레이블이 아니라 센서 자체 신호(거리·얕은 통계·일치도)에서 나와야 실제 열화로 전이된다</text>
+      <text x="10" y="444" class="sub">④ 바탕(동결 백본)은 보존하고 센서별 어댑터만 배운다   ⑤ "얼마나 믿을지"를 따로 계산해 곱하는 대신, 융합 계산 자체가 상황에 따라 달라지게 한다(가중은 attention 이 이미 하고 있다)</text>
+    </svg>
+    </div>
+    <figcaption><b>세 문제, 세 대응, 다섯 원리.</b> 왼쪽 문제는 문헌이 아니라 우리가 같은 벤치에서 잰 것이고, 오른쪽 설계는 그 실측에 하나씩 대응한다. 가운데 열의 숫자가 각 대응이 필요한 이유다.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div class="card">
+      <h3>원리 ① 의존도는 손실이 만든다</h3>
+      <p>구조를 그대로 두고 학습 표본만 바꾼 Q2 가 event 단독 8.6 → 31.0, LiDAR 단독 4.9 → 22.9 로 올렸다. 반대로 구조에 신뢰도 prior 를 넣은 시도(attention bias 4세대, 품질 헤드 Q3, 무감독 게이트 P55)는 전부 효과가 없었다. 네트워크는 "믿으라"는 신호가 아니라 "이 센서 없이도 맞혀야 한다"는 손실에 반응한다.</p>
+    </div>
+    <div class="card">
+      <h3>원리 ② 대칭이 강건성의 전제다</h3>
+      <p>RGB 를 주인으로 둔 구조(MM SAM-adapter)는 RGB 결측을 정의할 수 없고, depth 정답에 기댄 구조(DGFusion)는 depth 가 빠지면 23~37 을 잃는다. 우리 대칭 융합은 어느 센서가 빠져도 같은 그래프로 동작하며, 그래서 결측·열화 학습이 먹힌다. 대칭이 clean 에서 손해라는 그들의 ablation 은 맞을 수 있다. 우리는 그 대가를 학습 유인(Q2)으로 되갚았다(clean 24클래스 +0.41).</p>
+    </div>
+    <div class="card">
+      <h3>원리 ③ 인식은 센서 자체 신호에서</h3>
+      <p>합성 열화 라벨로 배운 품질 헤드는 실제 야간을 "깨끗하다"고 판정했다(AUROC 0.002). 반면 얕은 블록 특징에는 야간이 선형으로 분리돼 있다(AUROC 0.99). 즉 정보는 있고, 라벨이 틀렸다. 그래서 B 는 센서가 잰 거리를, C 는 얕은 블록 통계를 입력으로 쓰고, 목표는 라벨이 아니라 분할 손실에서 온다.</p>
+    </div>
+    <div class="card">
+      <h3>원리 ④·⑤ 바탕 보존, 계산 조건화</h3>
+      <p>성능의 원천은 동결 백본 + 센서별 LoRA 였다(P34 판정). 그 위에 "얼마나 믿을지"를 따로 계산해 곱하는 길은 오라클 여유 자체가 1.1~1.8 로 작아 막혀 있다. 남은 길은 attention 과 어댑터의 계산이 센서 상태에 따라 달라지게 하는 것이고, 이것이 B·C 의 자리다. 이 두 카드가 통과해야 "modality-aware 구조"를 주장할 수 있다.</p>
+    </div>
+  </div>
+</section>
 
 <section>
   <h2>모델 구조</h2>
