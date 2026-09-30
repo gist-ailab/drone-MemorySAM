@@ -7,6 +7,16 @@ period: 2026-07-01 ~ 2026-12-31
 > **역할**: 2026 하반기(2026-07-01~) 역시간순 진행 로그. **새 진행 엔트리는 이 파일 최상단(이 안내 블록 바로 아래)에 추가**한다.
 > 현재 상태는 [current.md](current.md), 2026-06-30 이전 이력은 [history-2026H1.md](history-2026H1.md) 참조.
 
+## 2026-10-01 — P56-B/C 기동 상세 (감시 세션, current.md 8KB 상한 준수 위해 여기로 이관)
+- **P56-C 시드821**: yeon GPU0 최초 기동(09-30 21:4x KST)이 교사 아키텍처 버그로 무효 — 교사가 학생과 같은 state_routed 아키텍처로 빌드돼 블록7~24 LoRA 없이 로드(`missing=151 unexpected=72`), KD 목표 오염. `train_reliadino.py` 수정(교사는 항상 E1 아키텍처로 빌드, 키 불일치 시 즉시 RuntimeError, `tools/tests/test_teacher_arch.py` 추가, develop 1f9b83a) 후 같은 GPU0에서 kill+재기동(22:31 KST), `missing=0 unexpected=0` 확인. 무효 런 산출물은 `..._P56C_invalid_teacher_20260930`로 보존(삭제 안 함). P56-B는 교사 missing=2(RangeBias만 빠짐, λ≈0)라 애초 유효, 영향 없음.
+- **P56-B/C 시드902**: 생각정리 세션 지시(10-01) — "둘째 시드는 P56-A 판정 뒤" 게이트는 GPU 부족을 전제로 한 순서였고, yeon에 7장 빈 GPU가 생겨 사전등록·레시피 그대로 2시드 평균 판정으로 앞당김. config는 hpca100 seed902 원본(이미 존재)에서 SAVE_DIR·DATASET.ROOT·TEST.FILE·TEACHER_CKPT 4키만 yeon 경로로 교체(YAML dict 비교로 그 외 키 동일 검증, develop eb28f76). yeon 체크아웃에 unstaged 핵심 모델 파일(encoder/fusion/model/train_reliadino) + untracked `p56c_router.py` 등이 있어(판정 세션 확인: 전부 develop에 이미 있고 파일단위 전송본이라 untracked로 보일 뿐) git merge 대신 config 2개만 scp로 전송. P56-B s902 yeon GPU1, P56-C s902 yeon GPU2, 04:11:03/04:11:08 KST 기동, 교사 로드 `missing=0 unexpected=0` 양쪽 확인, 검증 4항목(파라미터 수·에러 없음·iter 전진·GPU 활성화 메모리) 전부 PASS.
+- **N-RGBX-T**(DRN-261001-02): bengio 최초 1GPU×3병렬로 잘못 기동(04:21:38 KST) → 생각정리 세션이 user 직접 승인으로 4GPU DDP 순차연쇄 지시 → 65초 시점 kill(손실 없음) → GPU1,2,3,5 DDP 연쇄 재기동(04:25:48 KST, tmux `n_rgbx_t_chain`). eff-batch 16은 train_reliadino.py가 world_size로 accumulation을 자동 계산(`ceil(16/(BS×world_size))`)해 config 수정 불필요, BS=1 그대로 유지.
+
+## 2026-10-01 — 기준선 강건 판정 반영·후속 계획 사전등록 (생각정리 세션)
+- DGFusion (a)·(b) 같은 프로토콜 강건 측정 판정(DRN-260930-02 adopt): Q2 3시드가 (b) 대비 clean +1.8·EMM +2.5·depth 부분 저하 절반·노이즈 저하 1/2~1/4. 아키텍처 아티팩트 v9 에 기준선 행 반영, current.md 8KB 이하로 정리.
+- 후속 사전등록: N-RGBX-T(E1 2모달 교사 3런, DRN-261001-02) · MUSES 기준선 공식 가중치 재현(DRN-261001-01) · CAFuser (b) 재개 queued(DRN-260926-58). 판정 대장 2026-10-01 행.
+- P56-B·C 시드902 yeon 기동 확인(감시 세션, 교사 0/0). bengio 유휴 배분은 user 결정 대기.
+
 ## 역시간순 진행 로그 (History — 2026H2)
 
 ## 2026-09-24~29 — R1·Q3 종료, Q2 바탕 레시피 채택, P55 게이트 검토, P56-A(모달 충돌 학습) 기동

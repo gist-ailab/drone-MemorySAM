@@ -11908,7 +11908,7 @@ items:
     3.6 GPU-일. bengio 에서 P56-C 시드902 다음 순서로 RGB-D 부터 기동(GPU 유휴 방지)
   priority: 30
   owner_role: manager
-  status: queued
+  status: running
   tags:
   - deliver
   - rgbx
