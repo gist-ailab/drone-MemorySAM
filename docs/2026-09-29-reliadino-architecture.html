@@ -264,6 +264,132 @@ li{max-width:72ch}
 </section>
 
 <section>
+  <h2>P55와 P56은 무엇이 다른가</h2>
+  <p>넷 다 같은 몸통(Q2 시드821)에서 출발한다. 달라지는 자리는 셋 중 하나다: 추론 그래프에 모듈을 얹는가(P55), 학습 표본만 바꾸는가(P56-A), 융합·인코더의 계산 자체를 바꾸는가(P56-B·C).</p>
+  <div class="legend">
+    <span class="key"><span class="sw box"></span>바탕과 같은 부분</span>
+    <span class="key"><span class="sw frozen"></span>동결</span>
+    <span class="key"><span class="sw dead"></span>추가했다가 종료된 모듈 (P55)</span>
+    <span class="key"><span class="sw ours"></span>이번 카드가 바꾸는 부분 (학습 중)</span>
+    <span class="key"><span class="sw plan"></span>승인됨, 구현 전</span>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg class="wide" viewBox="0 0 1040 400" role="img" aria-label="네 패널 비교. 바탕 Q2 는 동결 백본, 교차 모달 attention, 헤드로 이어지고 두 패스 학습과 교사 증류로 학습한다. P55 는 얕은 블록 특징을 읽는 게이트를 추가해 attention 의 키와 센서 평균에 곱셈 가중을 주며 본체를 동결하고 게이트만 학습했다. P56-A 는 추론 그래프를 바꾸지 않고 열화 패스에 모달 충돌 표본을 더한다. P56-B 는 거리값을 attention 의 위치 정보로 넣고 P56-C 는 인코더 LoRA 를 공유와 센서별 전문가 혼합으로 바꾼다.">
+      <defs>
+        <marker id="m2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+      </defs>
+
+      <!-- 패널 1: Q2 바탕 -->
+      <g transform="translate(0,0)">
+        <text x="10" y="18" class="hd">바탕 · Q2 시드821</text>
+        <text x="10" y="33" class="sub">구조 = E1(4탭). 학습만 두 패스 + 증류</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text><text x="125" y="130" text-anchor="middle" class="sub">센서별 LoRA r8 · 탭 6/12/18/24</text>
+        <rect class="box" x="10" y="164" width="230" height="52" rx="5"/><text x="125" y="183" text-anchor="middle">교차 모달 attention × 2</text><text x="125" y="200" text-anchor="middle" class="sub">키 = 나머지 세 센서 · 이후 평균</text>
+        <rect class="box" x="10" y="234" width="230" height="40" rx="5"/><text x="125" y="253" text-anchor="middle">피라미드 · 밀집 헤드 · 쿼리 헤드</text><text x="125" y="267" text-anchor="middle" class="sub">분할 결과</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 216 V234" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="ours" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: 두 패스 + 교사 증류</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">clean 패스 + 열화 패스(결측·흐림 등)</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">동결 E1 교사의 clean 예측을 따라감</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">전 파라미터 학습 · 40에폭</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">legal v2 val 68.55 / test 57.73</text>
+      </g>
+
+      <!-- 패널 2: P55 -->
+      <g transform="translate(260,0)">
+        <text x="10" y="18" class="hd">P55 · 무감독 신뢰도 게이트</text>
+        <text x="10" y="33" class="sub">추론 그래프에 모듈 추가 · 종료</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text><text x="125" y="130" text-anchor="middle" class="sub">Q2 의 LoRA 도 동결</text>
+        <rect class="frozen" x="10" y="164" width="130" height="52" rx="5"/><text x="75" y="183" text-anchor="middle">교차 모달 attention</text><text x="75" y="200" text-anchor="middle" class="sub">키 가중 · 가중 평균</text>
+        <rect class="dead" x="152" y="150" width="88" height="80" rx="5"/>
+        <text x="196" y="167" text-anchor="middle" class="hd">게이트</text>
+        <text x="196" y="181" text-anchor="middle" class="sub">블록 2·6·12 특징</text>
+        <text x="196" y="194" text-anchor="middle" class="sub">+ 센서 간 일치도</text>
+        <text x="196" y="207" text-anchor="middle" class="sub">→ 센서별 r∈(0,1)</text>
+        <text x="196" y="221" text-anchor="middle" class="sub">7만 파라미터</text>
+        <path class="lndead" d="M196 146 V150" style="color:var(--dead)"/>
+        <path class="lndead" d="M152 190 H140" style="color:var(--dead)" marker-end="url(#m2)"/>
+        <text x="146" y="245" text-anchor="middle" class="sub" style="fill:var(--dead)">r 로 키를 가리고(1−r 만큼) 평균에 곱함</text>
+        <rect class="frozen" x="10" y="254" width="230" height="30" rx="5"/><text x="125" y="273" text-anchor="middle">피라미드 · 헤드 (동결)</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M75 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M75 216 V254" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="dead" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: 2단계, 게이트만</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">본체 동결 · 합성 열화 없음 · 4에폭</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">팔1 분할 손실만 / 팔2 자기 leave-one-out 목표</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">test 57.59 / 57.67 (Q2 57.73)</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">게이트가 거의 상수 → 이득 없음</text>
+      </g>
+
+      <!-- 패널 3: P56-A -->
+      <g transform="translate(520,0)">
+        <text x="10" y="18" class="hd">P56-A · 모달 충돌 학습</text>
+        <text x="10" y="33" class="sub">추론 그래프 변경 없음 · 학습 중</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text><text x="125" y="130" text-anchor="middle" class="sub">센서별 LoRA r8 · 탭 6/12/18/24</text>
+        <rect class="box" x="10" y="164" width="230" height="52" rx="5"/><text x="125" y="183" text-anchor="middle">교차 모달 attention × 2</text><text x="125" y="200" text-anchor="middle" class="sub">바탕과 동일</text>
+        <rect class="box" x="10" y="234" width="230" height="40" rx="5"/><text x="125" y="253" text-anchor="middle">피라미드 · 밀집 헤드 · 쿼리 헤드</text><text x="125" y="267" text-anchor="middle" class="sub">분할 결과</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 216 V234" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="ours" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: Q2 + 충돌 표본 30%</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">RGB 또는 Depth 한 센서의 덩어리 영역을</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">다른 장면·포화 반사광으로 교체, 정답은 원본</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">"선명하지만 틀린 센서"를 가르침</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">시드 821·902 학습 중, 완주 10-03</text>
+      </g>
+
+      <!-- 패널 4: P56-B/C -->
+      <g transform="translate(780,0)">
+        <text x="10" y="18" class="hd">P56-B · C</text>
+        <text x="10" y="33" class="sub">계산 자체를 바꿈 · 구현 전</text>
+        <rect class="box" x="10" y="48" width="230" height="30" rx="5"/><text x="125" y="67" text-anchor="middle">RGB · Depth · Event · LiDAR</text>
+        <rect class="frozen" x="10" y="94" width="230" height="52" rx="5"/><text x="125" y="113" text-anchor="middle">동결 DINOv3 ViT-L</text>
+        <rect class="plan" x="20" y="120" width="210" height="22" rx="4"/><text x="125" y="135" text-anchor="middle" class="sub">C · 공유 LoRA + 센서별 LoRA 를 토큰마다 혼합</text>
+        <rect class="box" x="10" y="164" width="230" height="52" rx="5"/><text x="125" y="183" text-anchor="middle">교차 모달 attention × 2</text>
+        <rect class="plan" x="20" y="190" width="210" height="22" rx="4"/><text x="125" y="205" text-anchor="middle" class="sub">B · Depth·LiDAR 거리값을 위치 정보로</text>
+        <rect class="box" x="10" y="234" width="230" height="40" rx="5"/><text x="125" y="253" text-anchor="middle">피라미드 · 밀집 헤드 · 쿼리 헤드</text><text x="125" y="267" text-anchor="middle" class="sub">분할 결과</text>
+        <path class="ln" d="M125 78 V94" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 146 V164" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <path class="ln" d="M125 216 V234" style="color:var(--muted)" marker-end="url(#m2)"/>
+        <line class="grid" x1="10" y1="292" x2="240" y2="292"/>
+        <rect class="plan" x="10" y="304" width="230" height="84" rx="5"/>
+        <text x="125" y="323" text-anchor="middle" class="hd">학습: Q2(+A) 레시피 그대로</text>
+        <text x="125" y="340" text-anchor="middle" class="sub">B: 같은 거리대 토큰끼리 더 잘 찾도록</text>
+        <text x="125" y="354" text-anchor="middle" class="sub">C: 얕은 블록 통계로 혼합 비율을 정함</text>
+        <text x="125" y="368" text-anchor="middle" class="sub">A 판정 뒤 순서대로 착수</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">외부 레이블 불사용은 동일</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption><b>P55는 "융합 뒤에서 센서를 얼마나 믿을지"를 별도 모듈이 정하게 한 것이고, P56은 "융합 자체가 그것을 배우게" 한다.</b> P55의 게이트는 본체를 동결한 채 분할 손실만으로 4에폭 학습했는데, 값이 거의 상수(0.50~0.52)로 머물러 성능이 바뀌지 않았다. P56-A는 추론 때 아무것도 추가하지 않고 학습 표본만 바꾼다.</figcaption>
+  </figure>
+
+  <div class="tbl">
+  <table>
+    <thead><tr><th style="width:16%">항목</th><th>Q2 시드821 (바탕)</th><th>P55</th><th>P56-A</th><th>P56-B · C</th></tr></thead>
+    <tbody>
+      <tr><td><b>추론 그래프</b></td><td>E1 과 동일: 동결 DINOv3-L + 센서별 LoRA r8 + 4탭 + 교차 모달 attention 2층 + 피라미드·밀집 헤드·쿼리 헤드</td><td>바탕 + 게이트 모듈(7만 파라미터). 게이트가 낸 r 로 attention 의 키를 가리고(1−r) 센서 평균에 곱함</td><td>바탕과 완전히 같음</td><td>B: attention 에 거리 기반 위치 정보 추가 · C: 인코더 LoRA 를 공유 + 센서별 전문가 혼합으로</td></tr>
+      <tr><td><b>학습되는 것</b></td><td>LoRA·융합·헤드 전부(5,900만), 40에폭</td><td>게이트만(본체 동결), 4에폭</td><td>바탕과 같음(전부), 40에폭</td><td>바탕과 같음 + 새 모듈</td></tr>
+      <tr><td><b>학습 신호</b></td><td>clean 패스 CE + 열화 패스 CE + 동결 E1 교사 증류</td><td>팔1: 분할 손실만 · 팔2: 자기 leave-one-out 손실(한 센서를 뺐을 때 손실이 얼마나 나빠지는지)을 목표로</td><td>바탕 + 열화 패스의 30% 를 충돌 표본으로(한 센서만 틀리게, 정답은 원본)</td><td>바탕 그대로</td></tr>
+      <tr><td><b>외부 레이블</b></td><td>없음</td><td>없음</td><td>없음</td><td>없음(거리값은 센서 측정치)</td></tr>
+      <tr><td><b>상태·결과</b></td><td>강건 축 3시드 통과, 바탕 레시피 채택. val 68.55 / test 57.73</td><td>종료. val 68.62·68.31 / test 57.59·57.67, 게이트 표준편차 0.020·0.003</td><td>시드 821·902 학습 중(완주 10-03), 사전 기준 = clean 24클래스 Δ ≥ −0.3 그리고 실제 열화 케이스 +1.0 또는 RGB 부분 결측 저하 20% 감소</td><td>구현 전</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
   <h2>왜 이렇게 만들었나</h2>
   <p>각 설계는 실측 결과 하나에 대응한다. 버린 대안도 같은 기준으로 측정해서 버렸다.</p>
   <div class="tbl">
