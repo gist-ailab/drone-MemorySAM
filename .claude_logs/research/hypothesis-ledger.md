@@ -45,6 +45,9 @@ author: fable (MMSAM discussion 세션)
 | H27 | 합성 열화 라벨로 감독한 모달·토큰별 품질 토큰을 cross-modal attention key 마스크로 쓰면(clean 항등 제약) 존재-열화 모달의 오염이 줄어 강건 벤치(EMM/RMM/NM)가 오르고 clean 은 유지된다 | P54-QAF Q3 vs T′(증류만) 3시드 + 치환 검정 | 🟡 예약(2026-09-20 제안) | 게이트: clean Δ ≥ −0.3 · RMM r=.5 손실 절반 · EMM ≥ 48.22 · NM 고 ≥ 15 · 셔플 시 열화 Δ > +1.0 | [decisions/2026-09-20-p54-quality-aware-fusion-proposal.md](../decisions/2026-09-20-p54-quality-aware-fusion-proposal.md) §4 |
 | H28 | 모달 내 self-attention 1층 → 모달 간 set-attention 순서가 현행(대칭 cross 만)보다 clean 무손실이고 열화 이득이 있다 | Q3 토글 어블레이션(F 의 self 층 on/off) | 🟡 예약 | EQUISeg cross-attn 제거 EMM −5.41 이 외삽 근거 | 동상 §2-2 |
 | H29 | 동결 E1 교사 + clean 패스 CE 상시 + 모달 단위 열화의 두 패스 학습은 clean 을 보존한다(H15 EMA+마스킹 −1.67 과 대비) | Q2(T′) 3시드 | 🟡 예약 | RMMSS 2단계 −0.07 · CHARM +0.18 · MISS ±0.5 외삽 | 동상 §2-5 |
+| H30 | 깨끗한 입력에서 센서를 2개(RGB+Depth)에서 4개로 늘리면 clean mIoU 가 쌓인다 | N-RGBX-T 2모달 E1 교사 3런 40ep 스크린 시드821 legal v2 vs 4모달 E1 같은 스크린 | ❌ 반증(2026-10-02) | RGB+Depth test 56.56(Δ24 +0.36) = 4모달 55.94 동률 · RGB+LiDAR 55.31 · RGB+Event 55.68 | 판정 대장 2026-10-02 행, NAS ckpts/bengio_deliver_rgb{d,l,e}_…_20261001/ |
+| H31 | 센서를 더하면 결측 시 폴백 성능(RGB 만·depth 만)은 쌓인다 | 같은 RGB+Depth 교사 결측 3조합 vs 4모달 E1 스크린 | ✅ 확인(단일 시드, 2026-10-02) | 2모달 RGB 만 36.85 / depth 만 44.94 vs 4모달 39.3 / 46.3(−2.45 / −1.36) | 판정 대장 2026-10-02 행 |
+| H32 | 영역(창 64) 단위로 센서 부분집합을 고르는 오라클 여유는 선택 편향을 뺀 뒤에도 설계 가치가 있다(순여유 ≥ +1.5) | Q2 시드821 test 부분집합 380장 --null_control | ❌ 반증(2026-10-02) | 오라클 1.84 − null 1.11 = **순여유 +0.73**(img 단위 +0.05) → 영역·이미지 단위 센서 선택·가중 게이트 전부 재시도 금지 축 | 판정 대장 2026-10-02 행 |
 
 ## 종합 — 계보가 확립한 명제 (2026-08-09 갱신)
 
