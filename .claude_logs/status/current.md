@@ -57,6 +57,6 @@ last_updated: 2026-10-01 (헤드라인 불변, 8KB 재압축)
 - **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
 - **실행 중**(상세=[history](history-2026H2.md), 설계서 decisions/2026-09-30-p56-bc): P56-A(모달충돌학습) hpca100 s821 GPU1(ep20)·s902 GPU2(ep17) — ISSUE-040(2장 DDP 정체)로 10-01 10:02 1장 원복, ETA 10-03 22시경. P56-B(거리조건화attn) s821 hpca100 GPU3·s902 yeon GPU1. P56-C(상태조건부LoRA) s821 yeon GPU0·s902 yeon GPU2.
 - **N-RGBX-T**(2모달교사, DRN-261001-02) **3레그 legal v2 전부 완료 + NAS 보존 완료**: RGB+Depth(val 68.02/test 56.56) · RGB+LiDAR(val 61.68/test 55.31) · RGB+Event(val 62.27/test 55.68). 참조(4모달 E1 스크린821, NAS ckpt로 재현) test 55.94 — RGB+Depth만 +0.62 높고 나머지 둘은 낮아 clean 가산성 반증 조건 발동(생각정리 예비판정 1ce181b). ckpt+train.log+legal로그 전부 NAS `ckpts/bengio_deliver_rgb{d,l,e}_..._20261001/`에 md5와 보존. bengio GPU 전원 반납. oracle_cond_test+E1스크린821 val leave-one-out은 yeon 완료(headroom 1.87~2.48).
-- **대기열**: CAFuser (b) 재개(DRN-260926-58, 스모크 선행) → MUSES 기준선 DGFusion 공식가중치 val 재현(DRN-261001-01, 데이터 스테이징 선행) → N-RGBX-T 전 레그 NAS보존(저우선, legal 완료 후).
+- **대기열**: CAFuser (b) 재개(DRN-260926-58, 스모크 선행) → MUSES 기준선 DGFusion 공식가중치 val 재현(DRN-261001-01, 데이터 스테이징 선행).
 - MUSES: PhysAug-off 공정선 3시드 공식 val 82.30±0.14. test 제출 보류(user 09-29).
 - **적체 판정 완료(09-30)**: 이관분 219건 전부 lab-plan verdict 기록. 미판정 없음.
