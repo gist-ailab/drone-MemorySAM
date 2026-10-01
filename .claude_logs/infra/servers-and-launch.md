@@ -190,3 +190,14 @@ WANDB:
 2. jarvis QAF 두 런이 로그도 없이 사망했다. tmux 명령에 conda 를 `anaconda3` 로 하드코딩했으나 jarvis 는 `miniconda3` 다.
 
 새 기동 스크립트는 경로를 `hostenv.tsv` 에서 읽거나, 서버에서 직접 확인한 값만 쓴다.
+
+### 🔴 jarvis 체크아웃 상태 — 정리 대기 (2026-10-01 08:5x KST 감시 세션 확인)
+
+- `/SSDb/jemo_maeng/src/drone-MemorySAM-develop` : `.git` 없음 — 단순 디렉터리 복사본(2026-09-23자). git 명령 불가능한 경로.
+- `/SSDb/jemo_maeng/src/drone-MemorySAM` : 진짜 git 저장소(origin=github.com/gist-ailab/drone-MemorySAM, branch develop). `git status` 요약:
+  - **origin/develop 대비 251커밋 뒤처짐**
+  - staged 3건: `detail_branch.py`(신규) · `model.py`(수정) · `train_reliadino.py`(수정)
+  - unstaged 3건: `fusion.py` · `model.py` · `train_reliadino.py`
+  - untracked 40여개: E13/E17/E1_confirm200류 config 다수, `quality_head.py`·`degrade.py`·`boundary_refine.py`·`component_loss.py` 등 신규 모듈, `modal_zero_ours*/` 디렉터리, `tools/` 신규 스크립트 다수
+  - 마지막 수정 시각: 미상(이번 조회에서 개별 파일 mtime까지는 확인 안 함)
+- **누구 세션의 작업인지 미상** — merge·reset·삭제 금지(생각정리·user 결정 대기). jarvis는 당분간 신규 배치에서 제외(2026-10-01 재배치 시도에서 GPU 0~7 전부 타 사용자(minkyoung_chun, dgss) 점유로 사용 불가도 확인됨, 별도 사유).
