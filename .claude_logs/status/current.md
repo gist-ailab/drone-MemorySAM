@@ -55,9 +55,8 @@ last_updated: 2026-10-01 (헤드라인 불변, 8KB 재압축)
 - **채택(바탕 레시피)**: Q2(두 패스 clean CE + 열화 CE + 동결 E1 교사 증류). clean Δ24 +0.41(개선 주장 안 함) · 결측 15조합 48.06 vs E1 40.01 vs DGFusion (b) 45.52·공식 가중치 31.14 · depth 부분 저하 (b) 의 절반 · RGB 부분 결측 이득 없음.
 - **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
 - **P55(자기감독 게이트) 계열 종료**: 오라클 순 여유 조건별 1.1~1.8 · 분할 손실만으로 학습한 팔 test 57.59, 자기 leave-one-out 손실을 목표로 준 팔 test 57.67(게이트가 사실상 상수) — 둘 다 Q2 57.73 과 같은 수준. 곱셈 게이트는 주 후보에서 제외.
-- **실행 중**(상세=[history](history-2026H2.md), 설계서 decisions/2026-09-30-p56-bc): P56-A(모달충돌학습) hpca100 s821 GPU1·s902 GPU2(완주 10-03). P56-B(거리조건화attn) s821 hpca100 GPU3·s902 yeon GPU1. P56-C(상태조건부LoRA) s821 yeon GPU0(교사버그 수정 재기동)·s902 yeon GPU2. B/C s902 04:11 착수(게이트 앞당김), 검증 PASS.
+- **실행 중**(상세=[history](history-2026H2.md), 설계서 decisions/2026-09-30-p56-bc): P56-A(모달충돌학습) hpca100 s821 GPU1(ep19, 1.99s/it)·s902 GPU2(ep16, 1.7s/it) — ISSUE-040(2장 DDP all-reduce 정체)로 10-01 10:02 1장 원복, ETA 각 10-03 15~16시경. P56-B(거리조건화attn) s821 hpca100 GPU3(1장, 영향 없음)·s902 yeon GPU1. P56-C(상태조건부LoRA) s821 yeon GPU0(교사버그 수정 재기동)·s902 yeon GPU2.
 - **N-RGBX-T**(2모달교사, DRN-261001-02) bengio GPU1,2,3,5 DDP 연쇄: **RGB+Depth 완주**(val-best 66.89@ep40, 검증됨, legal재채점+NAS보존 대기열 등록) → RGB+LiDAR 진행 중. oracle_cond_test+E1스크린821 val leave-one-out은 yeon에서 완료(headroom 1.87~2.48).
-- **재배치(user 10-01 승인, jarvis는 타사용자 점유로 포기)**: hpca100 A s902(GPU2) kill 완료, A s821 다음 체크포인트 직후 kill→GPU1,2 2GPU 재개 예정. B s821(GPU3) 1GPU 유지. yeon 3런은 오라클 종료로 빈 GPU3,4,5를 순서대로 짝짓는 중(GPU4→C s821).
 - **대기열**: CAFuser (b) 재개(DRN-260926-58, 스모크 선행) → MUSES 기준선 DGFusion 공식가중치 val 재현(DRN-261001-01, 데이터 스테이징 선행) → N-RGBX-T 각 레그 legal 재채점+NAS보존(저우선, 빈 GPU 시).
 - MUSES: PhysAug-off 공정선 3시드 공식 val 82.30±0.14. test 제출 보류(user 09-29).
 - **적체 판정 완료(09-30)**: 이관분 219건 전부 lab-plan verdict 기록. 미판정 없음.
