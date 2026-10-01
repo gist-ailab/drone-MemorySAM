@@ -13,7 +13,7 @@ headline: DELIVER test 56.24±0.42(best 56.73, legal v2 3시드) · val 69.51±0
 sota_gap: DELIVER test mean −0.47 vs DGFusion 56.71 · val mean +0.72 vs CAFuser-CAA 68.79 · MUSES test mean −0.21 vs DGFusion 79.5 · MCubeS +2.17 vs StitchFusion 55.9 (출처: ① 표)
 next_gate: P56-A(모달 충돌 학습: Q2 레시피의 열화 패스에 "한 센서 영역이 자신 있게 틀린" 표본 추가) 40ep 스크린 2시드 — 사전 기준 = clean 24클래스 Δ vs Q2 ≥ −0.3 그리고 (실제 과노출·저노출·모션블러 케이스 mIoU 평균 Δ ≥ +1.0 또는 RGB 부분 결측 저하 20% 이상 감소), lab-plan DRN-260929-01
 blocker: MUSES test 제출 보류(user 2026-09-29: 새 4모달 모델로 다시 만들 것)
-last_updated: 2026-10-01 (헤드라인 불변. 감시/판정 구역 분담, 8KB 재압축)
+last_updated: 2026-10-01 (헤드라인 불변, 8KB 재압축)
 <!-- PI:END -->
 
 > **역할**: 현재 상태 스냅샷 — 네 블록(벤치 표·지금 도는 것·블로커·판정 대기)만 담는다(상한 60줄, 2026-09-18 재설계 — 감사 R2). 이력·경위는 [history-2026H2.md](history-2026H2.md), 날짜 엔트리 적층 금지.
@@ -43,11 +43,11 @@ last_updated: 2026-10-01 (헤드라인 불변. 감시/판정 구역 분담, 8KB 
 
 ## ③ 열린 블로커 (2026-09-29)
 
-1. **hpca100 공유 볼륨 89%**(여유 244G, [artifact-locations](../infra/artifact-locations.md) 2b). 계속 감시.
-2. **ISSUE-036** legal 재샘플 편차 — v2(nearest-exact) 채택 완료, 래퍼 가드 등재 잔여.
+1. hpca100 공유볼륨 89%(여유 244G, [artifact-locations](../infra/artifact-locations.md) 2b).
+2. ISSUE-036 legal 재샘플 편차 — v2 채택 완료, 래퍼 가드 등재 잔여.
 3. **기준선 강건 측정 완료**(10-01, DGFusion (a)·(b) 61케이스 같은 프로토콜): Q2 3시드가 (b) 대비 clean +1.8·결측 15조합 +2.5·depth 부분 저하 절반. CAFuser 미측정.
-4. **ISSUE-034** eval 예측 덤프 파일명 평탄화 · **ISSUE-035** 헤드라인 ckpt 경로 기록(이슈 표 갱신 대기).
-5. jarvis `/ailab_mat2` 접근 금지(sshfs 정지). lecun·jarvis GPU0 금지 09-30 해제.
+4. ISSUE-034(덤프 파일명)·ISSUE-035(헤드라인 ckpt 경로) 이슈 표 갱신 대기.
+5. jarvis `/ailab_mat2` 금지(sshfs 정지). lecun·jarvis GPU0 금지 09-30 해제.
 
 ## ④ 판정 현황 (판정 = "MMSAM | 생각정리" 세션, 근거 = judgment-ledger 2026-09-23~29 행)
 
@@ -56,8 +56,8 @@ last_updated: 2026-10-01 (헤드라인 불변. 감시/판정 구역 분담, 8KB 
 - **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
 - **P55(자기감독 게이트) 계열 종료**: 오라클 순 여유 조건별 1.1~1.8 · 분할 손실만으로 학습한 팔 test 57.59, 자기 leave-one-out 손실을 목표로 준 팔 test 57.67(게이트가 사실상 상수) — 둘 다 Q2 57.73 과 같은 수준. 곱셈 게이트는 주 후보에서 제외.
 - **실행 중**(상세=[history](history-2026H2.md), 설계서 decisions/2026-09-30-p56-bc): P56-A(모달충돌학습) hpca100 s821 GPU1·s902 GPU2(완주 10-03). P56-B(거리조건화attn) s821 hpca100 GPU3·s902 yeon GPU1. P56-C(상태조건부LoRA) s821 yeon GPU0(교사버그 수정 재기동)·s902 yeon GPU2. B/C s902 04:11 착수(게이트 앞당김), 검증 PASS.
-- **신규 착수(10-01)**: N-RGBX-T(2모달교사, DRN-261001-02) bengio GPU1,2,3,5 DDP 연쇄(`n_rgbx_t_chain`). oracle_cond_test+E1스크린821 val leave-one-out → yeon GPU3,4,5(ETA ~5h).
-- **재배치(user 10-01 승인)**: P56 6런을 2장 DDP 로 재개(A s821 hpca100 1+3 · B s821 jarvis 0+1 · yeon 3런 2장씩) → 첫 판정 10-02 오후 예상. bengio 1·2·3·5 N-RGBX-T 연쇄, 그 외 잔여 GPU 는 rNs.
-- **대기열(bengio, 10-01 등록)**: N-RGBX-T(E1 2모달 교사 3런, DRN-261001-02, P30, 위에서 기동 완료) → CAFuser (b) 재개(DRN-260926-58, P40, 스모크 선행) → MUSES 기준선 DGFusion 공식 가중치 val 재현(DRN-261001-01, P35, 데이터 스테이징 선행).
-- **MUSES**: PhysAug-off 공정선 3시드 공식 val 82.30±0.14(824·825·826). test 제출은 보류(user 09-29).
+- **N-RGBX-T**(2모달교사, DRN-261001-02) bengio GPU1,2,3,5 DDP 연쇄: **RGB+Depth 완주**(val-best 66.89@ep40, 검증됨, legal재채점+NAS보존 대기열 등록) → RGB+LiDAR 진행 중. oracle_cond_test+E1스크린821 val leave-one-out은 yeon에서 완료(headroom 1.87~2.48).
+- **재배치(user 10-01 승인, jarvis는 타사용자 점유로 포기)**: hpca100 A s902(GPU2) kill 완료, A s821 다음 체크포인트 직후 kill→GPU1,2 2GPU 재개 예정. B s821(GPU3) 1GPU 유지. yeon 3런은 오라클 종료로 빈 GPU3,4,5를 순서대로 짝짓는 중(GPU4→C s821).
+- **대기열**: CAFuser (b) 재개(DRN-260926-58, 스모크 선행) → MUSES 기준선 DGFusion 공식가중치 val 재현(DRN-261001-01, 데이터 스테이징 선행) → N-RGBX-T 각 레그 legal 재채점+NAS보존(저우선, 빈 GPU 시).
+- MUSES: PhysAug-off 공정선 3시드 공식 val 82.30±0.14. test 제출 보류(user 09-29).
 - **적체 판정 완료(09-30)**: 이관분 219건 전부 lab-plan verdict 기록. 미판정 없음.
