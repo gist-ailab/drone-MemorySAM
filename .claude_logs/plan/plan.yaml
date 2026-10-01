@@ -11959,17 +11959,26 @@ items:
   expected_cost: bengio GPU7(현재 유휴) 1장, clean 15분 + 61케이스 약 7시간
   priority: 32
   owner_role: specialist-baseline
-  status: queued
+  status: done
   tags:
   - deliver
   - baseline
   - robust
   created: '2026-10-01'
   updated: '2026-10-01'
-  closed: null
+  closed: '2026-10-01'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 확정 + 가설 채택: DGFusion 공식 DELIVER 가중치(md5 0f40a641…) clean test 56.73(README
+      56.71)·val 66.51 재현, 61케이스 같은 프로토콜 EMM 15조합 평균 31.14(a 재현본 31.53, b 열화 재학습 45.52,
+      Q2 3시드 48.06), depth 통째 결측 23.34, depth 부분 저하 7.22/11.72/15.78(Q2 0.98/2.04/2.64),
+      NM S&P 저하 17.61/39.88/52.20(Q2 3.11/4.79/7.68). 반증 조건 해당 없음 → Q2 강건 우위는 공식 가중치
+      앞에서도 유지. 기준선 표의 (a) 열을 이 값으로 교체. 원본 NAS analysis_logs/baseline_robust_dgfusion_official_deliver_clde_20261001/,
+      판정 대장 2026-10-01 행'
+    date: '2026-10-01'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-261001-04
