@@ -56,7 +56,7 @@ last_updated: 2026-10-01 (헤드라인 불변, 8KB 재압축)
 - **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
 - **P55(자기감독 게이트) 계열 종료**: 오라클 순 여유 조건별 1.1~1.8 · 분할 손실만으로 학습한 팔 test 57.59, 자기 leave-one-out 손실을 목표로 준 팔 test 57.67(게이트가 사실상 상수) — 둘 다 Q2 57.73 과 같은 수준. 곱셈 게이트는 주 후보에서 제외.
 - **실행 중**(상세=[history](history-2026H2.md), 설계서 decisions/2026-09-30-p56-bc): P56-A(모달충돌학습) hpca100 s821 GPU1(ep19, 1.99s/it)·s902 GPU2(ep16, 1.7s/it) — ISSUE-040(2장 DDP all-reduce 정체)로 10-01 10:02 1장 원복, ETA 각 10-03 15~16시경. P56-B(거리조건화attn) s821 hpca100 GPU3(1장, 영향 없음)·s902 yeon GPU1. P56-C(상태조건부LoRA) s821 yeon GPU0(교사버그 수정 재기동)·s902 yeon GPU2.
-- **N-RGBX-T**(2모달교사, DRN-261001-02) bengio GPU1,2,3,5 DDP 연쇄: RGB+Depth 완주(학습기 val-best 66.89@ep40, legal v2 val 68.02/test 56.56 재채점 완료, NAS보존 대기) · RGB+LiDAR 완주(10-01 16:35, val 60.48/test 54.45, legal·NAS 대기) · **RGB+Event 진행 중**(ep18/40, 2.3it/s). oracle_cond_test+E1스크린821 val leave-one-out은 yeon에서 완료(headroom 1.87~2.48).
-- **대기열**: CAFuser (b) 재개(DRN-260926-58, 스모크 선행) → MUSES 기준선 DGFusion 공식가중치 val 재현(DRN-261001-01, 데이터 스테이징 선행) → N-RGBX-T 남은 레그(LiDAR·Event) legal 재채점+NAS보존(저우선, 빈 GPU 시).
+- **N-RGBX-T**(2모달교사, DRN-261001-02) bengio GPU1,2,3,5 DDP 연쇄: RGB+Depth 완주(학습기 val-best 66.89@ep40, legal v2 val 68.02/test 56.56 재채점 완료, NAS보존 대기) · RGB+LiDAR 완주(10-01 16:35, val 60.48/test 54.45, **legal v2 재채점 GPU0 진행 중**, 빈 GPU 자동배치로 착수) · **RGB+Event 진행 중**(ep18/40, 2.3it/s). oracle_cond_test+E1스크린821 val leave-one-out은 yeon에서 완료(headroom 1.87~2.48).
+- **대기열**: CAFuser (b) 재개(DRN-260926-58, 스모크 선행) → MUSES 기준선 DGFusion 공식가중치 val 재현(DRN-261001-01, 데이터 스테이징 선행) → N-RGBX-T 전 레그 NAS보존(저우선, legal 완료 후).
 - MUSES: PhysAug-off 공정선 3시드 공식 val 82.30±0.14. test 제출 보류(user 09-29).
 - **적체 판정 완료(09-30)**: 이관분 219건 전부 lab-plan verdict 기록. 미판정 없음.
