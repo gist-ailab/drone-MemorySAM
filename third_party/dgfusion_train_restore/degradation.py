@@ -79,6 +79,51 @@ def set_shared_step(value):
     SHARED_STEP = value
 
 
+# 🔴 ISSUE-041 대응(옵션 B, 기본 off): spawn 으로 만든 DDP rank 의 데이터로더 워커는 모듈 전역
+# SHARED_STEP(multiprocessing.Value)을 물려받지 못해 상한이 1.0 으로 고정된다. 환경변수
+# DEGRADE_STEP_FILE=1 이면 학습 훅이 현재 iteration 을 rank 별 파일에 쓰고, 워커는 그 파일을 읽는다.
+# 경로는 rank 프로세스의 pid 로 구분해 환경변수 DEGRADE_STEP_FILE_PATH 에 심으므로, 워커가 환경을
+# 물려받는 fork·spawn 양쪽에서 같은 파일을 가리킨다.
+_STEP_FILE_CACHE = [0.0, 0]          # [마지막 읽은 시각, 마지막 step]
+
+
+def enable_step_file(directory):
+    """rank 프로세스에서 한 번 부른다. 파일 경로를 환경변수에 심고 경로를 돌려준다."""
+    path = os.path.join(directory, "degrade_step_%d.txt" % os.getpid())
+    os.makedirs(directory, exist_ok=True)
+    os.environ["DEGRADE_STEP_FILE_PATH"] = path
+    write_step_file(0)
+    return path
+
+
+def write_step_file(step):
+    path = os.environ.get("DEGRADE_STEP_FILE_PATH")
+    if not path:
+        return
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(str(int(step)))
+    os.replace(tmp, path)            # 원자적 교체: 워커가 쓰다 만 값을 읽지 않는다
+
+
+def _read_step_file():
+    """파일의 step 을 돌려준다(최대 1초 캐시). 파일이 없거나 읽기 실패면 None."""
+    import time
+    path = os.environ.get("DEGRADE_STEP_FILE_PATH")
+    if not path:
+        return None
+    now = time.time()
+    if now - _STEP_FILE_CACHE[0] < 1.0:
+        return _STEP_FILE_CACHE[1]
+    try:
+        with open(path) as f:
+            _STEP_FILE_CACHE[1] = int(f.read().strip())
+        _STEP_FILE_CACHE[0] = now
+        return _STEP_FILE_CACHE[1]
+    except (OSError, ValueError):
+        return None
+
+
 def current_severity(cfg, max_iter):
     """현재 학습 진행도에 해당하는 severity 상한을 돌려준다.
 
@@ -93,6 +138,14 @@ def current_severity(cfg, max_iter):
     """
     curriculum = list(cfg.CURRICULUM)
     fractions = list(cfg.CURRICULUM_FRACTIONS)
+
+    file_step = _read_step_file() if SHARED_STEP is None else None
+    if file_step is not None:
+        frac = file_step / float(max(1, max_iter))
+        for ceiling, boundary in zip(curriculum, fractions):
+            if frac <= boundary:
+                return float(ceiling)
+        return float(curriculum[-1])
 
     if SHARED_STEP is None:
         global _WARNED_NO_STEP

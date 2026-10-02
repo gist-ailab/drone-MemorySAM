@@ -1,0 +1,12 @@
+# CAFuser DELIVER 재학습 (b) — iter 90k 체크포인트에서 재개하는 설정 (판정 세션 옵션 A, 2026-10-02).
+#
+# 앞 90k 구간은 데이터 로더 워커가 SHARED_STEP 을 받지 못해(ISSUE-041, spawn DDP) 열화 심각도 상한이
+# 처음부터 끝까지 1.0 이었다. 재개 구간을 같은 조건으로 이어 가려고 커리큘럼을 [1.0, 1.0, 1.0] 으로
+# 명시한다. 그러면 DGFusion (b) 완주 런과도 같은 조건이 된다. MAX_ITER 는 원래 값 200000 을 유지한다.
+# 이 파일에는 코드 수정이 필요 없다. 재개는 --resume 과 같은 OUTPUT_DIR 의 last_checkpoint 로 한다.
+_BASE_: cafuser_swin_tiny_bs8_200k_deliver_clde_degrade.yaml
+
+DATASETS:
+  DELIVER:
+    DEGRADE:
+      CURRICULUM: [1.0, 1.0, 1.0]

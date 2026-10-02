@@ -180,3 +180,34 @@ bf16은 fp16보다 가수 비트가 적어(8 vs 10) 활성값 정밀도가 낮�
 - 데이터 심링크는 반드시 로컬 디스크 사본으로 (sshfs `/ailab_mat2` 금지 — I/O hang 이력).
 - 복원 학습 블록은 CAFuser와 구조 동일 + depth 배선만 추가이므로, 공개 가중치와의 정합성 검증은
   학습 완료 후 공개 수치(val 66.51/test 56.71) 재현 여부로 판단한다.
+
+## CAFuser (b) 재개 준비 (2026-10-02, 판정 세션 옵션 A)
+
+**상황**: CAFuser (b)(모달 드롭 0.2 + 열화 커리큘럼)가 jarvis 에서 iter 90k 까지 학습된 뒤 중단됐다. 재개 대상은 bengio
+`/SSDb/jemo_maeng/dgfusion_train` 이다(체크포인트 `output/cafuser_swin_tiny_bs8_200k_deliver_clde_degrade/model_0089999.pth`,
+md5 b3d1e2ed727014ee6702e6a4ebf4e959). 실제 레시피는 bs8·4 GPU(GPU당 2)·BASE_LR 1e-4·MAX_ITER 200000·fp16 이다
+(lab-plan 의 "90k→267k" 표기는 lecun bs6 변형이라 틀렸다).
+
+**ISSUE-041(커리큘럼 상한 고정)**: spawn 으로 만든 DDP rank 의 데이터로더 워커는 `degradation.SHARED_STEP` 을 받지 못해
+앞 90k 구간의 열화 심각도 상한이 처음부터 1.0 이었다(DGFusion (b) 와 같은 결함). 판정 세션의 옵션 A 에 따라 재개 구간도
+같은 조건으로 잇는다: `cafuser_..._degrade_resume.yaml` 이 `CURRICULUM [1.0,1.0,1.0]` 을 명시한다.
+옵션 B(수정 후 재학습)는 리뷰 대응 ablation 용으로만 두며, 환경변수 `DEGRADE_STEP_FILE=1` 로 켜는 토글이고 기본은 off 이다
+(step 을 rank 별 파일로 공유, `degradation.py` 의 `enable_step_file`/`write_step_file`). 켜면 spawn 경로에서 상한이
+0.3/0.6/1.0 으로 실제 진행함을 `smoke_cafb_worker_step.py` 로 확인했다.
+
+**DGFusion (b) 대비 차이**: 열화 로직·매퍼는 같다(CAFuser 매퍼 == DGFusion 매퍼, 텐서 8/8 동일). 다른 점은 ①bengio 는 non-finite
+손실 건너뛰기 `train_loop.py` 를 유지 ②step 훅 등록 순서를 `resume_or_load` **뒤**로 옮겨 공유 초기값이 start_iter 가 되게 했다
+(jarvis 원본은 앞이라 0) ③표식 로그 변형 ④MAX_ITER 200000.
+
+**스모크 결과(bengio, 2026-10-02)**: 표 안의 파일은 모두 이 디렉터리에 있다.
+
+| 항목 | 방법 | 결과 |
+|---|---|---|
+| 매퍼 off 불변 | `smoke_cafb_mapper.py off/cmp`, 패치 전 트리 대 패치 트리 | 샘플 텐서 해시 불일치 0/64 |
+| 손실 바이트 동일 | `smoke_cafb_loss.py` + `run_loss_smoke` 절차, 같은 ckpt·샘플·시드 | 손실 32항목 불일치 0, 합계 10.072266 |
+| 열화 on 통계 | `smoke_cafb_mapper.py on` | step 50k/100k/150k 로 상한이 오를수록 바뀐 화소 비율·평균 abs(Δ) 단조 증가, CAFuser 매퍼 == DGFusion 매퍼 8/8 |
+| 재개 실기동 | 2 GPU·bs4(GPU당 2), `--resume`, 약 4분 | "Starting training from iteration 90000", iter 90159 까지 전진, max_mem 16.76 GB(24 GB 이내), OOM 없음 |
+| 옵션 B spawn | `DEGRADE_STEP_FILE=1 smoke_cafb_worker_step.py --spawn` | 상한 0.3/0.6/1.0 이 기대값과 일치, SHARED_STEP 경고 0 |
+
+**기동**: `launch_caf_degrade_resume.sh`(빈 GPU 4장 3회 연속 대기 후 `--resume`). 판정 세션이 지시할 때만 실행한다.
+`cafb_resume_runtime_md5_20261002.txt` 가 bengio 런타임 파일 md5 목록이고 `cafuser_bengio_train_net_20261002.py` 가 train_net.py 사본이다.
