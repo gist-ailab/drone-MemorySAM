@@ -11872,7 +11872,7 @@ items:
   - baseline
   - analysis
   created: '2026-10-01'
-  updated: '2026-10-01'
+  updated: '2026-10-02'
   closed: '2026-10-01'
   runs: []
   results: []
@@ -11887,10 +11887,10 @@ items:
       판정 대장 2026-10-01 행'
     date: '2026-10-01'
     by: jemo
-  analysis: '후속 판정 3건(판정 대장 2026-10-01): ③'' val→test 전이 손실 −3.52(DGFusion −0.23),
-    motorcycle·truck·fence 집중 · H-M1 val-best 선택 편향 기각(sd 0.14~1.63) · H-M3 부분 채택(truck·motorcycle
-    val 우위는 소수 장면 값, test 낙차는 미관측 조건 + test clear fence 분포 차). 결정적 검증 = DGFusion test
-    클래스별 IoU(Codabench 제출, user 결정 대기). 문서 §7~§9'
+  analysis: '후속 판정 4건(판정 대장 2026-10-01~02): ③'' val→test 전이 손실 −3.52 · H-M1 val-best
+    선택 편향 기각 · H-M3 부분 채택 · **§10 최종: DGFusion 공식 가중치 Codabench test 79.494 대 우리 78.786(−0.71),
+    몸통 = 얇은 4클래스 −22.6(val·test 동일 폭의 실재 열세), 희귀 3클래스 val 우위는 test 동률(우리 고유 낙차 약 −12.5)**.
+    H-M2(레시피 수준 val 과적합)는 미판정 보류. 추가 측정 없음'
   superseded_by: null
 - id: DRN-261001-02
   title: N-RGBX-T · E1 레시피 2모달 교사 3런(RGB+Depth → RGB+LiDAR → RGB+Event, 시드821 40ep
@@ -12007,8 +12007,9 @@ items:
     mean 79.29 · DGFusion test 79.5
   configs: []
   launch: null
-  success_criteria: 공식 test ≥ 79.5(DGFusion) 이고 val 이 −0.5 이내. 조건별·희귀 클래스는 장면 수 병기
-    없이는 인용 금지(§0-2)
+  success_criteria: 공식 test ≥ 79.5(DGFusion) 이고 val 이 −0.5 이내, **그리고 얇은 4클래스(pole·person·traffic
+    sign·traffic light) test IoU 평균 Δ ≥ +2(현재 DGFusion 대비 −5.65, 10-02 분해 판정)**. 조건별·희귀
+    클래스는 장면 수 병기 없이는 인용 금지(§0-2)
   sample_basis: 1시드 스크린 후 3시드(헤드라인 규칙). test 제출은 시드당 1회, user 승인 필수
   expected_cost: 런당 약 2~3 GPU-일(3090, 두 패스라 E1 의 1.8배) × 3시드 + 교사 확보(기존 완주본 사용, 추가
     학습 없음)
@@ -12020,10 +12021,11 @@ items:
   - q2
   - transfer
   created: '2026-10-01'
-  updated: '2026-10-01'
+  updated: '2026-10-02'
   closed: null
   runs: []
   results: []
   verdict: null
-  analysis: null
+  analysis: '10-02 MUSES test 격차 분해(판정 대장): 격차 −0.7 의 몸통은 얇은 4클래스 −22.6(실재 열세, val·test
+    동일), 희귀 3클래스는 test 동률 → 이 카드의 목표는 야간·안개 폴백보다 얇은 클래스 회복이 우선'
   superseded_by: null
