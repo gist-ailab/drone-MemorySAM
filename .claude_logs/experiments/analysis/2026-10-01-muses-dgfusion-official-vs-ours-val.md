@@ -227,3 +227,47 @@ val 전체 표본(250장, 약 5.2억 화소): motorcycle 475천 화소(0.09%)·4
 - fog/day −9.7·snow/day −10.4 (조건 mIoU 낙차)를 이 5클래스로 설명할 수는 없다: fog/day 에서 이 클래스들은 fence(17장면)를 빼면 화소가 거의 없고, test 는 8조합별 클래스 표가 없어 그 조합의 어느 클래스가 떨어졌는지는 확인하지 못한다.
 
 정리: 희귀 클래스 낙차는 (가) **val 이 못 본 조건**(야간 truck·안개 motorcycle·rider)과 (나) **분포가 다른 test clear 의 fence** 의 두 갈래로 나뉜다. truck·motorcycle 의 val 우위는 화소가 몇 장면(truck clear/day 12장면, motorcycle 두 셀 8장면씩)에 매인 값이라 일반화를 보장하지 못한다. 결정적 검증은 DGFusion test 클래스별 IoU(user 결정 대기)다.
+
+## 10. DGFusion 공식 가중치의 Codabench test 결과 대조 — 결정적 검증 (2026-10-02)
+
+user 가 세션이 만든 제출 zip 으로 Codabench 에 제출한 결과 원문(전체 mIoU **79.494**, 논문 79.5 와 일치)을 받았다. 원문은 NAS `analysis_logs/muses_test_dgfusion_official_20261001/codabench_dgf_raw.txt`(md5 f3c57939…)에 보존했다. ⚠️ user 표기 제출 파일명은 `…_test_2.zip` 이라 세션이 만든 `…_20261001.zip`(md5 290c4a10…)과 같은 파일인지 md5 로는 확인하지 못했다(전체 mIoU 가 논문값과 맞아 같은 예측으로 판단).
+
+비교: 우리 = 시드 20260825(PhysAug-on, ep168) Codabench 원문(78.786). DGFusion = 위 원문. 같은 test 750장, 같은 채점. (우리 test 는 이 시드 한 개만 19클래스 원문이 있다.)
+
+### 10-1. test 에서 우리 − DGFusion
+
+- 전체 mIoU 78.786 대 79.494 = **−0.708**.
+- 클래스(Δ 오름차순): traffic light −7.72 · pole −6.95 · rider −5.34 · motorcycle −5.29 · person −4.44 · traffic sign −3.48 · sidewalk −1.15 · wall −0.90 · road −0.33 · car −0.32 · sky −0.08 · vegetation 0.00 · fence +0.27 · building +0.32 · terrain +0.90 · bicycle +3.60 · train +3.86 · truck +6.26 · bus +7.35.
+- 묶음별 Δ 합계(전체 −13.4): **얇은·작은 4클래스(pole·person·traffic sign·traffic light) −22.6**(평균 −5.65) · 희귀 3클래스(motorcycle·truck·fence) +1.2(평균 +0.41) · 나머지 12클래스 +7.9(평균 +0.66). 즉 **test 에서 우리가 뒤지는 이유는 얇은·작은 4클래스**이고, val 에서 크게 앞섰던 희귀 3클래스는 test 에서 동률이다.
+- 날씨·주야 축 mIoU Δ: Clear −1.91 · Fog +5.27 · Rain −1.20 · Snow +0.27 · Day −0.52 · Night −0.97. 8조합 Δ: clear/day **−4.29** · clear/night +5.40 · fog/day +5.23 · fog/night +8.41 · rain/day −0.05 · rain/night **−4.89** · snow/day +0.58 · snow/night **−4.50**.
+- 축별 클래스 Δ 중 |Δ|≥10: 우리 열세 = Night truck −17.9 · Rain motorcycle −15.9 · Clear fence −12.2 · Snow truck −11.4 / 우위 = Fog motorcycle +38.0(DGF 4.09) · Night bus +21.4 · Fog bicycle +20.8 · Snow train +17.3 · Fog rider +17.1 · Fog truck +15.3 · Snow bus +13.5 · Fog wall +13.1 · Snow bicycle +12.9 · Fog fence +10.8 · Rain truck +10.4.
+
+### 10-2. 각자의 val→test 낙차 (test − val; 우리 val = PhysAug-off 3시드 평균, DGF val = §3)
+
+| 클래스 | DGF val→test | 낙차 | 우리 val→test | 낙차 | 우리−DGF 낙차 |
+|---|---|---|---|---|---|
+| motorcycle | 66.59→61.28 | −5.31 | 79.42→55.99 | **−23.43** | **−18.12** |
+| truck | 72.01→66.86 | −5.15 | 90.28→73.12 | **−17.16** | −12.01 |
+| wall | 66.93→77.41 | +10.48 | 76.98→76.51 | −0.47 | −10.95 |
+| rider | 52.71→65.23 | +12.52 | 55.94→59.89 | +3.95 | −8.57 |
+| fence | 68.15→62.07 | −6.08 | 75.94→62.34 | **−13.60** | −7.52 |
+| bicycle | 62.30→65.01 | +2.71 | 71.90→68.61 | −3.29 | −6.00 |
+| traffic light | 80.26→78.35 | −1.91 | 77.10→70.63 | −6.47 | −4.56 |
+| (나머지 12클래스 | | 평균 +1.3 | | 평균 −0.5 | |)
+
+- 전체: DGFusion 79.72→79.49(−0.22) / 우리 82.30→78.79(−3.52).
+- 묶음 평균 낙차: **희귀 3클래스 DGF −5.51 대 우리 −18.06** · 얇은 4클래스 DGF −0.86 대 우리 −1.74 · 나머지 12클래스 DGF +1.31 대 우리 −0.47.
+
+### 10-3. 판독 (사실만)
+
+1. **MUSES test 격차(−0.71)의 몸통은 얇은·작은 4클래스(−22.6)이고, val 에서 크게 앞섰던 희귀 3클래스는 test 에서 동률이다.** val 과 test 에서 열세 클래스 목록이 같다(val: pole·person·traffic sign·traffic light 3/3 시드 열세) — 얇은 4클래스 열세는 전이 손실이 아니라 **val 과 test 모두에 있는 실재하는 열세**다. 평균 Δ 는 val −4.77 대 test −5.65(§3, §7 의 "val 열세가 test 에서 같은 폭으로 유지될 것" 예측이 맞았다).
+2. **희귀 3클래스의 낙차는 부분적으로 test 가 어려운 분포라는 효과다**: DGFusion 도 같은 클래스에서 −5.1~−6.1 떨어진다(−5.51 평균). 그러나 우리 낙차 −18.06 은 그 3배라, 약 −5.5 는 split 효과, 남는 약 −12.5 는 우리 모델/레시피 고유(val 이 유리하게 읽힌 몫)로 본다. wall·rider 에서도 DGFusion 은 test 가 val 보다 +10~+12 오르는데 우리는 −0.5·+3.9 로 오르지 못한다.
+3. H-M1(val-best 선택 편향) 기각(§8)과 합치면 **남는 후보는 H-M2 레시피 수준의 val 과적합**(우리는 여러 레시피를 val 로 고르며 올라왔고 DGFusion 은 단일 레시피·final-iter)이다. 이 자료는 H-M2 를 가르지 못한다(레시피별 test 가 필요).
+4. 조건별: 우리는 Fog 에서 +5.27 앞서고(특히 Fog motorcycle DGF 4.09) clear/day −4.29·rain/night −4.89·snow/night −4.50 에서 뒤진다. 낮 맑음 −4.29 는 val clear/day(+0.28)와 다른 방향이다. 8조합은 표본 75~150장이라 방향만 읽는다.
+5. 본문 §9 의 가설 "fence 낙차는 test clear 분포 차이"는 부분 확인된다: DGFusion fence 도 test Clear 56.46(전체 62.07 보다 낮음)이며 우리 Clear 44.26 은 그보다 −12.2 낮다. 즉 test clear 는 fence 에 어려운 장면이고 우리는 그 안에서 더 못한다.
+
+### 10-4. 한계
+
+- 우리 test 는 시드 20260825 한 개(PhysAug-on)뿐이다. val 쪽은 PhysAug-off 3시드 평균과 섞였다(§7 주의 그대로). 시드2(79.788)는 약클래스 4개만 기록돼 있어 교차 확인에만 쓸 수 있다.
+- DGFusion test 는 공개 가중치 1개의 Codabench 값이다(시드 분산 없음).
+- 조건별 클래스 Δ 는 표본이 작은 셀이 섞여 있어 개별 칸을 근거로 인용하지 않는다.
