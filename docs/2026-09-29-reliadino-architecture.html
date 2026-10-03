@@ -823,10 +823,10 @@ li{max-width:72ch}
       <tr><td><b>MUSES test</b></td><td class="num">79.5 (DGFusion)</td><td class="num">79.29 ± 0.71, 최고 79.79</td><td>평균 −0.21, 동급</td></tr>
       <tr><td><b>MCubeS test</b></td><td class="num">55.9 (StitchFusion)</td><td class="num">58.07 ± 0.49</td><td class="good">+2.17</td></tr>
       <tr><td><b>열화 학습을 넣었을 때 clean 손해</b></td><td class="num">val −4.80 · test −0.91</td><td class="num">24클래스 +0.41 · test +0.01</td><td class="good">손해 없음</td></tr>
-      <tr><td><b>센서 결측 15조합 평균</b> (같은 프로토콜, test)</td><td class="num">DGFusion 공식 가중치 31.1 (clean 56.7) · 열화 재학습판(최대 강도) 45.5</td><td class="num">E1 40.0 → Q2 48.1</td><td class="good">+2.5 (열화 재학습판 대비)</td></tr>
-      <tr><td><b>Depth 부분 결측 시 저하</b> (25 / 50 / 75%)</td><td class="num">공식 가중치 7.2 / 11.7 / 15.8 · 재학습판 2.5 / 2.9 / 3.5</td><td class="num">Q2 1.0 / 2.0 / 2.6</td><td class="good">약 절반</td></tr>
-      <tr><td><b>RGB 부분 결측 시 저하</b> (25 / 50 / 75%)</td><td class="num">공식 가중치 6.7 / 8.2 / 10.2 · 재학습판 3.4 / 4.2 / 6.4</td><td class="num">Q2 3.3 / 3.9 / 4.9</td><td>비슷하거나 조금 나음</td></tr>
-      <tr><td><b>노이즈(소금·후추 5 / 10 / 20%) 저하</b></td><td class="num">공식 가중치 17.6 / 39.9 / 52.2 · 재학습판 5.9 / 14.3 / 31.4</td><td class="num">Q2 3.1 / 4.8 / 7.7 (E1 3.1 / 5.7 / 11.2)</td><td>동결 DINOv3 백본의 몫이 큼</td></tr>
+      <tr><td><b>센서 결측 15조합 평균</b> (같은 프로토콜, test)</td><td class="num">DGFusion 공식 가중치 31.1 (clean 56.7) · DGFusion 열화 재학습판 45.5 · CAFuser 열화 재학습판 46.5 (clean 55.8)</td><td class="num">E1 40.0 → Q2 48.1</td><td class="good">+1.6 (CAFuser 재학습판 대비)</td></tr>
+      <tr><td><b>Depth 부분 결측 시 저하</b> (25 / 50 / 75%)</td><td class="num">공식 가중치 7.2 / 11.7 / 15.8 · DGFusion 재학습판 2.5 / 2.9 / 3.5 · CAFuser 재학습판 2.6 / 3.1 / 3.5</td><td class="num">Q2 1.0 / 2.0 / 2.6</td><td class="good">두 재학습판의 약 절반</td></tr>
+      <tr><td><b>RGB 부분 결측 시 저하</b> (25 / 50 / 75%)</td><td class="num">공식 가중치 6.7 / 8.2 / 10.2 · DGFusion 재학습판 3.4 / 4.2 / 6.4 · CAFuser 재학습판 2.5 / 3.4 / 4.8</td><td class="num">Q2 3.3 / 3.9 / 4.9</td><td>동률 (CAFuser 재학습판이 조금 낫다)</td></tr>
+      <tr><td><b>노이즈(소금·후추 5 / 10 / 20%) 저하</b></td><td class="num">공식 가중치 17.6 / 39.9 / 52.2 · DGFusion 재학습판 5.9 / 14.3 / 31.4 · CAFuser 재학습판 7.1 / 17.6 / 34.5</td><td class="num">Q2 3.1 / 4.8 / 7.7 (E1 3.1 / 5.7 / 11.2)</td><td>동결 DINOv3 백본의 몫이 큼</td></tr>
       <tr><td><b>Event · LiDAR 활용</b></td><td>제거해도 ±0.4 (어떤 조건에서도 쓰지 않음)</td><td>단독으로 31.0 · 22.9</td><td class="good">보조 센서가 살아 있음</td></tr>
     </tbody>
   </table>
@@ -898,13 +898,12 @@ li{max-width:72ch}
 <section>
   <h2>아직 확인되지 않은 것</h2>
   <ul>
-    <li>DGFusion 은 공개 공식 가중치(clean test 56.73, 게시값 재현)와 열화 입력으로 재학습한 판 두 가지를 같은 프로토콜로 쟀고(2026-10-01), Q2 가 모든 축에서 앞선다. 재학습판은 단일 런이고, 정정(2026-10-02): 재학습판의 열화는 단계적 커리큘럼이 아니라 학습 내내 최대 강도였다(워커 프로세스가 커리큘럼 단계를 받지 못한 코드 결함). 즉 우리 Q2(0.3→0.6→1.0 커리큘럼)와 "같은 커리큘럼" 비교가 아니라 "열화 학습 기준선(최대 강도)" 대비 비교다. CAFuser 와 MM SAM-adapter 는 아직 같은 방식으로 재지 않았다.</li>
+    <li>DGFusion 은 공개 공식 가중치(clean test 56.73, 게시값 재현)와 열화 입력으로 재학습한 판 두 가지를 같은 프로토콜로 쟀고(2026-10-01), Q2 가 결측 조합·depth 부분 열화·노이즈 축에서 앞선다. 재학습판은 단일 런이고, 정정(2026-10-02): 재학습판의 열화는 단계적 커리큘럼이 아니라 학습 내내 최대 강도였다(워커 프로세스가 커리큘럼 단계를 받지 못한 코드 결함). 즉 우리 Q2(0.3→0.6→1.0 커리큘럼)와 "같은 커리큘럼" 비교가 아니라 "열화 학습 기준선(최대 강도)" 대비 비교다. CAFuser 도 같은 방식(최대 강도 열화 재학습, 단일 런)으로 쟀다(2026-10-04, clean 55.79): Q2 는 결측 조합·depth 부분·노이즈 축에서 앞서지만 RGB 부분 열화 축은 동률이다. 따라서 주장은 "모든 축 우위" 가 아니라 "결측·depth·노이즈 축 우위" 다. MM SAM-adapter 는 아직 재지 않았다.</li>
     <li>DELIVER test 와 MUSES test 의 clean 성능은 기존 1위와 평균 기준으로 0.2~0.5 낮다. 1위 주장은 DELIVER val 과 MCubeS 에서만 가능하다.</li>
     <li>강건성 수치는 40에폭 스크린 모델 기준이다. 헤드라인 모델(200에폭)에 같은 학습을 적용한 결과는 아직 없다.</li>
     <li>A · B · C 의 최근접 선행 연구 조사가 끝나지 않았다. 조사에서 나온 2026년 논문 식별자는 원문 확인 전이다.</li>
     <li>A · B · C 는 학습 중이라 효과를 아직 모른다. A 의 첫 완주는 10-03, B·C 는 그 뒤다. 중간 에폭 수치는 판정에 쓰지 않는다.</li>
     <li>같은 구조를 센서 2개로만 학습한 40에폭 스크린(2026-10-02, 시드 1개): RGB+Depth test 56.56 은 4모달 같은 스크린 55.94 와 동률(24클래스 +0.36, 잡음 범위)이고, RGB+LiDAR 55.31·RGB+Event 55.68 은 depth 가 빠지면 지형·건물·초목 클래스가 무너진다. 즉 깨끗한 입력에서는 event·LiDAR 를 더해도 이득이 0 이며, 4모달 구조의 가치는 결측·열화 강건 축에서만 주장한다. MM SAM-adapter RGB-D(57.35)와의 비교는 200에폭 확정 뒤에만 한다.</li>
-    <li>강건 우위가 DGFusion 한 기준선에만 성립하는지는 두 번째 융합 기준선(CAFuser 를 같은 최대 강도 열화로 재학습)으로 확인할 예정이며, 아직 착수 전이다.</li>
   </ul>
 </section>
 
