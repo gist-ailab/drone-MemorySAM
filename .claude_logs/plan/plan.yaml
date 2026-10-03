@@ -1844,17 +1844,28 @@ items:
     세션
   priority: 40
   owner_role: specialist-baseline
-  status: running
+  status: done
   tags:
   - deliver
   - baseline
   - resume-wait
   created: '2026-09-26'
-  updated: '2026-10-02'
-  closed: null
+  updated: '2026-10-04'
+  closed: '2026-10-04'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 확정 + 가설 채택: CAFuser (b)(최대 강도 열화 재학습, ISSUE-041, iter 200k final)
+      공식 채점 clean test 55.79(기준 ① 54.38 통과, (a) 대비 +0.41)·val 62.89, 61케이스 EMM 15조합
+      평균 46.50(DGFusion (b) 45.52, Q2 3시드 48.06), depth 부분 저하 2.59/3.06/3.54(Q2 0.98/2.04/2.64),
+      RGB 부분 저하 2.52/3.39/4.79(Q2 3.27/3.90/4.90 — 동률·약간 우위), NM S&P 저하 7.07/17.62/34.48(Q2
+      3.11/4.79/7.68), 단일 LiDAR 26.48(Q2 22.9). 반증 조건(EMM ≥ 48.06 또는 depth 부분 ≤ Q2)
+      해당 없음 → 구조 결합 효과 주장 유지, 단 ''모든 축 우위''는 ''결측·depth·노이즈 축 우위, RGB 부분 축 동률''로 수정.
+      원본 NAS analysis_logs/baseline_robust_cafuser_b_20261003/, ckpts/cafuser_b_resume_20261003/
+      md5 fbae170d…, 판정 대장 2026-10-04 행'
+    date: '2026-10-04'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-59
