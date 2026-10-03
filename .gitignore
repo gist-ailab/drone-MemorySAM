@@ -305,3 +305,5 @@ outputs_model_explain/
 .wandb_key
 # watchdog run manifests / status / alerts (per-machine runtime state — never commit)
 .watchdog/
+.claude_logs/inbox/.lock
+.claude_logs/plan/.lock
