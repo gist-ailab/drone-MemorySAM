@@ -105,7 +105,7 @@ li{max-width:72ch}
     <span class="pill">DELIVER test <b>56.24 ± 0.42</b> (DGFusion 56.71)</span>
     <span class="pill">DELIVER val <b>69.51 ± 0.15</b> (CAFuser-CAA 68.79)</span>
     <span class="pill">센서 결측 15조합 평균 <b>40.0 → 48.1</b></span>
-    <span class="pill">학습 중 <b>P56-A · B · C</b> 각 2시드 (첫 완주 10-03)</span>
+    <span class="pill"><b>P56-A 기각</b>(10-04, 2시드) · <b>B · C</b> 학습 중</span>
   </div>
 </header>
 
@@ -143,7 +143,7 @@ li{max-width:72ch}
       <text x="752" y="72" class="sub">두 패스(clean + 결측·열화·충돌) + 교사 증류</text>
       <text x="752" y="88" class="sub">센서를 "없애고, 망가뜨리고, 틀리게" 보여 줘</text>
       <text x="752" y="104" class="sub">네트워크가 스스로 다른 센서를 찾게 함</text>
-      <text x="752" y="120" class="sub">= Q2(채택) · P56-A(학습 중)</text>
+      <text x="752" y="120" class="sub">= Q2(채택) · P56-A(기각)</text>
       <path class="ln" d="M340 80 H380" style="color:var(--muted)" marker-end="url(#m5)"/>
       <path class="lnours" d="M710 80 H740" style="color:var(--ours)" marker-end="url(#m5)"/>
 
@@ -465,7 +465,7 @@ li{max-width:72ch}
         <text x="125" y="340" text-anchor="middle" class="sub">RGB 또는 Depth 한 센서의 덩어리 영역을</text>
         <text x="125" y="354" text-anchor="middle" class="sub">다른 장면·포화 반사광으로 교체, 정답은 원본</text>
         <text x="125" y="368" text-anchor="middle" class="sub">"선명하지만 틀린 센서"를 가르침</text>
-        <text x="125" y="382" text-anchor="middle" class="sub">시드 821·902 학습 중, 완주 10-03</text>
+        <text x="125" y="382" text-anchor="middle" class="sub">2시드 기각(10-04): clean −0.77, 실제 열화 −1.55</text>
       </g>
 
       <!-- 패널 4: P56-B/C -->
@@ -734,7 +734,7 @@ li{max-width:72ch}
         <li><b>주 센서 없는 전 센서 융합의 강건성.</b> RGB 가 없거나 틀려도 같은 그래프로 동작하며(Q2: RGB 결측 시 depth 만으로 46.0), 그들의 구조는 RGB 결측을 정의조차 못 한다. DGFusion 에 대해서는 같은 프로토콜로 우위를 확인했고(결측 15조합 48.1 vs 45.5, clean 손해 없음 vs −0.9), MM SAM-adapter 는 같은 조건으로 재어야 성립한다.</li>
         <li><b>백본 동결 + 센서별 LoRA 로 같은 급 성능.</b> ViT-L 미세 조정 없이 val 69.5(그들 69.6), 학습 파라미터 5,900만. 효율·망각 방지 축.</li>
         <li><b>센서 3개 이상.</b> 그들이 한계로 밝힌 지점. MCubeS 4모달 58.07 은 그들에게 비교 대상이 없다.</li>
-        <li><b>학습 설계로 만든 상황별 의존도 이동(P56-A 결과 시).</b> 그들의 "필요할 때만 보조 센서 사용"은 RGB-hard 분할 결과로만 보였고, 우리는 조건별 센서 제거 표로 정량화한다.</li>
+        <li><b>학습 설계로 만든 상황별 의존도 이동(Q2 에서 실측, P56-A 는 기각).</b> 그들의 "필요할 때만 보조 센서 사용"은 RGB-hard 분할 결과로만 보였고, 우리는 조건별 센서 제거 표로 정량화한다.</li>
       </ul>
     </div>
     <div class="card">
@@ -853,13 +853,13 @@ li{max-width:72ch}
   <p>주장의 중심은 하나다. <b>센서 신뢰도를 알려 주는 외부 신호나 별도 품질 추정기 없이, 학습 표본의 설계만으로 상황에 맞는 센서 의존을 만든다.</b> 이를 세 갈래로 나눠 검증한다.</p>
   <div class="cols">
     <div class="card line-ours">
-      <span class="state run">A · 학습 중</span>
+      <span class="state todo">A · 기각 (2시드, 10-04)</span>
       <h3>모달 충돌 학습</h3>
       <p>기존 강건 학습은 센서가 없어지거나 흐려지는 상황을 가르친다. 여기에 한 센서가 선명하지만 틀린 내용을 보여 주는 상황을 더한다. 반사광, 다른 장면의 잔상 같은 경우다. 정답은 나머지 센서가 본 장면이므로, 모델은 센서 간 불일치를 보고 어느 쪽을 믿을지 스스로 배워야 한다.</p>
       <ul>
         <li>통과 기준: clean 24클래스 −0.3 이내</li>
         <li>그리고 실제 과노출·저노출·모션블러 mIoU 평균 +1.0 이상, 또는 RGB 부분 결측 저하 20% 이상 감소</li>
-        <li>2시드 평균으로 판정, 첫 결과는 10월 3일 예상</li>
+        <li>결과(2026-10-04, legal v2): clean 24클래스 Δ −0.98 / −0.56(기준 −0.3 미달), 실제 과노출·저노출·모션블러 평균 Δ −1.55(기준 +1.0 과 반대). 합성한 "선명하지만 틀린 센서" 는 실제 열화로 전이되지 않고 배경 질감(Static·Terrain)과 얇은 클래스를 깎았다. 기각. 합성 충돌·열화 라벨 기반 표본 조작 계열은 재시도하지 않는다.</li>
       </ul>
     </div>
     <div class="card line-plan">
@@ -889,7 +889,7 @@ li{max-width:72ch}
       <tr><td>쿼리 분할 헤드, 특징 피라미드</td><td>주장하지 않음</td><td>표준 부품.</td></tr>
       <tr><td>두 패스 학습 + 교사 증류</td><td>바탕 레시피로만</td><td>모달 드롭아웃과 증류는 각각 알려진 기법. 조합이 clean 손해 없이 강건성을 주는 것은 실측으로 확인했다.</td></tr>
       <tr><td>조건별 의존도 분석</td><td>보조 기여</td><td>외부 신호를 쓰는 기준선의 의존도 이동이 외부 신호 덕이 아닐 수 있음을 같은 측정으로 보였다.</td></tr>
-      <tr><td>A · B · C</td><td>주 기여 후보</td><td>셋 다 외부 레이블 없이 작동한다. 셋 다 40에폭 스크린 2시드로 학습 중이며(A 는 hpca100, B·C 는 hpca100·yeon), 판정은 완주 후 사전 기준으로만 한다.</td></tr>
+      <tr><td>A · B · C</td><td>주 기여 후보</td><td>셋 다 외부 레이블 없이 작동한다. A 는 2시드 모두 사전 기준 미달로 기각(2026-10-04). B·C 는 40에폭 스크린 2시드로 학습 중이며 판정은 완주 후 사전 기준으로만 한다.</td></tr>
     </tbody>
   </table>
   </div>
@@ -902,7 +902,7 @@ li{max-width:72ch}
     <li>DELIVER test 와 MUSES test 의 clean 성능은 기존 1위와 평균 기준으로 0.2~0.5 낮다. 1위 주장은 DELIVER val 과 MCubeS 에서만 가능하다.</li>
     <li>강건성 수치는 40에폭 스크린 모델 기준이다. 헤드라인 모델(200에폭)에 같은 학습을 적용한 결과는 아직 없다.</li>
     <li>A · B · C 의 최근접 선행 연구 조사가 끝나지 않았다. 조사에서 나온 2026년 논문 식별자는 원문 확인 전이다.</li>
-    <li>A · B · C 는 학습 중이라 효과를 아직 모른다. A 의 첫 완주는 10-03, B·C 는 그 뒤다. 중간 에폭 수치는 판정에 쓰지 않는다.</li>
+    <li>A(모달 충돌 학습)는 기각됐다. B · C 는 학습 중이라 효과를 아직 모른다. B 의 첫 완주는 10-05, C 는 10-06 이다. 중간 에폭 수치는 판정에 쓰지 않는다.</li>
     <li>같은 구조를 센서 2개로만 학습한 40에폭 스크린(2026-10-02, 시드 1개): RGB+Depth test 56.56 은 4모달 같은 스크린 55.94 와 동률(24클래스 +0.36, 잡음 범위)이고, RGB+LiDAR 55.31·RGB+Event 55.68 은 depth 가 빠지면 지형·건물·초목 클래스가 무너진다. 즉 깨끗한 입력에서는 event·LiDAR 를 더해도 이득이 0 이며, 4모달 구조의 가치는 결측·열화 강건 축에서만 주장한다. MM SAM-adapter RGB-D(57.35)와의 비교는 200에폭 확정 뒤에만 한다.</li>
   </ul>
 </section>
