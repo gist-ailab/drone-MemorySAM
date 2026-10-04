@@ -11691,17 +11691,27 @@ items:
     10 GPU-시간
   priority: 20
   owner_role: method
-  status: running
+  status: done
   tags:
   - P56
   - fusion
   - robust
   created: '2026-09-29'
-  updated: '2026-09-30'
-  closed: null
+  updated: '2026-10-04'
+  closed: '2026-10-04'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P56-A 모달 충돌 학습(Q2 열화 패스 30% 에 ''선명하지만 틀린 센서'' 합성 표본) 40ep 스크린 2시드 legal
+      v2: clean 24클래스 Δ vs Q2 같은 시드 짝 −0.98(시드821) / −0.56(시드902), 평균 −0.77 → 사전 기준
+      ①(≥ −0.3) 미달. 실제 과·저노출·모션블러 3조건 평균 Δ −1.55(시드821, 기준 ②-a ≥ +1.0 반대 방향, 10조건
+      전부 음수). 하락 클래스 = Static·Terrain·얇은 4. 합성 충돌 표본은 실제 열화로 전이되지 않음(Q1d 와 같은 축) →
+      합성 충돌·열화 라벨 기반 표본 조작 계열 재시도 금지(H33). ②-b 진단(부분집합 380장 강건 비교)은 진행 중이나 판정 불변.
+      원본 NAS ckpts/…P56A_20261004/(두 시드), analysis_logs/p56a_s{821,902}_eval_20261004/,
+      판정 대장 2026-10-04 행'
+    date: '2026-10-04'
+    by: jemo
   analysis: '판정 시 병기(user 승인 09-30): ①조건별 leave-one-out(oracle_headroom_probe --by_condition
     --emm_max_missing 1, Q2 같은 시드 짝 대비 RGB·depth 제거 Δ 이동) ②합성 충돌 영역에서 충돌 센서 key 에
     두는 attention 질량 비율(도구 신설, Q2 대비) ③실제 케이스별 mIoU. 설계서 decisions/2026-09-30-p56-bc-modality-aware-design.md
