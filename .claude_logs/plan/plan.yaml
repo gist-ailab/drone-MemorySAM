@@ -1844,17 +1844,28 @@ items:
     세션
   priority: 40
   owner_role: specialist-baseline
-  status: queued
+  status: done
   tags:
   - deliver
   - baseline
   - resume-wait
   created: '2026-09-26'
-  updated: '2026-10-02'
-  closed: null
+  updated: '2026-10-04'
+  closed: '2026-10-04'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: adopt
+    summary: '측정 확정 + 가설 채택: CAFuser (b)(최대 강도 열화 재학습, ISSUE-041, iter 200k final)
+      공식 채점 clean test 55.79(기준 ① 54.38 통과, (a) 대비 +0.41)·val 62.89, 61케이스 EMM 15조합
+      평균 46.50(DGFusion (b) 45.52, Q2 3시드 48.06), depth 부분 저하 2.59/3.06/3.54(Q2 0.98/2.04/2.64),
+      RGB 부분 저하 2.52/3.39/4.79(Q2 3.27/3.90/4.90 — 동률·약간 우위), NM S&P 저하 7.07/17.62/34.48(Q2
+      3.11/4.79/7.68), 단일 LiDAR 26.48(Q2 22.9). 반증 조건(EMM ≥ 48.06 또는 depth 부분 ≤ Q2)
+      해당 없음 → 구조 결합 효과 주장 유지, 단 ''모든 축 우위''는 ''결측·depth·노이즈 축 우위, RGB 부분 축 동률''로 수정.
+      원본 NAS analysis_logs/baseline_robust_cafuser_b_20261003/, ckpts/cafuser_b_resume_20261003/
+      md5 fbae170d…, 판정 대장 2026-10-04 행'
+    date: '2026-10-04'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260926-59
@@ -11680,17 +11691,27 @@ items:
     10 GPU-시간
   priority: 20
   owner_role: method
-  status: running
+  status: done
   tags:
   - P56
   - fusion
   - robust
   created: '2026-09-29'
-  updated: '2026-09-30'
-  closed: null
+  updated: '2026-10-04'
+  closed: '2026-10-04'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P56-A 모달 충돌 학습(Q2 열화 패스 30% 에 ''선명하지만 틀린 센서'' 합성 표본) 40ep 스크린 2시드 legal
+      v2: clean 24클래스 Δ vs Q2 같은 시드 짝 −0.98(시드821) / −0.56(시드902), 평균 −0.77 → 사전 기준
+      ①(≥ −0.3) 미달. 실제 과·저노출·모션블러 3조건 평균 Δ −1.55(시드821, 기준 ②-a ≥ +1.0 반대 방향, 10조건
+      전부 음수). 하락 클래스 = Static·Terrain·얇은 4. 합성 충돌 표본은 실제 열화로 전이되지 않음(Q1d 와 같은 축) →
+      합성 충돌·열화 라벨 기반 표본 조작 계열 재시도 금지(H33). ②-b 진단(부분집합 380장 강건 비교)은 진행 중이나 판정 불변.
+      원본 NAS ckpts/…P56A_20261004/(두 시드), analysis_logs/p56a_s{821,902}_eval_20261004/,
+      판정 대장 2026-10-04 행'
+    date: '2026-10-04'
+    by: jemo
   analysis: '판정 시 병기(user 승인 09-30): ①조건별 leave-one-out(oracle_headroom_probe --by_condition
     --emm_max_missing 1, Q2 같은 시드 짝 대비 RGB·depth 제거 Δ 이동) ②합성 충돌 영역에서 충돌 센서 key 에
     두는 attention 질량 비율(도구 신설, Q2 대비) ③실제 케이스별 mIoU. 설계서 decisions/2026-09-30-p56-bc-modality-aware-design.md
@@ -11715,17 +11736,26 @@ items:
   expected_cost: A100 1장 × 약 3.5일 × 2시드(+ B-2 거리 위치 임베딩 ablation 1시드)
   priority: 21
   owner_role: method
-  status: running
+  status: done
   tags:
   - P56
   - fusion
   - range
   created: '2026-09-29'
-  updated: '2026-09-30'
-  closed: null
+  updated: '2026-10-05'
+  closed: '2026-10-05'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P56-B 거리 조건화 attention(교차 attention 에 −λ·|Δlog r| 거리 편향) 시드821 40ep
+      스크린 legal v2: test 55.36 / 24클래스 56.43(Q2 시드821 대비 Δ24 −1.27, Q2 3시드 평균 대비 −0.63)
+      → 사전 기준 ①(≥ −0.3) 미달. 기제 진단: 원거리 78~255m −0.32(기준 +1.0 미달), 근·중거리 −2.21/−3.95
+      → 거리 편향이 원거리를 올리지 못하고 근거리 문맥을 깎음(기제 미작동). 하락 클래스 Static·Terrain·Pole·Ground
+      는 P56-A 와 같은 집합. 시드902 는 user 승인으로 중단(2026-10-05, yeon GPU1 을 Q2noKD 에 재배치)
+      → 단일 시드 + 기제 미작동으로 기각. 판정 대장 2026-10-05 행'
+    date: '2026-10-05'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260929-03
@@ -12061,6 +12091,42 @@ items:
   - curriculum
   created: '2026-10-02'
   updated: '2026-10-02'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261005-01
+  title: 'Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1)'
+  question: 채택된 바탕 레시피 Q2(clean CE + 열화 CE + 동결 E1 교사 증류)의 clean·강건 이득은 증류에서 오는가,
+    열화 두 패스에서 오는가. 논문 ablation 표의 필수 행
+  hypothesis: 강건 이득(결측 15조합 평균 E1 40.0 → Q2 48.1)의 대부분은 열화 두 패스에서 오고, clean 유지(Δ24
+    +0.41)는 증류가 담당한다 — noKD 는 강건 축은 Q2 와 비슷하고 clean 은 E1 이하로 떨어진다
+  falsification: noKD 의 clean Δ24 vs Q2 가 −0.3 이내이고 EMM 도 Q2 와 같으면 '증류는 불필요' (Q2 레시피에서
+    증류 제거, 교사 학습 비용 절감). noKD 의 EMM 이 E1 과 같으면 '강건 이득은 증류에서' 로 가설 반대
+  change: Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그
+    외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb
+    72% 사용(975G 여유)
+  baseline: Q2 시드821(legal v2 test 57.73 / 24클래스 57.70, 강건 EMM 부분집합 47.89) · E1 40ep
+    스크린 시드821(55.94 / 56.39, EMM 전수 40.01)
+  configs: []
+  launch: null
+  success_criteria: '측정 항목(ablation): legal v2 clean 24클래스 Δ vs Q2 시드821·vs E1 시드821,
+    강건 부분집합 380장(every 5, rmm·emm·nm) vs Q2 시드821 같은 부분집합. 판정 문장: 증류 기여 = Q2 − noKD,
+    열화 기여 = noKD − E1 을 clean·EMM 두 축으로 분해'
+  sample_basis: 1시드 스크린(ablation 행, Q2 시드821 과 같은 시드로 짝). 논문 표에는 단일 시드 명시
+  expected_cost: yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정
+    약 9시간
+  priority: 15
+  owner_role: manager
+  status: queued
+  tags:
+  - deliver
+  - q2
+  - ablation
+  created: '2026-10-05'
+  updated: '2026-10-05'
   closed: null
   runs: []
   results: []

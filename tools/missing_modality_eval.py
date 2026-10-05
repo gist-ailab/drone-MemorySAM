@@ -142,7 +142,9 @@ def gaussian_noise(x, std, generator):
 
     반환 (noised, mask) — mask 는 전 픽셀 1(모든 픽셀에 노이즈)로 둔다(밀도 개념 없음).
     """
-    noise = torch.empty_like(x).normal_(mean=0.0, std=std, generator=generator)
+    # generator 는 CPU(torch.Generator()). sp_positions 와 같은 패턴으로 CPU 에서 뽑아 장치로 옮긴다 —
+    # GPU 텐서에 CPU generator 로 normal_ 하면 RuntimeError(2026-10-04 발견). CPU 입력이면 기존과 바이트 동일.
+    noise = torch.empty(x.shape, dtype=x.dtype).normal_(mean=0.0, std=std, generator=generator).to(x.device)
     mask = torch.ones((x.shape[0], 1, *x.shape[2:]), device=x.device)
     return x + noise, mask
 

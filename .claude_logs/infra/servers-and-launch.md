@@ -92,6 +92,7 @@ scripts/remote_exp.sh status bengio
 ---
 
 ## 3. 주의사항 / 트러블슈팅
+- 🔴 **hpca100: 버전관리 명령 금지 · 1장 전용(2026-10-05)**: `/home/jovyan/SSDb` 에 다른 연구자의 운영 중인 LFS 저장소(163G)가 있고 우리 작업 폴더(`~/SSDb/jemo_maeng/...`)는 그 하위라 버전관리 명령이 그 저장소를 잡는다 → 우리 쪽 pull·add·status 금지, 코드는 **파일 단위 전송 + md5** 로만 반영. 그 저장소 폴더·자격증명은 읽지도 고치지도 않는다. 2장 이상 DDP 는 all-reduce 마다 약 90초 정지(ISSUE-040)라 **1장 학습만**.
 - **GPU 점유 충돌**: bengio는 8장이지만 다른 작업이 점유 중일 수 있다. `run` 전 항상 `status`로 빈 GPU 확인.
 - **config 프리픽스**: config 파일명 앞단(`levine-`, `bengio-`, `b200-`)은 보통 학습 서버를 암시한다. 다른 서버에서 돌릴 땐 데이터 경로가 그 서버에 맞는지 config를 한 번 확인.
 - **DDP 실패 'marked ready twice'**: SAM3 trainer는 `static_graph=True` 필요(기록상 해결됨).

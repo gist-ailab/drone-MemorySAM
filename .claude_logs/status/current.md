@@ -45,18 +45,18 @@ last_updated: 2026-10-01 (헤드라인 불변, 8KB 재압축)
 
 1. hpca100 공유볼륨 89%(여유 244G, [artifact-locations](../infra/artifact-locations.md) 2b).
 2. ISSUE-036 legal 재샘플 편차 — v2 채택 완료, 래퍼 가드 등재 잔여.
-3. **기준선 강건 측정 완료**(10-01, DGFusion 공식 가중치·(b), 61케이스): Q2 3시드가 (b) 대비 clean +1.8·결측 15조합 +2.5·depth 부분 저하 절반. CAFuser 미측정.
+3. **기준선 강건 측정 완료**(DGFusion 공식·(b) 10-01, CAFuser (b) 10-04, 61케이스): Q2 3시드가 결측·depth 부분·노이즈 축 우위, RGB 부분 축은 CAFuser (b) 와 동률.
 4. ISSUE-034(덤프 파일명)·ISSUE-035(헤드라인 ckpt 경로) 이슈 표 갱신 대기.
 5. jarvis `/ailab_mat2` 금지(sshfs 정지). lecun·jarvis GPU0 금지 09-30 해제.
 
 ## ④ 판정 현황 (판정 = "MMSAM | 생각정리" 세션, 근거 = judgment-ledger 2026-09-23~29 행)
 
 - **2모달 교사(10-02)**: RGB+Depth 40ep legal v2 test 56.56 = 4모달 스크린 55.94 동률(Δ24 +0.36) → clean 가산 이득 0, 4모달 가치는 강건 축.
-- **종료(기각)**: R1(depth 경계 prior) · Q1/Q3(합성 열화 품질 헤드) · E17(세부 가지) · R2(연결 성분 손실) · P55(게이트).
+- **종료(기각)**: R1(depth 경계 prior) · Q1/Q3(합성 열화 품질 헤드) · E17(세부 가지) · R2(연결 성분 손실) · P55(게이트) · **P56-A(합성 충돌 표본, 10-04 2시드 Δ24 −0.77)**.
 - **채택(바탕 레시피)**: Q2(두 패스 clean CE + 열화 CE + 동결 E1 교사 증류). clean Δ24 +0.41(개선 주장 안 함) · 결측 15조합 48.06 vs E1 40.01 vs DGFusion (b) 45.52·공식 가중치 31.14 · depth 부분 저하 (b) 의 절반 · RGB 부분 결측 이득 없음.
 - **보류**: E1-shared(전 센서 공유 LoRA r16) — clean·강건 게이트 둘 다 통과했으나 clean 분산이 커 단독 채택하지 않음, P56-C 재료.
 - **실행 중**(상세=[history](history-2026H2.md), 설계서 decisions/2026-09-30-p56-bc): P56-A(모달충돌학습) hpca100 s821 GPU1(ep20)·s902 GPU2(ep17) — ISSUE-040(2장 DDP 정체)로 10-01 10:02 1장 원복, ETA 10-03 22시경. P56-B(거리조건화attn) s821 hpca100 GPU3·s902 yeon GPU1. P56-C(상태조건부LoRA) s821 yeon GPU0·s902 yeon GPU2.
 - **N-RGBX-T**(2모달교사, DRN-261001-02) **3레그 legal v2 전부 완료 + NAS 보존 완료**: RGB+Depth(val 68.02/test 56.56) · RGB+LiDAR(val 61.68/test 55.31) · RGB+Event(val 62.27/test 55.68). 참조(4모달 E1 스크린821, NAS ckpt로 재현) test 55.94 — RGB+Depth만 +0.62 높고 나머지 둘은 낮아 clean 가산성 반증 조건 발동(생각정리 예비판정 1ce181b). ckpt+train.log+legal로그 전부 NAS `ckpts/bengio_deliver_rgb{d,l,e}_..._20261001/`에 md5와 보존. bengio GPU 전원 반납. oracle_cond_test+E1스크린821 val leave-one-out은 yeon 완료(headroom 1.87~2.48).
 - **대기열**: CAFuser (b) 재개(DRN-260926-58, 스모크 선행) → MUSES 기준선 DGFusion 공식가중치 val 재현(DRN-261001-01, 데이터 스테이징 선행).
 - MUSES: PhysAug-off 공정선 3시드 공식 val 82.30±0.14. test 제출 보류(user 09-29).
-- **적체 판정 완료(09-30)**: 이관분 219건 전부 lab-plan verdict 기록. 미판정 없음.- **CAFuser (b)**: 열화 재학습(최대 강도, ISSUE-041) 재개 bengio GPU0~3(10-02 18:37, iter 90k→200k, ETA 10-03 저녁) → 61케이스 강건 측정.
+- **적체 판정 완료(09-30)**: 이관분 219건 전부 lab-plan verdict 기록. 미판정 없음.- **CAFuser (b) 완료(10-04)**: clean 55.79 · 결측 15조합 46.50 · depth 부분 저하 2.6/3.1/3.5 → Q2 우위 유지(EMM·depth·노이즈), RGB 부분 축은 동률.
