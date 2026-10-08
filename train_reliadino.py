@@ -120,12 +120,18 @@ def main(cfg, gpu, save_dir, logger):
     traintransform = get_train_augmentation(
         train_cfg['IMAGE_SIZE'], seg_fill=dataset_cfg['IGNORE_LABEL'], dataset_cfg=dataset_cfg)
     valtransform = get_val_augmentation(eval_cfg['IMAGE_SIZE'], dataset_cfg=dataset_cfg)
-    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'])
-    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'])
+    # Opt-in extra dataset kwargs. Only populated when the config explicitly asks
+    # for them, so every existing config (and every dataset whose __init__ has no
+    # such kwarg) constructs exactly as before.
+    ds_kwargs = {}
+    if dataset_cfg.get('PROJ_SUBDIR'):
+        ds_kwargs['proj_subdir'] = dataset_cfg['PROJ_SUBDIR']
+    trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
+    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
     testset = None
     if dataset_cfg.get('NAME') != 'MULTIAQUA':
         try:
-            testset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'test', valtransform, dataset_cfg['MODALS'])
+            testset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'test', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
         except Exception as e:
             print(f"[INFO] Test set not available: {e}")
     class_names = trainset.CLASSES
@@ -160,6 +166,14 @@ def main(cfg, gpu, save_dir, logger):
     accumulation_steps = math.ceil(purposed_batch_size / (train_cfg['BATCH_SIZE'] * world_size))
     updates_per_epoch = len(trainset) // (train_cfg['BATCH_SIZE'] * world_size * accumulation_steps)
     iters_per_epoch = len(trainset) // (train_cfg['BATCH_SIZE'] * world_size)
+    if is_rank0:
+        # accumulation_steps is a ceil(), so the realised effective batch is only
+        # equal to purposed_batch_size when BATCH_SIZE*world_size divides it --
+        # otherwise it OVERSHOOTS silently. Log what we actually train with.
+        eff_batch = train_cfg['BATCH_SIZE'] * world_size * accumulation_steps
+        print(f"[BATCH] per-GPU {train_cfg['BATCH_SIZE']} x world {world_size} x accum "
+              f"{accumulation_steps} = effective {eff_batch} (target {purposed_batch_size})"
+              + ('' if eff_batch == purposed_batch_size else '  <-- MISMATCH'))
 
     loss_fn = get_loss(loss_cfg['NAME'], trainset.ignore_label, None)
     lambda_cal = (model_cfg.get('CALIBRATION', {}) or {}).get('LAMBDA', 0.1)

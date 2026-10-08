@@ -1,0 +1,196 @@
+# ═══ MUSES × P34-ReliaDINO — DGFusion-aligned projection + 4 modalities ═══
+# Base = configs/b200-muses_rgbel_P34_reliadino.yaml, which scored MUSES benchmark
+# test 78.979 (DGFusion 79.49, -0.52). The P34 RECIPE IS UNCHANGED here — every
+# model/loss/optim/schedule knob is byte-for-byte that config. Only the DATA moves.
+#
+# THREE variables change at once vs 78.979 — this is NOT a single-variable
+# ablation, and a delta cannot be attributed to any one of them:
+#
+#   1. radar ADDED. DGFusion is CLRE = Camera+Lidar+Radar+Event (paper, Table II,
+#      its config); we ran 3 modals. -> MODALS gains 'radar'.
+#      Loader note: radar previously fell through to _open_lidar, clipping range
+#      at lidar's 100 m. Measured over 18.77M valid val px: 2.7632% of returns sit
+#      beyond 100 m and were being saturated; at the true 150 m sensor ceiling
+#      NOTHING clips (0.0000%, max decoded 149.9933 m). muses.py now decodes radar
+#      with RADAR_RANGE_MAX=150.
+#   2. lidar projection re-aligned — THE LARGEST DATA CHANGE. motion_comp OFF->ON
+#      and dilation (2,2)->(7,7). Verified by reproducing the shipped PNGs with the
+#      devkit's own functions: projected_to_rgb/lidar is bit-exact at
+#      motion_comp=False+(2,2); projected_to_rgb_dgf/lidar is bit-exact at
+#      motion_comp=True+(7,7). Coverage ~5.0x denser (measured 3.645% -> 18.223%
+#      of letterboxed px on 40 val frames; the projection agent measured
+#      6.538% -> 32.625% = 4.99x on raw frames — same ratio, different denominator).
+#   3. event dilation (2,2)->(3,3) — MINOR. Coverage 8.851% -> 12.204% raw
+#      (1.38x). The 30 ms accumulation window already matched DGFusion.
+#
+# What did NOT change, contrary to the initial hypothesis:
+#   - radar is BIT-IDENTICAL between projected_to_rgb/ and projected_to_rgb_dgf/
+#     (63/63 sampled files, all splits). The devkit already hardcodes radar
+#     dilation (9,9) — DGFusion's value — and the original radar was ALREADY
+#     projected with motion_comp=ON (shipped file reproduces bit-exactly at
+#     motion_comp=True+(9,9), and differs from motion_comp=False by ~31% of px).
+#     So the original set was not one devkit run: radar got different flags than
+#     lidar/event. Radar needed no regeneration; only the LOADER was broken.
+#
+# The original projected_to_rgb/ is the 78.979 baseline and is left untouched;
+# this run selects the new set via DATASET.PROJ_SUBDIR (default stays the old
+# folder, so no existing config changes behaviour).
+#
+# Deltas vs the 78.979 config, exhaustively:
+#   - MODALS  [img,lidar,event] -> [img,lidar,event,radar]
+#   - DATASET.PROJ_SUBDIR: projected_to_rgb_dgf   (new key; default = old folder)
+#   - ROOT -> /ailab_mat2/dataset/MUSES  (bengio path)
+#   - BATCH_SIZE 4 -> 2 and GRADIENT_CHECKPOINT false -> true: bengio is RTX 3090
+#     24GB, not B200 183GB. Measured 4-modal BS2 + ckpt = 11.99GB alloc / 15.50GB
+#     reserved; BS4 OOMs. Effective batch is PRESERVED at 16: train_reliadino.py
+#     sets accum = ceil(16 / (BATCH_SIZE * world_size)) = ceil(16/(2*8)) = 1,
+#     so 8 GPU x BS2 x accum 1 = 16, exactly the B200 reference (4x4x1).
+#   - SAVE_DIR -> this run
+# Everything else (PHYSAUG / ATTN_BIAS / CONSISTENCY / GATE / CALIBRATION /
+# LR 0.0006 / EPOCHS 300 / WARMUP 15 / IMAGE_SIZE 1024) is P34 as-is.
+#
+# Launch (bengio, all 8 GPUs):
+#   export PYTHONPATH=/SSDb/jemo_maeng/pylibs_p34:$PYTHONPATH
+#   torchrun --standalone --nproc_per_node=8 train_reliadino.py --cfg <this>
+# PYTHONPATH is MANDATORY: dinov3 lives in timm 1.0.24 there; the MMSS_SAM env's
+# timm 0.4.12 has no dinov3 and the run dies with
+# "could not build backbone 'vit_large_patch16_dinov3'".
+DEVICE          : cuda
+SAVE_DIR        : './outputs/ReliaDINO/bengio_muses_rgbelr_P34_dgf_4modal'
+
+MODEL:
+  NAME          : ReliaDINO
+  BACKBONE      : ReliaDINO-ViTL16
+  BACKBONE_TIMM     : vit_large_patch16_dinov3
+  BACKBONE_FALLBACK : vit_large_patch14_reg4_dinov2
+  PRETRAINED_BACKBONE : true
+  RESUME_ENABLE : false
+  RESUME_PATH   : ''
+  AUTO_RESUME   : true
+  LORA_R        : 8
+  LORA_ALPHA    : null
+  FPN_DIM       : 256
+
+  FUSION:
+    NUM_LAYERS  : 2
+    NUM_HEADS   : 8
+    MLP_RATIO   : 4.0
+    AUX_HIDDEN  : 256
+    AUX_CE_WEIGHT : 0.5
+    ATTN_BIAS:
+      ENABLE       : true
+      LAMBDA1_INIT : 1.0
+
+  CONSISTENCY:
+    ENABLE       : true
+    LAMBDA2_INIT : 0.5
+
+  GATE:
+    ENABLE        : true
+    TAU           : 0.25
+    ENTROPY_REG   : 0.0
+    ENTROPY_FLOOR : 0.5
+    VETO_FLOOR:
+      ENABLE : true
+      THRESH : 0.10
+      CAP    : 0.05
+
+  CALIBRATION:
+    ENABLE : true
+    LAMBDA : 0.1
+
+  MODAL_DROPOUT:
+    ENABLE    : false
+    P         : 0.3
+    TARGETS   : ['img']          # P34 used ['img','depth']; MUSES has no depth
+    WARMUP_EP : 20
+
+DATASET:
+  NAME          : MUSES
+  ROOT          : '/ailab_mat2/dataset/MUSES'
+  IGNORE_LABEL  : 255
+  MODALS        : ['img', 'lidar', 'event', 'radar']
+  # DGFusion-aligned re-projection (motion_comp ON, DGFusion dilations).
+  # Omit this key to get the original 'projected_to_rgb' (the 78.979 baseline).
+  PROJ_SUBDIR   : 'projected_to_rgb_dgf'
+  RGB_SUBROOT   : null
+  THERMAL_SUBROOT : null
+  LIDAR_SUBROOT : null
+  NIGHT_TRANSLATION : false
+  # PhysAug: kept ON exactly as in the P34 recipe.
+  PHYSAUG:
+    ENABLE    : true
+    P         : 0.40
+    FILTER:
+      ENABLE      : true
+      SIGMA_RANGE : [0.0, 1.5]
+      KERNEL_SIZE : 3
+    FOURIER:
+      ENABLE      : true
+      GROUPS      : [1, 513]
+      PHASES      : [0.0, 1.0]
+      GRANULARITY : 256
+      MEAN_STR    : 8.0
+      DECAY       : 0.3
+
+TRAIN:
+  IMAGE_SIZE    : [1024, 1024]
+  # MUSES frames are 1080x1920; semseg/datasets/muses.py letterboxes them to a
+  # square (label pad = ignore) so this stays an exact 64x64 token grid.
+  BATCH_SIZE    : 2               # RTX 3090 24GB. Measured 4-modal + grad-ckpt:
+                                  # 11.99GB alloc / 15.50GB reserved. BS3 hit 96% on
+                                  # a 5-GPU DDP run; BS4 OOMs. With 8 GPUs this also
+                                  # lands accum=1 and eff batch exactly 16 (see above).
+  # EPOCHS=300 is carried over from the 78.979 config unchanged (the point of this
+  #   run is that the recipe is held fixed while the data is corrected).
+  #   Rationale there: MUSES train is 1500 imgs vs DELIVER ~3983, so 200 ep (the
+  #   DELIVER P34 number) = 300k samples vs DELIVER's 796k; 300 ep (450k) buys more
+  #   exposure. Overfitting is not a risk to the deliverable: the trainer keeps
+  #   top-5 checkpoints by val mIoU.
+  # Timing here is NOT the B200's 87 s/epoch — bengio is 8x RTX 3090 with grad
+  #   checkpointing and a 4th modality. Budget ~10 min/epoch => 300 ep ~ 2 days.
+  #   bengio has no hand-back deadline. Actual s/epoch is recorded at launch.
+  EPOCHS        : 300
+  EVAL_START    : 0
+  EVAL_INTERVAL : 2
+  AMP           : true
+  AMP_DTYPE     : bfloat16
+  DDP           : true
+  GRADIENT_CHECKPOINT : true      # MANDATORY on 24GB: without it even BS2 OOMs.
+
+LOSS:
+  NAME          : OhemCrossEntropy
+  CLS_WEIGHTS   : false
+
+OPTIMIZER:
+  NAME          : adamw
+  LR            : 0.0006
+  WEIGHT_DECAY  : 0.01
+
+SCHEDULER:
+  NAME          : warmuppolylr
+  POWER         : 0.9
+  WARMUP        : 15              # keeps the P34 warmup ratio (10/200 = 5%) at 300 ep
+  WARMUP_RATIO  : 0.1
+
+EVAL:
+  MODEL_PATH    : ''
+  IMAGE_SIZE    : [1024, 1024]
+  BATCH_SIZE    : 1               # 4 on B200; dropped for the 3090's 24GB. Eval is
+                                  # no-grad and val is only 250 imgs over 8 GPUs
+                                  # (~32 each), so this costs little wall time.
+  EVAL_DAY      : false
+  MSF:
+    ENABLE      : false
+    FLIP        : true
+    SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+
+WANDB:
+  ENABLE        : true
+  PROJECT       : MemorySAM
+
+TEST:
+  MODEL_PATH    : ''
+  FILE          : '/ailab_mat2/dataset/MUSES'
+  IMAGE_SIZE    : [1024, 1024]
+  OVERLAY       : false

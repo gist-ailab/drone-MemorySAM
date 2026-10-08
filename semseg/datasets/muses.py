@@ -88,6 +88,19 @@ class MUSES(Dataset):
     LIDAR_INTENSITY_MAX = 255.0
     LIDAR_HEIGHT_MIN = -10.0
     LIDAR_HEIGHT_MAX = 30.0
+    # ---- radar (Navtech CIR-DEV, projected_to_rgb/radar) ----
+    # radar shares lidar's (value+100)*150 uint16 codec but NOT its statistics.
+    # Measured on 150 train frames over valid px (range>0), raw decoded:
+    #   range     p50 7.03,  p99 149.97, max 150.00  -> data is hard-capped at 150 m.
+    #             The codec itself could carry 336.9 m (65535/150-100), so 150.0 is
+    #             the sensor/SDK ceiling and not a codec artifact -> clip at 150.
+    #   intensity p50 32,    p99 110,    max 160     -> /255 never saturates.
+    #   height    min 0, max 0, nuniq 1              -> STRUCTURALLY ABSENT: the MUSES
+    #             SDK projects radar with height_channel=False (radar_processing.py),
+    #             so ch2 is a constant-0 plane. DGFusion's radar PIXEL_MEAN [..,..,0.0]
+    #             independently corroborates this.
+    RADAR_RANGE_MAX = 150.0
+    RADAR_INTENSITY_MAX = 255.0
     # event counts are heavy-tailed (median nonzero 1, p99 5, max 255): a plain
     # /255 would squash typical events to ~0.004, so compress with log1p.
     EVENT_COUNT_MAX = 255.0
@@ -117,7 +130,8 @@ class MUSES(Dataset):
         return out
 
     def __init__(self, root: str = 'data/MUSES', split: str = 'train', transform=None,
-                 modals=['img', 'lidar', 'event'], case=None, return_meta: bool = False) -> None:
+                 modals=['img', 'lidar', 'event'], case=None, return_meta: bool = False,
+                 proj_subdir: str = 'projected_to_rgb') -> None:
         super().__init__()
         assert split in ['train', 'val', 'test']
         if split == 'test':
@@ -134,6 +148,12 @@ class MUSES(Dataset):
         self.ignore_label = 255
         self.modals = modals
         self.return_meta = return_meta
+        # Which projection set to read the non-RGB modalities from, relative to root.
+        # Default 'projected_to_rgb' = the original in-house projection that produced
+        # the 78.979 MUSES benchmark result -> existing configs are unchanged.
+        # 'projected_to_rgb_dgf' = re-projection with DGFusion's parameters
+        # (motion_comp ON, dilation lidar (7,7) / event (3,3) / radar (9,9)).
+        self.proj_subdir = proj_subdir
 
         unknown = [m for m in modals if m != 'img' and m not in self._PROJ]
         if unknown:
@@ -162,7 +182,7 @@ class MUSES(Dataset):
         if kind == 'mask':
             return os.path.join(self.root, 'gt_semantic', cond_dir, stem + '_gt_labelTrainIds.png')
         sub, suffix = self._PROJ[kind]
-        return os.path.join(self.root, 'projected_to_rgb', sub, cond_dir, stem + suffix + '.png')
+        return os.path.join(self.root, self.proj_subdir, sub, cond_dir, stem + suffix + '.png')
 
     # ---- readers: every modality is returned as float/uint8 on a 0-255 scale, so
     #      that augmentations_mm.Normalize's `/= 255` lands it in [0, 1] (the same
@@ -186,8 +206,31 @@ class MUSES(Dataset):
         return torch.from_numpy(np.ascontiguousarray(out * 255.0))
 
     def _open_radar(self, path: str) -> Tensor:
-        # radar uses the same (value+100)*150 codec; channels [range, intensity, height]
-        return self._open_lidar(path)
+        """Decode a projected radar PNG -> (3,H,W) float on a 0-255 scale.
+
+        Was previously routed through _open_lidar (and _open_radar was never even
+        called -- see __getitem__), which corrupted radar two ways:
+          1. range was clipped at LIDAR_RANGE_MAX=100 m, saturating the 2.77% of
+             valid returns that lie beyond 100 m (measured) -- i.e. exactly the
+             long-range returns radar contributes over lidar. Now clipped at the
+             measured 150 m data ceiling, so nothing saturates.
+          2. the constant-0 height plane became a constant 0.25 on valid px, a
+             scaled duplicate of the occupancy mask.
+        Channels returned: [range/150, intensity/255, occupancy].
+        """
+        v = self._read_uint16_proj(path)                       # (H,W,3) [range, intensity, height(=0)]
+        valid = (v[:, :, 0] > 0).astype(np.float32)            # exact: encoded 15000 -> 0.0
+        rng = np.clip(v[:, :, 0] / self.RADAR_RANGE_MAX, 0.0, 1.0)
+        inten = np.clip(v[:, :, 1] / self.RADAR_INTENSITY_MAX, 0.0, 1.0)
+        # ch2: the source height plane is a constant 0, so carry an explicit unit-scale
+        # occupancy mask instead of the constant 0.25 that _open_lidar produced.
+        # Be honest about what this buys: measured min radar range is ~3.6 m, so
+        # (ch0 > 0) already implies occupancy and ch2 adds NO information -- this is a
+        # rescale (0.25 -> 1.0 on valid px), not an information gain. It is kept
+        # because a constant plane wastes a patch-embed channel outright; the only
+        # substantive fix in this function is the 150 m (vs 100 m) range clip.
+        out = np.stack([rng * valid, inten * valid, valid], axis=0)
+        return torch.from_numpy(np.ascontiguousarray(out * 255.0))
 
     def _open_event(self, path: str) -> Tensor:
         raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)           # (H,W,3) uint8 [pos, neg, 0]
@@ -222,7 +265,12 @@ class MUSES(Dataset):
             if m == 'img':
                 continue
             p = self._sibling(rgb, m)
-            x = self._open_event(p) if m == 'event' else self._open_lidar(p)
+            if m == 'event':
+                x = self._open_event(p)
+            elif m == 'radar':
+                x = self._open_radar(p)          # was: fell through to _open_lidar
+            else:
+                x = self._open_lidar(p)
             if x.shape[1:] != (H, W):
                 x = TF.resize(x, [H, W], TF.InterpolationMode.NEAREST)
             sample[m] = x
