@@ -1,0 +1,62 @@
+# lab-status 파이프라인 어댑터 (명세: ~/lab-status/SPEC-pipeline.md 절 2)
+# 학습 종료 감지 → val-best top1 ckpt 선택 → legal v2 평가(test·val) → NAS 저장 → 알림
+# 규칙 근거: .claude_logs/experiments/protocol.md §1(val-best top1, test-best 금지), ISSUE-036(legal v2)
+
+[project]
+name = "drone-MemorySAM"
+match_cwd = ["drone-MemorySAM"]
+match_cmd = ["train_reliadino\\.py"]
+results_nas = "/ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/analysis"
+
+[finish]
+ok = ["Total Training Time"]
+crash = ["Traceback \\(most recent call last\\)", "CUDA out of memory", "SIGHUP"]
+
+[ckpt]
+save_dir_regex = "'SAVE_DIR': '([^']+)'"
+glob = "*/epoch*_top1_checkpoint.pth"
+exclude = ["test_"]
+require_exactly_one = true
+
+[[eval]]
+name = "deliver-legal-v2"
+cfg_match = "deliver"
+prep = ["{python} tools/eval_harness_guard.py --check"]
+eval_cfg_candidates = ["configs/eval/{cfg_stem}_eval1024*.yaml"]
+# 기존 configs/eval/*_eval1024_*.yaml 과 학습 cfg 의 차이가 정확히 이 세 키다(E13 쌍으로 확인, 2026-09-24)
+eval_cfg_derive = { "EVAL.IMAGE_SIZE" = [1024, 1024], "EVAL.BATCH_SIZE" = 1, "TEST.IMAGE_SIZE" = [1024, 1024] }
+metric_regex = { mIoU = "mIoU:\\s*([0-9.]+)", mAcc = "mAcc:\\s*([0-9.]+)" }
+[[eval.runs]]
+split = "test"
+cmd = "PYTHONPATH=semseg/models/sam2:. {python} tools/legal_rescore_v2.py --cfg {eval_cfg} --mode test --model_path {ckpt}"
+[[eval.runs]]
+split = "val"
+cmd = "PYTHONPATH=semseg/models/sam2:. {python} tools/legal_rescore_v2.py --cfg {eval_cfg} --mode val --model_path {ckpt}"
+
+[[eval]]
+# MUSES 평가 규칙(공식 평가기·제출 절차)은 아직 자동화 대상이 아니다: 종료 알림만 보낸다.
+name = "muses-notify-only"
+cfg_match = "muses"
+notify_only = true
+
+[[eval]]
+name = "other-notify-only"
+cfg_match = "."
+notify_only = true
+
+# 세션이 직접 띄운 평가(legal v2 재채점·val.py)도 결과로 수확한다(SPEC-pipeline 절 10, 2026-09-26).
+[[capture]]
+name = "legal-v2-manual"
+cmd_match = "legal_rescore_v2\\.py"
+split_regex = "--mode\\s+(\\w+)"
+ckpt_regex = "--model_path\\s+(\\S+)"
+cfg_regex = "--cfg\\s+(\\S+)"
+metric_regex = { mIoU = "mIoU:\\s*([0-9.]+)", mAcc = "mAcc:\\s*([0-9.]+)" }
+
+[[capture]]
+name = "val-v1-manual"
+cmd_match = "(^|/|\\s)val\\.py\\s"
+split_regex = "--mode\\s+(\\w+)"
+ckpt_regex = "--model_path\\s+(\\S+)"
+cfg_regex = "--cfg\\s+(\\S+)"
+metric_regex = { mIoU = "mIoU:\\s*([0-9.]+)", mAcc = "mAcc:\\s*([0-9.]+)" }

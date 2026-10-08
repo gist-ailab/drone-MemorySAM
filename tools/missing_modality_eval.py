@@ -23,8 +23,10 @@ import-재사용 방식):
   채운다. 집계 = ① 15조합 단순평균 ② Bernoulli 기대값 E(p), p∈{0.2,0.1,0.05}.
 - RMM(Random-Missing Modality): 같은 15조합에서 "결측"을 완전 0 대신 픽셀×채널 독립
   드롭(비율 r)으로 주입. 시드 고정 생성기로 재현 가능. 집계 EMM 과 동일 2종, r별.
-- NM(Noise on Modality): 결측 없이 4모달 전부에 salt-and-pepper(밀도 d) 노이즈.
-  Gaussian 은 벤치마크 릴리스에서 주석 처리돼 있으므로 `--nm_gaussian` 옵션으로만 둔다.
+- NM(Noise on Modality): 기본 sp 는 기존 채널 공통 salt-and-pepper 정의를 유지한다.
+  공개 val_mm_NM.py 는 salt-and-pepper 뒤 RGB·Depth·LiDAR 에 Gaussian 을 실제
+  적용한다(줄 끝 ''' 는 # 주석 안이라 무효, 논문 식 7 도 X+N_G+N_SP).
+  그 정의는 --nm_mode bench 로 선택한다.
 
 예:
   python tools/missing_modality_eval.py \
@@ -36,6 +38,7 @@ import-재사용 방식):
 import argparse
 import itertools
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -149,6 +152,48 @@ def gaussian_noise(x, std, generator):
     return x + noise, mask
 
 
+def bench_sp_noise(x, density, generator):
+    """공개 NM 벤치: 전 차원 독립 좌표, 중복 허용, salt 후 pepper 덮어쓰기."""
+    count = math.ceil(density * x.numel() * 0.5)
+    out = x.clone()
+    salt_coords = tuple(torch.randint(0, size, (count,), generator=generator).to(x.device)
+                        for size in x.shape)
+    out[salt_coords] = x.max()
+    pepper_coords = tuple(torch.randint(0, size, (count,), generator=generator).to(x.device)
+                          for size in x.shape)
+    out[pepper_coords] = x.min()
+    return out
+
+
+def bench_noise(base_list, modal_names, density, std, generator):
+    """정규화 공간에서 모든 센서 S&P 후 Event 이외에 가법 Gaussian 적용."""
+    out = [bench_sp_noise(x, density, generator) for x in base_list]
+    for i, name in enumerate(modal_names):
+        if name.lower() != "event":
+            noise = torch.randn(out[i].size(), generator=generator).to(out[i].device)
+            out[i] = out[i] + noise * std
+    return out
+
+
+def parse_nm_bench_levels(spec):
+    """Low/Mid/High 용 밀도:표준편차 세 쌍을 파싱한다."""
+    parts = spec.split(",")
+    if len(parts) != 3:
+        raise argparse.ArgumentTypeError("--nm_bench_levels 는 밀도:σ 세 쌍이어야 합니다")
+    levels = []
+    for label, part in zip(("Low", "Mid", "High"), parts):
+        try:
+            density_text, std_text = part.split(":")
+            density, std = float(density_text), float(std_text)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"잘못된 NM bench 레벨: {part!r}") from exc
+        if not (math.isfinite(density) and 0 <= density <= 1 and
+                math.isfinite(std) and std >= 0):
+            raise argparse.ArgumentTypeError(f"NM bench 밀도/σ 범위 오류: {part!r}")
+        levels.append((label, density, std))
+    return levels
+
+
 def bernoulli_weight(n_missing, M, p):
     """조합(결측 n_missing개)의 Bernoulli 확률 p^k (1−p)^(M−k)."""
     return (p ** n_missing) * ((1.0 - p) ** (M - n_missing))
@@ -176,7 +221,7 @@ class Case:
     """평가 단위 하나(고유 id + base 배치 리스트 → 주입된 리스트 변환)."""
 
     def __init__(self, cid, group, present_names, n_missing, apply_fn,
-                 ratio=None, density=None):
+                 ratio=None, density=None, label=None, std=None):
         self.id = cid
         self.group = group                 # 'clean' | 'emm' | 'rmm' | 'nm'
         self.present_names = present_names
@@ -184,6 +229,8 @@ class Case:
         self.apply_fn = apply_fn           # base_list -> injected_list
         self.ratio = ratio                 # RMM r
         self.density = density             # NM d
+        self.label = label                 # bench NM 레벨과 파라미터
+        self.std = std                     # bench NM Gaussian σ
 
 
 def _present_names(present, modal_names):
@@ -191,7 +238,8 @@ def _present_names(present, modal_names):
 
 
 def build_cases(protocol, M, modal_names, rmm_ratios, nm_density,
-                gen_factory, nm_gaussian=False, nm_gaussian_std=0.2):
+                gen_factory, nm_gaussian=False, nm_gaussian_std=0.2,
+                nm_mode="sp", nm_bench_levels=None):
     """활성 프로토콜에 맞는 Case 목록을 만든다. clean 은 항상 1개 포함한다.
 
     gen_factory() 는 매 호출 새 torch.Generator(재현용 seed 설정 완료)를 돌려준다 —
@@ -224,20 +272,33 @@ def build_cases(protocol, M, modal_names, rmm_ratios, nm_density,
                     ratio=r))
 
     if protocol in ("nm", "all"):
-        for d in nm_density:
-            gen = gen_factory()
-            cid = f"nm{d}"
-            if nm_gaussian:
+        if nm_mode == "bench":
+            levels = (nm_bench_levels if nm_bench_levels is not None else
+                      parse_nm_bench_levels("0.05:0.1,0.1:0.2,0.2:0.5"))
+            for level, d, std in levels:
+                gen = gen_factory()
+                cid = f"nm|level={level}|d={d}|sigma={std}"
+                label = f"{level} (d={d}, σ={std})"
                 cases.append(Case(
                     cid, "nm", _present_names(all_present, modal_names), 0,
-                    (lambda base, dd=d, g=gen, s=nm_gaussian_std:
-                     [gaussian_noise(x, s, g)[0] for x in base]),
-                    density=d))
-            else:
-                cases.append(Case(
-                    cid, "nm", _present_names(all_present, modal_names), 0,
-                    (lambda base, dd=d, g=gen: [sp_noise(x, dd, g)[0] for x in base]),
-                    density=d))
+                    (lambda base, dd=d, ss=std, g=gen:
+                     bench_noise(base, modal_names, dd, ss, g)),
+                    density=d, label=label, std=std))
+        else:
+            for d in nm_density:
+                gen = gen_factory()
+                cid = f"nm{d}"
+                if nm_gaussian:
+                    cases.append(Case(
+                        cid, "nm", _present_names(all_present, modal_names), 0,
+                        (lambda base, dd=d, g=gen, s=nm_gaussian_std:
+                         [gaussian_noise(x, s, g)[0] for x in base]),
+                        density=d))
+                else:
+                    cases.append(Case(
+                        cid, "nm", _present_names(all_present, modal_names), 0,
+                        (lambda base, dd=d, g=gen: [sp_noise(x, dd, g)[0] for x in base]),
+                        density=d))
     return cases
 
 
@@ -302,13 +363,18 @@ def _write_combo_csv(path, cases, hists, class_names):
     """조합별 mIoU + 25 클래스 IoU CSV. combo, present_modals, n_missing, mIoU, <25>."""
     import csv
     header = ["combo", "present_modals", "n_missing", "mIoU"] + list(class_names)
+    bench_labels = any(c.label is not None for c in cases)
+    if bench_labels:
+        header.insert(1, "label")
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(header)
         for c in cases:
             miou, ious = _case_miou(hists[c.id])
-            w.writerow([c.id, c.present_names, c.n_missing,
-                        f"{miou:.4f}"] + [f"{v:.4f}" for v in ious])
+            row = [c.id, c.present_names, c.n_missing, f"{miou:.4f}"]
+            if bench_labels:
+                row.insert(1, c.label)
+            w.writerow(row + [f"{v:.4f}" for v in ious])
 
 
 def aggregate_missing(cases_group, clean_case, hists, M, ps=(0.2, 0.1, 0.05)):
@@ -331,7 +397,7 @@ def aggregate_missing(cases_group, clean_case, hists, M, ps=(0.2, 0.1, 0.05)):
 
 def write_outputs(out_root, split, cases, hists, M, modal_names, class_names,
                   rmm_ratios, nm_density, protocol, presence_renorm, nm_gaussian,
-                  nm_gaussian_std, model_path, cfg_path):
+                  nm_gaussian_std, model_path, cfg_path, nm_mode="sp"):
     """emm.csv / rmm_r*.csv / nm_d*.csv / summary.json / summary.md 를 쓴다."""
     base = Path(out_root) / split / "missing_modality"
     base.mkdir(parents=True, exist_ok=True)
@@ -358,6 +424,16 @@ def write_outputs(out_root, split, cases, hists, M, modal_names, class_names,
             "scoring": "native-GT, 25클래스, 부재 클래스 IoU=0 포함(val.py metrics 규약)",
         },
     }
+    if nm_mode == "bench" and protocol in ("nm", "all"):
+        level_specs = ", ".join(
+            c.label for c in cases if c.group == "nm")
+        summary["nm_mode"] = "bench"
+        summary["protocol_defs"]["NM"] = (
+            "정규화 후 모든 센서에 salt-and-pepper: 텐서 전체 min/max, "
+            "배치·채널·H·W 각 차원 독립 원소별 위치, salt/pepper 각각 "
+            "ceil(d·numel·0.5)회 중복 허용, pepper 가 salt 를 덮어씀. "
+            "그 뒤 Event 제외 센서에 평균 0 Gaussian 가산. "
+            f"레벨별 밀도·σ: {level_specs}.")
 
     # EMM
     if protocol in ("emm", "all"):
@@ -379,11 +455,21 @@ def write_outputs(out_root, split, cases, hists, M, modal_names, class_names,
     if protocol in ("nm", "all"):
         summary["NM"] = {}
         nm_rows = []
-        for d in nm_density:
-            nm_case = next(c for c in cases if c.group == "nm" and c.density == d)
-            miou, _ = _case_miou(hists[nm_case.id])
-            summary["NM"][str(d)] = round(miou, 4)
-            nm_rows.append(nm_case)
+        if nm_mode == "bench":
+            for nm_case in (c for c in cases if c.group == "nm"):
+                miou, _ = _case_miou(hists[nm_case.id])
+                level = nm_case.label.split(" ", 1)[0]
+                summary["NM"][level] = {
+                    "label": nm_case.label, "density": nm_case.density,
+                    "sigma": nm_case.std, "mIoU": round(miou, 4),
+                }
+                nm_rows.append(nm_case)
+        else:
+            for d in nm_density:
+                nm_case = next(c for c in cases if c.group == "nm" and c.density == d)
+                miou, _ = _case_miou(hists[nm_case.id])
+                summary["NM"][str(d)] = round(miou, 4)
+                nm_rows.append(nm_case)
         _write_combo_csv(base / "nm.csv", nm_rows, hists, class_names)
 
     (base / "summary.json").write_text(
@@ -435,13 +521,25 @@ def _write_summary_md(path, summary, rmm_ratios, protocol):
         L.append("")
 
     if "NM" in summary:
-        L.append("## NM — 노이즈 밀도 d별 mIoU (4모달 전부 노이즈)")
-        L.append("")
-        L.append("| d | ReliaDINO mIoU |")
-        L.append("|---|----------------|")
-        for d, v in summary["NM"].items():
-            L.append(f"| {d} | {v} |")
-        L.append("")
+        if summary.get("nm_mode") == "bench":
+            L.append("## NM — 공개 벤치 Low/Mid/High")
+            L.append("")
+            L.append(f"- 정의: {summary['protocol_defs']['NM']}")
+            L.append("")
+            L.append("| 레벨 | 밀도 d | Gaussian σ | ReliaDINO mIoU |")
+            L.append("|---|---:|---:|---:|")
+            for level, result in summary["NM"].items():
+                L.append(f"| {level} | {result['density']} | {result['sigma']} | "
+                         f"{result['mIoU']} |")
+            L.append("")
+        else:
+            L.append("## NM — 노이즈 밀도 d별 mIoU (4모달 전부 노이즈)")
+            L.append("")
+            L.append("| d | ReliaDINO mIoU |")
+            L.append("|---|----------------|")
+            for d, v in summary["NM"].items():
+                L.append(f"| {d} | {v} |")
+            L.append("")
 
     path.write_text("\n".join(L), encoding="utf-8")
 
@@ -460,6 +558,10 @@ def main():
     ap.add_argument("--protocol", default="all", choices=["emm", "rmm", "nm", "all"])
     ap.add_argument("--rmm_ratios", type=float, nargs="+", default=[0.25, 0.5, 0.75])
     ap.add_argument("--nm_density", type=float, nargs="+", default=[0.05, 0.1, 0.2])
+    ap.add_argument("--nm_mode", choices=["sp", "bench"], default="sp",
+                    help="NM 정의: sp=기존 동작, bench=공개 벤치 S&P 후 Gaussian")
+    ap.add_argument("--nm_bench_levels", default="0.05:0.1,0.1:0.2,0.2:0.5",
+                    help="bench Low,Mid,High 의 밀도:Gaussian σ 세 쌍")
     ap.add_argument("--presence_renorm", action="store_true",
                     help="P44-V1 결정론적 presence 재정규화를 켠다(기본 off=벤치마크 그대로).")
     ap.add_argument("--nm_gaussian", action="store_true",
@@ -477,6 +579,11 @@ def main():
                     help="k>1 이면 데이터셋 순서상 k장마다 1장(결정론적 부분집합)만 평가. "
                          "스크린용; 벤치마크 비교 수치는 반드시 1(전체)로 낸다. summary 에 기록.")
     args = ap.parse_args()
+    try:
+        bench_levels = (parse_nm_bench_levels(args.nm_bench_levels)
+                        if args.nm_mode == "bench" else None)
+    except argparse.ArgumentTypeError as exc:
+        ap.error(str(exc))
 
     import val as valmod
 
@@ -536,7 +643,8 @@ def main():
     cases = build_cases(args.protocol, M, modal_names, args.rmm_ratios,
                         args.nm_density, gen_factory,
                         nm_gaussian=args.nm_gaussian,
-                        nm_gaussian_std=args.nm_gaussian_std)
+                        nm_gaussian_std=args.nm_gaussian_std,
+                        nm_mode=args.nm_mode, nm_bench_levels=bench_levels)
     print(f"[mm-eval] cases={len(cases)} (protocol={args.protocol}, M={M}) "
           f"→ 배치마다 {len(cases)}회 forward")
 
@@ -547,7 +655,8 @@ def main():
     base, summary = write_outputs(
         args.out, mode, cases, hists, M, modal_names, list(common.CLASSES),
         args.rmm_ratios, args.nm_density, args.protocol, args.presence_renorm,
-        args.nm_gaussian, args.nm_gaussian_std, args.model_path, args.cfg)
+        args.nm_gaussian, args.nm_gaussian_std, args.model_path, args.cfg,
+        nm_mode=args.nm_mode)
     if args.subset_every > 1 or args.batch != 1:
         # 부분집합·배치 정보를 summary 에 남긴다(부분집합 수치는 벤치마크 비교 불가 표시).
         summary["subset_every"] = int(args.subset_every)
@@ -564,8 +673,13 @@ def main():
         for r in args.rmm_ratios:
             print(f"[mm-eval] RMM r={r} avg = {summary['RMM'][str(r)]['avg']}")
     if "NM" in summary:
-        for d in args.nm_density:
-            print(f"[mm-eval] NM d={d} mIoU = {summary['NM'][str(d)]}")
+        if args.nm_mode == "bench":
+            for level, result in summary["NM"].items():
+                print(f"[mm-eval] NM {level} d={result['density']} "
+                      f"σ={result['sigma']} mIoU = {result['mIoU']}")
+        else:
+            for d in args.nm_density:
+                print(f"[mm-eval] NM d={d} mIoU = {summary['NM'][str(d)]}")
     print(f"[mm-eval] -> {base}")
 
     # 검증: 전부-존재(clean) mIoU 가 등록값과 ±tol 안이어야 한다(전처리·주입 위치 오류 감지).
