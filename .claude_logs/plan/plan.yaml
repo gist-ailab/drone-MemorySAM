@@ -11778,17 +11778,26 @@ items:
   expected_cost: A100 1장 × 약 3.5일 × 2시드
   priority: 22
   owner_role: method
-  status: running
+  status: done
   tags:
   - P56
   - lora
   - moe
   created: '2026-09-29'
-  updated: '2026-09-30'
-  closed: null
+  updated: '2026-10-08'
+  closed: '2026-10-08'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: 'P56-C 상태 조건부 LoRA 혼합 2시드 40ep: clean 24클래스 2시드 평균 Δ +0.04(① 통과, 3시드
+      평균 대비 +0.31, 시드 간 편차 0.03). 라우터 α 토큰 간 std ≈0(img·depth), event 0.078, LiDAR
+      0.00006, 조건별 변화 없음 → 사전 기준 ③(≥0.05) 미달, 라우터가 모달별 상수로 붕괴해 ''상태 조건부'' 기제가 작동하지
+      않음. 강건(같은 시드821 부분집합 짝): depth 부분 저하 비율 0.31~0.36, RGB 0.95/0.75/0.74, EMM −0.71
+      — 시드 잡음 커 판정 근거 아님. P56 A·B·C 전부 기각, 논문 모델 E1 구조 + Q2 레시피 고정. 판정 대장 2026-10-08
+      행, H34'
+    date: '2026-10-08'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-260930-01
