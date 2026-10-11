@@ -86,10 +86,17 @@ def main():
                          "<out>/<split>/pred1024/ 에 추가 저장한다(정본 채점 격자 = "
                          "1024 방침). 기존 pred/conf/gt 저장은 그대로. 라벨이 1024²"
                          "가 아니면 임의 보정 없이 에러로 멈춘다")
+    ap.add_argument("--resample", choices=["v2", "v1"], default="v2",
+                    help="1024 예측을 native 로 되돌리는 업샘플: v2 = nearest-exact(중심 정렬, tools/legal_rescore_v2.py 와 동일, 현행 정본 채점) / v1 = val.py 의 nearest(floor 정렬, ISSUE-036 반 픽셀 계통 편차). 2026-10-11 기본값을 v2 로 변경")
     args = ap.parse_args()
 
     # val.py 는 무거운 top-level import 를 가지므로 여기서 지연 import.
     import val as valmod
+    if args.resample == "v2":
+        from tools.legal_rescore_v2 import _unpad_resize_to_orig_v2 as _unpad_resize
+    else:
+        _unpad_resize = valmod._unpad_resize_to_orig
+    print(f"[dump] resample={args.resample}", flush=True)
 
     with open(args.cfg) as f:
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
@@ -169,7 +176,7 @@ def main():
                         pred1024_dir / f"{image_id}.png",
                         lab1024.cpu().numpy().astype(np.uint8))
 
-                pred_resized = valmod._unpad_resize_to_orig(
+                pred_resized = _unpad_resize(
                     pred_labels[b], orig_h, orig_w, model_size=model_size)
                 pred_np = pred_resized.cpu().numpy().astype(np.uint8)
                 common.save_label_png(pred_dir / f"{image_id}.png", pred_np)
