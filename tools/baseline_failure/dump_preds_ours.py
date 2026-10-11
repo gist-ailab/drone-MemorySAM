@@ -88,6 +88,8 @@ def main():
                          "가 아니면 임의 보정 없이 에러로 멈춘다")
     ap.add_argument("--resample", choices=["v2", "v1"], default="v2",
                     help="1024 예측을 native 로 되돌리는 업샘플: v2 = nearest-exact(중심 정렬, tools/legal_rescore_v2.py 와 동일, 현행 정본 채점) / v1 = val.py 의 nearest(floor 정렬, ISSUE-036 반 픽셀 계통 편차). 2026-10-11 기본값을 v2 로 변경")
+    ap.add_argument("--path", choices=["both", "dense", "query"], default="both",
+                    help="진단 전용 예측 경로: both = 정본(dense + 쿼리 결합) / dense = conv FPN 헤드만(p39_query_off) / query = M2F 쿼리 헤드만(p39_dense_off). 기본 both 는 기존 동작과 동일")
     args = ap.parse_args()
 
     # val.py 는 무거운 top-level import 를 가지므로 여기서 지연 import.
@@ -123,6 +125,16 @@ def main():
 
     model = valmod.load_model(cfg, Path(args.model_path), device)
     model.eval()
+    if args.path != "both":
+        # 진단 전용: dense(conv FPN 헤드)만 / query(M2F 쿼리 헤드)만으로 예측을 낸다.
+        # 모델의 기존 추론-시 ablation 플래그를 그대로 쓰며, 모델 쪽 검사가 무의미한
+        # 조합(arbiter 없음 등)을 에러로 막는다.
+        if args.path == "dense":
+            model.p39_query_off = True
+        else:
+            model.p39_dense_off = True
+        model._check_p39_ablation_flags()
+    print(f"[dump] path={args.path}", flush=True)
 
     n_classes = dataset.n_classes
     ignore = dataset.ignore_label
