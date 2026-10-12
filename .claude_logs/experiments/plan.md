@@ -168,6 +168,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 <!-- lab:plan-queue:begin -->
 | id | 우선 | 제목 | 바꾼 변수 | 상태 | runs | 예상 비용 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DRN-261012-01 | P1 | A1 · 고해상 학습 스케일(TRAIN_SCALE_RANGE [1,3], 평균 1536) — Q2 레시피 40ep 스크린 2시드 | DATASET.TRAIN_SCALE_RANGE [0.5,2.0]→[1.0,3.0](crop 768 유지). 부수: 학습 중 val-best 선택 해상도 768→1536 | queued | - | bengio 3090 4장×2런 병렬, 40ep 약 20~26h(학습 crop 동일, val 1536 으로 평가 시간 증가), 평가 해상도 3종 legal v2 val/test 약 6 GPU·h |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | queued | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | running | - | 미정 |
 | DRN-260926-55 | P102 | Q2→Q3 강건성 전 프로토콜(EMM15·RMM4×3·NM3, Q2 먼저) | Q2·Q3 체크포인트 강건성 측정 | running | - | 미정 |
@@ -196,16 +197,13 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-110 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): P39.1-rank MUSES 3모달 시드3(yeon) 완주 val 81.89@ep204. 5시드 val 분산 자료의 일부(시드1 82.03 등). 공식 test 미제출 | - |
 | DRN-260926-111 | reject | P43-PanopticDual MUSES 3모달(hpca100): val 82.51 → 공식 test 79.351(우리 2위, 시드2 79.788 대비 −0.44). PQ 판정 불가·test 미달로 승계되지 않음. DRN-260926-52 와 같은 런 | - |
 | DRN-260926-113 | reject | P44-BMR MUSES 3모달(hpca100): val-best 80.71@ep156(외부 선점으로 중단), 공식 test 는 P39.1-rank 미달. 승계되지 않음 | - |
-| DRN-260926-114 | - | - | - |
 | DRN-260926-115 | reject | P46-CTR C1(희소 클래스 재샘플 RCS)+C3(prototype) DELIVER: ep40 대조에서 C3-only(RailTrack 64.13, 전체 55.64)가 C1+C3(59.10, 54.92) 를 앞서 C1 은 순유해 → 2026-07-30 kill. C1 축 폐기 | - |
 | DRN-260926-116 | adopt | P46-CTR C3-only(λ0.1, 탭 없음) DELIVER 본 런(jarvis, 시드 고정 기능 없던 무작위 시드): val-best ep70 → 1024 평가 val 69.44 / test 56.99 = 우리 최고 단일 런(구기록). DGFusion 66.51 / 56.71 동시 상회, MM SAM-adapter(69.60 / 57.35)에는 미달. 체크포인트 정본 NAS ckpts/P46_c3only_base_ep70_test5699_20260730/(md5 d340e3fe). 헤드라인은 이후 E1 3시드 legal v2 로 교체됐고 이 값은 단일 런 최고로 병기 | experiments/judgment-ledger.md 행 16,17 |
-| DRN-260926-117 | - | - | - |
 | DRN-260926-118 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): P46-CTR C3-only 재현성 검증 시드2: val-best ep62 → 1024 평가 val 68.90 / test 56.40(본 런 대비 test −0.59). 방향은 재현되나 단일 런 편차 0.6 존재 → 이후 3시드 평균 병기 규칙의 근거 | - |
 | DRN-260926-119 | reject | P46 C3-only 를 1024 해상도로 학습한 시드B: legal test 54.85(학습 로그 test-best 57.43 은 비legal). 768 학습 + 1024 평가(56.99)보다 낮아 1024 학습은 폐기 | - |
 | DRN-260926-12 | reject | MLE-SAM 식 평균 융합 기준선(믹서를 평균으로 교체): legal test 55.45 로 우리 gated-MLP trunk(54.2~55.4)와 동급 이상. 'trunk 가 우위'라는 주장은 철회하고 믹서 3점(평균 ≈ gated-MLP > 교차 attention 만) 을 기록. 기각 = 우리 trunk 의 우위 가설 기각. 원문 = analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md | .claude_logs/experiments/analysis/2026-08-31-p50-gate-pass-n2-mixer-verdict.md |
 | DRN-260926-120 | reject | P46 C3-only 1024 해상도 학습 시드C: legal test 54.55. 시드B 와 함께 1024 학습 폐기 확정 | - |
 | DRN-260926-121 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): C3-only 768 대표 구성(λ0.1) 진짜 시드 2런(20260815·16, jarvis). registry '학습 중' 표기는 낡은 것 — N6(DRN-260926-16) 5시드 legal-val 재선택에 포함돼 완주·평가됨(5시드 평균 54.39±0.76, 최고 시드816 55.29) | - |
-| DRN-260926-122 | - | - | - |
 | DRN-260926-123 | reject | P46-CTR C3-only λ=0.2 DELIVER: 완주했으나 SOTA 미달(2026-08-04 정정). λ0.1 이 대표 구성으로 확정 | - |
 | DRN-260926-124 | reject | P46-CTR C3-only λ=0.2 MUSES 3모달(hpca100): val 81.65@ep136 로 base(P39.1-rank 시드2 82.62) 대비 −0.97. 손해가 clear/day 에 집중(Δclear −1.72), fog/rain 은 +0.2. DELIVER 기제의 MUSES 이식 실패 → P47 D-2(단일 모달 균형) 근거로 전환 | - |
 | DRN-260926-125 | reject | P46-CTR C3-only λ=0.3 DELIVER: λ 스윕 상단 탐색, λ0.1 대표 구성을 넘지 못함(registry 핵심수치 칸). λ 스윕 종결 | - |
@@ -270,8 +268,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-181 | reject | E13Mc(E13 의 MCubeS 이식) 시드20260827(hpca100, 200에폭): final 56.55(짝 C3-off 대비 −1.12). 3시드 평균 −0.63 으로 N-MC 종결(DRN-260926-10) | - |
 | DRN-260926-182 | reject | E13Mc 시드20260828(hpca100, 200에폭): final 57.99(짝 C3-off 대비 −0.63). 3시드 평균 −0.63 으로 N-MC 종결(DRN-260926-10) | - |
 | DRN-260926-183 | reject | E1Mc(E1 4탭의 MCubeS 이식) 시드3407(hpca100, 200에폭): final 58.68, 4탭 단독 3짝 평균 +0.10 으로 게이트(+0.5) 미달 → N-MC 종결(DRN-260926-10). MCubeS 헤드라인은 C3-off 58.07±0.49 유지 | - |
-| DRN-260926-184 | - | - | - |
-| DRN-260926-185 | - | - | - |
 | DRN-260926-186 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E-LoRA arm B(완전 공유 LoRA r16, 1.57M) 시드821(jarvis, 200에폭 완주). clean·결측은 A 와 같고 depth 절반 열화에서 손해가 절반 이하(−6.82 vs A −15.77) → DRN-260926-03 재판정의 근거. registry '학습 중' 표기는 낡은 것 | - |
 | DRN-260926-187 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E-LoRA arm C(공유 r8 + 센서별 잔차 r8, 3.93M) 시드821(yeon, 200에폭 완주 + legal 재채점): depth 열화 −11.94 로 A 와 B 사이, 둘의 장점을 합치지 못함 → DRN-260926-03 의 근거 | - |
 | DRN-260926-188 | adopt | 측정 항목(채택 = 기준선 기록으로 확정): 확정 런 매칭 분모 P46 C3-only 200에폭 시드20260902(jarvis, OOM 사망 후 재기동 완주, 학습기 val 67.20@ep140). E1·E13 확정 3쌍 판정(DRN-260926-01)의 시드2 짝. 판정 대장 25행 | experiments/judgment-ledger.md 행 25 |
@@ -290,14 +286,10 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-201 | adopt | 측정 항목(채택 = 기준선 기록으로 확정): B0Mc 시드20260828(hpca100 200에폭). N-MC 판정의 분모 | - |
 | DRN-260926-202 | reject | E1Mc 시드20260827(hpca100, yeon 무효 시드의 재실행, 200에폭 완주): 4탭 단독 3짝 평균 +0.10 으로 게이트 미달 → N-MC 종결(DRN-260926-10) | - |
 | DRN-260926-203 | reject | E1Mc 시드20260828(hpca100, 200에폭 완주): 4탭 단독 3짝 평균 +0.10 으로 게이트(+0.5) 미달 → N-MC 종결(DRN-260926-10) | - |
-| DRN-260926-204 | - | - | - |
-| DRN-260926-205 | - | - | - |
 | DRN-260926-206 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E-LoRA arm A(센서별 r16) 시드902(bengio, 200에폭). 3갈래×3시드 9칸 판정(DRN-260926-03)의 A 팔 시드2. registry '학습 중' 표기는 낡은 것 | - |
 | DRN-260926-207 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E-LoRA arm B(완전 공유 r16) 시드902(bengio, 200에폭). 9칸 판정(DRN-260926-03)의 B 팔 시드2: depth 열화 손해 −6.82±0.57 의 자료 | - |
 | DRN-260926-208 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E-LoRA arm A 시드903(bengio, 200에폭). 9칸 판정(DRN-260926-03)의 A 팔 시드3: depth 열화 손해 −15.77±2.73 의 자료 | - |
 | DRN-260926-209 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E-LoRA arm B 시드903(bengio, 200에폭). 9칸 판정(DRN-260926-03)의 B 팔 시드3 | - |
-| DRN-260926-210 | - | - | - |
-| DRN-260926-211 | - | - | - |
 | DRN-260926-212 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E1 확정 시드4 v2(yeon 새 체크아웃, 20260904): 완주·재채점 완료. DELIVER 넷째 짝이며 헤드라인은 3시드 유지(4시드 평균은 감시 세션 std 회신 후 갱신 — 판정 대장 39행). registry '학습 중' 표기는 낡은 것 | - |
 | DRN-260926-213 | adopt | 측정 항목(채택 = 기준선 기록으로 확정): C3-only 200에폭 시드4(yeon 새 체크아웃, 20260904): E1·E13 시드4 짝의 같은 코드 분모. 완주·재채점 완료 | - |
 | DRN-260926-214 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E13 확정 시드4(yeon, 20260904): legal test 55.67 / val 69.40(ep110) → E13 4시드 test {56.95, 55.21, 57.29, 55.67}. 헤드라인은 3시드(56.48) 유지, 4시드 평균은 std 회신 후 갱신. 판정 대장 39행 | experiments/judgment-ledger.md 행 39 |
@@ -307,13 +299,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-220 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E3 legal test 재채점(ckpt epoch25_65.97_top1, bengio): test 55.18(B0 +1.40, 카드 최고), val 은 bengio 양도로 미측정. E3 스크린 통과(DRN-260926-162)의 원자료 | - |
 | DRN-260926-221 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): E1 legal 재채점(ckpt epoch35_67.25_top1, bengio): val 66.90 / test 54.85(B0 +1.07), 전이율 55%. E1 스크린 통과(DRN-260926-156)의 원자료 | - |
 | DRN-260926-222 | reject | E4 legal 재채점(ckpt epoch15_65.92_top1, bengio): val 65.86 / test 53.75(B0 −0.03) → E4 폐기(DRN-260926-163)의 원자료 | - |
-| DRN-260926-223 | - | - | - |
 | DRN-260926-226 | adopt | 측정 항목(채택 = 기준선 기록으로 확정): B0 legal 재채점(ckpt epoch40_65.4_top1, bengio): val 64.97 / test 53.78 → 40에폭 카드 통과선 test ≥ 54.78 확정. DRN-260926-155 의 원자료 | - |
-| DRN-260926-227 | - | - | - |
 | DRN-260926-228 | reject | E17(4탭 + 고해상도 세부 가지) 40에폭 스크린 시드821 hpca100 사본(09-16 기동): jarvis 사본과 같은 카드. Δtest +0.88 로 게이트 미달, 확정 런 취소(DRN-260926-04). registry '학습 중' 표기는 낡은 것 | - |
-| DRN-260926-229 | - | - | - |
 | DRN-260926-23 | adopt | 측정 항목(채택 = 공정선 기록으로 확정): MUSES 최선 레시피(P39.1-rank 3모달)에서 PhysAug 만 끈 시드 3짝(824·825·826): 공식 val 82.463 / 82.19 / 82.256 = 82.30±0.14. PhysAug-on 같은 레시피 시드2 82.62 대비 −0.3 안. 공정선 헤드라인 후보이며 test 제출은 user 결정으로 보류(2026-09-29, 새 4모달 모델 전까지). 판정 대장 2026-09-24·25 행 | experiments/judgment-ledger.md 행 74,75,76 |
-| DRN-260926-230 | - | - | - |
 | DRN-260926-231 | adopt | Q2(두 패스 = clean CE + 열화 CE + 동결 E1 교사 증류) 를 이후 카드의 바탕 레시피로 채택: clean 축은 3시드 24클래스 평균 Δ +0.41 로 사전 기준(+0.6) 미달이라 clean 개선 주장은 하지 않음(손해도 없음). 강건 축은 3시드 재현: 모달 결측 15조합 평균 48.06 vs E1 스크린 40.40(+7.7), depth 부분 결측 저하 비율 0.26, S&P 노이즈 d.2 저하 약 3.8 감소. RGB 부분 결측에는 이득 없음. 헤드라인 교체 없음. 판정 대장 2026-09-28·09-29 행 | experiments/judgment-ledger.md 행 71 |
 | DRN-260926-232 | reject | Q3(품질 헤드 QAF 본 카드) 종료: 시드821 legal v2 에서 Q2(품질 헤드 없는 두 패스+교사 증류) 대비 24클래스 −1.31·얇은 객체 4클래스 −5.67, 강건 축도 모달 결측 15조합 평균 47.09 vs Q2 48.68 로 Q2 이하. 사전 규칙(강건에서 Q2 를 못 넘으면 종료) 적용. 판정 대장 2026-09-24·09-29 행 | experiments/judgment-ledger.md 행 51,53,59,73 |
 | DRN-260926-235 | adopt | det(poongsan, 국책 목표 mAP50 0.85) P29-Det egofill 데이터(train 11,799, bengio 50에폭): best mAP50 0.8501@ep9 로 목표 달성(2026-07-05, 동일 스택에서 데이터만으로 0.4455 → 0.850). det 트랙 목표 달성 기록으로 채택 | - |
@@ -341,9 +329,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-256 | inconclusive | P28 RBMA(신뢰도 편향 메모리 attention, DELIVER B200): val 57.87 / test 50.61@ep12 에서 ep16 사망(조기 종료) → 불완전 실패. 신호 정의는 계보 표준이 됐으나 성능 판정에 필요한 완주가 없음. 이후 P29·P31·P32 에서 attention bias 효과 ≈0 으로 반증됨 | - |
 | DRN-260926-257 | reject | P8(ConfidenceHeadV2 + Sigmoid UAMM, MULTIAQUA): M-score 77.5~78.5(증강별) 로 P9(81.47)에 대체됨. 종료 트랙 | - |
 | DRN-260926-258 | adopt | P9(CrossModalFusionHead + Max-Norm UAMM, MULTIAQUA): M-score 82.10(재제출 #16710, val 93.29 / test 70.91) = 챌린지 공동 1위 제출본. SAM2 계보의 최선으로 채택(종료 트랙, DRN-260926-87 과 같은 런) | - |
-| DRN-260926-259 | - | - | - |
-| DRN-260926-26 | - | - | - |
-| DRN-260926-260 | - | - | - |
 | DRN-260926-261 | reject | P12(입력 조건부 Soft MoE LoRA, MULTIAQUA): M-score 80.80(P9 대비 −0.67) → 기각. 동적 융합 계열 실패 패턴의 시작 | - |
 | DRN-260926-262 | reject | P13(Energy Score 융합 + expert collapse 수정, MULTIAQUA): M-score 81.21(P9 대비 −0.26) → 기각 | - |
 | DRN-260926-263 | reject | P14(모달별 독립 보조 디코더, MULTIAQUA): M-score 74.27(P9 대비 −7.20) → 기각. 원인 = 동결 백본의 보조 마스크 품질 부족(ISSUE-008) | - |
@@ -359,7 +344,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-277 | inconclusive | P33 CG-MoD(역량 게이트 hard 융합 + 모달 드롭아웃): P33.1 조기 중단(이득 0)·P33.2 ep52 무효과 뒤 P34 로 피벗, 완주 수치·판정 기록 없음 → 미완결(기록 소실). P33.3 은 구현 없는 placeholder | - |
 | DRN-260926-278 | adopt | P34 ReliaDINO(동결 DINOv3-L + 센서별 LoRA, 계보 전환점, 2026-07-13): legal val 68.19 / test 56.62 로 계보 최대의 성공. 단 성공 원천은 백본 + LoRA 이지 제안 모듈(RBMA attention bias ≈0)이 아님. 이후 모든 세대의 바탕으로 채택 | - |
 | DRN-260926-279 | adopt | P35 공정 레시피 동결(P34 − ATTN_BIAS − CONSISTENCY − PhysAug): 의도대로 공정선 확립, 성능은 −1.12. PhysAug 를 켠 수치는 헤드라인·게이트에 쓰지 않는다는 규칙(user 2026-07-20)의 근거로 채택 | - |
-| DRN-260926-28 | - | - | - |
 | DRN-260926-280 | adopt | P36 클래스별 신뢰도 앵커 라우터(= P35 + router): 유일하게 살아남은 모듈이나 증분은 잡음 대역(test +0.10). 현행 레시피의 ROUTER 로 유지(채택)하되 '새 모듈 + SOTA' 논문은 성립하지 않는다는 판정 기록 | - |
 | DRN-260926-281 | reject | P37a CEFR-Head(클래스 기대 특징 라우팅)·P37b ClassToken-lite: 둘 다 실패(방식은 다름 — CEFR 은 라우팅 분화 실패 0/19, ClassToken 은 성능 미달). CEFR 라우팅은 재시도 금지 축 | - |
 | DRN-260926-282 | reject | P41 FCR(융합 스펙트럼 붕괴 / 융합 클래스 정렬 규제): 결정적 기각(airtight falsification), 계보에서 가장 깨끗한 음성 결과 | - |
@@ -373,7 +357,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-294 | reject | 실험 I P9 Gamma TTA(MULTIAQUA, softmax 확률 평균): 실패 — 기준선 대비 이득 없음. 종료 트랙 | - |
 | DRN-260926-295 | reject | 실험 II·III I2I 변환(test 야간 RGB 를 img2img-turbo 로 주간화 뒤 추론, MULTIAQUA): 실패. 종료 트랙 | - |
 | DRN-260926-296 | reject | 실험 IV P9 CV 휴리스틱 보정(worst 56장 밝기·대비 보정 뒤 재추론, MULTIAQUA): test mIoU −4.76, M-score −2.39(79.08) → 실패(잘 맞던 이미지까지 보정됨). 종료 트랙 | - |
-| DRN-260926-297 | - | - | - |
 | DRN-260926-298 | adopt | 실험 VI P9 PhysAug(물리 기반 증강, MULTIAQUA): hardaug8+physaug 가 P9 최선 M-score 82.10 의 레시피가 됨 → 종료 트랙에서 채택. 단 논문 트랙(DELIVER·MUSES)에서는 PhysAug 를 헤드라인에 쓰지 않는다(P35 규칙) | - |
 | DRN-260926-299 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): P9 증강 ablation 계열(hardaug2~8·night2·noCRM·tta, MULTIAQUA): hardaug8 이 최선(M 81.98, physaug 결합 시 82.10), Night Aug 는 포화. 종료 트랙 | - |
 | DRN-260926-300 | inconclusive | Tiled Inference(원본 해상도 슬라이딩 윈도우 추론, MULTIAQUA, 2026-03-17): log 에 '대기 중 — 제출 후 비교 필요'로만 남아 결과 없음. 판정 불가로 종결(종료 트랙) | - |
@@ -386,12 +369,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-307 | adopt | 기록 항목(채택 = 이력을 기록으로 확정): MUSES Codabench 공식 test 제출 11건의 이력. 최고 = P39.1-rank 시드2 3모달 79.788, 둘째 시드 20260825 78.786(2시드 평균 79.29). 제출 zip 규약 위치 = /ailab_mat2/.../submission/muses/. 새 제출은 user 만 하며 2026-09-29 user 결정으로 새 4모달 모델 전까지 보류 | - |
 | DRN-260926-308 | adopt | 측정 항목(채택 = 결과를 기록으로 확정): DGFusion 기준선 재현 평가. DELIVER 재학습 (a) val-best 80k val 66.54 / test 55.68(final-iter 65.62 / 55.56, 공개 66.51 / 56.71 대비 −1.15), MUSES 는 공개 가중치 val 재현이 감시 세션에서 진행 중. 우리 P39.1 과의 비교는 판정 대장 2026-09-19~23 행에 기록 | - |
 | DRN-260926-32 | reject | P50-EXT(정렬 사전학습 코퍼스 500k·등-스텝 확장, Phase2 375,000 step 완주): EXT-init 파인튠 ep30 legal test 53.10 < 채택 게이트 55.25(= 프로브-init 54.95 + 0.3) → 기각, P52 init 은 Phase1(프로브) 로 확정. user 결정 2026-09-07. 원문 = registry hpca100_deliver_rgbdel_P46_c3only_p50ext_seed821 행, decisions/2026-08-31-p52-rxdino-adaptive-amendment.md | .claude_logs/experiments/registry.md (hpca100_deliver_rgbdel_P46_c3only_p50ext_seed821 행) |
-| DRN-260926-39 | - | - | - |
-| DRN-260926-40 | - | - | - |
-| DRN-260926-41 | - | - | - |
-| DRN-260926-42 | - | - | - |
-| DRN-260926-43 | - | - | - |
-| DRN-260926-44 | - | - | - |
 | DRN-260926-45 | adopt | 측정 항목(채택 = 진단 결과를 기록으로 확정): MUSES 성능 저하 원인 A/B 격리. radar(또는 4모달 구조)가 원인이고 lidar 재투영·event dilation·eff batch 는 무관. Arm A ep24 best 73.85@ep18 은 대조군 ep10 74.24 에 앞서지 않아 DGFusion 식 투영은 중립. 원문 = plan.md ✅ 완료·판정 표 | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
 | DRN-260926-46 | reject | TTA(다중 스케일·플립 시험 시 증강)를 헤드라인에 쓸 수 있는가: 경쟁 논문 3종(CMNeXt·CAFuser·DGFusion) 모두 미사용(CMNeXt 는 논문에 single-scale 명시) → 헤드라인 사용 불가로 기각. 우리 MSF config 는 쓰인 적 없어 과거 수치 오염 없음. 원문 = plan.md 완료·판정 표, monitor-log.md TTA 조사 | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
 | DRN-260926-47 | adopt | 측정·정합 항목(채택 = 결과를 기록으로 확정): DGFusion 전처리 파라미터 재현 완료(공개 PIXEL_MEAN 을 오라클로 −0.1% 안에서 적중). 실제 남은 차이는 lidar 투영뿐(radar·event 30ms 는 이미 동일). 성능 이득은 0 이고 공정 비교 조건만 확보. 원문 = plan.md 완료·판정 표 | .claude_logs/experiments/plan.md (✅ 완료·판정 표) |
@@ -417,8 +394,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-82 | inconclusive | H10 재판정 실험 요청(2026-08-08, 런 이름 jarvis_muses_h10_instsup_mini): 실행 기록·결과가 없어 판정 불가로 종결. 인스턴스 감독 축은 P48·R2 에서 실패로 확정됨 | - |
 | DRN-260926-83 | adopt | 공간 모달 오라클 프로브 제안(2026-08-18, H16): 2026-09-28 tools/oracle_headroom_probe.py 로 실행됨 — 창마다 최선 모달 부분집합을 고르는 오라클의 순 여유는 +1.0~2.2 mIoU(조건별 1.1~1.8), 64px 창의 약 70% 는 전 모달이 최선. 이 결과를 채택해 곱셈 게이트를 주 후보에서 제외(판정 대장 2026-09-28·29 행) | - |
 | DRN-260926-84 | adopt | P36 노벨티 비판 검토(2026-07-16): 'attention bias 계열은 4세대·2백본에서 결정을 바꾸지 못했다'는 체계적 반증을 논문 ablation 재료로 삼고, '새 모듈 제안 + SOTA' 노선을 접는다는 결론을 채택. 이후 학습 설계 노선(Q2·P56)의 출발점 | - |
-| DRN-260926-85 | - | - | - |
-| DRN-260926-86 | - | - | - |
 | DRN-260926-87 | adopt | MULTIAQUA 챌린지(RGB+Thermal+LiDAR, 종료 트랙) P9(교차 모달 융합 헤드) hardaug8+PhysAug ep131: M-score 82.10(val 93.29 / test 70.91, 재제출 #16710) = 챌린지 공동 1위 제출본. 종료 트랙의 확정 기록으로 채택 | - |
 | DRN-260926-88 | adopt | MULTIAQUA 챌린지 P22 hardaug8+PhysAug ep120: M-score 82.10(val 93.42 / test 70.77, #16932) = P9 와 공동 1위 제출본. 종료 트랙의 확정 기록으로 채택 | - |
 | DRN-260926-89 | reject | MULTIAQUA 챌린지 P21(DEBA-FP) hardaug8+PhysAug ep94: M-score 81.77(val 93.17 / test 70.36, #16792) 로 P9·P22(82.10) 에 미달 → 최종 제출본으로 채택되지 않음. 종료 트랙 | - |
@@ -429,7 +404,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260926-94 | adopt | 측정 항목(채택 = 분석 결과를 기록으로 확정): P29·P31·P32·P34 표준분석(lecun, 2026-07-12~13). SAM2 계보 실패-키 문서의 근거. 산출물 NAS analysis_logs | - |
 | DRN-260926-95 | reject | P29(SDC) DELIVER B200 런: val 63.20@ep100 / test 54.34@ep146 로 목표(66.51 / 56.71) 대비 −3.31 / −2.37. SAM2 계보 비교 기준선으로만 남고 승계되지 않음 | - |
 | DRN-260926-96 | reject | P30 DELIVER B200 런: val 49.76 / test 44.10 으로 P29 대비 −13.4 / −10.2 회귀 확정(dead). 승계되지 않음 | - |
-| DRN-260926-97 | - | - | - |
 | DRN-260926-98 | adopt | 측정 항목(채택 = 분석 결과를 기록으로 확정): P37a-CEFR(클래스 기대 특징 라우팅) MUSES 출력 분석(yeon, 2026-07-18). 라우팅 분화 실패(19클래스 중 0개 committed) → CEFR 라우팅은 반증 축으로 등재 | - |
 | DRN-260926-99 | adopt | 측정 항목(채택 = 분석 결과를 기록으로 확정): P37a MUSES 표준분석 + 종합 실패-키(yeon, 2026-07-20). fog 62.7 최약, event·lidar 어댑터 기여 확인. 산출물 NAS analysis_logs/P37a_muses_std_20260719/ | - |
 | DRN-260929-01 | reject | P56-A 모달 충돌 학습(Q2 열화 패스 30% 에 '선명하지만 틀린 센서' 합성 표본) 40ep 스크린 2시드 legal v2: clean 24클래스 Δ vs Q2 같은 시드 짝 −0.98(시드821) / −0.56(시드902), 평균 −0.77 → 사전 기준 ①(≥ −0.3) 미달. 실제 과·저노출·모션블러 3조건 평균 Δ −1.55(시드821, 기준 ②-a ≥ +1.0 반대 방향, 10조건 전부 음수). 하락 클래스 = Static·Terrain·얇은 4. 합성 충돌 표본은 실제 열화로 전이되지 않음(Q1d 와 같은 축) → 합성 충돌·열화 라벨 기반 표본 조작 계열 재시도 금지(H33). ②-b 진단(부분집합 380장 강건 비교)은 진행 중이나 판정 불변. 원본 NAS ckpts/…P56A_20261004/(두 시드), analysis_logs/p56a_s{821,902}_eval_20261004/, 판정 대장 2026-10-04 행 | 판정 시 병기(user 승인 09-30): ①조건별 leave-one-out(oracle_headroom_probe --by_condition --emm_max_missing 1, Q2 같은 시드 짝 대비 RGB·depth 제거 Δ 이동) ②합성 충돌 영역에서 충돌 센서 key 에 두는 attention 질량 비율(도구 신설, Q2 대비) ③실제 케이스별 mIoU. 설계서 decisions/2026-09-30-p56-bc-modality-aware-design.md §3 |
