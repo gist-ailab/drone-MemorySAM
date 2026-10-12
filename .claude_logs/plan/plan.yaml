@@ -12192,7 +12192,9 @@ items:
   change: SimpleFPN+탭 합산 → SPM(센서별 경량 conv 스템, 합산) + extractor(conv 쿼리 1/8·1/16·1/32
     ← 4탭 deformable attn) + c1=up(c2)+conv1/4. 백본·LoRA·헤드·레시피 불변, 입력 1024
   baseline: Q2 3시드 legal v2 1024(57.73/55.98/56.07) 및 A1 결과(상한 대조)
-  configs: []
+  configs:
+  - configs/lecun-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml
+  - configs/lecun-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2hires.yaml
   launch: null
   success_criteria: '2시드 평균 1024 legal v2: 24클래스 Δ vs Q2 ≥ +0.5 그리고 얇은4 평균 IoU Δ ≥
     (A1 이 같은 해상도 대비 얻은 얇은4 이득의 절반) — A1 미완 시 +1.5. 두께 0.25~0.5 패치 ''찾았지만 못 그림'' ≤
@@ -12201,7 +12203,7 @@ items:
   expected_cost: 구현·검수 1~2일(워커 위임) + 3090 4장×2런 40ep 약 24~30h(extractor·스템 추가분)
   priority: 2
   owner_role: method
-  status: idea
+  status: queued
   tags:
   - deliver
   - thin-class
