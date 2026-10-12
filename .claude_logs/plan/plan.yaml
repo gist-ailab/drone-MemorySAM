@@ -12142,3 +12142,76 @@ items:
   verdict: null
   analysis: null
   superseded_by: null
+- id: DRN-261012-01
+  title: A1 · 고해상 학습 스케일(TRAIN_SCALE_RANGE [1,3], 평균 1536) — Q2 레시피 40ep 스크린 2시드
+  question: 얇은 객체 결함(16px 토큰 해상도)을 고해상에서 학습하면 평가 해상도만 올린 것보다 더 줄이는가
+  hypothesis: 'H1(패치 해상도 한계) 확정(판정 대장 bb60426): Q2 를 1536 으로 평가만 해도 Pole .548→.593.
+    학습 스케일을 같은 배율로 올리면 LoRA·FPN·헤드가 고해상 토큰 분포에 맞춰져 얇은 4클래스와 큰 클래스가 함께 오른다(2048 평가에서
+    보인 큰 클래스 하락이 사라진다)'
+  falsification: 2시드 평균 24클래스 Δ < +0.2 또는 얇은4 평균 Δ < +0.5 이면 '학습 스케일은 평가 해상도 이상을 주지
+    않는다'로 기각(평가 해상도 상향만 프로토콜 후보로 남김)
+  change: 'DATASET.TRAIN_SCALE_RANGE [0.5,2.0]→[1.0,3.0](crop 768 유지). 부수: 학습 중 val-best
+    선택 해상도 768→1536'
+  baseline: Q2 같은 시드 ckpt(s821·s902)를 같은 평가 해상도로 잰 legal v2 값(평가 해상도 효과 제거). 평가 해상도는
+    val 24클래스로 {1024,1280,1536} 중 선택 후 test 1회
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_A1hires.yaml,configs/bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_A1hires.yaml
+  launch: null
+  success_criteria: '2시드 평균, val 로 고른 같은 평가 해상도에서 A1 − Q2: 24클래스 Δ ≥ +0.5 그리고 얇은4(Pole·TrafficLight·Pedestrian·Static)
+    평균 IoU Δ ≥ +1.5, 어느 시드도 24클래스 Δ < −0.3 아님'
+  sample_basis: Q2 3시드 test 표준편차 약 0.95(57.73/55.98/56.07) — 2시드는 스크린용, 통과 시 3번째 시드
+    + 200ep 확정
+  expected_cost: bengio 3090 4장×2런 병렬, 40ep 약 20~26h(학습 crop 동일, val 1536 으로 평가 시간
+    증가), 평가 해상도 3종 legal v2 val/test 약 6 GPU·h
+  priority: 1
+  owner_role: method
+  status: queued
+  tags:
+  - deliver
+  - thin-class
+  - resolution
+  - A1
+  created: '2026-10-12'
+  updated: '2026-10-12'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261012-02
+  title: A2 · 고해상 경로(SPM conv 스템 + deformable extractor, injector 없음) — 1024 유지, Q2
+    레시피 40ep 스크린 2시드
+  question: 16px 토큰 해상도 한계를 입력 해상도를 올리지 않고 고해상 경로로 메울 수 있는가(DINOv3 공식 분할 결선)
+  hypothesis: 우리 1/4 특징은 1/16 토큰의 보간뿐이다(decisions/2026-10-11-dinov3-official-seg-vs-ours.md).
+    conv 스템이 만든 1/4·1/8 특징을 쿼리로 삼아 ViT 탭 토큰을 deformable attention 으로 샘플링하면(주 경로, 게이트
+    잔차 아님) 패치 이하 두께 성분의 '찾았지만 못 그림'이 줄어든다. E17(작은 conv 가지를 tanh 게이트로 합산)과 다른 점 = 의미를
+    끌어오는 extractor·주 경로·폭
+  falsification: 얇은4 평균 Δ < +0.5 또는 두께 0.25~0.5 패치 '찾았지만 못 그림' 감소 < .05 면 기각(고해상 경로는
+    토큰 해상도를 대신하지 못함)
+  change: SimpleFPN+탭 합산 → SPM(센서별 경량 conv 스템, 합산) + extractor(conv 쿼리 1/8·1/16·1/32
+    ← 4탭 deformable attn) + c1=up(c2)+conv1/4. 백본·LoRA·헤드·레시피 불변, 입력 1024
+  baseline: Q2 3시드 legal v2 1024(57.73/55.98/56.07) 및 A1 결과(상한 대조)
+  configs: []
+  launch: null
+  success_criteria: '2시드 평균 1024 legal v2: 24클래스 Δ vs Q2 ≥ +0.5 그리고 얇은4 평균 IoU Δ ≥
+    (A1 이 같은 해상도 대비 얻은 얇은4 이득의 절반) — A1 미완 시 +1.5. 두께 0.25~0.5 패치 ''찾았지만 못 그림'' ≤
+    .35(Q2 .445)'
+  sample_basis: Q2 3시드 test 표준편차 약 0.95 — 2시드 스크린, 통과 시 3시드 + 200ep
+  expected_cost: 구현·검수 1~2일(워커 위임) + 3090 4장×2런 40ep 약 24~30h(extractor·스템 추가분)
+  priority: 2
+  owner_role: method
+  status: idea
+  tags:
+  - deliver
+  - thin-class
+  - adapter
+  - A2
+  created: '2026-10-12'
+  updated: '2026-10-12'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
