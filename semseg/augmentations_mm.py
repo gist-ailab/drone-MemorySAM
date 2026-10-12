@@ -1094,8 +1094,14 @@ def get_train_augmentation(
     if not _dgf_aug:
         # DGFusion 파이프라인에는 blur 없음 — 정합 모드에서는 제외
         transforms.append(RandomGaussianBlur((3, 3), p=0.2))
+    # [A1 2026-10-12] 학습 스케일 범위 config 화. 기본 (0.5, 2.0) = 기존 동작 byte-동일.
+    #   DATASET.TRAIN_SCALE_RANGE: [lo, hi] — 짧은 변을 crop 변 × U(lo, hi) 로 리사이즈한 뒤 crop.
+    _sr = (dataset_cfg or {}).get('TRAIN_SCALE_RANGE', None)
+    _scale = (0.5, 2.0) if _sr is None else (float(_sr[0]), float(_sr[1]))
+    if not (0.0 < _scale[0] <= _scale[1]):
+        raise ValueError(f"DATASET.TRAIN_SCALE_RANGE 는 0 < lo <= hi 여야 한다 (got {_sr!r})")
     transforms.extend([
-        RandomResizedCrop(size, scale=(0.5, 2.0), seg_fill=seg_fill),   # = DGFusion multi-scale 0.5-2.0 + crop
+        RandomResizedCrop(size, scale=_scale, seg_fill=seg_fill),   # 기본 = DGFusion multi-scale 0.5-2.0 + crop
         Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), thermal_mean=tm, thermal_std=ts,
                   norm_all_modals=_norm_all_modals(dataset_cfg))
     ])
