@@ -767,6 +767,8 @@ def main(cfg, gpu, save_dir, logger):
             _tcfg['MODEL'].pop('LORA_ROUTER', None)
             _tcfg['MODEL'].setdefault('FUSION', {}).setdefault('RANGE_BIAS', {})['ENABLE'] = False
             _tcfg['MODEL'].setdefault('P55', {})['ENABLE'] = False
+            # [A2 2026-10-12] 고해상 어댑터도 학생 전용 — E1 교사 체크포인트에 없다.
+            _tcfg['MODEL'].setdefault('HIRES_ADAPTER', {})['ENABLE'] = False
             qaf_teacher = build_reliadino(_tcfg, num_classes).to(device).eval()
             _ts = torch.load(_tck, map_location='cpu')
             _sd = _ts.get('model_state_dict', _ts)

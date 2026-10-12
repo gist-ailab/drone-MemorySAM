@@ -31,6 +31,7 @@ from .boundary_refine import BoundaryRefine
 from .cmlc import CrossModalLoRACoupling
 from .classtoken import ClassTokenLiteHead
 from .detail_branch import DetailStem
+from .hires_adapter import HiResAdapter
 from .encoder import FrozenViTEncoder, SimpleFPN, LayerNorm2d
 from .fusion import ReliabilityGatedFusion, XAttnTrunk, MeanFusionTrunk
 from .m2f_head import MaskQueryLiteHead
@@ -303,6 +304,18 @@ class ReliaDINO(nn.Module):
                  brefine_levels: Sequence[int] = (4,),
                  brefine_k_init: float = 10.0,
                  brefine_gamma_init: float = 0.1,
+                 # [HIRES_ADAPTER] 고해상 경로 (default OFF — off면 아래 블록이
+                 # 모듈/RNG/버퍼를 전혀 건드리지 않아 forward·state_dict 가 baseline
+                 # 과 byte-동일). hires_adapter.py 참조.
+                 hires_enable: bool = False,
+                 hires_dim: int = 512,
+                 hires_stem_dim: int = 64,
+                 hires_mode: str = 'shared_stem',
+                 hires_n_heads: int = 8,
+                 hires_n_points: int = 4,
+                 hires_deform_ratio: float = 0.5,
+                 hires_cffn_ratio: float = 0.25,
+                 hires_extra_extractors: int = 2,
                  # [P54-QAF] 품질 인지 융합 (default OFF → 융합이 QualityHead·self-attn
                  # 층을 만들지 않아 forward·state_dict 가 QAF 미도입본과 byte-동일).
                  qaf_enable: bool = False,
@@ -1049,6 +1062,37 @@ class ReliaDINO(nn.Module):
                 fpn_dim=fpn_dim, levels=brefine_levels,
                 k_init=brefine_k_init, gamma_init=brefine_gamma_init)
 
+        # ── [HIRES_ADAPTER] 고해상 경로 (default OFF) ─────────────────────────
+        # DINOv3_Adapter 식 SpatialPrior + extractor 전용 InteractionBlock 으로 ViT
+        # 의미를 끌어온 고해상 conv 특징을 FPN pyramid 에 **게이트 없이** 더한다
+        # (hires_adapter.py). 탭 4개(블록 6/12/18/24)를 key/value 로 쓰므로 TAPS 가
+        # 켜져 4탭을 수집해야 한다. off면 self.hires=None → _apply_hires_adapter 가
+        # no-op(byte-동일). **가장 마지막에 생성**(DETAIL/BREFINE 뒤 규약 — off 경로
+        # init RNG 스트림 불변).
+        self.hires = None
+        self._hires_feats = None        # per-forward 어댑터 출력(레벨 리스트, fpn_dim)
+        self._hires_taps = None         # per-forward 센서합산·DIM투영 탭(4개)
+        if hires_enable:
+            if self.cmlc_enable:
+                # CMLC(forward_coupled)는 탭을 모달 평균으로만 돌려줘 센서별 탭 투영을
+                # 할 수 없다 → 조용한 오동작 대신 거부.
+                raise ValueError("[HIRES] MODEL.HIRES_ADAPTER.ENABLE 은 MODEL.CMLC.ENABLE "
+                                 "과 함께 쓸 수 없다 (CMLC 가 탭을 모달 평균으로 합쳐 "
+                                 "센서별 탭이 사라진다).")
+            n_taps = len(self.encoder.tap_layers)
+            if not self.taps_enable or n_taps != 4:
+                # 조용한 무시 금지: 어댑터는 탭 4개(블록 6/12/18/24)가 필요하다.
+                raise ValueError(
+                    "[HIRES] MODEL.HIRES_ADAPTER.ENABLE=true 는 MODEL.TAPS.ENABLE=true "
+                    "와 LAYERS 4개(예: [6,12,18,24])를 요구한다 "
+                    f"(taps_enable={self.taps_enable}, n_taps={n_taps}).")
+            self.hires = HiResAdapter(
+                fpn_dim=fpn_dim, num_taps=n_taps, num_modalities=self.num_modalities,
+                tap_in_dim=dim, dim=hires_dim, stem_dim=hires_stem_dim,
+                mode=hires_mode, n_heads=hires_n_heads, n_points=hires_n_points,
+                deform_ratio=hires_deform_ratio, cffn_ratio=hires_cffn_ratio,
+                extra_extractors=hires_extra_extractors)
+
         # [E-LORA] 학습가능 파라미터 수 보고(plan.md "파라미터 수 보고"). LoRA 항은
         # qkv 래퍼 안의 어댑터 텐서(.base 제외)만 센다. rank0 에서 한 줄만 출력한다.
         _rank0 = (not torch.distributed.is_initialized()
@@ -1064,6 +1108,11 @@ class ReliaDINO(nn.Module):
                   f"k={float(self.boundary_refine.k):.2f} "
                   f"tau={float(self.boundary_refine.tau):.2f} params={_bp:,}",
                   flush=True)
+        if _rank0 and self.hires is not None:
+            _hp = sum(p.numel() for p in self.hires.parameters())
+            print(f"[HIRES] dim={hires_dim} mode={hires_mode} "
+                  f"n_heads={hires_n_heads} n_points={hires_n_points} "
+                  f"extra_extractors={hires_extra_extractors} params={_hp:,}", flush=True)
         if _rank0:
             n_lora = sum(p.numel() for n, p in self.named_parameters()
                          if p.requires_grad and '.attn.qkv.' in n and '.base.' not in n)
@@ -1192,9 +1241,14 @@ class ReliaDINO(nn.Module):
         100% 불변 가드).
         """
         # [E1] mean(P43) 이든 per_modal 이든 어느 투영이라도 있으면 탭을 수집한다.
-        collect = ((self.p43_lateral is not None
-                    or self.taps_proj_permodal is not None)
-                   and not self.p43_lateral_off)
+        # [HIRES] 어댑터가 켜져 있으면 TAPS 가 꺼져 있어도 탭을 수집해야 한다(탭을
+        # key/value 로 쓴다). p43_lateral_off 은 P43 lateral 전용 ablation 이므로
+        # 어댑터 수집에는 영향을 주지 않는다.
+        self._hires_taps = None
+        collect = (((self.p43_lateral is not None
+                     or self.taps_proj_permodal is not None)
+                    and not self.p43_lateral_off)
+                   or self.hires is not None)
         self.encoder.collect_taps = collect     # don't pay for taps we discard
         _permodal = (self.taps_mode == 'per_modal'
                      and self.taps_proj_permodal is not None)
@@ -1213,6 +1267,14 @@ class ReliaDINO(nn.Module):
             # (summing in place avoids materializing a stacked (M,B,C,h,w)).
             if collect and self.encoder.last_taps:
                 lt = self.encoder.last_taps
+                if self.hires is not None:
+                    # [HIRES] 센서 raw 탭을 즉시 DIM 투영해 슬롯별 합산을 누적한다
+                    # (raw 1024ch 를 센서 수만큼 들고 있지 않기 위해 — 다음 센서
+                    # forward 에서 last_taps 가 덮인다). 기존 taps_proj_permodal 과
+                    # 별개 파라미터라 아래 P43/TAPS 누적과 간섭하지 않는다.
+                    hpj = self.hires.project_sensor_taps(i, lt)
+                    self._hires_taps = (hpj if self._hires_taps is None
+                                        else [a + b for a, b in zip(self._hires_taps, hpj)])
                 if _permodal:
                     # [E1] 센서별 투영을 즉시 걸어 fpn_dim 으로 낮추고(원본 dim 미보유)
                     # 슬롯별로 모달 합산 → 융합은 이 합산이 담당(트렁크는 최종 feats
@@ -1302,6 +1364,28 @@ class ReliaDINO(nn.Module):
         if self.boundary_refine is None or self._brefine_depth is None:
             return pyramid
         return self.boundary_refine(pyramid, self._brefine_depth)
+
+    def _apply_hires_adapter(self, pyramid: List[torch.Tensor]) -> List[torch.Tensor]:
+        """[HIRES_ADAPTER] 고해상 어댑터 출력을 FPN pyramid 에 **그대로** 더한다.
+
+        `self._hires_feats`(forward/det 경로에서 1회 계산·캐시한 [s4,s8,s16,s32]
+        fpn_dim 레벨)를 레벨별로 더한다 — 게이트·스칼라 없음(E17 반증 축). SimpleFPN
+        pyramid 와 레벨 크기가 다르면(32 비배수 입력) bilinear 로 정렬한 뒤 더한다.
+        off(모듈 미생성) 또는 미계산이면 pyramid 를 그대로 돌려준다(no-op, byte-동일).
+        `_decode` 가 두 번 불리는 경로(CEFR two-pass)에서 같은 캐시를 재사용한다."""
+        if self.hires is None or self._hires_feats is None:
+            return pyramid
+        assert len(self._hires_feats) == len(pyramid), (
+            f"[HIRES] 어댑터 레벨 수({len(self._hires_feats)})가 pyramid "
+            f"레벨 수({len(pyramid)})와 다르다.")
+        out = list(pyramid)
+        for idx in range(len(out)):
+            f = self._hires_feats[idx]
+            if f.shape[-2:] != out[idx].shape[-2:]:
+                f = F.interpolate(f, size=out[idx].shape[-2:],
+                                  mode='bilinear', align_corners=False)
+            out[idx] = out[idx] + f
+        return out
 
     def _apply_trunk_exp(self, fused: torch.Tensor,
                          feats: List[torch.Tensor]) -> torch.Tensor:
@@ -1432,8 +1516,9 @@ class ReliaDINO(nn.Module):
         so the [P43] mask-cls head can read the SAME trunk levels the pixel
         head just consumed — the only thing the two heads share."""
         pyramid = self._apply_boundary_refine(
-            self._apply_detail_branch(
-                self._apply_p43_lateral(self.fpn(fused))))  # [DETAIL/BREFINE] (no-op if off)
+            self._apply_hires_adapter(
+                self._apply_detail_branch(
+                    self._apply_p43_lateral(self.fpn(fused)))))  # [DETAIL/HIRES/BREFINE] (no-op if off)
         if pyramid_out is not None:
             pyramid_out.extend(pyramid)
         logits, m_feat = self.head(pyramid)
@@ -1642,6 +1727,11 @@ class ReliaDINO(nn.Module):
         # off면 None → _apply_detail_branch 가 no-op. 학습 시 grad 는 _decode(2nd
         # pass)에서 게이트·스템·투영으로 흐른다.
         self._detail_feats = self.detail(x) if self.detail is not None else None
+        # [HIRES_ADAPTER] 백본과 같은 전처리 입력(마스킹/드롭 반영 후 x)으로 SPM 을 돌리고
+        # _encode_all 에서 모은 탭(self._hires_taps)으로 어댑터 출력을 1회 계산·캐시한다.
+        # _decode 두 번(CEFR two-pass)에서 재사용, off면 None → _apply_hires_adapter no-op.
+        self._hires_feats = (self.hires(x, self._hires_taps)
+                             if self.hires is not None else None)
         # [BOUNDARY_REFINE/R1] 백본과 같은 전처리 입력(마스킹/드롭 반영 후 x)의 depth
         # 모달을 에지원으로 캐시한다. _decode 두 번(CEFR two-pass)에서 재사용, off면 None.
         self._brefine_depth = (x[self._depth_idx]
@@ -2150,6 +2240,10 @@ class ReliaDINO(nn.Module):
         # 세부 특징을 계산·캐시한다(내부 _decode 호출과 최종 pyramid 모두 소비).
         self._detail_feats = (self.detail(list(batched_input))
                               if self.detail is not None else None)
+        # [HIRES_ADAPTER] det pyramid 도 seg 와 동일한 고해상 잔차를 받도록 캐시(_encode_all
+        # 이 _hires_taps 를 채운 뒤 입력에서 SPM 을 돌려 어댑터 출력을 계산).
+        self._hires_feats = (self.hires(list(batched_input), self._hires_taps)
+                             if self.hires is not None else None)
         # [BOUNDARY_REFINE/R1] det pyramid 도 seg 와 동일한 에지 정제를 받도록 캐시.
         self._brefine_depth = (batched_input[self._depth_idx]
                                if self.boundary_refine is not None else None)
@@ -2172,8 +2266,9 @@ class ReliaDINO(nn.Module):
         # [P39-V1] seg forward와 동일 순서(CEFR blend 이후)·동일 게이트로 적용
         fused = self._apply_trunk_exp(fused, feats)
         pyramid = self._apply_boundary_refine(
-            self._apply_detail_branch(
-                self._apply_p43_lateral(self.fpn(fused))))   # [P43-T2/DETAIL/BREFINE] (no-op if off)
+            self._apply_hires_adapter(
+                self._apply_detail_branch(
+                    self._apply_p43_lateral(self.fpn(fused)))))   # [P43-T2/DETAIL/HIRES/BREFINE] (no-op if off)
         if routed is not None and getattr(self, 'det_router_proj', None) is not None:
             r = self.det_router_proj(routed)
             pyramid = [
@@ -2207,6 +2302,9 @@ class ReliaDINO(nn.Module):
         # [DETAIL_BRANCH] feat_s4(내부 _decode)가 seg 와 같은 세부 잔차를 받도록 캐시.
         self._detail_feats = (self.detail(list(batched_input))
                               if self.detail is not None else None)
+        # [HIRES_ADAPTER] feat_s4(내부 _decode)가 seg 와 같은 고해상 잔차를 받도록 캐시.
+        self._hires_feats = (self.hires(list(batched_input), self._hires_taps)
+                             if self.hires is not None else None)
         # [BOUNDARY_REFINE/R1] feat_s4(내부 _decode)가 seg 와 같은 에지 정제를 받도록 캐시.
         self._brefine_depth = (batched_input[self._depth_idx]
                                if self.boundary_refine is not None else None)
@@ -2256,6 +2354,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
     taps = mc.get('TAPS', {}) or {}                             # [E1] 다중 레벨 탭 단독 토글
     detail = mc.get('DETAIL_BRANCH', {}) or {}                  # [DETAIL] 고해상도 세부 가지
     brefine = mc.get('BOUNDARY_REFINE', {}) or {}               # [R1] depth 에지-prior FPN 정제
+    hires = mc.get('HIRES_ADAPTER', {}) or {}                   # [HIRES] 고해상 경로
     qaf = mc.get('QAF', {}) or {}                               # [P54-QAF] 품질 인지 융합
     p55 = mc.get('P55', {}) or {}                               # [P55] 무감독 다중블록 모달 게이트
     p44 = mc.get('P44', {}) or {}                      # [P44-BMR]
@@ -2503,6 +2602,16 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         brefine_levels=tuple(brefine.get('LEVELS', (4,))),
         brefine_k_init=brefine.get('K_INIT', 10.0),
         brefine_gamma_init=brefine.get('GAMMA_INIT', 0.1),
+        # [HIRES_ADAPTER] 고해상 경로 (기본 OFF → 키 없으면 byte-동일)
+        hires_enable=hires.get('ENABLE', False),
+        hires_dim=hires.get('DIM', 512),
+        hires_stem_dim=hires.get('STEM_DIM', 64),
+        hires_mode=hires.get('MODE', 'shared_stem'),
+        hires_n_heads=hires.get('N_HEADS', 8),
+        hires_n_points=hires.get('N_POINTS', 4),
+        hires_deform_ratio=hires.get('DEFORM_RATIO', 0.5),
+        hires_cffn_ratio=hires.get('CFFN_RATIO', 0.25),
+        hires_extra_extractors=hires.get('EXTRA_EXTRACTORS', 2),
         # [P54-QAF] 품질 인지 융합 (기본 OFF → 키 없으면 byte-동일)
         qaf_enable=qaf.get('ENABLE', False),
         qaf_mask_modals=qaf.get('MASK_MODALS', ['depth', 'lidar']),
