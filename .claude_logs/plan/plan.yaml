@@ -12163,7 +12163,7 @@ items:
     + 200ep 확정
   expected_cost: bengio 3090 4장×2런 병렬, 40ep 약 20~26h(학습 crop 동일, val 1536 으로 평가 시간
     증가), 평가 해상도 3종 legal v2 val/test 약 6 GPU·h
-  priority: 90
+  priority: 1
   owner_role: method
   status: queued
   tags:
