@@ -168,9 +168,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 <!-- lab:plan-queue:begin -->
 | id | 우선 | 제목 | 바꾼 변수 | 상태 | runs | 예상 비용 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DRN-261012-01 | P1 | A1 · 고해상 학습 스케일(TRAIN_SCALE_RANGE [1,3], 평균 1536) — Q2 레시피 40ep 스크린 2시드 | DATASET.TRAIN_SCALE_RANGE [0.5,2.0]→[1.0,3.0](crop 768 유지). 부수: 학습 중 val-best 선택 해상도 768→1536 | queued | - | bengio 3090 4장×2런 병렬, 40ep 약 20~26h(학습 crop 동일, val 1536 으로 평가 시간 증가), 평가 해상도 3종 legal v2 val/test 약 6 GPU·h |
 | DRN-261012-02 | P2 | A2 · 고해상 경로(SPM conv 스템 + deformable extractor, injector 없음) — 1024 유지, Q2 레시피 40ep 스크린 2시드 | SimpleFPN+탭 합산 → SPM(센서별 경량 conv 스템, 합산) + extractor(conv 쿼리 1/8·1/16·1/32 ← 4탭 deformable attn) + c1=up(c2)+conv1/4. 백본·LoRA·헤드·레시피 불변, 입력 1024 | queued | - | 구현·검수 1~2일(워커 위임) + 3090 4장×2런 40ep 약 24~30h(extractor·스템 추가분) |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | queued | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
+| DRN-261012-01 | P90 | A1 · 고해상 학습 스케일(TRAIN_SCALE_RANGE [1,3], 평균 1536) — Q2 레시피 40ep 스크린 2시드 | DATASET.TRAIN_SCALE_RANGE [0.5,2.0]→[1.0,3.0](crop 768 유지). 부수: 학습 중 val-best 선택 해상도 768→1536 | queued | - | bengio 3090 4장×2런 병렬, 40ep 약 20~26h(학습 crop 동일, val 1536 으로 평가 시간 증가), 평가 해상도 3종 legal v2 val/test 약 6 GPU·h |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | running | - | 미정 |
 | DRN-260926-55 | P102 | Q2→Q3 강건성 전 프로토콜(EMM15·RMM4×3·NM3, Q2 먼저) | Q2·Q3 체크포인트 강건성 측정 | running | - | 미정 |
 | DRN-260926-56 | P103 | Q2noDeg · 원천분리: DEGRADE_P=0, KD 유지(증류만의 순기여) | DEGRADE_P=0 (KD 유지) | running | - | 미정 |
