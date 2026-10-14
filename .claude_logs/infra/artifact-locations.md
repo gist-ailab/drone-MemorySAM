@@ -1,6 +1,6 @@
 # 산출물 위치 지도 (체크포인트·로그·분석) — 모든 세션 공용
 
-updated: 2026-09-29 (hpca100 SSDb 2차 이관, 아래 2b 절)
+updated: 2026-10-15 (전 서버 비-best 웨이트 이관, 아래 2c 절)
 
 > **이 문서의 용도**: "그 실험 체크포인트가 어디 갔지?"에 답하는 단일 조회처다.
 > 서버에서 체크포인트가 사라져 있으면 **지워진 것이 아니라 NAS로 이관된 것**이므로, 지우기 전에 여기서 먼저 찾아라.
@@ -232,6 +232,14 @@ ssh hpca100 "md5sum /home/jovyan/SSDb/jemo_maeng/<상대경로>"   # 표의 md5 
 대상 런 14개: ckpt/ 의 b0screen821·e1screen821·epoch90(C3-only) · rescore_armc/armc821 · p55_0929 두 팔 · outputs 의 E13s3·E14·E15·E17·E1shared·R1·R2(시드821)·Q2(시드902). 합계 150.9G, hpca100 여유 92G → 244G(96% → 89%). 실행 중 프로세스가 참조하던 경로는 없었다.
 <!-- hpca100-archive-20260929:end -->
 
+## 2c. 전 서버 비-best 웨이트 이관 — 2026-10-15 (user 지시 "용량이 부족하면 drone_nas에 옮기고 기록, best가 아닌 웨이트")
+
+- 대상: 사용률 90% 이상 볼륨(lecun·bengio·levine·jarvis·hinton)의 내 디렉터리와 `/ailab_mat2/personal/jemo_maeng` 전체.
+- 옮긴 것: 끝난 런의 top2~5·test-best·last·중간 에폭 웨이트. **학습기 val-best(top1)·best·final·제출물·데이터셋·실행 중 런은 서버에 남겼다.**
+- NAS 위치: `/drone_nas/drone/personal/jemo_maeng/nonbest_weights_archive_20261015/<서버>/<원래 절대경로>` — 원래 경로를 그대로 유지하므로 "서버에서 `epoch.._top3_..pth`가 사라졌다"면 이 아래 같은 경로에 있다.
+- 대장: 같은 폴더 `MANIFEST_<서버>.tsv`(원래 경로·크기·mtime·md5·NAS 경로). 검증은 묶음마다 원본 md5와 NAS `md5sum -c` 대조 후에만 원본 삭제.
+- 규칙·서버별 상세·복원 명령은 [server-storage-map.md](server-storage-map.md)가 정본이다.
+
 ## 3. 복원 방법
 
 NAS의 tar에서 특정 실험을 서버나 로컬로 되살릴 때:
@@ -265,6 +273,7 @@ cat $A/<run이름>.tar | ssh hpca100 "tar xf - -C ~/SSDb/jemo_maeng/src/drone-Me
 | `P38_MUSES_20260720/`, `P39_MUSES_3modal_20260720/`, `MUSES_P34_*`, `MUSES_P37a_3modal_20260719/` | MUSES 계열 정본 웨이트 |
 | `MUSES_P39_4modal_brokenradar_20260721/` · `MUSES_P39_4modal_radarfix_20260722/` | radar 디코딩 버그(ISSUE-025) 전/후 4모달 웨이트 |
 | `det_D1_*`, `det_P37_*`, `P29*`, `P30*` | detection 계열 웨이트 |
+| `/drone_nas/drone/personal/jemo_maeng/nonbest_weights_archive_20261015/` (ckpts/ 바깥, 사용자 루트 바로 아래) | 2026-10-15 전 서버 비-best 웨이트 이관(§2c) |
 | `analysis_logs/` (형제 폴더) | 평가·분석 산출물 40여 묶음 |
 
 ---
