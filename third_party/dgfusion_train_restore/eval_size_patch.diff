@@ -1,0 +1,30 @@
+--- /SSDb/jemo_maeng/dgfusion_eval/DGFusion/cafuser/config.py.orig	2026-10-15 23:17:59.862507017 +0900
++++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/cafuser/config.py	2026-10-15 23:18:29.991272446 +0900
+@@ -274,3 +274,4 @@
+
+     # The DeLiVER codebase (https://github.com/jamycheung/DELIVER) evaluates on an 1024x1024 image
+     cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL = True
++    cfg.DATASETS.DELIVER.EVAL_SIZE = 1024
+--- /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py.orig	2026-10-15 23:19:01.516072045 +0900
++++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:19:01.520072146 +0900
+@@ -122,7 +122,8 @@
+                 augs.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
+             augs.append(T.RandomFlip())
+         elif cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
+-            augs = [T.ResizeTransform(1042,1042,1024,1024, interp)]
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
++            augs = [T.ResizeTransform(1042,1042,_eval_size,_eval_size, interp)]
+         else:
+             augs = []
+
+--- /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py.orig	2026-10-15 23:19:36.392955210 +0900
++++ /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:19:36.392955210 +0900
+@@ -111,7 +111,8 @@
+                 augs.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
+             augs.append(T.RandomFlip())
+         elif cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
+-            augs = [T.ResizeTransform(1042,1042,1024,1024, interp)]
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
++            augs = [T.ResizeTransform(1042,1042,_eval_size,_eval_size, interp)]
+         else:
+             augs = []

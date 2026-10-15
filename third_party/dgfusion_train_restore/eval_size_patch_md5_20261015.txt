@@ -1,0 +1,27 @@
+[monitoring 세션 2026-10-15] eval_size_patch.diff 적용 전/후 md5 — 생각정리 지시(기준선 평가 해상도 조절용 최소 패치)
+
+CMNEXT_EQUIVALENT_EVAL(기본 true) 분기가 테스트 리사이즈를 1042->1024 고정으로 하드코딩하고 있어
+INPUT.MIN_SIZE_TEST 로는 해상도 스윕이 불가능했음(실측: val@1024/1280/1536 opts를 다르게 줘도
+Augmentations 로그의 new_h/new_w 가 전부 1024로 동일, mIoU 도 세 번 다 62.8927로 동일 — CAFuser(b)).
+패치는 DATASETS.DELIVER.EVAL_SIZE(기본 1024, --opts로 조절 가능) 를 새로 읽게만 바꾼다.
+기본값(1024)에서는 패치 전후 byte 단위로 같은 ResizeTransform 이 생성된다(getattr 기본값=config.py 기본값=1024).
+
+1) lecun /SSDb/jemo_maeng/dgfusion_eval/DGFusion/cafuser/config.py
+   패치 전 4054c3d691d391e021509417554ec766
+   패치 후 bcefe96e6e98ee838fe2823e23b86d7d
+
+2) lecun /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py
+   패치 전 2e38e3198ed7b94a099502f1c7b73c1a
+   패치 후 e921b7e3791678b54155863ece31808e
+
+3) lecun /SSDb/jemo_maeng/cafuser_train/cafuser/config.py
+   패치 전 4054c3d691d391e021509417554ec766 (DGFusion 체크아웃과 byte 동일 파일)
+   패치 후 bcefe96e6e98ee838fe2823e23b86d7d (동일 패치라 패치 후도 byte 동일)
+
+4) lecun /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py
+   패치 전 67df2702c41905b2bbf1c3b70a2dd704
+   패치 후 cd2f62d9df075b7ed0640c54bbd6a1a6
+
+원본 백업: 각 파일 옆에 .orig 로 보존(lecun 로컬, repo 에는 포함 안 함).
+재현 게이트(패치 후 EVAL_SIZE 미지정=기본 1024로 재실행, 기존 재현값과 소수 넷째자리까지 일치 확인)는
+별도로 수행 후 판정 대장/보고에 기록한다.
