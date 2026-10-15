@@ -6,7 +6,7 @@
      cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL = True
 +    cfg.DATASETS.DELIVER.EVAL_SIZE = 1024
 --- /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py.orig	2026-10-15 23:19:01.516072045 +0900
-+++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:19:01.520072146 +0900
++++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:29:39.832073612 +0900
 @@ -122,7 +122,8 @@
                  augs.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
              augs.append(T.RandomFlip())
@@ -17,8 +17,21 @@
          else:
              augs = []
 
+@@ -303,9 +304,9 @@
+                     else:
+                         modality_images[modality] = transforms.apply_segmentation(modality_images[modality])
+         if not self.is_train and self.tfm_gens:
+-            # need to set width and height acordingly for evaluating on the 1024 results:
+-            dataset_dict['height'] = 1024
+-            dataset_dict['width'] = 1024
++            # need to set width and height according to the actual eval resize target (not hardcoded 1024):
++            dataset_dict['height'] = getattr(self.tfm_gens[0], 'new_h', 1024)
++            dataset_dict['width'] = getattr(self.tfm_gens[0], 'new_w', 1024)
+
+         if self.depth_on and not self.is_train:
+             dataset_dict["gt_depth"] = modality_images.pop("gt_depth").squeeze(2)
 --- /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py.orig	2026-10-15 23:19:36.392955210 +0900
-+++ /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:19:36.392955210 +0900
++++ /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:29:54.432436915 +0900
 @@ -111,7 +111,8 @@
                  augs.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
              augs.append(T.RandomFlip())
@@ -28,3 +41,17 @@
 +            augs = [T.ResizeTransform(1042,1042,_eval_size,_eval_size, interp)]
          else:
              augs = []
+
+@@ -280,9 +281,9 @@
+                     else:
+                         modality_images[modality] = transforms.apply_segmentation(modality_images[modality])
+         if not self.is_train and self.tfm_gens:
+-            # need to set width and height acordingly for evaluating on the 1024 results:
+-            dataset_dict['height'] = 1024
+-            dataset_dict['width'] = 1024
++            # need to set width and height according to the actual eval resize target (not hardcoded 1024):
++            dataset_dict['height'] = getattr(self.tfm_gens[0], 'new_h', 1024)
++            dataset_dict['width'] = getattr(self.tfm_gens[0], 'new_w', 1024)
+
+         if is_panoptic:
+             # apply the same transformation to panoptic segmentation
