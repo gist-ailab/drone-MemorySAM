@@ -12165,18 +12165,25 @@ items:
     증가), 평가 해상도 3종 legal v2 val/test 약 6 GPU·h
   priority: 1
   owner_role: method
-  status: queued
+  status: done
   tags:
   - deliver
   - thin-class
   - resolution
   - A1
   created: '2026-10-12'
-  updated: '2026-10-13'
-  closed: null
+  updated: '2026-10-15'
+  closed: '2026-10-15'
   runs: []
   results: []
-  verdict: null
+  verdict:
+    decision: reject
+    summary: '시드821 legal v2(같은 평가 해상도 1536 대비 Q2): 24클래스 test −1.24 / val −1.02,
+      얇은4 test −1.01 / val −3.80. 손실은 맥락 의존 클래스(RailTrack −10.3·Wall −5.4·Terrain
+      −4.9·Water −3.6). 학습 스케일 상향은 얇은 객체도 못 올리고 맥락만 잃음 — 평가 해상도 이득은 추론 시 토큰 밀도에서 나옴.
+      시드902 는 user 지시(10-15)로 1에폭에서 중단·A2 s902 로 교체, 2시드 미충족은 user 결정. 판정 대장 f3c539e·e35a0d6'
+    date: '2026-10-15'
+    by: jemo
   analysis: null
   superseded_by: null
 - id: DRN-261012-02
@@ -12203,14 +12210,14 @@ items:
   expected_cost: 구현·검수 1~2일(워커 위임) + 3090 4장×2런 40ep 약 24~30h(extractor·스템 추가분)
   priority: 2
   owner_role: method
-  status: queued
+  status: running
   tags:
   - deliver
   - thin-class
   - adapter
   - A2
   created: '2026-10-12'
-  updated: '2026-10-12'
+  updated: '2026-10-15'
   closed: null
   runs: []
   results: []
