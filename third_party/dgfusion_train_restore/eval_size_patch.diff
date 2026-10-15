@@ -55,3 +55,21 @@
 
          if is_panoptic:
              # apply the same transformation to panoptic segmentation
+--- /SSDb/jemo_maeng/dgfusion_eval/DGFusion/test_net.py (3단계 패치 2026-10-16, .orig 백업 없음 — md5 기록 참조)
++++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/test_net.py
+@@ create_deliver_gt_sem_seg_loading_fn() 내부 @@
+         if cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
+             array = array.astype(np.uint8)
+-            array = np.array(Image.fromarray(array).resize((1024,1024), Image.NEAREST), dtype=dtype)
++            array = np.array(Image.fromarray(array).resize((_eval_size,_eval_size), Image.NEAREST), dtype=dtype)
+         return array
+--- /SSDb/jemo_maeng/cafuser_train/train_net.py (3단계 패치 2026-10-16, 동일 함수·동일 변경)
++++ /SSDb/jemo_maeng/cafuser_train/train_net.py
+@@ create_deliver_gt_sem_seg_loading_fn() 내부 @@
+         if cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
+             array = array.astype(np.uint8)
+-            array = np.array(Image.fromarray(array).resize((1024,1024), Image.NEAREST), dtype=dtype)
++            array = np.array(Image.fromarray(array).resize((_eval_size,_eval_size), Image.NEAREST), dtype=dtype)
+         return array

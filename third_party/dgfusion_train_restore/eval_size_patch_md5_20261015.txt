@@ -57,5 +57,22 @@ postprocess 목표(1024,1024)를 만든다 — 재현 게이트가 통과해야 
    2단계 후(최종) 7268239381de41b5a7ad99c5d524a9a2
 
 원본 백업: 각 파일 옆에 .orig 로 보존(lecun 로컬, repo 에는 포함 안 함) — 2단계 패치도 같은 .orig 기준.
+
+[3단계 패치 2026-10-16] val@1280/1536 실제 스윕 중 발견된 세 번째 하드코딩 — 1·2단계 패치로 모델
+예측쪽(리사이즈+postprocess 목표)은 EVAL_SIZE를 따르게 됐지만, GT 쪽이 별도 경로로 여전히 1024에
+고정돼 있어 "pred=1280×1280 vs gt=1024×1024" shape mismatch(ValueError)로 즉시 크래시했다
+(세 모델 config/매퍼와는 독립된 셋째 지점: 평가기 빌드 함수 `create_deliver_gt_sem_seg_loading_fn()`,
+DGFusion은 `test_net.py`, CAFuser(b)는 `train_net.py --eval-only` 안에 정의돼 있고, GT 로딩마다
+`Image.fromarray(array).resize((1024,1024), ...)`로 하드코딩돼 있었다). 이 함수도 동일하게
+`EVAL_SIZE` getattr로 바꿈. 두 파일 모두 repo 밖(third_party로 복사해 둔 사본이 없는 원본)이라
+.orig 백업 없이 바로 수정했다 — 아래 md5만 기록.
+
+  5) lecun /SSDb/jemo_maeng/dgfusion_eval/DGFusion/test_net.py
+     3단계 패치 후 073647c71ae61d0c5d4475626ff76bfa (패치 전 md5 미보존)
+
+  6) lecun /SSDb/jemo_maeng/cafuser_train/train_net.py
+     3단계 패치 후 27dce0f8fb6d66ba1e8313a6a8a5867e (패치 전 md5 미보존)
+
 재현 게이트(패치 후 EVAL_SIZE 미지정=기본 1024로 재실행, 기존 재현값과 소수 넷째자리까지 일치 확인)는
-2단계 패치까지 반영한 코드로 이 보고 직후 수행한다(아래 "다음"에 명시).
+3단계까지 반영한 코드로 재실행해야 한다 — GT 리사이즈 함수를 건드렸으므로 기존 1·2단계만의 통과
+기록(56.7293/55.7907)은 3단계 patch 전 시점의 것이라 재검증 필요.
