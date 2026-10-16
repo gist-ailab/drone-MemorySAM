@@ -170,10 +170,10 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 <!-- lab:plan-queue:begin -->
 | id | 우선 | 제목 | 바꾼 변수 | 상태 | runs | 예상 비용 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DRN-261016-01 | P1 | 기준선 평가 해상도 반응(원본 1042 GT 축) — DGFusion 공식·CAFuser(b) val@1024/1280/1536 + 선택 해상도 test | - | running | - | 미정 |
 | DRN-261012-02 | P2 | A2 · 고해상 경로(SPM conv 스템 + deformable extractor, injector 없음) — 1024 유지, Q2 레시피 40ep 스크린 2시드 | SimpleFPN+탭 합산 → SPM(센서별 경량 conv 스템, 합산) + extractor(conv 쿼리 1/8·1/16·1/32 ← 4탭 deformable attn) + c1=up(c2)+conv1/4. 백본·LoRA·헤드·레시피 불변, 입력 1024 | running | - | 구현·검수 1~2일(워커 위임) + 3090 4장×2런 40ep 약 24~30h(extractor·스템 추가분) |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |
-| DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | queued | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
+| DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) | - | running | - | 미정 |
+| DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | running | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | running | - | 미정 |
 | DRN-260926-55 | P102 | Q2→Q3 강건성 전 프로토콜(EMM15·RMM4×3·NM3, Q2 먼저) | Q2·Q3 체크포인트 강건성 측정 | running | - | 미정 |
 | DRN-260926-56 | P103 | Q2noDeg · 원천분리: DEGRADE_P=0, KD 유지(증류만의 순기여) | DEGRADE_P=0 (KD 유지) | running | - | 미정 |
@@ -188,6 +188,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260929-03 | reject | P56-C 상태 조건부 LoRA 혼합 2시드 40ep: clean 24클래스 2시드 평균 Δ +0.04(① 통과, 3시드 평균 대비 +0.31, 시드 간 편차 0.03). 라우터 α 토큰 간 std ≈0(img·depth), event 0.078, LiDAR 0.00006, 조건별 변화 없음 → 사전 기준 ③(≥0.05) 미달, 라우터가 모달별 상수로 붕괴해 '상태 조건부' 기제가 작동하지 않음. 강건(같은 시드821 부분집합 짝): depth 부분 저하 비율 0.31~0.36, RGB 0.95/0.75/0.74, EMM −0.71 — 시드 잡음 커 판정 근거 아님. P56 A·B·C 전부 기각, 논문 모델 E1 구조 + Q2 레시피 고정. 판정 대장 2026-10-08 행, H34 | - |
 | DRN-261001-02 | adopt | 측정 확정 + 서사 판정: E1 레시피 2모달 교사 3런(RGB+Depth·RGB+LiDAR·RGB+Event, 시드821 40ep, bengio 4장 각 6시간) 완주·legal v2·NAS 보존(md5) 완료. legal v2 test RGB+Depth 56.56(24클래스 56.75, 4모달 E1 스크린 55.94/56.39 대비 +0.62/+0.36 = 동률) · RGB+LiDAR 55.31(Δ24 −1.42) · RGB+Event 55.68(Δ24 −1.36). 기준 ②(P46-CTR 54.14 +1.0) 충족. 반증 조건(2모달 > 4모달)은 잡음 범위 발동 → clean 축 센서 가산성 주장 폐기, 4모달 가치는 강건 축에서만. depth 가 핵심 보조 센서(없으면 기하 의존 클래스 −3.6~−11.3). 교사 3개 확보 → N-RGBX 학생(DRN-260930-01) 착수 조건 충족. 후속: RGB-D 결측 3조합으로 강건 축 가산성 확인(요청됨). 원본 NAS ckpts/bengio_deliver_rgb{d,l,e}_…_20261001/, 판정 대장 2026-10-02 행 | - |
 | DRN-261012-01 | reject | 시드821 legal v2(같은 평가 해상도 1536 대비 Q2): 24클래스 test −1.24 / val −1.02, 얇은4 test −1.01 / val −3.80. 손실은 맥락 의존 클래스(RailTrack −10.3·Wall −5.4·Terrain −4.9·Water −3.6). 학습 스케일 상향은 얇은 객체도 못 올리고 맥락만 잃음 — 평가 해상도 이득은 추론 시 토큰 밀도에서 나옴. 시드902 는 user 지시(10-15)로 1에폭에서 중단·A2 s902 로 교체, 2시드 미충족은 user 결정. 판정 대장 f3c539e·e35a0d6 | - |
+| DRN-261016-01 | adopt | 같은 규칙(원본 1042 GT·val 선택 해상도 1536) 비교 확정: 1024 재현 ±0.02 통과. 기준선은 val 이 1536 을 고르지만 test 하락(DGFusion 56.71→55.57, CAFuser(b) 55.77→55.60), 우리는 상승(E1 56.24→57.48, Q2 56.59→58.12). val 선택 규칙에서 Q2 +2.55 vs DGFusion. 해상도 이득은 우리 구조에만 일반화 — 프로토콜 결과이지 노벨티 아님, 헤드라인 규칙 변경은 user 결정 | .claude_logs/tasks/DRN-261016-01/analysis.md |
 <!-- lab:plan-queue:end -->
 
 > **재설계 기준**: ①논문(accept) 기여 — A(P51 확장)·B(진단-프레임워크) 어느 분기에서도 쓰이는가 ②24GB(yeon 3090/jarvis 4090)에서 도는가 ③원장 반증 경로가 아닌가. 옛 대기열 대부분은 계보 사망·중복으로 종결 처리(하단 🗑).
