@@ -41,9 +41,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 ## 📌 사용 규약 (모든 세션 필독)
 
 1. **GPU를 잡기 전 이 문서의 "GPU 예약 현황"을 확인**하라. 남의 예약을 덮어쓰지 마라.
-2. **실험을 띄우면** → "실행 중" 표에 행 추가(서버/GPU/PID/config/로그/**완주 ETA**/우선순위) + 이 문서 `updated` 갱신.
-3. **끝나거나 죽이면** → "실행 중"에서 제거하고 "완료·판정" 표에 1행(결론 포함). 상세는 monitor-log.md.
-4. **새 실험 제안** → "대기열"에 우선순위와 함께 추가. 근거 1줄 필수.
+2. **실험을 띄우면** → `lab-plan status <id> running --via …` + `status/current.md` "실행 중" 행(2026-10-16 개정: 이 문서의 "실행 중" 표는 동결, 더 갱신하지 않는다).
+3. **끝나거나 죽이면** → `lab-plan status`로 상태를 바꾸고 current.md "실행 중"에서 제거. 판정은 method 세션이 `lab-plan verdict`로. 상세는 monitor-log.md.
+4. **새 실험 제안** → `lab-plan check` 후 `lab-plan add`(대기열은 아래 생성 블록에 나타난다).
 5. **🔴 EPOCHS를 반드시 명시하라.** 진단용 런에 300ep을 두면 며칠간 GPU를 막는다(2026-07-16 실사고, 아래 참조).
 6. **우선순위 수정 자유** — 단 바꾼 이유를 1줄 남긴다.
 
@@ -69,7 +69,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | **lecun** (24GB×7) | 없음 | sangmin_park · youngjin_lee 등 수시 | GPU 대부분 유휴. 2026-09-17 배치 중단은 일시 요청이었고 상시 금지가 아님(user 2026-09-30). 일반 빈 GPU 규칙으로 배치 가능. 단 I/O 병목 이력 있음 |
 | ~~B200~~ | — | — | 🔴 상실(07-15 마감) |
 
-## 🔬 실행 중 (2026-09-24 15:50 KST 실측 갱신 — monitoring 세션)
+## 🔬 실행 중 (2026-09-24 15:50 KST 실측 갱신 — monitoring 세션) — 🗄 2026-10-16 동결
+
+> 🗄 **2026-10-16부터 이 표는 갱신하지 않는다.** 지금 도는 작업 = `lab-status`(`~/.cache/lab-status/status.md`), 선언 = `status/current.md` "실행 중". 아래는 마지막 갱신 시점의 사본이다.
 
 > ⚠️ **이 표는 "지금 도는 것"만 담는다.** 완주·종결된 런은 registry/analysis로 즉시 이동.
 > 🔗 **노션 동기화 규칙(2026-09-08, CLAUDE.md §3)**: 이 표·대기열이 바뀌면 같은 날 노션 논문 페이지(`Drone Object Detection for RGB-IR Fusion`, `33d05310…`) §4·§6을 `.claude/skills/notion-experiment-log/paper_page_builder.py`(절 단위 교체, 멱등; 차트는 `paper_page_charts.py`)로 함께 갱신한다.
@@ -168,7 +170,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 <!-- lab:plan-queue:begin -->
 | id | 우선 | 제목 | 바꾼 변수 | 상태 | runs | 예상 비용 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DRN-261016-01 | P1 | 기준선 평가 해상도 반응(원본 1042 GT 축) — DGFusion 공식·CAFuser(b) val@1024/1280/1536 + 선택 해상도 test | - | running | - | 미정 |
 | DRN-261012-02 | P2 | A2 · 고해상 경로(SPM conv 스템 + deformable extractor, injector 없음) — 1024 유지, Q2 레시피 40ep 스크린 2시드 | SimpleFPN+탭 합산 → SPM(센서별 경량 conv 스템, 합산) + extractor(conv 쿼리 1/8·1/16·1/32 ← 4탭 deformable attn) + c1=up(c2)+conv1/4. 백본·LoRA·헤드·레시피 불변, 입력 1024 | running | - | 구현·검수 1~2일(워커 위임) + 3090 4장×2런 40ep 약 24~30h(extractor·스템 추가분) |
+| DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | queued | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | running | - | 미정 |
 | DRN-260926-55 | P102 | Q2→Q3 강건성 전 프로토콜(EMM15·RMM4×3·NM3, Q2 먼저) | Q2·Q3 체크포인트 강건성 측정 | running | - | 미정 |
@@ -182,10 +186,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-260929-01 | reject | P56-A 모달 충돌 학습(Q2 열화 패스 30% 에 '선명하지만 틀린 센서' 합성 표본) 40ep 스크린 2시드 legal v2: clean 24클래스 Δ vs Q2 같은 시드 짝 −0.98(시드821) / −0.56(시드902), 평균 −0.77 → 사전 기준 ①(≥ −0.3) 미달. 실제 과·저노출·모션블러 3조건 평균 Δ −1.55(시드821, 기준 ②-a ≥ +1.0 반대 방향, 10조건 전부 음수). 하락 클래스 = Static·Terrain·얇은 4. 합성 충돌 표본은 실제 열화로 전이되지 않음(Q1d 와 같은 축) → 합성 충돌·열화 라벨 기반 표본 조작 계열 재시도 금지(H33). ②-b 진단(부분집합 380장 강건 비교)은 진행 중이나 판정 불변. 원본 NAS ckpts/…P56A_20261004/(두 시드), analysis_logs/p56a_s{821,902}_eval_20261004/, 판정 대장 2026-10-04 행 | 판정 시 병기(user 승인 09-30): ①조건별 leave-one-out(oracle_headroom_probe --by_condition --emm_max_missing 1, Q2 같은 시드 짝 대비 RGB·depth 제거 Δ 이동) ②합성 충돌 영역에서 충돌 센서 key 에 두는 attention 질량 비율(도구 신설, Q2 대비) ③실제 케이스별 mIoU. 설계서 decisions/2026-09-30-p56-bc-modality-aware-design.md §3 |
 | DRN-260929-02 | reject | P56-B 거리 조건화 attention(교차 attention 에 −λ·|Δlog r| 거리 편향) 시드821 40ep 스크린 legal v2: test 55.36 / 24클래스 56.43(Q2 시드821 대비 Δ24 −1.27, Q2 3시드 평균 대비 −0.63) → 사전 기준 ①(≥ −0.3) 미달. 기제 진단: 원거리 78~255m −0.32(기준 +1.0 미달), 근·중거리 −2.21/−3.95 → 거리 편향이 원거리를 올리지 못하고 근거리 문맥을 깎음(기제 미작동). 하락 클래스 Static·Terrain·Pole·Ground 는 P56-A 와 같은 집합. 시드902 는 user 승인으로 중단(2026-10-05, yeon GPU1 을 Q2noKD 에 재배치) → 단일 시드 + 기제 미작동으로 기각. 판정 대장 2026-10-05 행 | - |
 | DRN-260929-03 | reject | P56-C 상태 조건부 LoRA 혼합 2시드 40ep: clean 24클래스 2시드 평균 Δ +0.04(① 통과, 3시드 평균 대비 +0.31, 시드 간 편차 0.03). 라우터 α 토큰 간 std ≈0(img·depth), event 0.078, LiDAR 0.00006, 조건별 변화 없음 → 사전 기준 ③(≥0.05) 미달, 라우터가 모달별 상수로 붕괴해 '상태 조건부' 기제가 작동하지 않음. 강건(같은 시드821 부분집합 짝): depth 부분 저하 비율 0.31~0.36, RGB 0.95/0.75/0.74, EMM −0.71 — 시드 잡음 커 판정 근거 아님. P56 A·B·C 전부 기각, 논문 모델 E1 구조 + Q2 레시피 고정. 판정 대장 2026-10-08 행, H34 | - |
-| DRN-260930-02 | adopt | 측정 항목(채택 = 결과를 기록으로 확정) + 가설 판정: DGFusion (a) 발표 재현 vs (b) 열화 재학습, 같은 프로토콜(test 1,897장·시드0·61케이스). EMM 15조합 평균 31.53 → 45.52 로 가설 전반 채택(열화 학습이 결측 강건성을 줌). 후반(depth 의존 유지)은 (b) 에서 반증(depth 통째 결측 −33.3 → −4.7). 우리 Q2 3시드는 (b) 대비 clean +1.8, EMM +2.5(48.06), depth 부분 저하 약 절반(0.98/2.04/2.64 vs 2.51/2.88/3.47), 노이즈 저하 1/2~1/4 로 모든 축 우위 → 강건 우위 주장 성립(단일 런·백본 차이 각주). 원본 NAS analysis_logs/baseline_robust_dgfusion_{a,b}_20261001, 판정 대장 2026-10-01 행 | 정정(ISSUE-041, 2026-10-02): (b) 는 '같은 열화 커리큘럼' 이 아니라 학습 내내 최대 강도 열화(severity 상한 1.0 고정, spawn 워커가 커리큘럼 단계를 못 받는 코드 결함). 강건 측정값은 유효, 판정(Q2 전 축 우위) 유지·보수적. (b) 의 clean −4.80 은 최대 강도 열화 탓일 수 있어 기준선 clean 희생 서술은 금지 |
-| DRN-261001-01 | adopt | 측정 확정: DGFusion 공식 MUSES 가중치 val 250장 재현 79.7183(README 79.72, 채점 축 동일) → 재학습 불필요. 우리 PhysAug-off 3시드(82.30±0.14) 대비 val +2.58 이나 공식 test 는 −0.21 이라 이 대조는 val 만 설명. 열세는 얇고 작은 4클래스(pole −6.20·person −5.37·traffic sign −4.34·traffic light −3.16, 3/3시드)와 야간 조건(clear/night −2.98·rain/night −3.01)에 국소 → '전 클래스 균일 열세' 반증 조건 불성립, 가설 채택. 거리 구간 표(LiDAR 희소 화소 한정)는 하지 않음. 다음 = test 측 증거(Codabench 클래스별 IoU vs DGFusion 논문 test 클래스별 표, GPU 불필요). 원본 NAS analysis_logs/muses_baseline_dgfusion_official_20261001/, 판정 대장 2026-10-01 행 | 후속 판정 4건(판정 대장 2026-10-01~02): ③' val→test 전이 손실 −3.52 · H-M1 val-best 선택 편향 기각 · H-M3 부분 채택 · **§10 최종: DGFusion 공식 가중치 Codabench test 79.494 대 우리 78.786(−0.71), 몸통 = 얇은 4클래스 −22.6(val·test 동일 폭의 실재 열세), 희귀 3클래스 val 우위는 test 동률(우리 고유 낙차 약 −12.5)**. H-M2(레시피 수준 val 과적합)는 미판정 보류. 추가 측정 없음 |
 | DRN-261001-02 | adopt | 측정 확정 + 서사 판정: E1 레시피 2모달 교사 3런(RGB+Depth·RGB+LiDAR·RGB+Event, 시드821 40ep, bengio 4장 각 6시간) 완주·legal v2·NAS 보존(md5) 완료. legal v2 test RGB+Depth 56.56(24클래스 56.75, 4모달 E1 스크린 55.94/56.39 대비 +0.62/+0.36 = 동률) · RGB+LiDAR 55.31(Δ24 −1.42) · RGB+Event 55.68(Δ24 −1.36). 기준 ②(P46-CTR 54.14 +1.0) 충족. 반증 조건(2모달 > 4모달)은 잡음 범위 발동 → clean 축 센서 가산성 주장 폐기, 4모달 가치는 강건 축에서만. depth 가 핵심 보조 센서(없으면 기하 의존 클래스 −3.6~−11.3). 교사 3개 확보 → N-RGBX 학생(DRN-260930-01) 착수 조건 충족. 후속: RGB-D 결측 3조합으로 강건 축 가산성 확인(요청됨). 원본 NAS ckpts/bengio_deliver_rgb{d,l,e}_…_20261001/, 판정 대장 2026-10-02 행 | - |
-| DRN-261001-03 | adopt | 측정 확정 + 가설 채택: DGFusion 공식 DELIVER 가중치(md5 0f40a641…) clean test 56.73(README 56.71)·val 66.51 재현, 61케이스 같은 프로토콜 EMM 15조합 평균 31.14(a 재현본 31.53, b 열화 재학습 45.52, Q2 3시드 48.06), depth 통째 결측 23.34, depth 부분 저하 7.22/11.72/15.78(Q2 0.98/2.04/2.64), NM S&P 저하 17.61/39.88/52.20(Q2 3.11/4.79/7.68). 반증 조건 해당 없음 → Q2 강건 우위는 공식 가중치 앞에서도 유지. 기준선 표의 (a) 열을 이 값으로 교체. 원본 NAS analysis_logs/baseline_robust_dgfusion_official_deliver_clde_20261001/, 판정 대장 2026-10-01 행 | - |
 | DRN-261012-01 | reject | 시드821 legal v2(같은 평가 해상도 1536 대비 Q2): 24클래스 test −1.24 / val −1.02, 얇은4 test −1.01 / val −3.80. 손실은 맥락 의존 클래스(RailTrack −10.3·Wall −5.4·Terrain −4.9·Water −3.6). 학습 스케일 상향은 얇은 객체도 못 올리고 맥락만 잃음 — 평가 해상도 이득은 추론 시 토큰 밀도에서 나옴. 시드902 는 user 지시(10-15)로 1에폭에서 중단·A2 s902 로 교체, 2시드 미충족은 user 결정. 판정 대장 f3c539e·e35a0d6 | - |
 <!-- lab:plan-queue:end -->
 

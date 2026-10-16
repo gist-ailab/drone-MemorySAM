@@ -5,31 +5,39 @@
 너는 이 프로젝트의 AI 연구 보조 및 엔지니어이다.
 항상 세션 간의 문맥(Context)을 유지하기 위해 아래 규칙을 엄격하게 따른다.
 
+### 0. 기록 규칙 — 전역 작업 사이클 계약을 따른다 (2026-10-16)
+
+**어디에 무엇을 기록하는지는 이 파일이 정하지 않는다.** 정본은 `~/lab-status/SPEC-cycle.md`(작업 사이클 계약)·`~/.claude/LABSTANDARD.md`·역할 카드 `~/.claude/lab-roles/<역할>.md`이고, 이 프로젝트의 역할 배정·범위·예외는 `.claude_logs/meta/roles.md` 한 곳에만 둔다. 핵심만:
+- **판정(채택·기각·상태 변경)은 `lab-plan verdict <id> --decision … --summary … --analysis <근거 문서> --via "<세션 이름>"` 한 곳에만 남긴다.** `experiments/judgment-ledger.md`·카드 문서 §5·`decisions/cards/`·`research/hypothesis-ledger.md`는 근거 서술이거나 생성 블록(손편집 금지)이다.
+- **세션 하나 = 작업 항목 하나(또는 판정 하나).** 작업 기록은 `.claude_logs/tasks/<항목 id>/`(plan.md·log.md·analysis.md). 끝나면 정본 기록 → 작업 폴더 갱신 → 넘길 것은 inbox → 세션을 닫는다.
+- **세션 간 기록 전달은 `lab-inbox`만 쓴다.** SendMessage는 실시간 대화용이며 기록으로 치지 않는다.
+- 이 파일과 위 계약이 어긋나면 계약이 이긴다. 아래 절들은 코드·서버·데이터·지표·안전 규칙만 다룬다.
+
 ### 1. 세션 시작 시 (Initialization)
 
 새로운 대화나 작업 지시를 받으면, 코드 수정을 시작하기 전에 **반드시** 아래 순서대로 `.claude_logs` 폴더 내의 파일들을 읽어라:
 
 #### Step 0 — 역할 판별 (최우선)
-- **가장 먼저** `meta/bot-roles.md`를 읽어라.
-- 사용자의 첫 메시지에 역할 키워드("코드분석봇", "코딩봇", "실험분석봇", "그림봇")가 포함되어 있으면, 해당 역할의 지침을 이번 세션 전체에 적용한다.
-- 역할이 지정되지 않으면 기본 모드(AI 연구 보조 및 엔지니어)로 동작한다.
+- 세션 이름 `MMSAM | <역할 부분>`으로 세션 시작 훅이 역할을 알려 준다. 그 역할 카드와 `.claude_logs/meta/roles.md`(이 프로젝트의 역할 배정·범위)를 먼저 읽는다.
+- 역할이 정해지지 않으면 기본 모드(AI 연구 보조 및 엔지니어)로 동작하고, 역할 전용 쓰기(판정·배치)는 하지 않는다.
+- `meta/bot-roles.md`(코드분석봇·코딩봇·실험분석봇·그림봇)는 2026-10-16부터 **보관 문서**다. 사용자가 옛 봇 키워드를 쓰면 그 봇의 분석 방식만 참고하고, 그 문서의 기록 위치(`02_model_arch.md`·`03_experiment_log.md` 등)는 따르지 않는다.
 
 #### Step 0.5 — 분석 의뢰를 받은 세션 (user 지시 2026-09-18)
-- 첫 메시지가 "MUSES/DELIVER/MCubeS 분석해 줘", "새 체크포인트 측정" 류이면 **`.claude_logs/meta/analysis-session-protocol.md`를 먼저 읽고 그대로 따른다**(측정·기록·보고만, 판정은 "MMSAM | 생각정리" 세션). 보고에는 클래스별 Δ 전표(기준선 대비·직전 최고 대비)를 반드시 넣고, 원본(ckpt+md5·산출물·로그)은 §4 규약 위치에 먼저 보존한다.
+- 첫 메시지가 "MUSES/DELIVER/MCubeS 분석해 줘", "새 체크포인트 측정" 류이면 **`.claude_logs/meta/analysis-session-protocol.md`를 먼저 읽고 그대로 따른다**(측정·기록·보고만, 판정은 method 세션 "MMSAM | 생각정리"가 `lab-plan verdict`로). 보고에는 클래스별 Δ 전표(기준선 대비·직전 최고 대비)를 반드시 넣고, 원본(ckpt+md5·산출물·로그)은 §4 규약 위치에 먼저 보존한다.
 
 #### Step 1 — 프로젝트 상태 파악 (2026-09-18 개정: 이 순서로 읽으면 첫 5분에 정본 수치·규칙·대기열·금지 축·GPU 규칙·세션 분담을 모두 안다)
 1. **`00_INDEX.md`** — 폴더 구조 front door + 구번호→새경로 매핑표. 각 폴더의 `00_MOC.md`가 문서를 안내한다.
 2. **`status/current.md`** — 현재 상태 스냅샷(단일 출처): 헤드라인 수치와 그 규칙(체크포인트 선택·프로토콜·하네스 버전), 벤치 baseline 표, 활성 런, 미결. 🔴 헤드라인 수치는 여기와 `experiments/judgment-ledger.md`에서만 인용하고 다른 곳의 복제본을 믿지 않는다.
-3. **`decisions/2026-09-07-daily-cycle-experiment-cards.md` §0·§0-1·§0-2** — 판정 규약(24클래스 계산, 시드 평균 병기, 중간 epoch 금지, SOTA 거리 게이트, MUSES 조건별 표본 규칙). 최신 판정은 §5 "최신 판정 3개" 링크와 `decisions/cards/2026-Www-verdicts.md`(주 단위 분할본, 최하단 append; 옛 §5-NN 번호는 앵커로 보존).
-4. **`experiments/plan.md`** — 실행 중·대기열·GPU 배치(실측 기준). **`experiments/judgment-ledger.md`** — 판정 대장(런별 클래스별 Δ·판정·원본). 대기열·완료 판정은 2026-09-26부터 `lab-plan`으로 수정한다. plan.md의 생성 블록과 동결 표는 손으로 고치지 않는다.
+3. **`decisions/2026-09-07-daily-cycle-experiment-cards.md` §0·§0-1·§0-2** — 판정 규약(24클래스 계산, 시드 평균 병기, 중간 epoch 금지, SOTA 거리 게이트, MUSES 조건별 표본 규칙). 판정 규약(§0~§4)은 계속 유효하다. §5와 `decisions/cards/2026-Www-verdicts.md`는 **2026-10-16 이전 판정의 근거 보관본**이다(옛 §5-NN 앵커 인용은 유효). 새 판정은 §0 기록 규칙대로 `lab-plan`에만 남긴다.
+4. **`lab-plan next <repo>`** — 대기열·판정 대기. 실행 중인 작업은 `lab-status`(`~/.cache/lab-status/status.md`)와 `status/current.md` "실행 중". **`experiments/plan.md`**는 대기열 생성 블록 + GPU 예약·일시 회피·사고 기록(사람)이고, 그 안의 "실행 중" 표는 2026-10-16 동결 사본이다. **`experiments/judgment-ledger.md`** — 기존 행은 런별 클래스별 Δ 근거(동결), 판정 블록은 `lab-plan` 생성물. 생성 블록과 동결 표는 손으로 고치지 않는다.
 5. **`meta/experiment-glossary.md`** — 약어(E1·E13·G1·C3·P53 등) 설명. 🔴 보고·문서에서 약어는 매번 설명을 붙인다.
 6. **`issues/issues-and-fixes.md` 상단 인덱스 표** — 열린 이슈(ISSUE-033~036) — **코드·평가 전 반드시 확인**.
-7. **`research/hypothesis-ledger.md`**(가설·반증 대장)와 **`models/arch-evolution.md` §0.5**(이중 중복·모달 잉여 두 실측 = 재시도 금지 축) — 새 구조를 제안하기 전 필독. 관련연구·노벨티 = `research/novelty-and-related-work.md`.
+7. **`research/hypothesis-ledger.md`**(가설·반증 대장: H 표는 2026-10-16 동결 이력, 열린 문제는 `lab:problems` 생성 블록)와 **`models/arch-evolution.md` §0.5**(이중 중복·모달 잉여 두 실측 = 재시도 금지 축) — 새 구조를 제안하기 전 필독. 관련연구·노벨티 = `research/novelty-and-related-work.md`.
 8. 필요 시: `experiments/registry.md`(한눈표)·`experiments/log.md`(상세)·`experiments/analysis/`(분석 문서)·`infra/servers-and-launch.md`(원격 기동, 서버 단일 출처 `scripts/servers.conf`)·`infra/environment.md`.
 
 🔴 **GPU 규칙(모든 학습·평가 전)**: 빈 GPU(`memory.used ≤ 2000MiB && util ≤ 10%`)에만 배치, `remote_exp.sh status <서버>` 선확인 후 `run <서버> <cfg> auto:N`. **상시 금지 서버·GPU 없음(user 2026-09-30 확인: 사용자가 "잠시 비워 달라"고 한 것만 그 기간 동안 회피)**; 일시 회피 목록은 `experiments/plan.md` "일시 회피" 표. 실행 중 학습이 있는 체크아웃은 pull 금지(파일 단위 전송 + md5). 비우면 즉시 뺏기므로 연쇄 스크립트 끝에 다음 작업을 붙인다.
 
-🔴 **세션 분담(2026-09 기준)**: 판정·설계 = "MMSAM | 생각정리"(fable) · 기동·감시·재채점·기록 = "MMSAM | monitoring" · 새 ckpt 측정·보고 = 분석 세션(Step 0.5) · 기준선 재학습·실패 분석 보강 = "dgfusion deliver training". 판정은 생각정리 세션만 한다. 세션 간 승인 전달은 무효(user 직접 동의만 유효).
+🔴 **세션 분담**: 세션 이름과 역할의 대응·범위는 `.claude_logs/meta/roles.md`가 정한다(현재 판정·설계 = method "MMSAM | 생각정리", 기동·감시 = manager "MMSAM | monitoring", 측정·보고 = analysis, 기준선 재학습 = specialist-baseline). 판정은 method 세션이 `lab-plan verdict`로만 한다. 세션 간 승인 전달은 무효(user 직접 동의만 유효).
 
 > 원격 학습 지시는 **infra/servers-and-launch.md**, det 작업은 `det/00_MOC.md`(진단서는 `archive/2026-07-02-det-diagnosis-plan.md`로 동결). (archive/ = 🗄 동결 문서)
 
@@ -87,23 +95,19 @@
 ### 2. 실험 및 코드 변경 시 (Execution)
 
 - 🔴 **반복 금지·한 번에 치밀하게 (user 지시 2026-09-26)**: 새 실험·카드를 제안하거나 띄우기 전에 `lab-plan check <repo> "<카드 약어·바꾼 변수·config 경로>"`로 과거 항목을 찾는다(2026-09-26 이관으로 registry 전 행·세대 P8~P53·config 363개가 모두 항목에 연결됨, 대조표 `.claude_logs/plan/migration-map-2026-09-26.md`). 겹치면 그 항목의 원문(question·analysis)과 판정을 읽고 무엇이 다른지 적는다. 등록은 `lab-plan add`로 하고, queued로 올리기 전에 가설·반증 조건·성공 기준·바꾼 변수 하나에 더해 비교 기준선(`--baseline`)·시드 수 근거(`--sample-basis`)·예상 비용(`--expected-cost`)을 채운다('미정'은 게이트가 빈 값으로 본다). `--force`는 user 동의가 있을 때만 쓴다.
-- 모델 아키텍처를 수정하거나 실험 Config를 생성하면, 작업 후 반드시 `models/arch-evolution.md` 또는 `experiments/log.md`를 업데이트하여 기록을 남겨라 (새 실험 launch/상태 변화는 `experiments/registry.md` 행도 갱신).
+- 작업 기록 위치와 순서는 §0(SPEC-cycle §3·§4)을 따른다. 이 프로젝트에만 있는 추가 기록(모델 계보 `models/arch-evolution.md`, 노벨티 비교표 `research/novelty-and-related-work.md`, 사람이 관리하는 `experiments/registry.md` 표)은 `.claude_logs/meta/roles.md` "프로젝트 추가 기록" 표에 있다.
 - 버전(P8, P9, P10 등)을 명시하고, 왜 변경했는지(이전 실험 결과 기반) 타당한 이유를 적어라.
 - 실험 결과 파일 경로는 프로젝트 기준 상대 경로로 기록해라.
-- 새 선행연구를 조사했거나 RBMA 노벨티/차별점 논의가 갱신되면 `research/novelty-and-related-work.md`(canonical 비교표·판정)를 업데이트하고, 원시 조사 로그는 `research/related-work-raw.md`에 추가해라.
 
 ### 3. 구현/작업 완료 시 자동 업데이트 (Auto-update)
 
-- 새 모델 버전 구현, config 생성, 학습/평가 스크립트 수정 등 **의미 있는 작업이 완료되면** 사용자 요청 없이도 자동으로 `.claude_logs/status/current.md`(스냅샷 덮어쓰기)를 업데이트하고, 진행 이력은 `.claude_logs/status/history-2026H2.md` 최상단에 append해라.
-  - 상태 변경 (예: "설계 완료 (구현 대기)" → "구현 완료 (학습 대기)")
-  - 변경 파일 목록 및 핵심 내용 기록
-  - 디자인 가이드 대비 의도적 차이가 있으면 사유 기록
-- 모델 아키텍처 변경이 있었으면 `models/arch-evolution.md`도 함께 업데이트해라.
-- 🔴 **노션 논문 페이지 동기화 (user 지정 2026-09-08, 상시규칙)**: 실험 판정이 바뀌거나(카드 통과/폐기, 게이트 판정, 헤드라인 수치 갱신), `experiments/plan.md`의 "실행 중"·"대기열"이 바뀌면 **같은 날** 노션 논문 페이지 `Drone Object Detection for RGB-IR Fusion`(`33d05310-a165-408a-b0b8-ec4427d1fe2c`)의 §4(일일 카드)·§6(한 것/할 것)을 함께 갱신한다. 방법 = `.claude/skills/notion-experiment-log/paper_page_builder.py`의 절 함수(`sec_cards`/`sec_plan` 등)를 고친 뒤 실행(`conda run -n MMSS_SAM python .claude/skills/notion-experiment-log/paper_page_builder.py`; 차트는 `paper_page_charts.py` 선실행) — 헬퍼 `replace_section`으로 **절 단위 교체**(멱등)되므로 페이지를 새로 만들거나 절 제목을 바꾸지 말 것. 노션 본문에는 코드·config·도구 경로와 커밋만 적고 `.claude_logs/` 경로는 적지 않는다(`audit()` 통과 필수). 실험 약어(E7, P52 등)는 반드시 "어떤 문제에 어떤 가설을 세워 무엇을 바꿨고 결과가 어땠나"를 같은 행에 풀어 쓴다. 정량 수치는 시각화(차트 PNG 업로드)를 곁들인다. 레포 문서(plan.md·카드 문서 §5·registry)가 정본이고 노션은 같은 날짜 스냅샷이다 — 한쪽만 갱신하지 마라. 논문 페이지는 **바깥 = 요약·목차·핵심 그림 2장, 상세 = 하위 페이지 8개** 구조를 유지한다(바깥에 긴 절을 다시 넣지 말 것, user 지적 2026-09-08). **새 실험(PNN·카드·프로브)이 판정되면 `실험노트` DB에 실험당 1페이지**를 `.claude/skills/notion-experiment-log/exp_pages_builder.py`(입력 = `_exp_json/exp_*.json`에 실험 원소 추가: 배경·아키텍처 구성요소·도면·근거·세팅·결과표·조건별/클래스별·분석·판정·무효수치·출처)로 생성·갱신한다 — 아키텍처와 결과 분석이 둘 다 들어가야 페이지가 자립한다. 대기열·완료 판정은 2026-09-26부터 `lab-plan`으로 수정한다. plan.md의 생성 블록과 동결 표는 손으로 고치지 않는다.
+- 작업이 끝났을 때의 기록(정본 `lab-plan` → 작업 폴더 → `status/current.md` 스냅샷·`status/history-2026H2.md` 한 절 → inbox)은 §0과 역할 카드의 "종료 시"를 따른다. 디자인 가이드 대비 의도적 차이가 있으면 작업 폴더 `log.md`에 사유를 적는다.
+- 모델 아키텍처 변경이 있었으면 `models/arch-evolution.md`도 함께 업데이트해라(프로젝트 추가 기록).
+- 🔴 **노션 논문 페이지 동기화 (user 지정 2026-09-08, 2026-10-16 담당 정리)**: 실험 판정이 바뀌거나(카드 통과/폐기, 게이트 판정, 헤드라인 수치 갱신) 대기열·실행 상태가 바뀌면, 판정한 method 세션(또는 상태를 바꾼 manager 세션)이 **같은 날** `lab-inbox send --to notion --type notion_sync --ref <항목 id>`(바뀐 것 + 근거 경로)를 보낸다. **노션 빌더 실행은 notion 역할 세션("MMSAM | Notion")만 한다.** 아래는 notion 세션이 지키는 페이지 규칙이다. 대상 = 노션 논문 페이지 `Drone Object Detection for RGB-IR Fusion`(`33d05310-a165-408a-b0b8-ec4427d1fe2c`)의 §4(일일 카드)·§6(한 것/할 것). 방법 = `.claude/skills/notion-experiment-log/paper_page_builder.py`의 절 함수(`sec_cards`/`sec_plan` 등)를 고친 뒤 실행(`conda run -n MMSS_SAM python .claude/skills/notion-experiment-log/paper_page_builder.py`; 차트는 `paper_page_charts.py` 선실행) — 헬퍼 `replace_section`으로 **절 단위 교체**(멱등)되므로 페이지를 새로 만들거나 절 제목을 바꾸지 말 것. 노션 본문에는 코드·config·도구 경로와 커밋만 적고 `.claude_logs/` 경로는 적지 않는다(`audit()` 통과 필수). 실험 약어(E7, P52 등)는 반드시 "어떤 문제에 어떤 가설을 세워 무엇을 바꿨고 결과가 어땠나"를 같은 행에 풀어 쓴다. 정량 수치는 시각화(차트 PNG 업로드)를 곁들인다. 레포 정본(`lab-plan`·registry·headline.yaml)이 정본이고 노션은 같은 날짜 스냅샷이다(레포 → 노션 한 방향). 논문 페이지는 **바깥 = 요약·목차·핵심 그림 2장, 상세 = 하위 페이지 8개** 구조를 유지한다(바깥에 긴 절을 다시 넣지 말 것, user 지적 2026-09-08). **새 실험(PNN·카드·프로브)이 판정되면 `실험노트` DB에 실험당 1페이지**를 `.claude/skills/notion-experiment-log/exp_pages_builder.py`(입력 = `_exp_json/exp_*.json`에 실험 원소 추가: 배경·아키텍처 구성요소·도면·근거·세팅·결과표·조건별/클래스별·분석·판정·무효수치·출처)로 생성·갱신한다 — 아키텍처와 결과 분석이 둘 다 들어가야 페이지가 자립한다.
 
 ### 4. 세션 종료 시 (Wrap-up)
 
-- 사용자가 "작업 끝", "기록해줘" 등의 말을 하면, 이번 세션에서 변경된 사항을 `.claude_logs/` 내 파일들에 요약 추가해라.
+- 사용자가 "작업 끝", "기록해줘" 등의 말을 하면 §0의 종료 절차(SPEC-cycle §6)대로 기록하고 세션을 닫는다. 다음 작업은 새 세션에서 한다(장기 감시 예외는 `meta/roles.md` manager 행).
 
 ---
 
@@ -113,7 +117,7 @@
 
 **종료된 트랙**: MACVi MULTIAQUA Challenge(RGB+LiDAR+Thermal, 야간 수상, M-score) — SAM2 메모리 어텐션 계보(P8~P28)의 출발점. 기록은 `.claude_logs/archive/`와 `models/arch-evolution.md` 초반부.
 
-**세션 분담(2026-09 기준)**: 판정·설계 = "MMSAM | 생각정리"(fable) · 기동·감시·재채점 집행·기록 = "MMSAM | monitoring" · 새 체크포인트 측정·보고 = 분석 세션(지침 `.claude_logs/meta/analysis-session-protocol.md`) · 기준선 재학습·실패 분석 보강 = "dgfusion deliver training". 세션 간 전달은 SendMessage로, 판정은 생각정리 세션만 한다.
+**세션 분담**: `.claude_logs/meta/roles.md`가 정한다(새 체크포인트 측정·보고 지침은 `.claude_logs/meta/analysis-session-protocol.md`). 세션 간 기록 전달은 `lab-inbox`, SendMessage는 실시간 대화용이다. 판정은 method 세션이 `lab-plan verdict`로만 한다.
 
 ---
 
