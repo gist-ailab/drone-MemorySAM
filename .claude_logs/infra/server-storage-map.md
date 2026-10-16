@@ -108,7 +108,21 @@ ssh <서버> "md5sum <절대경로>"    # MANIFEST 5열과 같아야 한다
 | `nonbest_weights_archive_20261015/<서버>/...` | **이번 비-best 웨이트 이관**(원래 절대경로 유지). 대장 `MANIFEST_<서버>.tsv` |
 
 <!-- nonbest-archive-20261015-result:begin -->
-## 5. 이관 결과
+## 5. 이관 결과 (2026-10-16 11:40 기준)
 
-(진행 중 — 완료 후 서버별 파일 수·용량·이관 후 볼륨 여유를 채운다)
+모든 묶음이 NAS `md5sum -c` 를 통과한 뒤에만 원본을 지웠다. 실패·건너뜀·원본 변경으로 막힌 묶음은 0건이다.
+대장은 NAS `nonbest_weights_archive_20261015/MANIFEST_<서버>.tsv`(허브 원본과 md5 일치 확인).
+
+| 출처 | 옮긴 파일 | 용량 | 완료 | 이관 전 여유 → 2026-10-16 여유 |
+|---|---|---|---|---|
+| lecun `/SSDb` | 471 | 426GB | 10-15 09:50 | 26G → 371G (100% → 95%) |
+| levine `/SSDe` | 449 | 245GB | 10-15 11:25 | 616G → 743G (92% → 90%) |
+| bengio `/SSDb`·`/SSDe` | 415 | 523GB | 10-15 16:52 | `/SSDb` 85G → 290G · `/SSDe` 209G → 491G |
+| ailab_mat2 `personal/jemo_maeng` | 956 | 1067GB | 10-15 17:43 | (공유 볼륨, 측정 생략) |
+| hinton `/SSDb` | 894 | 511GB | 10-16 08:09 | 166G → 642G (96% → 81%) |
+| jarvis `/`·`/SSDb` | 450/756 진행 중 | 703/1273GB | 진행 중 | `/` 50G → 691G (99% → 80%) |
+
+- levine 의 2개는 시험 이관분(목록 451개 중 2개를 먼저 옮김)이라 대장 `levine` 행은 449개 + 시험 2개다(시험분 대장은 허브 `~/nas_moves/20261015/test/`).
+- 이관 후 여유가 일부 다시 줄어든 볼륨(lecun·levine)은 다른 사용자·학습이 그 사이 쓴 것이다.
+- ailab_mat2 의 `videos/`(Drone 7편·touchNplug 375편·Amphibious 20편)는 목록에 없었고 그대로 있다(gyuri 에서 확인).
 <!-- nonbest-archive-20261015-result:end -->
