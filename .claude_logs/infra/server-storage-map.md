@@ -108,10 +108,10 @@ ssh <서버> "md5sum <절대경로>"    # MANIFEST 5열과 같아야 한다
 | `nonbest_weights_archive_20261015/<서버>/...` | **이번 비-best 웨이트 이관**(원래 절대경로 유지). 대장 `MANIFEST_<서버>.tsv` |
 
 <!-- nonbest-archive-20261015-result:begin -->
-## 5. 이관 결과 (2026-10-16 11:40 기준)
+## 5. 이관 결과 (2026-10-17 완료)
 
 모든 묶음이 NAS `md5sum -c` 를 통과한 뒤에만 원본을 지웠다. 실패·건너뜀·원본 변경으로 막힌 묶음은 0건이다.
-대장은 NAS `nonbest_weights_archive_20261015/MANIFEST_<서버>.tsv`(허브 원본과 md5 일치 확인).
+대장은 NAS `nonbest_weights_archive_20261015/MANIFEST_<서버>.tsv` 6개(허브 원본과 md5 일치 확인). 합계 3,941개 · 약 4.0TB.
 
 | 출처 | 옮긴 파일 | 용량 | 완료 | 이관 전 여유 → 2026-10-16 여유 |
 |---|---|---|---|---|
@@ -120,7 +120,7 @@ ssh <서버> "md5sum <절대경로>"    # MANIFEST 5열과 같아야 한다
 | bengio `/SSDb`·`/SSDe` | 415 | 523GB | 10-15 16:52 | `/SSDb` 85G → 290G · `/SSDe` 209G → 491G |
 | ailab_mat2 `personal/jemo_maeng` | 956 | 1067GB | 10-15 17:43 | (공유 볼륨, 측정 생략) |
 | hinton `/SSDb` | 894 | 511GB | 10-16 08:09 | 166G → 642G (96% → 81%) |
-| jarvis `/`·`/SSDb` | 450/756 진행 중 | 703/1273GB | 진행 중 | `/` 50G → 691G (99% → 80%) |
+| jarvis `/`·`/SSDb` | 756 | 1272GB | 10-17 08:35 | `/` 50G → 931G (99% → 73%, §7 홈 이관 포함) · `/SSDb` 378G → 751G |
 
 - levine 의 2개는 시험 이관분(목록 451개 중 2개를 먼저 옮김)이라 대장 `levine` 행은 449개 + 시험 2개다(시험분 대장은 허브 `~/nas_moves/20261015/test/`).
 - 이관 후 여유가 일부 다시 줄어든 볼륨(lecun·levine)은 다른 사용자·학습이 그 사이 쓴 것이다.
@@ -157,4 +157,6 @@ ailab_mat2 쪽 쓰기·검증은 gyuri의 NFS 마운트로 한다(jarvis의 `/ai
 - jarvis 홈에 남긴 것: 코드, sam2·rf-detr 사전학습 가중치(코드가 경로로 읽음), conda·캐시.
 - 🔴 jarvis 체크아웃의 학습 출력 기본 경로가 여전히 홈(`outputs/`)이다. 새 학습은 SSD(`/SSDd`)를 `SAVE_DIR`로 주거나 `outputs` 를 SSD로 옮긴 뒤 연결해야 다시 쌓이지 않는다.
 - 대장: 허브 `~/nas_moves/20261016_home/w_<작업>/<서버>_MANIFEST.tsv` (완료 후 목적지 폴더에 `MANIFEST_<서버>_<needed|unimportant>.tsv`로 복사).
+- jarvis 홈 체크아웃 `outputs/`의 평가 예측 덤프(`*_val_pred/`·`*_test_pred/`의 seg·seg_viz PNG, 227,512개 약 220GB)는 체크포인트로 재생성 가능해 **중요하지 않음**으로 보고 drone_nas `home_offload_20261016/jarvis/home/jemo_maeng/...`로 옮긴다(10-17 시작). 학습 로그·지표 txt 는 홈에 남긴다.
+- 진행: jarvis 필요 웨이트 59개 완료(10-17 02:18, ailab_mat2 대장 `MANIFEST_jarvis_needed.tsv`) · hinton 필요 644개 완료(10-16 20:50, `MANIFEST_hinton_needed.tsv`) · hinton 중요하지 않음 22,709개 진행 중 · jarvis 예측 덤프 진행 중.
 - bengio·yeon·lecun 홈은 conda·캐시만 커서 이번 대상이 아니다(§6).
