@@ -1,0 +1,20 @@
+class,group,mean_contrib_to_cond_miou
+rider,thin,-0.4458
+wall,area,-0.2540
+sidewalk,area,-0.1918
+fence,area,-0.1303
+traffic light,thin,-0.0965
+vegetation,area,-0.0761
+terrain,area,-0.0639
+sky,area,-0.0611
+bicycle,thin,-0.0316
+motorcycle,thin,-0.0248
+building,area,-0.0136
+road,area,-0.0014
+pole,thin,+0.0075
+train,area,+0.0191
+truck,area,+0.0298
+person,thin,+0.0322
+traffic sign,thin,+0.0531
+car,area,+0.0579
+bus,area,+0.8668
