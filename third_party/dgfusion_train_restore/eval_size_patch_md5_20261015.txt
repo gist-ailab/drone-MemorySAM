@@ -1,0 +1,78 @@
+[monitoring 세션 2026-10-15] eval_size_patch.diff 적용 전/후 md5 — 생각정리 지시(기준선 평가 해상도 조절용 최소 패치)
+
+CMNEXT_EQUIVALENT_EVAL(기본 true) 분기가 테스트 리사이즈를 1042->1024 고정으로 하드코딩하고 있어
+INPUT.MIN_SIZE_TEST 로는 해상도 스윕이 불가능했음(실측: val@1024/1280/1536 opts를 다르게 줘도
+Augmentations 로그의 new_h/new_w 가 전부 1024로 동일, mIoU 도 세 번 다 62.8927로 동일 — CAFuser(b)).
+
+패치는 두 단계로 구성된다(2단계는 1단계 적용 직후 같은 날 발견·보강):
+
+1단계: DATASETS.DELIVER.EVAL_SIZE(기본 1024, --opts로 조절 가능) 를 새로 읽게만 바꾼다.
+  elif cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
+      _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
+      augs = [T.ResizeTransform(1042,1042,_eval_size,_eval_size, interp)]
+
+2단계(중요 — 1단계만으로는 val@1280/1536 가 조용히 틀린 값을 낸다):
+  두 매퍼(__call__) 안에 아래처럼 postprocess 목표 height/width 를 1024로 하드코딩하는 줄이 또 있었다.
+      dataset_dict['height'] = 1024
+      dataset_dict['width'] = 1024
+  이 줄은 1단계 리사이즈 분기와 별개로 존재하고, sem_seg_postprocess(dgfusion.py:440/449 부근)가
+  "모델 출력 -> 이 height/width로 보간"하는 목표값이다. 1단계만 적용한 채 EVAL_SIZE=1280 으로 추론하면,
+  실제 추론은 1280 해상도로 되지만 postprocess 단계가 여전히 1024로 되돌려버려서(다운샘플) 셰이프
+  불일치 에러 없이 "1280 추론 후 조용히 1024로 재다운샘플"된 숫자가 나온다 — 해상도 스윕 전제 자체가
+  무효화되는 silent-corruption 버그. 1단계만 커밋한 상태에서 재현 게이트(test@1024, EVAL_SIZE 미지정)는
+  우연히 1024==1024라서 통과하지만, 그 통과가 1280/1536 에 대해서도 안전하다는 증거는 되지 못한다.
+  2단계 패치는 하드코딩 대신 실제 리사이즈 생성기(self.tfm_gens[0])의 new_h/new_w 를 읽게 바꾼다
+  (detectron2 ResizeTransform 의 표준 속성, getattr 기본값 1024 유지로 CMNEXT_EQUIVALENT_EVAL=False
+  분기에서도 안전):
+      dataset_dict['height'] = getattr(self.tfm_gens[0], 'new_h', 1024)
+      dataset_dict['width'] = getattr(self.tfm_gens[0], 'new_w', 1024)
+
+기본값(EVAL_SIZE 미지정=1024)에서는 1단계·2단계 모두 패치 전후 동일한 리사이즈(1024,1024)·동일한
+postprocess 목표(1024,1024)를 만든다 — 재현 게이트가 통과해야 할 이유.
+
+부수 확인(생각정리 질의 — 기준선이 1042 네이티브 GT로 되돌려 채점하는지):
+  dgfusion.py:434-440 의 height/width 는 input_per_image.get("height"/"width", ...) 에서 오고,
+  그 값은 매퍼가 바로 위에서 설명한 하드코딩(1024, 2단계 패치 후에는 EVAL_SIZE)으로 채워 넣은 값이다
+  (원본 1042 가 아니다). 즉 기준선 평가는 "모델 출력 -> EVAL_SIZE(과거엔 1024 고정) 해상도로
+  postprocess -> 같은 해상도로 미리 다운샘플된 GT와 채점"이며, 우리 legal 프로토콜(항상 네이티브 GT
+  해상도로 되돌려 채점)과는 축이 다르다 — 기준선 수치를 우리 legal 수치와 직접 비교할 때 이 차이를
+  감안해야 한다(판정은 생각정리 몫, 여기서는 코드 사실만 보고).
+
+1) lecun /SSDb/jemo_maeng/dgfusion_eval/DGFusion/cafuser/config.py
+   패치 전 4054c3d691d391e021509417554ec766
+   패치 후 bcefe96e6e98ee838fe2823e23b86d7d (1단계에서 이미 확정, 2단계는 이 파일 미변경)
+
+2) lecun /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py
+   패치 전 2e38e3198ed7b94a099502f1c7b73c1a
+   1단계 후  e921b7e3791678b54155863ece31808e
+   2단계 후(최종) 143be3383e6cb37854f15cafdb2820b1
+
+3) lecun /SSDb/jemo_maeng/cafuser_train/cafuser/config.py
+   패치 전 4054c3d691d391e021509417554ec766 (DGFusion 체크아웃과 byte 동일 파일)
+   패치 후 bcefe96e6e98ee838fe2823e23b86d7d (동일 패치라 패치 후도 byte 동일)
+
+4) lecun /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py
+   패치 전 67df2702c41905b2bbf1c3b70a2dd704
+   1단계 후  cd2f62d9df075b7ed0640c54bbd6a1a6
+   2단계 후(최종) 7268239381de41b5a7ad99c5d524a9a2
+
+원본 백업: 각 파일 옆에 .orig 로 보존(lecun 로컬, repo 에는 포함 안 함) — 2단계 패치도 같은 .orig 기준.
+
+[3단계 패치 2026-10-16] val@1280/1536 실제 스윕 중 발견된 세 번째 하드코딩 — 1·2단계 패치로 모델
+예측쪽(리사이즈+postprocess 목표)은 EVAL_SIZE를 따르게 됐지만, GT 쪽이 별도 경로로 여전히 1024에
+고정돼 있어 "pred=1280×1280 vs gt=1024×1024" shape mismatch(ValueError)로 즉시 크래시했다
+(세 모델 config/매퍼와는 독립된 셋째 지점: 평가기 빌드 함수 `create_deliver_gt_sem_seg_loading_fn()`,
+DGFusion은 `test_net.py`, CAFuser(b)는 `train_net.py --eval-only` 안에 정의돼 있고, GT 로딩마다
+`Image.fromarray(array).resize((1024,1024), ...)`로 하드코딩돼 있었다). 이 함수도 동일하게
+`EVAL_SIZE` getattr로 바꿈. 두 파일 모두 repo 밖(third_party로 복사해 둔 사본이 없는 원본)이라
+.orig 백업 없이 바로 수정했다 — 아래 md5만 기록.
+
+  5) lecun /SSDb/jemo_maeng/dgfusion_eval/DGFusion/test_net.py
+     3단계 패치 후 073647c71ae61d0c5d4475626ff76bfa (패치 전 md5 미보존)
+
+  6) lecun /SSDb/jemo_maeng/cafuser_train/train_net.py
+     3단계 패치 후 27dce0f8fb6d66ba1e8313a6a8a5867e (패치 전 md5 미보존)
+
+재현 게이트(패치 후 EVAL_SIZE 미지정=기본 1024로 재실행, 기존 재현값과 소수 넷째자리까지 일치 확인)는
+3단계까지 반영한 코드로 재실행해야 한다 — GT 리사이즈 함수를 건드렸으므로 기존 1·2단계만의 통과
+기록(56.7293/55.7907)은 3단계 patch 전 시점의 것이라 재검증 필요.

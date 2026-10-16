@@ -1,0 +1,75 @@
+--- /SSDb/jemo_maeng/dgfusion_eval/DGFusion/cafuser/config.py.orig	2026-10-15 23:17:59.862507017 +0900
++++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/cafuser/config.py	2026-10-15 23:18:29.991272446 +0900
+@@ -274,3 +274,4 @@
+
+     # The DeLiVER codebase (https://github.com/jamycheung/DELIVER) evaluates on an 1024x1024 image
+     cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL = True
++    cfg.DATASETS.DELIVER.EVAL_SIZE = 1024
+--- /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py.orig	2026-10-15 23:19:01.516072045 +0900
++++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/dgfusion/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:29:39.832073612 +0900
+@@ -122,7 +122,8 @@
+                 augs.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
+             augs.append(T.RandomFlip())
+         elif cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
+-            augs = [T.ResizeTransform(1042,1042,1024,1024, interp)]
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
++            augs = [T.ResizeTransform(1042,1042,_eval_size,_eval_size, interp)]
+         else:
+             augs = []
+
+@@ -303,9 +304,9 @@
+                     else:
+                         modality_images[modality] = transforms.apply_segmentation(modality_images[modality])
+         if not self.is_train and self.tfm_gens:
+-            # need to set width and height acordingly for evaluating on the 1024 results:
+-            dataset_dict['height'] = 1024
+-            dataset_dict['width'] = 1024
++            # need to set width and height according to the actual eval resize target (not hardcoded 1024):
++            dataset_dict['height'] = getattr(self.tfm_gens[0], 'new_h', 1024)
++            dataset_dict['width'] = getattr(self.tfm_gens[0], 'new_w', 1024)
+
+         if self.depth_on and not self.is_train:
+             dataset_dict["gt_depth"] = modality_images.pop("gt_depth").squeeze(2)
+--- /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py.orig	2026-10-15 23:19:36.392955210 +0900
++++ /SSDb/jemo_maeng/cafuser_train/cafuser/data/dataset_mappers/deliver_semantic_dataset_mapper.py	2026-10-15 23:29:54.432436915 +0900
+@@ -111,7 +111,8 @@
+                 augs.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
+             augs.append(T.RandomFlip())
+         elif cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
+-            augs = [T.ResizeTransform(1042,1042,1024,1024, interp)]
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
++            augs = [T.ResizeTransform(1042,1042,_eval_size,_eval_size, interp)]
+         else:
+             augs = []
+
+@@ -280,9 +281,9 @@
+                     else:
+                         modality_images[modality] = transforms.apply_segmentation(modality_images[modality])
+         if not self.is_train and self.tfm_gens:
+-            # need to set width and height acordingly for evaluating on the 1024 results:
+-            dataset_dict['height'] = 1024
+-            dataset_dict['width'] = 1024
++            # need to set width and height according to the actual eval resize target (not hardcoded 1024):
++            dataset_dict['height'] = getattr(self.tfm_gens[0], 'new_h', 1024)
++            dataset_dict['width'] = getattr(self.tfm_gens[0], 'new_w', 1024)
+
+         if is_panoptic:
+             # apply the same transformation to panoptic segmentation
+--- /SSDb/jemo_maeng/dgfusion_eval/DGFusion/test_net.py (3단계 패치 2026-10-16, .orig 백업 없음 — md5 기록 참조)
++++ /SSDb/jemo_maeng/dgfusion_eval/DGFusion/test_net.py
+@@ create_deliver_gt_sem_seg_loading_fn() 내부 @@
+         if cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
+             array = array.astype(np.uint8)
+-            array = np.array(Image.fromarray(array).resize((1024,1024), Image.NEAREST), dtype=dtype)
++            array = np.array(Image.fromarray(array).resize((_eval_size,_eval_size), Image.NEAREST), dtype=dtype)
+         return array
+--- /SSDb/jemo_maeng/cafuser_train/train_net.py (3단계 패치 2026-10-16, 동일 함수·동일 변경)
++++ /SSDb/jemo_maeng/cafuser_train/train_net.py
+@@ create_deliver_gt_sem_seg_loading_fn() 내부 @@
+         if cfg.DATASETS.DELIVER.CMNEXT_EQUIVALENT_EVAL:
++            _eval_size = getattr(cfg.DATASETS.DELIVER, "EVAL_SIZE", 1024)
+             array = array.astype(np.uint8)
+-            array = np.array(Image.fromarray(array).resize((1024,1024), Image.NEAREST), dtype=dtype)
++            array = np.array(Image.fromarray(array).resize((_eval_size,_eval_size), Image.NEAREST), dtype=dtype)
+         return array
