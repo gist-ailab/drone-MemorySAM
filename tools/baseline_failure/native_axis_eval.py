@@ -80,10 +80,11 @@ def main():
     class _A:
         config_file = args.config_file
         # 기본 opts 먼저, 사용자 --opts 를 뒤에 붙여 사용자가 이기게 한다.
+        # MODEL.TEST.DEPTH_ON 은 DGFusion cfg 에만 있고 CAFuser(b) cfg 에는 없는 키라
+        # 기본값에 넣지 않는다 — 필요하면 호출 쪽에서 --opts MODEL.TEST.DEPTH_ON False 로 넘긴다.
         opts = ["MODEL.WEIGHTS", args.weights,
                 "MODEL.IS_TRAIN", "False",
                 "DATASETS.TEST_SEMANTIC", f"('deliver_semantic_{args.split}',)",
-                "MODEL.TEST.DEPTH_ON", "False",
                 "DATASETS.DELIVER.EVAL_SIZE", str(eval_size),
                 "OUTPUT_DIR", str(out_dir / "_d2log")] + list(args.opts)
         eval_only = True
