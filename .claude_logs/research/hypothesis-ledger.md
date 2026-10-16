@@ -1,13 +1,14 @@
 ---
 created: 2026-08-08
 author: fable (MMSAM discussion 세션)
+revised: 2026-10-16 — 판정 정본을 lab-plan으로 일원화. H 표는 동결 이력, 열린 문제는 lab:problems 생성 블록
 ---
 
-# 가설 원장 (Hypothesis Ledger) — canonical
+# 가설 원장 (Hypothesis Ledger)
 
-> **역할**: 계보 전체(P1~P48)에서 제기된 가설의 **검증 수단·판정·근거를 한 표로 유지**하는 단일 출처.
-> 새 모델을 제안하기 전 **반드시 이 표를 확인** — ✗ 판정 가설의 재제안 금지, ⚠️ 미결 가설은 재판정 절차부터.
-> 논문 Table(ablation/analysis 구성)의 뼈대이기도 하다. 갱신 규칙: 판정이 바뀌면 행을 덮어쓰고 근거 링크를 교체(이력은 근거 문서에 남는다).
+> **역할(2026-10-16 개정)**: 계보 전체(P1~P48)에서 제기된 가설의 검증 수단·판정·근거를 모은 **동결 이력 표**와, `lab-plan`의 문제(PRB)를 보여 주는 **생성 화면**이다. 판정의 정본은 `lab-plan`이다(SPEC-cycle §1).
+> 새 모델을 제안하기 전 **반드시 이 표를 확인** — ✗ 판정 가설의 재제안 금지, ⚠️ 미결 가설은 재판정 절차부터. 논문 Table(ablation/analysis 구성)의 뼈대이기도 하다.
+> 갱신 규칙: 아래 H 표는 2026-10-16 상태로 동결하고 행을 덮어쓰지 않는다. 새 가설·문제는 `lab-plan problem add`로 등록하고, 판정은 `lab-plan verdict`로 남긴다. 파일 끝 `lab:problems` 블록은 도구가 다시 쓴다(손편집 금지). 미결(⚠️) H 행을 다시 판정하려면 `lab-plan problem add … --source .claude_logs/research/hypothesis-ledger.md`로 PRB를 등록한다(이 표의 행은 고치지 않는다).
 
 ## 판정 표
 
@@ -63,3 +64,9 @@ author: fable (MMSAM discussion 세션)
 7. **논문 서사**: ①상호작용 실재(H5) → ②적응 기제 전 수준 실패 + oracle 상계(H1~H4) → ③작동하는 것은 표현+학습신호(H6~H8), 단 표현력은 L 근방에서 포화(H12) → ④두 벤치 (근)SOTA + 정직한 스코프 공개(대형 백본 전제, H12′). 실패가 서사의 증거가 되는 구조.
 
 관련: [novelty-and-related-work.md](novelty-and-related-work.md)(노벨티 canonical) · SOTA 진단 artifact "MemorySAM — SOTA까지 무엇으로 가는가"(2026-08-08) · [decisions/2026-08-08-condexpert-adapter-probe-proposal.md](../decisions/2026-08-08-condexpert-adapter-probe-proposal.md)
+
+<!-- lab:problems:begin -->
+| PRB | 제목 | 상태 | 정량 근거 요약 | 연결 항목 | 결정 |
+| --- | --- | --- | --- | --- | --- |
+| PRB-DRN-261016-01 | 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계 | testing | Q2 test@1024 Pole 54.8 vs DGFusion 58.7·CAFuser 59.6; 두께 0.25~0.5 패치 '찾았지만 못 그림' .445 vs 기준선 .26; 평가 1536 에서 Pole 59.3·Pedestrian 81.6(기준선 역전) | DRN-261012-01, DRN-261012-02, DRN-261016-01, DRN-261016-02, DRN-261016-03 | - |
+<!-- lab:problems:end -->

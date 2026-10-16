@@ -2,6 +2,7 @@
 created: 2026-09-18
 author: opus 서브에이전트(판정 세션 "MMSAM | 생각정리" 의뢰) — 출처는 seg-analysis 스킬·tools/README_seg_analysis.md·카드 §0/§0-1/§0-2/§5-31b/§5-34·status/current.md·infra/artifact-locations.md·각 도구 docstring
 status: 상시 규약. 분석 세션은 세션 시작 직후 이 문서 하나를 끝까지 읽고 그대로 따른다.
+revised: 2026-10-16 — 전역 작업 사이클 계약(~/lab-status/SPEC-cycle.md) 정합: 판정 위치(lab-plan verdict), 보고 수단(lab-inbox), 분석 문서 위치(tasks/<항목 id>/analysis.md). 측정 절차(§1~§3, §6)는 바꾸지 않았다.
 ---
 
 # 분석 세션 프로토콜 — 새 체크포인트를 받았을 때 무엇을 재고, 어떻게 보고하는가
@@ -19,11 +20,11 @@ status: 상시 규약. 분석 세션은 세션 시작 직후 이 문서 하나�
 | 분석 세션이 한다 | 분석 세션이 하지 않는다 |
 |---|---|
 | 측정(재채점·조건별·클래스별·모듈 진단·결측 모달) | **판정**(카드 통과/폐기, 게이트 통과 선언, 헤드라인 교체, SOTA 돌파 주장) |
-| 집계(Δ 표 작성, 24클래스 재계산, 시드 평균) | 정본 문서의 수치 변경 — `status/current.md` 헤드라인 절, 카드 문서 §5 판정 행 |
-| 기록(`experiments/analysis/` 문서 작성, MOC 등록, registry 행 갱신) | 노션 실험노트·논문 페이지 갱신(판정 세션 승인 후) |
+| 집계(Δ 표 작성, 24클래스 재계산, 시드 평균) | 정본 기록 변경 — `lab-plan verdict`, `status/current.md` 헤드라인 절, `experiments/headline.yaml` |
+| 기록(`tasks/<항목 id>/analysis.md` 작성, MOC 등록, registry 행 갱신, `lab-plan status <id> judging`) | 노션 실험노트·논문 페이지 갱신(notion 역할 소관) |
 | 보고(판정 세션에 고정 형식으로 전달) | 다음 실험 설계·모델 제안(`model-proposal` 스킬, 판정 세션 소관) |
 
-**판정은 판정 세션("MMSAM | 생각정리")이 한다.** 분석 세션은 "이 수치가 게이트 X를 넘었는지"를 계산해 보여 줄 수 있지만, "그러므로 통과/폐기"라고 쓰지 않는다. 판정 세션의 회신을 받은 뒤에 그 문장을 그대로 분석 문서의 "판정" 절에 옮겨 적는다(§5-3).
+**판정은 method 세션("MMSAM | 생각정리")이 `lab-plan verdict <id> --analysis <이 분석 문서>`로 한 곳에 남긴다.** 분석 세션은 "이 수치가 게이트 X를 넘었는지"를 계산해 보여 줄 수 있지만, "그러므로 통과/폐기"라고 쓰지 않는다. 판정 문장은 분석 문서에 옮겨 적지 않고 항목 id로 링크한다(§5-3).
 
 **결정이 필요한데 판정 세션의 회신을 기다릴 수 없으면, 가장 보수적인 선택으로 진행하고 그 선택과 근거를 보고의 "막힘 / 판단 필요"에 남긴다.** 보수적인 선택의 예: 두 프로토콜 중 어느 쪽을 쓸지 모르면 둘 다 돌려 병기한다. 체크포인트 선택 규칙이 애매하면 학습기 val-best(top1)를 쓰고 다른 후보는 각주로 적는다.
 
@@ -408,8 +409,8 @@ RBMA/CoRB attn-bias(4세대 무효) · reliability gate/calib/veto(3세대 no-op
 
 ### 4-4. 문서 (repo — 여기가 정본이다)
 
-**파일명**: `.claude_logs/experiments/analysis/YYYY-MM-DD-<벤치>-<런>-<주제>.md`
-(예: `2026-09-18-muses-official-test-p39_1-seed20260825.md`, `2026-09-18-baseline-failure-d3-test-findings.md`)
+**파일 위치(2026-10-16 개정)**: 분석 대상 run 이 `lab-plan` 항목에 연결돼 있으면 `.claude_logs/tasks/<항목 id>/analysis.md`(SPEC-cycle §3 작업 폴더). 측정 경과는 같은 폴더 `log.md`에 append한다. 항목이 없는 측정(사후 진단 등)만 예전처럼 `.claude_logs/experiments/analysis/YYYY-MM-DD-<벤치>-<런>-<주제>.md`에 쓰고, 항목을 찾지 못했다는 사실을 보고에 적는다.
+(옛 예: `2026-09-18-muses-official-test-p39_1-seed20260825.md`, `2026-09-18-baseline-failure-d3-test-findings.md` — 기존 문서는 그대로 보존한다)
 
 **절 구성**(기존 분석 문서와 같게):
 
@@ -432,24 +433,25 @@ type: <한 줄 — 무엇을 잰 분석인가>
 ## 6. 판독             (무엇이 움직였고 무엇이 안 움직였나 — 해석이지 판정이 아니다)
 ## 7. 무효·미확인 수치 (버린 값과 버린 이유, 재지 못한 항목)
 ## 8. 원본 위치        (ckpt+md5 / 산출물 NAS 경로 / 로그 / 제출 zip+md5)
-## 9. 판정             (판정 세션 회신을 받은 뒤 그대로 옮겨 적는다. 그 전에는 "판정 대기")
+## 9. 판정             (옮겨 적지 않는다. "판정 = `lab-plan show <항목 id>`" 한 줄만 둔다)
 ```
 
 **등록**(같은 턴에 한다):
 
+0. 연결된 항목이 있으면 `lab-plan status <항목 id> judging --via "<세션 이름>"`(결과가 붙었는데 아직 evaluating 이면).
 1. `.claude_logs/experiments/00_MOC.md` 의 "analysis/ 전체 목록" 표 **맨 위**에 행 추가(날짜 역순). 한 줄 설명은 결론을 담는다 — 제목 반복 금지. (analysis 폴더에는 별도 `00_MOC.md` 가 없다. 등록처는 `experiments/00_MOC.md` 다.)
 2. `.claude_logs/experiments/registry.md` 의 해당 벤치 표에 행 추가 또는 갱신. 열 = `실험ID(config명) | 트랙 | 데이터셋 | 모델버전 | config 경로 | 서버 | ckpt 경로 | 상태 | 핵심 수치 | 관련 문서`. 분석 행은 트랙에 `seg-analysis` 를 쓰고 실험ID 를 `**ANALYSIS: <주제> (<서버>)**` 형식으로 적는다. 상태 = 🟢 best / 🟡 active / 🔴 dead / ✅ 완료. **데이터셋 칸에 3모달/4모달 명시.**
 3. 서사가 필요하면 `.claude_logs/experiments/log.md` 에 추가(결과 canonical).
-4. `status/current.md` 는 **판정 세션 승인 후에만** 건드린다.
-5. 노션(실험노트 DB `8ec54838-…`, 논문 페이지 `33d05310-…`)도 **판정 세션 승인 후**. 방법은 `.claude/skills/notion-experiment-log/SKILL.md` — 페이지를 새로 만들지 말고 절 함수를 고쳐 빌더를 돌린다(멱등).
+4. `status/current.md` 의 헤드라인·결과 절은 **판정이 `lab-plan`에 기록된 뒤에만** 건드린다.
+5. 노션(실험노트 DB `8ec54838-…`, 논문 페이지 `33d05310-…`)은 분석 세션이 건드리지 않는다. 판정 후 method 세션이 notion 역할에 `notion_sync`를 보낸다.
 
 ---
 
-## 5. 보고 — 판정 세션에 무엇을 어떻게 보내나
+## 5. 보고 — method(판정) 세션에 무엇을 어떻게 보내나
 
 ### 5-1. 전달 방법
 
-`SendMessage` 로 판정 세션 **"MMSAM | 생각정리"** 에 보낸다. 판정 세션이 그대로 supervisor 에게 넘길 수 있는 형태로 쓴다.
+`lab-inbox send --to method --type analysis_report --ref <항목 id>` 로 보낸다(2026-10-16 개정, 기록은 inbox만). 본문은 §5-2 고정 형식 + 분석 문서 경로. method 세션이 그대로 supervisor 에게 넘길 수 있는 형태로 쓴다. `SendMessage` 는 측정 중 실시간 질문에만 쓰고, 그것만으로 보고를 끝내지 않는다.
 
 ### 5-2. 고정 형식
 
@@ -500,9 +502,11 @@ type: <한 줄 — 무엇을 잰 분석인가>
 
 ### 5-3. 회신을 받으면
 
-1. 판정 문장을 분석 문서 §9 "판정" 절에 **그대로** 옮겨 적는다(요약·윤색 금지).
+판정은 method 세션이 `lab-plan verdict` 로 남기며, 회신은 inbox 로 온다.
+1. 분석 문서 §9 에는 판정 문장을 옮기지 않는다("판정 = `lab-plan show <항목 id>`" 한 줄 유지).
 2. `experiments/registry.md` 의 상태 셀을 바꾼다(🟡 active → ✅ 완료 / 🔴 dead 등).
-3. 판정이 헤드라인·정본 수치를 바꾸는 것이면 `status/current.md` 갱신과 노션 동기화를 **같은 날** 한다(CLAUDE.md §3 상시규칙).
+3. 판정이 헤드라인·정본 수치를 바꾸는 것이면 `status/current.md` 갱신은 같은 날 한다. 노션 동기화는 method 세션이 notion 역할에 요청한다(CLAUDE.md §3).
+4. 분석에서 풀어야 할 문제가 보이면 `lab-plan problem add … --status candidate` 로 등록한다(역할 카드 analysis "사이클 기록").
 
 ---
 
@@ -539,15 +543,15 @@ $PY -c "import json;print(json.dumps(json.load(open('/tmp/jemo_scratch/muses_off
 rsync -rt --no-perms --no-owner --no-group hpca100:/tmp/jemo_scratch/muses_official_<RUN>/ \
   /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/<RUN>_eval_<YYYYMMDD>/report/
 
-# 6) (test 제출은 user·판정 세션 승인 후에만) 예측 PNG 생성 -> 규격 검사 -> zip 보관
+# 6) (test 제출은 user 승인 후에만) 예측 PNG 생성 -> 규격 검사 -> zip 보관
 $PY tools/predict_muses_test.py --cfg configs/<...>.yaml --ckpt <CKPT> --gpu <FREE> --out <OUT>/labelTrainIds
 $PY tools/verify_submission.py <OUT>/labelTrainIds <MUSES_TEST_RGB_DIR>
 
 # 7) 문서 작성 + 등록 (허브, repo 안에서)
-#    analysis/YYYY-MM-DD-muses-official-<run>.md -> experiments/00_MOC.md 행 -> registry.md 행
+#    tasks/<항목 id>/analysis.md (항목 없으면 analysis/YYYY-MM-DD-muses-official-<run>.md) -> experiments/00_MOC.md 행 -> registry.md 행
 #    -> (test 제출했으면) MUSES_TEST_RESULTS_INDEX.md 행
 
-# 8) 판정 세션에 §5-2 네 표로 보고 (SendMessage)
+# 8) method 세션에 §5-2 네 표로 보고 (lab-inbox send --to method --type analysis_report --ref <항목 id>)
 ```
 
 ### 6-2. DELIVER 새 체크포인트 하나를 받았을 때 (jarvis 예시)
@@ -592,7 +596,7 @@ python tools/module_diagnostics.py --cfg configs/deliver/<TRAINCFG>.yaml --model
   --dataset-root /SSDb/jemo_maeng/dset/DELIVER --conditions cloud,fog,night,rain,sun \
   --split test --max-imgs 120 --ablate-n 20 --gpu <FREE> --out <OUT>/modulediag
 
-# 8) 산출물·ckpt NAS 회수(md5 대조) -> 문서 작성 -> 00_MOC·registry 등록 -> 판정 세션 보고
+# 8) 산출물·ckpt NAS 회수(md5 대조) -> 문서 작성 -> 00_MOC·registry 등록 -> method 세션 보고(lab-inbox)
 ```
 
 ---

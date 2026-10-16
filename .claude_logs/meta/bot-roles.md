@@ -2,7 +2,10 @@
 legacy_id: 09
 legacy_file: 09_bot_roles_guide.md
 moved: 2026-07-08
+archived: 2026-10-16
 ---
+
+> 🗄 **보관: 2026-10-16부터 `meta/roles.md`·역할 카드(`~/.claude/lab-roles/`)가 대신한다.** 이 문서는 역할 판별에 쓰지 않는다. 아래 "세션 중 로깅"의 기록 위치(`02_model_arch.md`·`03_experiment_log.md`·`04_issues_and_fixes.md` 등)는 폐지된 옛 경로이므로 따르지 않는다. 기록 위치는 `~/lab-status/SPEC-cycle.md`와 `meta/roles.md`를 따른다.
 
 # Bot Roles Guide — 세션 역할 부여 가이드
 

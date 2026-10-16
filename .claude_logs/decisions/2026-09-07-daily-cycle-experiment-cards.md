@@ -186,7 +186,7 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 ## 3. 실행 절차 (매일)
 
 1. 아침: 전날 스크린 결과를 `val.py`로 재채점 → 카드 표에 Δtest 기입 → 통과/폐기.
-2. 통과 카드는 확정 큐(200ep 3페어)로, 폐기 카드는 원장에 1줄.
+2. 통과 카드는 확정 큐(200ep 3페어)로, 폐기 카드는 `lab-plan verdict`로 기록(2026-10-16 개정, 옛 방식 = 원장에 1줄).
 3. 빈 GPU에 다음 카드 기동(sonnet: `remote_exp.sh status` → `run ... auto:N`, 기동 검증 5항목). **환경변수 `PYTHONUNBUFFERED=1` 필수** — tee 파이프 시 파이썬 stdout 블록 버퍼링으로 `[E2] lora_targets=…` 같은 1회성 기동 로그가 flush 전까지 로그 파일에 안 보인다(2026-09-07 hpca100 E2·bengio E0 실측). `remote_exp.sh`가 git을 부르는 환경(worktree 격리 세션)에서는 `ssh <host>` 직접 실행.
    1일차 실측 속도: DELIVER 40ep — bengio 3090×4 ≈12.5분/ep(8.3h), 3090×2 ≈26분/ep(17.5h), hpca100 A100×2 ≈22분/ep(14.8h) · MUSES 40ep — A100×1 ≈14.5분/ep(9.7h).
 4. 구현 워커: 카드별 지시문을 이 문서에서 복사해 `labcode -p` / `glmcode -p`로 위임, 이 세션이 diff 검수 + 스모크(기본 off byte-동일).
@@ -258,7 +258,8 @@ MUSES 공통 상승: DELIVER 스크린 통과 카드를 MUSES 3센서(PhysAug of
 - MCubeS 로더는 test split을 'val'로 읽으므로 트레이너 val-best 선택이 test-best와 동치 → **final-epoch 값을 판정 기준**, val-best는 병기만.
 - 기동 검증: TAPS 덤프 `[6,12,18,24] per_modal`, (E13Mc) `SRC: permodal`와 `[C3-M]` 로그에 네 센서(image·aolp·dolp·nir) 손실이 모두 찍히는지, `fix_seeds(<시드>)`, RANDOM INIT 없음, 진행 표시줄.
 
-- 🔴 **새 판정 등록 규칙(2026-09-18, §5 주 단위 분할과 함께 신설)**: 2026-09-18 이후 새 판정은 번호를 부여하지 않고 해당 주 파일(`cards/2026-Www-verdicts.md`)에 `### YYYY-MM-DD <주제> — <결론 한 줄>` 제목으로 **최하단 append** 한다. 주 파일이 없으면 만들고 `decisions/00_MOC.md` 에 등록한다. 상위 문서에는 '최신 판정 3개' 링크만 갱신한다.
+- 🔴 **2026-10-16 개정**: 새 판정은 이 문서·`cards/`에 append하지 않는다. method 세션이 `lab-plan verdict <id> --analysis .claude_logs/tasks/<id>/analysis.md`로 기록한다(SPEC-cycle §4). 아래 2026-09-18 규칙은 그날까지의 기록 방식으로 보존한다. §0~§4의 판정 규약은 계속 유효하다.
+- (보존) **새 판정 등록 규칙(2026-09-18, §5 주 단위 분할과 함께 신설)**: 2026-09-18 이후 새 판정은 번호를 부여하지 않고 해당 주 파일(`cards/2026-Www-verdicts.md`)에 `### YYYY-MM-DD <주제> — <결론 한 줄>` 제목으로 **최하단 append** 한다. 주 파일이 없으면 만들고 `decisions/00_MOC.md` 에 등록한다. 상위 문서에는 '최신 판정 3개' 링크만 갱신한다.
 
 ## 4.5 체크포인트 보존 대장 (2026-09-09~10, user 승인: "보존 완료된 체크포인트는 지워도 괜찮아")
 

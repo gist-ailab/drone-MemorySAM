@@ -141,5 +141,4 @@ ssh <서버> "md5sum <절대경로>"    # MANIFEST 5열과 같아야 한다
 | lecun | 93% | 92G | `dset/poongsan_v2_yolo_rgb_modal`(3.4G) | miniconda 67G, pip 18G |
 | levine | 44% | 80G | `jemo_maeng/`(45G: dset 27G, src 18G — Amphibious rNs 출력이 10-15에도 쓰임) | miniconda 22G, 캐시 9.5G |
 | gyuri | 34% | 64G | 없음 | anaconda 40G, cursor-server 15G |
-| drone-demo | 77% | 공용 계정 | `workspace/jemo_maeng`(90G) — 나머지 1T는 다른 사용자(sangmin_park 등) | — |
 | hpca100 | 컨테이너 홈 45% | 12G | 없음(작업은 `~/SSDb` wekafs) | — |

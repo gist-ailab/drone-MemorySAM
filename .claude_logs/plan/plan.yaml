@@ -9127,10 +9127,31 @@ items:
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
+  updated: '2026-10-15'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: test
+    metric: mIoU
+    value: 56.32
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: test
+    metric: mAcc
+    value: 66.7
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: val
+    metric: mIoU
+    value: 69.44
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: val
+    metric: mAcc
+    value: 78.8
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -12129,13 +12150,13 @@ items:
     약 9시간
   priority: 15
   owner_role: manager
-  status: queued
+  status: running
   tags:
   - deliver
   - q2
   - ablation
   created: '2026-10-05'
-  updated: '2026-10-05'
+  updated: '2026-10-16'
   closed: null
   runs: []
   results: []
@@ -12172,7 +12193,7 @@ items:
   - resolution
   - A1
   created: '2026-10-12'
-  updated: '2026-10-15'
+  updated: '2026-10-16'
   closed: '2026-10-15'
   runs: []
   results: []
@@ -12186,6 +12207,7 @@ items:
     by: jemo
   analysis: null
   superseded_by: null
+  problem: PRB-DRN-261016-01
 - id: DRN-261012-02
   title: A2 · 고해상 경로(SPM conv 스템 + deformable extractor, injector 없음) — 1024 유지, Q2
     레시피 40ep 스크린 2시드
@@ -12216,11 +12238,142 @@ items:
   - thin-class
   - adapter
   - A2
+  docs: .claude_logs/tasks/DRN-261012-02
   created: '2026-10-12'
-  updated: '2026-10-15'
+  updated: '2026-10-16'
   closed: null
   runs: []
   results: []
   verdict: null
   analysis: null
   superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261016-01
+  title: 기준선 평가 해상도 반응(원본 1042 GT 축) — DGFusion 공식·CAFuser(b) val@1024/1280/1536 +
+    선택 해상도 test
+  question: 평가 해상도를 val 로 고르는 규칙을 기준선에도 적용하면 격차가 유지되는가(우리 E1·Q2 는 1536 에서 test +1.2~1.5)
+  hypothesis: null
+  falsification: null
+  change: null
+  baseline: null
+  configs:
+  - lecun native_axis_eval.py, analysis_logs/native_axis_baseline_20261016/
+  launch: null
+  success_criteria: 같은 규칙(원본 GT·val 선택 해상도) 비교표 확정; 기준선 1024 재현 ±0.1(DGFusion 56.73·CAFuser(b)
+    55.79)
+  sample_basis: null
+  expected_cost: null
+  priority: 1
+  owner_role: method
+  status: done
+  kind: analysis
+  tags:
+  - deliver
+  - resolution
+  - baseline
+  - fairness
+  docs: .claude_logs/tasks/DRN-261016-01
+  created: '2026-10-16'
+  updated: '2026-10-16'
+  closed: '2026-10-16'
+  runs: []
+  results: []
+  verdict:
+    decision: adopt
+    summary: '같은 규칙(원본 1042 GT·val 선택 해상도 1536) 비교 확정: 1024 재현 ±0.02 통과. 기준선은 val
+      이 1536 을 고르지만 test 하락(DGFusion 56.71→55.57, CAFuser(b) 55.77→55.60), 우리는 상승(E1
+      56.24→57.48, Q2 56.59→58.12). val 선택 규칙에서 Q2 +2.55 vs DGFusion. 해상도 이득은 우리 구조에만
+      일반화 — 프로토콜 결과이지 노벨티 아님, 헤드라인 규칙 변경은 user 결정'
+    date: '2026-10-16'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261016-01/analysis.md
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261016-02
+  title: MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선
+    0.95배 정렬)
+  question: MUSES 에서 우리 추론이 기준선 절반 해상도였던 것을 맞추면 공식 val 이 오르는가, 오르면 그 해상도로 test 제출본
+  hypothesis: null
+  falsification: null
+  change: null
+  baseline: null
+  configs:
+  - tools/eval_muses_official.py + EVAL.IMAGE_SIZE 파생 config
+  launch: null
+  success_criteria: 3시드 공식 val 표; val 선택 해상도 결정; 1024 1개 시드 재현 ±0.05
+  sample_basis: null
+  expected_cost: null
+  priority: 2
+  owner_role: method
+  status: running
+  kind: analysis
+  tags:
+  - muses
+  - resolution
+  docs: .claude_logs/tasks/DRN-261016-02
+  created: '2026-10-16'
+  updated: '2026-10-16'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261016-03
+  title: 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048)
+  question: Q1 이득은 어떤 클래스·물체 두께에서 나오나(MUSES 도 DELIVER 처럼 패치 이하 얇은 성분인가) Q2 같은 해상도
+    상향에서 DGFusion(+0.87)이 우리(E1 +1.56)보다 덜 오르는 이유가 같은 클래스·두께 구간 차이인가 Q3 MUSES 2048
+    에서 야간만 −3~4 떨어지는 원인(클래스·두께·조건 중 어디)
+  hypothesis: null
+  falsification: null
+  change: null
+  baseline: null
+  configs:
+  - 'tools/baseline_failure/thin_error_anatomy.py, tools/eval_muses_official.py(report.json
+    조건별·클래스별), DELIVER 덤프: DGFusion 공식 1024/1536 원본 GT 축 예측(native_axis_eval 산출)'
+  launch: null
+  success_criteria: 'Q1·Q2: 클래스별 Δ표 + 두께 구간별 ''찾음률/찾았지만 못 그림'' Δ표(1024→1536)로 이득의
+    70% 이상이 설명되는 구간을 특정. Q3: 2048 야간 하락의 클래스별 분해로 상위 3클래스가 하락의 절반 이상인지. 모두 기존 도구(thin_error_anatomy·eval_muses_official
+    조건별 hist) 재사용, 새 학습 없음'
+  sample_basis: null
+  expected_cost: null
+  priority: 2
+  owner_role: method
+  status: running
+  kind: analysis
+  tags:
+  - deliver
+  - muses
+  - resolution
+  - analysis
+  docs: .claude_logs/tasks/DRN-261016-03
+  created: '2026-10-16'
+  updated: '2026-10-16'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+problems:
+- id: PRB-DRN-261016-01
+  title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
+  status: testing
+  evidence:
+    quant:
+    - Q2 test@1024 Pole 54.8 vs DGFusion 58.7·CAFuser 59.6; 두께 0.25~0.5 패치 '찾았지만 못
+      그림' .445 vs 기준선 .26; 평가 1536 에서 Pole 59.3·Pedestrian 81.6(기준선 역전)
+    qual:
+    - 1 패치 이상 두께는 기준선 동급 이상; 학습 스케일 상향(A1)은 맥락 손실로 악화; Pole 가짜 기둥(건물 외벽 부재)은 두 헤드
+      공통·해상도에 일부만 반응
+    figures: []
+  source: .claude_logs/experiments/judgment-ledger.md 2026-10-11~15 행, analysis_logs/thin_anatomy_test_20261011*
+  parent: null
+  survey_notes: []
+  decision: null
+  created: '2026-10-16'
+  updated: '2026-10-16'
+  closed: null

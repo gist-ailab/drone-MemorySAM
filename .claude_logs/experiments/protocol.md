@@ -1,13 +1,13 @@
 ---
 created: 2026-09-18
 owns: [judgment-protocol]
-updated: 2026-09-18
+updated: 2026-10-16
 ---
 
 # 판정·측정 규칙 (protocol)
 
 > **역할**: 체크포인트 선택·측정 프로토콜·판정 게이트의 **목록·색인**. 정본은 아래 링크들이고 여기에 본문을 복제하지 않는다(2026-09-18 current.md 재설계, 감사 R2·R3).
-> 스냅샷의 수치는 [headline.yaml](headline.yaml) 이 단일 정본이고, 현재 상태는 [../status/current.md](../status/current.md), 판정 이력은 [judgment-ledger.md](judgment-ledger.md).
+> 스냅샷의 수치는 [headline.yaml](headline.yaml) 이 단일 정본이고, 현재 상태는 [../status/current.md](../status/current.md), 판정 이력의 정본은 `lab-plan`(화면 = [judgment-ledger.md](judgment-ledger.md) `lab:verdicts` 생성 블록, 2026-10-16 이전 판정은 같은 파일의 동결 표).
 
 ## 1. 체크포인트 선택
 
@@ -39,5 +39,5 @@ updated: 2026-09-18
 - 시드 3개 이상 mean±std 병기. 단일 런 최고만 인용하지 않는다. 무작위 시드 런(56.99 런)은 재현 안 되는 상단 꼬리로 취급.
 - 실험 약어(E1·E13·N6·G4 등)는 쓸 때마다 같은 행에 풀어 쓴다(user 지시 2026-09-17) — 풀이 정본 [../meta/experiment-glossary.md](../meta/experiment-glossary.md).
 - 진행보고 포맷 = user auto-memory `progress-report-format`(서버별 현황 표 + 남은 run 배치 + 벤치 baseline 표 2블록).
-- 판정 주체 = "MMSAM | 생각정리" 세션만(CLAUDE.md §1 세션 분담). 판정 대장 append 규칙 = [judgment-ledger.md](judgment-ledger.md) frontmatter.
+- 판정 주체 = method 세션("MMSAM | 생각정리", `meta/roles.md`)이 이 문서의 기준으로 판정하고 `lab-plan verdict <id> --decision … --summary … --analysis <근거 문서> --via "<세션 이름>"` 한 곳에 기록한다. 최종 확인은 사용자. 기록 흐름은 `~/lab-status/SPEC-cycle.md` §4.
 - 모든 학습·평가 전 GPU 가용성 확인(빈 GPU = memory ≤2000MiB·util ≤10%)·lecun 배치 금지 — CLAUDE.md 주의사항 참조.
