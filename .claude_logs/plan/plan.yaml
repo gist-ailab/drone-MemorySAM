@@ -12358,6 +12358,68 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261016-01
+- id: DRN-261017-01
+  title: A2 이식 · MUSES — E1M(4탭) screen40 + 고해상 경로, 시드 s2·s3
+  question: DELIVER A2 의 이득(고해상 경로)이 MUSES 에서도 나는가(단일 아키텍처)
+  hypothesis: MUSES 는 레터박스로 원본 0.53배 추론이라 16px 토큰 한계가 DELIVER 보다 크다 → 고해상 경로 이득이 같거나
+    크다
+  falsification: 2시드 평균 Δ < +0.2 면 MUSES 이식 실패(DELIVER 특화)
+  change: MODEL.HIRES_ADAPTER on(그 외 E1M screen40 동일)
+  baseline: 같은 시드 E1M screen40 기존 런(공식 val, native 1080×1920)
+  configs:
+  - configs/hpca100-muses_rgbel_P39_1_physaugoff_taps_screen40_E1M_s2_A2hires.yaml,configs/hpca100-muses_rgbel_P39_1_physaugoff_taps_screen40_E1M_s3_A2hires.yaml
+  launch: null
+  success_criteria: 2시드 평균 공식 val(1024 레터박스) Δ vs E1M screen40 ≥ +0.5, 어느 시드도 −0.3
+    미만 아님
+  sample_basis: MUSES 시드 std 약 0.7 — 2시드 스크린, 통과 시 3시드
+  expected_cost: 3090 4장×2런, 40ep 약 1.5~2일(DELIVER A2 기준)
+  priority: 3
+  owner_role: method
+  status: idea
+  kind: experiment
+  tags:
+  - muses
+  - A2
+  - transfer
+  created: '2026-10-17'
+  updated: '2026-10-17'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261017-02
+  title: A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828
+  question: DELIVER A2 의 이득이 MCubeS 에서도 나는가
+  hypothesis: MCubeS 도 얇은 구조물·재질 경계가 있어 고해상 경로가 도움
+  falsification: 2시드 평균 Δ < +0.2 면 이식 실패
+  change: MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일)
+  baseline: 같은 시드 E1Mc 200ep 기존 런(커뮤니티 test 102장)
+  configs:
+  - configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed20260827_A2hires.yaml,configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed20260828_A2hires.yaml
+  launch: null
+  success_criteria: 2시드 평균 test Δ vs E1Mc 같은 시드 ≥ +0.5
+  sample_basis: MCubeS 3시드 std 0.49
+  expected_cost: 3090 4장×2런, 200ep(데이터 작음) 약 1일
+  priority: 3
+  owner_role: method
+  status: idea
+  kind: experiment
+  tags:
+  - mcubes
+  - A2
+  - transfer
+  created: '2026-10-17'
+  updated: '2026-10-17'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
