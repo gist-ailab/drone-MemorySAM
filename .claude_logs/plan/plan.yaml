@@ -12150,13 +12150,13 @@ items:
     약 9시간
   priority: 15
   owner_role: manager
-  status: queued
+  status: running
   tags:
   - deliver
   - q2
   - ablation
   created: '2026-10-05'
-  updated: '2026-10-05'
+  updated: '2026-10-16'
   closed: null
   runs: []
   results: []
@@ -12304,6 +12304,43 @@ items:
   - muses
   - resolution
   docs: .claude_logs/tasks/DRN-261016-02
+  created: '2026-10-16'
+  updated: '2026-10-16'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261016-03
+  title: 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048)
+  question: Q1 이득은 어떤 클래스·물체 두께에서 나오나(MUSES 도 DELIVER 처럼 패치 이하 얇은 성분인가) Q2 같은 해상도
+    상향에서 DGFusion(+0.87)이 우리(E1 +1.56)보다 덜 오르는 이유가 같은 클래스·두께 구간 차이인가 Q3 MUSES 2048
+    에서 야간만 −3~4 떨어지는 원인(클래스·두께·조건 중 어디)
+  hypothesis: null
+  falsification: null
+  change: null
+  baseline: null
+  configs:
+  - 'tools/baseline_failure/thin_error_anatomy.py, tools/eval_muses_official.py(report.json
+    조건별·클래스별), DELIVER 덤프: DGFusion 공식 1024/1536 원본 GT 축 예측(native_axis_eval 산출)'
+  launch: null
+  success_criteria: 'Q1·Q2: 클래스별 Δ표 + 두께 구간별 ''찾음률/찾았지만 못 그림'' Δ표(1024→1536)로 이득의
+    70% 이상이 설명되는 구간을 특정. Q3: 2048 야간 하락의 클래스별 분해로 상위 3클래스가 하락의 절반 이상인지. 모두 기존 도구(thin_error_anatomy·eval_muses_official
+    조건별 hist) 재사용, 새 학습 없음'
+  sample_basis: null
+  expected_cost: null
+  priority: 2
+  owner_role: method
+  status: queued
+  kind: analysis
+  tags:
+  - deliver
+  - muses
+  - resolution
+  - analysis
+  docs: .claude_logs/tasks/DRN-261016-03
   created: '2026-10-16'
   updated: '2026-10-16'
   closed: null
