@@ -9127,10 +9127,31 @@ items:
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-09-26'
+  updated: '2026-10-15'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: test
+    metric: mIoU
+    value: 56.32
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: test
+    metric: mAcc
+    value: 66.7
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: val
+    metric: mIoU
+    value: 69.44
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+    split: val
+    metric: mAcc
+    value: 78.8
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
