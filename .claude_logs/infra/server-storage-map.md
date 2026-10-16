@@ -142,3 +142,19 @@ ssh <서버> "md5sum <절대경로>"    # MANIFEST 5열과 같아야 한다
 | levine | 44% | 80G | `jemo_maeng/`(45G: dset 27G, src 18G — Amphibious rNs 출력이 10-15에도 쓰임) | miniconda 22G, 캐시 9.5G |
 | gyuri | 34% | 64G | 없음 | anaconda 40G, cursor-server 15G |
 | hpca100 | 컨테이너 홈 45% | 12G | 없음(작업은 `~/SSDb` wekafs) | — |
+
+## 7. 홈 디렉터리 웨이트 이관 — 2026-10-16 (user: "필요하면 ailab_mat2, 그냥 웨이트고 중요하지 않으면 drone-nas")
+
+원래 절대경로를 목적지 아래에 그대로 둔다. 검증 방식은 §0과 같다(원본 md5 → 목적지 `md5sum -c` → 통과 묶음만 원본 삭제).
+ailab_mat2 쪽 쓰기·검증은 gyuri의 NFS 마운트로 한다(jarvis의 `/ailab_mat2` sshfs는 정지 상태).
+
+| 서버 | 무엇 | 판단 | 목적지 |
+|---|---|---|---|
+| jarvis | 홈 체크아웃(`src/drone-MemorySAM-*`)의 `outputs/` top1·best 웨이트 59개(약 100GB) | 필요 | `/ailab_mat2/personal/jemo_maeng/home_offload_20261016/jarvis/home/jemo_maeng/...` |
+| hinton | `wd/runs/<런>/`의 `last.pt`·로그·결과 파일 644개(23.3GB, Amphibious YOLO 런 23개) | 필요 | `/ailab_mat2/personal/jemo_maeng/home_offload_20261016/hinton/home/jemo_maeng/wd/runs/...` |
+| hinton | `wd/runs/<런>/`의 `epoch_NNN.pt`·`init.pt` + `probe_cache/`(2026-07 sam2·dinov3 특징 캐시, 182G) — 22,709개 | 중요하지 않음 | `/drone_nas/drone/personal/jemo_maeng/home_offload_20261016/hinton/home/jemo_maeng/...` |
+
+- jarvis 홈에 남긴 것: 코드, sam2·rf-detr 사전학습 가중치(코드가 경로로 읽음), conda·캐시.
+- 🔴 jarvis 체크아웃의 학습 출력 기본 경로가 여전히 홈(`outputs/`)이다. 새 학습은 SSD(`/SSDd`)를 `SAVE_DIR`로 주거나 `outputs` 를 SSD로 옮긴 뒤 연결해야 다시 쌓이지 않는다.
+- 대장: 허브 `~/nas_moves/20261016_home/w_<작업>/<서버>_MANIFEST.tsv` (완료 후 목적지 폴더에 `MANIFEST_<서버>_<needed|unimportant>.tsv`로 복사).
+- bengio·yeon·lecun 홈은 conda·캐시만 커서 이번 대상이 아니다(§6).

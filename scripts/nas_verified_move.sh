@@ -1,5 +1,6 @@
 #!/bin/bash
-# move_files_to_nas.sh — verified MOVE of an explicit file list from one source host to drone_nas.
+# move_files_to_nas.sh — verified MOVE of an explicit file list from one source host to drone_nas (default)
+#   or another sink (env DEST_HOST / DEST_ROOT, e.g. DEST_HOST=gyuri DEST_ROOT=/ailab_mat2/personal/jemo_maeng/...).
 #   usage: move_files_to_nas.sh <tag> <src_ssh_host> <list.txt> <workdir> [batch_GB]
 #   <tag>     : name used under the NAS archive root (e.g. lecun, ailab_mat2)
 #   list.txt  : absolute file paths on <src_ssh_host>, one per line
@@ -9,8 +10,9 @@
 # Ledger: <workdir>/<tag>_MANIFEST.tsv  (tag  src_path  bytes  mtime  md5  nas_path  status  when)
 set -uo pipefail
 TAG=$1; SRC=$2; LIST=$3; W=$4; BGB=${5:-40}
-NASH=jemo.maeng@172.27.190.182
-NASROOT=/volume1/drone/personal/jemo_maeng/nonbest_weights_archive_20261015
+# destination host/root are overridable: DEST_HOST (ssh target that writes & verifies), DEST_ROOT
+NASH=${DEST_HOST:-jemo.maeng@172.27.190.182}
+NASROOT=${DEST_ROOT:-/volume1/drone/personal/jemo_maeng/nonbest_weights_archive_20261015}
 DEST=$NASROOT/$TAG
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=10"
 mkdir -p "$W/$TAG"; WD=$W/$TAG; MAN=$W/${TAG}_MANIFEST.tsv; DONE=$WD/done_paths.txt; touch "$MAN" "$DONE"
