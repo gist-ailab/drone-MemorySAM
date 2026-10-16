@@ -126,3 +126,20 @@ ssh <서버> "md5sum <절대경로>"    # MANIFEST 5열과 같아야 한다
 - 이관 후 여유가 일부 다시 줄어든 볼륨(lecun·levine)은 다른 사용자·학습이 그 사이 쓴 것이다.
 - ailab_mat2 의 `videos/`(Drone 7편·touchNplug 375편·Amphibious 20편)는 목록에 없었고 그대로 있다(gyuri 에서 확인).
 <!-- nonbest-archive-20261015-result:end -->
+
+## 6. 홈 디렉터리(OS 볼륨) 전수조사 — 2026-10-16
+
+사용자 규칙: 큰 파일은 우분투가 설치된 볼륨(홈 디렉터리)이 아니라 SSD(`/SSDx`)에 둔다. 아래는 조사 결과이며 **아직 옮기지 않았다**.
+모든 서버에서 홈은 OS 루트와 같은 파일시스템이다(hpca100만 예외: 25G 컨테이너 볼륨).
+
+| 서버 | OS 볼륨 사용률 | 내 홈 | 산출물·데이터(옮겨야 할 것) | 환경·캐시(설치물) |
+|---|---|---|---|---|
+| jarvis | 80% | 599G | `src/drone-MemorySAM-develop`(281G)·`-probe`(128G)·`-s1`(56G)·`-p47`(12G) 등 체크아웃의 `outputs/` 웨이트 | HF 캐시 30G(dinov3 7B 27G), miniconda 37G |
+| hinton | 51% | 333G | `probe_cache/`(182G: sam2 103G·dinov3 79G 특징 캐시), `wd/runs`(112G) | miniconda 13G |
+| bengio | 94% | 323G | 없음 | HF 캐시 127G, anaconda 104G, ollama 모델 28G, pip 24G·uv 17G, openpi 12G |
+| yeon | 92% | 105G | `wd/`(12G: kitti·macvi·nuscenes YOLO 데이터), `Workspace/src`(8G) | anaconda 54G, 캐시 27G |
+| lecun | 93% | 92G | `dset/poongsan_v2_yolo_rgb_modal`(3.4G) | miniconda 67G, pip 18G |
+| levine | 44% | 80G | `jemo_maeng/`(45G: dset 27G, src 18G — Amphibious rNs 출력이 10-15에도 쓰임) | miniconda 22G, 캐시 9.5G |
+| gyuri | 34% | 64G | 없음 | anaconda 40G, cursor-server 15G |
+| drone-demo | 77% | 공용 계정 | `workspace/jemo_maeng`(90G) — 나머지 1T는 다른 사용자(sangmin_park 등) | — |
+| hpca100 | 컨테이너 홈 45% | 12G | 없음(작업은 `~/SSDb` wekafs) | — |
