@@ -157,6 +157,6 @@ ailab_mat2 쪽 쓰기·검증은 gyuri의 NFS 마운트로 한다(jarvis의 `/ai
 - jarvis 홈에 남긴 것: 코드, sam2·rf-detr 사전학습 가중치(코드가 경로로 읽음), conda·캐시.
 - 🔴 jarvis 체크아웃의 학습 출력 기본 경로가 여전히 홈(`outputs/`)이다. 새 학습은 SSD(`/SSDd`)를 `SAVE_DIR`로 주거나 `outputs` 를 SSD로 옮긴 뒤 연결해야 다시 쌓이지 않는다.
 - 대장: 허브 `~/nas_moves/20261016_home/w_<작업>/<서버>_MANIFEST.tsv` (완료 후 목적지 폴더에 `MANIFEST_<서버>_<needed|unimportant>.tsv`로 복사).
-- jarvis 홈 체크아웃 `outputs/`의 평가 예측 덤프(`*_val_pred/`·`*_test_pred/`의 seg·seg_viz PNG, 227,512개 약 220GB)는 체크포인트로 재생성 가능해 **중요하지 않음**으로 보고 drone_nas `home_offload_20261016/jarvis/home/jemo_maeng/...`로 옮긴다(10-17 시작). 학습 로그·지표 txt 는 홈에 남긴다.
-- 진행: jarvis 필요 웨이트 59개 완료(10-17 02:18, ailab_mat2 대장 `MANIFEST_jarvis_needed.tsv`) · hinton 필요 644개 완료(10-16 20:50, `MANIFEST_hinton_needed.tsv`) · hinton 중요하지 않음 22,709개·291GB 완료(10-17 17:33, drone_nas 대장 `MANIFEST_hinton_unimportant.tsv`, 빈 폴더 `probe_cache/`·`wd/runs/` 정리 → hinton 홈 333G → 40G, `/` 46% → 40%) · jarvis 예측 덤프 진행 중.
+- jarvis 홈 체크아웃 `outputs/`의 평가 예측 덤프(`*_val_pred/`·`*_test_pred/`의 seg·seg_viz PNG, 227,512개 276GB)는 체크포인트로 재생성 가능해 **중요하지 않음**으로 보고 drone_nas `home_offload_20261016/jarvis/home/jemo_maeng/...`로 옮겼다. 학습 로그·지표 txt 는 홈에 남긴다.
+- 진행: jarvis 필요 웨이트 59개 완료(10-17 02:18, ailab_mat2 대장 `MANIFEST_jarvis_needed.tsv`) · hinton 필요 644개 완료(10-16 20:50, `MANIFEST_hinton_needed.tsv`) · hinton 중요하지 않음 22,709개·291GB 완료(10-17 17:33, drone_nas 대장 `MANIFEST_hinton_unimportant.tsv`, 빈 폴더 `probe_cache/`·`wd/runs/` 정리 → hinton 홈 333G → 40G, `/` 46% → 40%) · jarvis 예측 덤프 227,512개·276GB 완료(10-17 19:00, drone_nas 대장 `MANIFEST_jarvis_preds.tsv`, 빈 `*_pred/` 폴더 정리 → jarvis 홈 599G → 96G, `/` 99% → 65%). 두 목적지 모두 `README.md` 있음.
 - bengio·yeon·lecun 홈은 conda·캐시만 커서 이번 대상이 아니다(§6).
