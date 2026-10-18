@@ -68,5 +68,5 @@ revised: 2026-10-16 — 판정 정본을 lab-plan으로 일원화. H 표는 동�
 <!-- lab:problems:begin -->
 | PRB | 제목 | 상태 | 정량 근거 요약 | 연결 항목 | 결정 |
 | --- | --- | --- | --- | --- | --- |
-| PRB-DRN-261016-01 | 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계 | testing | Q2 test@1024 Pole 54.8 vs DGFusion 58.7·CAFuser 59.6; 두께 0.25~0.5 패치 '찾았지만 못 그림' .445 vs 기준선 .26; 평가 1536 에서 Pole 59.3·Pedestrian 81.6(기준선 역전) | DRN-261012-01, DRN-261012-02, DRN-261016-01, DRN-261016-02, DRN-261016-03 | - |
+| PRB-DRN-261016-01 | 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계 | testing | Q2 test@1024 Pole 54.8 vs DGFusion 58.7·CAFuser 59.6; 두께 0.25~0.5 패치 '찾았지만 못 그림' .445 vs 기준선 .26; 평가 1536 에서 Pole 59.3·Pedestrian 81.6(기준선 역전) | DRN-261012-01, DRN-261012-02, DRN-261016-01, DRN-261016-02, DRN-261016-03, DRN-261017-01, DRN-261017-02 | - |
 <!-- lab:problems:end -->

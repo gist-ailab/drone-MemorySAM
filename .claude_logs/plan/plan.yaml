@@ -12232,7 +12232,7 @@ items:
   expected_cost: 구현·검수 1~2일(워커 위임) + 3090 4장×2런 40ep 약 24~30h(extractor·스템 추가분)
   priority: 2
   owner_role: method
-  status: running
+  status: done
   tags:
   - deliver
   - thin-class
@@ -12240,12 +12240,22 @@ items:
   - A2
   docs: .claude_logs/tasks/DRN-261012-02
   created: '2026-10-12'
-  updated: '2026-10-16'
-  closed: null
+  updated: '2026-10-18'
+  closed: '2026-10-18'
   runs: []
   results: []
-  verdict: null
-  analysis: null
+  verdict:
+    decision: inconclusive
+    summary: '사전 성공 기준 3개 중 1개 충족·반증 조건 미발동. 2시드 legal v2 test@1024: 24클래스 Δ vs Q2
+      같은 시드 +1.08(+0.99/+1.18, 기준 +0.5 충족), 25클래스 57.85(DGFusion 56.71 대비 +1.14).
+      얇은4 Δ +1.39 — 사전 문턱(''A1 얇은4 이득의 절반'')이 A1 이득 −1.01 로 정의 불능(문자대로 −0.5 통과·대체
+      +1.5 미달·반증 +0.5 통과), 결과 확인 후 문턱을 고르지 않음. 두께 0.25~0.5 패치 ''찾았지만 못 그림'' .372/.374
+      로 기준 ≤.35 미달(감소 .072/.054 는 반증 .05 통과). TrafficLight −6.60(FP 증가). 성능 이득은 두
+      시드 일관 — 채택 여부·3번째 시드·MUSES/MCubeS 이식은 user 결정'
+    date: '2026-10-18'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261012-02/analysis.md
   superseded_by: null
   problem: PRB-DRN-261016-01
 - id: DRN-261016-01
@@ -12351,6 +12361,99 @@ items:
   docs: .claude_logs/tasks/DRN-261016-03
   created: '2026-10-16'
   updated: '2026-10-16'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261017-01
+  title: A2 이식 · MUSES — E1M(4탭) screen40 + 고해상 경로, 시드 s2·s3
+  question: DELIVER A2 의 이득(고해상 경로)이 MUSES 에서도 나는가(단일 아키텍처)
+  hypothesis: MUSES 는 레터박스로 원본 0.53배 추론이라 16px 토큰 한계가 DELIVER 보다 크다 → 고해상 경로 이득이 같거나
+    크다
+  falsification: 2시드 평균 Δ < +0.2 면 MUSES 이식 실패(DELIVER 특화)
+  change: MODEL.HIRES_ADAPTER on(그 외 E1M screen40 동일)
+  baseline: 같은 시드 E1M screen40 기존 런(공식 val, native 1080×1920)
+  configs:
+  - configs/hpca100-muses_rgbel_P39_1_physaugoff_taps_screen40_E1M_s2_A2hires.yaml,configs/hpca100-muses_rgbel_P39_1_physaugoff_taps_screen40_E1M_s3_A2hires.yaml
+  launch: null
+  success_criteria: 2시드 평균 공식 val(1024 레터박스) Δ vs E1M screen40 ≥ +0.5, 어느 시드도 −0.3
+    미만 아님
+  sample_basis: MUSES 시드 std 약 0.7 — 2시드 스크린, 통과 시 3시드
+  expected_cost: 3090 4장×2런, 40ep 약 1.5~2일(DELIVER A2 기준)
+  priority: 3
+  owner_role: method
+  status: idea
+  kind: experiment
+  tags:
+  - muses
+  - A2
+  - transfer
+  created: '2026-10-17'
+  updated: '2026-10-17'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261017-02
+  title: A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828
+  question: DELIVER A2 의 이득이 MCubeS 에서도 나는가
+  hypothesis: MCubeS 도 얇은 구조물·재질 경계가 있어 고해상 경로가 도움
+  falsification: 2시드 평균 Δ < +0.2 면 이식 실패
+  change: MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일)
+  baseline: 같은 시드 E1Mc 200ep 기존 런(커뮤니티 test 102장)
+  configs:
+  - configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed20260827_A2hires.yaml,configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed20260828_A2hires.yaml
+  launch: null
+  success_criteria: 2시드 평균 test Δ vs E1Mc 같은 시드 ≥ +0.5
+  sample_basis: MCubeS 3시드 std 0.49
+  expected_cost: 3090 4장×2런, 200ep(데이터 작음) 약 1일
+  priority: 3
+  owner_role: method
+  status: idea
+  kind: experiment
+  tags:
+  - mcubes
+  - A2
+  - transfer
+  created: '2026-10-17'
+  updated: '2026-10-17'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261018-01
+  title: A2 3번째 시드 20260903 — Q2 + 고해상 경로 40ep 스크린(DRN-261012-02 inconclusive 후속)
+  question: A2 의 test@1024 이득(+0.88/+1.11, 24클래스 +1.08)이 세 번째 시드에서도 유지되는가
+  hypothesis: 고해상 경로 이득은 시드 무관(2시드 모두 +0.99 이상)
+  falsification: 시드903 24클래스 Δ < 0 이면 A2 이득은 시드 의존(채택 보류)
+  change: TRAIN.SEED 20260903(구조·레시피는 A2 s821·s902 와 동일)
+  baseline: Q2 시드20260903 legal v2 test@1024 56.07 / 24클래스 동 시드
+  configs:
+  - configs/bengio-deliver_rgbdel_P46_c3only_seed20260903_screen40_A2hires.yaml
+  launch: null
+  success_criteria: 3시드 평균 24클래스 Δ vs Q2 같은 시드 ≥ +0.5 이고 시드903 단독 Δ > 0
+  sample_basis: Q2 3시드 std 약 0.95 — 3시드로 평균·std 확정
+  expected_cost: 3090 4장, 40ep 약 30h + legal 평가
+  priority: 1
+  owner_role: method
+  status: queued
+  kind: experiment
+  tags:
+  - deliver
+  - A2
+  - seed3
+  docs: .claude_logs/tasks/DRN-261018-01
+  created: '2026-10-18'
+  updated: '2026-10-18'
   closed: null
   runs: []
   results: []
