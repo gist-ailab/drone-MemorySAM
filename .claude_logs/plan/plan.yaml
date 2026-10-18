@@ -12527,6 +12527,40 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261016-01
+- id: DRN-261019-03
+  title: A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의),
+    Q2 와 같은 프로토콜
+  question: 고해상 경로(A2)를 넣어도 Q2 의 결측·열화 강건성이 유지되는가(논문 강건성 주장을 최종 모델로)
+  hypothesis: null
+  falsification: null
+  change: null
+  baseline: null
+  configs:
+  - tools/missing_modality_eval.py(Q2 때와 같은 인자, robust_q2_20260929·robust_q2_val_20261008
+    와 동일), A2 ckpt NAS ckpts(a2 s821 f05b54d4… · s902 0aab4cae…)
+  launch: null
+  success_criteria: '같은 프로토콜 Q2 3시드 대비: test EMM15 평균 Δ ≥ −1.0 그리고 val EMM15 평균이 공개
+    최고 RMMSS 49.93 초과 유지. 2시드 표 확정'
+  sample_basis: null
+  expected_cost: null
+  priority: 1
+  owner_role: method
+  status: queued
+  kind: analysis
+  tags:
+  - deliver
+  - A2
+  - robustness
+  docs: .claude_logs/tasks/DRN-261019-03
+  created: '2026-10-19'
+  updated: '2026-10-19'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
