@@ -12445,7 +12445,7 @@ items:
   expected_cost: 3090 4장, 40ep 약 30h + legal 평가
   priority: 1
   owner_role: method
-  status: queued
+  status: running
   kind: experiment
   tags:
   - deliver
