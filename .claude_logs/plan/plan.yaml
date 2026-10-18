@@ -12385,15 +12385,15 @@ items:
   expected_cost: 3090 4장×2런, 40ep 약 1.5~2일(DELIVER A2 기준)
   priority: 3
   owner_role: method
-  status: idea
+  status: withdrawn
   kind: experiment
   tags:
   - muses
   - A2
   - transfer
   created: '2026-10-17'
-  updated: '2026-10-17'
-  closed: null
+  updated: '2026-10-19'
+  closed: '2026-10-19'
   runs: []
   results: []
   verdict: null
@@ -12454,6 +12454,72 @@ items:
   docs: .claude_logs/tasks/DRN-261018-01
   created: '2026-10-18'
   updated: '2026-10-18'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261019-01
+  title: MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사
+  question: MUSES 4모달(img·lidar·event·radar)에서 E1 구조를 clean 으로 학습해 Q2 레시피의 교사를 만든다(DELIVER
+    E1 확정과 같은 역할)
+  hypothesis: 교사 품질은 4모달 P39.1-rank(공식 test 79.571)와 비슷할 것
+  falsification: 공식 val < 80 이면 교사 품질 의심 — radar·4모달 경로 점검 후 진행
+  change: E1M full200 에 radar 추가(DATASET.MODALS)
+  baseline: MUSES 4모달 P39.1-rank 시드2 공식 test 79.571 / E1M 3모달 공식 val 81.70~81.93
+  configs:
+  - configs/hpca100-muses_rgbelr_P39_1_physaugoff_taps_full200_E1M4.yaml
+  launch: null
+  success_criteria: 학습 완주 + 공식 val ≥ 81.0(교사로 쓸 수 있는 수준)
+  sample_basis: 교사 1개(DELIVER 와 같이 시드1 교사 고정)
+  expected_cost: GPU 4장, 200ep 약 2~3일(E1M full200 기준)
+  priority: 1
+  owner_role: method
+  status: queued
+  kind: experiment
+  tags:
+  - muses
+  - 4modal
+  - teacher
+  - A2
+  docs: .claude_logs/tasks/DRN-261019-01
+  created: '2026-10-19'
+  updated: '2026-10-19'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261019-02
+  title: MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3
+  question: DELIVER 논문 모델(A2)을 같은 방식으로 MUSES 4모달에 학습했을 때 공식 val·test 가 4모달 기존 최고와
+    DGFusion 을 넘는가
+  hypothesis: DELIVER 에서 A2 가 Q2 대비 +1.0, Q2 가 E1 대비 +1.3 이었던 것처럼 MUSES 4모달에서도 기존
+    최고보다 오른다
+  falsification: 2시드 공식 val 평균 ≤ 교사 − 0.3 이면 MUSES 이식 실패
+  change: 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER
+  baseline: MUSES 4모달 P39.1-rank 공식 test 79.571 · DGFusion 79.5 · 교사 E1M4 공식 val
+  configs:
+  - configs/hpca100-muses_rgbelr_P39_1_physaugoff_taps_screen40_A2_s2.yaml,configs/hpca100-muses_rgbelr_P39_1_physaugoff_taps_screen40_A2_s3.yaml
+  launch: null
+  success_criteria: 2시드 공식 val 평균 > 교사 E1M4 공식 val, 그리고 test(user 제출) 평균 > 79.571
+  sample_basis: MUSES 시드 std 약 0.7, 2시드 스크린 → 통과 시 3시드
+  expected_cost: GPU 4장×2런, 40ep 각 1.5~2일, 교사 완주 후 기동
+  priority: 1
+  owner_role: method
+  status: idea
+  kind: experiment
+  tags:
+  - muses
+  - 4modal
+  - A2
+  docs: .claude_logs/tasks/DRN-261019-02
+  created: '2026-10-19'
+  updated: '2026-10-19'
   closed: null
   runs: []
   results: []
