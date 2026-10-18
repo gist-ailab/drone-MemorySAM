@@ -172,6 +172,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | --- | --- | --- | --- | --- | --- | --- |
 | DRN-261018-01 | P1 | A2 3번째 시드 20260903 — Q2 + 고해상 경로 40ep 스크린(DRN-261012-02 inconclusive 후속) | TRAIN.SEED 20260903(구조·레시피는 A2 s821·s902 와 동일) | running | - | 3090 4장, 40ep 약 30h + legal 평가 |
 | DRN-261019-01 | P1 | MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사 | E1M full200 에 radar 추가(DATASET.MODALS) | queued | - | GPU 4장, 200ep 약 2~3일(E1M full200 기준) |
+| DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 | - | queued | - | 미정 |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) | - | running | - | 미정 |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | running | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
