@@ -171,8 +171,8 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | id | 우선 | 제목 | 바꾼 변수 | 상태 | runs | 예상 비용 |
 | --- | --- | --- | --- | --- | --- | --- |
 | DRN-261018-01 | P1 | A2 3번째 시드 20260903 — Q2 + 고해상 경로 40ep 스크린(DRN-261012-02 inconclusive 후속) | TRAIN.SEED 20260903(구조·레시피는 A2 s821·s902 와 동일) | running | - | 3090 4장, 40ep 약 30h + legal 평가 |
-| DRN-261019-01 | P1 | MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사 | E1M full200 에 radar 추가(DATASET.MODALS) | queued | - | GPU 4장, 200ep 약 2~3일(E1M full200 기준) |
-| DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 | - | queued | - | 미정 |
+| DRN-261019-01 | P1 | MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사 | E1M full200 에 radar 추가(DATASET.MODALS) | running | - | GPU 4장, 200ep 약 2~3일(E1M full200 기준) |
+| DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 | - | running | - | 미정 |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) | - | running | - | 미정 |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | running | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
@@ -184,7 +184,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 최근 14일 종결
 | id | 결론 | 판정 요약 | 분석 경로 |
 | --- | --- | --- | --- |
-| DRN-260929-02 | reject | P56-B 거리 조건화 attention(교차 attention 에 −λ·|Δlog r| 거리 편향) 시드821 40ep 스크린 legal v2: test 55.36 / 24클래스 56.43(Q2 시드821 대비 Δ24 −1.27, Q2 3시드 평균 대비 −0.63) → 사전 기준 ①(≥ −0.3) 미달. 기제 진단: 원거리 78~255m −0.32(기준 +1.0 미달), 근·중거리 −2.21/−3.95 → 거리 편향이 원거리를 올리지 못하고 근거리 문맥을 깎음(기제 미작동). 하락 클래스 Static·Terrain·Pole·Ground 는 P56-A 와 같은 집합. 시드902 는 user 승인으로 중단(2026-10-05, yeon GPU1 을 Q2noKD 에 재배치) → 단일 시드 + 기제 미작동으로 기각. 판정 대장 2026-10-05 행 | - |
 | DRN-260929-03 | reject | P56-C 상태 조건부 LoRA 혼합 2시드 40ep: clean 24클래스 2시드 평균 Δ +0.04(① 통과, 3시드 평균 대비 +0.31, 시드 간 편차 0.03). 라우터 α 토큰 간 std ≈0(img·depth), event 0.078, LiDAR 0.00006, 조건별 변화 없음 → 사전 기준 ③(≥0.05) 미달, 라우터가 모달별 상수로 붕괴해 '상태 조건부' 기제가 작동하지 않음. 강건(같은 시드821 부분집합 짝): depth 부분 저하 비율 0.31~0.36, RGB 0.95/0.75/0.74, EMM −0.71 — 시드 잡음 커 판정 근거 아님. P56 A·B·C 전부 기각, 논문 모델 E1 구조 + Q2 레시피 고정. 판정 대장 2026-10-08 행, H34 | - |
 | DRN-261012-01 | reject | 시드821 legal v2(같은 평가 해상도 1536 대비 Q2): 24클래스 test −1.24 / val −1.02, 얇은4 test −1.01 / val −3.80. 손실은 맥락 의존 클래스(RailTrack −10.3·Wall −5.4·Terrain −4.9·Water −3.6). 학습 스케일 상향은 얇은 객체도 못 올리고 맥락만 잃음 — 평가 해상도 이득은 추론 시 토큰 밀도에서 나옴. 시드902 는 user 지시(10-15)로 1에폭에서 중단·A2 s902 로 교체, 2시드 미충족은 user 결정. 판정 대장 f3c539e·e35a0d6 | - |
 | DRN-261012-02 | inconclusive | 사전 성공 기준 3개 중 1개 충족·반증 조건 미발동. 2시드 legal v2 test@1024: 24클래스 Δ vs Q2 같은 시드 +1.08(+0.99/+1.18, 기준 +0.5 충족), 25클래스 57.85(DGFusion 56.71 대비 +1.14). 얇은4 Δ +1.39 — 사전 문턱('A1 얇은4 이득의 절반')이 A1 이득 −1.01 로 정의 불능(문자대로 −0.5 통과·대체 +1.5 미달·반증 +0.5 통과), 결과 확인 후 문턱을 고르지 않음. 두께 0.25~0.5 패치 '찾았지만 못 그림' .372/.374 로 기준 ≤.35 미달(감소 .072/.054 는 반증 .05 통과). TrafficLight −6.60(FP 증가). 성능 이득은 두 시드 일관 — 채택 여부·3번째 시드·MUSES/MCubeS 이식은 user 결정 | .claude_logs/tasks/DRN-261012-02/analysis.md |

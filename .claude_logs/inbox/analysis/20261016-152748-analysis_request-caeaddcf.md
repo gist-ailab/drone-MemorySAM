@@ -1,0 +1,23 @@
+---
+id: 20261016-152748-analysis_request-caeaddcf
+to: analysis
+from: pipeline
+type: analysis_request
+ref: bengio_a2s902_eval1024_bengio_20261016_2253
+status: open
+created: '2026-10-16T15:27:48.375738+00:00'
+claimed_by: null
+claimed_at: null
+done_at: null
+note: ''
+dedup: 'eval_done:bengio_a2s902_eval1024_bengio_20261016_2253:'
+---
+run_id: bengio_a2s902_eval1024_bengio_20261016_2253
+cfg: configs/eval/a2s902_eval1024_bengio.yaml
+ckpt: /SSDf/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM/outputs/ReliaDINO/bengio_deliver_rgbdel_P46_c3only_seed20260902_screen40_A2hires/DELIVER_ReliaDINO-ViTL16_idel/epoch40_70.09_top1_che
+eval_cfg: configs/eval/a2s902_eval1024_bengio.yaml
+연결된 plan id: unknown
+NAS 경로: /ailab_mat2/personal/jemo_maeng/src/Project/Drone/drone-memorysam/analysis
+
+## split별 지표
+- val: mIoU=71.05 mAcc=79.58 · 평가 로그 /SSDf/jemo_maeng/src/Project/Drone24/detection/drone-MemorySAM/logs/a2s902_val1024_20261016_224325.log
