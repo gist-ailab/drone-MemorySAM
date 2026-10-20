@@ -12636,7 +12636,7 @@ items:
   expected_cost: GPU 0, 조사 세션 1회
   priority: 1
   owner_role: method
-  status: queued
+  status: running
   kind: survey
   tags:
   - novelty-audit
