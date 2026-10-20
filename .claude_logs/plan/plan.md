@@ -578,6 +578,7 @@
 ## withdrawn
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
+| DRN-261020-15 | P2 | Ablation L6 · A2 에서 교사 증류만 제거(KD_W 0, 열화 두 패스는 유지) | TRAIN.QAF.KD_W 0 (DEGRADE_P·MISSING_FRAC 은 A2 그대로) | - | ablation, leave-one-out, paper |
 | DRN-261017-01 | P3 | A2 이식 · MUSES — E1M(4탭) screen40 + 고해상 경로, 시드 s2·s3 | MODEL.HIRES_ADAPTER on(그 외 E1M screen40 동일) | - | muses, A2, transfer |
 | DRN-260926-39 | P39 | #1 P40 RCA-Fusion | #1 P40 RCA-Fusion | - |  |
 | DRN-260926-40 | P40 | #2 P39 radar-fix 재실험 | #2 P39 radar-fix 재실험 | - |  |

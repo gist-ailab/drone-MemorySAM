@@ -13030,9 +13030,40 @@ items:
   - ablation
   - leave-one-out
   - paper
+  docs: .claude_logs/tasks/DRN-261020-14
   created: '2026-10-20'
   updated: '2026-10-20'
   closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-15
+  title: Ablation L6 · A2 에서 교사 증류만 제거(KD_W 0, 열화 두 패스는 유지)
+  question: 동결 clean 교사의 로짓 증류가 A2 의 clean 보존에 얼마나 기여하는가
+  hypothesis: 증류를 빼면 clean −1.0 안팎, 강건성은 유지(Q2noKD 1시드 관찰의 A2 재현)
+  falsification: 해당 없음
+  change: TRAIN.QAF.KD_W 0 (DEGRADE_P·MISSING_FRAC 은 A2 그대로)
+  baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
+    + EMM15(val·test)
+  configs: []
+  launch: null
+  success_criteria: 표 행 완성
+  sample_basis: A2 두 시드 차 1.5 → 2시드
+  expected_cost: 4 GPU × 약 1일 × 2런
+  priority: 2
+  owner_role: manager
+  status: withdrawn
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - paper
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: '2026-10-20'
   runs: []
   results: []
   verdict: null
