@@ -12635,7 +12635,7 @@ items:
   sample_basis: 해당 없음(문헌)
   expected_cost: GPU 0, 조사 세션 1회
   priority: 1
-  owner_role: survey
+  owner_role: method
   status: queued
   kind: survey
   tags:

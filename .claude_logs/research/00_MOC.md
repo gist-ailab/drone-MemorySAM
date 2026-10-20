@@ -7,6 +7,7 @@
 | [approach-and-eval-retrospective.md](approach-and-eval-retrospective.md) | **착안·평가 회고 (신설 2026-09-07)** — P8~P52 전 세대의 "직전 문제→착안→결과→판정→검증 수단" 표 + 평가 프로토콜 변천(채점·판정 설계·사고 27건) + **SOTA 병목 진단**(효과 크기<노이즈, 가설 축 편중, 미측정 레버). 아티팩트 원본 `meta/approach-eval-retrospective.html` | — |
 | [hypothesis-ledger.md](hypothesis-ledger.md) | **가설 원장 canonical (신설 2026-08-08)** — 계보 전체 가설 H1~H22의 검증·판정·근거 한 표. **새 모델 제안 전 필독**(✗ 재제안 금지·⚠️ 재판정 절차). 논문 Table 뼈대 | — |
 | [novelty-and-related-work.md](novelty-and-related-work.md) | **canonical** — RBMA 노벨티 포지셔닝, 선행연구 vs RBMA 차별표, 리뷰 방어. **먼저 읽기** ⚠️ RBMA attn-bias 반증(H2) 이후 재중심화 필요 | 12 |
+| [2026-10-20-structural-novelty-audit.md](2026-10-20-structural-novelty-audit.md) | 구조 노벨티 감사(2026-10-20): Q2 레시피 선행 24편 대조·"세부↑ 의미 구분↓" 기제 문헌·멀티센서 미점유 구조 후보 S1~S6 + method 종합 제안(S2 센서별 마스크 임베딩 헤드) — PRB-DRN-261020-01 | — |
 | [ral-paper-plan.md](ral-paper-plan.md) | **RA-L 논문 제출 트랙 포인터** — 볼트 `_paper_submission/` 초안(ReliaDINO) 상태 + 타 세션이 채울 실험 슬롯 8개 | (2026-07-15) |
 | [vault-digest.md](vault-digest.md) | 옵시디언 리서치 볼트 다이제스트(2026-07-02 동기화) — 벤치마크 정량표, 경쟁자 taxonomy, 위협 워치 | 18 |
 | [vault/](vault/) | 옵시디언 볼트 원본 노트 사본(94개) — 논문별 synthesis. 벤치마크 숫자 canonical = `vault/relatedworks/09_benchmark_tables_deliver_muses_mcubes.md`. ⚠️ 내부 수정 금지(NAS 원본에서 재동기화) | research_vault/ |
