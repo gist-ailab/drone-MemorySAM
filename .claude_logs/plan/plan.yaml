@@ -12851,6 +12851,164 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261020-01
+- id: DRN-261020-09
+  title: Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일)
+  question: 센서별 LoRA 가 A2 의 clean·강건성에 얼마나 기여하는가
+  hypothesis: 'E-LoRA(09-21) 재현: clean 24클래스 −0.5~−1.0, depth 열화 내성은 공유 쪽이 더 큼 → 두
+    축이 갈림'
+  falsification: 해당 없음(ablation 행)
+  change: LoRA 를 센서 공유 1개로(E1shared config 의 키를 A2 config 에 적용), 그 외 A2 동일
+  baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
+    + EMM15(val·test)
+  configs: []
+  launch: null
+  success_criteria: 표 행 완성(24클래스·thin4·depth 제거 Δ·EMM15 val)
+  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
+  expected_cost: 4 GPU × 약 1일 × 2런
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - paper
+  docs: .claude_logs/tasks/DRN-261020-09
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-10
+  title: Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk)
+  question: 교차주의 융합이 A2 에 얼마나 기여하는가
+  hypothesis: clean −0.5 이상, 조건별 의존도 이동 폭 감소
+  falsification: 평균 융합이 A2 와 ±0.2 안이면 '융합 구조 기여' 문장 삭제
+  change: FUSION 트렁크를 MeanFusionTrunk(P43 식)로, 그 외 A2 동일(config 파생, 코드 변경 없음 예상)
+  baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
+    + EMM15(val·test)
+  configs: []
+  launch: null
+  success_criteria: 표 행 완성
+  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
+  expected_cost: 4 GPU × 약 1일 × 2런
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - paper
+  docs: .claude_logs/tasks/DRN-261020-10
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-11
+  title: Ablation L3 · A2 − 4탭(→ 마지막 블록 탭 1개)
+  question: 중간층 4탭이 A2 에 얼마나 기여하는가(고해상 어댑터의 key/value 도 4탭이라 결합 효과 포함)
+  hypothesis: 얇은 객체·경계에서 −0.5 이상
+  falsification: 해당 없음
+  change: 'MODEL.TAPS.LAYERS: [24] (고해상 어댑터 탭 수 1 로 맞춤), 그 외 A2 동일'
+  baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
+    + EMM15(val·test)
+  configs: []
+  launch: null
+  success_criteria: 표 행 완성
+  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
+  expected_cost: 4 GPU × 약 1일 × 2런
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - paper
+  docs: .claude_logs/tasks/DRN-261020-11
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-12
+  title: Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만)
+  question: Mask2Former-lite 질의 헤드와 arbiter 결합이 A2 에 얼마나 기여하는가(고해상 특징을 쓰는 헤드가 다른 구성요소임을
+    분리)
+  hypothesis: clean −0.5~−1.0, 특히 큰 영역 클래스
+  falsification: 해당 없음
+  change: MODEL.M2F.ENABLE false · P39.ARBITER false(dense 경로만), 그 외 A2 동일
+  baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
+    + EMM15(val·test)
+  configs: []
+  launch: null
+  success_criteria: 표 행 완성
+  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
+  expected_cost: 4 GPU × 약 1일 × 2런
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - paper
+  docs: .claude_logs/tasks/DRN-261020-12
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-13
+  title: Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0)
+  question: 열화 두 패스가 A2 의 강건성·clean 에 얼마나 기여하는가(Q2noDeg 의 A2 판)
+  hypothesis: 'Q2noDeg(10-06) 재현: clean −0.9, EMM15 크게 하락(−8 이상), depth 제거 Δ 가 E1
+    수준(−24~−39)으로 복귀'
+  falsification: 해당 없음
+  change: TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일
+  baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
+    + EMM15(val·test)
+  configs: []
+  launch: null
+  success_criteria: 표 행 완성
+  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
+  expected_cost: 4 GPU × 약 1일 × 2런
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - paper
+  docs: .claude_logs/tasks/DRN-261020-13
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계

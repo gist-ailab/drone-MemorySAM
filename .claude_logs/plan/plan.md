@@ -31,6 +31,11 @@
 | DRN-261020-07 | P1 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA r8·헤드·clean 학습) | - | backbone-control, ladder, paper |
 | DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
 | DRN-261020-08 | P2 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | DATASET.MODALS: ['img'] (그 외 E1 스크린 동일) | - | backbone-control, ladder, paper |
+| DRN-261020-09 | P2 | Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일) | LoRA 를 센서 공유 1개로(E1shared config 의 키를 A2 config 에 적용), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
+| DRN-261020-10 | P2 | Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk) | FUSION 트렁크를 MeanFusionTrunk(P43 식)로, 그 외 A2 동일(config 파생, 코드 변경 없음 예상) | - | ablation, leave-one-out, paper |
+| DRN-261020-11 | P2 | Ablation L3 · A2 − 4탭(→ 마지막 블록 탭 1개) | MODEL.TAPS.LAYERS: [24] (고해상 어댑터 탭 수 1 로 맞춤), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
+| DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | MODEL.M2F.ENABLE false · P39.ARBITER false(dense 경로만), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
+| DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261017-02 | P3 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | - | mcubes, A2, transfer |
 | DRN-261020-05 | P3 | S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합) | S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화 | - | S2, explore, structural-novelty |
 | DRN-260926-05 | P5 | N-E18 · E18 = E1 레시피 + Lovász-Softmax 보조손실 40ep 스크린 시드821 | E1 레시피에 Lovász-Softmax 보조손실 추가(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) | - | deliver, screen40 |
