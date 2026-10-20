@@ -28,7 +28,9 @@
 | --- | --- | --- | --- | --- | --- |
 | DRN-261019-02 | P1 | MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3 | 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER | - | muses, 4modal, A2 |
 | DRN-261020-03 | P1 | S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산 제거), A2 같은 시드 짝 비교 | MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일) | - | S2, screen40, structural-novelty |
+| DRN-261020-07 | P1 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA r8·헤드·clean 학습) | - | backbone-control, ladder, paper |
 | DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
+| DRN-261020-08 | P2 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | DATASET.MODALS: ['img'] (그 외 E1 스크린 동일) | - | backbone-control, ladder, paper |
 | DRN-261017-02 | P3 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | - | mcubes, A2, transfer |
 | DRN-261020-05 | P3 | S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합) | S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화 | - | S2, explore, structural-novelty |
 | DRN-260926-05 | P5 | N-E18 · E18 = E1 레시피 + Lovász-Softmax 보조손실 40ep 스크린 시드821 | E1 레시피에 Lovász-Softmax 보조손실 추가(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) | - | deliver, screen40 |
