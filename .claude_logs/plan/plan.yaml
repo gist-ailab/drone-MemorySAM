@@ -12652,6 +12652,141 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261020-01
+- id: DRN-261020-03
+  title: S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산
+    제거), A2 같은 시드 짝 비교
+  question: 고해상 특징의 쓰임을 FPN 합산에서 센서별 마스크 내적 전용으로 바꾸면 A2 의 clean 이득을 유지하면서 신호등 오탐·얇은
+    두께 못 그림이 줄어드는가
+  hypothesis: 'H-S2a: 세부가 dense 분류에 들어가지 않으므로 TrafficLight FP 감소(Δ>0). H-S2b: 센서별
+    stride-4 격자에서 마스크를 그려 두께 0.25~0.5패치 못 그림 ≤ .35. H-S2c: 결측 강건성은 합 구조라 유지(EMM15
+    Δ ≥ −0.5). 기제 예측: 센서별 마스크 항 기여가 물체 질의→depth, 노면·질감 질의→RGB 로 갈린다(D4 클래스 분업과 일치)'
+  falsification: 24클래스 Δ ≤ −0.5 → S2 기각(세부가 what 에도 필요). S2-fused(DRN 별도) 와 차이 < 0.2
+    → '센서별' 효과 없음 = 노벨티 축소 기록. ep20 trainer val 이 A2 같은 시드 ep20 대비 −1.0 이하이면 kill
+  change: 'MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일)'
+  baseline: A2 같은 시드(DRN-261012-02 s821·s902, DRN-261018-01 s903), legal v2 test@1024
+  configs: []
+  launch: null
+  success_criteria: 3시드 평균 24클래스 Δ(S2−A2) ≥ 0 그리고 TrafficLight Δ > 0 그리고 thin4 못 그림
+    ≤ .35 그리고 test EMM15 Δ ≥ −0.5
+  sample_basis: A2 두 시드 차 1.5 → 2시드로 판정 불가, 3시드. 시드별 짝 Δ 와 평균 병기
+  expected_cost: 4 GPU × 약 1.3~1.6일 × 3런(스모크 프로파일 후 확정)
+  priority: 1
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - S2
+  - screen40
+  - structural-novelty
+  docs: .claude_logs/tasks/DRN-261020-03
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-04
+  title: S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리)
+  question: S2 의 이득이 '마스크 전용 결선' 때문인가 '센서별 분리' 때문인가
+  hypothesis: S2-sum > S2-fused (thin4·TrafficLight 방향 일치, 차이 ≥ 0.2) 이면 센서별 분리가 실체.
+    같으면 주장을 마스크 전용 결선으로 축소
+  falsification: 해당 없음(대조군)
+  change: 'MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음)'
+  baseline: S2-sum 같은 시드
+  configs: []
+  launch: null
+  success_criteria: '대조군: 판정은 S2-sum 항목에서'
+  sample_basis: S2-sum 과 같은 3시드
+  expected_cost: 4 GPU × 약 1.2일 × 3런
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - S2
+  - control
+  - structural-novelty
+  docs: .claude_logs/tasks/DRN-261020-04
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-05
+  title: S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합)
+  question: 센서별 고해상 격자끼리 경계를 맞추게 하면 S2-sum 보다 나아지는가(특히 MUSES 야간·희소 센서)
+  hypothesis: DELIVER 는 모달 잉여라 Δ 작음(≤ +0.3), MUSES 야간에서 효과. 게이트·softmax 없음
+  falsification: 둘 다 미달이면 종료
+  change: 'S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화'
+  baseline: S2-sum 같은 시드 s821
+  configs: []
+  launch: null
+  success_criteria: thin4 Δ ≥ +0.3 또는 MUSES 전이에서 야간 Δ ≥ +0.5 면 3시드 승격
+  sample_basis: 탐색 1시드
+  expected_cost: 4 GPU × 약 1.5일 × 1런
+  priority: 3
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - S2
+  - explore
+  - structural-novelty
+  docs: .claude_logs/tasks/DRN-261020-05
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261020-06
+  title: 'S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused)
+    + 스모크'
+  question: A2 의 고해상 특징을 FPN 합산 대신 센서별 마스크 내적 전용으로 쓰는 결선을 off 계약을 지키며 구현할 수 있는가(메모리
+    포함)
+  hypothesis: 구현 가능. USE=fpn_sum 이면 A2 와 state_dict·forward byte 동일, ENABLE=false
+    면 Q2 와 byte 동일. 센서별 어댑터는 추출기 가중치 공유·센서 배치(B·N)로 돌리면 활성화 증가 1.6배 이내
+  falsification: 메모리가 A2 의 2배를 넘으면 '공유 어댑터 1회 + 센서별 1×1 투영' 축소판으로 바꾸고 기록
+  change: hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter
+    우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum ·
+    tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크
+    항 기여 덤프 옵션
+  baseline: A2 코드(develop 1b029c5 이후)
+  configs: []
+  launch: null
+  success_criteria: '완료 조건: (1) USE=fpn_sum 출력 byte 동일 (2) ENABLE=false 출력 Q2 와 byte
+    동일 (3) mask_only 에서 W_s·어댑터로 grad 흐름 (4) 1024² 프로파일 활성화 ≤ A2 1.6배 (5) 코드 검수 파이프라인
+    통과 후 develop 병합'
+  sample_basis: 해당 없음(구현)
+  expected_cost: 워커 코딩 1회 + 스모크 GPU 1장 1시간
+  priority: 1
+  owner_role: method
+  status: queued
+  kind: build
+  tags:
+  - S2
+  - build
+  - structural-novelty
+  docs: .claude_logs/tasks/DRN-261020-06
+  created: '2026-10-20'
+  updated: '2026-10-20'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계

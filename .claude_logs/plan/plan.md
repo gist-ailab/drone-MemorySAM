@@ -21,12 +21,16 @@
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
 | DRN-261020-01 | P1 | A2 실패-키 분석(학습 0): 구조 제안의 선행 조건 — TrafficLight FP 장면 단위·세부-의미 분리 증거·열화+야간 혼동행렬 | 학습 없음. 기존 A2 2시드 ckpt(s821·s902) + Q2 2시드 ckpt 로 (1) TrafficLight FP 상위 20장면 시각화·FP 픽셀의 경로별 기여(dense vs query, hires on/off 추론 시 ablation) (2) TrafficLight 단독 두께 구간(thin_error_anatomy 클래스 단일 모드 추가) (3) MUSES 조건별 혼동행렬(night 3조건 분리) 및 DELIVER night/fog 조건별 혼동행렬 | - | A2, failure-keys, structural-novelty |
+| DRN-261020-06 | P1 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
 
 ## idea
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
 | DRN-261019-02 | P1 | MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3 | 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER | - | muses, 4modal, A2 |
+| DRN-261020-03 | P1 | S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산 제거), A2 같은 시드 짝 비교 | MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일) | - | S2, screen40, structural-novelty |
+| DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
 | DRN-261017-02 | P3 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | - | mcubes, A2, transfer |
+| DRN-261020-05 | P3 | S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합) | S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화 | - | S2, explore, structural-novelty |
 | DRN-260926-05 | P5 | N-E18 · E18 = E1 레시피 + Lovász-Softmax 보조손실 40ep 스크린 시드821 | E1 레시피에 Lovász-Softmax 보조손실 추가(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) | - | deliver, screen40 |
 | DRN-260926-06 | P6 | N-E19 · E19 = E1 레시피 + 가중치 EMA(0.9995) val 평가·저장 | E1 레시피에 가중치 EMA(0.9995)로 val 평가·저장 | - | deliver |
 | DRN-260926-07 | P7 | N-D0 · D0 = LoRA 진단 2종(학습 0) | (i) 4모달 LoRA A 행렬 층별 코사인 (ii) 조건별 미니배치 그래디언트 코사인 | - | deliver, diagnostic |
