@@ -12815,8 +12815,9 @@ items:
   hypothesis: E1(교차주의 융합, 56.24) 보다 낮고 DGFusion 에 못 미친다. 과의존(depth 제거)은 E1·DGFusion
     과 같은 −24~−39 패턴
   falsification: 단순 융합이 DGFusion 을 넘으면 '구조 기여' 문장을 빼고 '백본+학습' 으로 서술을 바꾼다(결과를 숨기지 않음)
-  change: FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA
-    r8·헤드·clean 학습)
+  change: '기준 config = E1 스크린(bengio-deliver_rgbdel_P46_c3only_seed2026082{1,0902}_screen40_E1.yaml,
+    clean 학습·QAF 없음·고해상 없음). 바꾸는 키 = MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP:
+    false (L2 와 같은 토글, 단 기준이 A2 가 아니라 E1). SAVE_DIR 만 행 이름'
   baseline: E1 같은 시드 스크린(s821·s902), legal v2 test@1024
   configs: []
   launch: null
@@ -12847,7 +12848,9 @@ items:
   question: 파운데이션 백본 단독(RGB)으로 어디까지 나오는가 — 융합 자체의 이득 표시
   hypothesis: 단순 융합·E1 보다 낮다(DELIVER 는 depth 가 물체 클래스를 떠받치므로 RGB 단독은 물체 클래스에서 크게 진다)
   falsification: 해당 없음(기준점)
-  change: 'DATASET.MODALS: [''img''] (그 외 E1 스크린 동일)'
+  change: '기준 config = E1 스크린 s821. 바꾸는 키 = DATASET.MODALS: [img] (1센서; 참고 선례 configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml).
+    융합·탭·헤드는 그대로(1모달에서 융합은 항등). SAVE_DIR 만 행 이름. 기동 검증: 센서별 LoRA 가 1세트만 생성돼 trainable
+    이 E1 보다 작아야 정상'
   baseline: 백본 대조 1(단순 융합) 같은 시드
   configs: []
   launch: null
@@ -12882,7 +12885,8 @@ items:
     팔 B 와 동일 용량 맞춤, 09-21), 그 외 동일'
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared.yaml
   launch: null
   success_criteria: 표 행 완성(24클래스·thin4·depth 제거 Δ·EMM15 val)
   sample_basis: 구조 행은 1시드(s821)로 축소(user 2026-10-21), 학습 행(L5·L6)만 2시드
@@ -12914,7 +12918,8 @@ items:
     (코드 제약: mean 은 TRUNK_EXP false 필수, model.py:664-674; N2 평균융합 팔과 같은 결선), 그 외 동일'
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion.yaml
   launch: null
   success_criteria: 표 행 완성
   sample_basis: 구조 행은 1시드(s821)로 축소(user 2026-10-21)
@@ -12978,7 +12983,8 @@ items:
     conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일'
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f.yaml
   launch: null
   success_criteria: 표 행 완성
   sample_basis: 구조 행은 1시드(s821)로 축소(user 2026-10-21)
@@ -13010,7 +13016,9 @@ items:
   change: TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade.yaml
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade.yaml
   launch: null
   success_criteria: 표 행 완성
   sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
@@ -13041,7 +13049,9 @@ items:
   change: TRAIN.QAF.KD_W 0, 그 외 A2 동일
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd.yaml
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd.yaml
   launch: null
   success_criteria: 표 행 완성
   sample_basis: A2 두 시드 차 1.5 → 2시드

@@ -179,10 +179,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-261020-02 | P1 | 노벨티 감사 + 구조 후보 수색(문헌만): Q2 레시피 최근접 선행과 차별점 · '세부-의미 결합' 실패 기제에 대한 2025~2026 대응 구조 | 문헌 조사만. 산출 = research/ 아래 감사 문서: 표1(Q2 vs 선행 4편: 교사·패스 수·열화 정의·라벨 필요 여부·게이트 유무), 표2(세부-의미 결합 구조 후보 ≥5, 각 arXiv ID·우리 기각 축(게이트·attn bias·라우팅·합성 열화 라벨) 저촉 여부·DELIVER/MUSES 적용 가능성) | running | - | GPU 0, 조사 세션 1회 |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) | - | running | - | 미정 |
-| DRN-261020-09 | P2 | Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일) | LoRA 를 센서 공유 1개로(E1shared config 의 키를 A2 config 에 적용), 그 외 A2 동일 | queued | - | 4 GPU × 약 1일 × 1런 |
-| DRN-261020-10 | P2 | Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk) | FUSION 트렁크를 MeanFusionTrunk(P43 식)로, 그 외 A2 동일(config 파생, 코드 변경 없음 예상) | queued | - | 4 GPU × 약 1일 × 1런 |
-| DRN-261020-11 | P2 | Ablation L3 · A2 − 4탭(→ 마지막 블록 탭 1개) | MODEL.TAPS.LAYERS: [24] (고해상 어댑터 탭 수 1 로 맞춤), 그 외 A2 동일 | queued | - | 4 GPU × 약 1일 × 1런 |
-| DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | MODEL.M2F.ENABLE false · P39.ARBITER false(dense 경로만), 그 외 A2 동일 | queued | - | 4 GPU × 약 1일 × 1런 |
+| DRN-261020-09 | P2 | Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일) | A2 s821 config 대비 MODEL.LORA_MODE: shared · MODEL.LORA_R: 16 (E1shared 팔 B 와 동일 용량 맞춤, 09-21), 그 외 동일 | queued | - | 4 GPU × 약 1일 × 1런 |
+| DRN-261020-10 | P2 | Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk) | A2 s821 config 대비 MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (코드 제약: mean 은 TRUNK_EXP false 필수, model.py:664-674; N2 평균융합 팔과 같은 결선), 그 외 동일 | queued | - | 4 GPU × 약 1일 × 1런 |
+| DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | A2 s821 config 대비 MODEL.M2F.ENABLE: false · MODEL.P39.ARBITER: false (dense conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일 | queued | - | 4 GPU × 약 1일 × 1런 |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | queued | - | 4 GPU × 약 1일 × 2런 |
 | DRN-261020-14 | P2 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | queued | - | 4 GPU × 약 1일 × 2런 |
 | DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA r8·헤드·clean 학습) | queued | - | 4 GPU × 약 1일 × 2런 + 모달 zero-out 평가 |
@@ -202,6 +201,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-261012-02 | inconclusive | 사전 성공 기준 3개 중 1개 충족·반증 조건 미발동. 2시드 legal v2 test@1024: 24클래스 Δ vs Q2 같은 시드 +1.08(+0.99/+1.18, 기준 +0.5 충족), 25클래스 57.85(DGFusion 56.71 대비 +1.14). 얇은4 Δ +1.39 — 사전 문턱('A1 얇은4 이득의 절반')이 A1 이득 −1.01 로 정의 불능(문자대로 −0.5 통과·대체 +1.5 미달·반증 +0.5 통과), 결과 확인 후 문턱을 고르지 않음. 두께 0.25~0.5 패치 '찾았지만 못 그림' .372/.374 로 기준 ≤.35 미달(감소 .072/.054 는 반증 .05 통과). TrafficLight −6.60(FP 증가). 성능 이득은 두 시드 일관 — 채택 여부·3번째 시드·MUSES/MCubeS 이식은 user 결정 | .claude_logs/tasks/DRN-261012-02/analysis.md |
 | DRN-261016-01 | adopt | 같은 규칙(원본 1042 GT·val 선택 해상도 1536) 비교 확정: 1024 재현 ±0.02 통과. 기준선은 val 이 1536 을 고르지만 test 하락(DGFusion 56.71→55.57, CAFuser(b) 55.77→55.60), 우리는 상승(E1 56.24→57.48, Q2 56.59→58.12). val 선택 규칙에서 Q2 +2.55 vs DGFusion. 해상도 이득은 우리 구조에만 일반화 — 프로토콜 결과이지 노벨티 아님, 헤드라인 규칙 변경은 user 결정 | .claude_logs/tasks/DRN-261016-01/analysis.md |
 | DRN-261017-01 | - | - | - |
+| DRN-261020-11 | - | - | - |
 | DRN-261020-15 | - | - | - |
 <!-- lab:plan-queue:end -->
 

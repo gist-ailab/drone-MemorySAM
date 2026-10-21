@@ -32,8 +32,8 @@
 | DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | A2 s821 config 대비 MODEL.M2F.ENABLE: false · MODEL.P39.ARBITER: false (dense conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-14 | P2 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | - | ablation, leave-one-out, paper |
-| DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA r8·헤드·clean 학습) | - | backbone-control, ladder, paper |
-| DRN-261020-08 | P3 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | DATASET.MODALS: ['img'] (그 외 E1 스크린 동일) | - | backbone-control, ladder, paper |
+| DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | 기준 config = E1 스크린(bengio-deliver_rgbdel_P46_c3only_seed2026082{1,0902}_screen40_E1.yaml, clean 학습·QAF 없음·고해상 없음). 바꾸는 키 = MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (L2 와 같은 토글, 단 기준이 A2 가 아니라 E1). SAVE_DIR 만 행 이름 | - | backbone-control, ladder, paper |
+| DRN-261020-08 | P3 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | 기준 config = E1 스크린 s821. 바꾸는 키 = DATASET.MODALS: [img] (1센서; 참고 선례 configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml). 융합·탭·헤드는 그대로(1모달에서 융합은 항등). SAVE_DIR 만 행 이름. 기동 검증: 센서별 LoRA 가 1세트만 생성돼 trainable 이 E1 보다 작아야 정상 | - | backbone-control, ladder, paper |
 | DRN-261020-06 | P4 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
 
 ## idea
