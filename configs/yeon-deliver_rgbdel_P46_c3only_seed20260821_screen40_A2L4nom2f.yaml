@@ -213,6 +213,7 @@ TRAIN:
     MISSING_FRAC      : 0.2
     SEVERITY_SCHEDULE : [[0, 0.3], [10, 0.6], [20, 1.0]]
     TEACHER_CKPT      : '/SSDb/jemo_maeng/ckpt/E1_s1_epoch140.pth'
+    TEACHER_CFG       : configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1.yaml  # [L4 패치 2026-10-21] 교사를 학생 cfg deepcopy 대신 이 config로 구성(교사 M2F/ARBITER 오염 방지, method 지시)
     KD_W              : 0.5
     KD_T              : 2.0
     QUALITY_W         : 0.1
