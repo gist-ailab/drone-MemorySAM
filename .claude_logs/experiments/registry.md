@@ -189,6 +189,19 @@ updated: 2026-09-18 (본문은 매일 갱신 — 최신 행 기준)
 <!-- lab:registry:begin -->
 | run_id | date | env | config | split·metric=value | 연결된 plan id | verdict |
 | --- | --- | --- | --- | --- | --- | --- |
+| bengio_a2s902_eval1024_bengio_20261016_2253 | unknown | unknown | a2s902_eval1024_bengio | val mIoU=71.05; val mAcc=79.58 | unknown | unknown |
+| bengio_a2s902_eval1024_bengio_20261017_0747 | unknown | unknown | a2s902_eval1024_bengio | test mIoU=57.09; test mAcc=66.58 | unknown | unknown |
+| bengio_a2s902_eval1280_bengio_20261017_0027 | unknown | unknown | a2s902_eval1280_bengio | val mIoU=72.41; val mAcc=80.77 | unknown | unknown |
+| bengio_a2s902_eval1536_bengio_20261017_0316 | unknown | unknown | a2s902_eval1536_bengio | val mIoU=73.18; val mAcc=81.26 | unknown | unknown |
+| bengio_a2s902_eval1536_bengio_20261017_1033 | unknown | unknown | a2s902_eval1536_bengio | test mIoU=58.22; test mAcc=67.57 | unknown | unknown |
 | jarvis_q2_eval1024_20260928_1034 | unknown | unknown | q2_eval1024 | test mIoU=56.07; test mAcc=65.82 | unknown | unknown |
 | jarvis_q2_eval1024_20260928_1127 | unknown | unknown | q2_eval1024 | val mIoU=67.88; val mAcc=76.51 | unknown | unknown |
+| yeon_a2s821_eval1024_yeon_20261016_2345 | unknown | unknown | a2s821_eval1024_yeon | test mIoU=58.61; test mAcc=67.69 | unknown | unknown |
+| yeon_a2s821_eval1280_yeon_20261016_1156 | unknown | unknown | a2s821_eval1280_yeon | val mIoU=70.84; val mAcc=79.18 | unknown | unknown |
+| yeon_a2s821_eval1536_yeon_20261016_1422 | unknown | unknown | a2s821_eval1536_yeon | val mIoU=71.48; val mAcc=79.6 | unknown | unknown |
+| yeon_a2s821_eval1536_yeon_20261016_1923 | unknown | unknown | a2s821_eval1536_yeon | test mIoU=59.5; test mAcc=68.18 | unknown | unknown |
+| yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_P56C_20260930_2241 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_P56C | test mIoU=57.45; test mAcc=66.3; val mIoU=67.99; val mAcc=76.96 | unknown | unknown |
+| yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD | test mIoU=56.32; test mAcc=66.7; val mIoU=69.44; val mAcc=78.8 | DRN-260926-234 | unknown |
+| yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD | test mIoU=57.23; test mAcc=67.21; val mIoU=68.72; val mAcc=77.63 | DRN-260926-234 | unknown |
+| yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_P56C_20261001_0413 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_P56C | test mIoU=57.82; test mAcc=67.32; val mIoU=68.92; val mAcc=77.56 | unknown | unknown |
 <!-- lab:registry:end -->

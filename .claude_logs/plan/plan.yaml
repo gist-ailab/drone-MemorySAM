@@ -12819,7 +12819,9 @@ items:
     clean 학습·QAF 없음·고해상 없음). 바꾸는 키 = MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP:
     false (L2 와 같은 토글, 단 기준이 A2 가 아니라 E1). SAVE_DIR 만 행 이름'
   baseline: E1 같은 시드 스크린(s821·s902), legal v2 test@1024
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_B1meanfusion.yaml
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_B1meanfusion.yaml
   launch: null
   success_criteria: '사다리 표 완성: RGB 단독 < 단순 융합 < E1 < Q2 < A2 가 test 24클래스·depth 제거
     Δ 로 보고됨. 단순 융합이 E1 보다 ≥ +0.3 높으면 교차주의 융합의 기여 주장을 삭제'
@@ -12852,7 +12854,8 @@ items:
     융합·탭·헤드는 그대로(1모달에서 융합은 항등). SAVE_DIR 만 행 이름. 기동 검증: 센서별 LoRA 가 1세트만 생성돼 trainable
     이 E1 보다 작아야 정상'
   baseline: 백본 대조 1(단순 융합) 같은 시드
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly.yaml
   launch: null
   success_criteria: 사다리 표 0단계 수치 확보(24클래스·클래스별)
   sample_basis: 기준점 1시드
