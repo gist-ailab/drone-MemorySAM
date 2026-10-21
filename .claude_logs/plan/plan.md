@@ -27,10 +27,9 @@
 | DRN-261017-02 | P1 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | - | mcubes, A2, transfer |
 | DRN-261019-02 | P1 | MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3 | 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER | - | muses, 4modal, A2 |
 | DRN-261020-01 | P1 | A2 실패-키 분석(학습 0): 구조 제안의 선행 조건 — TrafficLight FP 장면 단위·세부-의미 분리 증거·열화+야간 혼동행렬 | 학습 없음. 기존 A2 2시드 ckpt(s821·s902) + Q2 2시드 ckpt 로 (1) TrafficLight FP 상위 20장면 시각화·FP 픽셀의 경로별 기여(dense vs query, hires on/off 추론 시 ablation) (2) TrafficLight 단독 두께 구간(thin_error_anatomy 클래스 단일 모드 추가) (3) MUSES 조건별 혼동행렬(night 3조건 분리) 및 DELIVER night/fog 조건별 혼동행렬 | - | A2, failure-keys, structural-novelty |
-| DRN-261020-09 | P2 | Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일) | LoRA 를 센서 공유 1개로(E1shared config 의 키를 A2 config 에 적용), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
-| DRN-261020-10 | P2 | Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk) | FUSION 트렁크를 MeanFusionTrunk(P43 식)로, 그 외 A2 동일(config 파생, 코드 변경 없음 예상) | - | ablation, leave-one-out, paper |
-| DRN-261020-11 | P2 | Ablation L3 · A2 − 4탭(→ 마지막 블록 탭 1개) | MODEL.TAPS.LAYERS: [24] (고해상 어댑터 탭 수 1 로 맞춤), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
-| DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | MODEL.M2F.ENABLE false · P39.ARBITER false(dense 경로만), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
+| DRN-261020-09 | P2 | Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일) | A2 s821 config 대비 MODEL.LORA_MODE: shared · MODEL.LORA_R: 16 (E1shared 팔 B 와 동일 용량 맞춤, 09-21), 그 외 동일 | - | ablation, leave-one-out, paper |
+| DRN-261020-10 | P2 | Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk) | A2 s821 config 대비 MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (코드 제약: mean 은 TRUNK_EXP false 필수, model.py:664-674; N2 평균융합 팔과 같은 결선), 그 외 동일 | - | ablation, leave-one-out, paper |
+| DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | A2 s821 config 대비 MODEL.M2F.ENABLE: false · MODEL.P39.ARBITER: false (dense conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-14 | P2 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA r8·헤드·clean 학습) | - | backbone-control, ladder, paper |
@@ -582,6 +581,7 @@
 ## withdrawn
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
+| DRN-261020-11 | P2 | Ablation L3 · A2 − 4탭(→ 마지막 블록 탭 1개) | MODEL.TAPS.LAYERS: [24] (고해상 어댑터 탭 수 1 로 맞춤), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-15 | P2 | Ablation L6 · A2 에서 교사 증류만 제거(KD_W 0, 열화 두 패스는 유지) | TRAIN.QAF.KD_W 0 (DEGRADE_P·MISSING_FRAC 은 A2 그대로) | - | ablation, leave-one-out, paper |
 | DRN-261017-01 | P3 | A2 이식 · MUSES — E1M(4탭) screen40 + 고해상 경로, 시드 s2·s3 | MODEL.HIRES_ADAPTER on(그 외 E1M screen40 동일) | - | muses, A2, transfer |
 | DRN-260926-39 | P39 | #1 P40 RCA-Fusion | #1 P40 RCA-Fusion | - |  |

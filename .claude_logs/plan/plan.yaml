@@ -12878,7 +12878,8 @@ items:
   hypothesis: 'E-LoRA(09-21) 재현: clean 24클래스 −0.5~−1.0, depth 열화 내성은 공유 쪽이 더 큼 → 두
     축이 갈림'
   falsification: 해당 없음(ablation 행)
-  change: LoRA 를 센서 공유 1개로(E1shared config 의 키를 A2 config 에 적용), 그 외 A2 동일
+  change: 'A2 s821 config 대비 MODEL.LORA_MODE: shared · MODEL.LORA_R: 16 (E1shared
+    팔 B 와 동일 용량 맞춤, 09-21), 그 외 동일'
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
   configs: []
@@ -12909,7 +12910,8 @@ items:
   question: 교차주의 융합이 A2 에 얼마나 기여하는가
   hypothesis: clean −0.5 이상, 조건별 의존도 이동 폭 감소
   falsification: 평균 융합이 A2 와 ±0.2 안이면 '융합 구조 기여' 문장 삭제
-  change: FUSION 트렁크를 MeanFusionTrunk(P43 식)로, 그 외 A2 동일(config 파생, 코드 변경 없음 예상)
+  change: 'A2 s821 config 대비 MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false
+    (코드 제약: mean 은 TRUNK_EXP false 필수, model.py:664-674; N2 평균융합 팔과 같은 결선), 그 외 동일'
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
   configs: []
@@ -12950,7 +12952,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: queued
+  status: withdrawn
   kind: experiment
   tags:
   - ablation
@@ -12959,7 +12961,7 @@ items:
   docs: .claude_logs/tasks/DRN-261020-11
   created: '2026-10-20'
   updated: '2026-10-21'
-  closed: null
+  closed: '2026-10-21'
   runs: []
   results: []
   verdict: null
@@ -12972,7 +12974,8 @@ items:
     분리)
   hypothesis: clean −0.5~−1.0, 특히 큰 영역 클래스
   falsification: 해당 없음
-  change: MODEL.M2F.ENABLE false · P39.ARBITER false(dense 경로만), 그 외 A2 동일
+  change: 'A2 s821 config 대비 MODEL.M2F.ENABLE: false · MODEL.P39.ARBITER: false (dense
+    conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일'
   baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + 모달 zero-out
     + EMM15(val·test)
   configs: []
