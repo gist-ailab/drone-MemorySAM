@@ -20,6 +20,7 @@ Launch (B200):
       --cfg configs/b200-deliver_rgbdel_P34_reliadino.yaml
 """
 import argparse
+import copy
 import contextlib
 import math
 import os
@@ -58,6 +59,34 @@ from semseg.optimizers import get_optimizer
 from semseg.schedulers import get_scheduler
 from semseg.utils.utils import (cleanup_ddp, fix_seeds, get_logger, print_iou,
                                 setup_cudnn, setup_ddp)
+
+
+def build_teacher_cfg(cfg: dict, qaf_tc: dict) -> dict:
+    """[QAF-T 2026-10-21] E1 교사 설정을 학생 ablation 구조와 분리한다.
+
+    교사 = 동결 E1(QAF off). 체크포인트의 아키텍처(센서별 LoRA r8, 거리 편향·P55·고해상 없음)로
+    만들어야 KD 목표가 오염되지 않는다(2026-09-30 yeon P56-C 1차 기동 사고: missing=151 unexpected=72;
+    2026-10-21 L1 공유 LoRA r16 학생에서 교사 r16 로 만들어져 shape 불일치 크래시).
+    TRAIN.QAF.TEACHER_CFG(교사 자신의 학습 config)가 있으면 그것을 바탕으로, 없으면 학생 cfg 를
+    복사하되 LORA_R 만 TEACHER_LORA_R(기본 8)로 되돌린다. 어느 쪽이든 교사용 off 오버라이드는 같다.
+    """
+    teacher_cfg_path = str(qaf_tc.get('TEACHER_CFG', '') or '')
+    if teacher_cfg_path and os.path.isfile(teacher_cfg_path):
+        with open(teacher_cfg_path, encoding='utf-8') as f:
+            teacher_cfg = yaml.safe_load(f)
+    else:
+        teacher_cfg = copy.deepcopy(cfg)
+        # 학생 LoRA rank(예: L1 r16)는 E1 교사 체크포인트(r8)와 다르다.
+        teacher_cfg['MODEL']['LORA_R'] = int(qaf_tc.get('TEACHER_LORA_R', 8))
+
+    teacher_model = teacher_cfg['MODEL']
+    teacher_model.setdefault('QAF', {})['ENABLE'] = False
+    teacher_model['LORA_MODE'] = str(qaf_tc.get('TEACHER_LORA_MODE', 'per_modal'))
+    teacher_model.pop('LORA_ROUTER', None)
+    teacher_model.setdefault('FUSION', {}).setdefault('RANGE_BIAS', {})['ENABLE'] = False
+    teacher_model.setdefault('P55', {})['ENABLE'] = False
+    teacher_model.setdefault('HIRES_ADAPTER', {})['ENABLE'] = False
+    return teacher_cfg
 
 
 @torch.no_grad()
@@ -725,7 +754,6 @@ def main(cfg, gpu, save_dir, logger):
     # MODEL.QAF.ENABLE 만 켜고 TRAIN.QAF.ENABLE 은 꺼도 된다(품질 헤드는 forward
     # 에서 항등 손실만 생성). TRAIN.QAF.ENABLE 이 켜지면 매 스텝 clean 패스(기존
     # 경로) + 열화 패스(Degrader → CE + KD + 품질 손실)를 함께 돈다.
-    import copy as _copy
     from semseg.datasets.degrade import Degrader, OP_NAMES as _QAF_OP_NAMES  # [P54] import 만
     _qaf_conf_idx = (_QAF_OP_NAMES.index('region_conflict'),
                      _QAF_OP_NAMES.index('specular_glare'))          # [P56-A] 충돌 op 인덱스
@@ -755,20 +783,15 @@ def main(cfg, gpu, save_dir, logger):
                                 seed=int(_qaf_tc.get('SEED', 0)))
         _tck = str(_qaf_tc.get('TEACHER_CKPT', '') or '')
         if _tck and os.path.isfile(_tck):
-            # 교사 = 동결 E1(QAF off). 같은 cfg 로 QAF 를 켜면 미로드 품질 헤드가
-            # 무작위로 clean 로짓을 오염시키므로 반드시 QAF off 아키텍처로 만든다.
-            _tcfg = _copy.deepcopy(cfg)
-            _tcfg['MODEL'].setdefault('QAF', {})['ENABLE'] = False
-            # [P56-B/C 정정 2026-09-30] 교사는 체크포인트(E1 = 센서별 LoRA, 거리 편향·P55 없음)의
-            # 아키텍처로 만들어야 한다. 학생 cfg 를 그대로 쓰면 state_routed LoRA(블록 7~24 의
-            # 공유/센서별 키가 체크포인트에 없어 LoRA 델타 0 = 어댑터 없는 백본)나 RangeBias 가
-            # 교사에 섞여 KD 목표가 오염된다(yeon P56-C 1차 기동: missing=151 unexpected=72).
-            _tcfg['MODEL']['LORA_MODE'] = str(_qaf_tc.get('TEACHER_LORA_MODE', 'per_modal'))
-            _tcfg['MODEL'].pop('LORA_ROUTER', None)
-            _tcfg['MODEL'].setdefault('FUSION', {}).setdefault('RANGE_BIAS', {})['ENABLE'] = False
-            _tcfg['MODEL'].setdefault('P55', {})['ENABLE'] = False
-            # [A2 2026-10-12] 고해상 어댑터도 학생 전용 — E1 교사 체크포인트에 없다.
-            _tcfg['MODEL'].setdefault('HIRES_ADAPTER', {})['ENABLE'] = False
+            # [QAF-T 2026-10-21] L1/L2/L4 학생 ablation 설정은 E1 교사에 전파하지 않는다.
+            _tcfg = build_teacher_cfg(cfg, _qaf_tc)
+            if is_rank0:
+                _teacher_cfg_path = str(_qaf_tc.get('TEACHER_CFG', '') or '')
+                if _teacher_cfg_path and os.path.isfile(_teacher_cfg_path):
+                    logger.info(f"[QAF-T] teacher cfg 바탕 = TEACHER_CFG {_teacher_cfg_path}")
+                else:
+                    logger.info(f"[QAF-T] teacher cfg 바탕 = 학생 cfg(폴백, "
+                                f"LORA_R={_tcfg['MODEL']['LORA_R']})")
             qaf_teacher = build_reliadino(_tcfg, num_classes).to(device).eval()
             _ts = torch.load(_tck, map_location='cpu')
             _sd = _ts.get('model_state_dict', _ts)
