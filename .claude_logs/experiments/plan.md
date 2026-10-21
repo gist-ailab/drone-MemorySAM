@@ -178,7 +178,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-261020-06 | P1 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | queued | - | 워커 코딩 1회 + 스모크 GPU 1장 1시간 |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) | - | running | - | 미정 |
-| DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | running | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
+| DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | evaluating | - | yeon 3090 1장 약 4.5일(에폭당 약 2.7시간, 증류 forward 가 없어 Q2 보다 약간 빠름) + 측정 약 9시간 |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | running | - | 미정 |
 | DRN-260926-55 | P102 | Q2→Q3 강건성 전 프로토콜(EMM15·RMM4×3·NM3, Q2 먼저) | Q2·Q3 체크포인트 강건성 측정 | running | - | 미정 |
 | DRN-260926-56 | P103 | Q2noDeg · 원천분리: DEGRADE_P=0, KD 유지(증류만의 순기여) | DEGRADE_P=0 (KD 유지) | running | - | 미정 |
@@ -192,6 +192,7 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-261012-02 | inconclusive | 사전 성공 기준 3개 중 1개 충족·반증 조건 미발동. 2시드 legal v2 test@1024: 24클래스 Δ vs Q2 같은 시드 +1.08(+0.99/+1.18, 기준 +0.5 충족), 25클래스 57.85(DGFusion 56.71 대비 +1.14). 얇은4 Δ +1.39 — 사전 문턱('A1 얇은4 이득의 절반')이 A1 이득 −1.01 로 정의 불능(문자대로 −0.5 통과·대체 +1.5 미달·반증 +0.5 통과), 결과 확인 후 문턱을 고르지 않음. 두께 0.25~0.5 패치 '찾았지만 못 그림' .372/.374 로 기준 ≤.35 미달(감소 .072/.054 는 반증 .05 통과). TrafficLight −6.60(FP 증가). 성능 이득은 두 시드 일관 — 채택 여부·3번째 시드·MUSES/MCubeS 이식은 user 결정 | .claude_logs/tasks/DRN-261012-02/analysis.md |
 | DRN-261016-01 | adopt | 같은 규칙(원본 1042 GT·val 선택 해상도 1536) 비교 확정: 1024 재현 ±0.02 통과. 기준선은 val 이 1536 을 고르지만 test 하락(DGFusion 56.71→55.57, CAFuser(b) 55.77→55.60), 우리는 상승(E1 56.24→57.48, Q2 56.59→58.12). val 선택 규칙에서 Q2 +2.55 vs DGFusion. 해상도 이득은 우리 구조에만 일반화 — 프로토콜 결과이지 노벨티 아님, 헤드라인 규칙 변경은 user 결정 | .claude_logs/tasks/DRN-261016-01/analysis.md |
 | DRN-261017-01 | - | - | - |
+| DRN-261020-15 | - | - | - |
 <!-- lab:plan-queue:end -->
 
 > **재설계 기준**: ①논문(accept) 기여 — A(P51 확장)·B(진단-프레임워크) 어느 분기에서도 쓰이는가 ②24GB(yeon 3090/jarvis 4090)에서 도는가 ③원장 반증 경로가 아닌가. 옛 대기열 대부분은 계보 사망·중복으로 종결 처리(하단 🗑).

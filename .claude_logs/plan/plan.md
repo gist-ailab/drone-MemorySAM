@@ -11,33 +11,37 @@
 | DRN-261020-02 | P1 | 노벨티 감사 + 구조 후보 수색(문헌만): Q2 레시피 최근접 선행과 차별점 · '세부-의미 결합' 실패 기제에 대한 2025~2026 대응 구조 | 문헌 조사만. 산출 = research/ 아래 감사 문서: 표1(Q2 vs 선행 4편: 교사·패스 수·열화 정의·라벨 필요 여부·게이트 유무), 표2(세부-의미 결합 구조 후보 ≥5, 각 arXiv ID·우리 기각 축(게이트·attn bias·라우팅·합성 열화 라벨) 저촉 여부·DELIVER/MUSES 적용 가능성) | - | novelty-audit, survey, structural-novelty |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) |  | - | muses, resolution |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) |  | - | deliver, muses, resolution, analysis |
-| DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | - | deliver, q2, ablation |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | - | deliver, robustness, p54 |
 | DRN-260926-55 | P102 | Q2→Q3 강건성 전 프로토콜(EMM15·RMM4×3·NM3, Q2 먼저) | Q2·Q3 체크포인트 강건성 측정 | - | deliver, robustness, p54 |
 | DRN-260926-56 | P103 | Q2noDeg · 원천분리: DEGRADE_P=0, KD 유지(증류만의 순기여) | DEGRADE_P=0 (KD 유지) | - | deliver, p54, screen40 |
 | DRN-260926-233 | P369 | [registry] jarvis_deliver_rgbdel_P46_c3only_seed2026090{2,3}_screen40_Q2 | Q2 시드 재현(교사 고정, 학생 시드만 변경) | - | registry, deliver, seg |
 
+## evaluating
+| id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
+| --- | --- | --- | --- | --- | --- |
+| DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | - | deliver, q2, ablation |
+
 ## queued
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
-| DRN-261020-01 | P1 | A2 실패-키 분석(학습 0): 구조 제안의 선행 조건 — TrafficLight FP 장면 단위·세부-의미 분리 증거·열화+야간 혼동행렬 | 학습 없음. 기존 A2 2시드 ckpt(s821·s902) + Q2 2시드 ckpt 로 (1) TrafficLight FP 상위 20장면 시각화·FP 픽셀의 경로별 기여(dense vs query, hires on/off 추론 시 ablation) (2) TrafficLight 단독 두께 구간(thin_error_anatomy 클래스 단일 모드 추가) (3) MUSES 조건별 혼동행렬(night 3조건 분리) 및 DELIVER night/fog 조건별 혼동행렬 | - | A2, failure-keys, structural-novelty |
-| DRN-261020-06 | P1 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
-
-## idea
-| id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
-| --- | --- | --- | --- | --- | --- |
+| DRN-261017-02 | P1 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | - | mcubes, A2, transfer |
 | DRN-261019-02 | P1 | MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3 | 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER | - | muses, 4modal, A2 |
-| DRN-261020-03 | P1 | S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산 제거), A2 같은 시드 짝 비교 | MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일) | - | S2, screen40, structural-novelty |
-| DRN-261020-07 | P1 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA r8·헤드·clean 학습) | - | backbone-control, ladder, paper |
-| DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
-| DRN-261020-08 | P2 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | DATASET.MODALS: ['img'] (그 외 E1 스크린 동일) | - | backbone-control, ladder, paper |
+| DRN-261020-01 | P1 | A2 실패-키 분석(학습 0): 구조 제안의 선행 조건 — TrafficLight FP 장면 단위·세부-의미 분리 증거·열화+야간 혼동행렬 | 학습 없음. 기존 A2 2시드 ckpt(s821·s902) + Q2 2시드 ckpt 로 (1) TrafficLight FP 상위 20장면 시각화·FP 픽셀의 경로별 기여(dense vs query, hires on/off 추론 시 ablation) (2) TrafficLight 단독 두께 구간(thin_error_anatomy 클래스 단일 모드 추가) (3) MUSES 조건별 혼동행렬(night 3조건 분리) 및 DELIVER night/fog 조건별 혼동행렬 | - | A2, failure-keys, structural-novelty |
 | DRN-261020-09 | P2 | Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일) | LoRA 를 센서 공유 1개로(E1shared config 의 키를 A2 config 에 적용), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-10 | P2 | Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk) | FUSION 트렁크를 MeanFusionTrunk(P43 식)로, 그 외 A2 동일(config 파생, 코드 변경 없음 예상) | - | ablation, leave-one-out, paper |
 | DRN-261020-11 | P2 | Ablation L3 · A2 − 4탭(→ 마지막 블록 탭 1개) | MODEL.TAPS.LAYERS: [24] (고해상 어댑터 탭 수 1 로 맞춤), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | MODEL.M2F.ENABLE false · P39.ARBITER false(dense 경로만), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-14 | P2 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | - | ablation, leave-one-out, paper |
-| DRN-261017-02 | P3 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | - | mcubes, A2, transfer |
+| DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | FUSION 을 MeanFusionTrunk(P43 식 모달 평균)로 교체, 그 외 E1 스크린 config 동일(4탭·LoRA r8·헤드·clean 학습) | - | backbone-control, ladder, paper |
+| DRN-261020-08 | P3 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | DATASET.MODALS: ['img'] (그 외 E1 스크린 동일) | - | backbone-control, ladder, paper |
+| DRN-261020-06 | P4 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
+
+## idea
+| id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
+| --- | --- | --- | --- | --- | --- |
+| DRN-261020-03 | P1 | S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산 제거), A2 같은 시드 짝 비교 | MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일) | - | S2, screen40, structural-novelty |
+| DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
 | DRN-261020-05 | P3 | S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합) | S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화 | - | S2, explore, structural-novelty |
 | DRN-260926-05 | P5 | N-E18 · E18 = E1 레시피 + Lovász-Softmax 보조손실 40ep 스크린 시드821 | E1 레시피에 Lovász-Softmax 보조손실 추가(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) | - | deliver, screen40 |
 | DRN-260926-06 | P6 | N-E19 · E19 = E1 레시피 + 가중치 EMA(0.9995) val 평가·저장 | E1 레시피에 가중치 EMA(0.9995)로 val 평가·저장 | - | deliver |
@@ -85,7 +89,7 @@
 | DRN-260926-219 | P355 | [registry] jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_E13 | E13 = E1(4탭)+E3(센서별 prototype) 결합 — test 1·2위 축 결합 | - | registry, deliver, seg, status-unknown |
 | DRN-260926-224 | P360 | [registry] E2_legal_rescore_seed821 | E2 legal 재채점 ckpt epoch40_68.65_top1 | - | registry, deliver, 평가(학습 0), hold |
 | DRN-260926-225 | P361 | [registry] bengio_deliver_rgbdel_P46_c3only_seed20260902_screen40_B0s2 / E1s2 | 시드 20260902 매칭 페어(B0·E1) | - | registry, deliver, seg, status-unknown |
-| DRN-260926-234 | P370 | [registry] jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD / Q2noDeg | Q2 이득 원천 분리: noKD = KD_W 0(열화 두 패스만), noDeg = DEGRADE_P 0(증류만, clean CE 사실상 2회) | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227 | registry, deliver, seg, status-unknown |
+| DRN-260926-234 | P370 | [registry] jarvis_deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD / Q2noDeg | Q2 이득 원천 분리: noKD = KD_W 0(열화 두 패스만), noDeg = DEGRADE_P 0(증류만, clean CE 사실상 2회) | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227, yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548 | registry, deliver, seg, status-unknown |
 | DRN-260926-264 | P615 | [세대] P15: Calibrated Spatial Entropy Fusion (설계 단계) | P15: Calibrated Spatial Entropy Fusion (설계 단계) | - | generation, status-unknown |
 | DRN-260926-272 | P623 | [세대] P23: MoE DeBA-BB (구현 완료, 학습 대기) (실험 M) | P23: MoE DeBA-BB (구현 완료, 학습 대기) (실험 M) | - | generation, status-unknown |
 | DRN-260926-274 | P625 | [세대] P25: Unified Spatial Quality Fusion — Quality Map으로 UAMM + AMF + Memory 통합 (설계 중) | P25: Unified Spatial Quality Fusion — Quality Map으로 UAMM + AMF + Memory 통합 (설계 중) | - | generation, status-unknown |

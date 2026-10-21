@@ -9127,10 +9127,11 @@ items:
   - seg
   - status-unknown
   created: '2026-09-26'
-  updated: '2026-10-15'
+  updated: '2026-10-21'
   closed: null
   runs:
   - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548
   results:
   - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227
     split: test
@@ -9151,6 +9152,26 @@ items:
     split: val
     metric: mAcc
     value: 78.8
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548
+    split: test
+    metric: mIoU
+    value: 57.23
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548
+    split: test
+    metric: mAcc
+    value: 67.21
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548
+    split: val
+    metric: mIoU
+    value: 68.72
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548
+    split: val
+    metric: mAcc
+    value: 77.63
     source: pipeline
   verdict: null
   analysis: null
@@ -12150,13 +12171,13 @@ items:
     약 9시간
   priority: 15
   owner_role: manager
-  status: running
+  status: evaluating
   tags:
   - deliver
   - q2
   - ablation
   created: '2026-10-05'
-  updated: '2026-10-16'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12413,16 +12434,16 @@ items:
   success_criteria: 2시드 평균 test Δ vs E1Mc 같은 시드 ≥ +0.5
   sample_basis: MCubeS 3시드 std 0.49
   expected_cost: 3090 4장×2런, 200ep(데이터 작음) 약 1일
-  priority: 3
+  priority: 1
   owner_role: method
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - mcubes
   - A2
   - transfer
   created: '2026-10-17'
-  updated: '2026-10-17'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12518,7 +12539,7 @@ items:
   expected_cost: GPU 4장×2런, 40ep 각 1.5~2일, 교사 완주 후 기동
   priority: 1
   owner_role: method
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - muses
@@ -12526,7 +12547,7 @@ items:
   - A2
   docs: .claude_logs/tasks/DRN-261019-02
   created: '2026-10-19'
-  updated: '2026-10-19'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12769,7 +12790,7 @@ items:
     통과 후 develop 병합'
   sample_basis: 해당 없음(구현)
   expected_cost: 워커 코딩 1회 + 스모크 GPU 1장 1시간
-  priority: 1
+  priority: 4
   owner_role: method
   status: queued
   kind: build
@@ -12779,7 +12800,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261020-06
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12803,9 +12824,9 @@ items:
     Δ 로 보고됨. 단순 융합이 E1 보다 ≥ +0.3 높으면 교차주의 융합의 기여 주장을 삭제'
   sample_basis: E1 스크린 시드 차 ~0.4 → 2시드
   expected_cost: 4 GPU × 약 1일 × 2런 + 모달 zero-out 평가
-  priority: 1
+  priority: 3
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - backbone-control
@@ -12813,7 +12834,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-07
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12833,9 +12854,9 @@ items:
   success_criteria: 사다리 표 0단계 수치 확보(24클래스·클래스별)
   sample_basis: 기준점 1시드
   expected_cost: 4 GPU × 약 0.7일 × 1런
-  priority: 2
+  priority: 3
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - backbone-control
@@ -12843,7 +12864,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-08
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12863,11 +12884,11 @@ items:
   configs: []
   launch: null
   success_criteria: 표 행 완성(24클래스·thin4·depth 제거 Δ·EMM15 val)
-  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
-  expected_cost: 4 GPU × 약 1일 × 2런
+  sample_basis: 구조 행은 1시드(s821)로 축소(user 2026-10-21), 학습 행(L5·L6)만 2시드
+  expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
@@ -12875,7 +12896,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-09
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12894,11 +12915,11 @@ items:
   configs: []
   launch: null
   success_criteria: 표 행 완성
-  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
-  expected_cost: 4 GPU × 약 1일 × 2런
+  sample_basis: 구조 행은 1시드(s821)로 축소(user 2026-10-21)
+  expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
@@ -12906,7 +12927,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-10
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12925,11 +12946,11 @@ items:
   configs: []
   launch: null
   success_criteria: 표 행 완성
-  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
-  expected_cost: 4 GPU × 약 1일 × 2런
+  sample_basis: 구조 행은 1시드(s821)로 축소(user 2026-10-21)
+  expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
@@ -12937,7 +12958,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-11
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12957,11 +12978,11 @@ items:
   configs: []
   launch: null
   success_criteria: 표 행 완성
-  sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
-  expected_cost: 4 GPU × 약 1일 × 2런
+  sample_basis: 구조 행은 1시드(s821)로 축소(user 2026-10-21)
+  expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
@@ -12969,7 +12990,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-12
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -12993,7 +13014,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 2
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
@@ -13001,7 +13022,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-13
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -13024,7 +13045,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 2
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
@@ -13032,7 +13053,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-14
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
