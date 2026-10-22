@@ -13193,6 +13193,7 @@ problems:
   parent: PRB-DRN-261016-01
   survey_notes:
   - /home/jemo/.claude/jobs/3a914e7f/tmp/prb_note_261022.md
+  - /mnt/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/.claude_logs/tasks/DRN-261022-01/problem-note-2026-10-22-user-adoption.md
   decision:
     choice: adopt
     note: '방법론을 찾는게 좋을거같아. 포스터가 달라지면 또 틀린다는거니까 .
