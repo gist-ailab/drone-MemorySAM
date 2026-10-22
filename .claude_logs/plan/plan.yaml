@@ -13108,6 +13108,48 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261020-01
+- id: DRN-261022-01
+  title: '벤치 교차 확인(학습 0): 객체 단위 클래스 오라클 상한 + 객체 풀링 선형 프로브 — DELIVER(A2·Q2) 와 MUSES(E1M
+    1024/1536, 4모달 A2 완주 후 재측정)'
+  question: ① '마스크는 맞는데 클래스가 틀린' 오류가 DELIVER 만의 현상인가, MUSES 에도 있는가 ② 예측 객체의 클래스만 정답으로
+    바꾸면(마스크 고정) mIoU 가 각 벤치에서 얼마나 오르는가(클래스 보완 방법의 여유 상한) ③ 포스터 vs 신호등 같은 혼동쌍이 저해상
+    의미 토큰(fused, stride-16)으로는 안 갈리고 고해상 경로 특징의 객체 풀링으로는 갈리는가
+  hypothesis: 'H-X1: 객체 클래스 오라클 여유는 DELIVER A2 에서 ≥ +1.5, MUSES 1536 에서도 ≥ +1.0 (둘
+    다면 방법론 정당). H-X2: 혼동쌍(DELIVER TrafficLight↔Other/TrafficSign, MUSES traffic light↔traffic
+    sign/pole)은 fused 풀링 선형 프로브 AUROC < 0.8, 고해상 풀링 AUROC ≥ 0.9'
+  falsification: MUSES 오라클 여유 < +0.5 이면 클래스 보완 방법은 DELIVER 한정 효과 → 논문 주 방법으로 올리지 않음.
+    고해상 풀링 AUROC 가 fused 와 차이 < 0.05 면 '고해상 질감이 클래스를 가른다' 가설 기각
+  change: '학습 없음. (a) 객체 클래스 오라클: 예측 맵의 연결 성분마다 GT 다수 클래스로 라벨 교체 후 mIoU 재계산(DELIVER
+    test A2 s821·s902 / Q2 s821 덤프, MUSES val E1M 3시드 1024·1536 — 예측 덤프 없으면 공식 val
+    평가기로 1회 재추론해 pred 저장) + 클래스별 Δ 와 혼동쌍 기여 (b) 선형 프로브: A2 val 에서 GT 객체별로 fused 토큰
+    평균과 고해상 경로 s4 특징의 마스크 내 평균을 추출(모델 eval 스태시 훅, 학습 영향 0), 혼동쌍 2진 로지스틱 회귀 5-fold
+    AUROC (c) MUSES 4모달 A2(DRN-261019-02) 완주 후 (a)(b) 재측정'
+  baseline: 'DELIVER: A2 vs Q2 같은 시드. MUSES: 1024 vs 1536 같은 ckpt'
+  configs: []
+  launch: null
+  success_criteria: '표 2개(벤치×모델 오라클 Δ·클래스별, 혼동쌍×특징 AUROC) + [사실] 등급 문장: ''DELIVER·MUSES
+    모두 객체 클래스 여유 ≥ +1.0'' 여부'
+  sample_basis: DELIVER 2시드 test 전수, MUSES 3시드 val 250장(조건별 25장이라 조건 분해는 참고만)
+  expected_cost: GPU 1장 약 4시간(재추론 포함), 나머지 CPU
+  priority: 1
+  owner_role: analysis
+  status: queued
+  kind: analysis
+  tags:
+  - cross-bench
+  - class-oracle
+  - probe
+  - structural-novelty
+  docs: .claude_logs/tasks/DRN-261022-01
+  created: '2026-10-22'
+  updated: '2026-10-22'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
@@ -13129,7 +13171,7 @@ problems:
   closed: null
 - id: PRB-DRN-261020-01
   title: A2(E1 구조+Q2 레시피+고해상 경로)가 아직 틀리는 곳에서 구조 노벨티를 도출 — 세부는 늘었는데 의미 구분이 따라오지 못함
-  status: candidate
+  status: open
   evidence:
     quant:
     - 'A2 2시드 DELIVER test@1024: TrafficLight −6.60(FP 28~92% 증가, 오답 정답=Other·TrafficSign,
@@ -13150,7 +13192,15 @@ problems:
     Q3
   parent: PRB-DRN-261016-01
   survey_notes: []
-  decision: null
+  decision:
+    choice: adopt
+    note: '방법론을 찾는게 좋을거같아. 포스터가 달라지면 또 틀린다는거니까 .
+
+      그런데 다른 데이터셋에서도 동일한 문제가 있는지, muses에서도 똑같이 클래스 문제를 해결하면 성능이 오를지 확인해야해 우리는 여러벤치에서
+      우수성을 보여야 하잖아'
+    by: jemo
+    via: labdash
+    at: '2026-10-22T09:38:50.241863+00:00'
   created: '2026-10-20'
   updated: '2026-10-22'
   closed: null
