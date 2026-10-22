@@ -733,8 +733,9 @@ class ReliabilityGatedFusion(nn.Module):
             for i in range(m):
                 cons = ((p_sum - probs[i]) / max(m - 1, 1)).clamp_min(0)
                 corr = (probs[i] * cons).clamp_min(0).sqrt().sum(dim=1, keepdim=True)
-                others_max = torch.stack(
-                    [selfent[j] for j in range(m) if j != i], dim=0).amax(dim=0)
+                others = [selfent[j] for j in range(m) if j != i]
+                others_max = (torch.stack(others, dim=0).amax(dim=0)
+                              if others else torch.zeros_like(selfent[i]))
                 g = (selfent[i] - others_max).clamp(0, 1)      # unique-confidence veto gate
                 veto_list.append((g * selfent[i] + (1.0 - g) * corr).clamp(0, 1))
                 corr_list.append(corr)
@@ -753,7 +754,7 @@ class ReliabilityGatedFusion(nn.Module):
             # 모달 위에서 재정규화 (veto floor보다 먼저 — veto는 학습-무관
             # '값' 판정이고 이건 '존재' 판정이라 상위 사실이다).
             w = P44.renormalize_over_present(w, presence)
-        if self.veto_floor:
+        if self.veto_floor and m > 1:
             with torch.no_grad():
                 low = (corr_veto < self.veto_thresh).float()   # extreme-low corr_veto
                 cap = low * self.veto_cap + (1.0 - low)        # cap only flagged modals
@@ -884,6 +885,18 @@ class ReliabilityGatedFusion(nn.Module):
         self._train_aux_logits = (aux_logits if (self.training
                                                  and self.p44_export_train_aux)
                                   else None)
+
+        # [2026-10-22] 센서 하나에는 교차 증거가 없으므로 융합·veto 없이 항등 반환.
+        if m == 1:
+            fused = feats[0]
+            if not self.training:
+                self._last_aux_logits = [al.detach() for al in aux_logits]
+                self._last_rel_spatial = feats[0].new_ones((1, B, 1, h, w))
+                self._last_gate_spatial = self._last_rel_spatial
+            self._last_gate_mean = feats[0].new_ones((1,))
+            if self.training and gt_mask is not None:
+                aux['aux_ce'] = feats[0].new_zeros(())
+            return fused, aux
 
         # 2) reliability signals
         rel_cal, corr_veto, b_cons = self._compute_signals(aux_logits)
