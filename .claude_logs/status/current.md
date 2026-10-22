@@ -13,7 +13,7 @@ headline: DELIVER test 56.24±0.42(best 56.73, legal v2 3시드) · val 69.51±0
 sota_gap: DELIVER test mean −0.47 vs DGFusion 56.71 · val mean +0.72 vs CAFuser-CAA 68.79 · MUSES test mean −0.21 vs DGFusion 79.5 · MCubeS +2.17 vs StitchFusion 55.9 (출처: ① 표)
 next_gate: P56-A(모달 충돌 학습: Q2 레시피의 열화 패스에 "한 센서 영역이 자신 있게 틀린" 표본 추가) 40ep 스크린 2시드 — 사전 기준 = clean 24클래스 Δ vs Q2 ≥ −0.3 그리고 (실제 과노출·저노출·모션블러 케이스 mIoU 평균 Δ ≥ +1.0 또는 RGB 부분 결측 저하 20% 이상 감소), lab-plan DRN-260929-01
 blocker: MUSES test 제출 보류(user 2026-09-29: 새 4모달 모델로 다시 만들 것)
-last_updated: 2026-10-01 (헤드라인 불변, 8KB 재압축)
+last_updated: 2026-10-22 (헤드라인 불변, 단일모달 융합 수정)
 <!-- PI:END -->
 
 > **역할**: 현재 상태 스냅샷 — 네 블록(벤치 표·지금 도는 것·블로커·판정 대기)만 담는다(상한 60줄, 2026-09-18 재설계 — 감사 R2). 이력·경위는 [history-2026H2.md](history-2026H2.md), 날짜 엔트리 적층 금지.
@@ -46,7 +46,7 @@ last_updated: 2026-10-01 (헤드라인 불변, 8KB 재압축)
 1. hpca100 공유볼륨 89%(여유 244G, [artifact-locations](../infra/artifact-locations.md) 2b).
 2. ISSUE-036 legal 재샘플 편차 — v2 채택 완료, 래퍼 가드 등재 잔여.
 3. **기준선 강건 측정 완료**(DGFusion 공식·(b) 10-01, CAFuser (b) 10-04, 61케이스): Q2 3시드가 결측·depth 부분·노이즈 축 우위, RGB 부분 축은 CAFuser (b) 와 동률.
-4. ISSUE-034(덤프 파일명)·ISSUE-035(헤드라인 ckpt 경로) 이슈 표 갱신 대기.
+4. ISSUE-034·035 후속 정리 대기. RGB-only 융합 크래시 수정(10-22, 스모크 통과).
 5. jarvis `/ailab_mat2` 금지(sshfs 정지). lecun·jarvis GPU0 금지 09-30 해제.
 
 ## ④ 판정 현황 (판정 = "MMSAM | 생각정리" 세션, 근거 = judgment-ledger 2026-09-23~29 행)
