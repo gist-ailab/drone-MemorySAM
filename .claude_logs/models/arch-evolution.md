@@ -6,7 +6,12 @@ moved: 2026-07-08
 
 # 모델 아키텍처 상세 (Model Architecture Details)
 
-> 최종 업데이트: 2026-09-30
+## ReliaDINO 단일 모달 항등 융합 가드 (2026-10-22)
+
+- [버전] E1 구성의 RGB 단일 모달(`DATASET.MODALS: ['img']`). [변경] aux 디코더/스태시 뒤 `ReliabilityGatedFusion.forward`가 `feats[0]`을 그대로 반환하고 평가 신뢰도·게이트 가중을 1로 기록한다. 교차 증거가 없으므로 corroboration·veto·교차주의·라우터를 건너뛴다.
+- [사유] 기존 `_compute_signals`의 빈 `torch.stack`과 교차주의의 빈 `torch.cat`으로 RGB-only 학습이 중단됐다. [경로] `semseg/models/reliadino/fusion.py`, `tools/smoke_fusion_single_modal.py`; 4모달 연산 경로는 빈 리스트·veto 방어 가드 외에 변경 없음.
+
+> 최종 업데이트: 2026-10-22
 
 ## P56-C — 센서 상태 조건부 LoRA 전문가 혼합 (2026-09-30 구현)
 

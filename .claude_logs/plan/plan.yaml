@@ -12505,7 +12505,7 @@ items:
   expected_cost: GPU 4장, 200ep 약 2~3일(E1M full200 기준)
   priority: 1
   owner_role: method
-  status: running
+  status: evaluating
   kind: experiment
   tags:
   - muses
@@ -12514,7 +12514,7 @@ items:
   - A2
   docs: .claude_logs/tasks/DRN-261019-01
   created: '2026-10-19'
-  updated: '2026-10-20'
+  updated: '2026-10-22'
   closed: null
   runs: []
   results: []
@@ -12532,7 +12532,8 @@ items:
   change: 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER
   baseline: MUSES 4모달 P39.1-rank 공식 test 79.571 · DGFusion 79.5 · 교사 E1M4 공식 val
   configs:
-  - configs/hpca100-muses_rgbelr_P39_1_physaugoff_taps_screen40_A2_s2.yaml,configs/hpca100-muses_rgbelr_P39_1_physaugoff_taps_screen40_A2_s3.yaml
+  - configs/yeon-muses_rgbelr_P39_1_physaugoff_taps_screen40_A2_s2.yaml
+  - configs/yeon-muses_rgbelr_P39_1_physaugoff_taps_screen40_A2_s3.yaml
   launch: null
   success_criteria: 2시드 공식 val 평균 > 교사 E1M4 공식 val, 그리고 test(user 제출) 평균 > 79.571
   sample_basis: MUSES 시드 std 약 0.7, 2시드 스크린 → 통과 시 3시드
@@ -12547,7 +12548,7 @@ items:
   - A2
   docs: .claude_logs/tasks/DRN-261019-02
   created: '2026-10-19'
-  updated: '2026-10-21'
+  updated: '2026-10-22'
   closed: null
   runs: []
   results: []
@@ -12582,7 +12583,7 @@ items:
   expected_cost: null
   priority: 1
   owner_role: method
-  status: running
+  status: evaluating
   kind: analysis
   tags:
   - deliver
@@ -12590,7 +12591,7 @@ items:
   - robustness
   docs: .claude_logs/tasks/DRN-261019-03
   created: '2026-10-19'
-  updated: '2026-10-20'
+  updated: '2026-10-21'
   closed: null
   runs: []
   results: []
@@ -13137,12 +13138,19 @@ problems:
     qual:
     - 고해상 경로는 1패치 미만 두께에서만 효과. 세부가 늘수록 작은 발광·사각 물체의 클래스 구분(TrafficLight vs TrafficSign·Other)이
       무너지고, 열화+야간에서는 넓은 영역 경계가 인접 넓은 클래스로 밀린다. 즉 남은 실패는 '세부 vs 의미 맥락' 결합 방식에 있다.
-    figures: []
+    - '정성 그림(2026-10-22, A2 s821 vs Q2 s821, DELIVER test, 기존 예측 덤프): A2 는 건물 벽 포스터·간판(GT=Other)을
+      신호등으로 통째로 칠한다 — scene_01 sun 002500 A2 FP 15258px(100% GT=Other) vs Q2 3620px
+      · scene_02 cloud 044650 13705 vs 3752 · scene_03 night 001350 10304 vs 2008
+      · scene_04 rain 097650(GT=TrafficSign 89%) 12229 vs 9008. Q2 는 같은 자리를 여러 클래스로
+      섞어 작게 틀린다. 즉 고해상 경로가 작은 사각 발광체의 ''경계''는 또렷이 그리지만 ''무엇인가'' 구분은 못 따라온다. 원본 README:
+      analysis_logs/a2_tl_fp_scenes_20261022/README.md'
+    figures:
+    - /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_01.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_02.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_03.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_04.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/legend.png
   source: tasks/DRN-261012-02/analysis.md §(2)(4) · tasks/DRN-261016-03/analysis.md
     Q3
   parent: PRB-DRN-261016-01
   survey_notes: []
   decision: null
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-22'
   closed: null

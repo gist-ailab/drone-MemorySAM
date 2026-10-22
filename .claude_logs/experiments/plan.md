@@ -172,9 +172,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | --- | --- | --- | --- | --- | --- | --- |
 | DRN-261017-02 | P1 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | queued | - | 3090 4장×2런, 200ep(데이터 작음) 약 1일 |
 | DRN-261018-01 | P1 | A2 3번째 시드 20260903 — Q2 + 고해상 경로 40ep 스크린(DRN-261012-02 inconclusive 후속) | TRAIN.SEED 20260903(구조·레시피는 A2 s821·s902 와 동일) | running | - | 3090 4장, 40ep 약 30h + legal 평가 |
-| DRN-261019-01 | P1 | MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사 | E1M full200 에 radar 추가(DATASET.MODALS) | running | - | GPU 4장, 200ep 약 2~3일(E1M full200 기준) |
+| DRN-261019-01 | P1 | MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사 | E1M full200 에 radar 추가(DATASET.MODALS) | evaluating | - | GPU 4장, 200ep 약 2~3일(E1M full200 기준) |
 | DRN-261019-02 | P1 | MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3 | 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER | queued | - | GPU 4장×2런, 40ep 각 1.5~2일, 교사 완주 후 기동 |
-| DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 | - | running | - | 미정 |
+| DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 | - | evaluating | - | 미정 |
 | DRN-261020-01 | P1 | A2 실패-키 분석(학습 0): 구조 제안의 선행 조건 — TrafficLight FP 장면 단위·세부-의미 분리 증거·열화+야간 혼동행렬 | 학습 없음. 기존 A2 2시드 ckpt(s821·s902) + Q2 2시드 ckpt 로 (1) TrafficLight FP 상위 20장면 시각화·FP 픽셀의 경로별 기여(dense vs query, hires on/off 추론 시 ablation) (2) TrafficLight 단독 두께 구간(thin_error_anatomy 클래스 단일 모드 추가) (3) MUSES 조건별 혼동행렬(night 3조건 분리) 및 DELIVER night/fog 조건별 혼동행렬 | queued | - | GPU 1장 약 6시간(추론 4회 + 혼동행렬), 학습 없음 |
 | DRN-261020-02 | P1 | 노벨티 감사 + 구조 후보 수색(문헌만): Q2 레시피 최근접 선행과 차별점 · '세부-의미 결합' 실패 기제에 대한 2025~2026 대응 구조 | 문헌 조사만. 산출 = research/ 아래 감사 문서: 표1(Q2 vs 선행 4편: 교사·패스 수·열화 정의·라벨 필요 여부·게이트 유무), 표2(세부-의미 결합 구조 후보 ≥5, 각 arXiv ID·우리 기각 축(게이트·attn bias·라우팅·합성 열화 라벨) 저촉 여부·DELIVER/MUSES 적용 가능성) | running | - | GPU 0, 조사 세션 1회 |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |

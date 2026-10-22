@@ -7,6 +7,10 @@ period: 2026-07-01 ~ 2026-12-31
 > **역할**: 2026 하반기(2026-07-01~) 역시간순 진행 로그. **새 진행 엔트리는 이 파일 최상단(이 안내 블록 바로 아래)에 추가**한다.
 > 현재 상태는 [current.md](current.md), 2026-06-30 이전 이력은 [history-2026H1.md](history-2026H1.md) 참조.
 
+## 2026-10-22 — ReliaDINO RGB 단일 모달 항등 융합 수정
+- `semseg/models/reliadino/fusion.py`에서 단일 센서의 교차주의·veto·라우터를 우회하고 `feats[0]`을 반환한다. 4모달 계산은 빈 `others`·veto 조건 가드 외에 그대로 유지한다.
+- CPU 스모크 `tools/smoke_fusion_single_modal.py`: E1 기반 단일 모달 eval 출력·train 역전파/LoRA gradient 및 4모달 eval 확인. 지정 명령에서 `SMOKE OK`.
+
 ## 2026-10-15~17 — 서버 저장공간 정리: 비-best 웨이트·홈 디렉터리 이관 (user 지시)
 - 사용률 90% 이상 볼륨(lecun·bengio·levine·jarvis·hinton)과 `/ailab_mat2/personal/jemo_maeng`의 끝난 런 비-best 웨이트(top2~5·test-best·last·중간 에폭) 3,941개·약 4.0TB를 drone_nas `nonbest_weights_archive_20261015/`로 검증 이관(묶음별 md5 대조 후 원본 삭제, 실패 0건). top1·best·제출물·데이터셋·실행 중 런은 남김.
 - 홈 디렉터리(OS 볼륨) 전수조사 후 jarvis·hinton 홈의 웨이트·덤프를 이관: 필요(top1·best 59개, hinton YOLO last.pt·로그 644개) → ailab_mat2 `home_offload_20261016/`, 중요하지 않음(중간 에폭·특징 캐시 22,709개, 평가 예측 PNG 227,512개) → drone_nas `home_offload_20261016/`. jarvis 홈 599G → 96G, hinton 홈 333G → 40G.
