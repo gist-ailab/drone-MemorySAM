@@ -13191,7 +13191,8 @@ problems:
   source: tasks/DRN-261012-02/analysis.md §(2)(4) · tasks/DRN-261016-03/analysis.md
     Q3
   parent: PRB-DRN-261016-01
-  survey_notes: []
+  survey_notes:
+  - /home/jemo/.claude/jobs/3a914e7f/tmp/prb_note_261022.md
   decision:
     choice: adopt
     note: '방법론을 찾는게 좋을거같아. 포스터가 달라지면 또 틀린다는거니까 .

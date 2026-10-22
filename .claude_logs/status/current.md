@@ -11,9 +11,9 @@ updated: 2026-09-29
 paper_target: 단일 아키텍처(ReliaDINO)로 DELIVER·MUSES·MCubeS 전 모달 융합 계열 1위 — 논문 트랙 (출처: CLAUDE.md 프로젝트 개요)
 headline: DELIVER test 56.24±0.42(best 56.73, legal v2 3시드) · val 69.51±0.15 · MUSES test 79.29±0.71(best 79.788, 2시드) · MCubeS 58.07±0.49 (출처: 아래 ① 표 = headline.yaml)
 sota_gap: DELIVER test mean −0.47 vs DGFusion 56.71 · val mean +0.72 vs CAFuser-CAA 68.79 · MUSES test mean −0.21 vs DGFusion 79.5 · MCubeS +2.17 vs StitchFusion 55.9 (출처: ① 표)
-next_gate: P56-A(모달 충돌 학습: Q2 레시피의 열화 패스에 "한 센서 영역이 자신 있게 틀린" 표본 추가) 40ep 스크린 2시드 — 사전 기준 = clean 24클래스 Δ vs Q2 ≥ −0.3 그리고 (실제 과노출·저노출·모션블러 케이스 mIoU 평균 Δ ≥ +1.0 또는 RGB 부분 결측 저하 20% 이상 감소), lab-plan DRN-260929-01
-blocker: MUSES test 제출 보류(user 2026-09-29: 새 4모달 모델로 다시 만들 것)
-last_updated: 2026-10-22 (헤드라인 불변, 단일모달 융합 수정)
+next_gate: ① A2 3시드 판정(DRN-261018-01, 시드903 legal 대기: 3시드 평균 24클래스 Δ vs Q2 ≥ +0.5 그리고 시드903 Δ > 0) → ② 메인 3표 완성(MCubeS A2 전이 DRN-261017-02 2시드 · MUSES 4모달 A2 DRN-261019-02 2시드, 교사 E1M4 완주 후) → ③ PRB-DRN-261020-01(user 채택 10-22, "마스크는 또렷·클래스 혼동") 벤치 교차 확인 DRN-261022-01(객체 클래스 오라클 여유 DELIVER·MUSES ≥ +1.0) 통과 시 S2 센서별 마스크 헤드(+객체 풀링 클래스 항) 40ep 스크린 등록. P56 계열은 10-04~08 기각(DRN-260929-01·02·03)
+blocker: MUSES test 제출 보류(user 2026-09-29: 4모달 논문 모델로만 — MUSES 4모달 A2 완주·공식 val 뒤 user 가 직접 제출) · IEEE Sensors Journal 1회 투고 목표(user 2026-10-21): 분석형+성능 틀, ablation 7런·백본 사다리 3런 대기열
+last_updated: 2026-10-22 (next_gate·blocker 갱신: P56 기각 반영, A2 3시드→메인 3표→PRB-DRN-261020-01 교차 확인; 헤드라인 불변)
 <!-- PI:END -->
 
 > **역할**: 현재 상태 스냅샷 — 네 블록(벤치 표·지금 도는 것·블로커·판정 대기)만 담는다(상한 60줄, 2026-09-18 재설계 — 감사 R2). 이력·경위는 [history-2026H2.md](history-2026H2.md), 날짜 엔트리 적층 금지.
