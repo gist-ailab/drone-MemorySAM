@@ -13171,6 +13171,37 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261020-01
+- id: DRN-261027-01
+  title: IEEE Sensors Journal 원고 v1 — 분석형+성능 틀, 8쪽 본문 + 보충자료, 초고 동결 2026-11-10
+  question: 지금 있는 수치와 대기 중인 메인 표로 한 번에 채택될 원고를 만들 수 있는가
+  hypothesis: 바뀌지 않을 절(센서·프로토콜·방법·분석)을 먼저 쓰고 표는 수치가 오는 대로 채우면 11-10 초고 동결 가능
+  falsification: 해당 없음(집필)
+  change: 집필 작업(학습 없음). 브리프 .claude_logs/paper/00_brief.md 의 절 구성·표 출처·인용 규칙을 따른다
+  baseline: RA-L 초안 v1(볼트 _paper_submission/)
+  configs: []
+  launch: null
+  success_criteria: '완료 조건: (1) IEEEtran 2단 PDF 8쪽 이내 본문 + 보충 (2) 표 1~7 중 수치 있는 것은
+    출처 주석 포함 채움, 없는 것은 자리와 출처 명시 (3) 주장 불가 항목(브리프 §인용 규칙)이 본문에 없음 (4) method 검수 1회'
+  sample_basis: 해당 없음
+  expected_cost: 집필 세션 약 2주, 워커 위임 가능
+  priority: 1
+  owner_role: specialist-paper
+  status: queued
+  kind: build
+  tags:
+  - paper
+  - ieee-sensors
+  - writing
+  docs: .claude_logs/tasks/DRN-261027-01
+  created: '2026-10-27'
+  updated: '2026-10-27'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계

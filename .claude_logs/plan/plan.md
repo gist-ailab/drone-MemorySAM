@@ -19,7 +19,13 @@
 | --- | --- | --- | --- | --- | --- |
 | DRN-261019-01 | P1 | MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사 | E1M full200 에 radar 추가(DATASET.MODALS) | - | muses, 4modal, teacher, A2 |
 | DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 |  | - | deliver, A2, robustness |
+| DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | 기준 config = E1 스크린(bengio-deliver_rgbdel_P46_c3only_seed2026082{1,0902}_screen40_E1.yaml, clean 학습·QAF 없음·고해상 없음). 바꾸는 키 = MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (L2 와 같은 토글, 단 기준이 A2 가 아니라 E1). SAVE_DIR 만 행 이름 | - | backbone-control, ladder, paper |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | - | deliver, q2, ablation |
+
+## judging
+| id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
+| --- | --- | --- | --- | --- | --- |
+| DRN-261020-08 | P3 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | 기준 config = E1 스크린 s821. 바꾸는 키 = DATASET.MODALS: [img] (1센서; 참고 선례 configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml). 융합·탭·헤드는 그대로(1모달에서 융합은 항등). SAVE_DIR 만 행 이름. 기동 검증: 센서별 LoRA 가 1세트만 생성돼 trainable 이 E1 보다 작아야 정상 | jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220 | backbone-control, ladder, paper |
 
 ## queued
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
@@ -28,13 +34,12 @@
 | DRN-261019-02 | P1 | MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3 | 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER | - | muses, 4modal, A2 |
 | DRN-261020-01 | P1 | A2 실패-키 분석(학습 0): 구조 제안의 선행 조건 — TrafficLight FP 장면 단위·세부-의미 분리 증거·열화+야간 혼동행렬 | 학습 없음. 기존 A2 2시드 ckpt(s821·s902) + Q2 2시드 ckpt 로 (1) TrafficLight FP 상위 20장면 시각화·FP 픽셀의 경로별 기여(dense vs query, hires on/off 추론 시 ablation) (2) TrafficLight 단독 두께 구간(thin_error_anatomy 클래스 단일 모드 추가) (3) MUSES 조건별 혼동행렬(night 3조건 분리) 및 DELIVER night/fog 조건별 혼동행렬 | - | A2, failure-keys, structural-novelty |
 | DRN-261022-01 | P1 | 벤치 교차 확인(학습 0): 객체 단위 클래스 오라클 상한 + 객체 풀링 선형 프로브 — DELIVER(A2·Q2) 와 MUSES(E1M 1024/1536, 4모달 A2 완주 후 재측정) | 학습 없음. (a) 객체 클래스 오라클: 예측 맵의 연결 성분마다 GT 다수 클래스로 라벨 교체 후 mIoU 재계산(DELIVER test A2 s821·s902 / Q2 s821 덤프, MUSES val E1M 3시드 1024·1536 — 예측 덤프 없으면 공식 val 평가기로 1회 재추론해 pred 저장) + 클래스별 Δ 와 혼동쌍 기여 (b) 선형 프로브: A2 val 에서 GT 객체별로 fused 토큰 평균과 고해상 경로 s4 특징의 마스크 내 평균을 추출(모델 eval 스태시 훅, 학습 영향 0), 혼동쌍 2진 로지스틱 회귀 5-fold AUROC (c) MUSES 4모달 A2(DRN-261019-02) 완주 후 (a)(b) 재측정 | - | cross-bench, class-oracle, probe, structural-novelty |
+| DRN-261027-01 | P1 | IEEE Sensors Journal 원고 v1 — 분석형+성능 틀, 8쪽 본문 + 보충자료, 초고 동결 2026-11-10 | 집필 작업(학습 없음). 브리프 .claude_logs/paper/00_brief.md 의 절 구성·표 출처·인용 규칙을 따른다 | - | paper, ieee-sensors, writing |
 | DRN-261020-09 | P2 | Ablation L1 · A2 − 센서별 LoRA(→ 완전공유 LoRA 1개, r 동일) | A2 s821 config 대비 MODEL.LORA_MODE: shared · MODEL.LORA_R: 16 (E1shared 팔 B 와 동일 용량 맞춤, 09-21), 그 외 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-10 | P2 | Ablation L2 · A2 − cross-modal attention 융합(→ 센서 토큰 평균 MeanFusionTrunk) | A2 s821 config 대비 MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (코드 제약: mean 은 TRUNK_EXP false 필수, model.py:664-674; N2 평균융합 팔과 같은 결선), 그 외 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | A2 s821 config 대비 MODEL.M2F.ENABLE: false · MODEL.P39.ARBITER: false (dense conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-14 | P2 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | - | ablation, leave-one-out, paper |
-| DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | 기준 config = E1 스크린(bengio-deliver_rgbdel_P46_c3only_seed2026082{1,0902}_screen40_E1.yaml, clean 학습·QAF 없음·고해상 없음). 바꾸는 키 = MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (L2 와 같은 토글, 단 기준이 A2 가 아니라 E1). SAVE_DIR 만 행 이름 | - | backbone-control, ladder, paper |
-| DRN-261020-08 | P3 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | 기준 config = E1 스크린 s821. 바꾸는 키 = DATASET.MODALS: [img] (1센서; 참고 선례 configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml). 융합·탭·헤드는 그대로(1모달에서 융합은 항등). SAVE_DIR 만 행 이름. 기동 검증: 센서별 LoRA 가 1세트만 생성돼 trainable 이 E1 보다 작아야 정상 | - | backbone-control, ladder, paper |
 | DRN-261020-06 | P4 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
 
 ## idea

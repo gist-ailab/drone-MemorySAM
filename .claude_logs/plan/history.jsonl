@@ -925,3 +925,6 @@
 {"ts": "2026-10-23T00:50:11.114148+00:00", "id": "DRN-261020-08", "action": "sync-results", "fields": {"status": ["judging", "judging"]}, "reason": null, "actor": "pipeline"}
 {"ts": "2026-10-23T08:37:35.343258+00:00", "id": "DRN-261020-07", "action": "status", "fields": {"status": ["queued", "running"]}, "reason": "b1mean_s821 기동 확인", "actor": "jemo", "via": "MMSAM | monitoring"}
 {"ts": "2026-10-23T08:37:36.821274+00:00", "id": "DRN-261020-07", "action": "status", "fields": {"status": ["running", "evaluating"]}, "reason": "b1mean_s821(시드821) 완주, 트레이너 val mIoU 66.56. legal 재채점 대기", "actor": "jemo", "via": "MMSAM | monitoring"}
+{"ts": "2026-10-27T08:03:01.069825+00:00", "id": "DRN-261027-01", "action": "add", "fields": {"title": [null, "IEEE Sensors Journal 원고 v1 — 분석형+성능 틀, 8쪽 본문 + 보충자료, 초고 동결 2026-11-10"]}, "reason": null, "actor": "jemo", "via": "MMSAM | 생각정리"}
+{"ts": "2026-10-27T08:03:01.072163+00:00", "id": "PRB-DRN-261016-01", "action": "problem_link", "fields": {"item": [null, "DRN-261027-01"], "problem": [null, "PRB-DRN-261016-01"]}, "reason": null, "actor": "jemo", "via": "MMSAM | 생각정리"}
+{"ts": "2026-10-27T08:03:03.256608+00:00", "id": "DRN-261027-01", "action": "task_init", "fields": {"docs": [null, ".claude_logs/tasks/DRN-261027-01"], "created": ["plan.md", "log.md", "analysis.md"]}, "reason": null, "actor": "jemo", "via": "MMSAM | 생각정리"}
