@@ -7,6 +7,7 @@
 | --- | --- | --- | --- | --- | --- |
 | DRN-261020-02 | P1 | 노벨티 감사 + 구조 후보 수색(문헌만): Q2 레시피 최근접 선행과 차별점 · '세부-의미 결합' 실패 기제에 대한 2025~2026 대응 구조 | 문헌 조사만. 산출 = research/ 아래 감사 문서: 표1(Q2 vs 선행 4편: 교사·패스 수·열화 정의·라벨 필요 여부·게이트 유무), 표2(세부-의미 결합 구조 후보 ≥5, 각 arXiv ID·우리 기각 축(게이트·attn bias·라우팅·합성 열화 라벨) 저촉 여부·DELIVER/MUSES 적용 가능성) | - | novelty-audit, survey, structural-novelty |
 | DRN-261027-01 | P1 | IEEE Sensors Journal 원고 v1 — 분석형+성능 틀, 8쪽 본문 + 보충자료, 초고 동결 2026-11-10 | 집필 작업(학습 없음). 브리프 .claude_logs/paper/00_brief.md 의 절 구성·표 출처·인용 규칙을 따른다 | - | paper, ieee-sensors, writing |
+| DRN-261027-03 | P1 | MCubeS 로더 학습 전용 크롭 옵션(DATASET.TRAIN_CROP, 기본 1024) + 평가 하네스 재동결 — A2 를 24GB 카드에서 돌리기 위함 | semseg/datasets/mcubes.py __init__ 에 train_crop/train_base 인자(기본 1024), train_reliadino.py ds_kwargs 에 DATASET.TRAIN_CROP 전달, 스모크 tools/smoke_mcubes_train_crop.py. 이후 tools/eval_harness_guard.py --freeze 재동결 + 대표 ckpt(P39.1 MCubeS) 재채점으로 수치 불변 확인 | - | mcubes, harness, A2, build |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) |  | - | muses, resolution |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) |  | - | deliver, muses, resolution, analysis |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | - | deliver, robustness, p54 |
