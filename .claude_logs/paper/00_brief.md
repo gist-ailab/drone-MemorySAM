@@ -58,6 +58,9 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 
 ## 작업 위치·템플릿 기록(2026-10-27, specialist-paper)
 - 원고 위치: `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
-- 클래스: `IEEEtran.cls` V1.8b(2015/08/26), md5 `5b2e4fa15b0f7eabb840ebf67df4c0f7`, `IEEEtran.bst` 동봉. 출처 = CTAN `https://mirrors.ctan.org/macros/latex/contrib/IEEEtran.zip`(확인 2026-10-27).
-- IEEE Template Selector(`https://template-selector.ieee.org`)의 공식 zip(`IEEE-Transactions-LaTeX2e-templates-and-instructions.zip`, 139개 저널 공용)은 API 직접 내려받기가 거부돼(400) 받지 못했다. 같은 V1.8b 를 담고 있다고 보지만 **미확인**이다. 투고 전에 브라우저로 그 zip 을 받아 md5 를 대조한다. Sensors Journal 전용 LaTeX 템플릿은 목록에서 찾지 못했다(Sensors Letters·Magazine 은 Word 전용).
-- 빌드: `latexmk -pdf root.tex`. 뼈대(절 제목·`\todo` 자리) 무에러 확인 2026-10-27. 참고문헌은 본문에 `\cite`가 생기면 `root.tex` 끝 주석을 푼다.
+- **템플릿(정정 2026-10-27)**: Sensors Journal 은 전용 템플릿 `IEEE-JSEN-LaTeX-template-202405`(`ieeecolor.cls` md5 `a08917c6a409f0693d9ac3f1833054b8` + `jsen.sty` md5 `f631e3cbadef91d3bbac8bb0024e0448`)를 쓴다. user 가 IEEE Template Selector(`https://template-selector.ieee.org`)에서 받아 줬다(`~/Downloads/sensors_templete.zip` md5 `bc250c1f7ffad4e852feedcea5090af6`, 받은 날 2026-10-27). 원고 `latex/`는 이 템플릿으로 옮겼고, 원본은 `ieee-sensors-2026/templates/jsen-202405/`에 둔다.
+- IEEE Access 재투고용 템플릿: `ACCESS_latex_template_20260513`(`ieeeaccess.cls` md5 `6e473d2a8652127c24e6e8af3d7a34f5`, zip md5 `14c40fa0696749bcbd51e010b9f40151`, user 제공 2026-10-27) → `templates/access-20260513/`.
+- 처음 쓴 CTAN `IEEEtran.cls` V1.8b(md5 `5b2e4fa1…`)는 쓰지 않는다(`templates/ctan-ieeetran-1.8b/`에 보관).
+- JSEN 템플릿이 요구하는 것: **그래픽 초록**(초록 상자 오른쪽 3in 그림, 원고에 자리 있음), 초록 한 문단 150~250 단어(약어·참고문헌·수식·표 금지), 키워드 알파벳 순, 저자 약력(사진 포함, 템플릿 끝 `IEEEbiography`).
+- 이 머신 TeX 에는 `algorithmic.sty`가 없다(템플릿 예제가 부르지만 원고에는 필요 없음). 러닝헤드가 대문자로 바뀌므로 `\textcolor{red}`가 `RED`가 되는 문제를 `root.tex`에서 색 별칭으로 막았다.
+- 빌드: `latexmk -pdf root.tex`. 무에러 확인 2026-10-27(3쪽, 표 7개·그림 5개 자리). 참고문헌은 본문에 `\cite`가 생기면 `root.tex` 끝 주석을 푼다.
