@@ -40,6 +40,7 @@
 | DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | A2 s821 config 대비 MODEL.M2F.ENABLE: false · MODEL.P39.ARBITER: false (dense conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-14 | P2 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | - | ablation, leave-one-out, paper |
+| DRN-261027-02 | P2 | 논문 비용표(학습 0): A2·Q2·E1·DGFusion·CAFuser 의 params·FLOPs·추론 지연·GPU 메모리, DELIVER 1024 같은 조건 | 학습 없음. 같은 GPU(4090 1장)·같은 입력(1×4모달 1024²)·bf16, 100회 평균 지연·최대 메모리·fvcore FLOPs. 기준선은 재학습 킷 체크아웃 그대로 | - | paper, cost |
 | DRN-261020-06 | P4 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
 
 ## idea
