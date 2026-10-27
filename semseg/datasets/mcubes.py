@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 from torchvision import io
 from torchvision import transforms
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 import glob
 import einops
 from torch.utils.data import DataLoader
@@ -44,7 +44,8 @@ class MCubeS(Dataset):
                 [156, 158, 222],
                 [ 99, 121,  57]])
 
-    def __init__(self, root: str = 'data/MCubeS/multimodal_dataset', split: str = 'train', transform = None, modals = ['image', 'aolp', 'dolp', 'nir'], case = None) -> None:
+    # [A2-24GB 2026-10-27] 학습 전용 크롭 옵션(기본 1024 = 기존 동일), 평가 경로 불변 — 하네스 재동결 필요
+    def __init__(self, root: str = 'data/MCubeS/multimodal_dataset', split: str = 'train', transform = None, modals = ['image', 'aolp', 'dolp', 'nir'], case = None, *, train_crop: int = 1024, train_base: Optional[int] = None) -> None:
         super().__init__()
         assert split in ['train', 'val']
         self.split = split
@@ -63,8 +64,9 @@ class MCubeS(Dataset):
         self.u_map, self.v_map = np.meshgrid(u_vec, v_vec)
         self.u_map = self.u_map[:,:self._left_offset]
 
-        self.base_size = 1024
-        self.crop_size = 1024
+        # [A2-24GB 2026-10-27] 학습 전용 크롭 옵션(기본 1024 = 기존 동일), 평가 경로 불변 — 하네스 재동결 필요
+        self.base_size = int(train_base) if train_base is not None else int(train_crop)
+        self.crop_size = int(train_crop)
         self.files = self._get_file_names(split)
     
         if not self.files:
