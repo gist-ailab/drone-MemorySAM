@@ -329,7 +329,15 @@ def main(cfg, gpu, save_dir, logger):
         # 미지정(기본)이면 기존과 완전히 동일 — 전 조건 학습.
         if dataset_cfg.get('CASE'):
             ds_kwargs['case'] = dataset_cfg['CASE']
+    elif dataset_cfg.get('NAME') == 'MCubeS':
+        # [A2-24GB 2026-10-27] MCubeS 학습 크롭만 설정한다. 키 미지정 시 기존 기본값을 유지한다.
+        if dataset_cfg.get('TRAIN_CROP') is not None:
+            ds_kwargs['train_crop'] = int(dataset_cfg['TRAIN_CROP'])
+        if dataset_cfg.get('TRAIN_BASE') is not None:
+            ds_kwargs['train_base'] = int(dataset_cfg['TRAIN_BASE'])
     trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
+    if is_rank0 and dataset_cfg.get('NAME') == 'MCubeS':
+        logger.info(f"[MCubeS] train_crop={trainset.crop_size} base={trainset.base_size}")
     valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
     testset = None
     if dataset_cfg.get('NAME') != 'MULTIAQUA':

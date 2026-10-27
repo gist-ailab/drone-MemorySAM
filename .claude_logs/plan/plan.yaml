@@ -13251,6 +13251,44 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261016-01
+- id: DRN-261027-03
+  title: MCubeS 로더 학습 전용 크롭 옵션(DATASET.TRAIN_CROP, 기본 1024) + 평가 하네스 재동결 — A2 를 24GB
+    카드에서 돌리기 위함
+  question: MCubeS A2(고해상 경로 + 두 패스)를 24GB GPU 에서 학습하려면 학습 크롭 768 이 필요한데, 평가 수치를 바꾸지
+    않고 로더에 옵션을 넣을 수 있는가
+  hypothesis: 학습 변환(RandomScaleCrop)만 인자화하면 평가 경로(FixScaleCrop 1024)는 불변이고 기본값(1024)에서
+    기존과 동일
+  falsification: 재채점이 0.01 이상 달라지면 패치 철회
+  change: semseg/datasets/mcubes.py __init__ 에 train_crop/train_base 인자(기본 1024),
+    train_reliadino.py ds_kwargs 에 DATASET.TRAIN_CROP 전달, 스모크 tools/smoke_mcubes_train_crop.py.
+    이후 tools/eval_harness_guard.py --freeze 재동결 + 대표 ckpt(P39.1 MCubeS) 재채점으로 수치 불변
+    확인
+  baseline: develop HEAD mcubes.py(해시 c2b2232e…)
+  configs: []
+  launch: null
+  success_criteria: '완료 조건: 스모크 통과(기본값 동일·768 동작·평가 함수 소스 불변) + --freeze 커밋(사유 명시)
+    + 대표 ckpt 재채점 Δ = 0.00 (analysis 요청)'
+  sample_basis: 해당 없음
+  expected_cost: 워커 1회 + 재채점 GPU 30분
+  priority: 1
+  owner_role: method
+  status: running
+  kind: build
+  tags:
+  - mcubes
+  - harness
+  - A2
+  - build
+  docs: .claude_logs/tasks/DRN-261027-03
+  created: '2026-10-27'
+  updated: '2026-10-27'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
