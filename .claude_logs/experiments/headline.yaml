@@ -1,4 +1,4 @@
-updated: 2026-09-18
+updated: 2026-10-27
 # 헤드라인 수치 단일 정본 (2026-09-18 신설 — docs-structure-audit R2·R3·권고 #11·#13)
 # 규칙:
 #   - 값은 근거 문서에서 "옮겨 적기만" 한다(차감·평균 등 재계산 금지). 근거 없는 값 금지.
@@ -17,6 +17,26 @@ benchmarks:
     sota_val: {name: "CAFuser-CAA", value: 68.79, split: val, note: "같은 4모달 계열(1차, val)"}
     sota2_val: {name: "MM SAM-adapter", value: 69.60, split: val, note: "2모달(2차, val)"}
     ours:
+      - id: "A2(E1 구조 + Q2 두 패스 학습 + 고해상 경로) 3시드 — legal v2 test"
+        describe: "논문 모델 A2 = E1 몸통(동결 DINOv3-L·센서별 LoRA r8·4탭·교차 모달 attention·질의 헤드) + Q2 학습(clean+합성 열화 두 패스, 동결 E1 교사 증류) + 고해상 경로(DINOv3 공식 어댑터 결선, FPN 합산). 40ep 스크린 시드821·902·903. 2026-10-27 판정 adopt(DRN-261018-01)."
+        value: 57.74
+        best: 58.61
+        value_24cls: 58.56
+        basis: "3시드 평균(분석 문서 tasks/DRN-261018-01/analysis.md 표) · 시드별 {58.61, 57.09, 57.52} · best = 시드821 · 24클래스 평균 58.56(Q2 57.06 대비 +1.50) · 얇은 4클래스 Δ vs Q2 +3.04 · std 미기재(분석 문서에 없음)"
+        split: test
+        ckpt_rule: "학습기 val-best(top1)"
+        protocol: "legal v2(tools/legal_rescore_v2.py, nearest-exact), 평가 1024"
+        protocol_short: "legal v2"
+        status: "유효(v2, 3시드, 40ep 스크린)"
+        gap_1st: "mean +1.03 · best +1.90(DGFusion 56.71)"
+        gap_2nd: "mean +0.39 · best +1.26(MM SAM-adapter 57.35)"
+        loss: "Q2(두 패스 CE + KD 0.5/T2) + C3 on"
+        source:
+          - {label: "DRN-261018-01 analysis.md(3시드 표, 시드903 legal)", path: ".claude_logs/tasks/DRN-261018-01/analysis.md"}
+          - {label: "DRN-261012-02 analysis.md(시드821·902)", path: ".claude_logs/tasks/DRN-261012-02/analysis.md"}
+          - {label: "lab-plan verdict DRN-261018-01 adopt 2026-10-27", path: ".claude_logs/plan/plan.yaml"}
+        date: 2026-10-27
+        note: "강건성(DRN-261019-03 adopt): test EMM15 3시드 평균 48.66(Q2 48.06), val EMM15 57.85(RMMSS 49.93 +7.92). val@1024 3시드 평균은 분석 문서에 미기재(시드903 69.86 만) — 미확인. 평가 해상도 1536(val 로 선택) 시 2시드 test 58.86 은 프로토콜 비교용. 이전 헤드라인 E1 확정 3시드 56.24 는 아래 보존."
       - id: "E1(중간층 4탭 읽기 카드) 확정 3시드 — legal v2 test"
         describe: "E1 = 동결 DINOv3 블록 6/12/18/24 의 중간층 토큰 4탭을 센서별 1×1 투영으로 합쳐 FPN 에 함께 읽는 카드(C3 prototype 손실 on). 200ep 확정 런 시드821·902·903. 09-18 확정 3쌍 판정에서 헤드라인 카드 = E1."
         value: 56.24

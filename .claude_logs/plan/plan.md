@@ -5,8 +5,8 @@
 ## running
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
-| DRN-261018-01 | P1 | A2 3번째 시드 20260903 — Q2 + 고해상 경로 40ep 스크린(DRN-261012-02 inconclusive 후속) | TRAIN.SEED 20260903(구조·레시피는 A2 s821·s902 와 동일) | - | deliver, A2, seed3 |
 | DRN-261020-02 | P1 | 노벨티 감사 + 구조 후보 수색(문헌만): Q2 레시피 최근접 선행과 차별점 · '세부-의미 결합' 실패 기제에 대한 2025~2026 대응 구조 | 문헌 조사만. 산출 = research/ 아래 감사 문서: 표1(Q2 vs 선행 4편: 교사·패스 수·열화 정의·라벨 필요 여부·게이트 유무), 표2(세부-의미 결합 구조 후보 ≥5, 각 arXiv ID·우리 기각 축(게이트·attn bias·라우팅·합성 열화 라벨) 저촉 여부·DELIVER/MUSES 적용 가능성) | - | novelty-audit, survey, structural-novelty |
+| DRN-261027-01 | P1 | IEEE Sensors Journal 원고 v1 — 분석형+성능 틀, 8쪽 본문 + 보충자료, 초고 동결 2026-11-10 | 집필 작업(학습 없음). 브리프 .claude_logs/paper/00_brief.md 의 절 구성·표 출처·인용 규칙을 따른다 | - | paper, ieee-sensors, writing |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) |  | - | muses, resolution |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) |  | - | deliver, muses, resolution, analysis |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | - | deliver, robustness, p54 |
@@ -18,8 +18,13 @@
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
 | DRN-261019-01 | P1 | MUSES 4모달 교사 E1M4 — 4탭 clean 200ep(+radar), A2-4모달의 동결 교사 | E1M full200 에 radar 추가(DATASET.MODALS) | - | muses, 4modal, teacher, A2 |
-| DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 |  | - | deliver, A2, robustness |
+| DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | 기준 config = E1 스크린(bengio-deliver_rgbdel_P46_c3only_seed2026082{1,0902}_screen40_E1.yaml, clean 학습·QAF 없음·고해상 없음). 바꾸는 키 = MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (L2 와 같은 토글, 단 기준이 A2 가 아니라 E1). SAVE_DIR 만 행 이름 | - | backbone-control, ladder, paper |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | - | deliver, q2, ablation |
+
+## judging
+| id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
+| --- | --- | --- | --- | --- | --- |
+| DRN-261020-08 | P3 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | 기준 config = E1 스크린 s821. 바꾸는 키 = DATASET.MODALS: [img] (1센서; 참고 선례 configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml). 융합·탭·헤드는 그대로(1모달에서 융합은 항등). SAVE_DIR 만 행 이름. 기동 검증: 센서별 LoRA 가 1세트만 생성돼 trainable 이 E1 보다 작아야 정상 | jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220 | backbone-control, ladder, paper |
 
 ## queued
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
@@ -33,8 +38,7 @@
 | DRN-261020-12 | P2 | Ablation L4 · A2 − 질의 헤드+arbiter(→ dense conv 헤드만) | A2 s821 config 대비 MODEL.M2F.ENABLE: false · MODEL.P39.ARBITER: false (dense conv 헤드만; PATH_DROPOUT_P 는 무효가 됨), 그 외 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261020-14 | P2 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | - | ablation, leave-one-out, paper |
-| DRN-261020-07 | P3 | 백본 대조 1 · '우리 방법을 뺀 DINOv3': 동결 DINOv3-L + 센서별 LoRA + 단순 융합(센서 토큰 평균, 교차주의 없음) + 같은 헤드, clean 40ep 2시드(s821·s902) | 기준 config = E1 스크린(bengio-deliver_rgbdel_P46_c3only_seed2026082{1,0902}_screen40_E1.yaml, clean 학습·QAF 없음·고해상 없음). 바꾸는 키 = MODEL.FUSION.TRUNK: mean · MODEL.P39.TRUNK_EXP: false (L2 와 같은 토글, 단 기준이 A2 가 아니라 E1). SAVE_DIR 만 행 이름 | - | backbone-control, ladder, paper |
-| DRN-261020-08 | P3 | 백본 대조 0 · DINOv3-L + LoRA RGB 단독(1센서), clean 40ep 1시드(s821) | 기준 config = E1 스크린 s821. 바꾸는 키 = DATASET.MODALS: [img] (1센서; 참고 선례 configs/jarvis-muses_rgbel_P47_2_unibal_img.yaml). 융합·탭·헤드는 그대로(1모달에서 융합은 항등). SAVE_DIR 만 행 이름. 기동 검증: 센서별 LoRA 가 1세트만 생성돼 trainable 이 E1 보다 작아야 정상 | - | backbone-control, ladder, paper |
+| DRN-261027-02 | P2 | 논문 비용표(학습 0): A2·Q2·E1·DGFusion·CAFuser 의 params·FLOPs·추론 지연·GPU 메모리, DELIVER 1024 같은 조건 | 학습 없음. 같은 GPU(4090 1장)·같은 입력(1×4모달 1024²)·bf16, 100회 평균 지연·최대 메모리·fvcore FLOPs. 기준선은 재학습 킷 체크아웃 그대로 | - | paper, cost |
 | DRN-261020-06 | P4 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
 
 ## idea
@@ -102,6 +106,8 @@
 | DRN-260926-01 | P1 | DELIVER 확정 3쌍 판정 · E1(중간층 4탭 카드)·E13(4탭+센서별 클래스 prototype) 확정 3쌍 | E1·E13 확정 3쌍(시드 821·902·903) vs 같은 코드 C3-only 기준선 | - | deliver, daily-cards, review:method |
 | DRN-261012-01 | P1 | A1 · 고해상 학습 스케일(TRAIN_SCALE_RANGE [1,3], 평균 1536) — Q2 레시피 40ep 스크린 2시드 | DATASET.TRAIN_SCALE_RANGE [0.5,2.0]→[1.0,3.0](crop 768 유지). 부수: 학습 중 val-best 선택 해상도 768→1536 | - | deliver, thin-class, resolution, A1 |
 | DRN-261016-01 | P1 | 기준선 평가 해상도 반응(원본 1042 GT 축) — DGFusion 공식·CAFuser(b) val@1024/1280/1536 + 선택 해상도 test |  | - | deliver, resolution, baseline, fairness |
+| DRN-261018-01 | P1 | A2 3번째 시드 20260903 — Q2 + 고해상 경로 40ep 스크린(DRN-261012-02 inconclusive 후속) | TRAIN.SEED 20260903(구조·레시피는 A2 s821·s902 와 동일) | - | deliver, A2, seed3 |
+| DRN-261019-03 | P1 | A2 강건성 — 2시드(s821·s902) DELIVER test EMM15·RMM·NM + val EMM15·RMM(공개 벤치 정의), Q2 와 같은 프로토콜 |  | - | deliver, A2, robustness |
 | DRN-260926-02 | P2 | MUSES 풀 런 4종 · E1M 3407 · E7 3407 · E13M 3407 · 시드 20260902 페어 | MUSES 200ep 풀 런 4종 공식 재채점 → test 제출 후보 확정 | - | muses, review:method |
 | DRN-261012-02 | P2 | A2 · 고해상 경로(SPM conv 스템 + deformable extractor, injector 없음) — 1024 유지, Q2 레시피 40ep 스크린 2시드 | SimpleFPN+탭 합산 → SPM(센서별 경량 conv 스템, 합산) + extractor(conv 쿼리 1/8·1/16·1/32 ← 4탭 deformable attn) + c1=up(c2)+conv1/4. 백본·LoRA·헤드·레시피 불변, 입력 1024 | - | deliver, thin-class, adapter, A2 |
 | DRN-260926-03 | P3 | E-LoRA · LoRA 구조 ablation 3갈래(A 센서별 r16 / B 완전공유 r16 / C 공유 r8+센서별 잔차 r8) | LoRA 공유 구조(A per-modal r16 vs B 완전공유 r16 vs C 공유 r8 + per-modal 잔차 r8), 시드 20260821 매칭 | - | deliver, e-lora, review:method |
@@ -343,6 +349,8 @@
 | DRN-260926-01 | adopt | E1(중간층 4탭 읽기)·E13(4탭 + 센서별 클래스 prototype) 확정 3쌍 채택: legal v2 로 C3-only 기준선 대비 E1 Δ25 +1.21±0.81 / Δ24 +0.92±0.22, E13 +1.45±0.88 / +0.80±0.38 → 사전 게이트(Δ25 ≥ +1.0, Δ24 ≥ +0.5) 두 카드 통과. 헤드라인 카드 = E1, E13 병기. 단 SOTA 거리 게이트(우리 최고 단일 런 56.99·DGFusion 56.71)는 미달. 판정 대장 2026-09-20 행(34행) 확인 | .claude_logs/experiments/judgment-ledger.md:34 |
 | DRN-261012-01 | reject | 시드821 legal v2(같은 평가 해상도 1536 대비 Q2): 24클래스 test −1.24 / val −1.02, 얇은4 test −1.01 / val −3.80. 손실은 맥락 의존 클래스(RailTrack −10.3·Wall −5.4·Terrain −4.9·Water −3.6). 학습 스케일 상향은 얇은 객체도 못 올리고 맥락만 잃음 — 평가 해상도 이득은 추론 시 토큰 밀도에서 나옴. 시드902 는 user 지시(10-15)로 1에폭에서 중단·A2 s902 로 교체, 2시드 미충족은 user 결정. 판정 대장 f3c539e·e35a0d6 | - |
 | DRN-261016-01 | adopt | 같은 규칙(원본 1042 GT·val 선택 해상도 1536) 비교 확정: 1024 재현 ±0.02 통과. 기준선은 val 이 1536 을 고르지만 test 하락(DGFusion 56.71→55.57, CAFuser(b) 55.77→55.60), 우리는 상승(E1 56.24→57.48, Q2 56.59→58.12). val 선택 규칙에서 Q2 +2.55 vs DGFusion. 해상도 이득은 우리 구조에만 일반화 — 프로토콜 결과이지 노벨티 아님, 헤드라인 규칙 변경은 user 결정 | .claude_logs/tasks/DRN-261016-01/analysis.md |
+| DRN-261018-01 | adopt | A2(E1 구조 + Q2 두 패스 학습 + 고해상 경로) 3번째 시드(903) legal v2 test 57.52·val 69.86. 사전 기준 충족: 3시드 평균 24클래스 Δ vs Q2 같은 시드 +1.50(기준 ≥ +0.5), 시드903 단독 +2.32(기준 > 0). 3시드 25클래스 test {58.61, 57.09, 57.52} 평균 57.74(DGFusion 56.71 +1.03), 24클래스 58.56. → A2 를 논문 모델로 확정(DRN-261012-02 inconclusive 의 후속 판정). 주의: TrafficLight 3시드 평균 −4.14(시드902 −10.51 특이), RailTrack 시드 요동 큼(3시드 평균 −7.16). | .claude_logs/tasks/DRN-261018-01/analysis.md |
+| DRN-261019-03 | adopt | A2 강건성(같은 프로토콜 mm_eval_v2, 3시드): test EMM15 평균 48.66 vs Q2 48.06(Δ +0.61, 기준 ≥ −1.0 충족), val EMM15 평균 57.85(공개 최고 RMMSS 49.93 +7.92, 기준 충족), val RMM15 r.25/.5/.75 = 65.53/63.35/61.28(Q2 +0.6~1.5). 고해상 경로가 결측 강건성을 해치지 않음. 단 노이즈 S&P 0.2 에서 −0.94(Q2 2시드), depth·RGB 부분 결측 저하 0.15~0.50 큼 — 논문 한계 절에 기록. | .claude_logs/tasks/DRN-261019-03/analysis.md |
 | DRN-260926-02 | reject | MUSES 200에폭 풀 런(E1M·E7·E13M 시드3407, 시드902 짝) 공식 재채점: E13M 3407 81.95 · E13M 902 81.68 · E1M 3407 81.70 · E1M 902 81.93 · E7(기준선 카드) 81.88 → 2시드 평균 E13M 81.81 ≈ E1M 81.82, 기준선이 그 사이. 40에폭 스크린에서 보였던 E13M 이득이 풀 런에서 사라져 MUSES 에서 4탭·prototype 카드는 이득 없음. 제출본 교체 근거 없음. 판정 대장 2026-09-20 행(36행) 확인 | .claude_logs/experiments/judgment-ledger.md:36 |
 | DRN-261012-02 | inconclusive | 사전 성공 기준 3개 중 1개 충족·반증 조건 미발동. 2시드 legal v2 test@1024: 24클래스 Δ vs Q2 같은 시드 +1.08(+0.99/+1.18, 기준 +0.5 충족), 25클래스 57.85(DGFusion 56.71 대비 +1.14). 얇은4 Δ +1.39 — 사전 문턱('A1 얇은4 이득의 절반')이 A1 이득 −1.01 로 정의 불능(문자대로 −0.5 통과·대체 +1.5 미달·반증 +0.5 통과), 결과 확인 후 문턱을 고르지 않음. 두께 0.25~0.5 패치 '찾았지만 못 그림' .372/.374 로 기준 ≤.35 미달(감소 .072/.054 는 반증 .05 통과). TrafficLight −6.60(FP 증가). 성능 이득은 두 시드 일관 — 채택 여부·3번째 시드·MUSES/MCubeS 이식은 user 결정 | .claude_logs/tasks/DRN-261012-02/analysis.md |
 | DRN-260926-03 | inconclusive | E-LoRA 3갈래(A 센서별 r16 / B 완전공유 r16 / C 공유 r8 + 센서별 잔차 r8): 축별로 결론이 다르다. clean·모달 결측에서는 구조 무관, depth 절반 열화(RMM r=0.5)에서는 B 가 손해를 절반 이하(−6.82 vs A −15.77)로 줄이고 시드 분산도 1/5, clean 대가는 legal v2 val 약 −1. C 는 둘을 합치지 못했다. 단독 채택·기각 없이 후속 카드 E1-shared(4탭 위 완전공유 LoRA) 로 넘김 → 그 결과는 DRN-260926-57 에서 판정. 판정 대장 2026-09-21 행(49행) 확인 | .claude_logs/experiments/judgment-ledger.md:49 |

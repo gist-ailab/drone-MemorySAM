@@ -12,6 +12,7 @@
 | analysis | analysis, 분석 | opus(측정은 sonnet) | 새 ckpt 측정·보고(판정 안 함). 보고는 `lab-inbox send --to method --type analysis_report --ref <항목 id>` | `meta/analysis-session-protocol.md` |
 | notion | Notion | sonnet(서술 요약 opus) | 노션 논문 페이지 절 단위 동기화. 빌더 실행은 이 세션만 한다(`notion_sync` 요청을 받아서) | 페이지 `Drone Object Detection for RGB-IR Fusion`(`33d05310-a165-408a-b0b8-ec4427d1fe2c`), 빌더 `.claude/skills/notion-experiment-log/paper_page_builder.py` |
 | specialist-baseline | dgfusion deliver training | opus | 기준선(DGFusion) 재학습·실패 분석 보강 | unknown |
+| specialist-paper | paper, 논문 | opus(초안 문장은 워커 위임 가능, 수치·주장 판단은 opus) | IEEE Sensors Journal 원고 집필·그림·표 조판. 학습 기동·평가·판정 없음(요청은 inbox). 수치는 current.md·judgment-ledger·headline.yaml 에서만 | `.claude_logs/paper/00_brief.md`(브리프·표 출처), LaTeX 는 볼트 `_paper_submission/` |
 
 ## 기존 구조 대응표
 | LAB STANDARD / SPEC-cycle 파일 | 이 레포의 대응 |
