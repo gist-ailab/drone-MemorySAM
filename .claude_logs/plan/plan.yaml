@@ -12830,7 +12830,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런 + 모달 zero-out 평가
   priority: 3
   owner_role: manager
-  status: queued
+  status: evaluating
   kind: experiment
   tags:
   - backbone-control
@@ -12838,7 +12838,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-07
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-23'
   closed: null
   runs: []
   results: []
@@ -12863,7 +12863,7 @@ items:
   expected_cost: 4 GPU × 약 0.7일 × 1런
   priority: 3
   owner_role: manager
-  status: queued
+  status: judging
   kind: experiment
   tags:
   - backbone-control
@@ -12871,10 +12871,31 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-08
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-23'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220
+  results:
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220
+    split: test
+    metric: mIoU
+    value: 55.14
+    source: pipeline
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220
+    split: test
+    metric: mAcc
+    value: 62.48
+    source: pipeline
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220
+    split: val
+    metric: mIoU
+    value: 61.78
+    source: pipeline
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220
+    split: val
+    metric: mAcc
+    value: 70.03
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -13187,12 +13208,15 @@ problems:
       섞어 작게 틀린다. 즉 고해상 경로가 작은 사각 발광체의 ''경계''는 또렷이 그리지만 ''무엇인가'' 구분은 못 따라온다. 원본 README:
       analysis_logs/a2_tl_fp_scenes_20261022/README.md'
     figures:
-    - /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_01.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_02.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_03.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_04.png,/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/legend.png
+    - /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_01.png
+    - /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_02.png
+    - /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_03.png
+    - /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/scene_04.png
+    - /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_tl_fp_scenes_20261022/legend.png
   source: tasks/DRN-261012-02/analysis.md §(2)(4) · tasks/DRN-261016-03/analysis.md
     Q3
   parent: PRB-DRN-261016-01
   survey_notes:
-  - /home/jemo/.claude/jobs/3a914e7f/tmp/prb_note_261022.md
   - /mnt/HDD1/Workspace/src/Project/Drone24/detection/drone-MemorySAM/.claude_logs/tasks/DRN-261022-01/problem-note-2026-10-22-user-adoption.md
   decision:
     choice: adopt
