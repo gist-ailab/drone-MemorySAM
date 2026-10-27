@@ -55,3 +55,9 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 - LaTeX 작업 위치: 볼트 `/nas_jm/Research/26_MultimodalSeg/` 아래 `_paper_submission/`(RA-L 초안 v1 이 있던 곳; 없으면 `reports/` 에서 찾아 새 폴더 `ieee-sensors-2026/` 생성). repo 에는 LaTeX 를 두지 않는다(리서치 콘텐츠 = 볼트).
 - 템플릿은 IEEE 공식 사이트에서 받은 현재 IEEEtran 을 쓴다(스킬 venue-templates 의 통화 규칙: 출처 URL·확인 날짜를 이 문서에 적는다).
 - 수치를 옮길 때 출처 파일·행을 각 표 아래 주석으로 남긴다.
+
+## 작업 위치·템플릿 기록(2026-10-27, specialist-paper)
+- 원고 위치: `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
+- 클래스: `IEEEtran.cls` V1.8b(2015/08/26), md5 `5b2e4fa15b0f7eabb840ebf67df4c0f7`, `IEEEtran.bst` 동봉. 출처 = CTAN `https://mirrors.ctan.org/macros/latex/contrib/IEEEtran.zip`(확인 2026-10-27).
+- IEEE Template Selector(`https://template-selector.ieee.org`)의 공식 zip(`IEEE-Transactions-LaTeX2e-templates-and-instructions.zip`, 139개 저널 공용)은 API 직접 내려받기가 거부돼(400) 받지 못했다. 같은 V1.8b 를 담고 있다고 보지만 **미확인**이다. 투고 전에 브라우저로 그 zip 을 받아 md5 를 대조한다. Sensors Journal 전용 LaTeX 템플릿은 목록에서 찾지 못했다(Sensors Letters·Magazine 은 Word 전용).
+- 빌드: `latexmk -pdf root.tex`. 뼈대(절 제목·`\todo` 자리) 무에러 확인 2026-10-27. 참고문헌은 본문에 `\cite`가 생기면 `root.tex` 끝 주석을 푼다.
