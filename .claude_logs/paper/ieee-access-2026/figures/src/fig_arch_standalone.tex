@@ -1,0 +1,15 @@
+% Standalone wrapper for Fig. 1 (architecture). ieeeaccess.cls conflicts with pgf/TikZ, so the
+% figure is compiled here to latex/figures/fig_arch.pdf and included as a graphic (build.sh does this).
+% Font: Helvetica (phv) via \sffamily, the same as the earlier JSEN draft.
+\documentclass[border=1pt]{standalone}
+\usepackage[T1]{fontenc}
+\usepackage[scaled=0.92]{helvet}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc}
+\begin{document}
+\sffamily
+\input{figures/fig_arch}
+\end{document}
