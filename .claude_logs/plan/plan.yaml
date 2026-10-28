@@ -12549,7 +12549,7 @@ items:
   expected_cost: GPU 4장×2런, 40ep 각 1.5~2일, 교사 완주 후 기동
   priority: 1
   owner_role: method
-  status: queued
+  status: running
   kind: experiment
   tags:
   - muses
@@ -12557,7 +12557,7 @@ items:
   - A2
   docs: .claude_logs/tasks/DRN-261019-02
   created: '2026-10-19'
-  updated: '2026-10-22'
+  updated: '2026-10-28'
   closed: null
   runs: []
   results: []
@@ -12935,7 +12935,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: queued
+  status: judging
   kind: experiment
   tags:
   - ablation
@@ -12943,10 +12943,31 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-09
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-28'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: test
+    metric: mIoU
+    value: 58.84
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: test
+    metric: mAcc
+    value: 67.55
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: val
+    metric: mIoU
+    value: 70.36
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: val
+    metric: mAcc
+    value: 78.69
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -12968,7 +12989,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: queued
+  status: judging
   kind: experiment
   tags:
   - ablation
@@ -12976,10 +12997,31 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-10
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-28'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: test
+    metric: mIoU
+    value: 57.76
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: test
+    metric: mAcc
+    value: 67.17
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: val
+    metric: mIoU
+    value: 70.8
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: val
+    metric: mAcc
+    value: 79.65
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -13033,7 +13075,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: queued
+  status: judging
   kind: experiment
   tags:
   - ablation
@@ -13041,10 +13083,31 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-12
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-28'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: test
+    metric: mIoU
+    value: 57.89
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: test
+    metric: mAcc
+    value: 68.13
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: val
+    metric: mIoU
+    value: 70.56
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: val
+    metric: mAcc
+    value: 79.25
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -13067,7 +13130,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 2
   owner_role: manager
-  status: queued
+  status: evaluating
   kind: experiment
   tags:
   - ablation
@@ -13075,10 +13138,21 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-13
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-28'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+    split: test
+    metric: mIoU
+    value: 57.42
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+    split: test
+    metric: mAcc
+    value: 67.16
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -13100,7 +13174,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 2
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - ablation
@@ -13108,7 +13182,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-14
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-27'
   closed: null
   runs: []
   results: []
