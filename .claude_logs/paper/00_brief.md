@@ -52,12 +52,12 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 
 ## 세션 규칙
 - 역할 specialist-paper: 집필·그림·표 조판만. 학습 기동·평가·판정은 하지 않는다(요청은 lab-inbox 로 manager/analysis/method).
-- LaTeX 작업 위치: 볼트 `/nas_jm/Research/26_MultimodalSeg/` 아래 `_paper_submission/`(RA-L 초안 v1 이 있던 곳; 없으면 `reports/` 에서 찾아 새 폴더 `ieee-sensors-2026/` 생성). repo 에는 LaTeX 를 두지 않는다(리서치 콘텐츠 = 볼트).
+- **LaTeX 작업 위치(user 결정 2026-10-28로 변경)**: repo `.claude_logs/paper/ieee-sensors-2026/` 가 원고 원본이며 git 으로 버전을 관리한다(구조·빌드는 그 폴더 `README.md`). 볼트 `reports/manuscript/ieee-sensors-2026/`는 2026-10-27~28 작업본이며 더 갱신하지 않는다(`MOVED.md` 안내). 사용자에게 보내는 PDF 는 `bash build.sh snapshot` 으로 `drafts/` 에 만들어 커밋한다. 이전 규칙("repo 에는 LaTeX 를 두지 않는다")은 폐기한다. NAS 경로에 git 저장소를 둘 수 없으므로(STORAGE.md) 버전 관리는 repo 에서만 가능하다.
 - 템플릿은 IEEE 공식 사이트에서 받은 현재 IEEEtran 을 쓴다(스킬 venue-templates 의 통화 규칙: 출처 URL·확인 날짜를 이 문서에 적는다).
 - 수치를 옮길 때 출처 파일·행을 각 표 아래 주석으로 남긴다.
 
 ## 작업 위치·템플릿 기록(2026-10-27, specialist-paper)
-- 원고 위치: `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
+- 원고 위치(2026-10-28 이전, 지금은 repo `.claude_logs/paper/ieee-sensors-2026/`): `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
 - **템플릿(정정 2026-10-27)**: Sensors Journal 은 전용 템플릿 `IEEE-JSEN-LaTeX-template-202405`(`ieeecolor.cls` md5 `a08917c6a409f0693d9ac3f1833054b8` + `jsen.sty` md5 `f631e3cbadef91d3bbac8bb0024e0448`)를 쓴다. user 가 IEEE Template Selector(`https://template-selector.ieee.org`)에서 받아 줬다(`~/Downloads/sensors_templete.zip` md5 `bc250c1f7ffad4e852feedcea5090af6`, 받은 날 2026-10-27). 원고 `latex/`는 이 템플릿으로 옮겼고, 원본은 `ieee-sensors-2026/templates/jsen-202405/`에 둔다.
 - IEEE Access 재투고용 템플릿: `ACCESS_latex_template_20260513`(`ieeeaccess.cls` md5 `6e473d2a8652127c24e6e8af3d7a34f5`, zip md5 `14c40fa0696749bcbd51e010b9f40151`, user 제공 2026-10-27) → `templates/access-20260513/`.
 - 처음 쓴 CTAN `IEEEtran.cls` V1.8b(md5 `5b2e4fa1…`)는 쓰지 않는다(`templates/ctan-ieeetran-1.8b/`에 보관).

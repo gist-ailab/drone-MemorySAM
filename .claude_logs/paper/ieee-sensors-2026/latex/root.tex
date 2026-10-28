@@ -1,0 +1,65 @@
+% IEEE Sensors Journal manuscript v1 (DRN-261027-01). Brief: repo .claude_logs/paper/00_brief.md
+% Template: IEEE-JSEN-LaTeX-template-202405 (ieeecolor.cls md5 a08917c6a409f0693d9ac3f1833054b8,
+%   jsen.sty md5 f631e3cbadef91d3bbac8bb0024e0448), from IEEE Template Selector, received 2026-10-27.
+%   Pristine copies: ../templates/jsen-202405/ (IEEE Access fallback: ../templates/access-20260513/).
+\documentclass[journal,twoside,web]{ieeecolor}
+\usepackage{jsen}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{wrapfig}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc}
+\usepackage[hidelinks]{hyperref}
+\definecolor{RED}{rgb}{1,0,0}% running heads are uppercased, which turns `red' into `RED'
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcommand{\missing}[1]{\textcolor{blue}{[MISSING: #1]}}
+\newcommand{\td}{\textcolor{red}{todo}}% empty table cell, value pending
+% table layout: every table uses \tabsetup (same font, same spacing) and spans exactly \columnwidth
+\newcommand{\tabsetup}{\footnotesize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.1}}
+\newcommand{\tabnote}[1]{\par\vspace{3pt}\parbox{\columnwidth}{\raggedright\scriptsize #1}}
+% placeholder frame; the template sets \fboxrule=0pt globally, so restore a visible rule locally
+\newcommand{\phbox}[2]{{\setlength{\fboxrule}{0.4pt}\setlength{\fboxsep}{3pt}%
+  \fbox{\parbox[c][#1][c]{0.95\linewidth}{\centering\textcolor{red}{todo: #2}}}}}
+
+\markboth{\journalname, VOL. XX, NO. XX, XXXX 2026}
+{\todo{Author et al.: short title}}
+\definecolor{abstractbg}{rgb}{0.89804,0.94510,0.83137}
+\setlength{\fboxrule}{0pt}
+\setlength{\fboxsep}{0pt}
+
+\begin{document}
+\title{\todo{title}}
+\author{\todo{authors and IEEE membership}%
+\thanks{\todo{submission date; funding}}%
+\thanks{\todo{affiliations and e-mail}}}
+
+\IEEEtitleabstractindextext{%
+\fcolorbox{abstractbg}{abstractbg}{%
+\begin{minipage}{\textwidth}%
+\begin{wrapfigure}[6]{r}{3in}%
+{\setlength{\fboxrule}{0.4pt}\fbox{\parbox[c][0.75in][c]{2.9in}{\centering\textcolor{red}{todo: graphical abstract (required by the JSEN template, 3\,in wide)}}}}%
+\end{wrapfigure}%
+\input{sections/0_abstract}
+\end{minipage}}}
+
+\maketitle
+
+\input{sections/1_intro}
+\input{sections/2_related}
+\input{sections/3_sensors}
+\input{sections/4_method}
+\input{sections/5_experiments}
+\input{sections/6_analysis}
+\input{sections/7_conclusion}
+
+% bibliography enabled once sections contain \cite (empty thebibliography breaks the build)
+%\bibliographystyle{IEEEtran}
+%\bibliography{IEEEabrv,references}
+
+% Author biographies with photos (template includes them; required for IEEE Access).
+% \begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{a1.png}}]{Name} ...\end{IEEEbiography}
+\end{document}

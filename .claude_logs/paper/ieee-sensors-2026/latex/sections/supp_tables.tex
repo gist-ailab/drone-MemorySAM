@@ -1,0 +1,27 @@
+% Supplementary table S1 (moved from the main text 2026-10-28; Fig. dependence shows the same data).
+% ---------------------------------------------------------------------------
+% Table 5. Sensor over-reliance: mIoU drop when depth is removed, by condition.
+% "clean training only" = E1 confirmed run (200ep, val 2005 images) and
+% "w/o high-res path" = Q2 seed 821 (val): judgment-ledger 2026-09-30 row (oracle_cond).
+% DGFusion official weights: same row, but measured on TEST (image-mean axis) -> split mismatch.
+% Q2 cloud/rain/fog not listed in that row. A2, DGFusion (b), CAFuser (b): not measured.
+% ---------------------------------------------------------------------------
+\begin{table}[t]
+\caption{Drop in mIoU (points) when depth is removed, per condition.}
+\label{tab:dependence}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccccc@{}}
+\toprule
+Model & Sun & Cloud & Rain & Fog & Night & Low exp. \\
+\midrule
+DGFusion (official)$^{\ddagger}$ & 23.1 & 24.9 & 27.6 & 25.9 & 32.6 & 37.1 \\
+DGFusion (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td \\
+CAFuser (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td \\
+Ours, clean training & 23.5 & 23.9 & 23.7 & 26.8 & 28.7 & 38.7 \\
+Ours w/o high-res & 3.9 & \td & \td & \td & 10.1 & 13.4 \\
+Ours & \td & \td & \td & \td & \td & \td \\
+\bottomrule
+\end{tabular*}
+\tabnote{$^{\dagger}$Retrained with synthetic degradation. $^{\ddagger}$\textcolor{red}{todo: measured on test, other rows on val; re-measure all rows on one split.}}
+\end{table}
+
