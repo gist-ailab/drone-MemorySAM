@@ -41,6 +41,8 @@
 | DRN-261020-03 | P1 | S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산 제거), A2 같은 시드 짝 비교 | MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일) | - | S2, screen40, structural-novelty |
 | DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
 | DRN-261020-05 | P3 | S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합) | S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화 | - | S2, explore, structural-novelty |
+| DRN-261028-02 | P3 | 고해상 신호 구동 토큰 적응 LoRA 구현: LORA_ROUTER.SIGNAL=hires_stats(P56-C 라우터 입력을 센서별 고해상 스템 통계로 교체) + 스모크 | encoder.py/p56c_router.py: SIGNAL hires_stats 분기(고해상 스템 센서별 출력 → 토큰 통계 3종 → stride-16 풀링 → MLP, bias 초기화 α≈0.5) · config 키 LORA_ROUTER.SIGNAL · 스모크(off 계약·grad·합성 블러 패치에서 α 저하) | - | routed-lora, hires-signal, build |
+| DRN-261028-03 | P3 | 고해상 신호 구동 토큰 적응 LoRA · DELIVER 40ep 1시드 s821 — 기준 모델(A2-shared 또는 A2) + 공유↔센서별 토큰 혼합(신호=고해상 통계), Q2 학습 불변 | MODEL.LORA_MODE state_routed + LORA_ROUTER.SIGNAL hires_stats (그 외 기준 모델 config 동일; 기준 = L1 강건성 통과 시 A2-shared, 아니면 A2) | - | routed-lora, hires-signal, screen40 |
 | DRN-260926-05 | P5 | N-E18 · E18 = E1 레시피 + Lovász-Softmax 보조손실 40ep 스크린 시드821 | E1 레시피에 Lovász-Softmax 보조손실 추가(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) | - | deliver, screen40 |
 | DRN-260926-06 | P6 | N-E19 · E19 = E1 레시피 + 가중치 EMA(0.9995) val 평가·저장 | E1 레시피에 가중치 EMA(0.9995)로 val 평가·저장 | - | deliver |
 | DRN-260926-07 | P7 | N-D0 · D0 = LoRA 진단 2종(학습 0) | (i) 4모달 LoRA A 행렬 층별 코사인 (ii) 조건별 미니배치 그래디언트 코사인 | - | deliver, diagnostic |
