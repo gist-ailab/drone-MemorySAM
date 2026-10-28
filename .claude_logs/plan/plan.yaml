@@ -12549,7 +12549,7 @@ items:
   expected_cost: GPU 4장×2런, 40ep 각 1.5~2일, 교사 완주 후 기동
   priority: 1
   owner_role: method
-  status: queued
+  status: running
   kind: experiment
   tags:
   - muses
@@ -12557,7 +12557,7 @@ items:
   - A2
   docs: .claude_logs/tasks/DRN-261019-02
   created: '2026-10-19'
-  updated: '2026-10-22'
+  updated: '2026-10-28'
   closed: null
   runs: []
   results: []
@@ -12880,7 +12880,7 @@ items:
   expected_cost: 4 GPU × 약 0.7일 × 1런
   priority: 3
   owner_role: manager
-  status: judging
+  status: done
   kind: experiment
   tags:
   - backbone-control
@@ -12888,8 +12888,8 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-08
   created: '2026-10-20'
-  updated: '2026-10-23'
-  closed: null
+  updated: '2026-10-28'
+  closed: '2026-10-28'
   runs:
   - jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220
   results:
@@ -12913,8 +12913,16 @@ items:
     metric: mAcc
     value: 70.03
     source: pipeline
-  verdict: null
-  analysis: null
+  verdict:
+    decision: adopt
+    summary: '백본 사다리 0단계 확정(1시드 s821 40ep clean): 동결 DINOv3-L + LoRA RGB 단독 test 55.14
+      / val 61.78. 같은 시드 사다리: RGB 단독 55.14 → E1(4센서 교차주의 융합, clean) 55.94 → Q2(+두
+      패스·증류) 57.73 → A2(+고해상) 58.61. 백본 단독·clean 융합 모두 DGFusion 56.71 미달 → ''백본 덕''
+      반박 근거. 융합 자체의 clean 이득은 +0.8 로 작음(정직하게 서술).'
+    date: '2026-10-28'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261020-08/plan.md
   superseded_by: null
   problem: PRB-DRN-261020-01
 - id: DRN-261020-09
@@ -12935,7 +12943,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: queued
+  status: done
   kind: experiment
   tags:
   - ablation
@@ -12943,12 +12951,42 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-09
   created: '2026-10-20'
-  updated: '2026-10-21'
-  closed: null
-  runs: []
-  results: []
-  verdict: null
-  analysis: null
+  updated: '2026-10-28'
+  closed: '2026-10-28'
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: test
+    metric: mIoU
+    value: 58.84
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: test
+    metric: mAcc
+    value: 67.55
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: val
+    metric: mIoU
+    value: 70.36
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L1shared_20261021_1644
+    split: val
+    metric: mAcc
+    value: 78.69
+    source: pipeline
+  verdict:
+    decision: adopt
+    summary: 'ablation 표 행 확정(측정값 채택, 1시드 s821 40ep legal v2 test@1024): A2 에서 센서별
+      LoRA 를 완전공유 LoRA(r16) 로 바꾸면 test 58.84 / val 70.36 — A2 같은 시드(58.61 / 68.93
+      학습기) 대비 test +0.23. 즉 clean 정확도에서 센서별 LoRA 의 기여는 없음(E-LoRA 09-21 관찰과 일치: 공유
+      LoRA 가 clean 동급·depth 열화 내성 우위). 논문 서술: 센서별 LoRA 는 ''기여'' 가 아니라 설계 선택으로 적고,
+      강건성 축(EMM) 비교를 추가 요청.'
+    date: '2026-10-28'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261020-09/plan.md
   superseded_by: null
   problem: PRB-DRN-261020-01
 - id: DRN-261020-10
@@ -12968,7 +13006,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: queued
+  status: done
   kind: experiment
   tags:
   - ablation
@@ -12976,12 +13014,40 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-10
   created: '2026-10-20'
-  updated: '2026-10-21'
-  closed: null
-  runs: []
-  results: []
-  verdict: null
-  analysis: null
+  updated: '2026-10-28'
+  closed: '2026-10-28'
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: test
+    metric: mIoU
+    value: 57.76
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: test
+    metric: mAcc
+    value: 67.17
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: val
+    metric: mIoU
+    value: 70.8
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L2meanfusion_20261021_2342
+    split: val
+    metric: mAcc
+    value: 79.65
+    source: pipeline
+  verdict:
+    decision: adopt
+    summary: 'ablation 표 행 확정(1시드 s821): A2 에서 교차 모달 attention 융합을 센서 토큰 평균(MeanFusionTrunk,
+      TRUNK_EXP off)으로 바꾸면 test 57.76 / val 70.80 — A2 58.61 대비 test −0.85. 교차주의 융합(+트렁크
+      확장)의 clean 기여 약 +0.9(코드 제약으로 두 가지가 묶여 분리 불가).'
+    date: '2026-10-28'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261020-10/plan.md
   superseded_by: null
   problem: PRB-DRN-261020-01
 - id: DRN-261020-11
@@ -13033,7 +13099,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 1런
   priority: 2
   owner_role: manager
-  status: queued
+  status: done
   kind: experiment
   tags:
   - ablation
@@ -13041,12 +13107,39 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-12
   created: '2026-10-20'
-  updated: '2026-10-21'
-  closed: null
-  runs: []
-  results: []
-  verdict: null
-  analysis: null
+  updated: '2026-10-28'
+  closed: '2026-10-28'
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: test
+    metric: mIoU
+    value: 57.89
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: test
+    metric: mAcc
+    value: 68.13
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: val
+    metric: mIoU
+    value: 70.56
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L4nom2f_20261022_1920
+    split: val
+    metric: mAcc
+    value: 79.25
+    source: pipeline
+  verdict:
+    decision: adopt
+    summary: 'ablation 표 행 확정(1시드 s821): A2 에서 질의 헤드+arbiter 를 빼고 dense conv 헤드만 쓰면
+      test 57.89 / val 70.56 — A2 58.61 대비 test −0.72. 질의 헤드 결합의 clean 기여 약 +0.7.'
+    date: '2026-10-28'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261020-12/plan.md
   superseded_by: null
   problem: PRB-DRN-261020-01
 - id: DRN-261020-13
@@ -13067,7 +13160,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 2
   owner_role: manager
-  status: queued
+  status: evaluating
   kind: experiment
   tags:
   - ablation
@@ -13075,10 +13168,21 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-13
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-28'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+    split: test
+    metric: mIoU
+    value: 57.42
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+    split: test
+    metric: mAcc
+    value: 67.16
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -13100,7 +13204,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 2
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - ablation
@@ -13108,7 +13212,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-14
   created: '2026-10-20'
-  updated: '2026-10-21'
+  updated: '2026-10-27'
   closed: null
   runs: []
   results: []
@@ -13289,6 +13393,118 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261016-01
+- id: DRN-261028-01
+  title: 고해상 특징이 실제 열화를 토큰 단위로 알아보는가(학습 0) — P56-C 기각의 원인('신호 없음')이 고해상 경로에서 해소되는지
+    재검
+  question: A2 의 센서별 고해상 s4 특징 토큰 통계가 DELIVER 의 실제 열화 파티션(RGB 모션블러·과노출·저노출, LiDAR
+    지터, Event 저해상)을 clean 과 가르는가? P56-C 가 썼던 블록 6 저해상 통계와 얼마나 다른가?
+  hypothesis: 'H: 고해상 s4 통계(토큰별 노름·고주파 에너지·채널 분산)는 실제 열화 5파티션 중 ≥3 에서 AUROC ≥ 0.8,
+    블록 6 통계는 Q1d 수준(≤0.76). 성립하면 토큰 적응 LoRA 제어의 입력 신호가 존재한다는 뜻이고, P56-C 의 붕괴(α std≈0)는
+    신호 부재 때문이었다는 해석이 선다'
+  falsification: 고해상 통계도 ≤0.76 이면 토큰 적응 LoRA 축을 신호원과 무관하게 종결(반복 금지 목록에 기록)
+  change: 학습 없음. A2 s821 ckpt, DELIVER test 전수. 센서별 고해상 경로 출력(hires_adapter 의 센서별
+    스템 출력 또는 s4 레벨, 센서 분리 가능한 지점에서 추출)과 블록 6 토큰 특징을 토큰별 통계 3종으로 요약 → 파티션(clean vs
+    열화) 이진 AUROC(이미지 단위·토큰 단위 둘 다), 센서별. 기존 도구 tools/oracle_headroom_probe.py·Q1d
+    품질 헤드 프로브 코드를 확장(새로 짜지 않음)
+  baseline: 'Q1d(2026-09-29) 품질 헤드 AUROC: 모션블러 0.46·과노출 0.76·저노출 0.76·야간 0.28·안개 0.44'
+  configs: []
+  launch: null
+  success_criteria: '표: 신호원(고해상 s4 / 블록 6) × 파티션 5 × 센서 → AUROC. 통과 = 고해상이 ≥3 파티션에서
+    ≥0.8 이고 블록 6 보다 ≥0.15 높음. 통과 시 method 가 ''고해상 통계 구동 토큰 적응 LoRA(A2+P56-C 라우터, 입력
+    교체)'' 1시드 스크린을 별도 사전등록'
+  sample_basis: DELIVER test 1897장 전수, 파티션당 수백 장
+  expected_cost: GPU 1장 약 2시간
+  priority: 2
+  owner_role: analysis
+  status: queued
+  kind: analysis
+  tags:
+  - probe
+  - hires
+  - routing-signal
+  - P56C-recheck
+  docs: .claude_logs/tasks/DRN-261028-01
+  created: '2026-10-28'
+  updated: '2026-10-28'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261028-02
+  title: '고해상 신호 구동 토큰 적응 LoRA 구현: LORA_ROUTER.SIGNAL=hires_stats(P56-C 라우터 입력을 센서별
+    고해상 스템 통계로 교체) + 스모크'
+  question: P56-C 의 state_routed LoRA 에서 라우터 입력만 고해상 토큰 통계(노름·고주파 에너지·채널 분산, stop-grad)로
+    바꿔 off 계약을 지키며 구현할 수 있는가
+  hypothesis: 기존 StateRoutedLoRAQKV·p56c_router 를 확장하면 SIGNAL 미지정 시 byte 동일, 지정 시
+    토큰별 α 가 입력 통계에 따라 변한다
+  falsification: 프로브 미통과면 착수하지 않음
+  change: 'encoder.py/p56c_router.py: SIGNAL hires_stats 분기(고해상 스템 센서별 출력 → 토큰 통계
+    3종 → stride-16 풀링 → MLP, bias 초기화 α≈0.5) · config 키 LORA_ROUTER.SIGNAL · 스모크(off
+    계약·grad·합성 블러 패치에서 α 저하)'
+  baseline: P56-C 코드(develop)
+  configs: []
+  launch: null
+  success_criteria: 스모크 통과 + 검수. 착수 조건 = DRN-261028-01 프로브 통과
+  sample_basis: 해당 없음
+  expected_cost: 워커 1회 + 스모크 GPU 30분
+  priority: 3
+  owner_role: method
+  status: idea
+  kind: build
+  tags:
+  - routed-lora
+  - hires-signal
+  - build
+  docs: .claude_logs/tasks/DRN-261028-02
+  created: '2026-10-28'
+  updated: '2026-10-28'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261028-03
+  title: 고해상 신호 구동 토큰 적응 LoRA · DELIVER 40ep 1시드 s821 — 기준 모델(A2-shared 또는 A2) + 공유↔센서별
+    토큰 혼합(신호=고해상 통계), Q2 학습 불변
+  question: 실제 열화가 고해상 통계로 감지되는 토큰에서만 센서별 적응을 끄면 clean 을 잃지 않고 실제 열화 케이스·부분 결측에서 오르는가(P56-C
+    가 신호 부재로 붕괴한 것과 달리 α 가 토큰별로 갈리는가)
+  hypothesis: α 토큰 표준편차 ≥ 0.05, clean 24클래스 Δ ≥ −0.3, 실제 열화 파티션 평균 Δ ≥ +1.0 또는 depth/RGB
+    RMM r0.5 저하 20% 감소, EMM15 Δ ≥ 0
+  falsification: α std < 0.02(붕괴) 또는 clean Δ < −0.3 또는 EMM Δ < 0 → 기각, 토큰 적응 LoRA
+    축 종결 기록. ep20 val 이 기준 대비 −1.0 이면 kill
+  change: MODEL.LORA_MODE state_routed + LORA_ROUTER.SIGNAL hires_stats (그 외 기준 모델
+    config 동일; 기준 = L1 강건성 통과 시 A2-shared, 아니면 A2)
+  baseline: 같은 시드 기준 모델(A2-shared s821 또는 A2 s821), legal v2 test@1024 + mm_eval_v2
+    + 조건·케이스 파티션
+  configs: []
+  launch: null
+  success_criteria: 4기준 전부 충족 시 시드 902·903 추가 + MUSES 전이(별도 등록). 초고 동결 11-10 전 3시드
+    완료 시 편입, 아니면 다음 논문
+  sample_basis: 1시드 스크린 → 통과 시 3시드
+  expected_cost: 4 GPU 약 1일 + 강건 평가 2h
+  priority: 3
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - routed-lora
+  - hires-signal
+  - screen40
+  docs: .claude_logs/tasks/DRN-261028-03
+  created: '2026-10-28'
+  updated: '2026-10-28'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계

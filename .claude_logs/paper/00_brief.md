@@ -52,15 +52,22 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 
 ## 세션 규칙
 - 역할 specialist-paper: 집필·그림·표 조판만. 학습 기동·평가·판정은 하지 않는다(요청은 lab-inbox 로 manager/analysis/method).
-- LaTeX 작업 위치: 볼트 `/nas_jm/Research/26_MultimodalSeg/` 아래 `_paper_submission/`(RA-L 초안 v1 이 있던 곳; 없으면 `reports/` 에서 찾아 새 폴더 `ieee-sensors-2026/` 생성). repo 에는 LaTeX 를 두지 않는다(리서치 콘텐츠 = 볼트).
+- **LaTeX 작업 위치(user 결정 2026-10-28로 변경)**: repo `.claude_logs/paper/ieee-sensors-2026/` 가 원고 원본이며 git 으로 버전을 관리한다(구조·빌드는 그 폴더 `README.md`). 볼트 `reports/manuscript/ieee-sensors-2026/`는 2026-10-27~28 작업본이며 더 갱신하지 않는다(`MOVED.md` 안내). 사용자에게 보내는 PDF 는 `bash build.sh snapshot` 으로 `drafts/` 에 만들어 커밋한다. 이전 규칙("repo 에는 LaTeX 를 두지 않는다")은 폐기한다. NAS 경로에 git 저장소를 둘 수 없으므로(STORAGE.md) 버전 관리는 repo 에서만 가능하다.
 - 템플릿은 IEEE 공식 사이트에서 받은 현재 IEEEtran 을 쓴다(스킬 venue-templates 의 통화 규칙: 출처 URL·확인 날짜를 이 문서에 적는다).
 - 수치를 옮길 때 출처 파일·행을 각 표 아래 주석으로 남긴다.
 
 ## 작업 위치·템플릿 기록(2026-10-27, specialist-paper)
-- 원고 위치: `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
+- 원고 위치(2026-10-28 이전, 지금은 repo `.claude_logs/paper/ieee-sensors-2026/`): `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
 - **템플릿(정정 2026-10-27)**: Sensors Journal 은 전용 템플릿 `IEEE-JSEN-LaTeX-template-202405`(`ieeecolor.cls` md5 `a08917c6a409f0693d9ac3f1833054b8` + `jsen.sty` md5 `f631e3cbadef91d3bbac8bb0024e0448`)를 쓴다. user 가 IEEE Template Selector(`https://template-selector.ieee.org`)에서 받아 줬다(`~/Downloads/sensors_templete.zip` md5 `bc250c1f7ffad4e852feedcea5090af6`, 받은 날 2026-10-27). 원고 `latex/`는 이 템플릿으로 옮겼고, 원본은 `ieee-sensors-2026/templates/jsen-202405/`에 둔다.
 - IEEE Access 재투고용 템플릿: `ACCESS_latex_template_20260513`(`ieeeaccess.cls` md5 `6e473d2a8652127c24e6e8af3d7a34f5`, zip md5 `14c40fa0696749bcbd51e010b9f40151`, user 제공 2026-10-27) → `templates/access-20260513/`.
 - 처음 쓴 CTAN `IEEEtran.cls` V1.8b(md5 `5b2e4fa1…`)는 쓰지 않는다(`templates/ctan-ieeetran-1.8b/`에 보관).
 - JSEN 템플릿이 요구하는 것: **그래픽 초록**(초록 상자 오른쪽 3in 그림, 원고에 자리 있음), 초록 한 문단 150~250 단어(약어·참고문헌·수식·표 금지), 키워드 알파벳 순, 저자 약력(사진 포함, 템플릿 끝 `IEEEbiography`).
 - 이 머신 TeX 에는 `algorithmic.sty`가 없다(템플릿 예제가 부르지만 원고에는 필요 없음). 러닝헤드가 대문자로 바뀌므로 `\textcolor{red}`가 `RED`가 되는 문제를 `root.tex`에서 색 별칭으로 막았다.
 - 빌드: `latexmk -pdf root.tex`. 무에러 확인 2026-10-27(3쪽, 표 7개·그림 5개 자리). 참고문헌은 본문에 `\cite`가 생기면 `root.tex` 끝 주석을 푼다.
+
+## 결정 추가(user 2026-10-28)
+- **공유 LoRA 교체 조건부 결정**: ablation L1(센서별 LoRA → 완전공유 r16)이 clean test 58.84 로 A2 58.61 을 넘었음(DRN-261020-09). analysis 의 L1 강건성 측정(inbox 20261028-162006)이 A2 이상(test EMM15 Δ ≥ 0 그리고 val RMM 비악화)이면 **논문 모델을 공유 LoRA 판(A2-shared)** 으로 바꾼다: A2-shared 시드 902·903 추가 학습, MUSES 4모달 A2 s2 는 공유판으로 재시작, MCubeS A2 는 처음부터 공유판. 미달이면 공유 LoRA 는 ablation 행으로만 둔다.
+- **토큰 적응 LoRA 제어**는 P56-C 기각이 신호원(블록 6)에 한정된 것이므로, 고해상 특징 신호 프로브 DRN-261028-01 통과 시에만 1시드 스크린을 사전등록한다. 이번 투고의 노벨티 줄에는 프로브·스크린 결과가 나오기 전까지 넣지 않는다.
+- **분량 10쪽(user 2026-10-28)**: 본문 8쪽 상한을 넘겨 쪽당 초과 비용을 내기로 했다(10쪽이면 2쪽 × $175 = $350, 저자 안내 문구 기준이며 현재 금액은 투고 전 공식 페이지에서 재확인). 목표 = 참고문헌 포함 10쪽 이내, 그림·표를 촘촘히.
+- **본문 그림·표 배치(specialist-paper 2026-10-28, 상세 = 볼트 `ieee-sensors-2026/notes/figure_guide.md` §2)**: 그림 7(개요 · 강건성 그래프 · 센서 고장 정성 · 악조건 정성 DELIVER+MUSES · 조건별 의존도 그래프 · 얇은 객체 클래스별 이득 · 실패 사례) + 그래픽 초록, 표 7(DELIVER · MUSES · MCubeS · 결측/노이즈 · **조건별 mIoU(신설)** · ablation · 비용). 조건별 의존도 표는 그래프로 대체하고 보충자료 표 S1 로 옮겼다(`sections/supp_tables.tex`). 데이터 그래프는 `figures/src/make_data_figs.py` 가 정본 수치로 다시 그린다.
+- 측정 요청: analysis inbox `20261027-182054`(정성 장면 선별) · `20261028-183826`(조건별 표, 센서 하나만 남은 A2 값, ablation EMM, 의존도 split 통일).

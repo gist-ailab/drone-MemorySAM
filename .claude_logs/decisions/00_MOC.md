@@ -41,3 +41,5 @@
 - [2026-09-30 P56-B·C 설계서 — modality-aware 융합 구조](2026-09-30-p56-bc-modality-aware-design.md) — B 거리 조건화 attention(거리 차이 로짓 편향)·C 센서 상태 조건부 LoRA 혼합(얕은 블록 라우터), 사전 게이트, P56-A 의존도 분석, N-RGBX 실행 위험 점검
 
 | [2026-10-20-s2-sensorwise-mask-head-proposal.md](2026-10-20-s2-sensorwise-mask-head-proposal.md) | S2 센서별 마스크 임베딩 헤드 제안(what/where 분리, 공간 게이트 기각 근거, 약점 10건 보완 설계, 게이트 사전등록) — PRB-DRN-261020-01 |
+
+| [2026-10-28-hires-routed-lora-plan.md](2026-10-28-hires-routed-lora-plan.md) | 고해상 신호 구동 토큰 적응 LoRA 실험 계획(프로브 → 구현 → 1시드 → 3시드, 게이트 사전등록; P56-C 재검) — PRB-DRN-261020-01 |
