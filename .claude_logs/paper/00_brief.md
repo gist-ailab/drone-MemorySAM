@@ -68,3 +68,6 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 ## 결정 추가(user 2026-10-28)
 - **공유 LoRA 교체 조건부 결정**: ablation L1(센서별 LoRA → 완전공유 r16)이 clean test 58.84 로 A2 58.61 을 넘었음(DRN-261020-09). analysis 의 L1 강건성 측정(inbox 20261028-162006)이 A2 이상(test EMM15 Δ ≥ 0 그리고 val RMM 비악화)이면 **논문 모델을 공유 LoRA 판(A2-shared)** 으로 바꾼다: A2-shared 시드 902·903 추가 학습, MUSES 4모달 A2 s2 는 공유판으로 재시작, MCubeS A2 는 처음부터 공유판. 미달이면 공유 LoRA 는 ablation 행으로만 둔다.
 - **토큰 적응 LoRA 제어**는 P56-C 기각이 신호원(블록 6)에 한정된 것이므로, 고해상 특징 신호 프로브 DRN-261028-01 통과 시에만 1시드 스크린을 사전등록한다. 이번 투고의 노벨티 줄에는 프로브·스크린 결과가 나오기 전까지 넣지 않는다.
+- **분량 10쪽(user 2026-10-28)**: 본문 8쪽 상한을 넘겨 쪽당 초과 비용을 내기로 했다(10쪽이면 2쪽 × $175 = $350, 저자 안내 문구 기준이며 현재 금액은 투고 전 공식 페이지에서 재확인). 목표 = 참고문헌 포함 10쪽 이내, 그림·표를 촘촘히.
+- **본문 그림·표 배치(specialist-paper 2026-10-28, 상세 = 볼트 `ieee-sensors-2026/notes/figure_guide.md` §2)**: 그림 7(개요 · 강건성 그래프 · 센서 고장 정성 · 악조건 정성 DELIVER+MUSES · 조건별 의존도 그래프 · 얇은 객체 클래스별 이득 · 실패 사례) + 그래픽 초록, 표 7(DELIVER · MUSES · MCubeS · 결측/노이즈 · **조건별 mIoU(신설)** · ablation · 비용). 조건별 의존도 표는 그래프로 대체하고 보충자료 표 S1 로 옮겼다(`sections/supp_tables.tex`). 데이터 그래프는 `figures/src/make_data_figs.py` 가 정본 수치로 다시 그린다.
+- 측정 요청: analysis inbox `20261027-182054`(정성 장면 선별) · `20261028-183826`(조건별 표, 센서 하나만 남은 A2 값, ablation EMM, 의존도 split 통일).
