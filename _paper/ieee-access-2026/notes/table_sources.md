@@ -88,7 +88,7 @@
 전 칸 비어 있음 — DRN-261027-02(비용표 측정) 대기. ❌
 
 ## 보충 표 S1. Depth dependence (`sections/supp_tables.tex`)
-그림 Fig. dependence 와 같은 수치. 출처는 `figures/data/fig_dependence.csv` 의 source 열(`judgment-ledger.md:112`, 2026-09-30 행).
+그림 Fig. dependence 와 같은 수치. 출처는 `figures/source_data/fig_dependence.csv` 의 source 열(`judgment-ledger.md:112`, 2026-09-30 행).
 | 행 | Sun · Cloud · Rain · Fog · Night · Low exp. | 출처 | 상태 |
 |---|---|---|---|
 | DGFusion (official) | 23.1 · 24.9 · 27.6 · 25.9 · 32.6 · 37.1 | `judgment-ledger.md:112` “DGFusion test: −23.1 · −24.9 · −27.6 · −25.9 · −32.6 · −37.1” | ⚠️ test split(다른 행은 val) |

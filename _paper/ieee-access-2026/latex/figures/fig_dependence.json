@@ -1,0 +1,7 @@
+{
+ "design_source": "carbon@11.84.0",
+ "script": "figures/src/make_data_figs.py",
+ "inputs": {
+  "_paper/ieee-access-2026/figures/source_data/fig_dependence.csv": "087ef3b175c982220dfe942b31a5fcc3"
+ }
+}

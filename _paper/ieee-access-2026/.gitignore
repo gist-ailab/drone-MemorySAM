@@ -6,3 +6,6 @@
 /build/
 latex/root.pdf
 *-eps-converted-to.pdf
+# repo-wide *.json ignore is lifted: figure sidecars record input files + md5
+!*.json
+# note: a folder named data/ is ignored repo-wide, so figure numbers live in figures/source_data/

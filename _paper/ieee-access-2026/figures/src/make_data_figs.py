@@ -1,12 +1,12 @@
 """Data figures of the IEEE Access manuscript (Python / matplotlib).
 
 What this script reads (no number is typed into this file):
-  figures/data/fig_dependence.csv    -> Fig. dependence (drop in mIoU when depth is removed, per condition)
-  figures/data/fig_robust_noise.csv  -> Fig. robust (a)  (mIoU vs salt-and-pepper density)
-  figures/data/fig_robust_single.csv -> Fig. robust (b)  (mIoU when only one sensor is left)
-  ../../experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv
+  figures/source_data/fig_dependence.csv    -> Fig. dependence (drop in mIoU when depth is removed, per condition)
+  figures/source_data/fig_robust_noise.csv  -> Fig. robust (a)  (mIoU vs salt-and-pepper density)
+  figures/source_data/fig_robust_single.csv -> Fig. robust (b)  (mIoU when only one sensor is left)
+  <repo>/.claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv
                                      -> Fig. thin (per-class gain of the high-resolution path, paired by seed)
-Every row of the three figures/data CSVs carries source_file and source_locator columns that point to the
+Every row of the three figures/source_data CSVs carries source_file and source_locator columns that point to the
 canonical record (judgment-ledger row, analysis document line). An empty value means "not measured yet";
 it is drawn as a red dashed "pending" bar and never interpolated.
 
@@ -25,7 +25,7 @@ How each figure is drawn:
 Colours: carbon@11.84.0 (~/labdesign/build/py/carbon_palette.py). Fonts: TeX Gyre Heros (Helvetica clone).
 Width: IEEE Access single column 3.36 in (242.7 pt, measured in the class on 2026-10-29).
 
-Usage (from the paper folder .claude_logs/paper/ieee-access-2026):
+Usage (from the paper folder _paper/ieee-access-2026 in the repo):
   python figures/src/make_data_figs.py [out_dir]
 """
 import csv
@@ -39,9 +39,10 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-PAPER = Path(__file__).resolve().parents[2]            # .claude_logs/paper/ieee-access-2026
-DATA = PAPER / "figures" / "data"
-PERCLASS = PAPER.parents[1] / "experiments" / "analysis" / "DRN-261018-01" / "a2_vs_q2_perclass_3seed.csv"
+PAPER = Path(__file__).resolve().parents[2]            # _paper/ieee-access-2026
+DATA = PAPER / "figures" / "source_data"
+REPO = PAPER.parents[1]                                 # repo root
+PERCLASS = REPO / ".claude_logs" / "experiments" / "analysis" / "DRN-261018-01" / "a2_vs_q2_perclass_3seed.csv"
 
 COL_W = 3.36  # inch, IEEE Access single column (242.7 pt, measured 2026-10-29)
 mpl.rcParams.update({
@@ -96,7 +97,7 @@ def label_axes(ax, letter):
 def save(fig, stem, inputs):
     fig.savefig(f"{stem}.pdf", bbox_inches="tight", pad_inches=0.02)
     meta = {"design_source": "carbon@11.84.0", "script": "figures/src/make_data_figs.py",
-            "inputs": {str(Path(p).relative_to(PAPER.parents[1].parent)): md5(p) for p in inputs}}
+            "inputs": {str(Path(p).relative_to(REPO)): md5(p) for p in inputs}}
     json.dump(meta, open(f"{stem}.json", "w"), indent=1, ensure_ascii=False)
     plt.close(fig)
 
