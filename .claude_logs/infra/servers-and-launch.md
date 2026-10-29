@@ -93,6 +93,7 @@ scripts/remote_exp.sh status bengio
 
 ## 3. 주의사항 / 트러블슈팅
 - 🔴 **hpca100: 버전관리 명령 금지 · 1장 전용(2026-10-05)**: `/home/jovyan/SSDb` 에 다른 연구자의 운영 중인 LFS 저장소(163G)가 있고 우리 작업 폴더(`~/SSDb/jemo_maeng/...`)는 그 하위라 버전관리 명령이 그 저장소를 잡는다 → 우리 쪽 pull·add·status 금지, 코드는 **파일 단위 전송 + md5** 로만 반영. 그 저장소 폴더·자격증명은 읽지도 고치지도 않는다. 2장 이상 DDP 는 all-reduce 마다 약 90초 정지(ISSUE-040)라 **1장 학습만**.
+- 🔴 **hpca100: 작업 디렉터리 /tmp 금지 · 웨이트는 drone-demo 에도 백업(user 2026-10-29)**: 코드·체크포인트 사본·출력·대기 스크립트는 전부 `/home/jovyan/SSDb/jemo_maeng/` 아래 기존 계층(`src/<체크아웃>/`, `ckpt/`, `<작업>_<날짜>/`)에만 둔다. SSDb 가 가득 차 쓰기가 안 되면 /tmp 로 우회하지 말고 user 에게 알린다(2026-10-27 /tmp 로 우회한 MUSES 덤프 준비물·대기 tmux 가 10-29 까지 /tmp 정리로 소리 없이 사라짐, 재부팅 아님). 웨이트(.pth)는 NAS 정본에 더해 **drone-demo `~/workspace/jemo_maeng/src/Project/drone/drone-MemorySAM/ckpts/<run>_<YYYYMMDD>/`** 에도 사본을 두고 md5 를 대조한다.
 - **GPU 점유 충돌**: bengio는 8장이지만 다른 작업이 점유 중일 수 있다. `run` 전 항상 `status`로 빈 GPU 확인.
 - **config 프리픽스**: config 파일명 앞단(`levine-`, `bengio-`, `b200-`)은 보통 학습 서버를 암시한다. 다른 서버에서 돌릴 땐 데이터 경로가 그 서버에 맞는지 config를 한 번 확인.
 - **DDP 실패 'marked ready twice'**: SAM3 trainer는 `static_graph=True` 필요(기록상 해결됨).
