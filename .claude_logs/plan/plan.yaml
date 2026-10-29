@@ -13172,6 +13172,7 @@ items:
   closed: null
   runs:
   - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade_20261022_1920
   results:
   - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
     split: test
@@ -13192,6 +13193,16 @@ items:
     split: val
     metric: mAcc
     value: 79.32
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade_20261022_1920
+    split: test
+    metric: mIoU
+    value: 56.63
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade_20261022_1920
+    split: test
+    metric: mAcc
+    value: 66.26
     source: pipeline
   verdict: null
   analysis: null
@@ -13716,6 +13727,107 @@ items:
   - screen40
   - paper2
   docs: .claude_logs/tasks/DRN-261029-05
+  created: '2026-10-29'
+  updated: '2026-10-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261029-06
+  title: A2 router 추론 시 끄기(학습 0) — 학습된 A2 에서 router 잔차의 몫과 조건별 적응 기여
+  question: 최종 모델 A2(router 포함) 3시드 체크포인트에서 추론할 때만 router 잔차(fusion.router_alpha)를
+    0으로 두면 clean·EMM15·조건별 센서 하나 제거 Δ(특히 야간 −RGB 완화)가 얼마나 바뀌는가. 원고에 router 를 '적응 장치'로
+    쓸지 '구성요소'로만 쓸지 정하는 1차 근거
+  hypothesis: router 몫은 작다(clean |Δ| < 0.3, 예전 구조 +0.1). 조건별 의존도 이동은 router 를 꺼도 대부분
+    유지된다
+  falsification: 해당 없음(측정)
+  change: eval 시 router_alpha=0 (학습 없음, 같은 ckpt)
+  baseline: A2 3시드 val-best(s821·s902·s903), legal v2 test@1024, 같은 강건 프로토콜 + 조건별
+    센서 하나 제거(test)
+  configs: []
+  launch: null
+  success_criteria: '측정 항목(판정은 -05 와 함께): clean·EMM15 Δ, 조건 6종×센서 4종 제거 Δ 표 on/off'
+  sample_basis: 기존 A2 3시드 ckpt 전부
+  expected_cost: GPU 1장 × 반나절(평가만)
+  priority: 2
+  owner_role: analysis
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - router
+  - paper
+  - eval-only
+  created: '2026-10-29'
+  updated: '2026-10-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261029-07
+  title: Ablation L8 · A2 − router(재학습, MODEL.ROUTER.ENABLE false) — 최종 모델에서 router
+    의 역할
+  question: router 없이 처음부터 학습한 A2 는 clean·EMM·조건별 적응(야간 −RGB 완화, depth 의존 이동)이 A2
+    와 다른가. 결과는 원고 서술만 바꾼다(모델 구조는 A2 고정, user 2026-10-29)
+  hypothesis: router 기여는 작고 조건별 적응은 두 패스 학습과 교차 attention 에서 주로 생긴다
+  falsification: 모든 지표 |Δ| < 0.3 이고 적응 이동 유지 → router 는 기여 없음, 원고에서 역할 주장 삭제(구조 설명·ablation
+    수치만)
+  change: MODEL.ROUTER.ENABLE true→false (router CE 0.4 도 함께 꺼짐), 나머지 A2 config 동일
+  baseline: A2 같은 시드(s821·s902), L5·L6 과 같은 평가 묶음 + 조건별 센서 하나 제거(test)
+  configs: []
+  launch: null
+  success_criteria: router 를 '적응 장치'로 주장 = 2시드 평균에서 router 제거 시 야간·저노출 −RGB 완화폭이 절반
+    이하로 줄거나 clean ≥ −0.5 또는 EMM15 ≥ −1.0 하락(두 시드 부호 일치). 아니면 구성요소로만 서술
+  sample_basis: L5·L6 과 같은 2시드, 시드별 짝 Δ
+  expected_cost: 4 GPU × 약 1일 × 2런 (+ 평가 묶음)
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - router
+  - paper
+  created: '2026-10-29'
+  updated: '2026-10-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261029-08
+  title: A2 체크포인트 판독(학습 0) — 융합 뒤 센서별 정적 게이트 tanh(γ_s) 값 + router 신뢰도 신호(자기 엔트로피)의
+    정답 AUROC
+  question: (1) 센서별 trunk 게이트 tanh(γ_s) 가 센서마다 크게 다른가('주 센서 없음' 서술 가능 여부) (2) router
+    가 기준으로 쓰는 센서별 자기 엔트로피 신뢰도가 A2 에서 정답과 같은 방향인가(예전 구조 AUROC img .77·depth .62·event
+    .30·LiDAR .22 = 기하 센서 반대 방향)
+  hypothesis: γ 는 센서 간 2배 이내, 신뢰도 AUROC 는 두 패스 학습 뒤 event·LiDAR 에서 0.5 이상으로 개선
+  falsification: 해당 없음(측정)
+  change: '없음(판독: state_dict trunk_gamma, tools/eval_reliability_auroc.py 류)'
+  baseline: A2 3시드 val-best ckpt, DELIVER val
+  configs: []
+  launch: null
+  success_criteria: '측정 기록: 시드별 tanh(γ_s) 4값, 센서별 AUROC 4값'
+  sample_basis: 기존 A2 3시드 ckpt
+  expected_cost: CPU 판독 수 분 + GPU 1장 수 시간(AUROC)
+  priority: 2
+  owner_role: analysis
+  status: idea
+  kind: experiment
+  tags:
+  - readout
+  - router
+  - paper
+  - eval-only
   created: '2026-10-29'
   updated: '2026-10-29'
   closed: null
