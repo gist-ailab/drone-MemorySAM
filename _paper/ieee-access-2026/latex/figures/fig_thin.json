@@ -1,0 +1,7 @@
+{
+ "design_source": "carbon@11.84.0",
+ "script": "figures/src/make_data_figs.py",
+ "inputs": {
+  ".claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv": "295ca8d108210d5aab445d3290d598f7"
+ }
+}

@@ -1,0 +1,17 @@
+model,sp_density,miou,n_seeds,source_file,source_locator
+DGFusion (official weights),0.00,56.73,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 DRN-261001-03 (line 130 at develop 9270029): 'clean 56.73'"
+DGFusion (official weights),0.05,39.12,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = clean 56.73 − 'NM S&P 저하 17.61' (ledger gives drops only)"
+DGFusion (official weights),0.10,16.85,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = 56.73 − 39.88"
+DGFusion (official weights),0.20,4.53,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = 56.73 − 52.20"
+DGFusion (retrained),0.00,54.77,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 '기준선 DGFusion (a)·(b) 강건 프로토콜' (line 117): (b) clean 54.773"
+DGFusion (retrained),0.05,48.89,1,.claude_logs/experiments/judgment-ledger.md,"same row, (b) NM 48.89·40.51·23.34"
+DGFusion (retrained),0.10,40.51,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (retrained),0.20,23.34,1,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o high-res,0.00,56.59,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"table line 18 'test clean', Q2 mean"
+Ours w/o high-res,0.05,53.25,2,.claude_logs/tasks/DRN-261019-03/analysis.md,"line 20 'test NM S&P 0.05', Q2 mean of 54.10 and 52.39(902·903 mean); seed 821 value not backed by NAS raw (analysis.md line 10)"
+Ours w/o high-res,0.10,51.64,2,.claude_logs/tasks/DRN-261019-03/analysis.md,line 21 (same caveat)
+Ours w/o high-res,0.20,48.79,2,.claude_logs/tasks/DRN-261019-03/analysis.md,line 22 (same caveat)
+Ours,0.00,57.74,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"line 18 'test clean', A2 mean (= headline.yaml line 22)"
+Ours,0.05,53.11,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"line 20, A2 mean"
+Ours,0.10,51.36,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"line 21, A2 mean"
+Ours,0.20,47.85,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"line 22, A2 mean"

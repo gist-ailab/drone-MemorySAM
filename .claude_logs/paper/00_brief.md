@@ -1,4 +1,4 @@
-# 논문 집필 브리프 — IEEE Sensors Journal 투고 (2026-10-27, method "MMSAM | 생각정리" 작성, user 결정)
+# 논문 집필 브리프 — 1차 투고 IEEE Access (2026-10-27 작성, 2026-10-29 전면 정정: 저널·범위·기여 문장, method "MMSAM | 생각정리")
 
 ## 결정 사항(user 2026-10-27)
 - 목표 저널: **IEEE Sensors Journal**(1순위). 기각 시 **IEEE Access** 재투고(동시 투고 금지, 순차). 두 저널 모두 IEEE 2단 템플릿(IEEEtran 계열)이며 Access 는 자체 템플릿 변형을 쓴다 → 본문·그림은 그대로, 머리말·저자 약력 절만 바꾸면 된다(저자 약력은 Access 필수).
@@ -52,12 +52,12 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 
 ## 세션 규칙
 - 역할 specialist-paper: 집필·그림·표 조판만. 학습 기동·평가·판정은 하지 않는다(요청은 lab-inbox 로 manager/analysis/method).
-- **LaTeX 작업 위치(user 결정 2026-10-28로 변경)**: repo `.claude_logs/paper/ieee-access-2026/` 가 원고 원본이며 git 으로 버전을 관리한다(구조·빌드는 그 폴더 `README.md`). 볼트 `reports/manuscript/ieee-sensors-2026/`는 2026-10-27~28 작업본이며 더 갱신하지 않는다(`MOVED.md` 안내). 사용자에게 보내는 PDF 는 `bash build.sh snapshot` 으로 `drafts/` 에 만들어 커밋한다. 이전 규칙("repo 에는 LaTeX 를 두지 않는다")은 폐기한다. NAS 경로에 git 저장소를 둘 수 없으므로(STORAGE.md) 버전 관리는 repo 에서만 가능하다.
+- **LaTeX 작업 위치(user 결정 2026-10-28로 변경)**: repo `_paper/ieee-access-2026/` 가 원고 원본이며 git 으로 버전을 관리한다(구조·빌드는 그 폴더 `README.md`). 볼트 `reports/manuscript/ieee-sensors-2026/`는 2026-10-27~28 작업본이며 더 갱신하지 않는다(`MOVED.md` 안내). 사용자에게 보내는 PDF 는 `bash build.sh snapshot` 으로 `drafts/` 에 만들어 커밋한다. 이전 규칙("repo 에는 LaTeX 를 두지 않는다")은 폐기한다. NAS 경로에 git 저장소를 둘 수 없으므로(STORAGE.md) 버전 관리는 repo 에서만 가능하다.
 - 템플릿은 IEEE 공식 사이트에서 받은 현재 IEEEtran 을 쓴다(스킬 venue-templates 의 통화 규칙: 출처 URL·확인 날짜를 이 문서에 적는다).
 - 수치를 옮길 때 출처 파일·행을 각 표 아래 주석으로 남긴다.
 
 ## 작업 위치·템플릿 기록(2026-10-27, specialist-paper)
-- 원고 위치(2026-10-28 이전, 지금은 repo `.claude_logs/paper/ieee-access-2026/`): `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
+- 원고 위치(2026-10-28 이전, 지금은 repo `_paper/ieee-access-2026/`): `/nas_jm/Research/26_MultimodalSeg/reports/manuscript/ieee-sensors-2026/`(`latex/root.tex` + `sections/0_abstract … 7_conclusion.tex`, 메모 `notes/`). `_paper_submission/`은 볼트 `_archive/`로 옮겨져 있었고, RA-L 초안 v1 은 `reports/manuscript/latex/`에 있다(`references.bib`·`IEEEabrv.bib`를 여기서 복사).
 - **템플릿(정정 2026-10-27)**: Sensors Journal 은 전용 템플릿 `IEEE-JSEN-LaTeX-template-202405`(`ieeecolor.cls` md5 `a08917c6a409f0693d9ac3f1833054b8` + `jsen.sty` md5 `f631e3cbadef91d3bbac8bb0024e0448`)를 쓴다. user 가 IEEE Template Selector(`https://template-selector.ieee.org`)에서 받아 줬다(`~/Downloads/sensors_templete.zip` md5 `bc250c1f7ffad4e852feedcea5090af6`, 받은 날 2026-10-27). 원고 `latex/`는 이 템플릿으로 옮겼고, 원본은 `ieee-sensors-2026/templates/jsen-202405/`에 둔다.
 - IEEE Access 재투고용 템플릿: `ACCESS_latex_template_20260513`(`ieeeaccess.cls` md5 `6e473d2a8652127c24e6e8af3d7a34f5`, zip md5 `14c40fa0696749bcbd51e010b9f40151`, user 제공 2026-10-27) → `templates/access-20260513/`.
 - 처음 쓴 CTAN `IEEEtran.cls` V1.8b(md5 `5b2e4fa1…`)는 쓰지 않는다(`templates/ctan-ieeetran-1.8b/`에 보관).
@@ -74,10 +74,27 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 
 ## 결정 추가(user 2026-10-29) — 목표 저널 변경
 - **목표 저널 = IEEE Access**(IEEE Sensors Journal 에서 변경). 사유(user): 리뷰가 빠르고 채택 가능성이 높을 것, SCI급. 같은 벤치(DELIVER·MUSES)의 직접 비교 논문 MM SAM-adapter 가 IEEE Access 2025 게재(DOI 10.1109/ACCESS.2025.3609640, CrossRef 확인)라 선례가 있다. IEEE Access 의 심사 기간·채택률·게재료는 2차 출처 수치만 확인했으므로(첫 결정 약 4주, 채택률 27~45%, 게재료 약 $1,850~2,160) 투고 전 공식 페이지에서 확인한다.
-- 원고 폴더: `.claude_logs/paper/ieee-access-2026/`(옛 이름 `ieee-sensors-2026`, git mv). 템플릿: `ACCESS_latex_template_20260513`(`ieeeaccess.cls` md5 `6e473d2a8652127c24e6e8af3d7a34f5`). 그래픽 초록은 필요 없고 저자 약력(사진)은 필요하다. Access 클래스는 TikZ 와 충돌하므로 Fig.1 은 별도 PDF 로 넣는다(`build.sh`).
+- 원고 폴더: `_paper/ieee-access-2026/`(옛 이름 `ieee-sensors-2026`, git mv). 템플릿: `ACCESS_latex_template_20260513`(`ieeeaccess.cls` md5 `6e473d2a8652127c24e6e8af3d7a34f5`). 그래픽 초록은 필요 없고 저자 약력(사진)은 필요하다. Access 클래스는 TikZ 와 충돌하므로 Fig.1 은 별도 PDF 로 넣는다(`build.sh`).
 - 분량: 10쪽 목표를 유지한다(Access 쪽수 규정은 미확인; JSEN 의 쪽당 초과 비용 규정은 더 적용되지 않는다).
 - **후속 RA-L 원고(조건부)**: 토큰(질의) 적응 LoRA 구조가 사전등록 게이트(고해상 특징 신호 프로브 DRN-261028-01 → 1시드 스크린 → 3시드 확정)를 통과하면, 그 구조를 방법 기여로 하는 별도 원고를 RA-L 에 낸다. 조건: Access 원고와 주장·핵심 실험이 겹치지 않을 것(Access 원고는 인용), Access 원고에는 토큰 적응 LoRA 를 넣지 않을 것. RA-L 은 6쪽 + 유료 2쪽 = 최대 8쪽, 최종 결정까지 평균 4개월(RA-L 공식 FAQ).
 
 ## 출처 규칙(user 2026-10-29)
 - **표 수치**: 모든 표 수치의 출처(파일·줄·행 제목)는 `notes/table_sources.md` 에 적는다. 표를 고치면 같은 커밋에서 이 문서를 고치고 `python figures/src/check_table_sources.py` 로 빠진 숫자가 없는지 확인한다.
 - **그림**: 모든 그림은 만든 코드와 입력이 이 폴더에 있어야 한다. 데이터 그래프의 수치는 `figures/data/*.csv`(source_file·source_locator 열)에 두고 `figures/src/make_data_figs.py` 가 읽어서 그린다(스크립트에 수치를 적지 않는다). 그림별 코드·입력·방법 목록은 `notes/figure_sources.md`.
+
+## 결정 추가(user 2026-10-29) — 원고 위치
+- **원고 원본 = repo `_paper/ieee-access-2026/`**(`.claude_logs/paper/ieee-access-2026/` 에서 git mv). 이 브리프와 작업 기록은 `.claude_logs/` 에 남는다. `_paper/` 바로 아래의 CVPR 원고(2026-03, `main.tex`·`rebuttal.*`, git 미추적)는 별개이며 건드리지 않는다.
+- repo `.gitignore` 가 `data/`·`*.json`·`*.png` 를 무시하므로, 그래프 수치는 `figures/source_data/` 에 두고 원고 폴더 `.gitignore` 에서 `*.json`·`*.png` 를 다시 포함한다. (2026-10-29 이전 커밋 ad30385 에는 그래프 CSV 3개와 사이드카 JSON 3개가 이 무시 규칙 때문에 빠져 있었고, 이번 이동 커밋에서 포함했다.)
+- (2026-10-29) 토큰 적응 LoRA 축 종결: 프로브 DRN-261028-01 미통과(고해상 통계가 블록 6 보다 낫지 않음). 이번 투고·다음 논문 모두에서 이 축을 쓰지 않는다. 노벨티 줄은 발견 + 학습 설계(+공유 LoRA 조건부) + 단일 모델 3벤치로 고정.
+
+## 논문 분리 결정(user 2026-10-29)
+- **1차 투고(IEEE Sensors Journal, 기각 시 IEEE Access)**: 논문 모델 = A2(L1 강건성 통과 시 공유 LoRA 판). 구조 노벨티 주장 없음 — 발견 + 학습 설계 + 단일 모델 3벤치 + 분석. 토큰 적응 LoRA·S2 등 구조 보완은 **쓰지 않는다**.
+- **2차 논문(RA-L 목표)**: 1차 모델 위에 구조 보완(내용 기반 토큰 MoE-LoRA DRN 등록, S2 센서별 마스크 헤드 등)을 더해 별도 투고. 1차 투고 뒤 착수, GPU 는 1차 메인 표가 우선.
+
+## 🔴 2026-10-29 정정(정본은 이 절, 위 절들과 어긋나면 이 절이 우선)
+- **저널**: 1차 투고 = **IEEE Access**(user 결정 10-29, paper 세션). Sensors Journal 은 폐기. 분량 **10쪽**(user 10-28 결정). 원고 위치 = repo `_paper/ieee-access-2026/`(git 추적, user 10-29), 빌드 `build/`, 스냅샷 `drafts/`. 2차 논문 = RA-L(구조 보완: MoE-LoRA·S2).
+- **논문 범위(user 지적 10-29, discussion 세션)**: 목표 = 단일 아키텍처 A2 로 DELIVER·MUSES·MCubeS 전 모달 융합 계열 1위(clean 정확도). 결측 모달 강건성은 "그쪽 벤치에서도 통한다" 를 보이는 **보조 축**. 초록·기여 1 을 결측 중심으로 쓰지 않는다.
+- **기여 문장(갱신)**: ① 제안 방법 = 두 패스 학습(clean 패스 + 센서별 합성 열화 패스 + 동결 clean 교사 로짓 증류) — A2 의 clean 이득 최대 기여(s821: +1.8, 고해상 경로 +0.9). 주장 형태 = "이 학습은 우리 구조(동결 DINOv3 + LoRA)와 결합할 때 clean 을 올린다"(구조 의존성 실험 DRN-261029-02·03 둘 다 채택 시 "우리 구조에서만"), 선행 RobustSeg basic distillation 과의 차이는 L7(DRN-261029-01)로 보임. ② 단일 모델 3벤치 전 모달 1위 + 결측·열화 강건성 보조. ③ 분석(센서 분업·조건별·해상도·얇은 객체·실패 사례·비용). 위 "주장하지 않는 것: Q2 가 새 방법" 줄은 **철회**: 두 패스 학습을 제안 방법으로 쓰되, L7·구조 의존성 결과 전까지 "선행과의 차이" 문장은 보류.
+- **표 결정**: T1 은 전 모달만(조합별 행 없음, 조합은 T4 결측으로 대신). T4(b) "DGFusion (official)" 행은 실제로 재현본 (a) 80k 이므로 **"DGFusion (reproduced)" 와 "DGFusion (official weights, 같은 프로토콜 clean 56.73·EMM 31.14, ledger:130)" 두 행 병기**. 같은 프로토콜 격차 = +1.01(발표치 기준 +1.03 병기).
+- **모델 서술**: A2 config 에 MODEL.ROUTER(P36 클래스별 고정 모달 라우터, 0 초기화 잔차)가 켜져 있음 → 추론 시 off Δ 를 analysis 가 측정해 |Δ| < 0.1 이면 "이전 판 잔재, 효과 없음(보충 표)" 로 적고, 크면 ablation 행 추가. 보조 손실 3종(fusion 보조 CE 0.5·C3 prototype 0.1·VICReg)은 보충자료로. NM 정의는 analysis 확인 후 확정(현재 본문: S&P 단독). 모델 이름 = ReliaDINO 유지.
+- **T1 A2 val**: DRN-261019-03 의 mm_eval_v2 clean val(legal v2 도구) 3시드 평균 70.17 을 "legal v2 val" 로 인용 가능(같은 채점기). T4 Q2 depth 부분 결측 두 출처 불일치(ledger 10-01 3시드 vs DRN-261019-03 2시드)는 analysis 정합 확인 전까지 열 제외. T5 센서 제거는 전 행 test 로 통일(analysis 재측정 요청). ablation 행에 EMM 열 추가(analysis).

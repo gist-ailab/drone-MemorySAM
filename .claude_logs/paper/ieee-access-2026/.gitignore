@@ -1,8 +1,0 @@
-# Manuscript sources are versioned here (user 2026-10-28). The repo-wide *.png ignore is lifted
-# for this folder because figure thumbnails and templates are part of the source.
-!*.png
-!*.PNG
-# build products: rebuild with ./build.sh; dated snapshots go to drafts/
-/build/
-latex/root.pdf
-*-eps-converted-to.pdf

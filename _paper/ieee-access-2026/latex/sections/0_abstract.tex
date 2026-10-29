@@ -1,0 +1,12 @@
+% Abstract: draft notes/draft_method_abstract_review_2026-10-29.md §2 (revised), keywords from
+% notes/draft_abstract_intro_2026-10-29.md (inbox 20261029-194129). Numbers: 57.7 = headline.yaml deliver.ours[0];
+% 'one point above' = 57.74 - 56.73 (judgment-ledger:130, official DGFusion weights, same protocol);
+% 48.7 = tasks/DRN-261019-03/analysis.md:19; 31.1 = judgment-ledger:130; 46.5 = current.md:63 (CAFuser retrained).
+\begin{abstract}
+Multimodal semantic segmentation combines a camera with depth, event, and laser range sensors so that driving scenes are understood across weather, lighting, and sensor failures. The most accurate fusion models, however, lose much of their accuracy when a sensor fails at test time. We propose Clean-to-Degraded Two-Pass Distillation (C2D2), a training scheme that uses every batch twice: once with clean inputs and once with sensor-specific synthetic degradation, where the degraded pass is distilled from a frozen teacher trained on clean inputs. C2D2 needs no condition or degradation labels and adds no inference cost. We train with it a fusion model built on a frozen vision foundation backbone shared by all sensors, with sensor-specific low-rank adapters, cross-sensor attention, and a high-resolution decoding path. On the DELIVER benchmark, the model reaches 57.7 mean intersection over union on the test set, averaged over three training runs, one point above the best published four-sensor fusion model evaluated under the same protocol. When sensors are removed, its score averaged over all sensor subsets is 48.7, compared with 31.1 for the official weights of that model and at most 46.5 for strong fusion models retrained with the same degradation. We further analyse sensor dependence across conditions, thin objects, and failure cases \todo{one sentence on MUSES and MCubeS once measured (FU-08)}.
+\end{abstract}
+
+\begin{keywords}
+% IEEE Access template: three or four keywords, alphabetical order
+Knowledge distillation, multimodal semantic segmentation, robustness, sensor fusion
+\end{keywords}

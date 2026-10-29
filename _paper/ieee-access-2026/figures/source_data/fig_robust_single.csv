@@ -1,0 +1,17 @@
+model,sensor_left,miou,n_seeds,source_file,source_locator
+DGFusion (official weights),RGB,7.50,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 DRN-261001-03 (line 130 at develop 9270029): '단일 모달: img 7.50·depth 43.33·event 1.13·LiDAR 1.13'"
+DGFusion (official weights),Depth,43.33,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (official weights),Event,1.13,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (official weights),LiDAR,1.13,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (retrained),RGB,49.0,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 (line 117): '한 센서만: img 12.1 → 49.0, depth 43.1 → 44.5, event 1.2 → 25.0, LiDAR 3.2 → 25.0' (reproduced (a) → retrained (b))"
+DGFusion (retrained),Depth,44.5,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (retrained),Event,25.0,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (retrained),LiDAR,25.0,1,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o high-res,RGB,53.9,3,.claude_logs/experiments/judgment-ledger.md,"same row (line 117), '우리 Q2 3시드(같은 프로토콜) ... 한 센서만 RGB 53.9·depth 46.0·event 31.0·LiDAR 22.9'"
+Ours w/o high-res,Depth,46.0,3,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o high-res,Event,31.0,3,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o high-res,LiDAR,22.9,3,.claude_logs/experiments/judgment-ledger.md,same row
+Ours,RGB,,3,PENDING,analysis inbox 20261028-183826 item 2 (A2 single-sensor EMM subsets)
+Ours,Depth,,3,PENDING,same request
+Ours,Event,,3,PENDING,same request
+Ours,LiDAR,,3,PENDING,same request
