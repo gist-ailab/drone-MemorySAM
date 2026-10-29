@@ -13168,7 +13168,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-13
   created: '2026-10-20'
-  updated: '2026-10-28'
+  updated: '2026-10-29'
   closed: null
   runs:
   - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
@@ -13182,6 +13182,16 @@ items:
     split: test
     metric: mAcc
     value: 67.16
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+    split: val
+    metric: mIoU
+    value: 70.99
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920
+    split: val
+    metric: mAcc
+    value: 79.32
     source: pipeline
   verdict: null
   analysis: null
@@ -13417,7 +13427,7 @@ items:
   expected_cost: GPU 1장 약 2시간
   priority: 1
   owner_role: analysis
-  status: queued
+  status: judging
   kind: analysis
   tags:
   - probe
