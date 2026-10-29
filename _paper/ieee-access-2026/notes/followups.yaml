@@ -95,7 +95,7 @@ items:
     depends_on: [FU-03, FU-04, FU-05]
     where:
       - latex/sections/0_abstract.tex, 1_intro.tex, 7_conclusion.tex
-    now: "초록·서론은 확정 수치(DELIVER test 57.74, A2 강건성)와 확정 설계만. 4모달 필요성은 방어하지 않는다(벤치 설정, 센서 결손 시 도움). '기존 모델은 clean 으로만 학습' 표현 금지(기준선도 데이터셋의 열악 조건을 학습함) → 'without synthetic sensor degradation' 으로. 기존 방법 = 조건 토큰(CAFuser)·depth 감독(DGFusion)으로 조건을 인식."
+    now: "제목 확정(user 2026-10-29): 'C2D2: Clean-to-Degraded Two-Pass Distillation for Robust Multi-Sensor Semantic Segmentation with a Frozen Vision Foundation Model'. C2D2 = 방법(두 패스 학습) 이름, 본문 첫 등장 시 풀이 병기. 초록·서론은 확정 수치(DELIVER test 57.74, A2 강건성)와 확정 설계만. 4모달 필요성은 방어하지 않는다(벤치 설정, 센서 결손 시 도움). '기존 모델은 clean 으로만 학습' 표현 금지(기준선도 데이터셋의 열악 조건을 학습함) → 'without synthetic sensor degradation' 으로. 기존 방법 = 조건 토큰(CAFuser)·depth 감독(DGFusion)으로 조건을 인식."
     branches:
       done: "FU-03·04·05 가 모두 끝나면 기여 문장 3개를 확정(method 브리프 갱신 후)하고 초록·서론을 다시 쓴다."
     status: open
