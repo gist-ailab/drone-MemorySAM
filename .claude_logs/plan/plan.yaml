@@ -13546,27 +13546,29 @@ items:
     + 결측 학습)과 다르다는 것을 보이는 유일한 실험
   hypothesis: '물리 열화가 결측 학습을 넘어 기여한다: 결측만 변형은 A2 대비 clean 24클래스·test EMM15·NM(salt-and-pepper,
     학습에 없음)이 모두 낮다'
-  falsification: 세 지표 모두 |Δ| < 0.3 이면 물리 열화의 추가 기여 없음 → 논문은 '센서별 열화'를 선행 대비 차별점으로
-    주장하지 않고 기여 문장을 '증류+결측 학습의 상호작용'으로 축소
+  falsification: 세 지표 모두 |Δ| < 0.3 → 기여 문장을 "증류+결측 학습의 상호작용" 으로 축소, 센서별 열화를 차별점으로
+    주장하지 않음
   change: TRAIN.QAF.DEGRADE_P 0.5→0.1 + MISSING_FRAC 0.2→1.0 (센서당 결측 확률 0.1 은 A2 와
     동일하게 유지하고 물리 열화만 0으로; 교사 증류·clean 패스·고해상 경로 등 나머지 A2 config 동일)
-  baseline: A2 같은 시드(s821·s902), DELIVER 40ep 스크린, legal v2 test@1024 + EMM15(val·test)
-    + NM(.05/.10/.20) — L5(DRN-261020-13)·L6(-14)와 같은 평가 묶음
+  baseline: A2 같은 시드 s821·s902(legal v2 test@1024, EMM15 val·test, NM .05/.10/.20),
+    L5·L6 과 같은 평가 묶음
   configs: []
   launch: null
-  success_criteria: 채택(물리 열화 기여 실재) = 2시드 짝 Δ(A2 − L7) 평균이 test clean 24클래스 ≥ +0.5
-    또는 test EMM15 ≥ +1.0 또는 NM .20 ≥ +1.0 이고, 그 지표에서 두 시드 부호가 같음
-  sample_basis: L5·L6 과 같은 2시드(A2 두 시드 차 1.5) — 시드별 짝 Δ 와 평균 병기, 부호 일치 요구
-  expected_cost: 4 GPU × 약 1일 × 2런 (+ 평가 묶음)
+  success_criteria: 2시드(s821·s902) 짝 Δ(A2 − L7) 평균이 test clean 24클래스 ≥ +0.5 또는 test
+    EMM15 ≥ +1.0 또는 NM S&P .20 ≥ +1.0 이고, 그 지표에서 두 시드 부호 일치 → 센서별 물리 열화가 basic distillation
+    과 다른 기여
+  sample_basis: 2시드 짝 비교(L5·L6 과 동일)
+  expected_cost: 4 GPU × 약 1일 × 2런
   priority: 2
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
   - leave-one-out
   - paper
   - contribution
+  docs: .claude_logs/tasks/DRN-261029-01
   created: '2026-10-29'
   updated: '2026-10-29'
   closed: null
@@ -13586,30 +13588,30 @@ items:
   hypothesis: 기준선은 백본 전체를 학습하므로 열화 패스가 clean 표현을 흔들어 clean 이득이 작거나 음수다(열화만 재학습 (b)
     가 −0.9). 우리는 백본이 동결이라 열화 패스가 LoRA·헤드만 규제해 +1.31(ledger:158)을 얻는다 — 이 기제 설명은 미검증
     가설
-  falsification: clean(c) − clean(a) ≥ +0.8 이면 이득은 범용 → 논문은 두 패스 학습을 A2 고유 기여로 주장하지
-    않고, 선행 대비 차이는 L7 결과로만 주장
+  falsification: clean(c) − clean(a) ≥ +0.8 → 두 패스 학습을 A2 고유 기여로 주장하지 않음(범용 레시피로 서술,
+    선행 대비 차이는 L7 로만)
   change: 'DGFusion (b) 레시피(열화 커리큘럼, third_party/dgfusion_train_restore) → 두 패스(clean
     패스 CE + 열화 패스 CE) + 동결 clean DGFusion 교사(DELIVER (a) 가중치, 우리 프로토콜 clean 55.68)의
     로짓 KL 증류(α 0.5, T 2, A2 와 동일). 구조·스케줄·증강은 (b) 와 동일. 주의: (b) 대비 ''두 패스 구조''와 ''교사
     증류'' 두 요소가 함께 바뀐다(레시피 단위 전이 실험)'
-  baseline: DGFusion (a) 공식/재현 clean 가중치(clean 55.68, EMM 31.53) 와 (b) 열화 재학습(clean
-    54.77, EMM 45.52, NM .20 23.34) — 같은 강건 프로토콜(61케이스, test 1897장, ledger:117)
+  baseline: DGFusion (a) clean 학습 재현본(우리 프로토콜 clean 55.68, ledger:117) — 같은 프로토콜 test
+    1897장
   configs: []
   launch: null
-  success_criteria: 채택(우리 구조 의존) = clean(c) − clean(a) < +0.2 (test, ledger:117 같은
-    61케이스 프로토콜) 그리고 우리 구조의 같은 비교(E1→Q2, 24클래스 +1.31) 와 차이 ≥ +1.0
-  sample_basis: 기준선 (a)(b) 가 단일 런이므로 1런. 시드 분산 미측정이라 기준을 +0.5(clean)로 크게 잡고 한계로 병기
-  expected_cost: '구현: DGFusion train_net 에 두 패스 + 교사 KD 추가(코드 작업, 워커 위임 + 검수) · 학습:
-    (b) 학습 시간의 약 2배(정방향 2회 + 교사 정방향), 정확한 GPU 시간 미확인'
+  success_criteria: clean(c) − clean(a) < +0.2 그리고 우리 E1→Q2 +1.31 과의 차이 ≥ +1.0 → 두
+    패스+증류 이득은 우리 구조(동결 파운데이션+LoRA)에 의존(A2 고유 기여). DRN-261029-03 과 둘 다 채택일 때만 본문 주장
+  sample_basis: 1런(기준선 재학습 비용). 시드 1
+  expected_cost: (b) 재학습의 약 2배 추정(미확인), lecun 3090 ×2~3
   priority: 1
   owner_role: specialist-baseline
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - baseline
   - transfer
   - paper
   - contribution
+  docs: .claude_logs/tasks/DRN-261029-02
   created: '2026-10-29'
   updated: '2026-10-29'
   closed: null
@@ -13628,31 +13630,27 @@ items:
     '그 모델이 열화 학습과 안 맞을 뿐' 반론을 못 막으므로 두 번째 기준선
   hypothesis: 기준선은 백본 전체를 학습하므로 열화 패스가 clean 표현을 흔들어 증류를 더해도 clean 이득이 작다. 우리는 백본이
     동결이라 열화 패스가 LoRA·헤드만 규제한다(미검증 가설)
-  falsification: clean(c) − clean(a) ≥ +0.8 이면 이득은 범용 → 두 패스 학습을 A2 고유 기여로 주장하지 않고
-    선행 대비 차이는 L7(DRN-261029-01) 로만 주장
+  falsification: clean(c) − clean(a) ≥ +0.8 → A2 고유 기여 주장 철회
   change: CAFuser (a) clean 학습 레시피 → 두 패스(clean 패스 CE + 열화 패스 CE, 열화 커리큘럼 = third_party/dgfusion_train_restore
     의 (b) 와 동일) + 동결 CAFuser (a) clean 가중치(170k) 로짓 KL 증류(α 0.5, T 2, A2 와 동일). 구조·스케줄·증강은
     (a)(b) 와 동일
-  baseline: CAFuser (a) clean 학습(170k, clean 55.38 — 같은 평가 축인지 확인 필요) 와 (b) 열화 재학습(clean
-    55.79, EMM15 46.50), 같은 강건 프로토콜(61케이스, test 1897장)
+  baseline: CAFuser (a) clean 학습 170k(우리 프로토콜 clean 55.38 — 같은 축인지 analysis 확인 필요)
   configs: []
   launch: null
-  success_criteria: 채택(우리 구조 의존) = clean(c) − clean(a) < +0.2 (test, 같은 프로토콜) 그리고
-    우리 구조의 E1→Q2(24클래스 +1.31) 와 차이 ≥ +1.0. DRN-261029-02 와 둘 다 채택일 때만 논문에 '구조 의존'
-    주장
-  sample_basis: 기준선 (a)(b) 가 단일 런이므로 1런. 시드 분산 미측정이라 채택·반증 사이 회색 구간(+0.2~+0.8)을 크게
-    두고 한계로 병기
-  expected_cost: '구현: DRN-261029-02 와 같은 train_net 수정 재사용(같은 코드 계열로 추정, 미확인) · 학습:
-    (b) 학습 시간의 약 2배(정방향 2회 + 교사 정방향), A100(hpca100) 우선 배치(user 2026-10-29)'
+  success_criteria: clean(c) − clean(a) < +0.2 그리고 우리 E1→Q2 +1.31 과의 차이 ≥ +1.0. DRN-261029-02
+    와 둘 다 채택일 때만 "증류+열화 이득은 우리 구조에서만" 주장
+  sample_basis: 1런, 시드 1
+  expected_cost: (b) 재학습 상당, lecun 3090 ×1~2
   priority: 1
   owner_role: specialist-baseline
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - baseline
   - structure-dependence
   - paper
   - contribution
+  docs: .claude_logs/tasks/DRN-261029-03
   created: '2026-10-29'
   updated: '2026-10-29'
   closed: null

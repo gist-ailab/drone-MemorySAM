@@ -12,8 +12,8 @@ paper_target: 단일 아키텍처(ReliaDINO)로 DELIVER·MUSES·MCubeS 전 모�
 headline: DELIVER test **57.74**(A2 3시드 {58.61, 57.09, 57.52}, best 58.61, legal v2, 2026-10-27 adopt) · 24클래스 58.56 · val 미확인(시드903 69.86) · 결측 val EMM15 57.85 · MUSES test 79.29±0.71(3모달 구기록, 논문 미사용; 4모달 P39.1 79.571) · MCubeS 58.07±0.49(P39.1) (출처: 아래 ① 표 = headline.yaml)
 sota_gap: DELIVER test mean **+1.03** vs DGFusion 56.71(best +1.90) · 결측 val EMM15 +7.92 vs RMMSS 49.93 · MUSES test(4모달 P39.1) +0.07 vs DGFusion 79.5(논문 모델 A2 미측정) · MCubeS +2.17 vs StitchFusion 55.9(P39.1, A2 미측정) (출처: ① 표)
 next_gate: ① 메인 3표 완성 — MCubeS A2 전이 DRN-261017-02 2시드(yeon 대기열) · MUSES 4모달 A2 DRN-261019-02 2시드(교사 E1M4 공식 val 후 TEACHER_CKPT) → ② ablation(L1 평가·L2·L4·L5·L6·단순 융합) + 비용표 DRN-261027-02 → ③ 논문 초고 동결 2026-11-10(DRN-261027-01, IEEE Sensors Journal) · 병행: PRB-DRN-261020-01 교차 확인 DRN-261022-01 통과 시 S2 1런(이번 투고엔 미포함). A2 3시드 판정 adopt 완료(10-27)
-blocker: MUSES test 제출 보류(user 2026-09-29: 4모달 논문 모델로만 — MUSES 4모달 A2 완주·공식 val 뒤 user 가 직접 제출) · IEEE Sensors Journal 1회 투고 목표(user 2026-10-21): 분석형+성능 틀, ablation 7런·백본 사다리 3런 대기열
-last_updated: 2026-10-27 (A2 3시드 adopt → 헤드라인 57.74 교체, 강건성 adopt, 논문 집필 착수)
+blocker: MUSES test 제출 보류(user 2026-09-29: 4모달 논문 모델로만 — MUSES 4모달 A2 완주·공식 val 뒤 user 가 직접 제출) · 1차 투고 IEEE Access(user 2026-10-29 변경, 10쪽, 원고 _paper/ieee-access-2026/) 분석형+성능 틀 — 두 패스 학습을 제안 방법으로(구조 의존성 DRN-261029-02·03, L7 DRN-261029-01 사전등록), 2차 RA-L 구조 보완, ablation 7런·백본 사다리 3런 대기열
+last_updated: 2026-10-29 (저널 Access·범위·기여 문장 정정, 교차 확인 세션 기록 반영)
 <!-- PI:END -->
 
 > **역할**: 현재 상태 스냅샷 — 네 블록(벤치 표·지금 도는 것·블로커·판정 대기)만 담는다(상한 60줄, 2026-09-18 재설계 — 감사 R2). 이력·경위는 [history-2026H2.md](history-2026H2.md), 날짜 엔트리 적층 금지.
