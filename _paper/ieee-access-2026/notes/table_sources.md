@@ -23,7 +23,7 @@
 | MM SAM-adapter val / test | 69.60 / 57.35 | `headline.yaml:18` / `:16` (sota2_val / sota2) | ✅ (📄) |
 | Ours (3-seed mean) test | 57.74 | `headline.yaml:22` (deliver.ours[0].value); 시드별 = `.claude_logs/tasks/DRN-261018-01/analysis.md` 3시드 표(“A2 25클래스” 행) | ✅ |
 | Ours (best seed) test | 58.61 | `headline.yaml:23` (best, 시드 821) | ✅ |
-| Ours val (mean, best) | 비어 있음 | headline.yaml 에 3시드 val 평균 없음(시드903 69.86 만). mm_eval_v2 clean val 3시드 70.17 은 `tasks/DRN-261019-03/analysis.md:23` 에 있으나 legal v2 val 과 같은 값인지 미확인 | ❌ (method 질문 inbox 20261027-173029 #1) |
+| Ours val (3-seed mean / best seed) | 70.17 / 69.59 | `tasks/DRN-261019-03/analysis.md:23` (val clean 69.59 / 71.05 / 69.86, 평균 70.17; best seed = test 기준 시드 821 → 69.59). method 답변(inbox 20261029-181016 #3): mm_eval_v2 clean val 을 legal v2 val 로 인용 가능 | ✅ |
 | CMNeXt, StitchFusion, GeminiFusion, CAFuser 전 칸 | 비어 있음 | 후보값만 repo `research/novelty-and-related-work.md:83`(2차 사본) | ❌ 📄 |
 
 ## 표 II. MUSES (`tab:muses`)
@@ -46,20 +46,22 @@
 (a) 공개 벤치 정의, val
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| RMMSS EMM | 49.93 | `tasks/DRN-261019-03/analysis.md:30` (“공개 최고 RMMSS 49.93”) | ✅ (📄 RMMSS 원 논문 표 필요) |
+| MAGIC EMM / RMM .25 .50 .75 | 44.97 / 51.61 48.19 45.30 | arXiv 2503.18445(벤치마크 논문) 표 7(mIoU_EMM^Avg)·표 10/9/8(mIoU_RMM^Avg, r = .25/.5/.75), MiT-B2, val. 원문 6쪽에서 직접 확인(alphaXiv, 2026-10-29) | ✅ |
+| MAGIC++ EMM / RMM .25 .50 .75 | 44.85 / 53.92 49.31 47.06 | 같은 표 | ✅ |
+| (제외) RMMSS 49.93 | — | 결측 입력을 건너뛰는 계열이라 0 채움 표에서 제외(FU-06, inbox 20261029-174230) | — |
 | Ours EMM | 57.85 | `tasks/DRN-261019-03/analysis.md:24` (val EMM15 평균, A2 3시드) | ✅ |
 | Ours RMM .25/.50/.75 | 65.53 / 63.35 / 61.28 | 같은 문서 `:25-27` | ✅ |
-| RMMSS RMM | 비어 있음 | — | ❌ 📄 |
 
 (b) 같은 프로토콜, test
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| DGFusion (official) clean / EMM / S&P .05 .10 .20 | 55.68 / 31.53 / 37.97 16.71 5.52 | `experiments/judgment-ledger.md:117` (2026-10-01 행 “기준선 DGFusion (a)·(b) 강건 프로토콜”, summary.json md5 e6b5ab1f) | ✅ |
+| DGFusion (official weights) clean / EMM / S&P .05 .10 .20 | 56.73 / 31.14 / 39.12 16.85 4.53 | `experiments/judgment-ledger.md:130` (2026-10-01 DRN-261001-03, 공식 가중치 md5 0f40a641…). S&P 칸은 **계산값** = clean 56.73 − 대장의 “NM S&P 저하 17.61/39.88/52.20” | ✅ (S&P ⚠️ 계산값) |
+| DGFusion (reproduced) clean / EMM / S&P | 55.68 / 31.53 / 37.97 16.71 5.52 | `experiments/judgment-ledger.md:117` (2026-10-01 행 “기준선 DGFusion (a)·(b) 강건 프로토콜”, (a) 재현 학습 80k val-best, summary.json md5 e6b5ab1f). 10-29 이전 원고는 이 행을 “official”로 잘못 표기(FU-06 정정) | ✅ |
 | DGFusion (retrained) | 54.77 / 45.52 / 48.89 40.51 23.34 | 같은 행, (b) (md5 21f14917) | ✅ |
 | CAFuser (retrained) clean / EMM | 55.79 / 46.50 | `status/current.md:63` (“CAFuser (b) 완료(10-04)”) | ✅ |
 | CAFuser (retrained) S&P | 비어 있음 | — | ❌ |
-| Ours w/o two-pass EMM | 40.01 | `judgment-ledger.md:117` 같은 행 “E1 스크린 3시드: EMM 40.01” | ✅ |
-| Ours w/o two-pass clean, S&P | 비어 있음 | 같은 행에는 저하폭(3.09·5.73·11.22)만 있음 | ❌ |
+| Ours w/o C2D2 EMM | 40.01 | `judgment-ledger.md:117` 같은 행 “E1 스크린 3시드: EMM 40.01” | ✅ |
+| Ours w/o C2D2 clean, S&P | 비어 있음 | 같은 행에는 저하폭(3.09·5.73·11.22)만 있음 | ❌ |
 | Ours w/o high-res clean / EMM | 56.59 / 48.06 | `tasks/DRN-261019-03/analysis.md:18-19` (Q2 3시드 평균) | ✅ |
 | Ours w/o high-res S&P .05 .10 .20 | 53.25 / 51.64 / 48.79 | 같은 문서 `:20-22` | ⚠️ 2시드 값(시드821 값 54.10 은 NAS 원본 없음, 같은 문서 `:10`) |
 | Ours clean / EMM / S&P | 57.74 / 48.66 / 53.11 51.36 47.85 | 같은 문서 `:18-22` (A2 3시드 평균) | ✅ |
@@ -68,7 +70,7 @@
 ## 표 V. Per-condition (`tab:condition`)
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| “All” 열 5개 | 55.68 / 54.77 / 55.79 / 56.59 / 57.74 | 표 IV(b) clean 열과 같은 출처 | ✅ |
+| “All” 열 5개 | 56.73 / 54.77 / 55.79 / 56.59 / 57.74 | 표 IV(b) clean 열과 같은 출처(첫 행 = 공식 가중치, ledger:130) | ✅ |
 | 조건별 6열 | 비어 있음 | analysis 요청 inbox 20261028-183826 #1 | ❌ |
 
 ## 표 VI. Ablation (`tab:ablation`) — 시드 821, 40ep, legal v2 test@1024
@@ -77,7 +79,7 @@
 | RGB only | 55.14 / – | `judgment-ledger.md:177` (2026-10-28, DRN-261020-08 adopt) | ✅ |
 | + mean fusion | 비어 있음 | DRN-261020-07 학습 중 | ❌ |
 | + cross-modal attention, query head | 55.94 / 비어 있음 | `status/current.md:55,60` (“4모달 E1 스크린821 … test 55.94”) | ✅ / ❌ |
-| + two-pass, distillation | 57.73 / 48.68 | `tasks/DRN-261019-03/analysis.md:18-19` (Q2 시드821) | ✅ |
+| + C2D2 (two-pass, distillation) | 57.73 / 48.68 | `tasks/DRN-261019-03/analysis.md:18-19` (Q2 시드821) | ✅ |
 | + high-res path (full) | 58.61 / 49.12 | 같은 문서 `:18-19` (A2 시드821) | ✅ |
 | − sensor-specific LoRA | 58.84 / 비어 있음 | `judgment-ledger.md:176` (DRN-261020-09) | ✅ / ❌ |
 | − cross-modal attention | 57.76 / 비어 있음 | `judgment-ledger.md:175` (DRN-261020-10; 트렁크 확장도 함께 빠짐) | ✅ / ❌ |
@@ -91,19 +93,21 @@
 그림 Fig. dependence 와 같은 수치. 출처는 `figures/source_data/fig_dependence.csv` 의 source 열(`judgment-ledger.md:112`, 2026-09-30 행).
 | 행 | Sun · Cloud · Rain · Fog · Night · Low exp. | 출처 | 상태 |
 |---|---|---|---|
-| DGFusion (official) | 23.1 · 24.9 · 27.6 · 25.9 · 32.6 · 37.1 | `judgment-ledger.md:112` “DGFusion test: −23.1 · −24.9 · −27.6 · −25.9 · −32.6 · −37.1” | ⚠️ test split(다른 행은 val) |
-| Ours, clean training | 23.5 · 23.9 · 23.7 · 26.8 · 28.7 · 38.7 | 같은 행 “E1 확정 −depth” | ✅ |
+| DGFusion (reproduced) | 23.1 · 24.9 · 27.6 · 25.9 · 32.6 · 37.1 | `judgment-ledger.md:112` “DGFusion (a) test 이미지 평균 축 … −23.1 · −24.9 · −27.6 · −25.9 · −32.6 · −37.1” ((a) = 재현본) | ⚠️ test split(다른 행은 val) |
+| Ours w/o C2D2 | 23.5 · 23.9 · 23.7 · 26.8 · 28.7 · 38.7 | 같은 행 “E1 확정 −depth” | ✅ |
 | Ours w/o high-res | 3.9 · – · – · – · 10.1 · 13.4 | 같은 행 “Q2 시드821 −depth” | ✅ (cloud/rain/fog 없음) |
 | DGFusion·CAFuser (retrained), Ours | 비어 있음 | analysis 요청 inbox 20261028-183826 #4 | ❌ |
 
 ## 본문·초록에 직접 쓴 수치
 | 수치 | 위치 | 출처 |
 |---|---|---|
-| 57.74 / 58.61, DGFusion 대비 +1.03 / +1.90, MM SAM-adapter 대비 +0.39 | 초록·§1·§5 | `headline.yaml:22-23,31-32` |
-| val EMM 57.85, RMMSS 대비 +7.92 | 초록·§1·§5 | `tasks/DRN-261019-03/analysis.md:24,30` |
-| depth 제거 하락 23~39 (조건별 23.5~38.7, DGFusion 23.1~37.1), 두 패스 3.9 / 10.1 / 13.4 | 초록·§1·§6 | `judgment-ledger.md:112` |
-| DGFusion 재학습: depth 통째 결측 −33.3 → −4.7, EMM 31.5 → 45.5 | §6 | `judgment-ledger.md:117` |
-| 한 센서만: 12.1 / 43.1 / 1.2 / 3.2 → 49.0 …, Q2 53.9 | §5 | `judgment-ledger.md:117` |
+| 57.74 / 58.61, 발표치 DGFusion 대비 +1.03 / +1.90, MM SAM-adapter 대비 +0.39 | §5 | `headline.yaml:22-23,31-32` |
+| 같은 프로토콜 격차 +1.01(57.74 − 56.73), 초록 “one point above … four-sensor”, 31.1(공식 EMM), 46.5(재학습 기준선 최대 = CAFuser) | 초록·§1·§5 | `judgment-ledger.md:130`, `status/current.md:63` |
+| val 70.17, CAFuser-CAA 대비 +1.4 | §5 | `tasks/DRN-261019-03/analysis.md:23`, `headline.yaml:17` |
+| val EMM 57.85, MAGIC 대비 +12.9 | §5 | `tasks/DRN-261019-03/analysis.md:24`, arXiv 2503.18445 표 7 |
+| depth 제거 하락(조건별 우리 w/o C2D2 23.5~38.7, DGFusion 재현본 23.1~37.1), C2D2 3.9 / 10.1 / 13.4 | §6 | `judgment-ledger.md:112` |
+| depth 통째 결측: 재현본 −33.3 → 재학습 −4.7, 공식 가중치 −33.4 | §6 | `judgment-ledger.md:117`, `:130` |
+| 한 센서만: 공식 가중치 7.5 / 43.3 / 1.1 / 1.1, 재학습 49.0 …, Q2 53.9 | §5 | `judgment-ledger.md:130`, `:117` |
 | 고해상 경로 +1.15(56.59→57.74), 얇은 4클래스 +3.04, 클래스별 Static +10.35 · Pedestrian +3.80 · TrafficSign +3.08 · Pole +2.14 · TrafficLight −4.14 · RailTrack −7.16, RailTrack Q2 58.46/32.63/45.13 | §6 | `tasks/DRN-261019-03/analysis.md:18`, `tasks/DRN-261018-01/analysis.md`(얇은4 +3.04), `.claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv`(d_mean3·q2 열) |
 | 재현율·정밀도(기둥 0.75→0.78, 보행자 0.89→0.90, 신호등 0.80→0.85, 정밀도 0.46→0.41) | §6 | NAS `analysis_logs/a2_thin_anatomy_20261018/summary.md` (2시드) — ⚠️ 정본 대장에 없음, 원고에 확인 todo |
 | 신호등 오탐 장면 화소 수 | §6 주석 | NAS `analysis_logs/a2_tl_fp_scenes_20261022/README.md` |

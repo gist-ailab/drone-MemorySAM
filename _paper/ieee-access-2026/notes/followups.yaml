@@ -88,7 +88,8 @@ items:
     now: "Table 4(b) 'official' 행 값(55.68 / 31.53 / 12.1 등)은 재현본 (a)(ledger 2026-10-01 DRN-260930-02). 공식 가중치 = clean 56.73 · val 66.51 · EMM 31.14 · RGB만 7.50 · depth 통째 결측 23.34(ledger DRN-261001-03). RMMSS 49.93 은 결측 브랜치를 건너뛰는 계열 → 0채움 계열 공개 최고 MAGIC 44.97 과 비교하거나 계열을 나눠 표기. DGFusion 같은 프로토콜 격차 = 57.74 − 56.73 = +1.01."
     branches:
       done: "위 now 대로 즉시 수정."
-    status: open
+    status: done
+    done_note: "2026-10-29 specialist-paper: Table 4(b) 공식 가중치·재현본 두 행 병기(공식 S&P = clean − 저하), Table 4(a) RMMSS 제거 → 벤치 논문 0채움 계열 MAGIC 44.97·MAGIC++ 44.85(arXiv 2503.18445 표 7~10), 본문 +12.9 vs MAGIC, §6 depth 결측 문장(재현본 −33.3·공식 −33.4·재학습 −4.7), Fig. robust·dependence CSV 라벨(official weights / reproduced), 같은 프로토콜 격차 +1.01 병기."
 
   - id: FU-07
     title: 논문 범위 — 전 모달 정확도가 주, 결측 강건성은 보조

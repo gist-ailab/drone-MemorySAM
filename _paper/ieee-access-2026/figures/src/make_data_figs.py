@@ -64,10 +64,11 @@ SEQ = ["#ffffff", "#e4eeff", "#cadcff", "#afcbff", "#94b9ff",
 DANGER = "#da1e28"
 # model families: baselines = neutral greys (line style separates them); ours = blue ramp, final model darkest
 STYLE = {
-    "DGFusion (official)":   dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
+    "DGFusion (official weights)": dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
+    "DGFusion (reproduced)": dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="s", mfc="white"),
     "DGFusion (retrained)":  dict(color=MUTED, ls="-", marker="o", mfc=MUTED),
     "CAFuser (retrained)":   dict(color=FG, ls=(0, (3, 1.5)), marker="s", mfc="white"),
-    "Ours, clean training":  dict(color=SEQ[4], ls="-", marker="^", mfc=SEQ[4]),
+    "Ours w/o C2D2":         dict(color=SEQ[4], ls="-", marker="^", mfc=SEQ[4]),
     "Ours w/o high-res":     dict(color=SEQ[7], ls="-", marker="D", mfc=SEQ[7]),
     "Ours":                  dict(color=SEQ[9], ls="-", marker="o", mfc=SEQ[9], lw=1.8),
 }
@@ -117,8 +118,8 @@ def fig_dependence(out):
     ax.set_ylabel("mIoU drop without depth (points)")
     ax.set_ylim(0, 42)
     h, l = ax.get_legend_handles_labels()
-    l = [s.replace("DGFusion (official)", "DGFusion (official), test")
-          .replace("Ours w/o high-res", "Ours, two-pass training") for s in l]
+    l = [s.replace("DGFusion (reproduced)", "DGFusion (reproduced), test")
+          .replace("Ours w/o high-res", "Ours, C2D2 (w/o high-res)") for s in l]
     ax.legend(h, l, loc="lower left", bbox_to_anchor=(0.2, 0.04), handlelength=2.4, borderaxespad=0.2)
     fig.tight_layout(pad=0.3)
     save(fig, out / "fig_dependence", [src])

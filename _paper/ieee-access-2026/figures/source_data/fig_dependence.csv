@@ -1,16 +1,16 @@
 model,condition,drop_without_depth,split,source_file,source_locator
-DGFusion (official),Sun,23.1,test,.claude_logs/experiments/judgment-ledger.md,"row 2026-09-30 'E1 확정 ... depth 과의존' (line 112 at ae26766), 'DGFusion test: −23.1 · −24.9 · −27.6 · −25.9 · −32.6 · −37.1'"
-DGFusion (official),Cloud,24.9,test,.claude_logs/experiments/judgment-ledger.md,same row
-DGFusion (official),Rain,27.6,test,.claude_logs/experiments/judgment-ledger.md,same row
-DGFusion (official),Fog,25.9,test,.claude_logs/experiments/judgment-ledger.md,same row
-DGFusion (official),Night,32.6,test,.claude_logs/experiments/judgment-ledger.md,same row
-DGFusion (official),Low exp.,37.1,test,.claude_logs/experiments/judgment-ledger.md,same row
-"Ours, clean training",Sun,23.5,val,.claude_logs/experiments/judgment-ledger.md,"same row, 'E1 확정 −depth: sun −23.5 · cloud −23.9 · rain −23.7 · fog −26.8 · night −28.7 · 저노출 −38.7' (E1 confirmed run, seed 1, 200 ep)"
-"Ours, clean training",Cloud,23.9,val,.claude_logs/experiments/judgment-ledger.md,same row
-"Ours, clean training",Rain,23.7,val,.claude_logs/experiments/judgment-ledger.md,same row
-"Ours, clean training",Fog,26.8,val,.claude_logs/experiments/judgment-ledger.md,same row
-"Ours, clean training",Night,28.7,val,.claude_logs/experiments/judgment-ledger.md,same row
-"Ours, clean training",Low exp.,38.7,val,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (reproduced),Sun,23.1,test,.claude_logs/experiments/judgment-ledger.md,"row 2026-09-30 'E1 확정 ... depth 과의존' (line 112 at ae26766), 'DGFusion test: −23.1 · −24.9 · −27.6 · −25.9 · −32.6 · −37.1'"
+DGFusion (reproduced),Cloud,24.9,test,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (reproduced),Rain,27.6,test,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (reproduced),Fog,25.9,test,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (reproduced),Night,32.6,test,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (reproduced),Low exp.,37.1,test,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o C2D2,Sun,23.5,val,.claude_logs/experiments/judgment-ledger.md,"same row, 'E1 확정 −depth: sun −23.5 · cloud −23.9 · rain −23.7 · fog −26.8 · night −28.7 · 저노출 −38.7' (E1 confirmed run, seed 1, 200 ep)"
+Ours w/o C2D2,Cloud,23.9,val,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o C2D2,Rain,23.7,val,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o C2D2,Fog,26.8,val,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o C2D2,Night,28.7,val,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o C2D2,Low exp.,38.7,val,.claude_logs/experiments/judgment-ledger.md,same row
 Ours w/o high-res,Sun,3.9,val,.claude_logs/experiments/judgment-ledger.md,"same row, 'Q2 시드821 −depth: sun −3.9 · night −10.1 · 저노출 −13.4' (cloud/rain/fog not reported)"
 Ours w/o high-res,Night,10.1,val,.claude_logs/experiments/judgment-ledger.md,same row
 Ours w/o high-res,Low exp.,13.4,val,.claude_logs/experiments/judgment-ledger.md,same row
