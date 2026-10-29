@@ -86,3 +86,7 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 - **원고 원본 = repo `_paper/ieee-access-2026/`**(`.claude_logs/paper/ieee-access-2026/` 에서 git mv). 이 브리프와 작업 기록은 `.claude_logs/` 에 남는다. `_paper/` 바로 아래의 CVPR 원고(2026-03, `main.tex`·`rebuttal.*`, git 미추적)는 별개이며 건드리지 않는다.
 - repo `.gitignore` 가 `data/`·`*.json`·`*.png` 를 무시하므로, 그래프 수치는 `figures/source_data/` 에 두고 원고 폴더 `.gitignore` 에서 `*.json`·`*.png` 를 다시 포함한다. (2026-10-29 이전 커밋 ad30385 에는 그래프 CSV 3개와 사이드카 JSON 3개가 이 무시 규칙 때문에 빠져 있었고, 이번 이동 커밋에서 포함했다.)
 - (2026-10-29) 토큰 적응 LoRA 축 종결: 프로브 DRN-261028-01 미통과(고해상 통계가 블록 6 보다 낫지 않음). 이번 투고·다음 논문 모두에서 이 축을 쓰지 않는다. 노벨티 줄은 발견 + 학습 설계(+공유 LoRA 조건부) + 단일 모델 3벤치로 고정.
+
+## 논문 분리 결정(user 2026-10-29)
+- **1차 투고(IEEE Sensors Journal, 기각 시 IEEE Access)**: 논문 모델 = A2(L1 강건성 통과 시 공유 LoRA 판). 구조 노벨티 주장 없음 — 발견 + 학습 설계 + 단일 모델 3벤치 + 분석. 토큰 적응 LoRA·S2 등 구조 보완은 **쓰지 않는다**.
+- **2차 논문(RA-L 목표)**: 1차 모델 위에 구조 보완(내용 기반 토큰 MoE-LoRA DRN 등록, S2 센서별 마스크 헤드 등)을 더해 별도 투고. 1차 투고 뒤 착수, GPU 는 1차 메인 표가 우선.

@@ -43,6 +43,8 @@
 | DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
 | DRN-261029-01 | P2 | Ablation L7 · A2 − 센서별 물리 열화(→ 결측 0채움만, 결측 노출량은 A2와 동일) — 두 패스 학습이 RobustSeg 'basic distillation'과 다른가 | TRAIN.QAF.DEGRADE_P 0.5→0.1 + MISSING_FRAC 0.2→1.0 (센서당 결측 확률 0.1 은 A2 와 동일하게 유지하고 물리 열화만 0으로; 교사 증류·clean 패스·고해상 경로 등 나머지 A2 config 동일) | - | ablation, leave-one-out, paper, contribution |
 | DRN-261020-05 | P3 | S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합) | S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화 | - | S2, explore, structural-novelty |
+| DRN-261029-04 | P3 | 내용 기반 토큰 MoE-LoRA 구현: 센서 공유 전문가 K=4(r8) + 라우터(블록 12 토큰 stop-grad, softmax 혼합, 부하 균형 손실) + 라우팅 진단 덤프(전문가×클래스·센서별 분포) | encoder.py/p56c_router.py 확장: 전문가 K 세트·softmax 라우터·균형 손실·eval 스태시(토큰별 전문가 분포) + 진단 도구(전문가×클래스 정규화 상호정보, 센서별 분포 거리, 사용률) + 스모크(off 계약·grad·균형 손실) | - | moe-lora, content-routing, build, paper2 |
+| DRN-261029-05 | P3 | 내용 기반 토큰 MoE-LoRA · DELIVER 40ep 1시드 s821 — 기준 모델(A2-shared 또는 A2) + 센서 공유 전문가 K=4 를 토큰 내용(블록 12)으로 혼합, Q2 학습 불변 (2차 논문 RA-L 후보) | MODEL.LORA_MODE content_moe (K=4, r8, 라우터 블록 12, 균형 손실 계수 0.01), 그 외 기준 모델 config 동일 | - | moe-lora, content-routing, screen40, paper2 |
 | DRN-260926-05 | P5 | N-E18 · E18 = E1 레시피 + Lovász-Softmax 보조손실 40ep 스크린 시드821 | E1 레시피에 Lovász-Softmax 보조손실 추가(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) | - | deliver, screen40 |
 | DRN-260926-06 | P6 | N-E19 · E19 = E1 레시피 + 가중치 EMA(0.9995) val 평가·저장 | E1 레시피에 가중치 EMA(0.9995)로 val 평가·저장 | - | deliver |
 | DRN-260926-07 | P7 | N-D0 · D0 = LoRA 진단 2종(학습 0) | (i) 4모달 LoRA A 행렬 층별 코사인 (ii) 조건별 미니배치 그래디언트 코사인 | - | deliver, diagnostic |

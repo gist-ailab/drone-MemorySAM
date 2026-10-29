@@ -13651,6 +13651,80 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261020-01
+- id: DRN-261029-04
+  title: '내용 기반 토큰 MoE-LoRA 구현: 센서 공유 전문가 K=4(r8) + 라우터(블록 12 토큰 stop-grad, softmax
+    혼합, 부하 균형 손실) + 라우팅 진단 덤프(전문가×클래스·센서별 분포)'
+  question: P56-C 의 state_routed 코드를 '열화 혼합' 에서 '내용 전문가 혼합' 으로 바꿔 off 계약을 지키며 구현할
+    수 있는가
+  hypothesis: 'LORA_MODE: content_moe — 전문가 K 공유, 라우터 입력 = 블록 12 토큰(stop-grad), 센서
+    임베딩 없음, 부하 균형 손실(switch 식). 미지정 시 byte 동일'
+  falsification: 해당 없음(구현)
+  change: 'encoder.py/p56c_router.py 확장: 전문가 K 세트·softmax 라우터·균형 손실·eval 스태시(토큰별 전문가
+    분포) + 진단 도구(전문가×클래스 정규화 상호정보, 센서별 분포 거리, 사용률) + 스모크(off 계약·grad·균형 손실)'
+  baseline: P56-C 코드(develop)
+  configs: []
+  launch: null
+  success_criteria: 스모크 통과 + 검수. 착수 시점 = 메인 3표(MCubeS·MUSES A2) 기동 뒤
+  sample_basis: 해당 없음
+  expected_cost: 워커 1회 + 스모크 GPU 30분
+  priority: 3
+  owner_role: method
+  status: idea
+  kind: build
+  tags:
+  - moe-lora
+  - content-routing
+  - build
+  - paper2
+  docs: .claude_logs/tasks/DRN-261029-04
+  created: '2026-10-29'
+  updated: '2026-10-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261029-05
+  title: 내용 기반 토큰 MoE-LoRA · DELIVER 40ep 1시드 s821 — 기준 모델(A2-shared 또는 A2) + 센서 공유
+    전문가 K=4 를 토큰 내용(블록 12)으로 혼합, Q2 학습 불변 (2차 논문 RA-L 후보)
+  question: 토큰 내용(물체·노면·얇은 구조)에 따라 적응을 바꾸면 실제로 토큰별로 다른 전문가가 쓰이고(붕괴 아님) clean 이 오르는가
+    — 열화 기준 라우팅(P56-C·DRN-261028-01)과 달리 신호가 있는 변수
+  hypothesis: 적응 실재 ① 토큰 전문가 분포 평균 엔트로피 ≤ 0.5·균등 이면서 전문가 사용률 전부 ≥ 10% ② 전문가×클래스 정규화
+    상호정보 ≥ 0.2 ③ 센서별 선호 전문가 분포가 다름. 성능 ④ 24클래스 Δ ≥ +0.3(같은 시드 기준 모델) ⑤ EMM15 Δ ≥ 0
+    ⑥ thin4 비악화
+  falsification: ①·② 미달(라우터 상수·클래스 무관) 또는 ④ ≤ 0 또는 ⑤ < 0 → 기각, 내용 라우팅 축 종결. ep20 val
+    −1.0 kill
+  change: MODEL.LORA_MODE content_moe (K=4, r8, 라우터 블록 12, 균형 손실 계수 0.01), 그 외 기준
+    모델 config 동일
+  baseline: 같은 시드 기준 모델(L1 강건성 통과 시 A2-shared s821, 아니면 A2 s821), legal v2 test@1024
+    + mm_eval_v2 + 라우팅 진단
+  configs: []
+  launch: null
+  success_criteria: ①~⑥ 전부 충족 시 채택 후보 → 시드 902·903 + MUSES 전이 등록(2차 논문). 1차 투고(A2)에는
+    넣지 않음(user 2026-10-29)
+  sample_basis: 1시드 스크린 → 통과 시 3시드
+  expected_cost: 4 GPU 약 1일 + 강건·진단 평가 3h
+  priority: 3
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - moe-lora
+  - content-routing
+  - screen40
+  - paper2
+  docs: .claude_logs/tasks/DRN-261029-05
+  created: '2026-10-29'
+  updated: '2026-10-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
