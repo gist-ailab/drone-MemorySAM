@@ -178,7 +178,6 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-261022-01 | P1 | 벤치 교차 확인(학습 0): 객체 단위 클래스 오라클 상한 + 객체 풀링 선형 프로브 — DELIVER(A2·Q2) 와 MUSES(E1M 1024/1536, 4모달 A2 완주 후 재측정) | 학습 없음. (a) 객체 클래스 오라클: 예측 맵의 연결 성분마다 GT 다수 클래스로 라벨 교체 후 mIoU 재계산(DELIVER test A2 s821·s902 / Q2 s821 덤프, MUSES val E1M 3시드 1024·1536 — 예측 덤프 없으면 공식 val 평가기로 1회 재추론해 pred 저장) + 클래스별 Δ 와 혼동쌍 기여 (b) 선형 프로브: A2 val 에서 GT 객체별로 fused 토큰 평균과 고해상 경로 s4 특징의 마스크 내 평균을 추출(모델 eval 스태시 훅, 학습 영향 0), 혼동쌍 2진 로지스틱 회귀 5-fold AUROC (c) MUSES 4모달 A2(DRN-261019-02) 완주 후 (a)(b) 재측정 | queued | - | GPU 1장 약 4시간(재추론 포함), 나머지 CPU |
 | DRN-261027-01 | P1 | IEEE Access 원고 v1 — 분석형+성능 틀, 10쪽, 초고 동결 2026-11-10 (2026-10-29 IEEE Sensors Journal에서 변경) | 집필 작업(학습 없음). 브리프 .claude_logs/paper/00_brief.md 의 절 구성·표 출처·인용 규칙을 따른다 | running | - | 집필 세션 약 2주, 워커 위임 가능 |
 | DRN-261027-03 | P1 | MCubeS 로더 학습 전용 크롭 옵션(DATASET.TRAIN_CROP, 기본 1024) + 평가 하네스 재동결 — A2 를 24GB 카드에서 돌리기 위함 | semseg/datasets/mcubes.py __init__ 에 train_crop/train_base 인자(기본 1024), train_reliadino.py ds_kwargs 에 DATASET.TRAIN_CROP 전달, 스모크 tools/smoke_mcubes_train_crop.py. 이후 tools/eval_harness_guard.py --freeze 재동결 + 대표 ckpt(P39.1 MCubeS) 재채점으로 수치 불변 확인 | running | - | 워커 1회 + 재채점 GPU 30분 |
-| DRN-261028-01 | P1 | 고해상 특징이 실제 열화를 토큰 단위로 알아보는가(학습 0) — P56-C 기각의 원인('신호 없음')이 고해상 경로에서 해소되는지 재검 | 학습 없음. A2 s821 ckpt, DELIVER test 전수. 센서별 고해상 경로 출력(hires_adapter 의 센서별 스템 출력 또는 s4 레벨, 센서 분리 가능한 지점에서 추출)과 블록 6 토큰 특징을 토큰별 통계 3종으로 요약 → 파티션(clean vs 열화) 이진 AUROC(이미지 단위·토큰 단위 둘 다), 센서별. 기존 도구 tools/oracle_headroom_probe.py·Q1d 품질 헤드 프로브 코드를 확장(새로 짜지 않음) | running | - | GPU 1장 약 2시간 |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) | - | running | - | 미정 |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) | - | running | - | 미정 |
 | DRN-261020-13 | P2 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | evaluating | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920 | 4 GPU × 약 1일 × 2런 |
@@ -207,6 +206,9 @@ setsid nohup /home/jemo_maeng/anaconda3/envs/MMSS_SAM/bin/torchrun \
 | DRN-261020-11 | - | - | - |
 | DRN-261020-12 | adopt | ablation 표 행 확정(1시드 s821): A2 에서 질의 헤드+arbiter 를 빼고 dense conv 헤드만 쓰면 test 57.89 / val 70.56 — A2 58.61 대비 test −0.72. 질의 헤드 결합의 clean 기여 약 +0.7. | .claude_logs/tasks/DRN-261020-12/plan.md |
 | DRN-261020-15 | - | - | - |
+| DRN-261028-01 | reject | 고해상 신호 프로브(A2 s821, DELIVER test 1897장, 이미지 단위 AUROC 양방향 최대): 고해상 s4 토큰 통계 vs 블록 6 통계 = MB 0.655/0.617 · OE 0.788/0.756 · UE 0.942/0.963 · LJ 0.624/0.586 · EL 0.612/0.749. 사전 기준(고해상 ≥0.8 이 ≥3 파티션 그리고 블록 6 보다 ≥0.15) 미달: ≥0.8 은 1/5, +0.15 이상 0/5(최대 +0.04). 토큰 단위는 두 신호원 모두 ≤0.78. 결론: '블록 6 에 신호가 없어 P56-C 가 붕괴했다' 는 가설 기각 — 밝기 계열(UE·night·fog)은 두 신호원 모두 이미지 단위로 갈리고, 토큰 단위 열화 신호는 어느 쪽에도 약함. 토큰 적응 LoRA 축은 신호원과 무관하게 종결(반복 금지). | .claude_logs/tasks/DRN-261028-01/analysis.md |
+| DRN-261028-02 | - | - | - |
+| DRN-261028-03 | - | - | - |
 <!-- lab:plan-queue:end -->
 
 > **재설계 기준**: ①논문(accept) 기여 — A(P51 확장)·B(진단-프레임워크) 어느 분기에서도 쓰이는가 ②24GB(yeon 3090/jarvis 4090)에서 도는가 ③원장 반증 경로가 아닌가. 옛 대기열 대부분은 계보 사망·중복으로 종결 처리(하단 🗑).

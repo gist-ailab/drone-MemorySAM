@@ -38,7 +38,10 @@
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
 | DRN-261020-03 | P1 | S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산 제거), A2 같은 시드 짝 비교 | MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일) | - | S2, screen40, structural-novelty |
+| DRN-261029-02 | P1 | 구조 의존성 · DGFusion 에 두 패스 학습 전체 적용(clean 패스 + 열화 패스 + 동결 DGFusion clean 교사 증류) — clean 이득이 우리 구조(동결 DINOv3 + LoRA)에서만 생기는가 | DGFusion (b) 레시피(열화 커리큘럼, third_party/dgfusion_train_restore) → 두 패스(clean 패스 CE + 열화 패스 CE) + 동결 clean DGFusion 교사(DELIVER (a) 가중치, 우리 프로토콜 clean 55.68)의 로짓 KL 증류(α 0.5, T 2, A2 와 동일). 구조·스케줄·증강은 (b) 와 동일. 주의: (b) 대비 '두 패스 구조'와 '교사 증류' 두 요소가 함께 바뀐다(레시피 단위 전이 실험) | - | baseline, transfer, paper, contribution |
+| DRN-261029-03 | P1 | 구조 의존성 · CAFuser 에 두 패스 학습 전체 적용(clean 패스 + 열화 패스 + 동결 CAFuser clean 교사 증류) — clean 이득이 우리 구조에서만 생기는가(DRN-261029-02 짝) | CAFuser (a) clean 학습 레시피 → 두 패스(clean 패스 CE + 열화 패스 CE, 열화 커리큘럼 = third_party/dgfusion_train_restore 의 (b) 와 동일) + 동결 CAFuser (a) clean 가중치(170k) 로짓 KL 증류(α 0.5, T 2, A2 와 동일). 구조·스케줄·증강은 (a)(b) 와 동일 | - | baseline, structure-dependence, paper, contribution |
 | DRN-261020-04 | P2 | S2-fused 대조 · DELIVER 40ep 3시드 — 센서 합산 고해상 임베딩 하나로 마스크 전용(센서별 분리의 효과를 분리) | MODEL.HIRES_ADAPTER.USE: mask_only_fused (센서 합산 F 하나, W_s 없음) | - | S2, control, structural-novelty |
+| DRN-261029-01 | P2 | Ablation L7 · A2 − 센서별 물리 열화(→ 결측 0채움만, 결측 노출량은 A2와 동일) — 두 패스 학습이 RobustSeg 'basic distillation'과 다른가 | TRAIN.QAF.DEGRADE_P 0.5→0.1 + MISSING_FRAC 0.2→1.0 (센서당 결측 확률 0.1 은 A2 와 동일하게 유지하고 물리 열화만 0으로; 교사 증류·clean 패스·고해상 경로 등 나머지 A2 config 동일) | - | ablation, leave-one-out, paper, contribution |
 | DRN-261020-05 | P3 | S2-x 탐색 1시드 — F_s 생성 전 s4 창 단위 센서 간 교차주의 1층(게이트 없음, 잔차 합) | S2-sum + HIRES_ADAPTER.XSENSOR_ATTN: window 8, 1층, 표준 초기화 | - | S2, explore, structural-novelty |
 | DRN-260926-05 | P5 | N-E18 · E18 = E1 레시피 + Lovász-Softmax 보조손실 40ep 스크린 시드821 | E1 레시피에 Lovász-Softmax 보조손실 추가(OHEM CE 유지, 픽셀 로짓, 배치 내 존재 클래스만, 가중 0.5) | - | deliver, screen40 |
 | DRN-260926-06 | P6 | N-E19 · E19 = E1 레시피 + 가중치 EMA(0.9995) val 평가·저장 | E1 레시피에 가중치 EMA(0.9995)로 val 평가·저장 | - | deliver |
