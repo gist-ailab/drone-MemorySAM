@@ -77,3 +77,7 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 - 원고 폴더: `.claude_logs/paper/ieee-access-2026/`(옛 이름 `ieee-sensors-2026`, git mv). 템플릿: `ACCESS_latex_template_20260513`(`ieeeaccess.cls` md5 `6e473d2a8652127c24e6e8af3d7a34f5`). 그래픽 초록은 필요 없고 저자 약력(사진)은 필요하다. Access 클래스는 TikZ 와 충돌하므로 Fig.1 은 별도 PDF 로 넣는다(`build.sh`).
 - 분량: 10쪽 목표를 유지한다(Access 쪽수 규정은 미확인; JSEN 의 쪽당 초과 비용 규정은 더 적용되지 않는다).
 - **후속 RA-L 원고(조건부)**: 토큰(질의) 적응 LoRA 구조가 사전등록 게이트(고해상 특징 신호 프로브 DRN-261028-01 → 1시드 스크린 → 3시드 확정)를 통과하면, 그 구조를 방법 기여로 하는 별도 원고를 RA-L 에 낸다. 조건: Access 원고와 주장·핵심 실험이 겹치지 않을 것(Access 원고는 인용), Access 원고에는 토큰 적응 LoRA 를 넣지 않을 것. RA-L 은 6쪽 + 유료 2쪽 = 최대 8쪽, 최종 결정까지 평균 4개월(RA-L 공식 FAQ).
+
+## 출처 규칙(user 2026-10-29)
+- **표 수치**: 모든 표 수치의 출처(파일·줄·행 제목)는 `notes/table_sources.md` 에 적는다. 표를 고치면 같은 커밋에서 이 문서를 고치고 `python figures/src/check_table_sources.py` 로 빠진 숫자가 없는지 확인한다.
+- **그림**: 모든 그림은 만든 코드와 입력이 이 폴더에 있어야 한다. 데이터 그래프의 수치는 `figures/data/*.csv`(source_file·source_locator 열)에 두고 `figures/src/make_data_figs.py` 가 읽어서 그린다(스크립트에 수치를 적지 않는다). 그림별 코드·입력·방법 목록은 `notes/figure_sources.md`.
