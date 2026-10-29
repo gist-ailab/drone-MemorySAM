@@ -13427,7 +13427,7 @@ items:
   expected_cost: GPU 1장 약 2시간
   priority: 1
   owner_role: analysis
-  status: judging
+  status: done
   kind: analysis
   tags:
   - probe
@@ -13437,11 +13437,21 @@ items:
   docs: .claude_logs/tasks/DRN-261028-01
   created: '2026-10-28'
   updated: '2026-10-29'
-  closed: null
+  closed: '2026-10-29'
   runs: []
   results: []
-  verdict: null
-  analysis: null
+  verdict:
+    decision: reject
+    summary: '고해상 신호 프로브(A2 s821, DELIVER test 1897장, 이미지 단위 AUROC 양방향 최대): 고해상 s4
+      토큰 통계 vs 블록 6 통계 = MB 0.655/0.617 · OE 0.788/0.756 · UE 0.942/0.963 · LJ 0.624/0.586
+      · EL 0.612/0.749. 사전 기준(고해상 ≥0.8 이 ≥3 파티션 그리고 블록 6 보다 ≥0.15) 미달: ≥0.8 은 1/5,
+      +0.15 이상 0/5(최대 +0.04). 토큰 단위는 두 신호원 모두 ≤0.78. 결론: ''블록 6 에 신호가 없어 P56-C 가 붕괴했다''
+      는 가설 기각 — 밝기 계열(UE·night·fog)은 두 신호원 모두 이미지 단위로 갈리고, 토큰 단위 열화 신호는 어느 쪽에도 약함.
+      토큰 적응 LoRA 축은 신호원과 무관하게 종결(반복 금지).'
+    date: '2026-10-29'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261028-01/analysis.md
   superseded_by: null
   problem: PRB-DRN-261020-01
 - id: DRN-261028-02
@@ -13463,7 +13473,7 @@ items:
   expected_cost: 워커 1회 + 스모크 GPU 30분
   priority: 3
   owner_role: method
-  status: idea
+  status: withdrawn
   kind: build
   tags:
   - routed-lora
@@ -13471,8 +13481,8 @@ items:
   - build
   docs: .claude_logs/tasks/DRN-261028-02
   created: '2026-10-28'
-  updated: '2026-10-28'
-  closed: null
+  updated: '2026-10-29'
+  closed: '2026-10-29'
   runs: []
   results: []
   verdict: null
@@ -13500,7 +13510,7 @@ items:
   expected_cost: 4 GPU 약 1일 + 강건 평가 2h
   priority: 3
   owner_role: manager
-  status: idea
+  status: withdrawn
   kind: experiment
   tags:
   - routed-lora
@@ -13508,8 +13518,8 @@ items:
   - screen40
   docs: .claude_logs/tasks/DRN-261028-03
   created: '2026-10-28'
-  updated: '2026-10-28'
-  closed: null
+  updated: '2026-10-29'
+  closed: '2026-10-29'
   runs: []
   results: []
   verdict: null
