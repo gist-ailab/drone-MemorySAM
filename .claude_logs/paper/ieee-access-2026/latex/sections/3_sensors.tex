@@ -1,2 +1,38 @@
 \section{Sensors, Benchmarks, and Protocol}\label{sec:sensors}
-\todo{0.5 page: sensor physics and failure modes; DELIVER/MUSES/MCubeS; evaluation protocol}
+
+\subsection{Sensors and Their Failure Modes}
+A driving platform rarely loses all sensors at once; it loses one, partially or completely, under conditions that the other sensors tolerate. An RGB camera gives dense appearance and texture but degrades at night, under low or excessive exposure, and in fog. A depth sensor, or depth reconstructed from stereo or LiDAR, gives geometry that is unaffected by illumination but contains holes on reflective, transparent, and distant surfaces. An event camera reports per-pixel brightness changes with high temporal resolution and dynamic range, but it is silent on static scenes and noisy in low light. A LiDAR gives accurate range on a sparse set of beams that shrinks with distance and is thinned by rain, fog, and absorbing surfaces. Radar, available in one of our benchmarks, measures range and velocity through adverse weather at a very low angular resolution. Each failure is therefore local to one sensor and correlated with a scene condition, which is the situation that a fusion model has to handle without being told which sensor has failed.
+
+\subsection{Benchmarks}
+We evaluate on three public benchmarks that cover synthetic and real sensor suites (Table~\ref{tab:benchmarks}).
+DELIVER~\cite{cmnext2023} is a synthetic driving benchmark with RGB, depth, event, and LiDAR inputs and 25 classes. Its scenes span five weather and lighting conditions (sun, cloud, rain, fog, and night) and five sensor-failure cases (motion blur, over- and under-exposure, LiDAR jitter, and low-resolution events). Because every scene is rendered, the depth input is complete and noise-free, which turns out to matter for how fusion models learn (Section~\ref{sec:analysis}).
+MUSES~\cite{muses2024} is a real driving dataset recorded under clear, foggy, rainy, and snowy conditions by day and night, with an RGB frame camera, an event camera, a MEMS LiDAR, and an FMCW radar, all projected into the camera view, and the 19 Cityscapes classes. We use all four sensors.
+MCubeS~\cite{mcubes2022} is a real material-segmentation dataset with RGB, angle and degree of linear polarization (AoLP, DoLP), and near-infrared (NIR) images and 20 material classes. It tests whether the same model transfers to non-driving sensors whose failure modes differ from those above.
+
+% Table: benchmark summary. Split sizes: DELIVER 3983/2005/1897 (CMNeXt paper, also recorded in repo
+% research/novelty-and-related-work.md:78); MUSES 1500/250/750 (semseg/datasets/muses.py docstring);
+% MCubeS test 102 (headline.yaml), train/val sizes not yet checked -> todo.
+\begin{table}[t]
+\caption{Benchmarks used in this study.}
+\label{tab:benchmarks}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
+\toprule
+Benchmark & Sensors & Classes & Train / val / test \\
+\midrule
+DELIVER~\cite{cmnext2023} & RGB, depth, event, LiDAR & 25 & 3983 / 2005 / 1897 \\
+MUSES~\cite{muses2024} & RGB, event, LiDAR, radar & 19 & 1500 / 250 / 750 \\
+MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & \td{} / \td{} / 102 \\
+\bottomrule
+\end{tabular*}
+\tabnote{MUSES test labels are withheld; test scores come from the official evaluation server.}
+\end{table}
+
+\subsection{Evaluation Protocol}
+\emph{Clean accuracy.} We report mean intersection over union (mIoU). For each training run we keep the checkpoint with the best validation score and report its test score, without selecting checkpoints on the test set. On DELIVER we evaluate at $1024\times1024$ with batch size one against the native-resolution labels, and resample labels with nearest-exact interpolation. This detail matters: floor-aligned nearest resampling shifts predictions by half a pixel and lowered DELIVER test mIoU by 1.2 to 1.3 points in our measurements, with larger losses on thin classes, whereas center-aligned resampling reproduces the scores of the baselines' own conversion code. We therefore use center-aligned resampling for every model.
+% Source: repo .claude_logs/issues/issues-and-fixes.md ISSUE-036 (v1 55.18 -> v2 56.39, +1.21; E1 seed1 54.63 -> 55.97, +1.34;
+% DGFusion predictions 52.34 nearest vs 53.68 nearest-exact). Where a baseline reports a different protocol, we list both its published number and our re-evaluation (Table~\ref{tab:deliver}). MUSES is scored by its official evaluation, and MCubeS on the commonly used 102-image test split. We report the mean over three training seeds together with the best seed, because single runs on these benchmarks vary by up to one point.
+
+\emph{Missing and degraded sensors.} We follow the definitions of a recent robustness benchmark for multimodal segmentation~\cite{mmssbench2025}. In the entire-missing-modality (EMM) setting, one or more sensors are replaced by zeros after input normalization, and the score is averaged over all 15 non-empty subsets of the four sensors. In the random-missing-modality (RMM) setting, the sensors that a subset would remove are instead corrupted by zeroing a random fraction $r\in\{0.25, 0.5, 0.75\}$ of their values, and the score is again averaged over the 15 subsets. In the noisy-modality (NM) setting, salt-and-pepper noise of density $D\in\{0.05, 0.1, 0.2\}$ corrupts every sensor at the same pixel positions. The benchmark additionally adds Gaussian noise in this setting; we report salt-and-pepper alone so that the corruption is identical for all sensors \todo{confirm that every NM number in Table~\ref{tab:robust} was produced with the salt-and-pepper-only mode (tools/missing\_modality\_eval.py, default nm mode)}.
+% Source: tools/missing_modality_eval.py docstring l.20-29 (EMM zero-fill after normalization, RMM per-pixel drop on the removed
+% sensors of each of the 15 subsets, NM default = channel-shared salt-and-pepper; --nm_mode bench = benchmark S&P + Gaussian). Methods that skip a missing input instead of zero-filling it~\cite{anyseg2024,rmmss2025,fuseadapt2026} answer a different question, so we do not mix the two families in one comparison. Unless stated otherwise, every robustness number for our model and for the re-trained baselines in this paper comes from the same evaluation code, the same images, and the same random seed.

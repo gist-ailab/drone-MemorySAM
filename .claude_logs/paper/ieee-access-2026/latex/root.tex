@@ -11,6 +11,8 @@
 \usepackage{multirow}
 \usepackage[hidelinks]{hyperref}
 \definecolor{RED}{rgb}{1,0,0}% running heads may be uppercased, which turns `red' into `RED'
+% model name used throughout; change here only (name not yet confirmed by the user)
+\newcommand{\ours}{ReliaDINO}
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
 \newcommand{\missing}[1]{\textcolor{blue}{[MISSING: #1]}}
 \newcommand{\td}{\textcolor{red}{todo}}% empty table cell, value pending
@@ -50,9 +52,9 @@
 \input{sections/6_analysis}
 \input{sections/7_conclusion}
 
-% bibliography enabled once sections contain \cite (empty thebibliography breaks the build)
-%\bibliographystyle{IEEEtran}
-%\bibliography{IEEEabrv,references}
+% bibliography
+\bibliographystyle{IEEEtran}
+\bibliography{IEEEabrv,references}
 
 % IEEE Access requires author biographies with photos at the end.
 \begin{IEEEbiographynophoto}{\todo{Author name}}
