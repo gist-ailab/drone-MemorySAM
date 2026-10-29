@@ -19,3 +19,8 @@
 ## 출처 규칙(user 2026-10-29)
 - **표 수치**: 모든 표 수치의 출처(파일·줄·행 제목)는 `notes/table_sources.md` 에 적는다. 표를 고치면 같은 커밋에서 이 문서를 고치고 `python figures/src/check_table_sources.py` 로 빠진 숫자가 없는지 확인한다.
 - **그림**: 모든 그림은 만든 코드와 입력이 이 폴더에 있어야 한다. 데이터 그래프의 수치는 `figures/source_data/*.csv`(source_file·source_locator 열)에 두고 `figures/src/make_data_figs.py` 가 읽어서 그린다(스크립트에 수치를 적지 않는다). 그림별 코드·입력·방법 목록은 `notes/figure_sources.md`.
+
+## 실험 결과에 따라 바뀌는 문장(팔로업, user 2026-10-29)
+- 원고 본문에는 확정된 설계·측정만 쓴다. 결과를 기다리는 주장과 그 분기별 수정안은 `notes/followups.yaml`(FU-01~)에 둔다. 모델 구조는 A2 로 고정하고, ablation 결과는 서술만 바꾼다.
+- `figures/src/followup_watch.py` 가 30분마다(허브 crontab) lab-plan 판정·inbox 상태를 읽어, 의존 항목이 모두 끝난 팔로업을 specialist-paper 에 inbox 로 보낸다. 반영하면 해당 항목 `status: done` 으로 바꿔 같은 커밋에 넣는다.
+- 수동 확인: `python3 figures/src/followup_watch.py --repo <허브 경로> --ref origin/develop --dry-run`

@@ -1,0 +1,121 @@
+# 원고 팔로업 대장 (IEEE Access, DRN-261027-01)
+#
+# 원고에서 "실험 결과에 따라 문장이 바뀌는 곳"을 한 곳에 모은다. 규칙(user 2026-10-29, discussion 세션):
+#   - 원고 본문에는 지금까지 확정된 설계·측정만 쓴다. 결과를 기다리는 주장은 쓰지 않는다.
+#   - 모델 구조는 A2 로 고정한다. ablation 결과는 "그 구성요소를 무엇이라 서술하는가"만 바꾼다.
+#   - 의존 항목이 모두 끝나면 figures/src/followup_watch.py 가 specialist-paper 에 inbox 로 수정 지시를 보낸다
+#     (repo 루트 crontab, 30분마다). 수정을 반영하면 paper 세션이 아래 status 를 done 으로 바꾸고 커밋한다.
+#
+# 항목 필드
+#   depends_on : lab-plan 항목 id(DRN-…) → verdict 가 기록되면 끝난 것으로 본다.
+#                lab-inbox 메시지 id(숫자로 시작) → 그 메시지 status 가 done 이면 끝난 것으로 본다.
+#                빈 목록 = 지금 바로 고칠 것(첫 실행에 한 번 통지).
+#   where      : 원고 위치(파일 + 절·표·문장 단서)
+#   now        : 지금 원고에 둘 확정 서술(또는 지금 문제)
+#   branches   : 결과(adopt/reject/inconclusive 또는 done)별로 바꿀 내용
+#   status     : open | done(paper 가 반영하고 커밋). 통지 여부는 git 밖 상태 파일
+#                <repo>/.watchdog/paper_followups_state.json 에 남는다(같은 결과로는 한 번만 보냄).
+
+items:
+  - id: FU-01
+    title: router 를 무엇이라 서술하는가
+    depends_on: [DRN-261029-06, DRN-261029-07, DRN-261029-08]
+    where:
+      - latex/sections/4_method.tex — Symmetric Cross-Modal Fusion 절 마지막 문장(router TODO)과 "no gate … no external reliability signal"
+      - latex/figures/fig_arch.tex — Fig.1 에 router 블록 유무
+      - latex/sections/5_experiments.tex — Table 6 ablation 에 "− router" 행
+    now: "router 를 구조 구성요소로만 적는다: 센서별 보조 헤드 예측을 픽셀·클래스별 가중(센서 자기 확신도를 기준점)으로 섞어 0 에서 시작하는 계수로 최종 로짓에 더한다. '적응 장치'라는 주장과 'no reliability signal' 문장은 쓰지 않는다."
+    branches:
+      adopt: "-07(L8) adopt = router 를 빼면 조건별 적응(야간 −RGB 완화) 또는 clean/EMM 이 유의하게 떨어짐 → 방법 절에 '라벨 없는 신뢰도 router: 두 패스 학습으로 센서 확신도가 정답과 같은 방향이 된다(-08 AUROC)' 로 역할 주장, Table 6 에 − router 행, 기여 문장 후보에 포함 검토(method 판정)."
+      reject: "-07 reject = 기여 없음 → 구조 설명 한두 문장 + Table 6 − router 행 수치만. 역할 주장 없음."
+      inconclusive: "구조 설명 + 수치만, 한계 절에 '역할 미확정' 한 줄."
+    status: open
+
+  - id: FU-02
+    title: 융합 뒤 센서별 정적 게이트 tanh(γ_s) 와 '주 센서 없음' 서술
+    depends_on: [DRN-261029-08]
+    where:
+      - latex/sections/4_method.tex — "merged by a gated MLP", "No sensor is privileged"
+    now: "융합 출력 = 센서별 융합 토큰의 평균 + 센서별 MLP 잔차(센서마다 학습되는 스칼라 게이트 tanh γ_s). '주 센서 없음'은 attention 이 대칭이라는 뜻으로만 쓴다."
+    branches:
+      done: "-08 결과로 γ_s 가 센서 간 2배 이내면 '학습된 게이트도 특정 센서를 우대하지 않는다(값 병기)' 한 줄 추가. 크게 다르면 그 사실을 적고 '주 센서 없음'을 attention 설계에 한정."
+    status: open
+
+  - id: FU-03
+    title: 두 패스 학습이 선행(결측 학습 + clean 교사 증류)과 다른가
+    depends_on: [DRN-261029-01, DRN-261020-13, DRN-261020-14]
+    where:
+      - latex/sections/0_abstract.tex, 1_intro.tex 기여 문장
+      - latex/sections/4_method.tex — Two-Pass Training 절 마지막 문단("Its parts are known… Our point is not a new loss")
+      - latex/sections/5_experiments.tex — 학습 레시피 분해 표(신설: E1 → 열화만 → 증류만 → 결측만 → 전체, clean·EMM)
+    now: "구성(두 패스, 센서별 열화 연산자, 커리큘럼, 동결 clean 교사 KL)만 서술. '새 방법' 주장과 '새 방법이 아니다' 부정을 둘 다 쓰지 않는다."
+    branches:
+      adopt: "-01(L7) adopt = 물리 열화가 결측만보다 유의하게 좋음 → 기여 문장: 'sensor-specific degradation with a curriculum, distilled from a clean teacher, is complementary: each part alone gives little, together they raise clean accuracy and robustness' + 분해 표 본문. 'Our point is not a new loss' 삭제."
+      reject: "-01 reject → 기여를 '증류와 결측 학습의 상호작용'으로 축소, 센서별 열화를 차별점으로 쓰지 않음. 분해 표는 유지."
+      inconclusive: "분해 표만 싣고 차별점 문장은 한계 절로."
+    status: open
+
+  - id: FU-04
+    title: clean 이득이 우리 구조(동결 VFM + LoRA)에서만 생기는가
+    depends_on: [DRN-261029-02, DRN-261029-03]
+    where:
+      - latex/sections/1_intro.tex 기여, 5_experiments.tex — 구조 의존성 표(신설: DGFusion·CAFuser 각 clean 학습 / 열화만 / 전체 레시피 vs 우리 E1·Q2)
+    now: "구조 의존성 주장 없음."
+    branches:
+      adopt: "둘 다 adopt → '이득은 동결 파운데이션 백본과 결합할 때 생긴다' 주장 + 표 본문. 기제 설명은 가설로 표시."
+      reject: "하나라도 reject(기준선도 +0.8 이상) → 범용 레시피로 서술, A2 고유 기여 주장 삭제, 선행 대비 차이는 FU-03 결과로만."
+      inconclusive: "표만 싣고 주장은 하지 않음."
+    status: open
+
+  - id: FU-05
+    title: 조건별 적응(조건 감독 없이 센서 의존을 옮긴다) 주장과 조건별 표
+    depends_on: ["20261028-183826-analysis_request-253e6bd6", "20261029-174230-analysis_request-a27dd4d7"]
+    where:
+      - latex/sections/5_experiments.tex — Table 5(조건별 clean), Fig.2b(센서 하나만), 조건별 의존도 표(test 통일, DGFusion 공식·E1·Q2·A2)
+      - latex/sections/6_analysis.tex — Where Sensor Over-Reliance Comes From, supp_tables.tex Table S1
+    now: "Table 5·S1 은 값 대기. 'val/test 혼합' caveat 유지."
+    branches:
+      done: "test 로 통일된 표가 오면 숫자 교체 + caveat 삭제. A2 가 야간·저노출에서 −RGB 완화가 DGFusion 공식보다 크면 '조건 라벨·depth 감독 없이 상황에 따라 센서 의존을 옮긴다' 를 분석 절 주장으로(E1 도 비슷하면 공은 구조, 학습만의 공이라고 쓰지 않음). event·LiDAR 는 자연 열악 조건이 아니라 센서 고장 시(센서 하나만·EMM)에 기여한다고 쓴다."
+    status: open
+
+  - id: FU-06
+    title: 지금 바로 고칠 수치·라벨 오류
+    depends_on: []
+    where:
+      - latex/sections/5_experiments.tex — Table 4(b) "DGFusion (official)" 행, Robustness 본문, Fig. robust CSV
+      - latex/sections/0_abstract.tex, 1_intro.tex, 5_experiments.tex — "+7.9 vs best published"(RMMSS)
+      - latex/sections/6_analysis.tex — "removing depth entirely costs 4.7 points instead of 33.3"
+    now: "Table 4(b) 'official' 행 값(55.68 / 31.53 / 12.1 등)은 재현본 (a)(ledger 2026-10-01 DRN-260930-02). 공식 가중치 = clean 56.73 · val 66.51 · EMM 31.14 · RGB만 7.50 · depth 통째 결측 23.34(ledger DRN-261001-03). RMMSS 49.93 은 결측 브랜치를 건너뛰는 계열 → 0채움 계열 공개 최고 MAGIC 44.97 과 비교하거나 계열을 나눠 표기. DGFusion 같은 프로토콜 격차 = 57.74 − 56.73 = +1.01."
+    branches:
+      done: "위 now 대로 즉시 수정."
+    status: open
+
+  - id: FU-07
+    title: 논문 범위 — 전 모달 정확도가 주, 결측 강건성은 보조
+    depends_on: [FU-03, FU-04, FU-05]
+    where:
+      - latex/sections/0_abstract.tex, 1_intro.tex, 7_conclusion.tex
+    now: "초록·서론은 확정 수치(DELIVER test 57.74, A2 강건성)와 확정 설계만. 4모달 필요성은 방어하지 않는다(벤치 설정, 센서 결손 시 도움). '기존 모델은 clean 으로만 학습' 표현 금지(기준선도 데이터셋의 열악 조건을 학습함) → 'without synthetic sensor degradation' 으로. 기존 방법 = 조건 토큰(CAFuser)·depth 감독(DGFusion)으로 조건을 인식."
+    branches:
+      done: "FU-03·04·05 가 모두 끝나면 기여 문장 3개를 확정(method 브리프 갱신 후)하고 초록·서론을 다시 쓴다."
+    status: open
+
+  - id: FU-08
+    title: MUSES·MCubeS 결과
+    depends_on: [DRN-261019-02, DRN-261017-02]
+    where:
+      - latex/sections/5_experiments.tex Table 2·3, 0_abstract.tex·1_intro.tex 의 TODO
+    now: "Table 2·3 우리 행 todo 유지."
+    branches:
+      done: "판정된 수치(3모달 MUSES 수치 금지, 4모달 A2 만)로 표·초록·서론 TODO 채움."
+    status: open
+
+  - id: FU-09
+    title: ablation 표의 L5·L6 행과 EMM 열
+    depends_on: [DRN-261020-13, DRN-261020-14]
+    where:
+      - latex/sections/5_experiments.tex — Table 6 "− degradation pass", "− teacher distillation" 행, EMM 열
+    now: "todo 유지."
+    branches:
+      done: "판정 수치로 채움. FU-03 분해 표와 수치가 겹치면 한쪽으로 모음."
+    status: open
