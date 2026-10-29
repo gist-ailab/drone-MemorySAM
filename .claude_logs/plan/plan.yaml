@@ -13415,7 +13415,7 @@ items:
     교체)'' 1시드 스크린을 별도 사전등록'
   sample_basis: DELIVER test 1897장 전수, 파티션당 수백 장
   expected_cost: GPU 1장 약 2시간
-  priority: 2
+  priority: 1
   owner_role: analysis
   status: queued
   kind: analysis
@@ -13426,7 +13426,7 @@ items:
   - P56C-recheck
   docs: .claude_logs/tasks/DRN-261028-01
   created: '2026-10-28'
-  updated: '2026-10-28'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
