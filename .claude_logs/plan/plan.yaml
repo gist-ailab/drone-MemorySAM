@@ -13204,6 +13204,16 @@ items:
     metric: mAcc
     value: 66.26
     source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade_20261022_1920
+    split: val
+    metric: mIoU
+    value: 70.54
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade_20261022_1920
+    split: val
+    metric: mAcc
+    value: 79.1
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -13225,7 +13235,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 1
   owner_role: manager
-  status: running
+  status: judging
   kind: experiment
   tags:
   - ablation
@@ -13233,10 +13243,31 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-14
   created: '2026-10-20'
-  updated: '2026-10-29'
+  updated: '2026-10-30'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623
+  results:
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623
+    split: test
+    metric: mIoU
+    value: 58.77
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623
+    split: test
+    metric: mAcc
+    value: 68.21
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623
+    split: val
+    metric: mIoU
+    value: 70.29
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623
+    split: val
+    metric: mAcc
+    value: 79.23
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
@@ -13552,7 +13583,9 @@ items:
     동일하게 유지하고 물리 열화만 0으로; 교사 증류·clean 패스·고해상 경로 등 나머지 A2 config 동일)
   baseline: A2 같은 시드 s821·s902(legal v2 test@1024, EMM15 val·test, NM .05/.10/.20),
     L5·L6 과 같은 평가 묶음
-  configs: []
+  configs:
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L7basicdist.yaml
+  - configs/yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L7basicdist.yaml
   launch: null
   success_criteria: 2시드(s821·s902) 짝 Δ(A2 − L7) 평균이 test clean 24클래스 ≥ +0.5 또는 test
     EMM15 ≥ +1.0 또는 NM S&P .20 ≥ +1.0 이고, 그 지표에서 두 시드 부호 일치 → 센서별 물리 열화가 basic distillation
