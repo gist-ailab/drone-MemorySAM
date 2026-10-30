@@ -1,8 +1,8 @@
 model,sp_density,miou,n_seeds,source_file,source_locator
-DGFusion (official weights),0.00,56.73,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 DRN-261001-03 (line 130 at develop 9270029): 'clean 56.73'"
-DGFusion (official weights),0.05,39.12,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = clean 56.73 − 'NM S&P 저하 17.61' (ledger gives drops only)"
-DGFusion (official weights),0.10,16.85,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = 56.73 − 39.88"
-DGFusion (official weights),0.20,4.53,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = 56.73 − 52.20"
+DGFusion (official),0.00,56.73,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 DRN-261001-03 (line 130 at develop 9270029): 'clean 56.73'"
+DGFusion (official),0.05,39.12,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = clean 56.73 − 'NM S&P 저하 17.61' (ledger gives drops only)"
+DGFusion (official),0.10,16.85,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = 56.73 − 39.88"
+DGFusion (official),0.20,4.53,1,.claude_logs/experiments/judgment-ledger.md,"same row; DERIVED = 56.73 − 52.20"
 DGFusion (retrained),0.00,54.77,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 '기준선 DGFusion (a)·(b) 강건 프로토콜' (line 117): (b) clean 54.773"
 DGFusion (retrained),0.05,48.89,1,.claude_logs/experiments/judgment-ledger.md,"same row, (b) NM 48.89·40.51·23.34"
 DGFusion (retrained),0.10,40.51,1,.claude_logs/experiments/judgment-ledger.md,same row

@@ -64,7 +64,7 @@ SEQ = ["#ffffff", "#e4eeff", "#cadcff", "#afcbff", "#94b9ff",
 DANGER = "#da1e28"
 # model families: baselines = neutral greys (line style separates them); ours = blue ramp, final model darkest
 STYLE = {
-    "DGFusion (official weights)": dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
+    "DGFusion (official)":   dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
     "DGFusion (reproduced)": dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="s", mfc="white"),
     "DGFusion (retrained)":  dict(color=MUTED, ls="-", marker="o", mfc=MUTED),
     "CAFuser (retrained)":   dict(color=FG, ls=(0, (3, 1.5)), marker="s", mfc="white"),

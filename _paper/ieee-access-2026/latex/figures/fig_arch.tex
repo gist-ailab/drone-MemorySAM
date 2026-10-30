@@ -28,7 +28,7 @@
 ]
 % ======================= (a) inference =======================
 \node[plab] at (0.0,6.75) {(a)};
-\node[ttl, anchor=west] at (0.5,6.75) {Inference: one frozen backbone, sensor-specific adapters, symmetric fusion};
+\node[ttl, anchor=west] at (0.5,6.75) {Inference: one frozen backbone, sensor-specific adapters, cross-modal fusion};
 
 % --- sensor thumbnails ---
 \foreach \s/\f/\c/\yy in {RGB/rgb/cRGB/5.15, Depth/depth/cDep/3.9, Event/event/cEvt/2.65, LiDAR/lidar/cLid/1.4}{
@@ -71,7 +71,7 @@
   \draw[<->, draw=mut!70, line width=0.4pt, >={Stealth[length=1.1mm,width=0.9mm]}, shorten <=1.5mm, shorten >=1.5mm] (n\p) -- (n\q);
 }
 \foreach \s/\c in {RGB/cRGB, Depth/cDep, Event/cEvt, LiDAR/cLid}{ \fill[\c] (n\s) circle (0.1); }
-\node[sub, align=center] at (7.3,1.9) {each sensor attends\\to the others\\2 layers, no gate};
+\node[sub, align=center] at (7.3,1.9) {each sensor attends\\to the other sensors\\2 layers};
 \foreach \s/\yy in {RGB/4.85, Depth/3.95, Event/3.05, LiDAR/2.2}{
   \draw[flow] (tok\s) to[out=0, in=180] (6.2,\yy);
 }
@@ -96,7 +96,7 @@
 \node[text=ink] at (2.75,0.35) {conv stem};
 \draw[flow] (3.45,0.35) -- (3.8,0.35);
 \draw[plain, rounded corners=1.2pt] (3.8,0.12) rectangle (6.75,0.58);
-\node[text=ink] at (5.275,0.35) {deformable extractor ($\times$4)};
+\node[text=ink] at (5.275,0.35) {deformable extractors ($\times$6)};
 \draw[->, draw=mut, line width=0.45pt, dash pattern=on 1.4pt off 1pt] (4.35,0.85) -- (4.35,0.58);
 \node[sub, anchor=west] at (4.42,0.72) {samples tap tokens};
 \draw[flow] (6.75,0.35) -| (sum.south);
@@ -133,7 +133,7 @@
 \draw[draw=mut, fill=white, line width=0.4pt] (14.1-0.475+0.15,2.8-0.475-0.15) rectangle (14.1+0.475+0.15,2.8+0.475-0.15);
 \draw[mut, line width=0.35pt] (14.1-0.475+0.15,2.8-0.475-0.15) -- (14.1+0.475+0.15,2.8+0.475-0.15);
 \node[inner sep=0pt] (dg) at (14.1,2.8) {\includegraphics[width=0.95cm]{figures/fig1_thumbs/rgb_degraded.png}};
-\node[sub, anchor=north, align=center] at (14.2,2.12) {degraded\\(noise, blur,\\dropout)};
+\node[sub, anchor=north, align=center] at (14.2,2.12) {degraded\\(blur, exposure,\\sensor dropout)};
 
 \draw[trained, rounded corners=1.5pt] (14.95,2.3) rectangle (16.45,5.4);
 \node[ttl] at (15.7,4.05) {Model (a)};
