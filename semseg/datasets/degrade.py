@@ -161,6 +161,13 @@ TRAIN_OPS: Dict[str, Tuple[str, ...]] = {
     'depth': ('patch_drop', 'gaussian_blur', 'gamma_gain', 'depth_hole'),
     'lidar': ('patch_drop', 'gaussian_blur', 'lidar_beamdrop'),
     'event': ('patch_drop', 'event_lowres', 'gaussian_blur'),
+    # [MCubeS C2D2 2026-10-31] MCubeS 로더 모달 이름(image/aolp/dolp/nir). image·nir 은 카메라 영상이라
+    # img 와 같은 광학 열화, 편광 각(aolp)·편광도(dolp)는 값 의미가 밝기가 아니라 gamma/색 변화를 빼고
+    # 공간 손실(패치 드롭)·블러만 둔다. 이름이 없던 때는 _GENERIC_OPS 로 떨어졌다(gamma 포함).
+    'image': ('patch_drop', 'gaussian_blur', 'gamma_gain', 'color_shift'),
+    'nir':   ('patch_drop', 'gaussian_blur', 'gamma_gain'),
+    'aolp':  ('patch_drop', 'gaussian_blur'),
+    'dolp':  ('patch_drop', 'gaussian_blur'),
 }
 # 모달 이름을 못 찾으면 이 일반 집합을 쓴다(하드코딩 회피, 안전한 기본).
 _GENERIC_OPS = ('patch_drop', 'gaussian_blur', 'gamma_gain')
@@ -201,6 +208,11 @@ HELDOUT_OP_MODALS: Dict[str, Tuple[str, ...]] = {
     'depth': ('gaussian_noise', 'salt_pepper'),
     'lidar': ('gaussian_noise', 'salt_pepper'),
     'event': ('salt_pepper',),                          # event 가우시안 제외
+    # [MCubeS C2D2 2026-10-31] MCubeS 모달은 벤치 NM 정의(가우시안+S&P)를 그대로 둔다
+    'image': ('gaussian_noise', 'salt_pepper'),
+    'nir':   ('gaussian_noise', 'salt_pepper'),
+    'aolp':  ('gaussian_noise', 'salt_pepper'),
+    'dolp':  ('gaussian_noise', 'salt_pepper'),
 }
 
 

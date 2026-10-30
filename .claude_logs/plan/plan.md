@@ -7,9 +7,9 @@
 | --- | --- | --- | --- | --- | --- |
 | DRN-261019-02 | P1 | MUSES 4모달 A2 — E1 구조 + Q2 레시피(두 패스+E1M4 교사 증류) + 고해상 경로, 40ep 스크린 s2·s3 | 4모달 E1M 스크린에 TRAIN.QAF(Q2 레시피) + MODEL.HIRES_ADAPTER | - | muses, 4modal, A2 |
 | DRN-261020-02 | P1 | 노벨티 감사 + 구조 후보 수색(문헌만): Q2 레시피 최근접 선행과 차별점 · '세부-의미 결합' 실패 기제에 대한 2025~2026 대응 구조 | 문헌 조사만. 산출 = research/ 아래 감사 문서: 표1(Q2 vs 선행 4편: 교사·패스 수·열화 정의·라벨 필요 여부·게이트 유무), 표2(세부-의미 결합 구조 후보 ≥5, 각 arXiv ID·우리 기각 축(게이트·attn bias·라우팅·합성 열화 라벨) 저촉 여부·DELIVER/MUSES 적용 가능성) | - | novelty-audit, survey, structural-novelty |
-| DRN-261020-14 | P1 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | - | ablation, leave-one-out, paper |
 | DRN-261027-01 | P1 | IEEE Access 원고 v1 — 분석형+성능 틀, 10쪽, 초고 동결 2026-11-10 (2026-10-29 IEEE Sensors Journal에서 변경) | 집필 작업(학습 없음). 브리프 .claude_logs/paper/00_brief.md 의 절 구성·표 출처·인용 규칙을 따른다 | - | paper, ieee-sensors, writing |
 | DRN-261027-03 | P1 | MCubeS 로더 학습 전용 크롭 옵션(DATASET.TRAIN_CROP, 기본 1024) + 평가 하네스 재동결 — A2 를 24GB 카드에서 돌리기 위함 | semseg/datasets/mcubes.py __init__ 에 train_crop/train_base 인자(기본 1024), train_reliadino.py ds_kwargs 에 DATASET.TRAIN_CROP 전달, 스모크 tools/smoke_mcubes_train_crop.py. 이후 tools/eval_harness_guard.py --freeze 재동결 + 대표 ckpt(P39.1 MCubeS) 재채점으로 수치 불변 확인 | - | mcubes, harness, A2, build |
+| DRN-261031-01 | P1 | MCubeS w/o C2D2 비교 행 — E1Mc + 고해상 경로(두 패스 없음) 시드 20260827, hpca100 ep128/200 중단 런 이어 학습(AUTO_RESUME) | configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed20260827_A2hires.yaml (TRAIN.QAF 없음) 그대로, ep128 부터 AUTO_RESUME(paper 세션 스크립트 scripts/resume_mcubes_a2_s827.sh, hpca100 tmux mcubes_resume_s827). 중단 전 학습기 top1 ep70 59.84(test 102 선택) | - | mcubes, ablation, paper1, resume |
 | DRN-261016-02 | P2 | MUSES 평가 해상도 반응 — PhysAug-off 3시드 공식 val @1024/1536/2048 (레터박스 0.53배 → 기준선 0.95배 정렬) |  | - | muses, resolution |
 | DRN-261016-03 | P2 | 평가 해상도 상향이 왜 우리 모델만 크게 올리나 — 클래스·두께·조건 분해(DELIVER 우리 vs DGFusion, MUSES 1024/1536/2048) |  | - | deliver, muses, resolution, analysis |
 | DRN-260926-54 | P101 | Q0 · E1 확정 강건성 전 프로토콜(EMM 15조합·RMM 4부분집합×3비율·NM) | E1 확정 시드821·902·903 강건성 측정(학습 0) | - | deliver, robustness, p54 |
@@ -25,14 +25,20 @@
 | DRN-261020-13 | P1 | Ablation L5 · A2 − 열화 패스(→ clean 패스 + 동결 E1 교사 증류만, DEGRADE_P 0) | TRAIN.QAF.DEGRADE_P 0 · MISSING_FRAC 0 (KD 유지), 그 외 A2 동일 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L5nodegrade_20261022_1920, yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade_20261022_1920 | ablation, leave-one-out, paper |
 | DRN-261005-01 | P15 | Q2noKD · Q2 원천 분리: 교사 증류 끔(KD_W 0), 열화 두 패스만 — 시드821 40ep 스크린(yeon GPU1) | Q2 시드821 config(jarvis-…screen40_Q2.yaml)에서 TRAIN.QAF.KD_W 0.5 → 0.0 하나만(그 외 SAVE_DIR·서버 경로). 09-26 yeon 3차 시도는 /SSDb 디스크 0바이트로 ep5 저장 중 크래시 — 현재 yeon /SSDb 72% 사용(975G 여유) | - | deliver, q2, ablation |
 
+## judging
+| id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
+| --- | --- | --- | --- | --- | --- |
+| DRN-261020-14 | P1 | Ablation L6 · A2 − 교사 증류(→ 열화 두 패스만, KD_W 0) | TRAIN.QAF.KD_W 0, 그 외 A2 동일 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623 | ablation, leave-one-out, paper |
+
 ## queued
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
-| DRN-261017-02 | P1 | A2 이식 · MCubeS — E1Mc(4탭) + 고해상 경로, 시드 20260827·20260828 | MODEL.HIRES_ADAPTER on(그 외 E1Mc 동일) | - | mcubes, A2, transfer |
+| DRN-261017-02 | P1 | MCubeS 논문 모델 A2(C2D2 포함: E1Mc + 고해상 경로 + 두 패스 학습·동결 E1Mc 교사 증류) 2시드 20260827·20260828 — 200ep, 24GB 는 768 크롭 변형 | E1Mc(4탭) config 에 MODEL.HIRES_ADAPTER on + TRAIN.QAF(두 패스 + KD, DELIVER A2 와 같은 값, 커리큘럼 [0/50/100]ep) + 교사 = 같은 시드 E1Mc clean ckpt(TEACHER_CFG 로 교사 config 지정). 24GB 카드는 DATASET.TRAIN_CROP/TRAIN_BASE 768. 열화 연산자는 MCubeS 모달 매핑(degrade.py TRAIN_OPS image/nir/aolp/dolp) | - | mcubes, A2, transfer |
 | DRN-261027-02 | P1 | 논문 비용표(학습 0): A2·Q2·E1·DGFusion·CAFuser 의 params·FLOPs·추론 지연·GPU 메모리, DELIVER 1024 같은 조건 | 학습 없음. 같은 GPU(4090 1장)·같은 입력(1×4모달 1024²)·bf16, 100회 평균 지연·최대 메모리·fvcore FLOPs. 기준선은 재학습 킷 체크아웃 그대로 | - | paper, cost |
 | DRN-261029-01 | P1 | Ablation L7 · A2 − 센서별 물리 열화(→ 결측 0채움만, 결측 노출량은 A2와 동일) — 두 패스 학습이 RobustSeg 'basic distillation'과 다른가 | TRAIN.QAF.DEGRADE_P 0.5→0.1 + MISSING_FRAC 0.2→1.0 (센서당 결측 확률 0.1 은 A2 와 동일하게 유지하고 물리 열화만 0으로; 교사 증류·clean 패스·고해상 경로 등 나머지 A2 config 동일) | - | ablation, leave-one-out, paper, contribution |
 | DRN-261029-02 | P1 | 구조 의존성 · DGFusion 에 두 패스 학습 전체 적용(clean 패스 + 열화 패스 + 동결 DGFusion clean 교사 증류) — clean 이득이 우리 구조(동결 DINOv3 + LoRA)에서만 생기는가 | DGFusion (b) 레시피(열화 커리큘럼, third_party/dgfusion_train_restore) → 두 패스(clean 패스 CE + 열화 패스 CE) + 동결 clean DGFusion 교사(DELIVER (a) 가중치, 우리 프로토콜 clean 55.68)의 로짓 KL 증류(α 0.5, T 2, A2 와 동일). 구조·스케줄·증강은 (b) 와 동일. 주의: (b) 대비 '두 패스 구조'와 '교사 증류' 두 요소가 함께 바뀐다(레시피 단위 전이 실험) | - | baseline, transfer, paper, contribution |
 | DRN-261029-03 | P1 | 구조 의존성 · CAFuser 에 두 패스 학습 전체 적용(clean 패스 + 열화 패스 + 동결 CAFuser clean 교사 증류) — clean 이득이 우리 구조에서만 생기는가(DRN-261029-02 짝) | CAFuser (a) clean 학습 레시피 → 두 패스(clean 패스 CE + 열화 패스 CE, 열화 커리큘럼 = third_party/dgfusion_train_restore 의 (b) 와 동일) + 동결 CAFuser (a) clean 가중치(170k) 로짓 KL 증류(α 0.5, T 2, A2 와 동일). 구조·스케줄·증강은 (a)(b) 와 동일 | - | baseline, structure-dependence, paper, contribution |
+| DRN-261029-06 | P2 | A2 router 추론 시 끄기(학습 0) — 학습된 A2 에서 router 잔차의 몫과 조건별 적응 기여 | eval 시 router_alpha=0 (학습 없음, 같은 ckpt) | - | ablation, router, paper, eval-only |
 | DRN-261020-01 | P4 | A2 실패-키 분석(학습 0): 구조 제안의 선행 조건 — TrafficLight FP 장면 단위·세부-의미 분리 증거·열화+야간 혼동행렬 | 학습 없음. 기존 A2 2시드 ckpt(s821·s902) + Q2 2시드 ckpt 로 (1) TrafficLight FP 상위 20장면 시각화·FP 픽셀의 경로별 기여(dense vs query, hires on/off 추론 시 ablation) (2) TrafficLight 단독 두께 구간(thin_error_anatomy 클래스 단일 모드 추가) (3) MUSES 조건별 혼동행렬(night 3조건 분리) 및 DELIVER night/fog 조건별 혼동행렬 | - | A2, failure-keys, structural-novelty |
 | DRN-261020-06 | P4 | S2 구현: 센서별 고해상 임베딩 F_s + 마스크 로짓 전용 결선(MODEL.HIRES_ADAPTER.USE fpn_sum|mask_only|mask_only_fused) + 스모크 | hires_adapter.py 센서별 출력 모드(s4 레벨만 반환) · model.py USE 분기(_apply_hires_adapter 우회, [F_s] 전달) · m2f_head.py sensor_s4 인자 + 센서별 W_s 선형 + masks += Σ_s einsum · tools/smoke_hires_adapter.py 확장(등가 assert 2종·grad 흐름·메모리 프로파일) · 기제 판독용 센서별 마스크 항 기여 덤프 옵션 | - | S2, build, structural-novelty |
 | DRN-261022-01 | P4 | 벤치 교차 확인(학습 0): 객체 단위 클래스 오라클 상한 + 객체 풀링 선형 프로브 — DELIVER(A2·Q2) 와 MUSES(E1M 1024/1536, 4모달 A2 완주 후 재측정) | 학습 없음. (a) 객체 클래스 오라클: 예측 맵의 연결 성분마다 GT 다수 클래스로 라벨 교체 후 mIoU 재계산(DELIVER test A2 s821·s902 / Q2 s821 덤프, MUSES val E1M 3시드 1024·1536 — 예측 덤프 없으면 공식 val 평가기로 1회 재추론해 pred 저장) + 클래스별 Δ 와 혼동쌍 기여 (b) 선형 프로브: A2 val 에서 GT 객체별로 fused 토큰 평균과 고해상 경로 s4 특징의 마스크 내 평균을 추출(모델 eval 스태시 훅, 학습 영향 0), 혼동쌍 2진 로지스틱 회귀 5-fold AUROC (c) MUSES 4모달 A2(DRN-261019-02) 완주 후 (a)(b) 재측정 | - | cross-bench, class-oracle, probe, structural-novelty |
@@ -41,7 +47,6 @@
 | id | 우선 | 제목 | 바꾼 변수 | runs | 태그 |
 | --- | --- | --- | --- | --- | --- |
 | DRN-261029-09 | P1 | MUSES 4모달 A2 test 제출본(zip) 생성 — 공식 val 로 평가 해상도 선택 후 test 추론·포맷 검증, 제출은 user | 학습 없음. 입력 = DRN-261019-02 의 val-best ckpt(시드별), 평가 해상도 선택 규칙 = val 최고(2026-10-16 규칙), 출력 = /ailab_mat2 … submission/muses/(허브 마운트 불가 시 drone_nas submission/muses/ 에 두고 README 로 안내) + md5 + 포맷 검증 로그 | - | muses, submission, paper1 |
-| DRN-261029-06 | P2 | A2 router 추론 시 끄기(학습 0) — 학습된 A2 에서 router 잔차의 몫과 조건별 적응 기여 | eval 시 router_alpha=0 (학습 없음, 같은 ckpt) | - | ablation, router, paper, eval-only |
 | DRN-261029-07 | P2 | Ablation L8 · A2 − router(재학습, MODEL.ROUTER.ENABLE false) — 최종 모델에서 router 의 역할 | MODEL.ROUTER.ENABLE true→false (router CE 0.4 도 함께 꺼짐), 나머지 A2 config 동일 | - | ablation, leave-one-out, router, paper |
 | DRN-261029-08 | P2 | A2 체크포인트 판독(학습 0) — 융합 뒤 센서별 정적 게이트 tanh(γ_s) 값 + router 신뢰도 신호(자기 엔트로피)의 정답 AUROC | 없음(판독: state_dict trunk_gamma, tools/eval_reliability_auroc.py 류) | - | readout, router, paper, eval-only |
 | DRN-261020-03 | P4 | S2-sum · DELIVER 40ep 스크린 3시드(s821·s902·s903) — 고해상 특징을 센서별 마스크 로짓 전용으로(합산 제거), A2 같은 시드 짝 비교 | MODEL.HIRES_ADAPTER.USE: fpn_sum → mask_only (그 외 A2 config 동일) | - | S2, screen40, structural-novelty |
