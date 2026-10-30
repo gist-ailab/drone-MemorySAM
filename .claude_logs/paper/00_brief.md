@@ -98,3 +98,7 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 - **표 결정**: T1 은 전 모달만(조합별 행 없음, 조합은 T4 결측으로 대신). T4(b) "DGFusion (official)" 행은 실제로 재현본 (a) 80k 이므로 **"DGFusion (reproduced)" 와 "DGFusion (official weights, 같은 프로토콜 clean 56.73·EMM 31.14, ledger:130)" 두 행 병기**. 같은 프로토콜 격차 = +1.01(발표치 기준 +1.03 병기).
 - **모델 서술**: A2 config 에 MODEL.ROUTER(P36 클래스별 고정 모달 라우터, 0 초기화 잔차)가 켜져 있음 → 추론 시 off Δ 를 analysis 가 측정해 |Δ| < 0.1 이면 "이전 판 잔재, 효과 없음(보충 표)" 로 적고, 크면 ablation 행 추가. 보조 손실 3종(fusion 보조 CE 0.5·C3 prototype 0.1·VICReg)은 보충자료로. NM 정의는 analysis 확인 후 확정(현재 본문: S&P 단독). 모델 이름 = ReliaDINO 유지.
 - **T1 A2 val**: DRN-261019-03 의 mm_eval_v2 clean val(legal v2 도구) 3시드 평균 70.17 을 "legal v2 val" 로 인용 가능(같은 채점기). T4 Q2 depth 부분 결측 두 출처 불일치(ledger 10-01 3시드 vs DRN-261019-03 2시드)는 analysis 정합 확인 전까지 열 제외. T5 센서 제거는 전 행 test 로 통일(analysis 재측정 요청). ablation 행에 EMM 열 추가(analysis).
+
+## 결정 추가(user 2026-10-30) — MCubeS 체크포인트 선택
+- **MCubeS 는 관행대로 test 102장으로 체크포인트를 고르고, 원고에 그 사실을 명시한다**(선택지 (b)). 근거: 우리 로더 `semseg/datasets/mcubes.py:142` 와 CMNeXt 공개 코드(github.com/jamycheung/DELIVER `semseg/datasets/mcubes.py:140`)가 모두 split 'val' 에서 `list_folder/test.txt` 를 읽는다(2026-10-30 확인). 원 논문 분할 302/96/102 중 val 96장은 쓰지 않는다.
+- 원고 반영: §3 평가 프로토콜에 "MCubeS 는 예외, 공개 수치와 비교 가능하나 held-out 추정치는 아님" 문장, 표 III 캡션에 같은 내용. MCubeS A2(DRN-261017-02)는 이 규칙대로 기동해도 된다(로더 수정 불필요).

@@ -2,7 +2,7 @@
  "design_source": "carbon@11.84.0",
  "script": "figures/src/make_data_figs.py",
  "inputs": {
-  "_paper/ieee-access-2026/figures/source_data/fig_robust_noise.csv": "9715fc9e44dbd5fc1855a37cdc8e5693",
-  "_paper/ieee-access-2026/figures/source_data/fig_robust_single.csv": "b04c4643c3c74c7ecffe90cdc8f1682e"
+  "_paper/ieee-access-2026/figures/source_data/fig_robust_noise.csv": "dd54387cfce564606cd0c4dca25df340",
+  "_paper/ieee-access-2026/figures/source_data/fig_robust_single.csv": "833559a0e51e75c985047c8912d12f6a"
  }
 }

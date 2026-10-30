@@ -51,12 +51,14 @@ def main(root, out, pred=None):
     rgb = rs(Image.open(path(root, "img", "rgb")).convert("RGB"))
     rgb.save(out / "rgb.png")
 
-    # illustrative degraded RGB for the training panel (blur + low contrast + Gaussian noise);
-    # mimics the kinds of synthetic degradation, not the exact training sampler
-    a = np.asarray(rgb.filter(ImageFilter.GaussianBlur(2.0)), float)
-    a = 0.45 * a + 0.55 * a.mean()
-    a += np.random.default_rng(0).normal(0, 22, a.shape)
-    Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)).save(out / "rgb_degraded.png")
+    # illustrative degraded RGB for the training panel, using only operators of the training set
+    # (semseg/datasets/degrade.py TRAIN_OPS['img']): Gaussian blur, gain/gamma change (darker exposure),
+    # and one patch dropout. No noise: Gaussian and salt-and-pepper noise are held out of training.
+    a = np.asarray(rgb.filter(ImageFilter.GaussianBlur(2.0)), float) / 255.0
+    a = 0.55 * np.power(a, 1.6)                               # under-exposure (gain 0.55, gamma 1.6)
+    h, w = a.shape[:2]
+    a[int(0.18 * h):int(0.46 * h), int(0.52 * w):int(0.80 * w)] = 0.0   # patch dropout
+    Image.fromarray(np.clip(a * 255, 0, 255).astype(np.uint8)).save(out / "rgb_degraded.png")
 
     # depth: near = dark blue, far = white (sky saturates to white)
     d = np.asarray(Image.open(path(root, "depth", "depth")), float) / 255.0

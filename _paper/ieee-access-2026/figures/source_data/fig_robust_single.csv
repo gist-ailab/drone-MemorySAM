@@ -1,8 +1,8 @@
 model,sensor_left,miou,n_seeds,source_file,source_locator
-DGFusion (official weights),RGB,7.50,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 DRN-261001-03 (line 130 at develop 9270029): '단일 모달: img 7.50·depth 43.33·event 1.13·LiDAR 1.13'"
-DGFusion (official weights),Depth,43.33,1,.claude_logs/experiments/judgment-ledger.md,same row
-DGFusion (official weights),Event,1.13,1,.claude_logs/experiments/judgment-ledger.md,same row
-DGFusion (official weights),LiDAR,1.13,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (official),RGB,7.50,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 DRN-261001-03 (line 130 at develop 9270029): '단일 모달: img 7.50·depth 43.33·event 1.13·LiDAR 1.13'"
+DGFusion (official),Depth,43.33,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (official),Event,1.13,1,.claude_logs/experiments/judgment-ledger.md,same row
+DGFusion (official),LiDAR,1.13,1,.claude_logs/experiments/judgment-ledger.md,same row
 DGFusion (retrained),RGB,49.0,1,.claude_logs/experiments/judgment-ledger.md,"row 2026-10-01 (line 117): '한 센서만: img 12.1 → 49.0, depth 43.1 → 44.5, event 1.2 → 25.0, LiDAR 3.2 → 25.0' (reproduced (a) → retrained (b))"
 DGFusion (retrained),Depth,44.5,1,.claude_logs/experiments/judgment-ledger.md,same row
 DGFusion (retrained),Event,25.0,1,.claude_logs/experiments/judgment-ledger.md,same row
