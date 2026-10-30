@@ -11,7 +11,8 @@ MCubeS~\cite{mcubes2022} is a real material-segmentation dataset with RGB, angle
 
 % Table: benchmark summary. Split sizes: DELIVER 3983/2005/1897 (CMNeXt paper, also recorded in repo
 % research/novelty-and-related-work.md:78); MUSES 1500/250/750 (semseg/datasets/muses.py docstring);
-% MCubeS test 102 (headline.yaml), train/val sizes not yet checked -> todo.
+% MCubeS 302/96/102: Liang et al., CVPR 2022 (mcubes2022), p.7 'Training Details': "Training, validation, and test sets
+% contain 302, 96 and 102 images" (CVF open-access PDF read 2026-10-30). Our list_folder counts not re-checked (yeon/lecun unreachable).
 \begin{table}[t]
 \caption{Benchmarks used in this study.}
 \label{tab:benchmarks}
@@ -22,7 +23,7 @@ Benchmark & Sensors & Classes & Train / val / test \\
 \midrule
 DELIVER~\cite{cmnext2023} & RGB, depth, event, LiDAR & 25 & 3983 / 2005 / 1897 \\
 MUSES~\cite{muses2024} & RGB, event, LiDAR, radar & 19 & 1500 / 250 / 750 \\
-MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & \td{} / \td{} / 102 \\
+MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & 302 / 96 / 102 \\
 \bottomrule
 \end{tabular*}
 \tabnote{MUSES test labels are withheld; test scores come from the official evaluation server.}
@@ -31,8 +32,10 @@ MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & \td{} / \td{} / 102 \\
 \subsection{Evaluation Protocol}
 \emph{Clean accuracy.} We report mean intersection over union (mIoU). For each training run we keep the checkpoint with the best validation score and report its test score, without selecting checkpoints on the test set. On DELIVER we evaluate at $1024\times1024$ with batch size one against the native-resolution labels, and resample labels with nearest-exact interpolation. This detail matters: floor-aligned nearest resampling shifts predictions by half a pixel and lowered DELIVER test mIoU by 1.2 to 1.3 points in our measurements, with larger losses on thin classes, whereas center-aligned resampling reproduces the scores of the baselines' own conversion code. We therefore use center-aligned resampling for every model.
 % Source: repo .claude_logs/issues/issues-and-fixes.md ISSUE-036 (v1 55.18 -> v2 56.39, +1.21; E1 seed1 54.63 -> 55.97, +1.34;
-% DGFusion predictions 52.34 nearest vs 53.68 nearest-exact). Where a baseline reports a different protocol, we list both its published number and our re-evaluation (Table~\ref{tab:deliver}). MUSES is scored by its official evaluation, and MCubeS on the commonly used 102-image test split. We report the mean over three training seeds together with the best seed, because single runs on these benchmarks vary by up to one point.
+% DGFusion predictions 52.34 nearest vs 53.68 nearest-exact).
+Where a baseline reports a different protocol, we list both its published number and our re-evaluation (Table~\ref{tab:deliver}). MUSES is scored by its official evaluation, and MCubeS on the commonly used 102-image test split. We report the mean over three training seeds together with the best seed, because single runs on these benchmarks vary by up to one point. \todo{MCubeS checkpoint selection: our loader evaluates the 102 test images during training (semseg/datasets/mcubes.py:142, val -> test.txt), as in common practice for this benchmark, so the sentence above about not selecting checkpoints on the test set does not hold for MCubeS. Decide (method): select on the 96 validation images, or report final-epoch checkpoints and state the practice.}
 
 \emph{Missing and degraded sensors.} We follow the definitions of a recent robustness benchmark for multimodal segmentation~\cite{mmssbench2025}. In the entire-missing-modality (EMM) setting, one or more sensors are replaced by zeros after input normalization, and the score is averaged over all 15 non-empty subsets of the four sensors. In the random-missing-modality (RMM) setting, the sensors that a subset would remove are instead corrupted by zeroing a random fraction $r\in\{0.25, 0.5, 0.75\}$ of their values, and the score is again averaged over the 15 subsets. In the noisy-modality (NM) setting, salt-and-pepper noise of density $D\in\{0.05, 0.1, 0.2\}$ corrupts every sensor at the same pixel positions. The benchmark additionally adds Gaussian noise in this setting; we report salt-and-pepper alone so that the corruption is identical for all sensors \todo{confirm that every NM number in Table~\ref{tab:robust} was produced with the salt-and-pepper-only mode (tools/missing\_modality\_eval.py, default nm mode)}.
 % Source: tools/missing_modality_eval.py docstring l.20-29 (EMM zero-fill after normalization, RMM per-pixel drop on the removed
-% sensors of each of the 15 subsets, NM default = channel-shared salt-and-pepper; --nm_mode bench = benchmark S&P + Gaussian). Methods that skip a missing input instead of zero-filling it~\cite{anyseg2024,rmmss2025,fuseadapt2026} answer a different question, so we do not mix the two families in one comparison. Unless stated otherwise, every robustness number for our model and for the re-trained baselines in this paper comes from the same evaluation code, the same images, and the same random seed.
+% sensors of each of the 15 subsets, NM default = channel-shared salt-and-pepper; --nm_mode bench = benchmark S&P + Gaussian).
+Methods that skip a missing input instead of zero-filling it~\cite{anyseg2024,rmmss2025,fuseadapt2026} answer a different question, so we do not mix the two families in one comparison. Unless stated otherwise, every robustness number for our model and for the re-trained baselines in this paper comes from the same evaluation code, the same images, and the same random seed.
