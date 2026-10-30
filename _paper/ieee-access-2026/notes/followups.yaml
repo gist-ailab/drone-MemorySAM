@@ -103,10 +103,10 @@ items:
 
   - id: FU-08
     title: MUSES·MCubeS 결과
-    depends_on: [DRN-261019-02, DRN-261017-02]
+    depends_on: [DRN-261019-02, DRN-261017-02, DRN-261031-01]
     where:
       - latex/sections/5_experiments.tex Table 2·3, 0_abstract.tex·1_intro.tex 의 TODO
-    now: "Table 2·3 우리 행 todo 유지."
+    now: "Table 2·3 우리 행 todo 유지. MCubeS(2026-10-31 정리): Ours 행 = DRN-261017-02(C2D2 포함 A2c2d2 config, develop 07d1266, 2시드), 'w/o C2D2' 행 = DRN-261031-01(hpca100 E1Mc+고해상 s20260827, 128/200에폭 중단 후 감시 tmux mcubes_resume_s827 로 이어 학습 대기). 옛 hpca100 A2hires config 에는 TRAIN.QAF 가 없어 Ours 행에 쓰지 않는다."
     branches:
       done: "판정된 수치(3모달 MUSES 수치 금지, 4모달 A2 만)로 표·초록·서론 TODO 채움."
     status: open
