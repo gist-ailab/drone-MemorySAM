@@ -12,7 +12,7 @@
 | DELIVER classes 25 | 25 | `semseg/datasets/deliver.py:20-22` CLASSES | ✅ |
 | MUSES train/val/test, 19 classes | 1500 / 250 / 750, 19 | `semseg/datasets/muses.py` docstring l.18, l.33 | ✅ |
 | MCubeS test, 20 classes | 102, 20 | test 102: `.claude_logs/experiments/headline.yaml` mcubes.ours[0].task(“test split 102장”); 20: `semseg/datasets/mcubes.py:21` | ✅ |
-| MCubeS train / val | 302 / 96 | MCubeS 원 논문(Liang et al., CVPR 2022, `mcubes2022`) 7쪽 “Training Details”: “Training, validation, and test sets contain 302, 96 and 102 images” (CVF open access PDF, 2026-10-30 확인). 우리 서버 `list_folder/*.txt` 줄 수는 yeon·lecun 연결 불가로 미확인. 우리 로더는 평가에 test.txt 를 쓰므로 96장 val 은 학습·선택에 쓰이지 않음(`semseg/datasets/mcubes.py:142`) | ✅ (⚠️ 체크포인트 선택 문제, method 질문) |
+| MCubeS train / val | 302 / 96 | MCubeS 원 논문(Liang et al., CVPR 2022, `mcubes2022`) 7쪽 “Training Details”: “Training, validation, and test sets contain 302, 96 and 102 images” (CVF open access PDF, 2026-10-30 확인). 우리 서버 `list_folder/*.txt` 줄 수는 yeon·lecun 연결 불가로 미확인. 우리 로더는 평가에 test.txt 를 쓰므로 96장 val 은 학습·선택에 쓰이지 않음(`semseg/datasets/mcubes.py:142`) | ✅ (체크포인트는 관행대로 test 102 로 선택, user 결정 2026-10-30, 원고 §3·표 III 캡션에 명시) |
 
 ## 표 I. DELIVER (`tab:deliver`, `sections/5_experiments.tex`)
 | 칸 | 값 | 출처 | 상태 |
