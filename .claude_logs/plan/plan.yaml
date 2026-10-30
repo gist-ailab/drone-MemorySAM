@@ -12635,7 +12635,7 @@ items:
     은 FP 픽셀에서 hires-off 추론으로 FP 가 50% 이상 줄면 채택.
   sample_basis: 2시드×2모델, 기존 ckpt 재사용. 장면 단위 수치는 시드 2개가 같은 방향일 때만 사실로 올린다.
   expected_cost: GPU 1장 약 6시간(추론 4회 + 혼동행렬), 학습 없음
-  priority: 1
+  priority: 4
   owner_role: analysis
   status: queued
   kind: analysis
@@ -12645,7 +12645,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261020-01
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -12709,7 +12709,7 @@ items:
     ≤ .35 그리고 test EMM15 Δ ≥ −0.5
   sample_basis: A2 두 시드 차 1.5 → 2시드로 판정 불가, 3시드. 시드별 짝 Δ 와 평균 병기
   expected_cost: 4 GPU × 약 1.3~1.6일 × 3런(스모크 프로파일 후 확정)
-  priority: 1
+  priority: 4
   owner_role: manager
   status: idea
   kind: experiment
@@ -12719,7 +12719,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261020-03
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -12740,7 +12740,7 @@ items:
   success_criteria: '대조군: 판정은 S2-sum 항목에서'
   sample_basis: S2-sum 과 같은 3시드
   expected_cost: 4 GPU × 약 1.2일 × 3런
-  priority: 2
+  priority: 4
   owner_role: manager
   status: idea
   kind: experiment
@@ -12750,7 +12750,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261020-04
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -12770,7 +12770,7 @@ items:
   success_criteria: thin4 Δ ≥ +0.3 또는 MUSES 전이에서 야간 Δ ≥ +0.5 면 3시드 승격
   sample_basis: 탐색 1시드
   expected_cost: 4 GPU × 약 1.5일 × 1런
-  priority: 3
+  priority: 4
   owner_role: manager
   status: idea
   kind: experiment
@@ -12780,7 +12780,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261020-05
   created: '2026-10-20'
-  updated: '2026-10-20'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -12845,7 +12845,7 @@ items:
     Δ 로 보고됨. 단순 융합이 E1 보다 ≥ +0.3 높으면 교차주의 융합의 기여 주장을 삭제'
   sample_basis: E1 스크린 시드 차 ~0.4 → 2시드
   expected_cost: 4 GPU × 약 1일 × 2런 + 모달 zero-out 평가
-  priority: 3
+  priority: 1
   owner_role: manager
   status: evaluating
   kind: experiment
@@ -12855,7 +12855,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-07
   created: '2026-10-20'
-  updated: '2026-10-23'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -13158,7 +13158,7 @@ items:
   success_criteria: 표 행 완성
   sample_basis: A2 두 시드 차 1.5 → 2시드, 시드별 짝 Δ 와 평균 병기
   expected_cost: 4 GPU × 약 1일 × 2런
-  priority: 2
+  priority: 1
   owner_role: manager
   status: evaluating
   kind: experiment
@@ -13223,7 +13223,7 @@ items:
   success_criteria: 표 행 완성
   sample_basis: A2 두 시드 차 1.5 → 2시드
   expected_cost: 4 GPU × 약 1일 × 2런
-  priority: 2
+  priority: 1
   owner_role: manager
   status: running
   kind: experiment
@@ -13233,7 +13233,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-14
   created: '2026-10-20'
-  updated: '2026-10-27'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -13294,7 +13294,7 @@ items:
     모두 객체 클래스 여유 ≥ +1.0'' 여부'
   sample_basis: DELIVER 2시드 test 전수, MUSES 3시드 val 250장(조건별 25장이라 조건 분해는 참고만)
   expected_cost: GPU 1장 약 4시간(재추론 포함), 나머지 CPU
-  priority: 1
+  priority: 4
   owner_role: analysis
   status: queued
   kind: analysis
@@ -13305,7 +13305,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261022-01
   created: '2026-10-22'
-  updated: '2026-10-22'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -13360,7 +13360,7 @@ items:
     기록
   sample_basis: 100회 반복 평균·표준편차
   expected_cost: GPU 1장 1시간
-  priority: 2
+  priority: 1
   owner_role: analysis
   status: queued
   kind: analysis
@@ -13369,7 +13369,7 @@ items:
   - cost
   docs: .claude_logs/tasks/DRN-261027-02
   created: '2026-10-27'
-  updated: '2026-10-27'
+  updated: '2026-10-29'
   closed: null
   runs: []
   results: []
@@ -13559,7 +13559,7 @@ items:
     과 다른 기여
   sample_basis: 2시드 짝 비교(L5·L6 과 동일)
   expected_cost: 4 GPU × 약 1일 × 2런
-  priority: 2
+  priority: 1
   owner_role: manager
   status: queued
   kind: experiment
@@ -13676,7 +13676,7 @@ items:
   success_criteria: 스모크 통과 + 검수. 착수 시점 = 메인 3표(MCubeS·MUSES A2) 기동 뒤
   sample_basis: 해당 없음
   expected_cost: 워커 1회 + 스모크 GPU 30분
-  priority: 3
+  priority: 4
   owner_role: method
   status: idea
   kind: build
@@ -13715,7 +13715,7 @@ items:
     넣지 않음(user 2026-10-29)
   sample_basis: 1시드 스크린 → 통과 시 3시드
   expected_cost: 4 GPU 약 1일 + 강건·진단 평가 3h
-  priority: 3
+  priority: 4
   owner_role: manager
   status: idea
   kind: experiment
@@ -13835,6 +13835,40 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261020-01
+- id: DRN-261029-09
+  title: MUSES 4모달 A2 test 제출본(zip) 생성 — 공식 val 로 평가 해상도 선택 후 test 추론·포맷 검증, 제출은 user
+  question: 논문 모델 A2(4모달, 768 크롭 학습)의 MUSES test 제출본을 공식 포맷으로 만들 수 있는가(3모달 제출본은 금지,
+    user 2026-10-18)
+  hypothesis: A2 s2·s3 완주 후 공식 val(native 1080×1920, tools/eval_muses_official.py)에서
+    1024/1536 중 높은 해상도를 고르고 그 설정으로 test 추론 → Codabench 포맷 zip
+  falsification: 해당 없음
+  change: 학습 없음. 입력 = DRN-261019-02 의 val-best ckpt(시드별), 평가 해상도 선택 규칙 = val 최고(2026-10-16
+    규칙), 출력 = /ailab_mat2 … submission/muses/(허브 마운트 불가 시 drone_nas submission/muses/
+    에 두고 README 로 안내) + md5 + 포맷 검증 로그
+  baseline: 기존 4모달 최고 P39.1-rank 시드2 공식 test 79.571
+  configs: []
+  launch: null
+  success_criteria: zip 2개(s2·s3) + 공식 val 수치·선택 해상도·md5 기록, 포맷 검증 통과. 제출·결과 기록은 user
+  sample_basis: 2시드
+  expected_cost: GPU 1장 약 2시간/시드
+  priority: 1
+  owner_role: analysis
+  status: idea
+  kind: build
+  tags:
+  - muses
+  - submission
+  - paper1
+  docs: .claude_logs/tasks/DRN-261029-09
+  created: '2026-10-29'
+  updated: '2026-10-29'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
