@@ -12444,7 +12444,8 @@ items:
   success_criteria: '2시드 평균 Δ vs E1Mc ≥ +0.5 이고 두 시드 부호 일치 → 메인 표 3 의 Ours. 보조: w/o
     C2D2 행 대비 Δ 로 두 패스 학습의 MCubeS 기여 기록'
   sample_basis: MCubeS 3시드 std 0.49
-  expected_cost: 3090 4장×2런, 200ep(데이터 작음) 약 1일
+  expected_cost: hpca100 A100 GPU0·1(user 재가동 허용 2026-11-01), 1024 원안 2시드 200ep, 약
+    2.5~3일/시드(두 패스라 E1Mc 의 약 2배)
   priority: 1
   owner_role: method
   status: queued
@@ -12454,7 +12455,7 @@ items:
   - A2
   - transfer
   created: '2026-10-17'
-  updated: '2026-10-31'
+  updated: '2026-11-01'
   closed: null
   runs: []
   results: []
