@@ -13605,7 +13605,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 1
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - ablation
@@ -13614,7 +13614,7 @@ items:
   - contribution
   docs: .claude_logs/tasks/DRN-261029-01
   created: '2026-10-29'
-  updated: '2026-10-29'
+  updated: '2026-10-31'
   closed: null
   runs: []
   results: []
