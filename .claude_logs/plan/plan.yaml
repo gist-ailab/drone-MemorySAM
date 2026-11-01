@@ -12448,7 +12448,7 @@ items:
     2.5~3일/시드(두 패스라 E1Mc 의 약 2배)
   priority: 1
   owner_role: method
-  status: queued
+  status: running
   kind: experiment
   tags:
   - mcubes
