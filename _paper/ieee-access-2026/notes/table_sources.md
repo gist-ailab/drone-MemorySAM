@@ -15,32 +15,50 @@
 | MCubeS train / val | 302 / 96 | MCubeS 원 논문(Liang et al., CVPR 2022, `mcubes2022`) 7쪽 “Training Details”: “Training, validation, and test sets contain 302, 96 and 102 images” (CVF open access PDF, 2026-10-30 확인). 우리 서버 `list_folder/*.txt` 줄 수는 yeon·lecun 연결 불가로 미확인. 우리 로더는 평가에 test.txt 를 쓰므로 96장 val 은 학습·선택에 쓰이지 않음(`semseg/datasets/mcubes.py:142`) | ✅ (체크포인트는 관행대로 test 102 로 선택, user 결정 2026-10-30, 원고 §3·표 III 캡션에 명시) |
 
 ## 표 I. DELIVER (`tab:deliver`, `sections/5_experiments.tex`)
+표 I~III 의 선행 방법 값은 모두 원 논문 표에서 옮겼다(원문 PDF 쪽 순번, 원문 확인 = notes/sota_survey.md(2026-11-02 조사, 메인 세션이 CAFuser·DGFusion·StitchFusion·FuseAdapt 표를 paper2md 변환본으로 재확인)). 쪽 = PDF 쪽 순번.
+
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| CAFuser-CAA val | 68.79 | `.claude_logs/experiments/headline.yaml:17` (deliver.sota_val) | ✅ (📄 원 논문 표 쪽 번호 필요) |
-| DGFusion test | 56.71 | `headline.yaml:15` (deliver.sota) | ✅ (📄) |
-| DGFusion backbone | Swin-T | `headline.yaml:15` note | ✅ |
-| MM SAM-adapter val / test | 69.60 / 57.35 | `headline.yaml:18` / `:16` (sota2_val / sota2) | ✅ (📄) |
-| Ours (3-seed mean) test | 57.74 | `headline.yaml:22` (deliver.ours[0].value); 시드별 = `.claude_logs/tasks/DRN-261018-01/analysis.md` 3시드 표(“A2 25클래스” 행) | ✅ |
-| Ours (best seed) test | 58.61 | `headline.yaml:23` (best, 시드 821) | ✅ |
-| Ours val (3-seed mean / best seed) | 70.17 / 69.59 | `tasks/DRN-261019-03/analysis.md:23` (val clean 69.59 / 71.05 / 69.86, 평균 70.17; best seed = test 기준 시드 821 → 69.59). method 답변(inbox 20261029-181016 #3): mm_eval_v2 clean val 을 legal v2 val 로 인용 가능 | ✅ |
-| CMNeXt, StitchFusion, GeminiFusion, CAFuser 전 칸 | 비어 있음 | 후보값만 repo `research/novelty-and-related-work.md:83`(2차 사본) | ❌ 📄 |
+| (a) CMNeXt / StitchFusion(MiT-B2) / GeminiFusion val·test | 66.3·53.0 / 68.2·53.4 / 66.9·54.5 | CAFuser(arXiv 2410.10791) Table III, p6 — test 는 CAFuser 저자 측정(표 각주 a). DGFusion Table III p6 test 같은 값 | ✅ 원문 재확인 |
+| (a) CAFuser-CAA val·test | 68.6 · 55.2 | CAFuser Table III, p6 | ✅ 원문 재확인. 옛 초안 68.79 는 출처 없음 → 삭제 |
+| (a) CAFuser val·test | 67.8 · 55.6 | CAFuser Table III, p6 | ✅ 원문 재확인 |
+| (a) DGFusion test | 56.7 | DGFusion(arXiv 2509.09828) Table III, p6 (val 미보고) | ✅ 원문 재확인. 옛 56.71 은 headline.yaml 의 재측정값 |
+| (a) DGFusion, official weights test | 56.73 | judgment-ledger 2026-10-01 DRN-261001-03 행(표 IV(b) 와 같은 값) | ✅ |
+| (b) MemorySAM / MLE-SAM val | 65.38 / 64.08 | MemorySAM(2503.06700) Table 1 p6 / MLE-SAM(2412.04220) Table I p7; split 미표기(각주 c) | ✅ 조사 파일 |
+| (b) OmniSegmentor MiT-B2 / DFormer-L | 67.5 / 68.0 | OmniSegmentor(2509.15096) Table 1(f), p6; split 미표기 | ✅ 조사 파일 |
+| (b) HyperDUM | 67.59 | HyperDUM(2503.20011) Table 4, p6, 본문 "validation set" | ✅ 조사 파일 |
+| (b) MAGIC | 67.66 | MAGIC(2407.11344) Table 1, p10 | ✅ 조사 파일 |
+| (b) Any2Seg | 68.25 | Any2Seg(2407.11351) Table 1, p9 | ✅ 조사 파일 |
+| (b) FuseAdapt DINOv2-B | 68.33 | FuseAdapt(2610.21779) Table 3, p7; split 미표기 | ✅ 조사 파일 |
+| (b) StitchFusion Swin-T | 70.3 | StitchFusion(2408.01343) Table 1, p6 (Table 3 p7 은 70.34); split 미표기 | ✅ 원문 재확인 |
+| (c) MM SAM-adapter RGB-E / RGB-L / RGB-D val·test | 60.74·55.70 / 61.89·57.14 / 69.60·57.35 | MM SAM-adapter(2509.10408) Table 7 p11(val), Table 4 p10(test) | ✅ 조사 파일 |
+| Ours (3-seed mean) test | 57.74 | `headline.yaml:22`; 시드별 = `.claude_logs/tasks/DRN-261018-01/analysis.md` | ✅ |
+| Ours (best seed) test | 58.61 | `headline.yaml:23` (시드 821) | ✅ |
+| Ours val (3-seed mean / best seed) | 70.17 / 69.59 | `tasks/DRN-261019-03/analysis.md:23` | ✅ |
+| 본문 격차 1.0 / 1.9 / 1.01 / 1.6 | — | 57.74−56.7, 58.61−56.7, 57.74−56.73, 70.17−68.6 | ✅ 계산 |
 
 ## 표 II. MUSES (`tab:muses`)
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| DGFusion test | 79.5 | `headline.yaml:84` (muses.sota) | ✅ (📄) |
-| GtA test | 82.39 | `headline.yaml:85` (muses.sota2) | ⚠️ 원 논문 미확인(Codabench 로그인 장벽, `research/novelty-and-related-work.md` 2026-09-08 메모) |
-| MM SAM-adapter test | 81.07 | `headline.yaml:99` (gap_2nd 문구) | ⚠️ 원 논문 표 미확인 |
+| (a) Mask2Former Swin-T / SegFormer B2 / B5 / Mask2Former Swin-L test | 70.7 / 72.5 / 74.7 / 77.1 | MUSES(arXiv 2401.12761) Table 4, p13 | ✅ 조사 파일 |
+| (b) CMNeXt / GeminiFusion test | 72.4 / 75.3 | CAFuser Table II, p5 (CAFuser 저자 측정; DGFusion Table II p6 은 CMNeXt 72.1) | ✅ 원문 재확인(DGFusion 표) |
+| (b) CAFuser / CAFuser-CAA / DGFusion test | 78.2 / 78.5 / 79.5 | CAFuser Table II p5; DGFusion Table II p6 | ✅ 원문 재확인 |
+| (c) FuseAdapt DINOv2-S RGB-L-E val | 77.28 | FuseAdapt Table 2, p7 (부록 p17 best-validation) | ✅ 원문 재확인 |
+| (c) MM SAM-adapter RGB-E / RGB-L test | 79.92 / 81.07 | MM SAM-adapter Table 6·8, p11(서버 제출 명시) | ✅ 조사 파일 |
+| GtA 82.39 | 삭제 | 원 논문을 찾지 못함(조사 파일 0절) | ❌ 표에서 뺌 |
 | Ours val / test | 비어 있음 | MUSES 4모달 A2(DRN-261019-02) 학습 중 | ❌ |
-| CAFuser 전 칸, 기준선 val | 비어 있음 | — | ❌ 📄 |
 
 ## 표 III. MCubeS (`tab:mcubes`)
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| StitchFusion test | 55.9 | `headline.yaml:109` (mcubes.sota) | ✅ (📄) |
-| Mul-VMamba test | 54.65 | `headline.yaml:122` (gap_2nd 문구 “published 최고 Mul-VMamba 54.65”) | ⚠️ 원 논문 미확보(bib 없음) |
-| Ours test | 비어 있음 | MCubeS A2(DRN-261017-02) 대기. headline 의 58.07 은 이전 세대(P39.1)라 쓰지 않음 | ❌ |
+| MCubeSNet | 42.86 | MCubeSNet(CVPR 2022 CVF) Table 1(a), p6; 백본 ResNet-101(본문 p6) | ✅ 조사 파일 |
+| ShareCMP (RGB-A-D) | 50.99 | ShareCMP(2312.03430) Table 4, p9 | ✅ 조사 파일 |
+| MLE-SAM / CMNeXt / U3M / Any2Seg | 51.02 / 51.54 / 51.69 / 51.91 | MLE-SAM Table III p8 / CMNeXt Table 1(e) p6 / U3M Table I p6 / Any2Seg Table 2 p9 | ✅ 조사 파일 |
+| Cao et al. (BPCF) / StitchFusion Swin-T / MemorySAM / MAGIC / MMSFormer | 52.22 / 52.3 / 52.88 / 53.01 / 53.11 | 2610.17800 Table 8 p19 / StitchFusion Table 1 p6 / MemorySAM Table 2 p6 / MAGIC Table 1 p10 / MMSFormer Table 1 p6 | ✅ 조사 파일(StitchFusion 원문 재확인) |
+| StitchFusion MiT-B4 / Swin-L | 53.92 / 55.9 | StitchFusion Table 7 p8 / Table 1 p6 | ✅ 원문 재확인 |
+| FuseAdapt DINOv2-B | 57.62 | FuseAdapt Table 1 p6, 본문 p8 | ✅ 원문 재확인 |
+| Mul-VMamba 54.65 | 삭제 | 원문 미확보(조사 파일 0절) | ❌ 표에서 뺌 |
+| Ours / Ours w/o C2D2 | 비어 있음 | DRN-261017-02(C2D2 학습 중) / DRN-261031-01(정식 평가 대기) | ❌ |
 
 ## 표 IV. Robustness (`tab:robust`)
 (a) 공개 벤치 정의, val

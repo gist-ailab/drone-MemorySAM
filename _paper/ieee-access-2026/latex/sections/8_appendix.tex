@@ -1,13 +1,18 @@
 % Appendix: additional qualitative results (user 2026-11-02: no page limit, up to ~18 pages).
-% Figures: figures/src/make_qual_figs.py --errors --set supp ; scenes = figures/source_data/qual_scenes_deliver.csv
+% Figures: figures/src/make_qual_figs.py (scenes chosen in figures/qualbank/selection.yaml from
+% figures/source_data/qualbank/deliver_candidates.csv, built over all 1897 test images by figures/qualbank/qualbank.py)
 \appendices
 \section{Additional Qualitative Results}
 \label{app:qual}
-Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are all 18 scenes the rule selects on the DELIVER test split with all sensors present. \todo{MUSES and MCubeS scenes; sensor-failure scenes}
+Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are the 18 highest-ranked scenes of the six weather and lighting conditions. The candidates are computed over all 1897 test images of every model, so any scene can be replaced without new inference.
+
+The rule picks scenes in our favour by construction. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each condition, the scene whose gap is closest to that condition's median gap. Note that the median gap is slightly negative (about $-1$ to $-2$ points in every condition): the reference is, per image, the best of three other models, so a single model rarely beats it on a typical image even when it has the highest dataset mIoU.
+
+The DELIVER test split also contains sequences with a built-in sensor fault (over-exposure, motion blur, LiDAR jitter, low-resolution events). Figs.~\ref{fig:cases} and~\ref{fig:cases_reverse} show the scene of each fault with the largest gap in our favour and against us; the second column is the affected sensor. Fig.~\ref{fig:thin_scenes} ranks scenes by the gain on one thin class instead of the image mIoU. \todo{MUSES and MCubeS scenes; DELIVER missing-sensor scenes}
 
 \begin{figure*}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/fig_supp_deliver_1_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_1.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
 \caption{Ranks 2 and 3 for sun and cloud (DELIVER test, all sensors). Faded pixels agree with the ground truth; numbers are per-image mIoU (\%).}
 \label{fig:supp1}
@@ -15,7 +20,7 @@ Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes 
 
 \begin{figure*}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/fig_supp_deliver_2_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_2.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
 \caption{Ranks 2 and 3 for rain and fog, shown as in Fig.~\ref{fig:supp1}.}
 \label{fig:supp2}
@@ -23,8 +28,40 @@ Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes 
 
 \begin{figure*}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/fig_supp_deliver_3_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_3.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
 \caption{Ranks 2 and 3 for night and low exposure, shown as in Fig.~\ref{fig:supp1}.}
 \label{fig:supp3}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_typical_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Typical scenes: for each condition, the DELIVER test image whose per-image mIoU gap (ours minus the best of the other three models) is closest to that condition's median gap. Shown as in Fig.~\ref{fig:supp1}.}
+\label{fig:typical}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_cases_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{DELIVER test sequences with a built-in sensor fault: the scene with the largest per-image mIoU gap in favour of our model. The second column shows the affected sensor (RGB for exposure and blur, LiDAR, event). Shown as in Fig.~\ref{fig:supp1}.}
+\label{fig:cases}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_cases_reverse_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{As Fig.~\ref{fig:cases}, but the scene of each fault where another model is most ahead of ours.}
+\label{fig:cases_reverse}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_thin_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Thin classes: for each of Pole, TrafficLight, Pedestrian and Static, the DELIVER test image where our model's IoU on that class exceeds the best of the other three models by the most (at least 400 ground-truth pixels of the class). Numbers are per-image mIoU over all classes (\%), not the class IoU used for the ranking.}
+\label{fig:thin_scenes}
 \end{figure*}
