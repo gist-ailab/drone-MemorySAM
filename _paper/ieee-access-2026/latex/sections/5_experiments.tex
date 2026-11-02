@@ -1,11 +1,11 @@
 \section{Experiments}\label{sec:exp}
 \subsection{Implementation Details}
 % Source: configs/lecun-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml (TRAIN, OPTIMIZER, SCHEDULER, LOSS, MODEL.M2F, MODEL.P46.C3_PROTO, MODEL.P39).
-All sensors are converted to three-channel images as in CMNeXt~\cite{cmnext2023}. We train for 40 epochs with AdamW (learning rate $6\times10^{-4}$, weight decay 0.01), a polynomial schedule with power 0.9, and a 10-epoch warm-up, on $768\times768$ crops with an effective batch size of 16 obtained by gradient accumulation. We use the data augmentation of DGFusion~\cite{dgfusion2026} so that both models see the same augmented images. The clean-pass loss combines online hard-example cross-entropy~\cite{ohem2016} on the final logits with the set-prediction loss of the query head (weight 0.5, with deep supervision), the auxiliary sensor heads (0.5), the router (cross-entropy 0.4 and regularizer 0.01), a class-prototype contrastive term (0.1), and a variance-covariance regularizer on the per-sensor tokens (weight 1.0 for LiDAR and 0.25 for the other sensors). These terms are inherited from earlier versions of our model; we list them for reproducibility and report them in the supplementary material. The frozen teacher is the same architecture without the high-resolution path, trained for 200 epochs on clean data. Unless noted, we report the mean of three seeds and the best seed; ablations use one seed.
+All sensors are converted to three-channel images as in CMNeXt~\cite{cmnext2023}. We train for 40 epochs with AdamW (learning rate $6\times10^{-4}$, weight decay 0.01), a polynomial schedule with power 0.9, and a 10-epoch warm-up, on $768\times768$ crops with an effective batch size of 16 obtained by gradient accumulation. We use the data augmentation of DGFusion~\cite{dgfusion2026} so that both models see the same augmented images. The clean-pass loss combines online hard-example cross-entropy~\cite{ohem2016} on the final logits with the set-prediction loss of the query head (weight 0.5, with deep supervision), the auxiliary sensor heads (0.5), the router (cross-entropy 0.4 and regularizer 0.01), a class-prototype contrastive term (0.1), and a variance-covariance regularizer on the per-sensor tokens (weight 1.0 for LiDAR and 0.25 for the other sensors). These terms are inherited from earlier versions of our model; we list them for reproducibility and report them in the supplementary material. The frozen teacher is the same architecture without the high-resolution path, trained for 200 epochs on clean data. All results of our model are the mean of three training runs with different seeds, unless a table states otherwise; the ablations in Tables~\ref{tab:ablation} and~\ref{tab:ablation_loo} use one seed.
 
 \subsection{Comparison with Prior Fusion Models}
-Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. Part~(a) lists methods with a reported test-split result, which is the split we compare on; part~(b) lists methods that report only validation results, which come from different training and evaluation settings and are shown for completeness. \ours{} reaches 57.74 test mIoU on average over three seeds and 58.61 for the best seed, 1.0 and 1.9 points above the published DGFusion result; against the official DGFusion weights evaluated with our code (56.73), the mean gap is 1.01. Its margin over MM SAM-adapter, which uses only RGB and depth, is 0.4 points on average. On the validation set, \ours{} scores 70.17 on average, 1.6 points above CAFuser-CAA (68.6); StitchFusion with a Swin-T backbone reports 70.3 without naming the split, so our validation result is not the highest published one. Tables~\ref{tab:muses} and~\ref{tab:mcubes} report the same model on the real MUSES and MCubeS benchmarks \todo{results pending: MUSES four-sensor model, MCubeS transfer}.
-% Sources: headline.yaml deliver.ours[0] (57.74 / best 58.61). Published DGFusion test = 56.7 (DGFusion Table III p6, notes/sota_survey.md):
+Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. Part~(a) lists methods with a reported test-split result, which is the split we compare on; part~(b) lists methods that report only validation results, which come from different training and evaluation settings and are shown for completeness. \ours{} reaches 57.74 test mIoU, 1.0 point above the published DGFusion result (56.7) and 1.01 points above the official DGFusion weights evaluated with our code (56.73). Its margin over MM SAM-adapter, which uses only RGB and depth, is 0.4 points on average. On the validation set, \ours{} scores 70.17 on average, 1.6 points above CAFuser-CAA (68.6); StitchFusion with a Swin-T backbone reports 70.3 without naming the split, so our validation result is not the highest published one. Tables~\ref{tab:muses} and~\ref{tab:mcubes} report the same model on the real MUSES and MCubeS benchmarks \todo{results pending: MUSES four-sensor model, MCubeS transfer}.
+% Sources: headline.yaml deliver.ours[0] (57.74 = 3-seed mean; best seed 58.61 is recorded in notes/table_sources.md, not shown: user 2026-11-02). Published DGFusion test = 56.7 (DGFusion Table III p6, notes/sota_survey.md):
 %   gap +1.04 / +1.91 (text rounds to 1.0 / 1.9). Official weights with our code 56.73 -> +1.01. CAFuser-CAA val 68.6 (CAFuser Table III p6) -> +1.57.
 %   68.79 (old draft) has no source and was removed (sota_survey.md 0). StitchFusion Swin-T 70.3: StitchFusion Table 1 p6.
 % protocol clusters: repo research/novelty-and-related-work.md l.74-85 (secondary; cite original tables).
@@ -54,13 +54,12 @@ StitchFusion~\cite{stitchfusion2024}$^{c}$ & Swin-T & RGB-D-E-L & \best{70.3} & 
 \multicolumn{5}{@{}l}{\emph{(c) Fewer sensors}} \\
 MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-E & 60.74 & 55.70 \\
 MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & 61.89 & 57.14 \\
-MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-D & 69.60 & 57.35 \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-D & 69.60 & \second{57.35} \\
 \midrule
-Ours (3-seed mean) & DINOv3-L & RGB-D-E-L & \second{70.17} & \second{57.74} \\
-Ours (best seed) & DINOv3-L & RGB-D-E-L & 69.59 & \best{58.61} \\
+Ours & DINOv3-L & RGB-D-E-L & \second{70.17} & \best{57.74} \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{a}$Both values as listed by CAFuser~\cite{cafuser2025} (Table~III); the test values were measured by the CAFuser authors. $^{b}$Released weights evaluated with our code and protocol (Section~\ref{sec:sensors}); same value as Table~\ref{tab:robust}(b). $^{c}$The source does not name the split; listed as validation because it is compared there against validation results. Validation results come from different training and evaluation settings and are not directly comparable. ``Best seed'' is the seed with the highest test score.}
+\tabnote{$^{a}$Both values as listed by CAFuser~\cite{cafuser2025} (Table~III); the test values were measured by the CAFuser authors. $^{b}$Released weights evaluated with our code and protocol (Section~\ref{sec:sensors}); same value as Table~\ref{tab:robust}(b). $^{c}$The source does not name the split; listed as validation because it is compared there against validation results. Validation results come from different training and evaluation settings and are not directly comparable. Ours: mean of three seeds.}
 \end{table}
 
 % ---------------------------------------------------------------------------
@@ -169,7 +168,7 @@ Method & EMM & RMM .25 & RMM .50 & RMM .75 & \\
 \midrule
 MAGIC~\cite{magic2024}$^{\S}$ & \second{44.97} & 51.61 & 48.19 & 45.30 & \\
 MAGIC++~\cite{magicpp2024}$^{\S}$ & 44.85 & \second{53.92} & \second{49.31} & \second{47.06} & \\
-Ours (3 seeds) & \best{57.85} & \best{65.53} & \best{63.35} & \best{61.28} & \\
+Ours & \best{57.85} & \best{65.53} & \best{63.35} & \best{61.28} & \\
 \midrule
 \multicolumn{6}{@{}l}{\emph{(b) Same protocol for all models, test}} \\
 Method & Clean & EMM & S\&P .05 & S\&P .10 & S\&P .20 \\

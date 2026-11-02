@@ -32,10 +32,10 @@
 | (b) FuseAdapt DINOv2-B | 68.33 | FuseAdapt(2610.21779) Table 3, p7; split 미표기 | ✅ 조사 파일 |
 | (b) StitchFusion Swin-T | 70.3 | StitchFusion(2408.01343) Table 1, p6 (Table 3 p7 은 70.34); split 미표기 | ✅ 원문 재확인 |
 | (c) MM SAM-adapter RGB-E / RGB-L / RGB-D val·test | 60.74·55.70 / 61.89·57.14 / 69.60·57.35 | MM SAM-adapter(2509.10408) Table 7 p11(val), Table 4 p10(test) | ✅ 조사 파일 |
-| Ours (3-seed mean) test | 57.74 | `headline.yaml:22`; 시드별 = `.claude_logs/tasks/DRN-261018-01/analysis.md` | ✅ |
-| Ours (best seed) test | 58.61 | `headline.yaml:23` (시드 821) | ✅ |
-| Ours val (3-seed mean / best seed) | 70.17 / 69.59 | `tasks/DRN-261019-03/analysis.md:23` | ✅ |
-| 본문 격차 1.0 / 1.9 / 1.01 / 1.6 | — | 57.74−56.7, 58.61−56.7, 57.74−56.73, 70.17−68.6 | ✅ 계산 |
+| Ours test (표에는 이 3시드 평균만 싣는다, user 2026-11-02) | 57.74 | `headline.yaml:22`; 시드별 = `.claude_logs/tasks/DRN-261018-01/analysis.md` | ✅ |
+| (기록만, 원고 미게재) Ours best seed test | 58.61 | `headline.yaml:23` (시드 821). user 2026-11-02 결정: 최고 시드는 원고에 넣지 않고 3시드 평균을 기본으로 한다. Table 7·8 의 58.61 은 "시드 821 단일 런" ablation 행으로 따로 쓰인다 | 기록 |
+| Ours val (3시드 평균 70.17 만 게재; best seed 69.59 는 기록만) | 70.17 / 69.59 | `tasks/DRN-261019-03/analysis.md:23` | ✅ |
+| 본문 격차 1.0 / 1.01 / 1.6 | — | 57.74−56.7, 57.74−56.73, 70.17−68.6 (최고 시드 격차 1.9 는 원고에서 뺐다) | ✅ 계산 |
 
 ## 표 II. MUSES (`tab:muses`)
 | 칸 | 값 | 출처 | 상태 |
