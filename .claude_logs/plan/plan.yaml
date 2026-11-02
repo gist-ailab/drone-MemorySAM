@@ -13833,15 +13833,16 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런 (+ 평가 묶음)
   priority: 2
   owner_role: manager
-  status: idea
+  status: running
   kind: experiment
   tags:
   - ablation
   - leave-one-out
   - router
   - paper
+  docs: .claude_logs/tasks/DRN-261029-07
   created: '2026-10-29'
-  updated: '2026-10-29'
+  updated: '2026-11-02'
   closed: null
   runs: []
   results: []

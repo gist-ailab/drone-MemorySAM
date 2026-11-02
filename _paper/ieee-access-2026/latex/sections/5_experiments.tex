@@ -49,15 +49,15 @@ HyperDUM~\cite{hyperdum2025} & MiT-B2 & RGB-D-E-L & 67.59 & -- \\
 MAGIC~\cite{magic2024} & MiT-B2 & RGB-D-E-L & 67.66 & -- \\
 Any2Seg~\cite{any2seg2024} & MiT-B2 & RGB-D-E-L & 68.25 & -- \\
 FuseAdapt~\cite{fuseadapt2026}$^{c}$ & DINOv2-B & RGB-D-E-L & 68.33 & -- \\
-StitchFusion~\cite{stitchfusion2024}$^{c}$ & Swin-T & RGB-D-E-L & 70.3 & -- \\
+StitchFusion~\cite{stitchfusion2024}$^{c}$ & Swin-T & RGB-D-E-L & \best{70.3} & -- \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{(c) Fewer sensors}} \\
 MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-E & 60.74 & 55.70 \\
 MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & 61.89 & 57.14 \\
 MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-D & 69.60 & 57.35 \\
 \midrule
-Ours (3-seed mean) & DINOv3-L & RGB-D-E-L & 70.17 & 57.74 \\
-Ours (best seed) & DINOv3-L & RGB-D-E-L & 69.59 & 58.61 \\
+Ours (3-seed mean) & DINOv3-L & RGB-D-E-L & \second{70.17} & \second{57.74} \\
+Ours (best seed) & DINOv3-L & RGB-D-E-L & 69.59 & \best{58.61} \\
 \bottomrule
 \end{tabular*}
 \tabnote{$^{a}$Both values as listed by CAFuser~\cite{cafuser2025} (Table~III); the test values were measured by the CAFuser authors. $^{b}$Released weights evaluated with our code and protocol (Section~\ref{sec:sensors}); same value as Table~\ref{tab:robust}(b). $^{c}$The source does not name the split; listed as validation because it is compared there against validation results. Validation results come from different training and evaluation settings and are not directly comparable. ``Best seed'' is the seed with the highest test score.}
@@ -91,8 +91,8 @@ DGFusion~\cite{dgfusion2026} & Swin-T & RGB-L-R-E & -- & 79.5 \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{(c) Fewer sensors}} \\
 FuseAdapt~\cite{fuseadapt2026} & DINOv2-S & RGB-L-E & 77.28 & -- \\
-MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-E & -- & 79.92 \\
-MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & -- & 81.07 \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-E & -- & \second{79.92} \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & -- & \best{81.07} \\
 \midrule
 Ours & DINOv3-L & RGB-L-R-E & \td & \td \\
 \bottomrule
@@ -124,10 +124,9 @@ MemorySAM~\cite{memorysam2025} & Hiera-B+ & RGB-A-D-N & 52.88 \\
 MAGIC~\cite{magic2024} & MiT-B2 & RGB-A-D-N & 53.01 \\
 MMSFormer~\cite{mmsformer2023} & MiT & RGB-A-D-N & 53.11 \\
 StitchFusion~\cite{stitchfusion2024} & MiT-B4 & RGB-A-D-N & 53.92 \\
-StitchFusion~\cite{stitchfusion2024} & Swin-L & RGB-A-D-N & 55.9 \\
-FuseAdapt~\cite{fuseadapt2026} & DINOv2-B & RGB-A-D-N & 57.62 \\
+StitchFusion~\cite{stitchfusion2024} & Swin-L & RGB-A-D-N & \second{55.9} \\
+FuseAdapt~\cite{fuseadapt2026} & DINOv2-B & RGB-A-D-N & \best{57.62} \\
 \midrule
-Ours w/o C2D2 & DINOv3-L & RGB-A-D-N & \td \\
 Ours & DINOv3-L & RGB-A-D-N & \td \\
 \bottomrule
 \end{tabular*}
@@ -168,23 +167,21 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusio
 \multicolumn{6}{@{}l}{\emph{(a) Public missing-modality benchmark, val}} \\
 Method & EMM & RMM .25 & RMM .50 & RMM .75 & \\
 \midrule
-MAGIC~\cite{magic2024}$^{\S}$ & 44.97 & 51.61 & 48.19 & 45.30 & \\
-MAGIC++~\cite{magicpp2024}$^{\S}$ & 44.85 & 53.92 & 49.31 & 47.06 & \\
-Ours (3 seeds) & 57.85 & 65.53 & 63.35 & 61.28 & \\
+MAGIC~\cite{magic2024}$^{\S}$ & \second{44.97} & 51.61 & 48.19 & 45.30 & \\
+MAGIC++~\cite{magicpp2024}$^{\S}$ & 44.85 & \second{53.92} & \second{49.31} & \second{47.06} & \\
+Ours (3 seeds) & \best{57.85} & \best{65.53} & \best{63.35} & \best{61.28} & \\
 \midrule
 \multicolumn{6}{@{}l}{\emph{(b) Same protocol for all models, test}} \\
 Method & Clean & EMM & S\&P .05 & S\&P .10 & S\&P .20 \\
 \midrule
-DGFusion (official)$^{\ast}$ & 56.73 & 31.14 & 39.12 & 16.85 & 4.53 \\
+DGFusion (official)$^{\ast}$ & \second{56.73} & 31.14 & 39.12 & 16.85 & 4.53 \\
 DGFusion (reprod.)$^{\ddagger}$ & 55.68 & 31.53 & 37.97 & 16.71 & 5.52 \\
-DGFusion (retrained$^{\dagger}$) & 54.77 & 45.52 & 48.89 & 40.51 & 23.34 \\
-CAFuser (retrained$^{\dagger}$) & 55.79 & 46.50 & \td & \td & \td \\
-Ours w/o C2D2 & \td & 40.01 & \td & \td & \td \\
-Ours w/o high-res & 56.59 & 48.06 & 53.25 & 51.64 & 48.79 \\
-Ours & 57.74 & 48.66 & 53.11 & 51.36 & 47.85 \\
+DGFusion (retrained$^{\dagger}$) & 54.77 & 45.52 & \second{48.89} & \second{40.51} & \second{23.34} \\
+CAFuser (retrained$^{\dagger}$) & 55.79 & \second{46.50} & \td & \td & \td \\
+Ours & \best{57.74} & \best{48.66} & \best{53.11} & \best{51.36} & \best{47.85} \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{\S}$Values reported by the robustness benchmark~\cite{mmssbench2025} (MiT-B2 backbone, same zero-fill definition). Methods that skip a missing input instead of zero-filling it report results under a different protocol and are not listed. $^{\ast}$Official released weights evaluated with our code; their S\&P values are the clean score minus the measured drop. $^{\ddagger}$Our reproduction with the official recipe, without degradation. $^{\dagger}$Retrained with the same synthetic degradation. Ours: mean of 3 seeds; baselines: single runs. EMM, RMM, and S\&P are defined in Section~\ref{sec:sensors}.}
+\tabnote{$^{\S}$Values reported by the robustness benchmark~\cite{mmssbench2025} (MiT-B2 backbone, same zero-fill definition). Methods that skip a missing input instead of zero-filling it report results under a different protocol and are not listed. $^{\ast}$Official released weights evaluated with our code; their S\&P values are the clean score minus the measured drop. $^{\ddagger}$Our reproduction with the official recipe, without degradation. $^{\dagger}$Retrained with the same synthetic degradation. Ours: mean of 3 seeds; baselines: single runs; the variants without C2D2 or the high-resolution path are in Table~\ref{tab:abl_robust}. EMM, RMM, and S\&P are defined in Section~\ref{sec:sensors}.}
 \end{table}
 
 % ---------------------------------------------------------------------------
@@ -244,18 +241,17 @@ Table~\ref{tab:condition} breaks clean test accuracy down by condition \todo{tex
 \toprule
 Model & Sun & Cloud & Rain & Fog & Night & Low exp. & All \\
 \midrule
-DGFusion (official) & \td & \td & \td & \td & \td & \td & 56.73 \\
+DGFusion (official) & \td & \td & \td & \td & \td & \td & \second{56.73} \\
 DGFusion (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 54.77 \\
 CAFuser (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 55.79 \\
-Ours w/o high-res & \td & \td & \td & \td & \td & \td & 56.59 \\
-Ours & \td & \td & \td & \td & \td & \td & 57.74 \\
+Ours & \td & \td & \td & \td & \td & \td & \best{57.74} \\
 \bottomrule
 \end{tabular*}
 \tabnote{$^{\dagger}$Retrained with synthetic degradation. All: same values as Table~\ref{tab:robust}(b) clean column.}
 \end{table}
 
 \subsection{Ablation}
-Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on RGB alone and then removes one component at a time from the full model, all with the same seed and schedule. The frozen backbone alone reaches 55.14 mIoU with RGB, already within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. Adding the other three sensors with cross-modal attention and the query head gives 55.94, training with C2D2 adds 1.8 points in this seed (57.73), and the high-resolution path adds 0.9 (58.61). Removing cross-modal attention or the query head costs 0.85 and 0.72 points, respectively. Replacing the sensor-specific adapters with one shared adapter does not reduce clean accuracy (58.84) \todo{robustness of the shared variant and the degradation-pass and distillation rows (L5, L6) pending}.
+Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on RGB alone, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model, all with the same seed and schedule; Table~\ref{tab:abl_robust} repeats the two training-side additions over three seeds and the robustness protocol. The frozen backbone alone reaches 55.14 mIoU with RGB, already within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. Adding the other three sensors with cross-modal attention and the query head gives 55.94, training with C2D2 adds 1.8 points in this seed (57.73), and the high-resolution path adds 0.9 (58.61). Removing cross-modal attention or the query head costs 0.85 and 0.72 points, respectively. Replacing the sensor-specific adapters with one shared adapter does not reduce clean accuracy (58.84) \todo{robustness of the shared variant and the degradation-pass and distillation rows (L5, L6) pending}.
 % Sources: judgment-ledger 2026-10-28 rows DRN-261020-08/-09/-10/-12 (seed 821, legal v2 test@1024);
 % E1 screen s821 55.94: status/current.md (4); Q2/A2 s821 57.73/58.61: tasks/DRN-261019-03/analysis.md.
 
@@ -270,29 +266,70 @@ Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on
 % Leave-one-out: L1 DRN-261020-09, L2 -10, L4 -12, L5 -13, L6 -14 (queued). L3 withdrawn.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{Ablation on DELIVER test (one seed, 40 epochs), mIoU (\%).}
+\caption{Ablation on DELIVER test, building the model up (seed 821, 40 epochs), mIoU (\%).}
 \label{tab:ablation}
 \centering\tabsetup
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcc@{}}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
 \toprule
-Configuration & Clean & EMM \\
+4 sensors & Cross- & Query & C2D2 & High-res & Clean & EMM \\
+ & modal & head & & path & & \\
 \midrule
-\multicolumn{3}{@{}l}{\emph{Building up}} \\
-Frozen DINOv3-L + LoRA, RGB only & 55.14 & -- \\
-+ depth, event, LiDAR (mean fusion) & \td & \td \\
-+ cross-modal attention, query head & 55.94 & \td \\
-+ C2D2 (two-pass training, distillation) & 57.73 & 48.68 \\
-+ high-res path (full model) & 58.61 & 49.12 \\
-\midrule
-\multicolumn{3}{@{}l}{\emph{Removing one component from the full model}} \\
-$-$ sensor-specific LoRA (one shared) & 58.84 & \td \\
-$-$ cross-modal attention (mean fusion)$^{*}$ & 57.76 & \td \\
-$-$ query head and arbiter & 57.89 & \td \\
-$-$ degradation pass & \td & \td \\
-$-$ teacher distillation & \td & \td \\
+\xmark & \xmark & \xmark & \xmark & \xmark & 55.14 & -- \\
+\cmark & \xmark & \xmark & \xmark & \xmark & \td & \td \\
+\cmark & \cmark & \cmark & \xmark & \xmark & 55.94 & \td \\
+\cmark & \cmark & \cmark & \cmark & \xmark & \second{57.73} & \second{48.68} \\
+\cmark & \cmark & \cmark & \cmark & \cmark & \best{58.61} & \best{49.12} \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{*}$Also removes the trunk expansion. \textcolor{red}{todo: EMM column for ablation runs; decision on shared LoRA pending its robustness test.}}
+\tabnote{First row: frozen DINOv3-L with LoRA on RGB only. Second row: the four sensors fused by averaging their tokens, dense head only. EMM is not defined for a single sensor (--).}
+\end{table}
+
+% Table 6b. Leave one component out of the full model (seed 821, 40 epochs). Sources as Table 6 comment above;
+% L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
+\begin{table}[t]
+\caption{Ablation on DELIVER test, removing one component from the full model (seed 821, 40 epochs), mIoU (\%).}
+\label{tab:ablation_loo}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccccccc@{}}
+\toprule
+Per-sensor & Cross- & Query & Degr. & Phys. & Teacher & Clean & EMM \\
+LoRA & modal & head & pass & degr. & KD & & \\
+\midrule
+\cmark & \cmark & \cmark & \xmark & \xmark & \cmark & \td & \td \\
+\cmark & \cmark & \cmark & \cmark & \cmark & \xmark & \td & \td \\
+\cmark & \cmark & \cmark & \cmark & \xmark & \cmark & \td & \td \\
+\cmark & \xmark$^{*}$ & \cmark & \cmark & \cmark & \cmark & 57.76 & \td \\
+\cmark & \cmark & \xmark & \cmark & \cmark & \cmark & 57.89 & \td \\
+\xmark & \cmark & \cmark & \cmark & \cmark & \cmark & \best{58.84} & \td \\
+\cmark & \cmark & \cmark & \cmark & \cmark & \cmark & \second{58.61} & 49.12 \\
+\bottomrule
+\end{tabular*}
+\tabnote{All rows keep the high-resolution path. Degr.\ pass: the second, degraded forward pass of C2D2. Phys.\ degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass. $^{*}$Token averaging; also removes the trunk expansion. \xmark\ on per-sensor LoRA: one LoRA shared by all sensors (rank 16).}
+\end{table}
+
+% Table 6c. Robustness ablation, 3 seeds, same protocol as Table robust (b).
+% w/o C2D2 and high-res = E1 40-ep screen 3 seeds, EMM 40.01 (judgment-ledger 2026-10-01 row);
+% w/o high-res = Q2 3 seeds, full = A2 3 seeds: tasks/DRN-261019-03/analysis.md (moved from Table robust (b)).
+% MCubeS rows: DRN-261031-01 (w/o C2D2, legal eval pending) and DRN-261017-02 (C2D2, training).
+\begin{table}[t]
+\caption{Effect of C2D2 and the high-resolution path on accuracy and robustness, mIoU (\%).}
+\label{tab:abl_robust}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
+\toprule
+C2D2 & High-res & Clean & EMM & S\&P .05 & S\&P .10 & S\&P .20 \\
+\midrule
+\multicolumn{7}{@{}l}{\emph{(a) DELIVER test, mean of 3 seeds}} \\
+\xmark & \xmark & \td & 40.01 & \td & \td & \td \\
+\cmark & \xmark & \second{56.59} & \second{48.06} & \best{53.25} & \best{51.64} & \best{48.79} \\
+\cmark & \cmark & \best{57.74} & \best{48.66} & \second{53.11} & \second{51.36} & \second{47.85} \\
+\midrule
+\multicolumn{7}{@{}l}{\emph{(b) MCubeS test}} \\
+\xmark & \cmark & \td & & & & \\
+\cmark & \cmark & \td & & & & \\
+\bottomrule
+\end{tabular*}
+\tabnote{(a) uses the protocol of Table~\ref{tab:robust}(b). The S\&P values without the high-resolution path average two seeds.}
 \end{table}
 
 \subsection{Computational Cost}
@@ -312,7 +349,6 @@ Model & Params & Trainable & GFLOPs & Latency & Memory \\
 \midrule
 DGFusion & \td & \td & \td & \td & \td \\
 CAFuser & \td & \td & \td & \td & \td \\
-Ours w/o high-res & \td & \td & \td & \td & \td \\
 Ours & \td & \td & \td & \td & \td \\
 \bottomrule
 \end{tabular*}
