@@ -67,7 +67,9 @@
 | (a) EMM Avg / E(.2) / E(.1) / E(.05) | CMNeXt 37.90/54.46/60.41/63.38 · GeminiFusion 37.07/54.33/60.62/63.77 · MAGIC 44.97/58.66/62.68/64.47 · MAGIC++ 44.85/59.18/63.52/65.50 · StitchFusion 41.98/58.02/63.29/65.80 | 같은 논문 Table 7 | ✅ |
 | (a) RMM Avg r=.75 / .50 / .25 | CMNeXt 42.17/47.49/53.61 · GeminiFusion 39.78/42.41/49.74 · MAGIC 45.30/48.19/51.61 · MAGIC++ 47.06/49.31/53.92 · StitchFusion 45.16/48.33/53.10 | Table 8 / 9 / 10 (mIoU_RMM^Avg) | ✅ |
 | (a) NM Low / Mid / High | CMNeXt 35.23/16.37/2.31 · GeminiFusion 5.52/4.14/3.30 · MAGIC 24.03/13.31/3.98 · MAGIC++ 33.12/18.31/8.70 · StitchFusion 24.91/17.11/9.25 | Table 11, mIoU_NM 행 | ✅ |
-| (b) 최신 논문 행 | 비어 있음 | notes/missing_bench_survey.md (서브에이전트 조사 중) | ❌ |
+| (b) EQUISeg clean / EMM Avg / E(.10) / RMM r=.50 Avg / NM Low / Mid | 67.90 / 48.22 / 65.75 / 50.96 / 34.87 / 19.13 | arXiv 2509.24505 Table 1 p4 (DeLiVER), 메인 세션이 변환본에서 재확인. 기준선 행이 2503.18445 Table 9(r=0.5)와 같아 RMM 은 r=.50 열. E(.20)·E(.05)·r=.75/.25·NM High 미보고(--) | ✅ |
+| (b) 각주 RMMSS EMM / RMM | 49.93 / 51.90 | arXiv 2505.12861 Table 2 p6 (MiT-B0, r 미표기) — 변환본 378행 "Ours B0 49.93 51.90" 메인 세션 확인 | ✅ |
+| 본문 9.6 | — | 57.85 − 48.22 (EQUISeg) | ✅ 계산 |
 | (c) DGFusion 공식·재학습 (b)·CAFuser (b) | 비어 있음 | analysis inbox 20261102-180010(val 벤치 프로토콜 측정 요청) | ❌ |
 | Ours clean / EMM Avg / RMM .75 .50 .25 | 70.17 / 57.85 / 61.28 63.35 65.53 | `.claude_logs/tasks/DRN-261019-03/analysis.md` val 행(A2 3시드 평균) | ✅ |
 | Ours E(p)·NM | 비어 있음 | inbox 20261102-180010(시드903 만 E 66.10/68.20/69.09 존재) | ❌ |
@@ -97,7 +99,7 @@
 | + cross-modal attention, query head | 55.94 / 비어 있음 | `status/current.md:55,60` (“4모달 E1 스크린821 … test 55.94”) | ✅ / ❌ |
 | + C2D2 (two-pass, distillation) | 57.73 / 48.68 | `tasks/DRN-261019-03/analysis.md:18-19` (Q2 시드821) | ✅ |
 | + high-res path (full) | 58.61 / 49.12 | 같은 문서 `:18-19` (A2 시드821) | ✅ |
-| − sensor-specific LoRA | 58.84 / 비어 있음 | `judgment-ledger.md:176` (DRN-261020-09) | ✅ / ❌ |
+| (삭제 2026-11-02, user 결정 inbox 20261102-191138) − sensor-specific LoRA(L1 공유 LoRA) | — | Access 원고에 싣지 않음. RA-L 별개 논문 재료(DRN-261020-09, 판정 대장 176행) | — |
 | − cross-modal attention | 57.76 / 비어 있음 | `judgment-ledger.md:175` (DRN-261020-10; 트렁크 확장도 함께 빠짐) | ✅ / ❌ |
 | − query head and arbiter | 57.89 / 비어 있음 | `judgment-ledger.md:174` (DRN-261020-12) | ✅ / ❌ |
 | − degradation pass / − distillation | 비어 있음 | DRN-261020-13 / -14 평가 대기 | ❌ |
