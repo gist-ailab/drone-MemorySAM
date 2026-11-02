@@ -13972,14 +13972,18 @@ items:
     · BACKBONE_TIMM vit_base_patch16_dinov3 · BACKBONE_FALLBACK vit_base_patch14_reg4_dinov2(미사용
     기대) 만 변경(DIM 자동). 그 외 동일
   baseline: E1Mc-L 같은 시드(교사 비교용) · FuseAdapt DINOv2-B 57.62(최종 비교는 2단계)
-  configs: []
-  launch: null
+  configs:
+  - configs/amphibious-mcubes_rgbadn_P39_1_rank_E1McB_seed20260827.yaml
+  - configs/amphibious-mcubes_rgbadn_P39_1_rank_E1McB_seed20260828.yaml
+  launch: amphibious-demo GPU0, scripts/chain_e1mcb_amphibious.sh (setsid PID 3837683,
+    2026-11-02 16:18) — L8 종료 후 자동 기동, 시드 827→828 순차, 각 런 뒤 tools/qualbank_dump.py
+    로 test 102장 전체 덤프
   success_criteria: 완주 + legal 채점(test 102). 2단계 교사로 사용
   sample_basis: 2시드
   expected_cost: B 는 L 의 약 1/3 메모리 → 24GB 1장 1024 크롭 가능 추정, 약 1일/시드(두 패스 없음)
   priority: 2
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - backbone-match
@@ -14058,6 +14062,51 @@ items:
   - compat
   - paper1
   docs: .claude_logs/tasks/DRN-261102-03
+  created: '2026-11-02'
+  updated: '2026-11-02'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261102-04
+  title: 'A2 3시드 NM 벤치 정의 측정(학습 0) — Liao et al. 2025(arXiv 2503.18445) 식 7: S&P(D)+Gaussian(σ,
+    Event 제외), Low/Mid/High = (0.05,0.1)/(0.1,0.2)/(0.2,0.5), val·test'
+  question: 원고 Table 4 의 NM 을 S&P 단독 자체 정의 대신 인용 벤치마크 정의로 재서 Table 11(MiT-B2 5종) 바로
+    아래에 붙일 수 있는가
+  hypothesis: 'A2 는 벤치 NM 에서도 벤치 보고 최고(High: StitchFusion 9.25, Mid: MAGIC++ 18.31,
+    Low: CMNeXt 35.23)를 넘는다'
+  falsification: clean 이 기존 값과 0.05 넘게 어긋나면 측정 무효(하네스·config 점검). 벤치 보고 최고보다 낮아도 결과를
+    숨기지 않고 그대로 게재
+  change: '평가 노이즈 정의만 교체: tools/mm_eval_v2.py --protocol nm --nm_mode bench(기본 levels
+    0.05:0.1,0.1:0.2,0.2:0.5), 모델·체크포인트·하네스(legal v2 1024) 불변'
+  baseline: '벤치 Table 11 mIoU_NM(val, MiT-B2): CMNeXt 35.23/16.37/2.31 · GeminiFusion
+    5.52/4.14/3.30 · MAGIC 24.03/13.31/3.98 · MAGIC++ 33.12/18.31/8.70 · StitchFusion
+    24.91/17.11/9.25; 같은 체크포인트의 기존 S&P 단독 test 53.11/51.36/47.85'
+  configs:
+  - configs/eval/a2s903_eval1024_hpca100.yaml
+  - configs/eval/a2s821_eval1024_hpca100_probe.yaml
+  - configs/eval/a2s902_eval1024_hpca100_probe.yaml
+  launch: null
+  success_criteria: '측정 항목(학습 0): 3시드×(val,test)×(Low,Mid,High) 18값 + clean 이 기존 legal
+    v2 값(val 69.59/71.05/69.86, test 58.61/57.09/57.52)과 ±0.05 내 일치하면 유효 → Table 4(a)
+    에 NM 열 추가, 원고의 ''S&P 단독'' 서술·S&P 열 삭제(user 2026-11-02)'
+  sample_basis: 논문 본 모델 3시드(821·902·903) 전부, 학습 없음; 벤치 공개 코드와 같게 batch 4·seed 0·전수(subset_every
+    1)
+  expected_cost: hpca100 A100 2장 × 약 8.5시간(시드당 split 하나 약 2.8 h, 2026-11-02 실측 20.5
+    s/배치), 학습 0
+  priority: 1
+  owner_role: analysis
+  status: running
+  kind: experiment
+  tags:
+  - robustness
+  - nm
+  - paper
+  - eval-only
+  docs: .claude_logs/tasks/DRN-261102-04
   created: '2026-11-02'
   updated: '2026-11-02'
   closed: null
