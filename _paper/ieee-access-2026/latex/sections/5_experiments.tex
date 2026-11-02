@@ -4,8 +4,10 @@
 All sensors are converted to three-channel images as in CMNeXt~\cite{cmnext2023}. We train for 40 epochs with AdamW (learning rate $6\times10^{-4}$, weight decay 0.01), a polynomial schedule with power 0.9, and a 10-epoch warm-up, on $768\times768$ crops with an effective batch size of 16 obtained by gradient accumulation. We use the data augmentation of DGFusion~\cite{dgfusion2026} so that both models see the same augmented images. The clean-pass loss combines online hard-example cross-entropy~\cite{ohem2016} on the final logits with the set-prediction loss of the query head (weight 0.5, with deep supervision), the auxiliary sensor heads (0.5), the router (cross-entropy 0.4 and regularizer 0.01), a class-prototype contrastive term (0.1), and a variance-covariance regularizer on the per-sensor tokens (weight 1.0 for LiDAR and 0.25 for the other sensors). These terms are inherited from earlier versions of our model; we list them for reproducibility and report them in the supplementary material. The frozen teacher is the same architecture without the high-resolution path, trained for 200 epochs on clean data. Unless noted, we report the mean of three seeds and the best seed; ablations use one seed.
 
 \subsection{Comparison with Prior Fusion Models}
-Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. We list only methods evaluated under the protocol that reports test-split mIoU, because DELIVER results in the literature are reported under at least three different protocols and are not comparable across them. \ours{} reaches 57.74 test mIoU on average over three seeds and 58.61 for the best seed, 1.0 and 1.9 points above the published DGFusion result; against the official DGFusion weights evaluated with our code (56.73), the mean gap is 1.01. Its margin over MM SAM-adapter, which uses only RGB and depth, is 0.4 points on average. On the validation set, \ours{} scores 70.17 on average, 1.4 points above CAFuser-CAA. Tables~\ref{tab:muses} and~\ref{tab:mcubes} report the same model on the real MUSES and MCubeS benchmarks \todo{results pending: MUSES four-sensor model, MCubeS transfer}.
-% Sources: headline.yaml deliver.ours[0] (57.74 / best 58.61; gap +1.03 / +1.90 vs DGFusion 56.71; +0.39 / +1.26 vs MM SAM-adapter 57.35);
+Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. Part~(a) lists methods with a reported test-split result, which is the split we compare on; part~(b) lists methods that report only validation results, which come from different training and evaluation settings and are shown for completeness. \ours{} reaches 57.74 test mIoU on average over three seeds and 58.61 for the best seed, 1.0 and 1.9 points above the published DGFusion result; against the official DGFusion weights evaluated with our code (56.73), the mean gap is 1.01. Its margin over MM SAM-adapter, which uses only RGB and depth, is 0.4 points on average. On the validation set, \ours{} scores 70.17 on average, 1.6 points above CAFuser-CAA (68.6); StitchFusion with a Swin-T backbone reports 70.3 without naming the split, so our validation result is not the highest published one. Tables~\ref{tab:muses} and~\ref{tab:mcubes} report the same model on the real MUSES and MCubeS benchmarks \todo{results pending: MUSES four-sensor model, MCubeS transfer}.
+% Sources: headline.yaml deliver.ours[0] (57.74 / best 58.61). Published DGFusion test = 56.7 (DGFusion Table III p6, notes/sota_survey.md):
+%   gap +1.04 / +1.91 (text rounds to 1.0 / 1.9). Official weights with our code 56.73 -> +1.01. CAFuser-CAA val 68.6 (CAFuser Table III p6) -> +1.57.
+%   68.79 (old draft) has no source and was removed (sota_survey.md 0). StitchFusion Swin-T 70.3: StitchFusion Table 1 p6.
 % protocol clusters: repo research/novelty-and-related-work.md l.74-85 (secondary; cite original tables).
 
 
@@ -22,28 +24,43 @@ Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. We list 
 %   val 3-seed mean is not recorded in headline.yaml (only seed903 69.86) -> todo.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{DELIVER (RGB, depth, event, LiDAR), mIoU (\%).}
+\caption{DELIVER, mIoU (\%). Values of other methods are copied from the cited tables (source table and page in the supplementary notes).}
 \label{tab:deliver}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lllcc@{}}
 \toprule
 Method & Backbone & Sensors & val & test \\
 \midrule
-CMNeXt~\td & \td & RGB-D-E-L & \td & \td \\
-StitchFusion~\td & \td & RGB-D-E-L & \td & \td \\
-GeminiFusion~\td & \td & RGB-D-E-L & \td & \td \\
-CAFuser~\td & \td & RGB-D-E-L & \td & \td \\
-CAFuser-CAA~\td & \td & RGB-D-E-L & 68.79 & \td \\
-DGFusion~\td & Swin-T & RGB-D-E-L & \td & 56.71 \\
+\multicolumn{5}{@{}l}{\emph{(a) All four sensors, test split reported}} \\
+CMNeXt~\cite{cmnext2023}$^{a}$ & MiT-B2 & RGB-D-E-L & 66.3 & 53.0 \\
+StitchFusion~\cite{stitchfusion2024}$^{a}$ & MiT-B2 & RGB-D-E-L & 68.2 & 53.4 \\
+GeminiFusion~\cite{geminifusion2024}$^{a}$ & MiT-B2 & RGB-D-E-L & 66.9 & 54.5 \\
+CAFuser-CAA~\cite{cafuser2025} & Swin-T & RGB-D-E-L & 68.6 & 55.2 \\
+CAFuser~\cite{cafuser2025} & Swin-T & RGB-D-E-L & 67.8 & 55.6 \\
+DGFusion~\cite{dgfusion2026} & Swin-T & RGB-D-E-L & -- & 56.7 \\
+DGFusion, official weights$^{b}$ & Swin-T & RGB-D-E-L & -- & 56.73 \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{Fewer sensors (secondary comparison)}} \\
-MM SAM-adapter~\td & \td & RGB-D & 69.60 & 57.35 \\
+\multicolumn{5}{@{}l}{\emph{(b) All four sensors, validation split only}} \\
+MemorySAM~\cite{memorysam2025}$^{c}$ & Hiera-B+ & RGB-D-E-L & 65.38 & -- \\
+MLE-SAM~\cite{mlesam}$^{c}$ & Hiera-B+ & RGB-D-E-L & 64.08 & -- \\
+OmniSegmentor~\cite{omnisegmentor2025}$^{c}$ & MiT-B2 & RGB-D-E-L & 67.5 & -- \\
+OmniSegmentor~\cite{omnisegmentor2025}$^{c}$ & DFormer-L & RGB-D-E-L & 68.0 & -- \\
+HyperDUM~\cite{hyperdum2025} & MiT-B2 & RGB-D-E-L & 67.59 & -- \\
+MAGIC~\cite{magic2024} & MiT-B2 & RGB-D-E-L & 67.66 & -- \\
+Any2Seg~\cite{any2seg2024} & MiT-B2 & RGB-D-E-L & 68.25 & -- \\
+FuseAdapt~\cite{fuseadapt2026}$^{c}$ & DINOv2-B & RGB-D-E-L & 68.33 & -- \\
+StitchFusion~\cite{stitchfusion2024}$^{c}$ & Swin-T & RGB-D-E-L & 70.3 & -- \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{(c) Fewer sensors}} \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-E & 60.74 & 55.70 \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & 61.89 & 57.14 \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-D & 69.60 & 57.35 \\
 \midrule
 Ours (3-seed mean) & DINOv3-L & RGB-D-E-L & 70.17 & 57.74 \\
 Ours (best seed) & DINOv3-L & RGB-D-E-L & 69.59 & 58.61 \\
 \bottomrule
 \end{tabular*}
-\tabnote{\textcolor{red}{todo: original table/page per baseline; protocol (val-best checkpoint, 1024, nearest-exact label resampling); DINOv3-L is frozen.}}
+\tabnote{$^{a}$Both values as listed by CAFuser~\cite{cafuser2025} (Table~III); the test values were measured by the CAFuser authors. $^{b}$Released weights evaluated with our code and protocol (Section~\ref{sec:sensors}); same value as Table~\ref{tab:robust}(b). $^{c}$The source does not name the split; listed as validation because it is compared there against validation results. Validation results come from different training and evaluation settings and are not directly comparable. ``Best seed'' is the seed with the highest test score.}
 \end{table}
 
 % ---------------------------------------------------------------------------
@@ -52,23 +69,35 @@ Ours (best seed) & DINOv3-L & RGB-D-E-L & 69.59 & 58.61 \\
 % Ours: DRN-261019-02 (queued) -> todo. Baselines: headline.yaml benchmarks.muses.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{MUSES, official evaluation, mIoU (\%).}
+\caption{MUSES, mIoU (\%). Test values are from the official evaluation server, as reported in the cited tables.}
 \label{tab:muses}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lllcc@{}}
 \toprule
 Method & Backbone & Sensors & val & test \\
 \midrule
-CAFuser~\td & \td & \td & \td & \td \\
-DGFusion~\td & \td & \td & \td & 79.5 \\
+\multicolumn{5}{@{}l}{\emph{(a) Camera only}~\cite{muses2024}} \\
+Mask2Former~\cite{mask2former2022} & Swin-T & RGB & -- & 70.7 \\
+SegFormer~\cite{segformer2021} & MiT-B2 & RGB & -- & 72.5 \\
+SegFormer~\cite{segformer2021} & MiT-B5 & RGB & -- & 74.7 \\
+Mask2Former~\cite{mask2former2022} & Swin-L & RGB & -- & 77.1 \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{Camera only or fewer sensors (secondary comparison)}} \\
-GtA~\td & \td & RGB & \td & 82.39 \\
-MM SAM-adapter~\td & \td & RGB-L & \td & 81.07 \\
+\multicolumn{5}{@{}l}{\emph{(b) Four sensors}} \\
+CMNeXt~\cite{cmnext2023}$^{a}$ & MiT-B2 & RGB-L-R-E & -- & 72.4 \\
+GeminiFusion~\cite{geminifusion2024}$^{a}$ & MiT-B2 & RGB-L-R-E & -- & 75.3 \\
+CAFuser~\cite{cafuser2025} & Swin-T & RGB-L-R-E & -- & 78.2 \\
+CAFuser-CAA~\cite{cafuser2025} & Swin-T & RGB-L-R-E & -- & 78.5 \\
+DGFusion~\cite{dgfusion2026} & Swin-T & RGB-L-R-E & -- & 79.5 \\
 \midrule
-Ours & DINOv3-L & RGB-E-L-R & \td & \td \\
+\multicolumn{5}{@{}l}{\emph{(c) Fewer sensors}} \\
+FuseAdapt~\cite{fuseadapt2026} & DINOv2-S & RGB-L-E & 77.28 & -- \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-E & -- & 79.92 \\
+MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & -- & 81.07 \\
+\midrule
+Ours & DINOv3-L & RGB-L-R-E & \td & \td \\
 \bottomrule
 \end{tabular*}
+\tabnote{R: radar. $^{a}$As measured by the CAFuser authors~\cite{cafuser2025} (Table~II); DGFusion~\cite{dgfusion2026} lists 72.1 for CMNeXt.}
 \end{table}
 
 % ---------------------------------------------------------------------------
@@ -79,16 +108,30 @@ Ours & DINOv3-L & RGB-E-L-R & \td & \td \\
 \caption{MCubeS (RGB, AoLP, DoLP, NIR), test mIoU (\%). Checkpoints are selected on the test split (Section~\ref{sec:sensors}).}
 \label{tab:mcubes}
 \centering\tabsetup
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llc@{}}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lllc@{}}
 \toprule
-Method & Backbone & test \\
+Method & Backbone & Sensors & test \\
 \midrule
-Mul-VMamba~\td & \td & 54.65 \\
-StitchFusion~\td & \td & 55.9 \\
+MCubeSNet~\cite{mcubes2022} & ResNet-101 & RGB-A-D-N & 42.86 \\
+ShareCMP~\cite{sharecmp2023} & MiT-B2 & RGB-A-D & 50.99 \\
+MLE-SAM~\cite{mlesam} & Hiera-B+ & RGB-A-D-N & 51.02 \\
+CMNeXt~\cite{cmnext2023} & MiT-B2 & RGB-A-D-N & 51.54 \\
+U3M~\cite{u3m2024} & SegFormer & RGB-A-D-N & 51.69 \\
+Any2Seg~\cite{any2seg2024} & MiT-B2 & RGB-A-D-N & 51.91 \\
+Cao et al.~\cite{bpcf2026} & MiT-B4 & RGB-A-D-N & 52.22 \\
+StitchFusion~\cite{stitchfusion2024} & Swin-T & RGB-A-D-N & 52.3 \\
+MemorySAM~\cite{memorysam2025} & Hiera-B+ & RGB-A-D-N & 52.88 \\
+MAGIC~\cite{magic2024} & MiT-B2 & RGB-A-D-N & 53.01 \\
+MMSFormer~\cite{mmsformer2023} & MiT & RGB-A-D-N & 53.11 \\
+StitchFusion~\cite{stitchfusion2024} & MiT-B4 & RGB-A-D-N & 53.92 \\
+StitchFusion~\cite{stitchfusion2024} & Swin-L & RGB-A-D-N & 55.9 \\
+FuseAdapt~\cite{fuseadapt2026} & DINOv2-B & RGB-A-D-N & 57.62 \\
 \midrule
-Ours & DINOv3-L & \td \\
+Ours w/o C2D2 & DINOv3-L & RGB-A-D-N & \td \\
+Ours & DINOv3-L & RGB-A-D-N & \td \\
 \bottomrule
 \end{tabular*}
+\tabnote{A: AoLP, D: DoLP, N: NIR. Most sources do not name the split; MCubeS results are conventionally reported on the 102 test images.}
 \end{table}
 
 \subsection{Robustness to Missing and Degraded Sensors}
