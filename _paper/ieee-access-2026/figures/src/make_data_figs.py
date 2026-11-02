@@ -2,7 +2,7 @@
 
 What this script reads (no number is typed into this file):
   figures/source_data/fig_dependence.csv    -> Fig. dependence (drop in mIoU when depth is removed, per condition)
-  figures/source_data/fig_robust_noise.csv  -> Fig. robust (a)  (mIoU vs salt-and-pepper density)
+  figures/source_data/fig_robust_rmm.csv    -> Fig. robust (a)  (mIoU vs missing ratio r, benchmark RMM, DELIVER val)
   figures/source_data/fig_robust_single.csv -> Fig. robust (b)  (mIoU when only one sensor is left)
   <repo>/.claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv
                                      -> Fig. thin (per-class gain of the high-resolution path, paired by seed)
@@ -17,7 +17,8 @@ What it writes (default out dir = latex/figures):
 How each figure is drawn:
   fig_dependence: one line per model over the six DELIVER conditions; y = drop in mIoU (points). Missing
                   conditions are left as gaps. Legend placed in the empty lower band.
-  fig_robust:     (a) one line per model over S&P density 0/.05/.10/.20, y = mIoU.
+  fig_robust:     (a) one line per model over the RMM missing ratio r = 0 (clean)/.25/.50/.75, y = mIoU
+                      (arXiv 2503.18445 definition; S&P-only noise removed 2026-11-02, user).
                   (b) grouped bars, one group per remaining sensor, one bar per model.
   fig_thin:       one bar per class = mean of the three seed differences (d821, d902, d903), black dots =
                   the three single-seed differences; classes sorted by the mean; thin classes in bold.
@@ -69,6 +70,9 @@ STYLE = {
     "DGFusion (reproduced)": dict(color=BASE, ls=(0, (1.2, 1.2)), marker="s", mfc="white"),
     "DGFusion (retrained)":  dict(color=BASE, ls="-", marker="o", mfc=BASE),
     "CAFuser (retrained)":   dict(color=FG, ls=(0, (3, 1.5)), marker="s", mfc="white"),
+    "MAGIC":                 dict(color=BASE, ls=(0, (3, 1.5)), marker="v", mfc="white"),
+    "MAGIC++":               dict(color=BASE, ls=(0, (5, 1.5, 1, 1.5)), marker="^", mfc="white"),
+    "StitchFusion":          dict(color=FG, ls=(0, (1.2, 1.2)), marker="P", mfc="white"),
     "Ours w/o C2D2":         dict(color=TEAL_LIGHT, ls="-", marker="^", mfc=TEAL_LIGHT),
     "Ours w/o high-res":     dict(color=TEAL_MID, ls="-", marker="D", mfc=TEAL_MID),
     "Ours":                  dict(color=TEAL_DARK, ls="-", marker="o", mfc=TEAL_DARK, lw=1.8),
@@ -127,21 +131,21 @@ def fig_dependence(out):
 
 
 def fig_robust(out):
-    src_a = DATA / "fig_robust_noise.csv"
+    src_a = DATA / "fig_robust_rmm.csv"
     src_b = DATA / "fig_robust_single.csv"
-    noise = read_long(src_a, "model", "sp_density", "miou")
+    rmm = read_long(src_a, "model", "missing_ratio", "miou")
     single = read_long(src_b, "model", "sensor_left", "miou")
-    fig, (a, b) = plt.subplots(1, 2, figsize=(COL_W, 2.2), gridspec_kw=dict(width_ratios=[1, 1.15]))
-    for name, by_d in noise.items():
+    fig, (a, b) = plt.subplots(1, 2, figsize=(COL_W, 2.45), gridspec_kw=dict(width_ratios=[1, 1.15]))
+    for name, by_r in rmm.items():
         st = dict(STYLE[name]); lw = st.pop("lw", 1.2)
-        xs = [float(k) for k in by_d]
-        a.plot(xs, list(by_d.values()), lw=lw, markeredgecolor=st["color"], **st, zorder=3)
-    ticks = sorted({float(k) for d in noise.values() for k in d})
-    a.set_xticks(ticks, ["0" if t == 0 else f"{t:.2f}".lstrip("0") for t in ticks])
-    a.set_xlabel("Salt-and-pepper density")
+        xs = [float(k) for k in by_r]
+        a.plot(xs, list(by_r.values()), lw=lw, markeredgecolor=st["color"], **st, zorder=3)
+    ticks = sorted({float(k) for d in rmm.values() for k in d})
+    a.set_xticks(ticks, ["clean" if t == 0 else f"{t:.2f}".lstrip("0") for t in ticks])
+    a.set_xlabel("Missing ratio $r$ (RMM)")
     a.set_ylabel("mIoU (%)")
-    a.set_ylim(0, 62)
-    a.set_xlim(-0.012, 0.212)
+    a.set_ylim(0, 75)
+    a.set_xlim(-0.04, 0.79)
     label_axes(a, "a")
 
     names = list(single.keys())
@@ -158,20 +162,21 @@ def fig_robust(out):
             face = "white" if st["mfc"] == "white" else st["color"]
             b.bar(xx, v, w * 0.9, color=face, edgecolor=st["color"], lw=0.6, zorder=2)
     b.set_xticks(xs, [f"{s}\nonly" for s in SENSORS])
-    b.set_ylim(0, 62)
+    b.set_ylim(0, 75)
     b.set_yticklabels([])
     b.tick_params(axis="y", left=False)
     label_axes(b, "b")
+    legend_names = list(OrderedDict.fromkeys([n for n in rmm if n not in single] + names))
     handles = [mpl.lines.Line2D([], [], color=STYLE[n]["color"], ls=STYLE[n]["ls"], marker=STYLE[n]["marker"],
                                 mfc=STYLE[n]["mfc"], mec=STYLE[n]["color"], lw=STYLE[n].get("lw", 1.2))
-               for n in names]
-    labels = list(names)
+               for n in legend_names]
+    labels = list(legend_names)
     if any(v is None for d in single.values() for v in d.values()):
         handles.append(mpl.patches.Patch(facecolor="white", edgecolor=DANGER, lw=0.6, ls=(0, (1.5, 1))))
         labels.append("Ours, pending")
     fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.02),
                handlelength=2.2, columnspacing=1.2)
-    fig.tight_layout(pad=0.3, rect=(0, 0.2, 1, 1))
+    fig.tight_layout(pad=0.3, rect=(0, 0.27, 1, 1))
     save(fig, out / "fig_robust", [src_a, src_b])
 
 
