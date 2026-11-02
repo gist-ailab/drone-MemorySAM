@@ -24,6 +24,17 @@ latexmk -pdf -interaction=nonstopmode -quiet root.tex > /dev/null 2>&1 || true
 errs=$(grep -c '^!' root.log || true)
 cp root.pdf "$HERE/build/root.pdf"
 echo "errors: $errs  pages: $(pdfinfo root.pdf | awk '/Pages/{print $2}')  -> build/root.pdf"
+# When built inside a git worktree (.claude/worktrees/<name>/...), mirror the PDF to the same path in the
+# main checkout so the user always opens one file (build/ is untracked, so this never touches git).
+# Override with PAPER_PDF_MIRROR=<path>, or PAPER_PDF_MIRROR=none to skip.
+case "$HERE" in
+  */.claude/worktrees/*)
+    main="${HERE%%/.claude/worktrees/*}/${HERE#*/.claude/worktrees/*/}"
+    mirror="${PAPER_PDF_MIRROR:-$main/build/root.pdf}"
+    if [ "$mirror" != "none" ] && [ -d "$(dirname "$(dirname "$mirror")")" ]; then
+      mkdir -p "$(dirname "$mirror")" && cp root.pdf "$mirror" && echo "mirror -> $mirror"
+    fi ;;
+esac
 if [ "$1" = "snapshot" ]; then
   out="$HERE/drafts/IEEE-Access-draft_$(date +%F).pdf"
   cp root.pdf "$out"
