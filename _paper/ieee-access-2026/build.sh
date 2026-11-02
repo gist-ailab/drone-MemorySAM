@@ -17,7 +17,8 @@ if [ -s "$HERE/build/fig/fig_arch_standalone.pdf" ]; then
 else
   echo "Fig. 1 standalone build failed: see build/fig/fig_arch_standalone.log"; exit 1
 fi
-# 2) manuscript
+# 2) manuscript (best value per column bold, second underlined: figures/src/mark_best.py, idempotent)
+python3 "$HERE/figures/src/mark_best.py" > /dev/null
 rsync -a --delete --exclude 'root.pdf' "$HERE/latex/" "$HERE/build/src/"
 cd "$HERE/build/src"
 latexmk -pdf -interaction=nonstopmode -quiet root.tex > /dev/null 2>&1 || true
