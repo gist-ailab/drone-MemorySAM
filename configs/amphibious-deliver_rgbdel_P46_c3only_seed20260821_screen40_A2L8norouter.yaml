@@ -215,6 +215,7 @@ TRAIN:
     MISSING_FRAC      : 0.2
     SEVERITY_SCHEDULE : [[0, 0.3], [10, 0.6], [20, 1.0]]
     TEACHER_CKPT      : '/home/ailab/workspace/jemo_maeng/ckpts/drone-MemorySAM/teacher/E1_s1_epoch140.pth'   # [amphibious-demo 파생] md5 c648f925
+    TEACHER_CFG       : configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1.yaml  # [L8 패치, L1/L2/L4와 동일 사유] 학생 cfg는 ROUTER.ENABLE false라 교사를 학생 cfg로 구성하면 router 미생성 → 실제 체크포인트(router 포함)와 unexpected key 불일치. E1 config로 교사 구성(교사 아키텍처 오염 방지).
     KD_W              : 0.5
     KD_T              : 2.0
     QUALITY_W         : 0.1
