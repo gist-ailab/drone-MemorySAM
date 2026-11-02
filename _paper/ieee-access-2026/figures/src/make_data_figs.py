@@ -15,8 +15,9 @@ What it writes (default out dir = latex/figures):
   input files with their md5, the design source, and this script.
 
 How each figure is drawn:
-  fig_dependence: one line per model over the six DELIVER conditions; y = drop in mIoU (points). Missing
-                  conditions are left as gaps. Legend placed in the empty lower band.
+  fig_dependence: one line per model over the six DELIVER conditions; y = change in mIoU when depth is removed
+                  (= minus the CSV drop, so higher is better and 0 = no dependence; user 2026-11-02). Missing
+                  conditions are left as gaps. Legend placed in the empty band between the two groups of lines.
   fig_robust:     (a) one line per model over the RMM missing ratio r = 0 (clean)/.25/.50/.75, y = mIoU
                       (arXiv 2503.18445 definition; S&P-only noise removed 2026-11-02, user).
                   (b) grouped bars, one group per remaining sensor, one bar per model.
@@ -115,17 +116,18 @@ def fig_dependence(out):
     x = np.arange(len(CONDITIONS))
     for name, by_cond in dep.items():
         st = dict(STYLE[name]); lw = st.pop("lw", 1.2)
-        v = np.array([np.nan if by_cond.get(c) is None else by_cond[c] for c in CONDITIONS], float)
+        v = -np.array([np.nan if by_cond.get(c) is None else by_cond[c] for c in CONDITIONS], float)
         if np.all(np.isnan(v)):
             continue
         ax.plot(x, v, lw=lw, markeredgecolor=st["color"], label=name, **st, zorder=3)
     ax.set_xticks(x, CONDITIONS)
-    ax.set_ylabel("mIoU drop without depth (points)")
-    ax.set_ylim(0, 42)
+    ax.axhline(0, color=MUTED, lw=0.6, zorder=1)
+    ax.set_ylabel("Change in mIoU\nwithout depth (points)")
+    ax.set_ylim(-42, 3)
     h, l = ax.get_legend_handles_labels()
     l = [s.replace("DGFusion (reproduced)", "DGFusion (reproduced), test")
           .replace("Ours w/o high-res", "Ours, C2D2 (w/o high-res)") for s in l]
-    ax.legend(h, l, loc="lower left", bbox_to_anchor=(0.2, 0.04), handlelength=2.4, borderaxespad=0.2)
+    ax.legend(h, l, loc="center left", bbox_to_anchor=(0.01, 0.62), handlelength=2.4, borderaxespad=0.2)
     fig.tight_layout(pad=0.3)
     save(fig, out / "fig_dependence", [src])
 

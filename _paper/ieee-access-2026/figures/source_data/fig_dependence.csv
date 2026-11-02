@@ -11,6 +11,9 @@ Ours w/o C2D2,Rain,23.7,val,.claude_logs/experiments/judgment-ledger.md,same row
 Ours w/o C2D2,Fog,26.8,val,.claude_logs/experiments/judgment-ledger.md,same row
 Ours w/o C2D2,Night,28.7,val,.claude_logs/experiments/judgment-ledger.md,same row
 Ours w/o C2D2,Low exp.,38.7,val,.claude_logs/experiments/judgment-ledger.md,same row
-Ours w/o high-res,Sun,3.9,val,.claude_logs/experiments/judgment-ledger.md,"same row, 'Q2 시드821 −depth: sun −3.9 · night −10.1 · 저노출 −13.4' (cloud/rain/fog not reported)"
-Ours w/o high-res,Night,10.1,val,.claude_logs/experiments/judgment-ledger.md,same row
-Ours w/o high-res,Low exp.,13.4,val,.claude_logs/experiments/judgment-ledger.md,same row
+Ours w/o high-res,Sun,3.87,val,.claude_logs/experiments/judgment-ledger.md,"row 2026-09-29 'Q2 s821 ... DELIVER val 2005, oracle_cond' (line 102): '−depth: sun −3.87 · cloud −3.42 · fog −3.79 · rain −4.44 · night −10.07 · 저노출 −13.41'"
+Ours w/o high-res,Cloud,3.42,val,.claude_logs/experiments/judgment-ledger.md,"same row (line 102)"
+Ours w/o high-res,Rain,4.44,val,.claude_logs/experiments/judgment-ledger.md,"same row (line 102)"
+Ours w/o high-res,Fog,3.79,val,.claude_logs/experiments/judgment-ledger.md,"same row (line 102)"
+Ours w/o high-res,Night,10.07,val,.claude_logs/experiments/judgment-ledger.md,"same row (line 102)"
+Ours w/o high-res,Low exp.,13.41,val,.claude_logs/experiments/judgment-ledger.md,"same row (line 102)"
