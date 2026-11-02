@@ -47,5 +47,16 @@ With the high-resolution path, the recall of TrafficLight rises (0.80 to 0.85) b
 \label{fig:failure}
 \end{figure}
 
+\subsection{Scenes Where a Baseline Is Better}
+Fig.~\ref{fig:reverse} applies the selection rule of Fig.~\ref{fig:adverse} in the opposite direction: for each condition it shows the test scene where another model leads ours by the largest per-image mIoU. In five of the six conditions that model is the official DGFusion, and the gap is 8.4 to 10.1 points, larger than any gap in our favour among the selected scenes (at most 5.9 points). These scenes are not chosen to be typical; they bound how much a single image can favour a baseline when all sensors are present \todo{describe the error regions once read; check whether the losses share a class (e.g., sidewalk, vegetation boundaries)}.
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_reverse_deliver_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Scenes where another model is most ahead of ours (DELIVER test, all sensors present): for each condition, the image with the most negative per-image mIoU difference between our model and the best of the other three models, with no two scenes from the same sequence. Faded pixels agree with the ground truth; numbers are per-image mIoU (\%).}
+\label{fig:reverse}
+\end{figure*}
+
 \subsection{Limitations}
 First, DELIVER is synthetic, and its complete depth is the reason the shortcut exists; the size of the effect on real depth sensors remains to be measured, and MUSES does not contain depth. Second, all our runs use a 40-epoch schedule and three seeds, while the baselines are single runs, so differences below about one point should not be over-read. Third, the high-resolution path makes the model slightly more sensitive to the strongest pixel noise than the same model without it (47.85 vs.\ 48.79, Table~\ref{tab:robust}); a likely cause is that its convolutional stem sees raw pixels, which we have not yet verified. Fourth, a single shared LoRA reached the same clean accuracy as sensor-specific adapters in one seed (Table~\ref{tab:ablation}); \todo{update once the shared-LoRA robustness test decides which variant is the paper model}.

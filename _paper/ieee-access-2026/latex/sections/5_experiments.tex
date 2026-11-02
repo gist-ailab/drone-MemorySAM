@@ -155,7 +155,7 @@ Ours & 57.74 & 48.66 & 53.11 & 51.36 & 47.85 \\
 \end{figure}
 
 \subsection{Qualitative Results}
-Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 4.4 to 5.9 points of per-image mIoU on the four scenes shown, while the opposite selection (the scene of each of the six conditions where another model leads ours the most) gives gaps of 8.4 to 10.1 points; per-image differences are therefore modest in both directions when every sensor works \todo{describe the visible error regions; sensor-failure scenes (Fig.~\ref{fig:failure_scenarios}) pending}.
+Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.4 to 5.9 points of per-image mIoU on the six scenes shown (2.9 to 5.9 points over the 18 scenes of Appendix~\ref{app:qual}), while the opposite selection, the scene of each condition where another model leads ours the most (Fig.~\ref{fig:reverse}), gives gaps of 8.4 to 10.1 points; per-image differences are therefore modest in both directions when every sensor works \todo{describe the visible error regions; sensor-failure scenes (Fig.~\ref{fig:failure_scenarios}) pending}.
 
 % Fig. sensor-failure scenarios (main qualitative figure). Needs per-image predictions of
 % DGFusion (official), DGFusion/CAFuser (retrained) and ours under missing/noisy sensors
@@ -170,12 +170,20 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 % Fig. adverse conditions with all sensors present, DELIVER (synthetic) + MUSES (real).
 % DELIVER dumps exist: NAS analysis_logs/native_axis_baseline_20261016/{dgfusion,cafuserb}_test1024,
 % a2_test1024_dump_20261016/s821 -> analysis request inbox 20261027-182054 item 1. MUSES: item 3.
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_adverse_deliver_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Six conditions on the DELIVER test split with all four sensors present (sun and cloud included for reference). For each condition, the scene shown is the one where our model leads the strongest of the other three models by the largest per-image mIoU; no two scenes come from the same sequence. In the prediction tiles, pixels that agree with the ground truth are faded, so the coloured regions are errors. The number under each tile is the per-image mIoU (\%); colours follow the key below the grid. More scenes are in Appendix~\ref{app:qual}.}
+\label{fig:adverse}
+\end{figure*}
+
+% Fig. MUSES real adverse conditions (same layout as fig:adverse; analysis inbox 20261030-122055 P2).
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/fig_adverse_deliver_err.pdf}\\[2pt]
-\phbox{2.0cm}{MUSES rows (real night / snow / fog), same columns; waits for the MUSES 4-sensor model}
-\caption{Adverse conditions on the DELIVER test split with all four sensors present. For each condition, the scene shown is the one where our model leads the strongest of the other three models by the largest per-image mIoU; no two scenes come from the same sequence. In the prediction tiles, pixels that agree with the ground truth are faded, so the coloured regions are errors. The number under each tile is the per-image mIoU (\%). \todo{MUSES rows}}
-\label{fig:adverse}
+\phbox{4.6cm}{MUSES val, all sensors: real night / snow / fog / rain; columns = RGB, ground truth, DGFusion (official), CAFuser (official), ours; same selection rule; waits for the MUSES 4-sensor model}
+\caption{\todo{MUSES counterpart of Fig.~\ref{fig:adverse}; same rule on the 250 validation images (test labels are not public)}}
+\label{fig:adverse_muses}
 \end{figure*}
 
 \subsection{Accuracy per Condition}

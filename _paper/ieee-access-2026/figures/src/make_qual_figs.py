@@ -15,11 +15,14 @@ What it writes (default out dir = latex/figures):
   fig_adverse_deliver.pdf  + fig_adverse_deliver.json sidecar (input md5s, chosen scenes, design source).
 
 How the figure is drawn:
-  rows    = conditions night, fog, rain, low exposure; in each, the rank-1 "top" scene of the table.
+  --set adverse : rows = the six conditions, rank-1 "top" scene of each   -> fig_adverse_deliver[_err]
+  --set reverse : rows = the six conditions, rank-1 "reverse" scene        -> fig_reverse_deliver[_err]
+  --set supp    : ranks 2 and 3 of each condition, 4 rows per page        -> fig_supp_deliver_{1,2,3}[_err]
+  --set legend  : colour key of the 25 classes                            -> fig_class_legend_deliver
   columns = RGB input, ground truth, DGFusion (official), CAFuser (retrained), Ours w/o high-res, Ours.
   Labels are coloured with the dataset palette; ignore pixels are black. With --errors, a prediction tile
   keeps its colour only where it disagrees with the ground truth (GT != 255) and is washed to 80 % white
-  where it is correct, so the error regions stand out; output = fig_adverse_deliver_err.pdf. The number under each prediction
+  where it is correct, so the error regions stand out; output names get the suffix _err. The number under each prediction
   is that model's image mIoU for the scene, read from the CSV (x100, one decimal). Label maps are resized
   with nearest neighbour, the RGB with Lanczos, to 420 px per tile before embedding.
 
@@ -52,7 +55,8 @@ mpl.rcParams.update({
     "pdf.fonttype": 42, "font.size": 7,
 })
 FG, MUTED = "#161616", "#525252"          # carbon@11.84.0 text roles
-ROWS = [("night", "Night"), ("fog", "Fog"), ("rain", "Rain"), ("low_exposure", "Low exposure")]
+CONDS = [("sun", "Sun"), ("cloud", "Cloud"), ("rain", "Rain"), ("fog", "Fog"), ("night", "Night"),
+         ("low_exposure", "Low exp.")]
 COLS = [("rgb", "RGB input"), ("gt", "Ground truth"),
         ("DGFofficial", "DGFusion (official)"), ("CAFb", "CAFuser (retrained)"),
         ("Q2s821", "Ours w/o high-res"), ("A2s821", "Ours")]
@@ -96,43 +100,33 @@ def tile_rgb(path):
     return np.array(Image.open(path).convert("RGB").resize((TILE_PX, TILE_PX), Image.LANCZOS))
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dump", type=Path, default=DUMP)
-    ap.add_argument("--out", type=Path, default=PAPER / "latex" / "figures")
-    ap.add_argument("--errors", action="store_true", help="wash out correct pixels (see docstring)")
-    a = ap.parse_args()
-    rows = [r for r in csv.DictReader(l for l in open(SCENES, encoding="utf-8") if not l.startswith("#"))]
-    pick = {g: next(r for r in rows if r["group"] == g and r["kind"] == "top" and r["rank"] == "1")
-            for g, _ in ROWS}
-    lut = palette()
-
-    nr, nc = len(ROWS), len(COLS)
-    gap_w, gap_h, lab_w, head_h, foot_h = 0.035, 0.15, 0.17, 0.16, 0.0
+def draw(sel, stem, dump, lut, errors):
+    """sel = list of (csv row, row label). One row per scene, columns = COLS."""
+    nr, nc = len(sel), len(COLS)
+    gap_w, gap_h, lab_w, head_h = 0.035, 0.15, 0.17, 0.16
     tile = (TEXT_W - lab_w - gap_w * (nc - 1)) / nc
     fig_h = head_h + nr * (tile + gap_h)
     fig = plt.figure(figsize=(TEXT_W, fig_h))
     used = {}
-    for i, (g, gname) in enumerate(ROWS):
-        r = pick[g]
+    for i, (r, rname) in enumerate(sel):
         f = scene_file(r["scene_id"])
         y0 = fig_h - head_h - i * (tile + gap_h) - tile
         for j, (key, cname) in enumerate(COLS):
             x0 = lab_w + j * (tile + gap_w)
             ax = fig.add_axes([x0 / TEXT_W, y0 / fig_h, tile / TEXT_W, tile / fig_h])
             if key == "rgb":
-                p = a.dump / "input" / f.replace(".png", "__img.png")
+                p = dump / "input" / f.replace(".png", "__img.png")
                 ax.imshow(tile_rgb(p), interpolation="none")
             else:
-                p = a.dump / key / f
-                if a.errors and key != "gt":
-                    ax.imshow(tile_error(p, a.dump / "gt" / f, lut), interpolation="none")
+                p = dump / key / f
+                if errors and key != "gt":
+                    ax.imshow(tile_error(p, dump / "gt" / f, lut), interpolation="none")
                 else:
                     ax.imshow(tile_label(p, lut), interpolation="none")
             used[str(p)] = md5(p)
             ax.set_xticks([]); ax.set_yticks([])
-            for s in ax.spines.values():
-                s.set_linewidth(0.4); s.set_color(MUTED)
+            for sp in ax.spines.values():
+                sp.set_linewidth(0.4); sp.set_color(MUTED)
             if i == 0:
                 ax.set_title(cname, fontsize=7, color=FG, pad=3,
                              fontweight="bold" if key == "A2s821" else "normal")
@@ -140,20 +134,67 @@ def main():
                 v = 100 * float(r[f"mIoU_{key}"])
                 ax.text(0.5, -0.025, f"{v:.1f}", transform=ax.transAxes, ha="center", va="top",
                         fontsize=6.5, color=FG, fontweight="bold" if key == "A2s821" else "normal")
-        fig.text(0.02 / TEXT_W, (y0 + tile / 2) / fig_h, gname, rotation=90, ha="left", va="center",
+        fig.text(0.02 / TEXT_W, (y0 + tile / 2) / fig_h, rname, rotation=90, ha="left", va="center",
                  fontsize=7, color=FG)
-    a.out.mkdir(parents=True, exist_ok=True)
-    stem = a.out / ("fig_adverse_deliver_err" if a.errors else "fig_adverse_deliver")
     fig.savefig(f"{stem}.pdf", dpi=300, pad_inches=0.01)
     plt.close(fig)
     meta = {"design_source": "carbon@11.84.0 (text colours); DELIVER dataset palette for labels",
-            "script": "figures/src/make_qual_figs.py",
+            "script": "figures/src/make_qual_figs.py", "errors_mode": errors,
             "scene_table": {str(SCENES.relative_to(REPO)): md5(SCENES)},
             "palette_source": {str(DELIVER_PY.relative_to(REPO)): md5(DELIVER_PY)},
-            "manifest": {str(a.dump / "manifest.csv"): md5(a.dump / "manifest.csv")},
-            "scenes": {g: pick[g]["scene_id"] for g, _ in ROWS},
+            "manifest": {str(dump / "manifest.csv"): md5(dump / "manifest.csv")},
+            "scenes": [[rname, r["scene_id"], r["kind"], r["rank"], r["delta"]] for r, rname in sel],
             "tiles": used}
     json.dump(meta, open(f"{stem}.json", "w"), indent=1, ensure_ascii=False)
+
+
+def draw_legend(stem, lut):
+    """Class colour key: the 25 DELIVER classes in train-ID order, names parsed from deliver.py."""
+    src = DELIVER_PY.read_text(encoding="utf-8")
+    block = src[src.index("CLASSES = ["):]
+    names = re.findall(r'"([^"]+)"', block[:block.index("]") + 1])
+    assert len(names) == 25, len(names)
+    ncol = 9
+    nrow = int(np.ceil(len(names) / ncol))
+    fig = plt.figure(figsize=(TEXT_W, 0.14 * nrow + 0.04))
+    cw = TEXT_W / ncol
+    for k, n in enumerate(names):
+        rr, cc = divmod(k, ncol)
+        y = 1 - (rr + 0.5) / nrow
+        fig.patches.append(mpl.patches.Rectangle(((cc * cw + 0.05) / TEXT_W, y - 0.25 / nrow), 0.12 / TEXT_W,
+                                                 0.5 / nrow, transform=fig.transFigure,
+                                                 facecolor=lut[k] / 255.0, edgecolor=MUTED, lw=0.3))
+        fig.text((cc * cw + 0.21) / TEXT_W, y, n, va="center", ha="left", fontsize=6.3, color=FG)
+    fig.savefig(f"{stem}.pdf", pad_inches=0.01)
+    plt.close(fig)
+    json.dump({"script": "figures/src/make_qual_figs.py",
+               "palette_source": {str(DELIVER_PY.relative_to(REPO)): md5(DELIVER_PY)}},
+              open(f"{stem}.json", "w"), indent=1)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dump", type=Path, default=DUMP)
+    ap.add_argument("--out", type=Path, default=PAPER / "latex" / "figures")
+    ap.add_argument("--errors", action="store_true", help="wash out correct pixels (see docstring)")
+    ap.add_argument("--set", default="all", choices=["adverse", "reverse", "supp", "legend", "all"])
+    a = ap.parse_args()
+    rows = [r for r in csv.DictReader(l for l in open(SCENES, encoding="utf-8") if not l.startswith("#"))]
+    get = lambda g, kind, rank: next(r for r in rows if r["group"] == g and r["kind"] == kind and r["rank"] == rank)
+    lut = palette()
+    a.out.mkdir(parents=True, exist_ok=True)
+    sfx = "_err" if a.errors else ""
+    if a.set in ("adverse", "all"):      # main text: rank-1 scene of each of the six conditions
+        draw([(get(g, "top", "1"), n) for g, n in CONDS], a.out / f"fig_adverse_deliver{sfx}", a.dump, lut, a.errors)
+    if a.set in ("reverse", "all"):      # limitations: the scene of each condition where another model leads most
+        draw([(get(g, "reverse", "1"), n) for g, n in CONDS], a.out / f"fig_reverse_deliver{sfx}", a.dump, lut,
+             a.errors)
+    if a.set in ("supp", "all"):         # appendix: ranks 2 and 3 of every condition, two conditions per page
+        for k in range(3):
+            sel = [(get(g, "top", rk), f"{n} #{rk}") for g, n in CONDS[2 * k:2 * k + 2] for rk in ("2", "3")]
+            draw(sel, a.out / f"fig_supp_deliver_{k + 1}{sfx}", a.dump, lut, a.errors)
+    if a.set in ("legend", "all"):
+        draw_legend(a.out / "fig_class_legend_deliver", lut)
 
 
 if __name__ == "__main__":

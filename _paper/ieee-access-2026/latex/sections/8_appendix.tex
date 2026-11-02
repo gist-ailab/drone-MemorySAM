@@ -1,0 +1,30 @@
+% Appendix: additional qualitative results (user 2026-11-02: no page limit, up to ~18 pages).
+% Figures: figures/src/make_qual_figs.py --errors --set supp ; scenes = figures/source_data/qual_scenes_deliver.csv
+\appendices
+\section{Additional Qualitative Results}
+\label{app:qual}
+Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are all 18 scenes the rule selects on the DELIVER test split with all sensors present. \todo{MUSES and MCubeS scenes; sensor-failure scenes}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_1_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Ranks 2 and 3 for sun and cloud (DELIVER test, all sensors). Faded pixels agree with the ground truth; numbers are per-image mIoU (\%).}
+\label{fig:supp1}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_2_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Ranks 2 and 3 for rain and fog, shown as in Fig.~\ref{fig:supp1}.}
+\label{fig:supp2}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_3_err.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Ranks 2 and 3 for night and low exposure, shown as in Fig.~\ref{fig:supp1}.}
+\label{fig:supp3}
+\end{figure*}
