@@ -49,7 +49,10 @@ mpl.rcParams.update({
     "font.sans-serif": ["TeX Gyre Heros", "Nimbus Sans", "Liberation Sans", "DejaVu Sans"],
     "pdf.fonttype": 42, "font.size": 7,
 })
-FG, MUTED = "#161616", "#525252"          # carbon@11.84.0 text roles
+# carbon@11.84.0 tokens, same tone as the data figures (make_data_figs.py, user choice 2026-11-02):
+FG, MUTED = "#3c3838", "#565151"          # warm-gray-80 (text) / warm-gray-70
+EDGE = "#8f8b8b"                          # warm-gray-50: tile borders, legend swatch edges
+OURS = "#004144"                          # teal-80: our model's column title, border and numbers
 
 
 def md5(p):
@@ -133,17 +136,18 @@ def draw(name, spec, reg, out):
                 ax.imshow(tile_error(p, gt, lut) if spec["errors"] else tile_label(p, lut), interpolation="none")
             used[str(p)] = md5(p)
             ax.set_xticks([]); ax.set_yticks([])
-            for sp in ax.spines.values():
-                sp.set_linewidth(0.4); sp.set_color(MUTED)
             ours = key == ds["ours"]
+            for sp in ax.spines.values():
+                sp.set_linewidth(0.9 if ours else 0.4); sp.set_color(OURS if ours else EDGE)
             if i == 0:
                 title = ({"rgb": "RGB input", "input": "Affected input", "gt": "Ground truth"}.get(key)
                          or ds["models"][key]["label"])
-                ax.set_title(title, fontsize=7, color=FG, pad=3, fontweight="bold" if ours else "normal")
+                ax.set_title(title, fontsize=7, color=OURS if ours else FG, pad=3,
+                             fontweight="bold" if ours else "normal")
             if key not in ("rgb", "input", "gt"):
                 v = 100 * float(per[iid][f"mIoU_{key}"])
                 ax.text(0.5, -0.025, f"{v:.1f}", transform=ax.transAxes, ha="center", va="top",
-                        fontsize=6.5, color=FG, fontweight="bold" if ours else "normal")
+                        fontsize=6.5, color=OURS if ours else FG, fontweight="bold" if ours else "normal")
         if "input" in cols and spec["rows"][i].get("input", "rgb") != "rgb":
             rname = f"{rname} ({spec['rows'][i]['input']})"
         fig.text(0.02 / TEXT_W, (y0 + tile / 2) / fig_h, rname, rotation=90, ha="left", va="center",
@@ -151,7 +155,7 @@ def draw(name, spec, reg, out):
     stem = out / name
     fig.savefig(f"{stem}.pdf", dpi=300, pad_inches=0.01)
     plt.close(fig)
-    json.dump({"design_source": "carbon@11.84.0 (text colours); dataset palette for labels",
+    json.dump({"design_source": "carbon@11.84.0 (warm-gray-50/70/80 text and borders, teal-80 for ours); dataset palette for labels",
                "script": "figures/src/make_qual_figs.py", "errors_mode": spec["errors"], "columns": cols,
                "inputs_md5": {"selection.yaml": md5(QB / "selection.yaml"), "registry.yaml": md5(QB / "registry.yaml"),
                               f"{dname}_candidates.csv": md5(SRC / f"{dname}_candidates.csv"),
@@ -175,7 +179,7 @@ def draw_legend(dname, reg, out):
         y = 1 - (rr + 0.5) / nrow
         fig.patches.append(mpl.patches.Rectangle(((cc * cw + 0.05) / TEXT_W, y - 0.25 / nrow), 0.12 / TEXT_W,
                                                  0.5 / nrow, transform=fig.transFigure,
-                                                 facecolor=lut[k] / 255.0, edgecolor=MUTED, lw=0.3))
+                                                 facecolor=lut[k] / 255.0, edgecolor=EDGE, lw=0.3))
         fig.text((cc * cw + 0.21) / TEXT_W, y, nm, va="center", ha="left", fontsize=6.3, color=FG)
     fig.savefig(f"{out / f'fig_class_legend_{dname}'}.pdf", pad_inches=0.01)
     plt.close(fig)
