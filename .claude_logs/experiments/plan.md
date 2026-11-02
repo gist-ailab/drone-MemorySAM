@@ -8,6 +8,9 @@ updated: 2026-09-24 15:50 (monitoring 세션 — P54-Q2 계열 시드 재현(s90
 > **역할**: **앞으로 뭘 돌릴지**의 단일 출처. 모든 세션·에이전트가 **여기를 먼저 읽고, 여기에 갱신한다.**
 > 구분: [registry.md](registry.md)=이미 launch된 실험 한눈표(과거·현재) · [monitor-log.md](monitor-log.md)=실시간 진행 · **이 문서=미래(큐·우선순위·GPU 예약)**.
 
+
+> 🔴 **연구실 게이트웨이(210.125.85.207) 장애 2026-10-30~** (user 확인 2026-11-02): yeon·bengio·lecun 접속 불가, **복구 예정 2026-11-04 전후**. 영향: MUSES 4모달 A2 s2(완주, ckpt yeon 로컬)·s3 기동·MUSES 제출본(DRN-261029-09)·768 변형 전부 대기. 영향 없음: hpca100(MCubeS C2D2 2시드 진행 중), jarvis(L7), amphibious-demo(analysis 평가). 복구 즉시 순서 = s2 ckpt NAS 회수 → 공식 val → 제출본 → s3 기동.
+
 ## 🅿️ GPU 홀드 런 (placeholder) — **user 허락/요청 시에만**
 
 > **왜**: 연구실 GPU는 비우는 순간 뺏긴다(lecun 7장 실증 상실). 다음 실험이 확정되기 전 **공백 구간에 GPU를 유지**하기 위한 장치.
