@@ -1,18 +1,20 @@
 % Fig. 1 — architecture overview (draft drawn in TikZ; redraw guide: ../notes/figure_guide.md).
-% Colours: carbon@11.84.0 (labdesign build/py/carbon_palette.py). Sensor colours = CATEGORICAL[0..3].
+% Colours: carbon@11.84.0 palette tokens (~/labdesign/tokens/carbon.tokens.json), same tone as the data and
+% qualitative figures (user 2026-11-02): teal for what we train, warm grey for text/lines/surfaces,
+% muted 70-level hues for the four sensors (event moved off teal so it does not read as "ours").
 % Thumbnails: figures/fig1_thumbs/ (make with ../figures/src/make_arch_thumbs.py).
 % Coordinates in cm; drawing spans x = 0..18.1 (\textwidth = 18.2 cm). Layout rule: every label
 % sits at least 1.5 mm inside its box, and no label crosses a line.
-\definecolor{cRGB}{HTML}{6929C4}   % cat-1
-\definecolor{cDep}{HTML}{1192E8}   % cat-2
-\definecolor{cEvt}{HTML}{005D5D}   % cat-3
-\definecolor{cLid}{HTML}{9F1853}   % cat-4
-\definecolor{acc}{HTML}{0F62FE}    % accent: trained by us
-\definecolor{ink}{HTML}{161616}    % fg
-\definecolor{mut}{HTML}{525252}    % fg-muted
-\definecolor{bd}{HTML}{C6C6C6}     % border
-\definecolor{sf}{HTML}{F4F4F4}     % surface
-\definecolor{g20}{HTML}{E0E0E0}    % gray-20
+\definecolor{cRGB}{HTML}{6929C4}   % purple-70
+\definecolor{cDep}{HTML}{00539A}   % cyan-70
+\definecolor{cEvt}{HTML}{8E6A00}   % yellow-60
+\definecolor{cLid}{HTML}{9F1853}   % magenta-70
+\definecolor{acc}{HTML}{007D79}    % teal-60: trained by us
+\definecolor{ink}{HTML}{3C3838}    % warm-gray-80
+\definecolor{mut}{HTML}{565151}    % warm-gray-70
+\definecolor{bd}{HTML}{CAC5C4}     % warm-gray-30
+\definecolor{sf}{HTML}{F7F3F2}     % warm-gray-10
+\definecolor{g20}{HTML}{E5E0DF}    % warm-gray-20
 \begin{tikzpicture}[
   x=1cm, y=1cm, font=\sffamily\fontsize{6.5}{7.5}\selectfont, line cap=round, line join=round,
   >={Stealth[length=1.6mm, width=1.2mm]},
