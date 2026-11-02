@@ -32,10 +32,10 @@
 | (b) FuseAdapt DINOv2-B | 68.33 | FuseAdapt(2610.21779) Table 3, p7; split 미표기 | ✅ 조사 파일 |
 | (b) StitchFusion Swin-T | 70.3 | StitchFusion(2408.01343) Table 1, p6 (Table 3 p7 은 70.34); split 미표기 | ✅ 원문 재확인 |
 | (c) MM SAM-adapter RGB-E / RGB-L / RGB-D val·test | 60.74·55.70 / 61.89·57.14 / 69.60·57.35 | MM SAM-adapter(2509.10408) Table 7 p11(val), Table 4 p10(test) | ✅ 조사 파일 |
-| Ours (3-seed mean) test | 57.74 | `headline.yaml:22`; 시드별 = `.claude_logs/tasks/DRN-261018-01/analysis.md` | ✅ |
-| Ours (best seed) test | 58.61 | `headline.yaml:23` (시드 821) | ✅ |
-| Ours val (3-seed mean / best seed) | 70.17 / 69.59 | `tasks/DRN-261019-03/analysis.md:23` | ✅ |
-| 본문 격차 1.0 / 1.9 / 1.01 / 1.6 | — | 57.74−56.7, 58.61−56.7, 57.74−56.73, 70.17−68.6 | ✅ 계산 |
+| Ours test (표에는 이 3시드 평균만 싣는다, user 2026-11-02) | 57.74 | `headline.yaml:22`; 시드별 = `.claude_logs/tasks/DRN-261018-01/analysis.md` | ✅ |
+| (기록만, 원고 미게재) Ours best seed test | 58.61 | `headline.yaml:23` (시드 821). user 2026-11-02 결정: 최고 시드는 원고에 넣지 않고 3시드 평균을 기본으로 한다. Table 7·8 의 58.61 은 "시드 821 단일 런" ablation 행으로 따로 쓰인다 | 기록 |
+| Ours val (3시드 평균 70.17 만 게재; best seed 69.59 는 기록만) | 70.17 / 69.59 | `tasks/DRN-261019-03/analysis.md:23` | ✅ |
+| 본문 격차 1.0 / 1.01 / 1.6 | — | 57.74−56.7, 57.74−56.73, 70.17−68.6 (최고 시드 격차 1.9 는 원고에서 뺐다) | ✅ 계산 |
 
 ## 표 II. MUSES (`tab:muses`)
 | 칸 | 값 | 출처 | 상태 |
@@ -60,30 +60,28 @@
 | Mul-VMamba 54.65 | 삭제 | 원문 미확보(조사 파일 0절) | ❌ 표에서 뺌 |
 | Ours / Ours w/o C2D2 | 비어 있음 | DRN-261017-02(C2D2 학습 중) / DRN-261031-01(정식 평가 대기) | ❌ |
 
-## 표 IV. Robustness (`tab:robust`)
-(a) 공개 벤치 정의, val
+## 표 V. Robustness (`tab:robust`) — 2026-11-02 arXiv 2503.18445 벤치 정의로 교체(user), S&P 단독 수치 삭제
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| MAGIC EMM / RMM .25 .50 .75 | 44.97 / 51.61 48.19 45.30 | arXiv 2503.18445(벤치마크 논문) 표 7(mIoU_EMM^Avg)·표 10/9/8(mIoU_RMM^Avg, r = .25/.5/.75), MiT-B2, val. 원문 6쪽에서 직접 확인(alphaXiv, 2026-10-29) | ✅ |
-| MAGIC++ EMM / RMM .25 .50 .75 | 44.85 / 53.92 49.31 47.06 | 같은 표 | ✅ |
-| (제외) RMMSS 49.93 | — | 결측 입력을 건너뛰는 계열이라 0 채움 표에서 제외(FU-06, inbox 20261029-174230) | — |
-| Ours EMM | 57.85 | `tasks/DRN-261019-03/analysis.md:24` (val EMM15 평균, A2 3시드) | ✅ |
-| Ours RMM .25/.50/.75 | 65.53 / 63.35 / 61.28 | 같은 문서 `:25-27` | ✅ |
+| (a) CMNeXt / GeminiFusion / MAGIC / MAGIC++ / StitchFusion clean | 66.33 / 66.92 / 66.10 / 67.34 / 68.20 | arXiv 2503.18445 Table 3, RDEL 열(MiT-B2, DELIVER val), PDF 텍스트 변환본(paper2md)에서 메인 세션 확인 | ✅ |
+| (a) EMM Avg / E(.2) / E(.1) / E(.05) | CMNeXt 37.90/54.46/60.41/63.38 · GeminiFusion 37.07/54.33/60.62/63.77 · MAGIC 44.97/58.66/62.68/64.47 · MAGIC++ 44.85/59.18/63.52/65.50 · StitchFusion 41.98/58.02/63.29/65.80 | 같은 논문 Table 7 | ✅ |
+| (a) RMM Avg r=.75 / .50 / .25 | CMNeXt 42.17/47.49/53.61 · GeminiFusion 39.78/42.41/49.74 · MAGIC 45.30/48.19/51.61 · MAGIC++ 47.06/49.31/53.92 · StitchFusion 45.16/48.33/53.10 | Table 8 / 9 / 10 (mIoU_RMM^Avg) | ✅ |
+| (a) NM Low / Mid / High | CMNeXt 35.23/16.37/2.31 · GeminiFusion 5.52/4.14/3.30 · MAGIC 24.03/13.31/3.98 · MAGIC++ 33.12/18.31/8.70 · StitchFusion 24.91/17.11/9.25 | Table 11, mIoU_NM 행 | ✅ |
+| (b) 최신 논문 행 | 비어 있음 | notes/missing_bench_survey.md (서브에이전트 조사 중) | ❌ |
+| (c) DGFusion 공식·재학습 (b)·CAFuser (b) | 비어 있음 | analysis inbox 20261102-180010(val 벤치 프로토콜 측정 요청) | ❌ |
+| Ours clean / EMM Avg / RMM .75 .50 .25 | 70.17 / 57.85 / 61.28 63.35 65.53 | `.claude_logs/tasks/DRN-261019-03/analysis.md` val 행(A2 3시드 평균) | ✅ |
+| Ours E(p)·NM | 비어 있음 | inbox 20261102-180010(시드903 만 E 66.10/68.20/69.09 존재) | ❌ |
+| 본문 수치 12.9 / 61.3~65.5 / 47.1~53.9 / 12.3 / 21~30 | — | 57.85−44.97; ours RMM; 벤치 최고 RMM(.75 47.06, .25 53.92); 70.17−57.85; 벤치 모델 clean−EMM 21.13~29.85 | ✅ 계산 |
+| 삭제(2026-11-02) | test S&P .05/.10/.20, DGFusion test EMM 31.14 등 | judgment-ledger 에 보존 | — |
 
-(b) 같은 프로토콜, test
+## 표 IX. C2D2·고해상 강건성 (`tab:abl_robust`) — val 벤치 정의
 | 칸 | 값 | 출처 | 상태 |
 |---|---|---|---|
-| DGFusion (official weights) clean / EMM / S&P .05 .10 .20 | 56.73 / 31.14 / 39.12 16.85 4.53 | `experiments/judgment-ledger.md:130` (2026-10-01 DRN-261001-03, 공식 가중치 md5 0f40a641…). S&P 칸은 **계산값** = clean 56.73 − 대장의 “NM S&P 저하 17.61/39.88/52.20” | ✅ (S&P ⚠️ 계산값) |
-| DGFusion (reproduced) clean / EMM / S&P | 55.68 / 31.53 / 37.97 16.71 5.52 | `experiments/judgment-ledger.md:117` (2026-10-01 행 “기준선 DGFusion (a)·(b) 강건 프로토콜”, (a) 재현 학습 80k val-best, summary.json md5 e6b5ab1f). 10-29 이전 원고는 이 행을 “official”로 잘못 표기(FU-06 정정) | ✅ |
-| DGFusion (retrained) | 54.77 / 45.52 / 48.89 40.51 23.34 | 같은 행, (b) (md5 21f14917) | ✅ |
-| CAFuser (retrained) clean / EMM | 55.79 / 46.50 | `status/current.md:63` (“CAFuser (b) 완료(10-04)”) | ✅ |
-| CAFuser (retrained) S&P | 비어 있음 | — | ❌ |
-| Ours w/o C2D2 EMM | 40.01 | `judgment-ledger.md:117` 같은 행 “E1 스크린 3시드: EMM 40.01” | ✅ |
-| Ours w/o C2D2 clean, S&P | 비어 있음 | 같은 행에는 저하폭(3.09·5.73·11.22)만 있음 | ❌ |
-| Ours w/o high-res clean / EMM | 56.59 / 48.06 | `tasks/DRN-261019-03/analysis.md:18-19` (Q2 3시드 평균) | ✅ |
-| Ours w/o high-res S&P .05 .10 .20 | 53.25 / 51.64 / 48.79 | 같은 문서 `:20-22` | ⚠️ 2시드 값(시드821 값 54.10 은 NAS 원본 없음, 같은 문서 `:10`) |
-| Ours clean / EMM / S&P | 57.74 / 48.66 / 53.11 51.36 47.85 | 같은 문서 `:18-22` (A2 3시드 평균) | ✅ |
-| 노이즈 측정 모드 | S&P 단독(본문 서술) | `tools/missing_modality_eval.py` docstring l.26-29 기본 모드 | ⚠️ 실제 실행 모드 확인 요청(method inbox 20261029-113217 #3) |
+| ✓C2D2 ✗high-res (Q2 3시드) clean / EMM / RMM .75 .50 .25 | 67.91 / 56.87 / 60.69 62.46 64.08 | DRN-261019-03/analysis.md val 행 | ✅ |
+| ✓ ✓ (A2) | 70.17 / 57.85 / 61.28 63.35 65.53 | 같은 문서 | ✅ |
+| ✗ ✗ (E1 40ep) | 비어 있음 | inbox 20261102-180010 | ❌ |
+
+## 그림 robust (a) — `figures/source_data/fig_robust_rmm.csv` (위 표 V 값과 같은 출처, 행마다 source 열)
 
 ## 표 V. Per-condition (`tab:condition`)
 | 칸 | 값 | 출처 | 상태 |

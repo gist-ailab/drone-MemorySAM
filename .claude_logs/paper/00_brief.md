@@ -111,3 +111,8 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 ## 결정 추가(user 2026-11-02) — 분량 상한 해제
 - **분량**: "페이지 수 연연하지 말고 계속 늘려, 18페이지 되어도 좋아". 10쪽 상한(2026-10-28)을 대체한다. 그림·표를 줄이지 않는다.
 - **정성 그림**: "데이터셋별 이미지 인퍼런스를 다양하게 해도 좋아". DELIVER 는 본문 Fig.4(6조건 1위)·한계 절(6조건 역방향)·부록(2·3위 12장)으로 18+6 장면을 모두 싣는다. MUSES·MCubeS·센서 고장 장면은 analysis 요청 inbox 20261102-131217.
+
+## 결정 추가(user 2026-11-02) — 우리 수치 보고 방식
+- 원고에 싣는 우리 모델 수치는 **3시드 평균**이다. 최고 시드 행·괄호 표기("3-seed mean", "best seed")는 원고에서 뺀다. 최고 시드 값(DELIVER test 58.61 / val 69.59, 시드 821)은 `_paper/ieee-access-2026/notes/table_sources.md`에 기록만 한다.
+- 실험 절(Implementation Details)과 프로토콜 절(§III)에 "우리 수치는 3시드 평균, ablation(Table 7·8)은 시드 1개"를 명시했다.
+- 결과 표는 열별 최고값 굵게·두 번째 밑줄(`figures/src/mark_best.py`, 빌드마다 재계산).

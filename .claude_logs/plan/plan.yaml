@@ -13960,6 +13960,162 @@ items:
   analysis: .claude_logs/tasks/DRN-261031-01/log.md
   superseded_by: null
   problem: PRB-DRN-261016-01
+- id: DRN-261102-01
+  title: 백본 맞춤 대조 1단계 · MCubeS 교사 E1Mc-B(동결 DINOv3-B + 센서별 LoRA r8 + 4탭, clean 200ep)
+    2시드 20260827·20260828 — FuseAdapt(DINOv2-B 57.62) 와 크기를 맞춘 행의 교사
+  question: 백본을 B 급(86M)으로 줄여도 우리 레시피가 FuseAdapt(DINOv2-B, MCubeS 57.62) 를 넘는가 — '이득이
+    큰 백본 덕' 반박용. 이 항목은 그 비교에 필요한 clean 교사
+  hypothesis: 'E1Mc-B clean 은 E1Mc-L(58.94/58.61) 보다 낮지만(ProbeA2: B→L +5.9), C2D2
+    학생(2단계)이 FuseAdapt 57.62 근처 또는 이상'
+  falsification: 해당 없음(교사)
+  change: configs/hpca100-mcubes_…_E1Mc_seed{s}.yaml 에서 MODEL.BACKBONE ReliaDINO-ViTB16
+    · BACKBONE_TIMM vit_base_patch16_dinov3 · BACKBONE_FALLBACK vit_base_patch14_reg4_dinov2(미사용
+    기대) 만 변경(DIM 자동). 그 외 동일
+  baseline: E1Mc-L 같은 시드(교사 비교용) · FuseAdapt DINOv2-B 57.62(최종 비교는 2단계)
+  configs:
+  - configs/amphibious-mcubes_rgbadn_P39_1_rank_E1McB_seed20260827.yaml
+  - configs/amphibious-mcubes_rgbadn_P39_1_rank_E1McB_seed20260828.yaml
+  launch: amphibious-demo GPU0, scripts/chain_e1mcb_amphibious.sh (setsid PID 3837683,
+    2026-11-02 16:18) — L8 종료 후 자동 기동, 시드 827→828 순차, 각 런 뒤 tools/qualbank_dump.py
+    로 test 102장 전체 덤프
+  success_criteria: 완주 + legal 채점(test 102). 2단계 교사로 사용
+  sample_basis: 2시드
+  expected_cost: B 는 L 의 약 1/3 메모리 → 24GB 1장 1024 크롭 가능 추정, 약 1일/시드(두 패스 없음)
+  priority: 2
+  owner_role: manager
+  status: running
+  kind: experiment
+  tags:
+  - backbone-match
+  - mcubes
+  - paper1
+  - stage1
+  docs: .claude_logs/tasks/DRN-261102-01
+  created: '2026-11-02'
+  updated: '2026-11-02'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261102-02
+  title: 백본 맞춤 대조 2단계 · MCubeS C2D2-B(DINOv3-B 교사 + 고해상 경로 + 두 패스·증류) 2시드 — FuseAdapt(DINOv2-B
+    57.62) 직접 대조 행
+  question: B 급 백본에서 C2D2 전체 레시피가 FuseAdapt 를 넘는가(백본 크기를 맞춘 직접 비교)
+  hypothesis: C2D2-B ≥ 57.62(FuseAdapt) 그리고 E1Mc-B 대비 Δ ≥ +0.5(레시피 이득이 백본 크기와 무관).
+    미달이면 '우리 우위는 백본 크기에 의존' 으로 솔직히 서술
+  falsification: 2시드 평균 < 57.0 → 백본 의존 서술로 전환
+  change: 1단계 교사 ckpt 를 TEACHER_CKPT/TEACHER_CFG 로, 나머지 = …_A2c2d2 config 에 BACKBONE
+    3키만 B 로. 24GB 면 768 크롭
+  baseline: E1Mc-B 같은 시드 · FuseAdapt 57.62(arXiv 2610.21779 Tab.1, 같은 test 102 관행
+    — 선택 규칙 동일 여부 원문 확인 필요)
+  configs: []
+  launch: null
+  success_criteria: '표 행: Backbone·학습 params 열과 함께 Table 4 에 ''백본 맞춤'' 표시. 채택 = 2시드
+    평균 ≥ 57.62 그리고 Δ vs E1Mc-B ≥ +0.5'
+  sample_basis: 2시드
+  expected_cost: 약 1.5일/시드(두 패스), 1단계 완주 후
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - backbone-match
+  - mcubes
+  - paper1
+  - stage2
+  docs: .claude_logs/tasks/DRN-261102-02
+  created: '2026-11-02'
+  updated: '2026-11-02'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261102-03
+  title: DINOv2-B(patch 14) 호환성 CPU 스모크(학습 0) — FuseAdapt 와 같은 백본으로 바꿀 때 4탭·고해상 경로·FPN(stride
+    16 가정)·1024 입력이 깨지는지
+  question: BACKBONE_TIMM 을 vit_base_patch14_reg4_dinov2 로 두면 1024 입력(1024/14 비정수)·FPN
+    stride 16 가정·고해상 어댑터 참조점이 동작하는가
+  hypothesis: '입력을 14 의 배수(예: 1022 또는 896)로 맞춰야 하고 FPN 레벨 크기 정렬이 깨질 수 있음 → 코드 수정 범위를
+    먼저 확인'
+  falsification: 해당 없음
+  change: CPU 에서 build_reliadino(B, patch14) + forward(1,3,1024,1024)/(896,896) +
+    교사 cfg 빌드, 실패 지점 기록
+  baseline: DINOv3-B(patch16) 빌드
+  configs: []
+  launch: null
+  success_criteria: '보고: 동작 여부·필요 수정 목록·추정 비용. 통과 시 DINOv2-B 쌍(교사+C2D2) 등록 여부를 method
+    가 결정'
+  sample_basis: 해당 없음
+  expected_cost: CPU 30분
+  priority: 3
+  owner_role: analysis
+  status: queued
+  kind: analysis
+  tags:
+  - backbone-match
+  - compat
+  - paper1
+  docs: .claude_logs/tasks/DRN-261102-03
+  created: '2026-11-02'
+  updated: '2026-11-02'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
+- id: DRN-261102-04
+  title: 'A2 3시드 NM 벤치 정의 측정(학습 0) — Liao et al. 2025(arXiv 2503.18445) 식 7: S&P(D)+Gaussian(σ,
+    Event 제외), Low/Mid/High = (0.05,0.1)/(0.1,0.2)/(0.2,0.5), val·test'
+  question: 원고 Table 4 의 NM 을 S&P 단독 자체 정의 대신 인용 벤치마크 정의로 재서 Table 11(MiT-B2 5종) 바로
+    아래에 붙일 수 있는가
+  hypothesis: 'A2 는 벤치 NM 에서도 벤치 보고 최고(High: StitchFusion 9.25, Mid: MAGIC++ 18.31,
+    Low: CMNeXt 35.23)를 넘는다'
+  falsification: clean 이 기존 값과 0.05 넘게 어긋나면 측정 무효(하네스·config 점검). 벤치 보고 최고보다 낮아도 결과를
+    숨기지 않고 그대로 게재
+  change: '평가 노이즈 정의만 교체: tools/mm_eval_v2.py --protocol nm --nm_mode bench(기본 levels
+    0.05:0.1,0.1:0.2,0.2:0.5), 모델·체크포인트·하네스(legal v2 1024) 불변'
+  baseline: '벤치 Table 11 mIoU_NM(val, MiT-B2): CMNeXt 35.23/16.37/2.31 · GeminiFusion
+    5.52/4.14/3.30 · MAGIC 24.03/13.31/3.98 · MAGIC++ 33.12/18.31/8.70 · StitchFusion
+    24.91/17.11/9.25; 같은 체크포인트의 기존 S&P 단독 test 53.11/51.36/47.85'
+  configs:
+  - configs/eval/a2s903_eval1024_hpca100.yaml
+  - configs/eval/a2s821_eval1024_hpca100_probe.yaml
+  - configs/eval/a2s902_eval1024_hpca100_probe.yaml
+  launch: null
+  success_criteria: '측정 항목(학습 0): 3시드×(val,test)×(Low,Mid,High) 18값 + clean 이 기존 legal
+    v2 값(val 69.59/71.05/69.86, test 58.61/57.09/57.52)과 ±0.05 내 일치하면 유효 → Table 4(a)
+    에 NM 열 추가, 원고의 ''S&P 단독'' 서술·S&P 열 삭제(user 2026-11-02)'
+  sample_basis: 논문 본 모델 3시드(821·902·903) 전부, 학습 없음; 벤치 공개 코드와 같게 batch 4·seed 0·전수(subset_every
+    1)
+  expected_cost: hpca100 A100 2장 × 약 8.5시간(시드당 split 하나 약 2.8 h, 2026-11-02 실측 20.5
+    s/배치), 학습 0
+  priority: 1
+  owner_role: analysis
+  status: running
+  kind: experiment
+  tags:
+  - robustness
+  - nm
+  - paper
+  - eval-only
+  docs: .claude_logs/tasks/DRN-261102-04
+  created: '2026-11-02'
+  updated: '2026-11-02'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261016-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
