@@ -24,6 +24,7 @@
 % table layout: every table uses \tabsetup (same font, same spacing) and spans exactly \columnwidth
 \newcommand{\tabsetup}{\footnotesize\setlength{\tabcolsep}{2.5pt}\renewcommand{\arraystretch}{1.1}}
 \newcommand{\tabnote}[1]{\par\vspace{3pt}\parbox{\columnwidth}{\raggedright\scriptsize #1}}
+\newcommand{\tabnotewide}[1]{\par\vspace{3pt}\parbox{\textwidth}{\raggedright\scriptsize #1}}% table* notes
 % placeholder frame for figures not drawn yet
 \newcommand{\phbox}[2]{{\setlength{\fboxrule}{0.4pt}\setlength{\fboxsep}{3pt}%
   \fbox{\parbox[c][#1][c]{0.95\linewidth}{\centering\textcolor{red}{todo: #2}}}}}

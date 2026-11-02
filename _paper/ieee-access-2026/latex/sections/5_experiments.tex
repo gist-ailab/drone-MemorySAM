@@ -133,8 +133,10 @@ Ours & DINOv3-L & RGB-A-D-N & \td \\
 \end{table}
 
 \subsection{Robustness to Missing and Degraded Sensors}
-Table~\ref{tab:robust} and Fig.~\ref{fig:robust} evaluate all models under the same missing-sensor and noise protocol. Under the public benchmark definition on the validation set, \ours{} scores 57.85 EMM, 12.9 points above MAGIC, the strongest model reported by the benchmark under the same zero-fill definition~\cite{mmssbench2025}, and it keeps 61 to 66 mIoU when a quarter to three quarters of a sensor's pixels are missing. On the test set, the official DGFusion weights fall from 56.73 to 31.14 EMM and to 4.5 mIoU under the strongest noise, and our reproduction of DGFusion behaves the same way (31.53 and 5.52). Re-training DGFusion and CAFuser with our synthetic degradation raises their EMM to 45.5 and 46.5 without changing their architecture. \ours{} reaches 48.7 EMM while keeping the highest clean accuracy, and it retains 47.9 mIoU under the strongest noise, which was never seen during training.
-% Sources: tasks/DRN-261019-03/analysis.md (val EMM15 57.85, RMM 65.53/63.35/61.28, test EMM15 48.66, NM 47.85);
+Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbench2025} on the DELIVER validation set, so that our numbers can be compared directly with the values that benchmark reports. Averaged over the 15 sensor subsets, \ours{} scores 57.85 mIoU when sensors are entirely missing, 12.9 points above the best model in the benchmark (MAGIC, 44.97), and 61.3 to 65.5 mIoU when 75\% to 25\% of a removed sensor's values are missing, against 47.1 to 53.9 for the best benchmark entries. Part of this margin comes from the stronger backbone, which also raises the clean score (70.17 against 68.20 for StitchFusion); the drop from clean to EMM is 12.3 points for \ours{} and 21 to 30 points for the benchmark models. \todo{expected values E($p$), noisy-modality levels, the baselines in (c), and the later methods in (b) (survey and analysis request pending)}.
+% Sources: tasks/DRN-261019-03/analysis.md (val clean 70.17, EMM15 57.85, RMM 65.53/63.35/61.28); 2503.18445 Tables 3, 7-11;
+% drop clean-EMM: ours 70.17-57.85 = 12.32; benchmark models 66.33-37.90 = 28.43 ... 68.20-41.98 = 26.22, MAGIC 66.10-44.97 = 21.13.
+% Removed 2026-11-02 (user): test-split S&P-only noise numbers and the DGFusion test EMM sentences (kept in judgment-ledger).
 % judgment-ledger:130 DRN-261001-03 (official weights clean 56.73, EMM 31.14, NM drop 52.20 -> 4.53);
 % judgment-ledger:117 (reproduction (a) EMM 31.53, NM .20 5.52; retrained (b) EMM 45.52); current.md (4) CAFuser (b) EMM 46.50;
 % MAGIC 44.97: arXiv 2503.18445 Table 7 (mIoU_EMM^Avg, MiT-B2, val).
@@ -143,45 +145,45 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusio
 % Sources: judgment-ledger:130 (official weights single-sensor 7.50/43.33/1.13/1.13); judgment-ledger:117 (retrained 49.0/44.5/25.0/25.0; Q2 3 seeds 53.9/46.0/31.0/22.9).
 
 % ---------------------------------------------------------------------------
-% Table 4. Missing and degraded sensors on DELIVER.
-% (a) Benchmark family (2503.18445 definition: normalize then zero-fill), val.
-%     Ours: tasks/DRN-261019-03/analysis.md (A2 3 seeds, mm_eval_v2): EMM15 57.85,
-%     RMM15 r.25/.5/.75 65.53/63.35/61.28. RMMSS EMM 49.93: same doc / headline.yaml note.
-% (b) Same protocol, our measurement on test (61 cases, 1897 images):
-%     DGFusion (a) official weights / (b) degradation retrained: experiments/judgment-ledger.md
-%       2026-10-01 row (DRN-260930-02). CAFuser (b): status/current.md (4) "CAFuser (b) 10-04".
-%     "w/o two-pass" = E1 40ep screen 3 seeds, EMM 40.01: ledger 2026-10-01 row.
-%     "w/o high-res" = Q2 3 seeds, "Ours" = A2 3 seeds: tasks/DRN-261019-03/analysis.md
-%       (Q2 NM is 2 seeds for s902/s903 plus s821 where available; see that table).
-%     Depth/RGB partial-drop columns omitted: Q2 values disagree between ledger 10-01 (3 seeds:
-%     0.98/2.04/2.64) and DRN-261019-03 (2 seeds: 0.47/1.05/1.36) -> resolve before use.
-% Families that skip missing inputs (AnySeg, RMMSS, RobustSeg 1a, FuseAdapt) are not mixed here.
+% Table 5. Missing and noisy sensors on DELIVER val under the benchmark of arXiv 2503.18445 (user 2026-11-02:
+% the paper uses this benchmark; channel-shared salt-and-pepper-only numbers were removed).
+% (a) arXiv 2503.18445 (MiT-B2): clean = Table 3 RDEL column; EMM Avg and E(p) = Table 7; RMM Avg r=.75/.5/.25 =
+%     Tables 8/9/10; NM Low/Mid/High = Table 11 (mIoU_NM row). Read from the PDF text (notes/missing_bench_survey.md).
+% (b) Methods published after the benchmark with the same definition: notes/missing_bench_survey.md (survey running).
+% (c) Baselines measured by us with tools/missing_modality_eval.py on val: analysis inbox 20261102-180010 (pending).
+% (d) Ours (A2, 3 seeds): tasks/DRN-261019-03/analysis.md val clean 70.17, EMM15 57.85, RMM r.25/.5/.75
+%     65.53/63.35/61.28. E(p) and benchmark NM: inbox 20261102-180010 (seed 903 E(p) = 66.10/68.20/69.09 only).
 % ---------------------------------------------------------------------------
-\begin{table}[t]
-\caption{Robustness to missing and degraded sensors on DELIVER, mIoU (\%).}
+\begin{table*}[t]
+\caption{Robustness to missing and noisy sensors on the DELIVER validation set under the benchmark of~\cite{mmssbench2025}, mIoU (\%).}
 \label{tab:robust}
 \centering\tabsetup
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lccccc@{}}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llccccccccccc@{}}
 \toprule
-\multicolumn{6}{@{}l}{\emph{(a) Public missing-modality benchmark, val}} \\
-Method & EMM & RMM .25 & RMM .50 & RMM .75 & \\
+ & & & \multicolumn{4}{c}{Entire-missing (EMM)} & \multicolumn{3}{c}{Random-missing (RMM), Avg} & \multicolumn{3}{c}{Noisy (NM)} \\
+\cmidrule(lr){4-7}\cmidrule(lr){8-10}\cmidrule(l){11-13}
+Method & Backbone & Clean & Avg & E(.20) & E(.10) & E(.05) & $r$=.75 & $r$=.50 & $r$=.25 & Low & Mid & High \\
 \midrule
-MAGIC~\cite{magic2024}$^{\S}$ & \second{44.97} & 51.61 & 48.19 & 45.30 & \\
-MAGIC++~\cite{magicpp2024}$^{\S}$ & 44.85 & \second{53.92} & \second{49.31} & \second{47.06} & \\
-Ours & \best{57.85} & \best{65.53} & \best{63.35} & \best{61.28} & \\
+\multicolumn{13}{@{}l}{\emph{(a) Reported by the benchmark~\cite{mmssbench2025}}} \\
+CMNeXt~\cite{cmnext2023} & MiT-B2 & 66.33 & 37.90 & 54.46 & 60.41 & 63.38 & 42.17 & 47.49 & 53.61 & \best{35.23} & 16.37 & 2.31 \\
+GeminiFusion~\cite{geminifusion2024} & MiT-B2 & 66.92 & 37.07 & 54.33 & 60.62 & 63.77 & 39.78 & 42.41 & 49.74 & 5.52 & 4.14 & 3.30 \\
+MAGIC~\cite{magic2024} & MiT-B2 & 66.10 & \second{44.97} & \second{58.66} & 62.68 & 64.47 & 45.30 & 48.19 & 51.61 & 24.03 & 13.31 & 3.98 \\
+MAGIC++~\cite{magicpp2024} & MiT-B2 & 67.34 & 44.85 & \best{59.18} & \best{63.52} & \second{65.50} & \second{47.06} & \second{49.31} & \second{53.92} & \second{33.12} & \best{18.31} & \second{8.70} \\
+StitchFusion~\cite{stitchfusion2024} & MiT-B2 & \second{68.20} & 41.98 & 58.02 & \second{63.29} & \best{65.80} & 45.16 & 48.33 & 53.10 & 24.91 & \second{17.11} & \best{9.25} \\
 \midrule
-\multicolumn{6}{@{}l}{\emph{(b) Same protocol for all models, test}} \\
-Method & Clean & EMM & S\&P .05 & S\&P .10 & S\&P .20 \\
+\multicolumn{13}{@{}l}{\emph{(b) Later methods reported under the same definition}} \\
+\multicolumn{13}{@{}l}{\todo{rows from notes/missing\_bench\_survey.md (survey of papers citing~\cite{mmssbench2025})}} \\
 \midrule
-DGFusion (official)$^{\ast}$ & \second{56.73} & 31.14 & 39.12 & 16.85 & 4.53 \\
-DGFusion (reprod.)$^{\ddagger}$ & 55.68 & 31.53 & 37.97 & 16.71 & 5.52 \\
-DGFusion (retrained$^{\dagger}$) & 54.77 & 45.52 & \second{48.89} & \second{40.51} & \second{23.34} \\
-CAFuser (retrained$^{\dagger}$) & 55.79 & \second{46.50} & \td & \td & \td \\
-Ours & \best{57.74} & \best{48.66} & \best{53.11} & \best{51.36} & \best{47.85} \\
+\multicolumn{13}{@{}l}{\emph{(c) Evaluated by us with the benchmark protocol}} \\
+DGFusion (official)$^{\ast}$ & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
+DGFusion (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
+CAFuser (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
+\midrule
+Ours & DINOv3-L & \best{70.17} & \best{57.85} & \td & \td & \td & \best{61.28} & \best{63.35} & \best{65.53} & \td & \td & \td \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{\S}$Values reported by the robustness benchmark~\cite{mmssbench2025} (MiT-B2 backbone, same zero-fill definition). Methods that skip a missing input instead of zero-filling it report results under a different protocol and are not listed. $^{\ast}$Official released weights evaluated with our code; their S\&P values are the clean score minus the measured drop. $^{\ddagger}$Our reproduction with the official recipe, without degradation. $^{\dagger}$Retrained with the same synthetic degradation. Ours: mean of 3 seeds; baselines: single runs; the variants without C2D2 or the high-resolution path are in Table~\ref{tab:abl_robust}. EMM, RMM, and S\&P are defined in Section~\ref{sec:sensors}.}
-\end{table}
+\tabnotewide{Avg: mean over the 15 non-empty sensor subsets; E($p$): expectation when each sensor fails independently with probability $p$; RMM $r$: fraction of a removed sensor's values that are zeroed; NM Low/Mid/High: salt-and-pepper density and Gaussian standard deviation (0.05, 0.1), (0.1, 0.2), (0.2, 0.5). All definitions follow~\cite{mmssbench2025} and Section~\ref{sec:sensors}. $^{\ast}$Released weights. $^{\dagger}$Retrained with our synthetic degradation. Ours: mean of three seeds; baselines: single runs. Methods that skip a missing input instead of zero-filling it answer a different question and are not listed.}
+\end{table*}
 
 % ---------------------------------------------------------------------------
 % Fig. robust (data plot). Source numbers and provenance: figures/src/make_data_figs.py (fig_robust).
@@ -189,7 +191,7 @@ Ours & \best{57.74} & \best{48.66} & \best{53.11} & \best{51.36} & \best{47.85} 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig_robust.pdf}
-\caption{Robustness on DELIVER test under one protocol. (a) Salt-and-pepper noise applied to every sensor. (b) Only one sensor available (the other three zero-filled). Ours: mean of three seeds; DGFusion: single runs, official weights or retrained with the same synthetic degradation. \todo{(b) full-model values pending.}}
+\caption{Robustness on DELIVER. (a) Random-missing sensors on the validation set under the benchmark of~\cite{mmssbench2025}: mIoU averaged over the 15 sensor subsets as the missing ratio $r$ grows (benchmark models: values reported there, MiT-B2). (b) Only one sensor available on the test set (the other three zero-filled), our evaluation. Ours: mean of three seeds; baselines: single runs. \todo{(b) full-model values pending.}}
 \label{fig:robust}
 \end{figure}
 
@@ -306,7 +308,9 @@ LoRA & modal & head & pass & degr. & KD & & \\
 \tabnote{All rows keep the high-resolution path. Degr.\ pass: the second, degraded forward pass of C2D2. Phys.\ degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass. $^{*}$Token averaging; also removes the trunk expansion. \xmark\ on per-sensor LoRA: one LoRA shared by all sensors (rank 16).}
 \end{table}
 
-% Table 6c. Robustness ablation, 3 seeds, same protocol as Table robust (b).
+% Table 6c. Robustness ablation, 3 seeds, DELIVER val, benchmark protocol (user 2026-11-02).
+% w/o high-res = Q2 3 seeds val: tasks/DRN-261019-03/analysis.md (clean 67.91, EMM15 56.87, RMM .25/.5/.75 64.08/62.46/60.69).
+% w/o C2D2 and high-res (E1 40ep) val: analysis inbox 20261102-180010 (pending).
 % w/o C2D2 and high-res = E1 40-ep screen 3 seeds, EMM 40.01 (judgment-ledger 2026-10-01 row);
 % w/o high-res = Q2 3 seeds, full = A2 3 seeds: tasks/DRN-261019-03/analysis.md (moved from Table robust (b)).
 % MCubeS rows: DRN-261031-01 (w/o C2D2, legal eval pending) and DRN-261017-02 (C2D2, training).
@@ -316,19 +320,19 @@ LoRA & modal & head & pass & degr. & KD & & \\
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
 \toprule
-C2D2 & High-res & Clean & EMM & S\&P .05 & S\&P .10 & S\&P .20 \\
+C2D2 & High-res & Clean & EMM & RMM .75 & RMM .50 & RMM .25 \\
 \midrule
-\multicolumn{7}{@{}l}{\emph{(a) DELIVER test, mean of 3 seeds}} \\
-\xmark & \xmark & \td & 40.01 & \td & \td & \td \\
-\cmark & \xmark & \second{56.59} & \second{48.06} & \best{53.25} & \best{51.64} & \best{48.79} \\
-\cmark & \cmark & \best{57.74} & \best{48.66} & \second{53.11} & \second{51.36} & \second{47.85} \\
+\multicolumn{7}{@{}l}{\emph{(a) DELIVER val, benchmark of~\cite{mmssbench2025}, mean of 3 seeds}} \\
+\xmark & \xmark & \td & \td & \td & \td & \td \\
+\cmark & \xmark & \second{67.91} & \second{56.87} & \second{60.69} & \second{62.46} & \second{64.08} \\
+\cmark & \cmark & \best{70.17} & \best{57.85} & \best{61.28} & \best{63.35} & \best{65.53} \\
 \midrule
 \multicolumn{7}{@{}l}{\emph{(b) MCubeS test}} \\
 \xmark & \cmark & \td & & & & \\
 \cmark & \cmark & \td & & & & \\
 \bottomrule
 \end{tabular*}
-\tabnote{(a) uses the protocol of Table~\ref{tab:robust}(b). The S\&P values without the high-resolution path average two seeds.}
+\tabnote{(a) uses the protocol of Table~\ref{tab:robust}; EMM and RMM are averages over the 15 sensor subsets.}
 \end{table}
 
 \subsection{Computational Cost}

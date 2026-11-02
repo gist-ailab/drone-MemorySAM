@@ -17,7 +17,7 @@ PAPER = Path(__file__).resolve().parents[2]
 FILES = [PAPER / "latex" / "sections" / "5_experiments.tex"]
 TABLES = ["tab:deliver", "tab:muses", "tab:mcubes", "tab:robust", "tab:condition",
           "tab:ablation", "tab:ablation_loo", "tab:abl_robust"]
-BLOCKED = {"tab:robust", "tab:abl_robust"}
+BLOCKED = {"tab:abl_robust"}
 NUM = re.compile(r"^-?\d+(\.\d+)?$")
 WRAP = re.compile(r"\\(?:best|second|textbf)\{(-?\d+(?:\.\d+)?)\}")
 
