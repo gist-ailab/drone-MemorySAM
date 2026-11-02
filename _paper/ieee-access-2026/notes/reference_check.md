@@ -67,3 +67,6 @@ Corrected on 2026-10-28 (title and/or authors were wrong in the RA-L draft bib):
 | GtA (MUSES camera-only best, 82.39) | not found by search — needs the paper link from the MUSES leaderboard |
 | Mul-VMamba (MCubeS 54.65) | not found by search — needs the paper link |
 | DINOv3 adapter (high-resolution path source) | covered by `dinov3_2025` if the adapter is described in the DINOv3 paper — check |
+
+## 2026-11-02 추가 5편 (표 I~III 확장)
+arXiv API(export.arxiv.org, id_list) 로 제목·저자·연도를 대조해 5편 모두 bib 와 일치: any2seg2024(2407.11351) · mmsformer2023(2309.04001) · u3m2024(2405.15365) · sharecmp2023(2312.03430) · bpcf2026(2610.17800). 게재지(학회·저널)는 원문 헤더에서 확인되지 않아 arXiv 로만 적었다. 전체 verify_bib.py 재실행은 10분 제한 초과로 중단(기존 항목은 이전 검사 결과 유지).
