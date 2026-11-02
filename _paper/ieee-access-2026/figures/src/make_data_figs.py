@@ -22,7 +22,7 @@ How each figure is drawn:
   fig_thin:       one bar per class = mean of the three seed differences (d821, d902, d903), black dots =
                   the three single-seed differences; classes sorted by the mean; thin classes in bold.
 
-Colours: carbon@11.84.0 (~/labdesign/build/py/carbon_palette.py). Fonts: TeX Gyre Heros (Helvetica clone).
+Colours: carbon@11.84.0 teal ramp + warm grey (~/labdesign/tokens/carbon.tokens.json; user choice 2026-11-02). Fonts: TeX Gyre Heros (Helvetica clone).
 Width: IEEE Access single column 3.36 in (242.7 pt, measured in the class on 2026-10-29).
 
 Usage (from the paper folder _paper/ieee-access-2026 in the repo):
@@ -57,20 +57,21 @@ mpl.rcParams.update({
     "legend.frameon": False, "lines.linewidth": 1.2, "lines.markersize": 3.5,
 })
 
-# carbon@11.84.0 roles / sequential (blue) ramp
-FG, MUTED, BORDER = "#161616", "#525252", "#c6c6c6"
-SEQ = ["#ffffff", "#e4eeff", "#cadcff", "#afcbff", "#94b9ff",
-       "#7aa8fe", "#5f96fe", "#4485fe", "#2a73fe", "#0f62fe"]
-DANGER = "#da1e28"
-# model families: baselines = neutral greys (line style separates them); ours = blue ramp, final model darkest
+# carbon@11.84.0 palette tokens (~/labdesign/tokens/carbon.tokens.json), chosen by the user 2026-11-02
+# (candidate A of the palette survey: teal ramp for our models, warm grey for baselines).
+FG, MUTED = "#3c3838", "#565151"                                  # warm-gray-80 / warm-gray-70
+BASE = "#8f8b8b"                                                  # warm-gray-50
+TEAL_DARK, TEAL_MID, TEAL_LIGHT = "#004144", "#007d79", "#08bdba"  # teal-80 / teal-60 / teal-40
+DANGER = "#da1e28"                                                # danger role
+# model families: baselines = warm greys (line style separates them); ours = teal ramp, final model darkest
 STYLE = {
-    "DGFusion (official)":   dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
-    "DGFusion (reproduced)": dict(color=MUTED, ls=(0, (1.2, 1.2)), marker="s", mfc="white"),
-    "DGFusion (retrained)":  dict(color=MUTED, ls="-", marker="o", mfc=MUTED),
+    "DGFusion (official)":   dict(color=BASE, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
+    "DGFusion (reproduced)": dict(color=BASE, ls=(0, (1.2, 1.2)), marker="s", mfc="white"),
+    "DGFusion (retrained)":  dict(color=BASE, ls="-", marker="o", mfc=BASE),
     "CAFuser (retrained)":   dict(color=FG, ls=(0, (3, 1.5)), marker="s", mfc="white"),
-    "Ours w/o C2D2":         dict(color=SEQ[4], ls="-", marker="^", mfc=SEQ[4]),
-    "Ours w/o high-res":     dict(color=SEQ[7], ls="-", marker="D", mfc=SEQ[7]),
-    "Ours":                  dict(color=SEQ[9], ls="-", marker="o", mfc=SEQ[9], lw=1.8),
+    "Ours w/o C2D2":         dict(color=TEAL_LIGHT, ls="-", marker="^", mfc=TEAL_LIGHT),
+    "Ours w/o high-res":     dict(color=TEAL_MID, ls="-", marker="D", mfc=TEAL_MID),
+    "Ours":                  dict(color=TEAL_DARK, ls="-", marker="o", mfc=TEAL_DARK, lw=1.8),
 }
 CONDITIONS = ["Sun", "Cloud", "Rain", "Fog", "Night", "Low exp."]
 SENSORS = ["RGB", "Depth", "Event", "LiDAR"]
@@ -97,7 +98,7 @@ def label_axes(ax, letter):
 
 def save(fig, stem, inputs):
     fig.savefig(f"{stem}.pdf", bbox_inches="tight", pad_inches=0.02)
-    meta = {"design_source": "carbon@11.84.0", "script": "figures/src/make_data_figs.py",
+    meta = {"design_source": "carbon@11.84.0 (teal-80/60/40, warm-gray-50/70/80)", "script": "figures/src/make_data_figs.py",
             "inputs": {str(Path(p).relative_to(REPO)): md5(p) for p in inputs}}
     json.dump(meta, open(f"{stem}.json", "w"), indent=1, ensure_ascii=False)
     plt.close(fig)
@@ -182,7 +183,7 @@ def fig_thin(out):
     x = np.arange(len(data))
     for i, (c, d) in enumerate(data):
         m = np.mean(d)
-        col = SEQ[9] if c in THIN else SEQ[5]
+        col = TEAL_DARK if c in THIN else TEAL_LIGHT
         ax.bar(i, m, 0.7, color=col if m >= 0 else "white", edgecolor=col, lw=0.6, zorder=2)
         ax.scatter([i] * 3, d, s=4, color=FG, zorder=3, lw=0)
     ax.axhline(0, color=FG, lw=0.6)
