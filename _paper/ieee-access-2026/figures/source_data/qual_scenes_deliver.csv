@@ -1,0 +1,29 @@
+# 선택 규칙: Δ = mIoU(A2s821) − max(Q2s821, DGFofficial, CAFb) 의 이미지별 차이(이미지 mIoU = GT 에 있는 클래스만 평균, tools/baseline_failure/common.per_image_iou). 채점 = DELIVER test native 1042 GT(legal v2 축; 기준선 1024 예측은 최근접 확대).
+# 조건별 Δ 내림차순 상위 3장(같은 시퀀스(MAP_x_pointY 폴더) 중복 금지) + Δ 오름차순 1장(역방향). 조건 = 날씨 5종(case=none) + low_exposure(case=underexposure).
+# 중복 단위를 시퀀스로 둔 이유: DELIVER test 의 MAP 은 MAP_7·MAP_10 두 개뿐이라 MAP 단위면 조건당 최대 2장이다.
+# 비교군에 DGFusion 재학습 (b) 없음(2026-10-30 연구실 서버 접속 불가로 덤프·가중치 확보 못함). 확보되면 다시 선별한다.
+scene_id,group,kind,rank,condition,case,map,sequence,mIoU_A2s821,mIoU_Q2s821,mIoU_DGFofficial,mIoU_CAFb,best_other,delta
+img/sun/test/MAP_7_point16/017700_rgb_front,sun,top,1,sun,none,MAP_7,MAP_7_point16,0.7054,0.6595,0.6147,0.5664,Q2s821,+0.0460
+img/sun/test/MAP_7_point61/009450_rgb_front,sun,top,2,sun,none,MAP_7,MAP_7_point61,0.5434,0.4940,0.5011,0.4780,DGFofficial,+0.0423
+img/sun/test/MAP_7_point31/003750_rgb_front,sun,top,3,sun,none,MAP_7,MAP_7_point31,0.3655,0.3371,0.3342,0.3253,Q2s821,+0.0285
+img/sun/test/MAP_10_point21/002400_rgb_front,sun,reverse,1,sun,none,MAP_10,MAP_10_point21,0.4786,0.5046,0.5648,0.5227,DGFofficial,-0.0862
+img/cloud/test/MAP_10_point62/042100_rgb_front,cloud,top,1,cloud,none,MAP_10,MAP_10_point62,0.4434,0.4056,0.4098,0.3955,DGFofficial,+0.0335
+img/cloud/test/MAP_10_point12/013150_rgb_front,cloud,top,2,cloud,none,MAP_10,MAP_10_point12,0.6011,0.5702,0.5586,0.5633,Q2s821,+0.0309
+img/cloud/test/MAP_7_point92/051950_rgb_front,cloud,top,3,cloud,none,MAP_7,MAP_7_point92,0.6366,0.6059,0.5853,0.5942,Q2s821,+0.0307
+img/cloud/test/MAP_10_point92/044950_rgb_front,cloud,reverse,1,cloud,none,MAP_10,MAP_10_point92,0.3836,0.3683,0.4708,0.4392,DGFofficial,-0.0872
+img/rain/test/MAP_7_point13/017350_rgb_front,rain,top,1,rain,none,MAP_7,MAP_7_point13,0.5122,0.4515,0.4215,0.4534,CAFb,+0.0588
+img/rain/test/MAP_10_point103/066100_rgb_front,rain,top,2,rain,none,MAP_10,MAP_10_point103,0.5089,0.4708,0.4263,0.4218,Q2s821,+0.0381
+img/rain/test/MAP_7_point83/003550_rgb_front,rain,top,3,rain,none,MAP_7,MAP_7_point83,0.5755,0.5393,0.5303,0.5078,Q2s821,+0.0361
+img/rain/test/MAP_7_point3/015450_rgb_front,rain,reverse,1,rain,none,MAP_7,MAP_7_point3,0.6317,0.5987,0.7320,0.6393,DGFofficial,-0.1003
+img/fog/test/MAP_7_point54/009650_rgb_front,fog,top,1,fog,none,MAP_7,MAP_7_point54,0.6603,0.5898,0.6161,0.5574,DGFofficial,+0.0443
+img/fog/test/MAP_7_point84/011250_rgb_front,fog,top,2,fog,none,MAP_7,MAP_7_point84,0.6113,0.5711,0.5704,0.5492,Q2s821,+0.0402
+img/fog/test/MAP_7_point9/006800_rgb_front,fog,top,3,fog,none,MAP_7,MAP_7_point9,0.6597,0.6033,0.6222,0.5351,DGFofficial,+0.0374
+img/fog/test/MAP_7_point84/011100_rgb_front,fog,reverse,1,fog,none,MAP_7,MAP_7_point84,0.7012,0.7117,0.7666,0.7890,CAFb,-0.0879
+img/night/test/MAP_10_point5/001200_rgb_front,night,top,1,night,none,MAP_10,MAP_10_point5,0.4594,0.3996,0.4130,0.3613,DGFofficial,+0.0464
+img/night/test/MAP_7_point65/032350_rgb_front,night,top,2,night,none,MAP_7,MAP_7_point65,0.5999,0.5537,0.5498,0.5466,Q2s821,+0.0462
+img/night/test/MAP_10_point95/011050_rgb_front,night,top,3,night,none,MAP_10,MAP_10_point95,0.5072,0.4638,0.4580,0.4504,Q2s821,+0.0434
+img/night/test/MAP_7_point19/064850_rgb_front,night,reverse,1,night,none,MAP_7,MAP_7_point19,0.5913,0.6003,0.6923,0.6440,DGFofficial,-0.1010
+img/night/test/MAP_10_point5_underexposure/003400_rgb_front,low_exposure,top,1,night,underexposure,MAP_10,MAP_10_point5_underexposure,0.4073,0.3614,0.3460,0.3582,Q2s821,+0.0459
+img/sun/test/MAP_7_point1_underexposure/057550_rgb_front,low_exposure,top,2,sun,underexposure,MAP_7,MAP_7_point1_underexposure,0.5551,0.5034,0.5132,0.4627,DGFofficial,+0.0420
+img/night/test/MAP_7_point5_underexposure/034800_rgb_front,low_exposure,top,3,night,underexposure,MAP_7,MAP_7_point5_underexposure,0.5782,0.4982,0.4969,0.5399,CAFb,+0.0383
+img/cloud/test/MAP_10_point2_underexposure/036350_rgb_front,low_exposure,reverse,1,cloud,underexposure,MAP_10,MAP_10_point2_underexposure,0.4436,0.4584,0.5277,0.4454,DGFofficial,-0.0841
