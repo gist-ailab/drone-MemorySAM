@@ -1,5 +1,5 @@
 {
- "design_source": "carbon@11.84.0 (text colours); dataset palette for labels",
+ "design_source": "carbon@11.84.0 (warm-gray-50/70/80 text and borders, teal-80 for ours); dataset palette for labels",
  "script": "figures/src/make_qual_figs.py",
  "errors_mode": true,
  "columns": [

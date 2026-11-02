@@ -1,5 +1,5 @@
 {
- "design_source": "carbon@11.84.0 (text colours); dataset palette for labels",
+ "design_source": "carbon@11.84.0 (warm-gray-50/70/80 text and borders, teal-80 for ours); dataset palette for labels",
  "script": "figures/src/make_qual_figs.py",
  "errors_mode": true,
  "columns": [
@@ -11,7 +11,7 @@
   "A2s821"
  ],
  "inputs_md5": {
-  "selection.yaml": "b8d78ba190676a0d825a463205600a1a",
+  "selection.yaml": "b7c9d950730aad2b8a2daab5cf9df11f",
   "registry.yaml": "2432c687d723a387b0fbcf117f8b392c",
   "deliver_candidates.csv": "0a1564d139b15b30f92fc0a5efb5a161",
   "deliver_per_image.csv": "addb300de80dc6e7d615e240d6d65a71"
