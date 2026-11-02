@@ -99,7 +99,7 @@
 | + cross-modal attention, query head | 55.94 / 비어 있음 | `status/current.md:55,60` (“4모달 E1 스크린821 … test 55.94”) | ✅ / ❌ |
 | + C2D2 (two-pass, distillation) | 57.73 / 48.68 | `tasks/DRN-261019-03/analysis.md:18-19` (Q2 시드821) | ✅ |
 | + high-res path (full) | 58.61 / 49.12 | 같은 문서 `:18-19` (A2 시드821) | ✅ |
-| − sensor-specific LoRA | 58.84 / 비어 있음 | `judgment-ledger.md:176` (DRN-261020-09) | ✅ / ❌ |
+| (삭제 2026-11-02, user 결정 inbox 20261102-191138) − sensor-specific LoRA(L1 공유 LoRA) | — | Access 원고에 싣지 않음. RA-L 별개 논문 재료(DRN-261020-09, 판정 대장 176행) | — |
 | − cross-modal attention | 57.76 / 비어 있음 | `judgment-ledger.md:175` (DRN-261020-10; 트렁크 확장도 함께 빠짐) | ✅ / ❌ |
 | − query head and arbiter | 57.89 / 비어 있음 | `judgment-ledger.md:174` (DRN-261020-12) | ✅ / ❌ |
 | − degradation pass / − distillation | 비어 있음 | DRN-261020-13 / -14 평가 대기 | ❌ |
