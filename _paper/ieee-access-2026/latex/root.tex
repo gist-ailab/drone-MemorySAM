@@ -9,12 +9,15 @@
 \usepackage{textcomp}
 \usepackage{booktabs}
 \usepackage{multirow}
+\usepackage{pifont}
 \usepackage[hidelinks]{hyperref}
 \definecolor{RED}{rgb}{1,0,0}% running heads may be uppercased, which turns `red' into `RED'
 % model name used throughout; change here only (name not yet confirmed by the user)
 \newcommand{\ours}{ReliaDINO}
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
 \newcommand{\missing}[1]{\textcolor{blue}{[MISSING: #1]}}
+\newcommand{\cmark}{\ding{51}}% component on (ablation tables)
+\newcommand{\xmark}{\textcolor[gray]{0.55}{\ding{55}}}% component off
 \newcommand{\td}{\textcolor{red}{todo}}% empty table cell, value pending
 % table layout: every table uses \tabsetup (same font, same spacing) and spans exactly \columnwidth
 \newcommand{\tabsetup}{\footnotesize\setlength{\tabcolsep}{2.5pt}\renewcommand{\arraystretch}{1.1}}
