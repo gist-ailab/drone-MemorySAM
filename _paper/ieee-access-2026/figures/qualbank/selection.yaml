@@ -1,0 +1,79 @@
+# Which scenes go into which qualitative figure. THIS is the file to edit when a scene should change.
+# After editing:  bash figures/qualbank/make.sh figs     (re-renders figures and rebuilds the PDF)
+#
+# A row is either
+#   {label: Night, pick: {group: night, kind: top, rank: 1}}     -> looked up in figures/source_data/qualbank/<dataset>_candidates.csv
+#   {label: Night, image: img/night/test/MAP_7_point19/064850_rgb_front}   -> any image of the split (see <dataset>_per_image.csv)
+# kind = top (ours ahead the most) | reverse (a compared model ahead the most) | typical (near the median gap)
+#        | class (largest gain on one thin class; group = the class name, e.g. Pole)
+# columns: rgb, input (= the row's `input:` sensor, e.g. lidar), gt, or any model key of figures/qualbank/registry.yaml (bank must hold it)
+# errors: true -> pixels that agree with the ground truth are faded, so colour = error
+
+defaults:
+  dataset: deliver
+  columns: [rgb, gt, DGFofficial, CAFb, Q2s821, A2s821]
+  errors: true
+
+figures:
+  fig_adverse_deliver:            # main text Fig. adverse
+    rows:
+      - {label: Sun,      pick: {group: sun, kind: top, rank: 1}}
+      - {label: Cloud,    pick: {group: cloud, kind: top, rank: 1}}
+      - {label: Rain,     pick: {group: rain, kind: top, rank: 1}}
+      - {label: Fog,      pick: {group: fog, kind: top, rank: 1}}
+      - {label: Night,    pick: {group: night, kind: top, rank: 1}}
+      - {label: Low exp., pick: {group: low_exposure, kind: top, rank: 1}}
+  fig_reverse_deliver:            # limitations: where a baseline is best
+    rows:
+      - {label: Sun,      pick: {group: sun, kind: reverse, rank: 1}}
+      - {label: Cloud,    pick: {group: cloud, kind: reverse, rank: 1}}
+      - {label: Rain,     pick: {group: rain, kind: reverse, rank: 1}}
+      - {label: Fog,      pick: {group: fog, kind: reverse, rank: 1}}
+      - {label: Night,    pick: {group: night, kind: reverse, rank: 1}}
+      - {label: Low exp., pick: {group: low_exposure, kind: reverse, rank: 1}}
+  fig_supp_deliver_1:             # appendix
+    rows:
+      - {label: "Sun #2",   pick: {group: sun, kind: top, rank: 2}}
+      - {label: "Sun #3",   pick: {group: sun, kind: top, rank: 3}}
+      - {label: "Cloud #2", pick: {group: cloud, kind: top, rank: 2}}
+      - {label: "Cloud #3", pick: {group: cloud, kind: top, rank: 3}}
+  fig_supp_deliver_2:
+    rows:
+      - {label: "Rain #2", pick: {group: rain, kind: top, rank: 2}}
+      - {label: "Rain #3", pick: {group: rain, kind: top, rank: 3}}
+      - {label: "Fog #2",  pick: {group: fog, kind: top, rank: 2}}
+      - {label: "Fog #3",  pick: {group: fog, kind: top, rank: 3}}
+  fig_supp_deliver_3:
+    rows:
+      - {label: "Night #2",     pick: {group: night, kind: top, rank: 2}}
+      - {label: "Night #3",     pick: {group: night, kind: top, rank: 3}}
+      - {label: "Low exp. #2",  pick: {group: low_exposure, kind: top, rank: 2}}
+      - {label: "Low exp. #3",  pick: {group: low_exposure, kind: top, rank: 3}}
+  fig_typical_deliver:            # appendix: scenes near the median gap of each condition (not cherry-picked)
+    rows:
+      - {label: Sun,      pick: {group: sun, kind: typical, rank: 1}}
+      - {label: Cloud,    pick: {group: cloud, kind: typical, rank: 1}}
+      - {label: Rain,     pick: {group: rain, kind: typical, rank: 1}}
+      - {label: Fog,      pick: {group: fog, kind: typical, rank: 1}}
+      - {label: Night,    pick: {group: night, kind: typical, rank: 1}}
+      - {label: Low exp., pick: {group: low_exposure, kind: typical, rank: 1}}
+  fig_thin_deliver:               # analysis: largest thin-class gain of ours over the compared models
+    rows:
+      - {label: Pole,         pick: {group: Pole, kind: class, rank: 1}}
+      - {label: TrafficLight, pick: {group: TrafficLight, kind: class, rank: 1}}
+      - {label: Pedestrian,   pick: {group: Pedestrian, kind: class, rank: 1}}
+      - {label: Static,       pick: {group: Static, kind: class, rank: 1}}
+  fig_cases_deliver:              # DELIVER's built-in sensor-failure cases (sequence suffix in the test split)
+    columns: [input, gt, DGFofficial, CAFb, Q2s821, A2s821]
+    rows:
+      - {label: Overexposure,  input: rgb,   pick: {group: overexposure, kind: top, rank: 1}}
+      - {label: Motion blur,   input: rgb,   pick: {group: motionblur, kind: top, rank: 1}}
+      - {label: LiDAR jitter,  input: lidar, pick: {group: lidarjitter, kind: top, rank: 1}}
+      - {label: Event low-res, input: event, pick: {group: eventlowres, kind: top, rank: 1}}
+  fig_cases_reverse_deliver:
+    columns: [input, gt, DGFofficial, CAFb, Q2s821, A2s821]
+    rows:
+      - {label: Overexposure,  input: rgb,   pick: {group: overexposure, kind: reverse, rank: 1}}
+      - {label: Motion blur,   input: rgb,   pick: {group: motionblur, kind: reverse, rank: 1}}
+      - {label: LiDAR jitter,  input: lidar, pick: {group: lidarjitter, kind: reverse, rank: 1}}
+      - {label: Event low-res, input: event, pick: {group: eventlowres, kind: reverse, rank: 1}}

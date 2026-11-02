@@ -107,3 +107,7 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 - **방법 이름 = C2D2**(Clean-to-Degraded Two-Pass Distillation): 두 패스 학습(clean 패스 + 센서별 합성 열화 패스 + 동결 clean 교사 증류)의 이름. 제목 "C2D2: Clean-to-Degraded Two-Pass Distillation for Robust Multi-Sensor Semantic Segmentation with a Frozen Vision Foundation Model"(user 10-29). 모델 이름 = ReliaDINO(미확정).
 - **MCubeS 체크포인트 선택 = 관행대로 test 102장**(user 10-30, 로더·CMNeXt 공개 코드 모두 'val'→test.txt). 원고 §3 에 예외 명시, 기존 P39.1 58.07 도 같은 규칙.
 - **MCubeS 논문 모델 런(user 10-31)**: 기존 hpca100 런(E1Mc+고해상, TRAIN.QAF 없음, ep128 중단)은 논문 모델이 아님 → 'w/o C2D2' 비교 행으로 이어 학습(DRN-261031-01). 논문 모델 = C2D2 포함 config 6종(`configs/{yeon,lecun}-…_A2c2d2_768.yaml`, `hpca100-…_A2c2d2.yaml`, DRN-261017-02 갱신). 열화 연산자는 MCubeS 모달 매핑을 degrade.py 에 추가(image·nir 광학 열화, aolp·dolp 패치 드롭·블러).
+
+## 결정 추가(user 2026-11-02) — 분량 상한 해제
+- **분량**: "페이지 수 연연하지 말고 계속 늘려, 18페이지 되어도 좋아". 10쪽 상한(2026-10-28)을 대체한다. 그림·표를 줄이지 않는다.
+- **정성 그림**: "데이터셋별 이미지 인퍼런스를 다양하게 해도 좋아". DELIVER 는 본문 Fig.4(6조건 1위)·한계 절(6조건 역방향)·부록(2·3위 12장)으로 18+6 장면을 모두 싣는다. MUSES·MCubeS·센서 고장 장면은 analysis 요청 inbox 20261102-131217.

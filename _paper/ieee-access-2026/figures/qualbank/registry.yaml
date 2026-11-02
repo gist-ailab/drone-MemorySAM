@@ -1,0 +1,116 @@
+# Inference bank of the IEEE Access manuscript: every model's prediction on the WHOLE evaluation split,
+# stored once so that example scenes can be re-chosen at any time without re-running inference.
+# Read by figures/qualbank/qualbank.py (ingest / score / candidates / status) and figures/src/make_qual_figs.py.
+#
+# bank layout (NAS, not git):  <bank_root>/<dataset>_<split>/<model>/<image_id>.png   raw train-ID, GT resolution
+#                              <bank_root>/<dataset>_<split>/gt/<image_id>.png         train-ID, 255 = ignore
+#                              <bank_root>/<dataset>_<split>/<model>/MANIFEST.json     source, md5 of ckpt, count
+#                              <bank_root>/<dataset>_<split>/scores/<model>.npz        per-image confusion matrices
+# image_id = path relative to the dataset root without extension (nested, never flattened: ISSUE-034).
+#
+# status: ready   = predictions for the whole split are in the bank
+#         pending = waiting for a dump (who/what is in `note`)
+bank_root: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank
+
+datasets:
+  deliver:
+    split: test
+    n_images: 1897
+    classes_from: semseg/datasets/deliver.py        # CLASSES and PALETTE are parsed from this file
+    thin_classes: [Pole, TrafficLight, Pedestrian, Static]
+    gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_test1024_dump_20261016/s902/test/gt
+    input_root: /mnt/HDD1/Workspace/dset/DELIVER
+    inputs:                                          # path = input_root / (image_id with each [old, new] replaced) + .png
+      rgb: []                                        #   first entry = the RGB tile of the figures
+      depth: [[img/, depth/], [_rgb_, _depth_]]
+      event: [[img/, event/], [_rgb_, _event_]]
+      lidar: [[img/, lidar/], [_rgb_, _lidar_]]
+    # group = condition shown as a figure row; first matching rule wins
+    # DELIVER test mixes weather (case none) with built-in sensor-failure cases (sequence suffix); each case is
+    # its own group so weather rows stay case-free (same as analysis' selection, inbox 20261030-175233)
+    group_rules:
+      - {contains: underexposure, group: low_exposure}
+      - {contains: overexposure, group: overexposure}
+      - {contains: motionblur, group: motionblur}
+      - {contains: lidarjitter, group: lidarjitter}
+      - {contains: eventlowres, group: eventlowres}
+      - {regex: '^img/([a-z]+)/', group: '\1'}
+    sequence_regex: '^img/[a-z]+/[a-z]+/([^/]+)/'   # no two selected scenes from the same sequence
+    ours: A2s821
+    compare: [Q2s821, DGFofficial, CAFb]             # delta = ours - max(compare)
+    models:
+      A2s821:
+        label: Ours
+        role: ours
+        status: ready
+        source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_test1024_dump_20261016/s821/test/pred
+        ckpt: "yeon:outputs/ReliaDINO/yeon_deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires (see paper_qual_deliver_20261030/manifest.csv)"
+        expected_miou: 58.61                           # legal v2 test, judgment record; ingest checks it
+      A2s902:
+        label: Ours (seed 902)
+        role: ours_seed
+        status: ready
+        source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_test1024_dump_20261016/s902/test/pred
+        expected_miou: null
+      Q2s821:
+        label: Ours w/o high-res
+        role: ablation
+        status: ready
+        source: /home/jemo/.claude/jobs/4ad76b83/tmp/qual_q2/pred      # analysis job scratch -> copied into the bank
+        ckpt: "NAS ckpts/hpca100_rescue_q2e1_20261030/Q2_s821_epoch40_67.0.pth (md5 c93de37b389a20a77e3bfd369123734c)"
+        expected_miou: 57.73
+      DGFofficial:
+        label: DGFusion (official)
+        role: baseline
+        status: ready
+        source: /home/jemo/.claude/jobs/4ad76b83/tmp/qual_rle/dgf_official/test/pred
+        resize_from: 1024                              # nearest to GT size, same as the scoring (common.resize_nearest)
+        ckpt: "NAS ckpts/dgfusion_official_20261001/dgfusion_swin_tiny_bs8_200k_deliver_clde.pth (md5 0f40a64119f02461d2c7b49628d6208d)"
+        expected_miou: 56.71
+      CAFb:
+        label: CAFuser (retrained)
+        role: baseline
+        status: ready
+        source: /home/jemo/.claude/jobs/4ad76b83/tmp/qual_rle/cafuser_b/test/pred
+        resize_from: 1024
+        ckpt: "NAS ckpts/cafuser_b_resume_20261003/model_final.pth (md5 fbae170df640840bfd9c54e05faa4880)"
+        expected_miou: 55.77
+      DGFb:
+        label: DGFusion (retrained)
+        role: baseline
+        status: pending
+        note: "weights and dumps on lab servers (unreachable since 2026-10-30); analysis inbox 20261102-131217"
+
+  muses:
+    split: val                                       # test labels are not public
+    n_images: 250
+    classes_from: semseg/datasets/muses.py
+    thin_classes: [pole, traffic light, traffic sign, person, rider, bicycle, motorcycle]
+    gt_source: null                                  # dataset lives on lab servers only; analysis dumps gt with the preds
+    input_root: null
+    group_rules:
+      - {regex: '(clear|fog|rain|snow).*(day|night)', group: '\1_\2'}
+    sequence_regex: null
+    ours: A2m4
+    compare: [DGFofficial, CAFofficial]
+    models:
+      A2m4: {label: Ours, role: ours, status: pending, note: "MUSES 4-sensor paper model (DRN-261019-02) still training"}
+      DGFofficial: {label: DGFusion (official), role: baseline, status: pending, note: "analysis inbox 20261102-131217 item 3"}
+      CAFofficial: {label: CAFuser (official), role: baseline, status: pending, note: "same request"}
+
+  mcubes:
+    split: test
+    n_images: 102
+    classes_from: semseg/datasets/mcubes.py
+    thin_classes: []
+    gt_source: null                                  # GT on the hub: /mnt/HDD1/Workspace/dset/MCubeS/GT (needs train-ID check on ingest)
+    input_root: /mnt/HDD1/Workspace/dset/MCubeS
+    group_rules:
+      - {regex: '^(\w+?)\d', group: '\1'}
+    sequence_regex: '^(\w+_\d+)_'
+    ours: A2c2d2s827
+    compare: [woC2D2s827, E1Mcs827]
+    models:
+      A2c2d2s827: {label: Ours, role: ours, status: pending, note: "DRN-261017-02 C2D2 run training on hpca100 (768 crop)"}
+      woC2D2s827: {label: Ours w/o C2D2, role: ablation, status: pending, note: "DRN-261031-01 epoch180_60.27 on hpca100; analysis inbox 20261102-131217 item 4"}
+      E1Mcs827: {label: Ours w/o C2D2 and high-res, role: ablation, status: pending, note: "E1Mc s20260827 epoch114_58.94 (NAS)"}

@@ -1,0 +1,6 @@
+{
+ "script": "figures/src/make_qual_figs.py",
+ "palette_source": {
+  "semseg/datasets/deliver.py": "70f1f6751cba58fd258383aa44512b3e"
+ }
+}
