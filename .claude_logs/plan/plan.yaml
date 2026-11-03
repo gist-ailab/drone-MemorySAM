@@ -13405,14 +13405,14 @@ items:
   expected_cost: GPU 1장 1시간
   priority: 1
   owner_role: analysis
-  status: queued
+  status: judging
   kind: analysis
   tags:
   - paper
   - cost
   docs: .claude_logs/tasks/DRN-261027-02
   created: '2026-10-27'
-  updated: '2026-10-29'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
