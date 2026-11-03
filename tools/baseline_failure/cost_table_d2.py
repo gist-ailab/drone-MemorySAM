@@ -42,30 +42,30 @@ def count_params(model):
 
 
 def count_flops(model, inputs):
-    result = dict(gflops=None, flops_convention='fvcore (1 MAC = 1 flop)',
-                  unsupported_ops={}, flops_error=None)
+    """주 값 = torch FlopCounterMode(1 MAC = 1 flop 로 환산). fvcore 는 되면 참고값으로 함께 기록."""
+    for p in model.parameters():
+        p.requires_grad_(False)
+    result = dict(gflops=None, gflops_2flop_per_mac=None,
+                  flops_convention='torch.utils.flop_counter.FlopCounterMode, gflops = total/2 (1 MAC = 1 flop)',
+                  gflops_fvcore=None, unsupported_ops={}, flops_error=None)
+    try:
+        from torch.utils.flop_counter import FlopCounterMode
+        counter = FlopCounterMode(display=False)
+        with torch.no_grad(), counter:
+            model(inputs)
+        total = counter.get_total_flops()
+        result['gflops'] = total / 2 / 1e9
+        result['gflops_2flop_per_mac'] = total / 1e9
+    except Exception as exc:
+        result['flops_error'] = f'FlopCounterMode: {type(exc).__name__}: {exc}'
     try:
         from fvcore.nn import FlopCountAnalysis
-
         with torch.no_grad():
             analysis = FlopCountAnalysis(model, (inputs,))
-            result['gflops'] = analysis.total() / 1e9
+            result['gflops_fvcore'] = analysis.total() / 1e9
             result['unsupported_ops'] = dict(analysis.unsupported_ops())
     except Exception as exc:
-        result['flops_error'] = f'{type(exc).__name__}: {exc}'
-        # tools/cost_table_ours.py 와 같은 대체: FlopCounterMode(1 MAC = 2 flop) → 절반으로 환산.
-        try:
-            from torch.utils.flop_counter import FlopCounterMode
-            counter = FlopCounterMode(display=False)
-            with torch.no_grad(), counter:
-                model(inputs)
-            total = counter.get_total_flops()
-            result['gflops'] = total / 2 / 1e9
-            result['gflops_2flop_per_mac'] = total / 1e9
-            result['flops_convention'] = ('torch.utils.flop_counter.FlopCounterMode, '
-                                          'gflops = total/2 (1 MAC = 1 flop, fvcore 와 같은 규약)')
-        except Exception as exc2:
-            result['flops_error'] += f' | FlopCounterMode: {type(exc2).__name__}: {exc2}'
+        result['fvcore_error'] = f'{type(exc).__name__}: {exc}'
     return result
 
 
@@ -163,8 +163,12 @@ def main():
                 'MODEL.DEVICE', str(device),
                 'MODEL.IS_TRAIN', 'False',
                 'DATASETS.TEST_SEMANTIC', f"('deliver_semantic_{args.split}',)",
-                'DATASETS.DELIVER.EVAL_SIZE', str(args.eval_size),
-                'OUTPUT_DIR', str(out.parent / '_d2log')] + list(args.opts)
+                'OUTPUT_DIR', str(out.parent / '_d2log')]
+        # EVAL_SIZE 키는 해상도 스윕 패치가 들어간 체크아웃(lecun)에만 있다. 원본 저장소는 1024 고정이라
+        # 1024 일 때는 넘기지 않는다(없는 키를 넘기면 yacs 가 Non-existent key 로 멈춘다).
+        if args.eval_size != 1024:
+            opts += ['DATASETS.DELIVER.EVAL_SIZE', str(args.eval_size)]
+        opts += list(args.opts)
         eval_only = True
         inference_only = False
         resume = False

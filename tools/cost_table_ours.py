@@ -70,12 +70,26 @@ def other_gpu_processes(device):
 
 
 def count_flops(model, inputs, dry_run=False):
-    result = dict(gflops=None, flops_convention='fvcore (1 MAC = 1 flop)',
-                  unsupported_ops={}, flops_error=None)
+    """주 값 = torch FlopCounterMode(1 MAC = 1 flop 로 환산). fvcore 는 되면 참고값으로 함께 기록."""
+    for p in model.parameters():
+        p.requires_grad_(False)
+    result = dict(gflops=None, gflops_2flop_per_mac=None,
+                  flops_convention='torch.utils.flop_counter.FlopCounterMode, gflops = total/2 (1 MAC = 1 flop)',
+                  gflops_fvcore=None, unsupported_ops={}, flops_error=None)
+    call = (lambda: model(inputs[0])) if dry_run else (lambda: model(inputs, multimask_output=True))
+    try:
+        from torch.utils.flop_counter import FlopCounterMode
+        counter = FlopCounterMode(display=False)
+        with torch.no_grad(), counter:
+            call()
+        total = counter.get_total_flops()
+        result['gflops'] = total / 2 / 1e9
+        result['gflops_2flop_per_mac'] = total / 1e9
+    except Exception as exc:
+        result['flops_error'] = f'FlopCounterMode: {type(exc).__name__}: {exc}'
     try:
         from fvcore.nn import FlopCountAnalysis
 
-        # fvcore는 keyword 인자를 전달하지 못하므로 평가와 같은 forward를 감싼다.
         class EvalForward(nn.Module):
             def __init__(self, wrapped):
                 super().__init__()
@@ -88,27 +102,10 @@ def count_flops(model, inputs, dry_run=False):
 
         with torch.no_grad():
             analysis = FlopCountAnalysis(EvalForward(model), (inputs,))
-            result['gflops'] = analysis.total() / 1e9
+            result['gflops_fvcore'] = analysis.total() / 1e9
             result['unsupported_ops'] = dict(analysis.unsupported_ops())
     except Exception as exc:
-        result['flops_error'] = f'{type(exc).__name__}: {exc}'
-        # fvcore 의 jit 추적이 실패하는 모델(A2 고해상 경로 등)은 PyTorch 내장 FlopCounterMode 로 센다.
-        # 이 카운터는 곱-더하기 1회를 2 flop 로 세므로, fvcore 와 같은 규약(1 MAC = 1 flop)의 값은 절반이다.
-        try:
-            from torch.utils.flop_counter import FlopCounterMode
-            counter = FlopCounterMode(display=False)
-            with torch.no_grad(), counter:
-                if dry_run:
-                    model(inputs[0])
-                else:
-                    model(inputs, multimask_output=True)
-            total = counter.get_total_flops()
-            result['gflops'] = total / 2 / 1e9
-            result['gflops_2flop_per_mac'] = total / 1e9
-            result['flops_convention'] = ('torch.utils.flop_counter.FlopCounterMode, '
-                                          'gflops = total/2 (1 MAC = 1 flop, fvcore 와 같은 규약)')
-        except Exception as exc2:
-            result['flops_error'] += f' | FlopCounterMode: {type(exc2).__name__}: {exc2}'
+        result['fvcore_error'] = f'{type(exc).__name__}: {exc}'
     return result
 
 
