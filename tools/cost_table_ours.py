@@ -47,6 +47,28 @@ def count_params(model):
                 total_params_m=total / 1e6, trainable_params_m=trainable / 1e6)
 
 
+def other_gpu_processes(device):
+    """측정 GPU 에서 이 프로세스 말고 돌고 있는 compute 프로세스 목록([{pid, used_mib}]). 조회 실패면 None."""
+    if device.type != 'cuda':
+        return []
+    import os, subprocess
+    try:
+        idx = device.index if device.index is not None else torch.cuda.current_device()
+        # CUDA_VISIBLE_DEVICES 로 번호가 바뀌므로 UUID 로 대조한다.
+        uuid = 'GPU-' + str(torch.cuda.get_device_properties(idx).uuid)
+        out = subprocess.run(['nvidia-smi', '--query-compute-apps=gpu_uuid,pid,used_memory',
+                              '--format=csv,noheader,nounits'], capture_output=True, text=True,
+                             timeout=30).stdout
+        rows = []
+        for line in out.strip().splitlines():
+            g, pid, mem = [x.strip() for x in line.split(',')]
+            if g == uuid and int(pid) != os.getpid():
+                rows.append(dict(pid=int(pid), used_mib=int(mem)))
+        return rows
+    except Exception:
+        return None
+
+
 def count_flops(model, inputs, dry_run=False):
     result = dict(gflops=None, flops_convention='fvcore (1 MAC = 1 flop)',
                   unsupported_ops={}, flops_error=None)
@@ -70,6 +92,23 @@ def count_flops(model, inputs, dry_run=False):
             result['unsupported_ops'] = dict(analysis.unsupported_ops())
     except Exception as exc:
         result['flops_error'] = f'{type(exc).__name__}: {exc}'
+        # fvcore 의 jit 추적이 실패하는 모델(A2 고해상 경로 등)은 PyTorch 내장 FlopCounterMode 로 센다.
+        # 이 카운터는 곱-더하기 1회를 2 flop 로 세므로, fvcore 와 같은 규약(1 MAC = 1 flop)의 값은 절반이다.
+        try:
+            from torch.utils.flop_counter import FlopCounterMode
+            counter = FlopCounterMode(display=False)
+            with torch.no_grad(), counter:
+                if dry_run:
+                    model(inputs[0])
+                else:
+                    model(inputs, multimask_output=True)
+            total = counter.get_total_flops()
+            result['gflops'] = total / 2 / 1e9
+            result['gflops_2flop_per_mac'] = total / 1e9
+            result['flops_convention'] = ('torch.utils.flop_counter.FlopCounterMode, '
+                                          'gflops = total/2 (1 MAC = 1 flop, fvcore 와 같은 규약)')
+        except Exception as exc2:
+            result['flops_error'] += f' | FlopCounterMode: {type(exc2).__name__}: {exc2}'
     return result
 
 
@@ -155,7 +194,8 @@ def main():
         checkpoint_md5 = file_md5(checkpoint)
         model.eval()
         dataset_cfg = cfg['DATASET']
-        transform = valmod.get_val_augmentation(args.size, dataset_cfg=dataset_cfg)
+        # val.py 와 같이 [H, W] 리스트로 넘긴다(정수를 주면 augmentations_mm 의 Resize 가 실패한다).
+        transform = valmod.get_val_augmentation([args.size, args.size], dataset_cfg=dataset_cfg)
         dataset, _ = valmod.create_dataset(dataset_cfg, args.split, transform, args.split,
                                            macvi=False, eval_day=False)
         loader = DataLoader(dataset, batch_size=1, collate_fn=valmod._collate_fn)
@@ -164,7 +204,13 @@ def main():
         forward = lambda m, xs: m(xs, multimask_output=True)
 
     flops = count_flops(model, images, dry_run=args.dry_run)
+    others_before = other_gpu_processes(device)
     timing = measure(model, images, device, args.dtype, args.warmup, args.iters, forward)
+    others_after = other_gpu_processes(device)
+    # 지연은 GPU 를 혼자 쓸 때만 유효하다. 같은 GPU 에 다른 프로세스가 있었으면 표시해 둔다.
+    timing['other_gpu_processes_before'] = others_before
+    timing['other_gpu_processes_after'] = others_after
+    timing['latency_valid'] = (device.type == 'cuda' and others_before == [] and others_after == [])
     result = dict(name=args.name, cfg_path=cfg_path, checkpoint_path=checkpoint_path,
                   checkpoint_md5=checkpoint_md5, gpu_name=torch.cuda.get_device_name(device)
                   if device.type == 'cuda' else None,
