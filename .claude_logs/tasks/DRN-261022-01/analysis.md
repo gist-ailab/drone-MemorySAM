@@ -1,7 +1,7 @@
 판정은 이 파일이 아니라 `lab-plan verdict DRN-261022-01 --analysis .claude_logs/tasks/DRN-261022-01/analysis.md`로 기록한다.
 
 작성: MMSAM | analysis, 2026-10-27. 요청 inbox `20261022-184018-request-7d5e45f3`(method). 학습 없음.
-진행: **(a) DELIVER 완료**, (a) MUSES 는 도구 준비 완료·GPU 대기, (b) 선형 프로브 미착수.
+진행: **(a) DELIVER 완료(10-27), (a) MUSES 완료(11-04)**, (b) 선형 프로브 미착수.
 
 ## 방법 — 객체 클래스 오라클
 - 스크립트 `.claude_logs/experiments/analysis/DRN-261022-01/object_class_oracle.py`(합성 자기검증 `oracle_selftest.py` 통과).
@@ -47,9 +47,25 @@ TrafficLight +36.70(+1.47) · Other +22.81(+0.91) · TrafficSign +16.85(+0.67) �
 
 - 이 결과는 A2 실패-키 분석(DRN-261012-02)의 TrafficLight FP 출처(GT Other·TrafficSign)와 같은 방향이다.
 
-### (a) MUSES — 미측정(GPU 대기)
-- E1M(MUSES 3센서 PhysAug-off) 3시드 824·825·826 의 val 예측 덤프가 없어 새 도구 `tools/muses_dump_preds.py`(develop 7a9ffe8)를 만들었다. `eval_muses_official.py`(하네스 동결)와 같은 추론·채점 경로이고 동결 파일은 수정하지 않았다(sha256 매니페스트 일치). 1024 config `configs/eval/muses_physaugoff_rank_eval1024.yaml`(d0e1ca5).
-- 체크포인트는 hpca100 `/tmp/jemo_maeng/muckpt/`(md5 jarvis 원본과 일치). 2026-10-27 17:30 기준 hpca100 GPU 4장과 연구실 서버 모두 사용 중이라 기동하지 못했다.
+### (a) MUSES 오라클 여유(2026-11-04 측정)
+- 모델: E1M(MUSES 3센서 RGB·Event·LiDAR, PhysAug-off) 3시드 824·825·826, jarvis `/SSDb/jemo_maeng/ckpt/muses_physaugoff/`. A2 의 MUSES 판(4모달, DRN-261019-02)은 아직 없어 E1M 으로 측정했다(사전 계획과 같음).
+- 덤프: 새 도구 `tools/muses_dump_preds.py`(develop 7a9ffe8, `eval_muses_official.py` 동결 파일 미수정·같은 경로), 공식 val 250장, native 1080×1920, 1024·1536 config(`configs/eval/muses_physaugoff_rank_eval{1024,1536}.yaml`). 재현: 공식 val mIoU 824 82.4631/83.1175 · 825 82.1859/82.6253 · 826 82.2560/82.8473(1024/1536) — DRN-261016-02 기록과 일치(825 1024 만 82.1857 대비 +0.0002).
+- 오라클: 같은 스크립트에 `--dataset muses`(19클래스, 공식 채점 = GT 에 있는 클래스만 평균). 오라클 입력의 원래 mIoU 가 공식 값과 소수 넷째 자리까지 같다. 사물판 집합 = pole·traffic light·traffic sign·person·rider·car·truck·bus·train·motorcycle·bicycle(DELIVER 사물 11클래스에 대응).
+- 원본: NAS `analysis_logs/muses_dump_e1m_20261104/`(report.json·조건별 혼동행렬·예측 PNG) · `analysis_logs/object_oracle_muses_20261104/{all,things}/`.
+
+| 오라클 여유(3시드: 824 / 825 / 826, 평균) | 1024 | 1536 |
+| --- | --- | --- |
+| 사물판 | +1.82 / +1.99 / +1.68, **+1.83** | +1.96 / +2.39 / +2.18, **+2.18** |
+| 전체판 | +4.11 / +4.55 / +3.83, +4.16 | +4.49 / +5.08 / +4.52, +4.70 |
+
+- 사물판 1536 클래스별 IoU 여유(3시드 평균, 괄호 = mIoU 기여): rider +15.77(+0.83) · truck +5.40(+0.28) · bicycle +4.01(+0.21) · motorcycle +3.98(+0.21) · person +2.99(+0.16) · bus +2.82(+0.15) · traffic light +2.23(+0.12) · traffic sign +2.10(+0.11).
+- rider 한 클래스가 사물판 여유 2.18 의 38% 다. rider 는 MUSES 에서 화소가 매우 적은 클래스(시드당 TP 약 0.06M px, DRN-261016-03)라 몇 장면에 좌우된다. rider 를 빼면 사물판 여유는 약 +1.35 다.
+- 사물판에서 바뀐 픽셀 상위 쌍(1536, 3시드 공통): car → truck(0.05~0.08M) · pole ↔ traffic sign · traffic light → pole · pole → car. DELIVER(쌍당 0.5~3M px)보다 바뀐 픽셀이 1~2 자릿수 적다.
+- 전체판의 큰 몫은 stuff 혼동(terrain → fence, vegetation ↔ sky, wall → fence, road → sidewalk)이라 DELIVER 와 같이 "객체 클래스 여유" 로 인용하지 않는다.
+
+### H-X1 사전 기준 대비
+- DELIVER A2 사물판 여유 +4.22(≥ +1.5 충족), MUSES 1536 사물판 여유 +2.18(≥ +1.0 충족, rider 제외 시 약 +1.35 도 충족). 반증 조건(MUSES < +0.5) 해당 없음.
+- 두 벤치 모두 객체 클래스 여유 ≥ +1.0 이다(사물판 정의 기준).
 
 ### (b) 선형 프로브 — 미착수
 - GT 객체별 fused 토큰 평균과 고해상 s4 특징 평균을 뽑는 훅 코드가 필요하다(새 코드, GPU 필요).
@@ -63,5 +79,5 @@ TrafficLight +36.70(+1.47) · Other +22.81(+0.91) · TrafficSign +16.85(+0.67) �
 판정은 method 가 한다.
 
 ## 다음 결정
-- MUSES (a): 빈 GPU 가 나면 `tools/muses_dump_preds.py` 로 3시드 × 1024·1536 덤프 후 같은 오라클(MUSES 클래스 매핑) 실행.
-- (b): 특징 추출 훅 코드 작성(워커 위임) 후 실행.
+- (b) 선형 프로브(H-X2): 특징 추출 훅 코드 작성(워커 위임) 후 실행 — 미착수.
+- MUSES 측 A2(4모달) 가 나오면 같은 오라클로 다시 잴 수 있다(덤프 도구·스크립트 준비됨).
