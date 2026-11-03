@@ -128,8 +128,8 @@ def parse_queue(path):
                 prio = int(priority)
             except ValueError:
                 die(f"queue '{jid}' 의 priority 가 정수가 아님: {priority!r}")
-            if ngpu not in ("1", "2"):
-                die(f"queue '{jid}' 의 ngpu 는 1 또는 2 여야 함: {ngpu!r}")
+            if ngpu not in ("1", "2", "4", "8"):
+                die(f"queue '{jid}' 의 ngpu 는 1, 2, 4, 8 중 하나여야 함: {ngpu!r}")
             jobs.append({
                 "id": jid, "priority": prio, "hosts": hosts, "ngpu": int(ngpu),
                 "repo": repo, "config": config, "session": session,
