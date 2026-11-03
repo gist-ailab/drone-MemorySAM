@@ -53,7 +53,41 @@ def count_flops(model, inputs):
             result['unsupported_ops'] = dict(analysis.unsupported_ops())
     except Exception as exc:
         result['flops_error'] = f'{type(exc).__name__}: {exc}'
+        # tools/cost_table_ours.py 와 같은 대체: FlopCounterMode(1 MAC = 2 flop) → 절반으로 환산.
+        try:
+            from torch.utils.flop_counter import FlopCounterMode
+            counter = FlopCounterMode(display=False)
+            with torch.no_grad(), counter:
+                model(inputs)
+            total = counter.get_total_flops()
+            result['gflops'] = total / 2 / 1e9
+            result['gflops_2flop_per_mac'] = total / 1e9
+            result['flops_convention'] = ('torch.utils.flop_counter.FlopCounterMode, '
+                                          'gflops = total/2 (1 MAC = 1 flop, fvcore 와 같은 규약)')
+        except Exception as exc2:
+            result['flops_error'] += f' | FlopCounterMode: {type(exc2).__name__}: {exc2}'
     return result
+
+
+def other_gpu_processes(device):
+    """측정 GPU 에서 이 프로세스 말고 돌고 있는 compute 프로세스 목록. 조회 실패면 None."""
+    if device.type != 'cuda':
+        return []
+    import os, subprocess
+    try:
+        idx = device.index if device.index is not None else torch.cuda.current_device()
+        uuid = 'GPU-' + str(torch.cuda.get_device_properties(idx).uuid)
+        out = subprocess.run(['nvidia-smi', '--query-compute-apps=gpu_uuid,pid,used_memory',
+                              '--format=csv,noheader,nounits'], capture_output=True, text=True,
+                             timeout=30).stdout
+        rows = []
+        for line in out.strip().splitlines():
+            g, pid, mem = [x.strip() for x in line.split(',')]
+            if g == uuid and int(pid) != os.getpid():
+                rows.append(dict(pid=int(pid), used_mib=int(mem)))
+        return rows
+    except Exception:
+        return None
 
 
 def measure(model, inputs, device, dtype, warmup, iters):
@@ -154,7 +188,12 @@ def main():
         raise ValueError(f'비교 조건은 batch_size=1입니다: loader batch={len(inputs)}')
 
     flops = count_flops(model, inputs)
+    others_before = other_gpu_processes(device)
     timing = measure(model, inputs, device, args.dtype, args.warmup, args.iters)
+    others_after = other_gpu_processes(device)
+    timing['other_gpu_processes_before'] = others_before
+    timing['other_gpu_processes_after'] = others_after
+    timing['latency_valid'] = (device.type == 'cuda' and others_before == [] and others_after == [])
     result = dict(name=args.name, cfg_path=str(Path(args.config_file).resolve()),
                   checkpoint_path=str(checkpoint), checkpoint_md5=file_md5(checkpoint),
                   gpu_name=torch.cuda.get_device_name(device),
