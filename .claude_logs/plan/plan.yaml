@@ -13405,7 +13405,7 @@ items:
   expected_cost: GPU 1장 1시간
   priority: 1
   owner_role: analysis
-  status: judging
+  status: done
   kind: analysis
   tags:
   - paper
@@ -13413,11 +13413,21 @@ items:
   docs: .claude_logs/tasks/DRN-261027-02
   created: '2026-10-27'
   updated: '2026-11-04'
-  closed: null
+  closed: '2026-11-04'
   runs: []
   results: []
-  verdict: null
-  analysis: null
+  verdict:
+    decision: adopt
+    summary: '논문 비용표 채택(학습 0, jarvis RTX 4090 독점·bf16·DELIVER 4모달 1024² batch1, FLOPs
+      는 torch FlopCounterMode 1 MAC=1 로 네 모델 통일): A2 총 377.05M/학습 73.98M·10,135 GFLOPs·254.5
+      ms·2.47 GB | Q2(E1 구조) 361.87M/58.79M·9,922·224.8 ms·2.18 GB | DGFusion 78.88M·695.6·88.9
+      ms·1.83 GB | CAFuser 75.01M·670.8·83.1 ms·1.57 GB. 고해상 경로 = +15.18M·+2.2% FLOPs·+13%
+      지연. 논문 표 서술 규칙: 학습 파라미터는 기준선과 같은 수준(74M vs 75~79M)이나 FLOPs 14.6배·지연 2.9배(동결
+      ViT-L 을 센서 4개×4,096 토큰으로 통과)를 한계 절에 그대로 적는다(숨기지 않음). 원본 NAS analysis_logs/cost_table_20261104{,b,c}/'
+    date: '2026-11-04'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261027-02/analysis.md
   superseded_by: null
   problem: PRB-DRN-261016-01
 - id: DRN-261027-03
@@ -13825,7 +13835,9 @@ items:
     수치만)
   change: MODEL.ROUTER.ENABLE true→false (router CE 0.4 도 함께 꺼짐), 나머지 A2 config 동일
   baseline: A2 같은 시드(s821·s902), L5·L6 과 같은 평가 묶음 + 조건별 센서 하나 제거(test)
-  configs: []
+  configs:
+  - configs/amphibious-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L8norouter.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L8norouter.yaml
   launch: null
   success_criteria: router 를 '적응 장치'로 주장 = 2시드 평균에서 router 제거 시 야간·저노출 −RGB 완화폭이 절반
     이하로 줄거나 clean ≥ −0.5 또는 EMM15 ≥ −1.0 하락(두 시드 부호 일치). 아니면 구성요소로만 서술
@@ -13842,7 +13854,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261029-07
   created: '2026-10-29'
-  updated: '2026-11-02'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
@@ -14116,6 +14128,47 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261016-01
+- id: DRN-261104-01
+  title: Ablation 구조 행 시드 보강 · L2(단순 융합 평균)·L4(M2F 쿼리 헤드 제거) 둘째 시드 s902 — jarvis 유휴
+    채움
+  question: user 2026-10-21 결정으로 1시드(s821)로 줄인 구조 행 L2·L4 의 Δ 가 둘째 시드에서도 같은 부호·크기인가(ablation
+    표의 시드 평균 병기용)
+  hypothesis: L2(A2 − 교차주의 융합 → 센서 토큰 평균) 와 L4(A2 − M2F 쿼리 헤드 → dense 헤드만) 의 s902
+    짝 Δ(= 행 − A2 s902 57.09) 는 s821 짝 Δ(L2 57.76−58.61=−0.85, L4 57.89−58.61=−0.72)
+    와 같은 부호
+  falsification: s902 짝 Δ 의 부호가 s821 과 반대(L2 또는 L4 가 A2 s902 보다 높음)이면 해당 구조 요소의 기여
+    주장을 철회
+  change: 시드 하나(20260821 → 20260902). 구조·레시피·교사(E1 s1 ep140, TEACHER_CFG=E1)·40ep
+    스크린 모두 s821 행과 동일
+  baseline: A2 s902 test 57.09(legal v2) 와 짝 비교; s821 행은 DRN-261020-10(L2 57.76)·DRN-261020-12(L4
+    57.89)
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L2meanfusion.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L4nom2f.yaml
+  launch: null
+  success_criteria: 완주 + legal v2 test 측정 → 표에는 s821 단독 대신 2시드 평균±짝 Δ 병기. 결과가 s821
+    과 부호가 다르면 '시드 의존' 으로 표기하고 행 주장을 약화(기준 사전 고정)
+  sample_basis: 구조 행은 user 2026-10-21 결정으로 1시드였음. jarvis 6장 유휴(gpu-never-idle 규칙)라
+    비용 0 에 가까워 둘째 시드만 보강. 3시드째는 안 한다
+  expected_cost: jarvis RTX 4090 4장 × 약 1일 × 2런(순차 또는 2런 동시 8장 중 6장 유휴라 1런씩), 학습 유휴
+    채움이라 다른 P1 항목(DGFusion 두 패스 등)이 올라오면 선점 허용
+  priority: 3
+  owner_role: manager
+  status: queued
+  kind: experiment
+  tags:
+  - ablation
+  - leave-one-out
+  - paper
+  - gpu-fill
+  created: '2026-11-04'
+  updated: '2026-11-04'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
