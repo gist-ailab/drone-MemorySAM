@@ -221,7 +221,7 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 \centering
 \includegraphics[width=\textwidth]{figures/fig_adverse_deliver.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Six conditions on the DELIVER test split with all four sensors present (sun and cloud included for reference). For each condition, the scene shown is the one where our model leads the strongest of the other three models (CMNeXt, CAFuser, and DGFusion, all from released weights; ours: seed 821) by the largest per-image mIoU \todo{tiles are regenerated when the CMNeXt and CAFuser dumps arrive}; no two scenes come from the same sequence. In the prediction tiles, pixels that agree with the ground truth are faded, so the coloured regions are errors. The number under each tile is the per-image mIoU (\%); colours follow the key below the grid. More scenes are in Appendix~\ref{app:qual}.}
+\caption{Six conditions on the DELIVER test split with all four sensors present (sun and cloud included for reference). For each condition, the scene shown is the one where our model leads the strongest of the other three models (CMNeXt, CAFuser, and DGFusion, all from released weights) by the largest per-image mIoU \todo{tiles are regenerated when the CMNeXt and CAFuser dumps arrive}; no two scenes come from the same sequence. In the prediction tiles, pixels that agree with the ground truth are faded, so the coloured regions are errors. The number under each tile is the per-image mIoU (\%); colours follow the key below the grid. More scenes are in Appendix~\ref{app:qual}.}
 \label{fig:adverse}
 \end{figure*}
 
@@ -274,7 +274,7 @@ Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on
 % excluded from this paper (user 2026-11-02, inbox 20261102-191138) and kept for the separate RA-L paper.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{Ablation on DELIVER test, building the model up (seed 821, 40 epochs), mIoU (\%).}
+\caption{Ablation on DELIVER test, building the model up (one seed, 40 epochs), mIoU (\%).}
 \label{tab:ablation}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
@@ -292,10 +292,10 @@ Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on
 \tabnote{First row: frozen DINOv3-L with LoRA on RGB only. Second row: the four sensors fused by averaging their tokens, dense head only. EMM is not defined for a single sensor (--).}
 \end{table}
 
-% Table 6b. Leave one component out of the full model (seed 821, 40 epochs). Sources as Table 6 comment above;
+% Table 6b. Leave one component out of the full model (one seed, 40 epochs). Sources as Table 6 comment above;
 % L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
 \begin{table}[t]
-\caption{Ablation on DELIVER test, removing one component from the full model (seed 821, 40 epochs), mIoU (\%).}
+\caption{Ablation on DELIVER test, removing one component from the full model (one seed, 40 epochs), mIoU (\%).}
 \label{tab:ablation_loo}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
