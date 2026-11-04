@@ -4,7 +4,8 @@
 사용법::
 
     python tools/baseline_failure/thin_error_anatomy.py --gt GT_DIR \
-      --models ours=PRED_DIR baseline=PRED_DIR --split test --out OUT_DIR
+      --models ours=PRED_DIR baseline=PRED_DIR --split test --out OUT_DIR \
+      [--classes Pole Cars]
 
 README (지표 정의)
 ==================
@@ -35,6 +36,10 @@ README (지표 정의)
   '찾았지만 못 그림'=찾았고 성분 IoU<0.5. 그 비율의 분모는 찾은 성분 수,
   찾음률의 분모는 전체 성분 수다. 성분 픽셀 재현율 평균은 각 성분의
   |M∩P|/|M|를 동일 가중 평균한다. 성분이 없거나 찾은 성분이 없으면 비율을 비운다.
+- --classes 로 지정한 클래스는 thin_4·other_21 묶음에 더해 단독 묶음
+  (class_group=클래스 이름)으로 같은 두께 집계를 thickness_patch.csv 와
+  summary.md 두께 표에 추가한다. 해당 클래스 성분은 원래 묶음에도 그대로
+  들어간다. 지정하지 않으면 출력은 종전과 같다.
 - 이 패치 두께는 GT 형상의 기술 통계다. 이 표만으로 백본의 인과 원인을 증명할
   수 없다. native 크기가 다른 예측은 보간 후 평가하므로 원래 격자와 차이가 날 수 있다.
 """
@@ -127,7 +132,7 @@ def component_scores(pred_mask, component, shape):
 
 
 def _one_image(task):
-    image_id, gt_path, pred_paths, model_input_px, patch_px = task
+    image_id, gt_path, pred_paths, model_input_px, patch_px, class_groups = task
     gt = common.load_label_png(gt_path)
     scale = model_input_px / max(gt.shape)
     preds = {}
@@ -141,7 +146,8 @@ def _one_image(task):
     # 거리 배열 축: 클래스, FP/FN, 구간. 두께 배열: 군, 구간, [수, 찾음, 미묘사, 재현율 합].
     dist = {name: np.zeros((N, 2, 7), dtype=np.int64) for name in preds}
     dist_native = {name: np.zeros((N, 2, 7), dtype=np.float64) for name in preds}
-    thick = {name: np.zeros((2, 6, 4), dtype=np.float64) for name in preds}
+    thick = {name: np.zeros((2 + len(class_groups), 6, 4), dtype=np.float64)
+             for name in preds}
     valid_gt = (gt < N)
     for c in range(N):
         gt_mask = gt == c
@@ -157,9 +163,12 @@ def _one_image(task):
             for comp in components:
                 recall, iou = component_scores(pred_mask, comp, gt.shape)
                 group = 0 if c in THIN else 1
-                row = thick[name][group, comp[3]]
-                row += (1, float(recall >= 0.5),
-                        float(recall >= 0.5 and iou < 0.5), recall)
+                hit = (1, float(recall >= 0.5),
+                       float(recall >= 0.5 and iou < 0.5), recall)
+                thick[name][group, comp[3]] += hit
+                own = class_groups.get(c)
+                if own is not None:
+                    thick[name][own, comp[3]] += hit
         fp_names = [name for name, pred in preds.items()
                     if np.any((pred == c) & valid_gt & ~gt_mask)]
         if fp_names:
@@ -189,7 +198,10 @@ def _write_csv(path, header, rows):
         writer.writerows(rows)
 
 
-def scan(gt_index, model_index, model_input_px=1024, patch_px=16, limit=0, workers=8):
+def scan(gt_index, model_index, model_input_px=1024, patch_px=16, limit=0, workers=8,
+         class_groups=None):
+    """class_groups={class_id: 군 인덱스} 는 --classes 단독 묶음(2부터 시작)."""
+    class_groups = class_groups or {}
     names = list(model_index)
     ids = set(gt_index)
     for name in names:
@@ -203,14 +215,14 @@ def scan(gt_index, model_index, model_input_px=1024, patch_px=16, limit=0, worke
         print(f"[thin_error_anatomy] 경고: GT {len(gt_index)}장 중 공통 {len(ids)}장만 집계")
     tasks = ((image_id, gt_index[image_id],
               {name: model_index[name][image_id] for name in names},
-              model_input_px, patch_px) for image_id in ids)
+              model_input_px, patch_px, class_groups) for image_id in ids)
     cm_all = {n: np.zeros((N, N), dtype=np.int64) for n in names}
     cm_cond = {n: {cond: np.zeros((N, N), dtype=np.int64)
                    for cond in common.KNOWN_CONDITIONS} for n in names}
     dist = {n: np.zeros((N, 2, 7), dtype=np.int64) for n in names}
     sums_gt = {n: np.zeros((N, 2, 7), dtype=np.float64) for n in names}
     sums_model = {n: np.zeros((N, 2, 7), dtype=np.float64) for n in names}
-    thick = {n: np.zeros((2, 6, 4), dtype=np.float64) for n in names}
+    thick = {n: np.zeros((2 + len(class_groups), 6, 4), dtype=np.float64) for n in names}
     executor = ProcessPoolExecutor(max_workers=workers) if workers > 1 else None
     try:
         results = executor.map(_one_image, tasks, chunksize=1) if executor else map(_one_image, tasks)
@@ -233,7 +245,7 @@ def scan(gt_index, model_index, model_input_px=1024, patch_px=16, limit=0, worke
 
 
 def write_outputs(out, names, ids, cm_all, cm_cond, dist, sums_gt, sums_model,
-                  thick, split, patch_px):
+                  thick, split, patch_px, group_labels=("thin_4", "other_21")):
     out.mkdir(parents=True, exist_ok=True)
     raw = out / "raw_confusion"
     raw.mkdir(exist_ok=True)
@@ -303,7 +315,7 @@ def write_outputs(out, names, ids, cm_all, cm_cond, dist, sums_gt, sums_model,
                 "mean_distance_model_input_px", "mean_distance_patch"], distance_rows)
     thick_rows = []
     for name in names:
-        for group_idx, group in enumerate(("thin_4", "other_21")):
+        for group_idx, group in enumerate(group_labels):
             for b, bin_label in enumerate(THICK_LABELS):
                 n, detected, poor, recall_sum = thick[name][group_idx, b]
                 thick_rows.append([name, group, bin_label, int(n), int(detected), int(poor),
@@ -313,10 +325,12 @@ def write_outputs(out, names, ids, cm_all, cm_cond, dist, sums_gt, sums_model,
                ["model", "class_group", "thickness_bin_patch", "n_components",
                 "n_detected", "n_found_but_poor", "detection_rate",
                 "found_but_poor_rate", "mean_component_pixel_recall"], thick_rows)
-    _write_summary(out / "summary.md", names, ids, cm_all, dist, thick, split)
+    _write_summary(out / "summary.md", names, ids, cm_all, dist, thick, split,
+                   group_labels)
 
 
-def _write_summary(path, names, ids, cm_all, dist, thick, split):
+def _write_summary(path, names, ids, cm_all, dist, thick, split,
+                   group_labels=("thin_4", "other_21")):
     lines = [f"# 얇은 객체 오류 요약 ({split}, {len(ids)}장)", "",
              "같은 image_id의 저장 PNG를 GT native 크기에서 비교했다. 상세 정의는 도구 상단 README를 참조한다.", "",
              "## 전체 지표", "",
@@ -346,7 +360,7 @@ def _write_summary(path, names, ids, cm_all, dist, thick, split):
     lines += ["", "## 두께별 성분", "",
               "칸: 성분 수 / 찾음률 / 찾았지만 못 그림 비율 / 성분 픽셀 재현율 평균.", "",
               "| 군·패치 구간 | " + " | ".join(names) + " |", "|---|" + "---:|" * len(names)]
-    for group_idx, group in enumerate(("thin_4", "other_21")):
+    for group_idx, group in enumerate(group_labels):
         for b, bin_label in enumerate(THICK_LABELS):
             cells = []
             for n in names:
@@ -369,9 +383,21 @@ def main():
     ap.add_argument("--patch_px", type=int, default=16)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--classes", nargs="+", default=[], metavar="NAME",
+                    help="단독 묶음으로 두께 집계에 추가할 클래스 이름(common.CLASSES)")
     args = ap.parse_args()
     if args.model_input_px <= 0 or args.patch_px <= 0 or args.workers <= 0 or args.limit < 0:
         ap.error("픽셀 크기와 workers는 양수, limit은 0 이상이어야 한다")
+    class_names = []
+    for cname in args.classes:
+        if cname not in common.CLASSES:
+            ap.error(f"--classes 는 common.CLASSES 안의 이름이어야 한다: {cname}")
+        if cname in class_names:
+            ap.error(f"--classes 중복: {cname}")
+        class_names.append(cname)
+    # 단독 묶음 군 인덱스는 기존 thin_4(0)·other_21(1) 뒤의 2부터.
+    class_groups = {common.CLASSES.index(cn): 2 + i for i, cn in enumerate(class_names)}
+    group_labels = ("thin_4", "other_21") + tuple(class_names)
     model_dirs = {}
     for spec in args.models:
         if "=" not in spec:
@@ -386,8 +412,9 @@ def main():
     model_index = {name: common.index_label_pngs(path, require_nested=True)
                    for name, path in model_dirs.items()}
     results = scan(gt_index, model_index, args.model_input_px, args.patch_px,
-                   args.limit, args.workers)
-    write_outputs(Path(args.out), list(model_dirs), *results, args.split, args.patch_px)
+                   args.limit, args.workers, class_groups)
+    write_outputs(Path(args.out), list(model_dirs), *results, args.split,
+                  args.patch_px, group_labels)
     print(f"[thin_error_anatomy] 완료: {args.out}")
 
 

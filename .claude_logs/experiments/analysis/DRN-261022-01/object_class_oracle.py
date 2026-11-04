@@ -22,19 +22,36 @@ ap.add_argument('--models', nargs='+', required=True)
 ap.add_argument('--out', required=True)
 ap.add_argument('--workers', type=int, default=16)
 ap.add_argument('--limit', type=int, default=0)
+ap.add_argument('--dataset', choices=['deliver', 'muses'], default='deliver')
 ap.add_argument('--restrict', default='', help='쉼표로 준 클래스 이름 집합. 주면 예측 클래스와 GT 다수 클래스가 둘 다 이 집합에 속할 때만 라벨을 바꾼다(사물↔사물 혼동만 보정)')
 args = ap.parse_args()
 sys.path.insert(0, args.repo)
 from tools.baseline_failure import common  # noqa: E402
-N = common.N_CLASSES
+MUSES_CLASSES = ['road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic light', 'traffic sign',
+                 'vegetation', 'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train',
+                 'motorcycle', 'bicycle']
+if args.dataset == 'muses':
+    # MUSES 공식 채점(tools/eval_muses_official.py iou_from_hist): GT 에 있는 클래스만 평균.
+    CLASSES = MUSES_CLASSES
+
+    def miou_fn(cm):
+        cm = cm.astype(np.float64); tp = np.diag(cm); gt = cm.sum(1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            iou = tp / (cm.sum(0) + gt - tp)
+        iou = np.where(gt > 0, iou, np.nan)
+        return [None if np.isnan(v) else round(float(v) * 100, 4) for v in iou], round(float(np.nanmean(iou)) * 100, 4)
+else:
+    CLASSES = common.CLASSES
+    miou_fn = common.global_miou_from_cm
+N = len(CLASSES)
 S8 = np.ones((3, 3), dtype=np.uint8)
 RESTRICT = None
 if args.restrict:
     names = [x.strip() for x in args.restrict.split(',') if x.strip()]
-    bad = [x for x in names if x not in common.CLASSES]
+    bad = [x for x in names if x not in CLASSES]
     assert not bad, f'알 수 없는 클래스: {bad}'
     RESTRICT = np.zeros(N, dtype=bool)
-    RESTRICT[[common.CLASSES.index(x) for x in names]] = True
+    RESTRICT[[CLASSES.index(x) for x in names]] = True
 
 
 def relabel(pred, gt):
@@ -74,7 +91,7 @@ def work(item):
         if pred.shape != gt.shape:
             pred = common.resize_nearest(pred, gt.shape[0], gt.shape[1])
         orc, moved = relabel(pred, gt)
-        res.append((common.confusion_matrix(pred, gt), common.confusion_matrix(orc, gt), moved))
+        res.append((common.confusion_matrix(pred, gt, n=N), common.confusion_matrix(orc, gt, n=N), moved))
     return res
 
 
@@ -99,16 +116,16 @@ def main():
             if (k + 1) % 200 == 0:
                 print(f'[oracle] {k + 1}/{len(items)}', flush=True)
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
-    summary = {'n_images': len(ids), 'classes': common.CLASSES, 'restrict': args.restrict, 'models': {}}
+    summary = {'n_images': len(ids), 'classes': CLASSES, 'dataset': args.dataset, 'restrict': args.restrict, 'models': {}}
     for j, n in enumerate(names):
         cm0, cm1, mv = acc[j]
-        iou0, m0 = common.global_miou_from_cm(cm0)
-        iou1, m1 = common.global_miou_from_cm(cm1)
+        iou0, m0 = miou_fn(cm0)
+        iou1, m1 = miou_fn(cm1)
         np.save(out / f'{n}_cm_orig.npy', cm0); np.save(out / f'{n}_cm_oracle.npy', cm1); np.save(out / f'{n}_moved.npy', mv)
-        pairs = sorted(((int(mv[a, b]), common.CLASSES[a], common.CLASSES[b]) for a in range(N) for b in range(N) if mv[a, b] > 0), reverse=True)[:15]
+        pairs = sorted(((int(mv[a, b]), CLASSES[a], CLASSES[b]) for a in range(N) for b in range(N) if mv[a, b] > 0), reverse=True)[:15]
         summary['models'][n] = {'mIoU_orig': m0, 'mIoU_oracle': m1, 'delta': round(m1 - m0, 4),
-                                'per_class_orig': dict(zip(common.CLASSES, iou0)),
-                                'per_class_oracle': dict(zip(common.CLASSES, iou1)),
+                                'per_class_orig': dict(zip(CLASSES, iou0)),
+                                'per_class_oracle': dict(zip(CLASSES, iou1)),
                                 'top_relabel_pairs_px': [{'pred': a, 'oracle': b, 'px': px} for px, a, b in pairs]}
         print(f'[oracle] {n}: orig {m0:.4f} oracle {m1:.4f} delta {m1 - m0:+.4f}', flush=True)
     (out / 'summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=1))
