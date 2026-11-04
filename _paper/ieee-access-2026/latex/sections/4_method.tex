@@ -38,11 +38,11 @@ where $\kappa=1$, $r_s = 1 - H(\sigma(A_s))/\log K$ is the normalized confidence
 A SimpleFPN~\cite{vitadapter2023} turns $F$ into a feature pyramid at strides 4, 8, 16, and 32. Because every level is interpolated from stride-16 tokens, structures thinner than a token are poorly represented. We therefore add a high-resolution path that follows the adapter of the official DINOv3 segmentation code~\cite{dinov3_2025,vitadapter2023}. A convolutional stem shared across sensors, followed by sensor-specific $1\times1$ projections, extracts features at strides 4, 8, 16, and 32 from the raw inputs. Deformable-attention extractors, one for each of the four blocks above and two more after the last, let these convolutional features sample semantic evidence from the intermediate features. Unlike the original adapter, nothing is injected back into the backbone, which stays untouched. The output of the path is added to the FPN levels, as are the four intermediate features of Section~\ref{sec:m_backbone}, resampled from stride 16 to strides 4, 8, 16, and 32 from the shallowest to the deepest block. Only the high-resolution path carries information finer than a token.
 
 \subsection{Dense and Query Heads}\label{sec:m_heads}
-A dense convolutional head classifies every pixel at stride 4 and gives logits $D$. A Mask2Former-style query head~\cite{mask2former2022} with 100 queries, of which the first $K$ are tied to the $K$ classes, and six decoder layers attends to the token maps of all sensors, tagged with a sensor embedding, and its class and mask predictions are converted into per-pixel class scores $Q$. The final logits are
+Like CAFuser~\cite{cafuser2025} and DGFusion~\cite{dgfusion2026}, which use a OneFormer-style query head, we combine a dense convolutional head, which gives per-pixel logits $D$ at stride 4, with a Mask2Former-style query head~\cite{mask2former2022} (100 queries, the first $K$ tied to the $K$ classes, six decoder layers over the tokens of all sensors), whose class and mask predictions give per-pixel class scores $Q$. The final logits are
 \begin{equation}
 \ell_k(p) = D_k(p) + \operatorname{softplus}(\lambda_k)\, Q_k(p) + \alpha\, R_k(p),
 \end{equation}
-with a learned per-class weight $\lambda_k$. During training, each step uses the dense head alone, the query head alone, or both, with probabilities 0.25, 0.25, and 0.5, so that neither head can rely on the other; at inference both are used.
+with a learned per-class weight $\lambda_k$. During training, each step uses the dense head, the query head, or both, with probabilities 0.25, 0.25, and 0.5; at inference both are used.
 
 \subsection{Clean-to-Degraded Two-Pass Distillation}\label{sec:m_c2d2}
 C2D2 uses every training batch $(x, y)$ twice.
