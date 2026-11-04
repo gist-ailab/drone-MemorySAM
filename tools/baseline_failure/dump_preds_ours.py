@@ -90,6 +90,8 @@ def main():
                     help="1024 예측을 native 로 되돌리는 업샘플: v2 = nearest-exact(중심 정렬, tools/legal_rescore_v2.py 와 동일, 현행 정본 채점) / v1 = val.py 의 nearest(floor 정렬, ISSUE-036 반 픽셀 계통 편차). 2026-10-11 기본값을 v2 로 변경")
     ap.add_argument("--path", choices=["both", "dense", "query"], default="both",
                     help="진단 전용 예측 경로: both = 정본(dense + 쿼리 결합) / dense = conv FPN 헤드만(p39_query_off) / query = M2F 쿼리 헤드만(p39_dense_off). 기본 both 는 기존 동작과 동일")
+    ap.add_argument("--hires", choices=["on", "off", "recombine"], default="on",
+                    help="추론 전용 고해상 경로: on = 기존 동작 / off = 어댑터 미합산 / recombine = dense는 off, 질의 헤드는 on")
     args = ap.parse_args()
 
     # val.py 는 무거운 top-level import 를 가지므로 여기서 지연 import.
@@ -125,6 +127,10 @@ def main():
 
     model = valmod.load_model(cfg, Path(args.model_path), device)
     model.eval()
+    model.hires_infer_mode = args.hires
+    if args.hires != "on":
+        model._check_hires_infer_mode()
+    print(f"[dump] hires={args.hires}", flush=True)
     if args.path != "both":
         # 진단 전용: dense(conv FPN 헤드)만 / query(M2F 쿼리 헤드)만으로 예측을 낸다.
         # 모델의 기존 추론-시 ablation 플래그를 그대로 쓰며, 모델 쪽 검사가 무의미한
@@ -219,6 +225,7 @@ def main():
         "split": mode,
         "model_path": str(args.model_path),
         "cfg": str(args.cfg),
+        "hires_infer_mode": args.hires,
         "num_images": n_saved,
         "expected_count": common.EXPECTED_COUNTS.get(mode),
         "saved_1024": bool(args.save_1024),

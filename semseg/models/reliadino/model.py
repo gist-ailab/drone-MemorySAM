@@ -867,6 +867,9 @@ class ReliaDINO(nn.Module):
         # turn(아래 path dropout)을 추론에 토글로 노출한 것.
         # 🔴 추론 전용 — self.training일 때는 절대 참조하지 않는다.
         self.p39_dense_off = False
+        # [HIRES] 추론 전용: on=학습과 동일, off=어댑터 출력을 FPN pyramid에 더하지 않음,
+        # recombine=dense 로짓은 off pyramid, 질의 헤드의 m_feat·pyramid_out은 on pyramid.
+        self.hires_infer_mode = 'on'
         self.p39_trunkexp_off = False
 
         # [P40] RCA — Reliability-Conditioned Attenuation (학습 전용).
@@ -1375,6 +1378,8 @@ class ReliaDINO(nn.Module):
         `_decode` 가 두 번 불리는 경로(CEFR two-pass)에서 같은 캐시를 재사용한다."""
         if self.hires is None or self._hires_feats is None:
             return pyramid
+        if self.hires_infer_mode == 'off':
+            return pyramid
         assert len(self._hires_feats) == len(pyramid), (
             f"[HIRES] 어댑터 레벨 수({len(self._hires_feats)})가 pyramid "
             f"레벨 수({len(pyramid)})와 다르다.")
@@ -1515,6 +1520,21 @@ class ReliaDINO(nn.Module):
         `pyramid_out`, when given, receives the (P43-lateral-augmented) pyramid
         so the [P43] mask-cls head can read the SAME trunk levels the pixel
         head just consumed — the only thing the two heads share."""
+        if self.hires_infer_mode == 'recombine' and self.hires is not None:
+            # [HIRES] 공통 FPN은 한 번만 계산하고 dense/query 입력을 분리한다.
+            base = self._apply_detail_branch(self._apply_p43_lateral(self.fpn(fused)))
+            pyr_on = self._apply_boundary_refine(self._apply_hires_adapter(base))
+            pyr_off = self._apply_boundary_refine(list(base))
+            logits_off, _ = self.head(pyr_off)
+            _, m_feat_on = self.head(pyr_on)
+            if pyramid_out is not None:
+                pyramid_out.extend(pyr_on)
+            logits = logits_off
+            m_feat = m_feat_on
+            if routed is not None:
+                logits = logits + self.fusion.router_alpha * F.interpolate(
+                    routed, size=logits.shape[-2:], mode='bilinear', align_corners=False)
+            return logits, m_feat
         pyramid = self._apply_boundary_refine(
             self._apply_hires_adapter(
                 self._apply_detail_branch(
@@ -1526,6 +1546,21 @@ class ReliaDINO(nn.Module):
             logits = logits + self.fusion.router_alpha * F.interpolate(
                 routed, size=logits.shape[-2:], mode='bilinear', align_corners=False)
         return logits, m_feat
+
+    def _check_hires_infer_mode(self):
+        """[HIRES] 추론 전용 고해상 경로 모드의 유효성을 검사한다."""
+        if self.hires_infer_mode not in ('on', 'off', 'recombine'):
+            raise ValueError(
+                f"[HIRES] hires_infer_mode={self.hires_infer_mode!r}: "
+                "'on', 'off', 'recombine' 중 하나여야 한다.")
+        if self.hires_infer_mode != 'on' and self.training:
+            raise ValueError(
+                f"[HIRES] hires_infer_mode={self.hires_infer_mode!r}는 "
+                "추론 전용이므로 model.eval() 이후에만 사용할 수 있다.")
+        if self.hires_infer_mode != 'on' and self.hires is None:
+            raise ValueError(
+                f"[HIRES] hires_infer_mode={self.hires_infer_mode!r}는 "
+                "고해상 어댑터가 활성화된 모델에서만 사용할 수 있다.")
 
     def _check_p39_ablation_flags(self):
         """추론-시 ablation 플래그 정합성 검사 (조용한 실패 금지).
@@ -1713,6 +1748,8 @@ class ReliaDINO(nn.Module):
     def forward(self, batched_input: List[torch.Tensor], multimask_output: bool = True,
                 gt_mask: Optional[torch.Tensor] = None,
                 qaf_labels: Optional[dict] = None):   # [P54-QAF] Degrader 라벨(열화 패스)
+        if self.hires_infer_mode != 'on':
+            self._check_hires_infer_mode()
         # `multimask_output` kept for call-site compatibility with the SAM2 fleet.
         self._last_dropped_modality = None
         x = self._maybe_drop_modality(batched_input)
