@@ -12448,14 +12448,14 @@ items:
     2.5~3일/시드(두 패스라 E1Mc 의 약 2배)
   priority: 1
   owner_role: method
-  status: running
+  status: evaluating
   kind: experiment
   tags:
   - mcubes
   - A2
   - transfer
   created: '2026-10-17'
-  updated: '2026-11-01'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
