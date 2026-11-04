@@ -80,3 +80,45 @@ user 결정(11-04, "mmsam meeting report" 세션): 쿼리 헤드는 논문에서
 2. MCubeS C2D2 가 hpca100 에서 죽었을 때: yeon 에서 즉시 재기동(완주 11-09~10, 동결일과 겹침) vs Table 3 를 "w/o C2D2 모델(60.27)" 만으로 내고 C2D2 는 보완 제출.
 3. 구조 의존성 실험(DGFusion·CAFuser 두 패스+KD): specialist-baseline 세션 개방 + levine 사용. 일요일 내 결과 불가, 동결 전(11-09) 가능성만 있음.
 4. S2 구현을 이번 주 코덱스 워커로 착수할지(Access 와 무관, RA-L 재료).
+
+## 6. 원고 번호 대응표(label 순서 기준, 11-04 원고) — 무엇이 끝나면 어느 칸이 닫히나
+
+번호는 `\label` 등장 순서로 매긴 것이다(paper 세션이 절을 옮기면 번호가 바뀌므로 label 을 같이 적는다).
+
+| 원고 칸 | label | 현재 | 닫는 실험·측정 | 목표일 |
+|---|---|---|---|---|
+| Table 1 DELIVER 비교 | tab:deliver | 완성 | — | — |
+| Table 2 MUSES 비교 Ours 행 | tab:muses | **todo** | MUSES A2 s2·s3 공식 val 1024/1536 → 2시드 평균(+ test 는 제출 후) | 11-05 (test 는 user 제출 후) |
+| Table 3 MCubeS Ours 행 | tab:mcubes | **todo** | MCubeS C2D2 2시드 완주 + test 102 선택 규약 측정; 불가 시 w/o C2D2 모델 60.27 만 | 11-09~10 또는 보완 |
+| Table 4 강건성(벤치 val) NM 열 | tab:robust | NM 열 todo | A2 3시드 NM 벤치 정의(DRN-261102-04, hpca100 회수) | 11-05 |
+| Table 5 조건별 정확도 본문 | tab:condition | 본문 todo | analysis 조건별 수치(paper 요청 진행 중) | 11-06 |
+| Table 6 leave-one-out L5·L6·L7 행 clean+EMM | tab:ablation_loo | 3행 todo | L7 legal v2(jarvis) + L5·L6·L7 EMM test(mm_eval_v2) | 11-06 |
+| Table 7 3시드 강건성 ablation | tab:abl_robust | 완성(NM 열 제외) | DRN-261102-04 | 11-05 |
+| Table 8 비용표 | tab:cost | 완성(adopt 11-04) | — | — |
+| Table 9 얇은 클래스 IoU(기준선 행) | tab:thin | 기준선 행 채움 가능 | 공개 가중치 클래스별 IoU 완료(inbox 20261104-185601) → paper 반영 | 11-05 |
+| Fig. 1 구조도 | fig:arch | 완성 | — | — |
+| Fig. 2 강건성 곡선 | fig:robust | 완성(노이즈 축 제거 결정 반영 여부 paper 확인) | — | — |
+| Fig. 3 센서 고장 정성 | fig:failure_scenarios | 완성 | — | — |
+| Fig. 4 DELIVER 조건별 정성 | fig:adverse | 완성 | — | — |
+| Fig. 5 MUSES 조건별 정성 | fig:adverse_muses | **todo** | MUSES A2 s2 공식 val 250장 전체 예측 덤프(tools/muses_dump_preds.py) → paper 가 같은 규칙으로 선별 | 11-06 |
+| Fig. 6 depth 의존 | fig:dependence | 완성 | — | — |
+| Fig. 7 고해상 경로 클래스별 이득 | fig:thin | 완성 | — | — |
+| (신규) 고해상 경로 특징 수준 그림 | 미정(§6 고해상 절) | 자리 없음 | DRN-261104-02 공급원 분리 6패널 + 집중도 + off/recombine | 11-07 |
+| Fig. 8 TL 실패 사례 | fig:failure | 본문 todo(P/R 확인) | A2 3시드 TL 정밀도·재현율 재확인 | 11-06 |
+| Fig. 9 역방향 실패 사례 | fig:reverse | 완성 | — | — |
+| 부록 Fig. 10~16 | fig:supp1~thin_scenes | 완성 | — | — |
+| supp Table(depth 의존 조건별) | tab:dependence | 각주 todo(test/val 혼재) | 해당 행 val 재측정 | 11-07 |
+| §5 구조 의존성 문장 | (표 없음) | todo | DGFusion·CAFuser 두 패스+KD(DRN-261029-02·03) | 동결 전 불확실 |
+| §5 router 역할 문장 | (표 없음) | todo | L8 s821·s902 legal + router 끄기(DRN-261029-06) | 11-06 |
+
+## 7. 서버 사용 계획(11-04 저녁 → 11-08)
+
+| 서버 | 지금 | 11-05 | 11-06 | 11-07~08 |
+|---|---|---|---|---|
+| yeon 3090×8(GPU6 고장) | GPU2~5 L4 s902(불필요, 중단 승인 대기) · 0·1·7 빔 | GPU0·1 MUSES s2·s3 공식 val(1024/1536) → 0·1 MUSES test 추론·zip | GPU0·1 L5·L6 EMM test 평가 · GPU7 supp 재측정 | (L4 중단 시) GPU2~5 MCubeS C2D2 768 2시드(hpca100 사망 시) 또는 S2 스크린 |
+| jarvis 4090×8(우리 4장) | GPU2·4·5·6 L8 s902 ep30/40(11-04 밤 완주) | GPU2·4·5·6 L7 s821·s902 legal + EMM · L8 s902 legal · qualbank 덤프 | GPU 2장 router 끄기(DRN-261029-06) · TL P/R 재확인 | 고해상 특징 시각화(DRN-261104-02) · 정성 은행 잔여 |
+| bengio 3090(우리 4장) | GPU0~3 L2 s902 ep1(11-05 완주) | 완주 → legal v2 + qualbank 덤프, 이후 반납(다른 사용자 점유 중) | — | — |
+| amphibious-demo 5090×1 | L8 s821 → E1Mc-B 교사 연쇄 | 연쇄 계속(교사 200ep, 11-08 이후) | 〃 | 〃 |
+| hpca100 A100×4 | 0/4 사용으로 보임(임대 종료 경고) | 생존 확인 → MCubeS C2D2·NM 결과 회수·백업 | — | — |
+| levine 3090(빈 4장) | 미사용 | 환경 확인 | (user 승인 시) 구조 의존성 DGFusion 두 패스 | (user 승인 시) CAFuser 두 패스 또는 S2 스크린 |
+| gyuri 2080Ti×8(11GB) | 비어 있음 | ViT-L 768 학습 불가(메모리). CPU 스모크·DINOv2-B 호환 스모크(DRN-261102-03)만 가능 | — | — |
