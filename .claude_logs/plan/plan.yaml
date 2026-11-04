@@ -12443,7 +12443,9 @@ items:
   launch: null
   success_criteria: '2시드 평균 Δ vs E1Mc ≥ +0.5 이고 두 시드 부호 일치 → 메인 표 3 의 Ours. 보조: w/o
     C2D2 행 대비 Δ 로 두 패스 학습의 MCubeS 기여 기록'
-  sample_basis: MCubeS 3시드 std 0.49
+  sample_basis: 2시드(20260827·20260828). Table 3 의 w/o C2D2 행은 user 2026-11-04 결정으로
+    같은 768 크롭 런(DRN-261104-03)만 쓴다. 1024 크롭 w/o C2D2 s827(60.27, DRN-261031-01)은 표에
+    넣지 않고 참고 기록으로만 둔다
   expected_cost: hpca100 A100 GPU0·1(user 재가동 허용 2026-11-01), 1024 원안 2시드 200ep, 약
     2.5~3일/시드(두 패스라 E1Mc 의 약 2배)
   priority: 1
@@ -14290,8 +14292,9 @@ items:
     training(768)' 행으로 2시드 평균 게재. C2D2 − (w/o C2D2 768) 의 부호·크기를 본문에 그대로 적는다(음수여도
     게재)
   sample_basis: C2D2 두 시드 차 0.04 로 작으나 w/o C2D2 1024 가 1시드뿐이라 2시드로 맞춤. 3시드째는 안 함
-  expected_cost: hpca100 A100 2장 × 2런 병렬(시드당 1장, 768 크롭은 BS 유지 시 약 20 h) ≈ 1일, hpca100
-    유휴(0/4) 상태. 기동은 user 의 hpca100 사용 승인 필요(10-29 승인은 C2D2 런에 한함)
+  expected_cost: 'hpca100 A100 2장 × 2런 병렬(시드당 1장, 768 크롭 약 20 h) ≈ 1일. user 2026-11-04
+    결정: ''w/ vs w/o 는 C2D2 만 달라야 하고 해상도는 하나로 통일'' → 768 로 통일(C2D2 1024 는 40GB 에서 OOM
+    이라 768 이 유일한 공통 크롭). 기동 승인 = 이 결정'
   priority: 1
   owner_role: manager
   status: queued
