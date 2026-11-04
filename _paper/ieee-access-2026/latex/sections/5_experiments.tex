@@ -1,7 +1,7 @@
 \section{Experiments}\label{sec:exp}
 \subsection{Implementation Details}
 % Source: configs/lecun-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml (TRAIN, OPTIMIZER, SCHEDULER, LOSS, MODEL.M2F, MODEL.P46.C3_PROTO, MODEL.P39).
-All sensors are converted to three-channel images as in CMNeXt~\cite{cmnext2023}. We train for 40 epochs with AdamW (learning rate $6\times10^{-4}$, weight decay 0.01), a polynomial schedule with power 0.9, and a 10-epoch warm-up, on $768\times768$ crops with an effective batch size of 16 obtained by gradient accumulation. We use the data augmentation of DGFusion~\cite{dgfusion2026} so that both models see the same augmented images. The clean-pass loss combines online hard-example cross-entropy~\cite{ohem2016} on the final logits with the set-prediction loss of the query head (weight 0.5, with deep supervision), the auxiliary sensor heads (0.5), the router (cross-entropy 0.4 and regularizer 0.01), a class-prototype contrastive term (0.1), and a variance-covariance regularizer on the per-sensor tokens (variance weight 0.1 and covariance weight 0.01, scaled by 1.0 for LiDAR and 0.25 for the other sensors). These terms are inherited from earlier versions of our model; we list them for reproducibility and do not ablate them. The frozen teacher is the same architecture without the high-resolution path, trained for 200 epochs on clean data. All results of our model are the mean of three training runs with different seeds, unless a table states otherwise; the ablations in Tables~\ref{tab:ablation} and~\ref{tab:ablation_loo} use one seed.
+All sensors are converted to three-channel images as in CMNeXt~\cite{cmnext2023}. We train for 40 epochs with AdamW (learning rate $6\times10^{-4}$, weight decay 0.01), a polynomial schedule with power 0.9, and a 10-epoch warm-up, on $768\times768$ crops with an effective batch size of 16 obtained by gradient accumulation. We use the data augmentation of DGFusion~\cite{dgfusion2026} so that both models see the same augmented images. The clean-pass loss combines online hard-example cross-entropy~\cite{ohem2016} on the final logits with the set-prediction loss of the query head (weight 0.5, with deep supervision), the auxiliary sensor heads (0.5), the router (cross-entropy 0.4 and regularizer 0.01), a class-prototype contrastive term (0.1), and a variance-covariance regularizer on the per-sensor tokens (variance weight 0.1 and covariance weight 0.01, scaled by 1.0 for LiDAR and 0.25 for the other sensors). These terms are inherited from earlier versions of our model; we list them for reproducibility and do not ablate them. The frozen teacher is the same architecture without the high-resolution path, trained for 200 epochs on clean data. All results of our model are the mean of three training runs with different seeds, unless a table states otherwise; the leave-one-out ablation in Table~\ref{tab:ablation_loo} uses one seed.
 
 \subsection{Comparison with Prior Fusion Models}
 Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. Part~(a) lists methods with a reported test-split result, which is the split we compare on; part~(b) lists methods that report only validation results, which come from different training and evaluation settings and are shown for completeness. \ours{} reaches 57.74 test mIoU, 1.0 point above the published DGFusion result (56.7). Its margin over MM SAM-adapter, which uses only RGB and depth, is 0.4 points (our three-seed mean). On the validation set, \ours{} scores 70.17 on average, 1.6 points above CAFuser-CAA (68.6); StitchFusion with a Swin-T backbone reports 70.3 without naming the split, so our validation result is not the highest published one. Tables~\ref{tab:muses} and~\ref{tab:mcubes} report the same model on the real MUSES and MCubeS benchmarks \todo{results pending: MUSES four-sensor model, MCubeS transfer}.
@@ -258,7 +258,7 @@ Ours & \td & \td & \td & \td & \td & \td & \best{57.74} \\
 \end{table}
 
 \subsection{Ablation}
-Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on RGB alone, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model, all with the same seed and schedule; Table~\ref{tab:abl_robust} repeats the two additions (the C2D2 training scheme and the high-resolution path) over three seeds and the robustness protocol. The frozen backbone alone reaches 55.14 mIoU with RGB, already within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. Adding the other three sensors with cross-modal attention and the query head gives 55.94, training with the C2D2 scheme adds 1.8 points in this seed (57.73), and the high-resolution path adds 0.9 (58.61). Removing cross-modal attention costs 0.85 points. \todo{the degradation-pass and distillation rows (L5, L6) pending}.
+Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, over three seeds, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model with one seed. A frozen DINOv3-L with LoRA on RGB alone already reaches 55.14 mIoU on the test set (one seed), within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. On the test set, the high-resolution path raises mIoU from 56.59 to 57.74 \todo{effect of C2D2 alone: three-seed test mean of the clean-trained model}. Removing cross-modal attention costs 0.85 points. \todo{the degradation-pass and distillation rows (L5, L6) pending}.
 % Sources: judgment-ledger 2026-10-28 rows DRN-261020-08/-09/-10/-12 (seed 821, legal v2 test@1024);
 % E1 screen s821 55.94: status/current.md (4); Q2/A2 s821 57.73/58.61: tasks/DRN-261019-03/analysis.md.
 
@@ -273,24 +273,7 @@ Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on
 % Leave-one-out: L2 DRN-261020-10, L4 -12, L5 -13, L6 -14, L7 DRN-261029-01. L3 withdrawn. L1 (one adapter for all sensors) is
 % excluded from this paper (user 2026-11-02, inbox 20261102-191138) and kept for the separate RA-L paper.
 % ---------------------------------------------------------------------------
-\begin{table}[t]
-\caption{Incremental ablation on the DELIVER test set (mIoU, \%). Each row adds one component to the row above.}
-\label{tab:ablation}
-\centering\tabsetup
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccccc@{}}
-\toprule
-4 sensors & Cross- & C2D2 tr. & High-res & Clean & EMM \\
- & modal & & path & & \\
-\midrule
-\xmark & \xmark & \xmark & \xmark & 55.14 & -- \\
-\cmark & \xmark & \xmark & \xmark & \td & \td \\
-\cmark & \cmark & \xmark & \xmark & 55.94 & \td \\
-\cmark & \cmark & \cmark & \xmark & \second{57.73} & \second{48.68} \\
-\cmark & \cmark & \cmark & \cmark & \best{58.61} & \best{49.12} \\
-\bottomrule
-\end{tabular*}
-\tabnote{First row: frozen DINOv3-L with LoRA on RGB only. Second row: the four sensors fused by averaging their tokens, dense head only. From the third row on, the model also has the query head (Section~\ref{sec:m_heads}). EMM is not defined for a single sensor (--). C2D2 tr.: trained with the C2D2 scheme (clean pass, degraded pass, and teacher distillation).}
-\end{table}
+% Table "incremental ablation" (tab:ablation) removed 2026-11-04 (user): its C2D2 / high-res rows duplicated tab:abl_robust.
 
 % Table 6b. Leave one component out of the full model (one seed, 40 epochs). Sources as Table 6 comment above;
 % L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
@@ -323,21 +306,23 @@ modal & pass & degr. & KD & & \\
 \caption{Effect of the C2D2 training scheme and the high-resolution path on accuracy and robustness (mIoU, \%, mean of three seeds).}
 \label{tab:abl_robust}
 \centering\tabsetup
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccccccc@{}}
 \toprule
-C2D2 tr. & High-res & Clean & EMM & RMM .75 & RMM .50 & RMM .25 \\
+C2D2 & High- & Test & \multicolumn{5}{c}{Validation} \\
+\cmidrule(l){4-8}
+tr. & res & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \midrule
-\multicolumn{7}{@{}l}{\emph{(a) DELIVER val, our scorer (native labels, no flip), mean of 3 seeds}} \\
-\xmark & \xmark & \td & \td & \td & \td & \td \\
-\cmark & \xmark & \second{67.91} & \second{56.87} & \second{60.69} & \second{62.46} & \second{64.08} \\
-\cmark & \cmark & \best{70.17} & \best{57.85} & \best{61.28} & \best{63.35} & \best{65.53} \\
+\multicolumn{8}{@{}l}{\emph{(a) DELIVER, mean of 3 seeds}} \\
+\xmark & \xmark & \td & \td & \td & \td & \td & \td \\
+\cmark & \xmark & \second{56.59} & \second{67.91} & \second{56.87} & \second{60.69} & \second{62.46} & \second{64.08} \\
+\cmark & \cmark & \best{57.74} & \best{70.17} & \best{57.85} & \best{61.28} & \best{63.35} & \best{65.53} \\
 \midrule
-\multicolumn{7}{@{}l}{\emph{(b) MCubeS test}} \\
-\xmark & \cmark & \td & & & & \\
-\cmark & \cmark & \td & & & & \\
+\multicolumn{8}{@{}l}{\emph{(b) MCubeS}} \\
+\xmark & \cmark & \td & & & & & \\
+\cmark & \cmark & \td & & & & & \\
 \bottomrule
 \end{tabular*}
-\tabnote{C2D2 tr.: trained with the C2D2 scheme (clean pass, degraded pass, and teacher distillation). (a) uses our own scorer (native-resolution labels, no flip) until the re-measurement with the benchmark code of Table~\ref{tab:robust}; EMM and RMM are averages over the 15 sensor subsets.}
+\tabnote{C2D2 tr.: trained with the C2D2 scheme (clean pass, degraded pass, and teacher distillation). Test: test-set mIoU with all sensors. The validation columns of (a) use our own scorer (native-resolution labels, no flip) until the re-measurement with the benchmark code of Table~\ref{tab:robust}; EMM and RMM are averages over the 15 sensor subsets.}
 \end{table}
 
 \subsection{Computational Cost}

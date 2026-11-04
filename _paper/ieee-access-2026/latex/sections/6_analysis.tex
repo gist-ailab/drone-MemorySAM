@@ -10,13 +10,13 @@ Our model with clean training only, which has no depth supervision, shows the sa
 % Sources: judgment-ledger:112 (2026-09-30 row: E1 confirmed, Q2 s821, DGFusion reproduction (a), oracle_cond probe);
 % judgment-ledger:117 (reproduction (a) -> retrained (b): depth fully missing -33.3 -> -4.7); judgment-ledger:130 (official weights -33.4).
 
-These measurements suggest that, on DELIVER, the dependence on depth comes mainly from training without degraded sensors rather than from a particular fusion design or supervision \todo{final wording after FU-04 (C2D2 applied to DGFusion and CAFuser) and FU-05 (all curves on one split)}. A plausible reason is that DELIVER renders depth without noise or holes, so training on complete inputs finds a shortcut that real depth sensors would not offer. The comparison has two caveats: the clean-trained model was trained for 200 epochs and the C2D2-trained model (without the high-resolution path) for 40, and the DGFusion curve was measured on the test split while ours were measured on validation..
+These measurements suggest that, on DELIVER, the dependence on depth comes mainly from training without degraded sensors rather than from a particular fusion design or supervision \todo{final wording after FU-04 (C2D2 applied to DGFusion and CAFuser) and FU-05 (all curves on one split)}. A plausible reason is that DELIVER renders depth without noise or holes, so training on complete inputs finds a shortcut that real depth sensors would not offer. The comparison has two caveats: the clean-trained model was trained for 200 epochs and the C2D2-trained model (without the high-resolution path) for 40, and the DGFusion curve was measured on the test split while ours were measured on validation.
 
 \begin{figure}[t]
 \centering
 % Source numbers and provenance: figures/src/make_data_figs.py (fig_dependence). Full table: sections/supp_tables.tex (Table S1).
 \includegraphics[width=\columnwidth]{figures/fig_dependence.pdf}
-\caption{Dependence on depth across conditions: change in mIoU when the depth input is removed (closer to zero means less dependence). DGFusion (reproduced) is measured on the test set and the other curves on the validation set. \todo{re-measure all curves on one split; add the full model and the retrained baselines.}}
+\caption{Dependence on depth across conditions: change in mIoU when the depth input is removed (closer to zero means less dependence). Both of our curves use the model without the high-resolution path, so they differ only in training. DGFusion (reproduced) is measured on the test set and the other curves on the validation set. \todo{re-measure all curves on one split; add the retrained baselines.}}
 \label{fig:dependence}
 \end{figure}
 
