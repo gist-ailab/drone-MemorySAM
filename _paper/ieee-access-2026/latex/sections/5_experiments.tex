@@ -132,7 +132,7 @@ Ours & DINOv3-L & RGB-A-D-N & \td \\
 \end{table}
 
 \subsection{Robustness to Missing and Degraded Sensors}
-Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbench2025} on the DELIVER validation set, so that our numbers can be compared directly with the values that benchmark reports. Averaged over the 15 sensor subsets, \ours{} scores 57.85 mIoU when sensors are entirely missing, 12.9 points above the best model in the benchmark (MAGIC, 44.97) and 9.6 points above EQUISeg~\cite{robustseg2025}, the strongest later method reported under the same definition (48.22), and 61.3 to 65.5 mIoU when 75\% to 25\% of a removed sensor's values are missing, against 47.1 to 53.9 for the best benchmark entries. Part of this margin comes from the stronger backbone, which also raises the clean score (70.17 against 68.20 for StitchFusion); the drop from clean to EMM is 12.3 points for \ours{} and 21 to 30 points for the benchmark models. \todo{expected values E($p$), noisy-modality levels and the baselines in (c) (analysis request 20261102-180010 pending)}.
+Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbench2025} on the DELIVER validation set, so that our numbers can be compared directly with the values that benchmark reports. Averaged over the 15 sensor subsets, \ours{} scores 57.85 mIoU when sensors are entirely missing, 12.9 points above the best model in the benchmark (MAGIC, 44.97) and 9.6 points above EQUISeg~\cite{robustseg2025}, the strongest later method reported under the same definition (48.22), and 61.3 to 65.5 mIoU when 75\% to 25\% of a removed sensor's values are missing, against 47.1 to 53.9 for the best benchmark entries. Part of this margin comes from the stronger backbone, which also raises the clean score (70.17 against 68.20 for StitchFusion); the drop from clean to EMM is 12.3 points for \ours{} and 21 to 30 points for the benchmark models. Under the benchmark noise, \ours{} keeps 58.3, 51.9, and 40.0 mIoU at the low, middle, and high levels, while the best other entries reach 35.2, 19.1, and 9.3. \todo{expected values E($p$) and the baselines in (c) (analysis request 20261102-180010 pending)}.
 % Sources: tasks/DRN-261019-03/analysis.md (val clean 70.17, EMM15 57.85, RMM 65.53/63.35/61.28); 2503.18445 Tables 3, 7-11;
 % drop clean-EMM: ours 70.17-57.85 = 12.32; benchmark models 66.33-37.90 = 28.43 ... 68.20-41.98 = 26.22, MAGIC 66.10-44.97 = 21.13.
 % Removed 2026-11-02 (user): test-split S&P-only noise numbers and the DGFusion test EMM sentences (kept in judgment-ledger).
@@ -154,7 +154,10 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusio
 %     RMMSS = 2505.12861 Table 2 p6 (MiT-B0, EMM 49.93, RMM 51.90, r not stated) -> footnote only.
 % (c) Baselines measured by us with tools/missing_modality_eval.py on val: analysis inbox 20261102-180010 (pending).
 % (d) Ours (A2, 3 seeds): tasks/DRN-261019-03/analysis.md val clean 70.17, EMM15 57.85, RMM r.25/.5/.75
-%     65.53/63.35/61.28. E(p) and benchmark NM: inbox 20261102-180010 (seed 903 E(p) = 66.10/68.20/69.09 only).
+%     65.53/63.35/61.28. NM (DRN-261102-04, nm_mode bench, val) = mean of hpca100 ~/SSDb/jemo_maeng/nmbench_20261102/
+%     s821/s902/s903_val/val/missing_modality/summary.json (md5 f98fb583 / 46f6fa86 / 153b8e3b): Low 57.84/59.29/57.88,
+%     Mid 51.52/52.79/51.45, High 39.63/40.21/40.12 -> 58.34 / 51.92 / 39.99 (clean in the same files 69.59/71.05/69.86).
+%     E(p): inbox 20261102-180010 (seed 903 only so far: 66.10/68.20/69.09).
 % ---------------------------------------------------------------------------
 \begin{table*}[t]
 \caption{Robustness to missing and noisy sensors on the DELIVER validation set under the benchmark of~\cite{mmssbench2025}, mIoU (\%).}
@@ -167,21 +170,21 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusio
 Method & Backbone & Clean & Avg & E(.20) & E(.10) & E(.05) & $r$=.75 & $r$=.50 & $r$=.25 & Low & Mid & High \\
 \midrule
 \multicolumn{13}{@{}l}{\emph{(a) Reported by the benchmark~\cite{mmssbench2025}}} \\
-CMNeXt~\cite{cmnext2023} & MiT-B2 & 66.33 & 37.90 & 54.46 & 60.41 & 63.38 & 42.17 & 47.49 & 53.61 & \best{35.23} & 16.37 & 2.31 \\
+CMNeXt~\cite{cmnext2023} & MiT-B2 & 66.33 & 37.90 & 54.46 & 60.41 & 63.38 & 42.17 & 47.49 & 53.61 & \second{35.23} & 16.37 & 2.31 \\
 GeminiFusion~\cite{geminifusion2024} & MiT-B2 & 66.92 & 37.07 & 54.33 & 60.62 & 63.77 & 39.78 & 42.41 & 49.74 & 5.52 & 4.14 & 3.30 \\
 MAGIC~\cite{magic2024} & MiT-B2 & 66.10 & 44.97 & \second{58.66} & 62.68 & 64.47 & 45.30 & 48.19 & 51.61 & 24.03 & 13.31 & 3.98 \\
-MAGIC++~\cite{magicpp2024} & MiT-B2 & 67.34 & 44.85 & \best{59.18} & \second{63.52} & \second{65.50} & \second{47.06} & 49.31 & \second{53.92} & 33.12 & \second{18.31} & \second{8.70} \\
-StitchFusion~\cite{stitchfusion2024} & MiT-B2 & \second{68.20} & 41.98 & 58.02 & 63.29 & \best{65.80} & 45.16 & 48.33 & 53.10 & 24.91 & 17.11 & \best{9.25} \\
+MAGIC++~\cite{magicpp2024} & MiT-B2 & 67.34 & 44.85 & \best{59.18} & \second{63.52} & \second{65.50} & \second{47.06} & 49.31 & \second{53.92} & 33.12 & 18.31 & 8.70 \\
+StitchFusion~\cite{stitchfusion2024} & MiT-B2 & \second{68.20} & 41.98 & 58.02 & 63.29 & \best{65.80} & 45.16 & 48.33 & 53.10 & 24.91 & 17.11 & \second{9.25} \\
 \midrule
 \multicolumn{13}{@{}l}{\emph{(b) Later methods reported under the same definition}} \\
-EQUISeg~\cite{robustseg2025}$^{\ddagger}$ & MiT-B2 & 67.90 & \second{48.22} & -- & \best{65.75} & -- & -- & \second{50.96} & -- & \second{34.87} & \best{19.13} & -- \\
+EQUISeg~\cite{robustseg2025}$^{\ddagger}$ & MiT-B2 & 67.90 & \second{48.22} & -- & \best{65.75} & -- & -- & \second{50.96} & -- & 34.87 & \second{19.13} & -- \\
 \midrule
 \multicolumn{13}{@{}l}{\emph{(c) Evaluated by us with the benchmark protocol}} \\
 DGFusion (official)$^{\ast}$ & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 DGFusion (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 CAFuser (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 \midrule
-Ours & DINOv3-L & \best{70.17} & \best{57.85} & \td & \td & \td & \best{61.28} & \best{63.35} & \best{65.53} & \td & \td & \td \\
+Ours & DINOv3-L & \best{70.17} & \best{57.85} & \td & \td & \td & \best{61.28} & \best{63.35} & \best{65.53} & \best{58.34} & \best{51.92} & \best{39.99} \\
 \bottomrule
 \end{tabular*}
 \tabnotewide{Avg: mean over the 15 non-empty sensor subsets; E($p$): expectation when each sensor fails independently with probability $p$; RMM $r$: fraction of a removed sensor's values that are zeroed; NM Low/Mid/High: salt-and-pepper density and Gaussian standard deviation (0.05, 0.1), (0.1, 0.2), (0.2, 0.5). All definitions follow~\cite{mmssbench2025} and Section~\ref{sec:sensors}. $^{\ddagger}$Values reported in its Table~1 (--: not reported); RMMSS~\cite{rmmss2025} reports 49.93 EMM and 51.90 RMM with a MiT-B0 backbone without stating $r$ and is therefore not listed. $^{\ast}$Released weights. $^{\dagger}$Retrained with our synthetic degradation. Ours: mean of three seeds; baselines: single runs. Methods that skip a missing input instead of zero-filling it answer a different question and are not listed.}
@@ -338,13 +341,15 @@ C2D2 & High-res & Clean & EMM & RMM .75 & RMM .50 & RMM .25 \\
 \end{table}
 
 \subsection{Computational Cost}
-Table~\ref{tab:cost} reports parameters, operations, latency, and memory at the evaluation resolution \todo{numbers pending (DRN-261027-02); the two-pass training doubles the forward passes during training but adds nothing at inference}.
+Table~\ref{tab:cost} reports parameters, operations, latency, and peak memory at inference; operations are counted the same way for all models (one multiply-accumulate counted as one operation). \ours{} trains a similar number of parameters as the baselines (74.0M against 75.0M and 78.9M), but every sensor passes through the frozen ViT-L, so it needs 14.6 times the operations and 2.9 times the latency of DGFusion. The high-resolution path adds 15.2M parameters, about 2\% of the operations, and 13\% of the latency. C2D2 adds a second forward pass only during training and changes nothing at inference.
+% Source: .claude_logs/tasks/DRN-261027-02/analysis.md table (l.14-19), verdict adopt 2026-11-03; raw NAS analysis_logs/cost_table_20261104{,b,c}/.
+% Ratios: 10135/695.6 = 14.57; 254.5/88.9 = 2.86; high-res = A2 - Q2: 377.05-361.87 = 15.18M, (10135-9922)/9922 = 2.1%, 254.5/224.8 = 1.13.
 
 % ---------------------------------------------------------------------------
 % Table 7. Cost on DELIVER at 1024, same GPU. DRN-261027-02 (queued) -> all todo.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{Computational cost on DELIVER at $1024\times1024$.}
+\caption{Inference cost on DELIVER with four sensors at $1024\times1024$, batch size one, one RTX 4090, bf16.}
 \label{tab:cost}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lccccc@{}}
@@ -352,9 +357,9 @@ Table~\ref{tab:cost} reports parameters, operations, latency, and memory at the 
 Model & Params & Trainable & GFLOPs & Latency & Memory \\
  & (M) & (M) & & (ms) & (GB) \\
 \midrule
-DGFusion & \td & \td & \td & \td & \td \\
-CAFuser & \td & \td & \td & \td & \td \\
-Ours & \td & \td & \td & \td & \td \\
+DGFusion~\cite{dgfusion2026} & 78.88 & 78.88 & 695.6 & 88.9 & 1.83 \\
+CAFuser~\cite{cafuser2025} & 75.01 & 75.01 & 670.8 & 83.1 & 1.57 \\
+Ours & 377.05 & 73.98 & 10{,}135 & 254.5 & 2.47 \\
 \bottomrule
 \end{tabular*}
 \end{table}

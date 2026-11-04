@@ -72,7 +72,9 @@
 | 본문 9.6 | — | 57.85 − 48.22 (EQUISeg) | ✅ 계산 |
 | (c) DGFusion 공식·재학습 (b)·CAFuser (b) | 비어 있음 | analysis inbox 20261102-180010(val 벤치 프로토콜 측정 요청) | ❌ |
 | Ours clean / EMM Avg / RMM .75 .50 .25 | 70.17 / 57.85 / 61.28 63.35 65.53 | `.claude_logs/tasks/DRN-261019-03/analysis.md` val 행(A2 3시드 평균) | ✅ |
-| Ours E(p)·NM | 비어 있음 | inbox 20261102-180010(시드903 만 E 66.10/68.20/69.09 존재) | ❌ |
+| Ours NM Low / Mid / High | 58.34 / 51.92 / 39.99 | DRN-261102-04 A2 3시드 val, nm_mode bench(2503.18445 식 7). hpca100 ~/SSDb/jemo_maeng/nmbench_20261102/s{821,902,903}_val/val/missing_modality/summary.json (md5 f98fb583·46f6fa86·153b8e3b), 시드별 57.84/59.29/57.88 · 51.52/52.79/51.45 · 39.63/40.21/40.12 평균. 메인 세션 직접 판독 2026-11-04(analysis 보고 전) | ✅ 원본 |
+| Ours E(p) | 비어 있음 | inbox 20261102-180010(시드903 만 66.10/68.20/69.09) | ❌ |
+| 본문 58.3/51.9/40.0 vs 35.2/19.1/9.3 | — | 위 Ours NM; 다른 행 최고 = Low CMNeXt 35.23, Mid EQUISeg 19.13, High StitchFusion 9.25 | ✅ 계산 |
 | 본문 수치 12.9 / 61.3~65.5 / 47.1~53.9 / 12.3 / 21~30 | — | 57.85−44.97; ours RMM; 벤치 최고 RMM(.75 47.06, .25 53.92); 70.17−57.85; 벤치 모델 clean−EMM 21.13~29.85 | ✅ 계산 |
 | 삭제(2026-11-02) | test S&P .05/.10/.20, DGFusion test EMM 31.14 등 | judgment-ledger 에 보존 | — |
 
@@ -131,3 +133,11 @@
 | 신호등 오탐 장면 화소 수 | §6 주석 | NAS `analysis_logs/a2_tl_fp_scenes_20261022/README.md` |
 | 라벨 리샘플링 차이 1.2~1.3점 | §3 | `.claude_logs/issues/issues-and-fixes.md:25` (ISSUE-036) |
 | 학습 설정(40ep, AdamW 6e-4, 768 crop, p 0.5, 결측 0.2, KD 0.5/T 2, 커리큘럼 0.3/0.6/1.0) | §4·§5 | `configs/lecun-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml` |
+
+## 표 X. 추론 비용 (`tab:cost`) — DRN-261027-02 adopt(2026-11-03)
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| DGFusion params / 학습 / GFLOPs / ms / GB | 78.88 / 78.88 / 695.6 / 88.9 / 1.83 | `.claude_logs/tasks/DRN-261027-02/analysis.md:18` | ✅ |
+| CAFuser | 75.01 / 75.01 / 670.8 / 83.1 / 1.57 | 같은 문서 :19 | ✅ |
+| Ours (A2) | 377.05 / 73.98 / 10,135 / 254.5 / 2.47 | 같은 문서 :16 | ✅ |
+| 본문 74.0 / 75.0 / 78.9 / 14.6배 / 2.9배 / 15.2M / 약 2% / 13% | — | 위 값; 고해상 = A2 − Q2(:17, 361.87M·9,922·224.8 ms) | ✅ 계산 |

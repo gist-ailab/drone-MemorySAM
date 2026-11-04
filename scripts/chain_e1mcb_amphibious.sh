@@ -35,7 +35,11 @@ for seed in 20260827 20260828; do
   for attempt in 1 2 3; do              # first run + at most 2 AUTO_RESUME retries (project rule)
     log="logs/$name/${name}_$(date +%Y%m%d_%H%M%S).log"
     st "TRAIN seed=$seed attempt=$attempt log=$log"
-    CUDA_VISIBLE_DEVICES=0 $PY -u train_reliadino.py --cfg "$cfg" > "$log" 2>&1
+    # TRAIN.DDP is true in the config (same recipe as the hpca100 E1Mc teacher) -> launch through torchrun with
+    # one process; plain `python train_reliadino.py` fails with "Default process group has not been initialized"
+    # (2026-11-04 04:41, all attempts).
+    CUDA_VISIBLE_DEVICES=0 $PY -m torch.distributed.run --standalone --nproc_per_node=1 \
+      train_reliadino.py --cfg "$cfg" > "$log" 2>&1
     rc=$?
     tl=$(ls "$save"/*/train.log 2>/dev/null | head -1)
     if [ -n "$tl" ] && grep -q "Total Training Time" "$tl"; then st "TRAIN DONE seed=$seed rc=$rc"; break; fi
