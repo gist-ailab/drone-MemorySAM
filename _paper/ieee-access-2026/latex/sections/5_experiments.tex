@@ -24,7 +24,7 @@ Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. Part~(a)
 %   val 3-seed mean 70.17 = tasks/DRN-261019-03 report R03:23.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{DELIVER, mIoU (\%). Values of other methods are copied from the cited tables (source table and page in the supplementary notes).}
+\caption{Comparison with fusion methods on DELIVER (mIoU, \%). Results of other methods are taken from the cited papers.}
 \label{tab:deliver}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lllcc@{}}
@@ -67,7 +67,7 @@ Ours & DINOv3-L & RGB-D-E-L & \second{70.17} & \best{57.74} \\
 % Ours: DRN-261019-02 (queued) -> todo. Baselines: headline.yaml benchmarks.muses.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{MUSES, mIoU (\%). Test values are from the official evaluation server, as reported in the cited tables.}
+\caption{Comparison with fusion methods on MUSES (mIoU, \%). Test results are from the official evaluation server, as reported in the cited papers.}
 \label{tab:muses}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lllcc@{}}
@@ -103,7 +103,7 @@ Ours & DINOv3-L & RGB-L-R-E & \td & \td \\
 %   58.07 in headline.yaml is the previous generation (P39.1 recipe), not the paper model.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{MCubeS (RGB, AoLP, DoLP, NIR), test mIoU (\%).}
+\caption{Comparison on the MCubeS test set with RGB, AoLP, DoLP, and NIR inputs (mIoU, \%).}
 \label{tab:mcubes}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lllc@{}}
@@ -164,7 +164,7 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the released DGFusio
 %     E(p): inbox 20261102-180010 (seed 903 only so far: 66.10/68.20/69.09).
 % ---------------------------------------------------------------------------
 \begin{table*}[t]
-\caption{Robustness to missing and noisy sensors on the DELIVER validation set under the benchmark of~\cite{mmssbench2025}, mIoU (\%).}
+\caption{Robustness to missing and noisy sensors on the DELIVER validation set under the benchmark protocol of~\cite{mmssbench2025} (mIoU, \%).}
 \label{tab:robust}
 \centering\tabsetup
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llccccccccccc@{}}
@@ -197,7 +197,7 @@ Ours & DINOv3-L & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \t
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig_robust.pdf}
-\caption{Robustness on DELIVER. (a) Random-missing sensors on the validation set under the benchmark of~\cite{mmssbench2025}: mIoU averaged over the 15 sensor subsets as the missing ratio $r$ grows (benchmark models: values reported there, MiT-B2; our curves: our own scorer with native-resolution labels and no flip). (b) Only one sensor available on the test set (the other three zero-filled), our evaluation. Ours: mean of three seeds; baselines: single runs. \todo{(a) our curves: re-measure with the benchmark code; (b) full-model values pending.}}
+\caption{Robustness on DELIVER. (a) Random-missing sensors on the validation set: mIoU averaged over the 15 sensor subsets as the missing ratio $r$ grows. Benchmark models (MiT-B2) are taken from~\cite{mmssbench2025}; our curves use our own scorer. (b) A single available sensor on the test set, with the other three zero-filled. Ours: mean of three seeds; baselines: single runs. \todo{(a) our curves: re-measure with the benchmark code; (b) full-model values pending.}}
 \label{fig:robust}
 \end{figure}
 
@@ -210,7 +210,7 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 \begin{figure*}[t]
 \centering
 \phbox{5.2cm}{Fig.~3 when a sensor fails: rows = depth missing / RGB missing / LiDAR+event missing / RGB with heavy noise; columns = affected input, ground truth, CMNeXt, CAFuser, DGFusion, ours; error pixels in one colour}
-\caption{\todo{caption; state the scene-selection rule (top differences between ours and the best baseline, one scene per condition, no repeated map)}}
+\caption{Qualitative comparison on the DELIVER test set when a sensor fails. Rows: depth missing, RGB missing, LiDAR and event missing, and RGB with heavy noise. Columns: affected input, ground truth, CMNeXt, CAFuser, DGFusion, and ours. Each row shows the scene where ours most exceeds the best other method in per-image mIoU, with no repeated sequence.}
 \label{fig:failure_scenarios}
 \end{figure*}
 
@@ -221,7 +221,7 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 \centering
 \includegraphics[width=\textwidth]{figures/fig_adverse_deliver.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Six conditions on the DELIVER test split with all four sensors present (sun and cloud included for reference). For each condition, the scene shown is the one where our model leads the strongest of the other three models (CMNeXt, CAFuser, and DGFusion, all from released weights) by the largest per-image mIoU \todo{tiles are regenerated when the CMNeXt and CAFuser dumps arrive}; no two scenes come from the same sequence. In the prediction tiles, pixels that agree with the ground truth are faded, so the coloured regions are errors. The number under each tile is the per-image mIoU (\%); colours follow the key below the grid. More scenes are in Appendix~\ref{app:qual}.}
+\caption{Qualitative comparison on the DELIVER test set under six conditions with all four sensors. Columns: RGB input, ground truth, CMNeXt, CAFuser, and DGFusion (released weights), and ours. Each row shows the scene where ours most exceeds the best of the other three methods in per-image mIoU, with no two scenes from the same sequence. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%). More scenes are in Appendix~\ref{app:qual}. \todo{tiles are regenerated when the CMNeXt and CAFuser dumps arrive}}
 \label{fig:adverse}
 \end{figure*}
 
@@ -241,7 +241,7 @@ Table~\ref{tab:condition} breaks clean test accuracy down by condition \todo{tex
 % Source: to be computed by analysis from the same dumps as Fig. adverse (inbox addendum).
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{DELIVER test mIoU (\%) per condition, all sensors present.}
+\caption{Per-condition results on the DELIVER test set with all four sensors (mIoU, \%).}
 \label{tab:condition}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lccccccc@{}}
@@ -274,7 +274,7 @@ Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on
 % excluded from this paper (user 2026-11-02, inbox 20261102-191138) and kept for the separate RA-L paper.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{Ablation on DELIVER test, building the model up (one seed, 40 epochs), mIoU (\%).}
+\caption{Incremental ablation on the DELIVER test set (mIoU, \%). Each row adds one component to the row above.}
 \label{tab:ablation}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccccc@{}}
@@ -295,7 +295,7 @@ Table~\ref{tab:ablation} builds the model up from a frozen DINOv3-L with LoRA on
 % Table 6b. Leave one component out of the full model (one seed, 40 epochs). Sources as Table 6 comment above;
 % L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
 \begin{table}[t]
-\caption{Ablation on DELIVER test, removing one component from the full model (one seed, 40 epochs), mIoU (\%).}
+\caption{Leave-one-out ablation on the DELIVER test set (mIoU, \%). Each row removes one component from the full model (last row).}
 \label{tab:ablation_loo}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccccc@{}}
@@ -320,7 +320,7 @@ modal & pass & degr. & KD & & \\
 % w/o high-res = Q2 3 seeds, full = A2 3 seeds: tasks/DRN-261019-03/analysis.md (moved from Table robust (b)).
 % MCubeS rows: DRN-261031-01 (w/o C2D2, legal eval pending) and DRN-261017-02 (C2D2, training).
 \begin{table}[t]
-\caption{Effect of the C2D2 training scheme and the high-resolution path on accuracy and robustness, mIoU (\%).}
+\caption{Effect of the C2D2 training scheme and the high-resolution path on accuracy and robustness (mIoU, \%, mean of three seeds).}
 \label{tab:abl_robust}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
@@ -349,7 +349,7 @@ The C2D2 training scheme changes only how the model is trained: the second, degr
 % Table 7. Cost on DELIVER at 1024, same GPU. DRN-261027-02 (adopted; notes/table_sources.md cost rows).
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{Inference cost on DELIVER with four sensors at $1024\times1024$, batch size one, one RTX 4090, bf16. Trainable: parameters updated during training (the DINOv3-L backbone of our model is frozen). The C2D2 training scheme adds no inference cost.}
+\caption{Inference cost on DELIVER with four sensors ($1024\times1024$ input, batch size 1, one RTX 4090, bf16). Trainable: parameters updated during training. The C2D2 training scheme adds no inference cost.}
 \label{tab:cost}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lccccc@{}}

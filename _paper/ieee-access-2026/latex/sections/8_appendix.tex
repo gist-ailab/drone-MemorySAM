@@ -14,7 +14,7 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \centering
 \includegraphics[width=\textwidth]{figures/fig_supp_deliver_1.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Ranks 2 and 3 for sun and cloud (DELIVER test, all sensors). Faded pixels agree with the ground truth; numbers are per-image mIoU (\%).}
+\caption{Additional qualitative results on the DELIVER test set for sun and cloud: the second- and third-ranked scenes under the selection rule of Fig.~\ref{fig:adverse}. Faded pixels agree with the ground truth; numbers give per-image mIoU (\%).}
 \label{fig:supp1}
 \end{figure*}
 
@@ -22,7 +22,7 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \centering
 \includegraphics[width=\textwidth]{figures/fig_supp_deliver_2.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Ranks 2 and 3 for rain and fog, shown as in Fig.~\ref{fig:supp1}.}
+\caption{Additional qualitative results for rain and fog. Display as in Fig.~\ref{fig:supp1}.}
 \label{fig:supp2}
 \end{figure*}
 
@@ -30,7 +30,7 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \centering
 \includegraphics[width=\textwidth]{figures/fig_supp_deliver_3.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Ranks 2 and 3 for night and low exposure, shown as in Fig.~\ref{fig:supp1}.}
+\caption{Additional qualitative results for night and low exposure. Display as in Fig.~\ref{fig:supp1}.}
 \label{fig:supp3}
 \end{figure*}
 
@@ -38,7 +38,7 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \centering
 \includegraphics[width=\textwidth]{figures/fig_typical_deliver.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Typical scenes: for each condition, the DELIVER test image whose per-image mIoU gap (ours minus the best of the other three models) is closest to that condition's median gap. Shown as in Fig.~\ref{fig:supp1}.}
+\caption{Typical scenes on the DELIVER test set: for each condition, the image whose per-image mIoU gap between ours and the best other method is closest to the median gap. Display as in Fig.~\ref{fig:supp1}.}
 \label{fig:typical}
 \end{figure*}
 
@@ -46,7 +46,7 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \centering
 \includegraphics[width=\textwidth]{figures/fig_cases_deliver.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{DELIVER test sequences with a built-in sensor fault: the scene with the largest per-image mIoU gap in favour of our model. The second column shows the affected sensor (RGB for exposure and blur, LiDAR, event). Shown as in Fig.~\ref{fig:supp1}.}
+\caption{Qualitative results on DELIVER test sequences with a built-in sensor fault: for each fault, the scene with the largest per-image mIoU gap in favor of ours. The second column shows the affected sensor (RGB for exposure and blur, LiDAR, or event). Display as in Fig.~\ref{fig:supp1}.}
 \label{fig:cases}
 \end{figure*}
 
@@ -54,7 +54,7 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \centering
 \includegraphics[width=\textwidth]{figures/fig_cases_reverse_deliver.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{As Fig.~\ref{fig:cases}, but the scene of each fault where another model is most ahead of ours.}
+\caption{Failure cases on DELIVER test sequences with a built-in sensor fault: for each fault, the scene where another method most exceeds ours. Display as in Fig.~\ref{fig:cases}.}
 \label{fig:cases_reverse}
 \end{figure*}
 
@@ -62,6 +62,6 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \centering
 \includegraphics[width=\textwidth]{figures/fig_thin_deliver.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Thin classes: for each of Pole, TrafficLight, Pedestrian and Static, the DELIVER test image where our model's IoU on that class exceeds the best of the other three models by the most (at least 400 ground-truth pixels of the class). Numbers are per-image mIoU over all classes (\%), not the class IoU used for the ranking.}
+\caption{Thin classes on the DELIVER test set: for each of Pole, TrafficLight, Pedestrian, and Static, the image where the class IoU of ours most exceeds that of the best other method (at least 400 ground-truth pixels of the class). Numbers give per-image mIoU over all classes (\%).}
 \label{fig:thin_scenes}
 \end{figure*}
