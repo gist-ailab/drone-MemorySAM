@@ -8,14 +8,14 @@
 | 항목 | 상태 | 출처 |
 |---|---|---|
 | MUSES 4모달 A2(DRN-261019-02) s2·s3 768 | **둘 다 완주**(학습기 val-best 80.56 / 80.18, yeon) | yeon `outputs/ReliaDINO/*muses*A2_s{2,3}_768` 직접 확인 |
-| MCubeS C2D2(DRN-261017-02) hpca100 2시드 | **상태 불명**: hpca100 GPU 0/4 사용, 임대 종료 경고(10-30) | lab-status 11-04 09:21 |
+| MCubeS C2D2(DRN-261017-02) hpca100 2시드 | **11-02 완주**(학습기 top1 59.80 s827 / 59.76 s828, test 102 관행), 하네스 재채점·판정 전. w/o C2D2 1024 s827 60.27 이 더 높아 크롭 정합 대조 DRN-261104-03 등록 | manager 11-04 21시 보고 |
 | MCubeS E1Mc-B 교사(DRN-261102-01) | amphibious-demo 학습 중(torchrun 수정 후 재기동) | task log 11-04 |
 | L8 router 제거 s821 / s902 | amphibious-demo 완주 여부 미확인 / jarvis ep30·40, ETA 11-04 밤(OOM 1회 후 ep25 재개) | lab-status |
 | L2 단순 융합 s902 / L4 M2F 제거 s902 | bengio ep1 / yeon ep1 (manager 11-04 자동배치) | lab-status |
 | L5(열화 패스 제거)·L6(교사 증류 제거) 2시드 | clean 측정 완료(yeon ckpt 있음), **EMM·RMM 미측정**, 판정 전 | tasks |
 | L7(물리 열화 제거 → 결측 0채움만) s821·s902 | jarvis 학습 완료, **legal 평가 미실행** | DRN-261029-01 |
 | 구조 의존성(DGFusion·CAFuser 두 패스+KD, DRN-261029-02·03) | **미착수**(specialist-baseline 미개방) | inbox |
-| NM 벤치 정의 A2 3시드(DRN-261102-04) | hpca100 측정 중이었음 → hpca100 상태와 같이 확인 | task log |
+| NM 벤치 정의 A2 3시드(DRN-261102-04) | **11-02 완주 → 11-04 adopt**: val Low 58.34 · Mid 51.92 · High 39.99 | verdict 11-04 |
 | 비용표(DRN-261027-02) | 채택 완료 | verdict 11-04 |
 | 공개 가중치 클래스별 IoU(CMNeXt·CAFuser·DGFusion) | 완료, paper 에 전달 | inbox 20261104-185601 |
 | 벤치 교차 확인(DRN-261022-01) (a)(b) | 완료 → method 판정 adopt(§4) | analysis |
@@ -30,9 +30,9 @@ user 결정(11-04, "mmsam meeting report" 세션): 쿼리 헤드는 논문에서
 | P1 | Table 2 MUSES Ours | s2·s3 **공식 val 1024/1536**(tools/eval_muses_official.py) → 해상도 선택 → 2시드 평균 | 0 | yeon GPU0·1 | analysis | 11-05 |
 | P1 | MUSES test 제출본(DRN-261029-09) | 선택 해상도로 test 추론 → zip 포맷 검증, 제출은 user | 0 | yeon | analysis(zip)·manager(ckpt 백업 NAS+drone-demo md5) | 11-06 |
 | P1 | Fig. MUSES adverse 짝 | s2 공식 val 250장 전체 예측 덤프(tools/muses_dump_preds.py) → paper 가 선별 | 0 | yeon | analysis | 11-06 |
-| P1 | Table 3 MCubeS Ours | **hpca100 상태 확인** → 살아 있으면 완주 대기, 죽었으면 yeon 768 변형 2시드 즉시 재기동(ckpt 있으면 resume) | 200ep | hpca100 또는 yeon 4장 | manager | 확인 11-05 · 완주 11-09~10(위험) |
+| P1 | Table 3 MCubeS Ours | C2D2 2시드 완주 → 하네스 재채점 5 ckpt(analysis, hpca100) → 판정. 크롭 정합 대조 DRN-261104-03(w/o C2D2 768 2시드, hpca100 2장, user 승인) | 재채점 0 · 대조 200ep | hpca100 | analysis·manager | 재채점 11-05 · 대조 11-06 |
 | P1 | Table 6b L5·L6·L7 행 | L7 s821·s902 legal v2 test(jarvis) · L5·L6·L7 **EMM test**(mm_eval_v2, 같은 프로토콜) | 0 | jarvis GPU3·7 / yeon GPU0·1 | analysis | 11-06 |
-| P1 | Table 6c(3시드 강건성 ablation) | 이미 있음(Q2 vs A2 val) · NM 열은 DRN-261102-04 결과 확인 | 0 | hpca100 확인 | analysis | 11-05 |
+| 완료 | Table 4·7 NM 열 | DRN-261102-04 adopt(11-04), 값은 paper 에 전달 | — | — | paper | 11-05 |
 | P1 | Table 7 L2 행 2시드 | bengio L2 s902 완주(11-05) → legal v2 | 40ep | bengio | manager→analysis | 11-06 |
 | P1 | L8 router 행 | jarvis s902·amphibious s821 완주 → legal v2 + router 추론 끄기(DRN-261029-06) | 40ep | jarvis | analysis | 11-06 |
 | P2 | Fig.(고해상 경로 특징 수준) DRN-261104-02 | 공급원 분리 패널 6장 + H-V1 집중도 + H-V2 **on/off 와 recombine 둘 다**(off 는 mIoU −10.6 로 파괴적, DRN-261020-01) | 0 | jarvis 1장 | analysis | 11-07 |
@@ -77,7 +77,7 @@ user 결정(11-04, "mmsam meeting report" 세션): 쿼리 헤드는 논문에서
 
 ## 5. user 결정 필요
 1. yeon 의 L4 s902 학습 중단(쿼리 헤드 논문 제외로 불필요) → GPU 4장 회수.
-2. MCubeS C2D2 가 hpca100 에서 죽었을 때: yeon 에서 즉시 재기동(완주 11-09~10, 동결일과 겹침) vs Table 3 를 "w/o C2D2 모델(60.27)" 만으로 내고 C2D2 는 보완 제출.
+2. (해소) MCubeS C2D2 는 완주. 대신: hpca100 유휴 2장에 w/o C2D2 768 크롭 대조 2시드(DRN-261104-03) 기동 승인 — Table 3 의 C2D2 vs w/o C2D2 비교에서 크롭 교란을 없앤다.
 3. 구조 의존성 실험(DGFusion·CAFuser 두 패스+KD): specialist-baseline 세션 개방 + levine 사용. 일요일 내 결과 불가, 동결 전(11-09) 가능성만 있음.
 4. S2 구현을 이번 주 코덱스 워커로 착수할지(Access 와 무관, RA-L 재료).
 
@@ -119,6 +119,6 @@ user 결정(11-04, "mmsam meeting report" 세션): 쿼리 헤드는 논문에서
 | jarvis 4090×8(우리 4장) | GPU2·4·5·6 L8 s902 ep30/40(11-04 밤 완주) | GPU2·4·5·6 L7 s821·s902 legal + EMM · L8 s902 legal · qualbank 덤프 | GPU 2장 router 끄기(DRN-261029-06) · TL P/R 재확인 | 고해상 특징 시각화(DRN-261104-02) · 정성 은행 잔여 |
 | bengio 3090(우리 4장) | GPU0~3 L2 s902 ep1(11-05 완주) | 완주 → legal v2 + qualbank 덤프, 이후 반납(다른 사용자 점유 중) | — | — |
 | amphibious-demo 5090×1 | L8 s821 → E1Mc-B 교사 연쇄 | 연쇄 계속(교사 200ep, 11-08 이후) | 〃 | 〃 |
-| hpca100 A100×4 | 0/4 사용으로 보임(임대 종료 경고) | 생존 확인 → MCubeS C2D2·NM 결과 회수·백업 | — | — |
+| hpca100 A100×4 | 유휴(두 작업 모두 11-02 완주) | GPU0·1 MCubeS 재채점+덤프(analysis) · (승인 시) GPU2·3 w/o C2D2 768 2시드 | 대조 학습 계속 | 대조 완주(11-06) → 회수·백업 |
 | levine 3090(빈 4장) | 미사용 | 환경 확인 | (user 승인 시) 구조 의존성 DGFusion 두 패스 | (user 승인 시) CAFuser 두 패스 또는 S2 스크린 |
 | gyuri 2080Ti×8(11GB) | 비어 있음 | ViT-L 768 학습 불가(메모리). CPU 스모크·DINOv2-B 호환 스모크(DRN-261102-03)만 가능 | — | — |
