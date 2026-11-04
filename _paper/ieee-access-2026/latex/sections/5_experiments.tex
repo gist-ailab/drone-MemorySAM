@@ -153,6 +153,10 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusio
 %     RMM p=0.1 64.64, NM Low 34.87, Mid 19.13); its baseline rows equal 2503.18445 Table 9 (r=0.5) -> RMM column r=.50.
 %     RMMSS = 2505.12861 Table 2 p6 (MiT-B0, EMM 49.93, RMM 51.90, r not stated) -> footnote only.
 % (c) Baselines measured by us with tools/missing_modality_eval.py on val: analysis inbox 20261102-180010 (pending).
+% Fairness check 2026-11-04: benchmark val_mm_NM.py (github Chenfei-Liao/Multi-Modal-Semantic-Segmentation-Robustness-Benchmark)
+%   injects S&P (tensor max/min) then Gaussian (RGB, D, L) on the normalized batch from get_val_augmentation; CMNeXt
+%   Normalize = ImageNet for img, /255 for others; ours identical (NORM_ALL_MODALS off in configs/eval/a2s821_eval1024_hpca100_probe.yaml).
+%   Benchmark NM script evaluates with sliding_predict(flip=True); ours without TTA.
 % (d) Ours (A2, 3 seeds): tasks/DRN-261019-03/analysis.md val clean 70.17, EMM15 57.85, RMM r.25/.5/.75
 %     65.53/63.35/61.28. NM (DRN-261102-04, nm_mode bench, val) = mean of hpca100 ~/SSDb/jemo_maeng/nmbench_20261102/
 %     s821/s902/s903_val/val/missing_modality/summary.json (md5 f98fb583 / 46f6fa86 / 153b8e3b): Low 57.84/59.29/57.88,
@@ -187,7 +191,7 @@ CAFuser (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \
 Ours & DINOv3-L & \best{70.17} & \best{57.85} & \td & \td & \td & \best{61.28} & \best{63.35} & \best{65.53} & \best{58.34} & \best{51.92} & \best{39.99} \\
 \bottomrule
 \end{tabular*}
-\tabnotewide{Avg: mean over the 15 non-empty sensor subsets; E($p$): expectation when each sensor fails independently with probability $p$; RMM $r$: fraction of a removed sensor's values that are zeroed; NM Low/Mid/High: salt-and-pepper density and Gaussian standard deviation (0.05, 0.1), (0.1, 0.2), (0.2, 0.5). All definitions follow~\cite{mmssbench2025} and Section~\ref{sec:sensors}. $^{\ddagger}$Values reported in its Table~1 (--: not reported); RMMSS~\cite{rmmss2025} reports 49.93 EMM and 51.90 RMM with a MiT-B0 backbone without stating $r$ and is therefore not listed. $^{\ast}$Released weights. $^{\dagger}$Retrained with our synthetic degradation. Ours: mean of three seeds; baselines: single runs. Methods that skip a missing input instead of zero-filling it answer a different question and are not listed.}
+\tabnotewide{Avg: mean over the 15 non-empty sensor subsets; E($p$): expectation when each sensor fails independently with probability $p$; RMM $r$: fraction of a removed sensor's values that are zeroed; NM Low/Mid/High: salt-and-pepper density and Gaussian standard deviation (0.05, 0.1), (0.1, 0.2), (0.2, 0.5). All definitions follow~\cite{mmssbench2025} and Section~\ref{sec:sensors}. Missing values and noise are injected after input normalization, as in the benchmark code, and our input normalization is the same as that of the benchmark models (ImageNet statistics for RGB, scaling to $[0,1]$ for the other sensors); we evaluate without test-time augmentation. $^{\ddagger}$Values reported in its Table~1 (--: not reported); RMMSS~\cite{rmmss2025} reports 49.93 EMM and 51.90 RMM with a MiT-B0 backbone without stating $r$ and is therefore not listed. $^{\ast}$Released weights. $^{\dagger}$Retrained with our synthetic degradation. Ours: mean of three seeds; baselines: single runs. Methods that skip a missing input instead of zero-filling it answer a different question and are not listed.}
 \end{table*}
 
 % ---------------------------------------------------------------------------
@@ -341,7 +345,7 @@ C2D2 & High-res & Clean & EMM & RMM .75 & RMM .50 & RMM .25 \\
 \end{table}
 
 \subsection{Computational Cost}
-Table~\ref{tab:cost} reports parameters, operations, latency, and peak memory at inference; operations are counted the same way for all models (one multiply-accumulate counted as one operation). \ours{} trains a similar number of parameters as the baselines (74.0M against 75.0M and 78.9M), but every sensor passes through the frozen ViT-L, so it needs 14.6 times the operations and 2.9 times the latency of DGFusion. The high-resolution path adds 15.2M parameters, about 2\% of the operations, and 13\% of the latency. C2D2 adds a second forward pass only during training and changes nothing at inference.
+C2D2 changes only how the model is trained: the second, degraded pass and the frozen teacher are used during training and removed afterwards, so the deployed model is the same network with or without C2D2. Its cost therefore comes from the architecture, which Table~\ref{tab:cost} reports at inference. The backbone is frozen, and \ours{} trains about as many parameters as the baselines (74.0M against 75.0M and 78.9M). Because every sensor passes through the frozen ViT-L, however, it needs 14.6 times the operations and 2.9 times the latency of DGFusion, about four images per second for four sensors at $1024\times1024$ on one RTX 4090. The high-resolution path adds 15.2M parameters, about 2\% of the operations, and 13\% of the latency. \todo{add the DINOv3-B operating point (DRN-261102-01/-02) to show the accuracy--cost trade-off of a smaller backbone}
 % Source: .claude_logs/tasks/DRN-261027-02/analysis.md table (l.14-19), verdict adopt 2026-11-03; raw NAS analysis_logs/cost_table_20261104{,b,c}/.
 % Ratios: 10135/695.6 = 14.57; 254.5/88.9 = 2.86; high-res = A2 - Q2: 377.05-361.87 = 15.18M, (10135-9922)/9922 = 2.1%, 254.5/224.8 = 1.13.
 
@@ -349,7 +353,7 @@ Table~\ref{tab:cost} reports parameters, operations, latency, and peak memory at
 % Table 7. Cost on DELIVER at 1024, same GPU. DRN-261027-02 (queued) -> all todo.
 % ---------------------------------------------------------------------------
 \begin{table}[t]
-\caption{Inference cost on DELIVER with four sensors at $1024\times1024$, batch size one, one RTX 4090, bf16.}
+\caption{Inference cost on DELIVER with four sensors at $1024\times1024$, batch size one, one RTX 4090, bf16. Trainable: parameters updated during training (the DINOv3-L backbone of \ours{} is frozen). C2D2 adds no inference cost.}
 \label{tab:cost}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lccccc@{}}
