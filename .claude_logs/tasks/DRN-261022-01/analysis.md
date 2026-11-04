@@ -1,7 +1,7 @@
 판정은 이 파일이 아니라 `lab-plan verdict DRN-261022-01 --analysis .claude_logs/tasks/DRN-261022-01/analysis.md`로 기록한다.
 
 작성: MMSAM | analysis, 2026-10-27. 요청 inbox `20261022-184018-request-7d5e45f3`(method). 학습 없음.
-진행: **(a) DELIVER 완료(10-27), (a) MUSES 완료(11-04)**, (b) 선형 프로브 미착수.
+진행: **(a) DELIVER 완료(10-27), (a) MUSES 완료(11-04), (b) 선형 프로브 완료(11-04)**.
 
 ## 방법 — 객체 클래스 오라클
 - 스크립트 `.claude_logs/experiments/analysis/DRN-261022-01/object_class_oracle.py`(합성 자기검증 `oracle_selftest.py` 통과).
@@ -67,8 +67,22 @@ TrafficLight +36.70(+1.47) · Other +22.81(+0.91) · TrafficSign +16.85(+0.67) �
 - DELIVER A2 사물판 여유 +4.22(≥ +1.5 충족), MUSES 1536 사물판 여유 +2.18(≥ +1.0 충족, rider 제외 시 약 +1.35 도 충족). 반증 조건(MUSES < +0.5) 해당 없음.
 - 두 벤치 모두 객체 클래스 여유 ≥ +1.0 이다(사물판 정의 기준).
 
-### (b) 선형 프로브 — 미착수
-- GT 객체별 fused 토큰 평균과 고해상 s4 특징 평균을 뽑는 훅 코드가 필요하다(새 코드, GPU 필요).
+### (b) 선형 프로브(H-X2, 2026-11-04 측정)
+- 도구 `tools/probe_object_pooling.py`(develop 67a7c50, 워커 codex2 작성·이 세션 검수). A2 s821, DELIVER **val** 2005장, jarvis GPU7(프로세스 0개 확인). GT 클래스별 8연결 성분(면적 ≥ 64 px)을 객체로 보고, 마스크를 특징 격자로 면적 평균한 가중치로 두 특징을 풀링: fused = `model.fusion` 출력(stride 16, 1024ch), hires_s4 = `model._hires_feats[0]`(stride 4, 256ch). 표준화 + 로지스틱 회귀(L2, C=1, class_weight balanced), **이미지 단위 GroupKFold 5-fold**.
+- 객체 수: TrafficLight 4,426 · TrafficSign 437 · Other 287(총 5,150).
+
+| 쌍 | 특징 | AUROC(풀링) | fold 평균 ± std |
+| --- | --- | ---: | ---: |
+| TrafficLight : Other | fused | 1.0000 | 1.0000 ± 0.0000 |
+| TrafficLight : Other | hires_s4 | 1.0000 | 1.0000 ± 0.0000 |
+| TrafficLight : TrafficSign | fused | 1.0000 | 1.0000 ± 0.0000 |
+| TrafficLight : TrafficSign | hires_s4 | 1.0000 | 1.0000 ± 0.0000 |
+
+- 검산(버그 배제): 라벨을 섞은 대조군 AUROC 0.47~0.54(우연 수준), 면적 단독 0.52, 특징 벡터 5,150개 모두 서로 다름·NaN 없음. AUROC 1.0 은 누설이 아니라 실제 분리다.
+- **H-X2 사전 기준 대비**: "fused < 0.8, 고해상 ≥ 0.9" 의 앞부분이 성립하지 않는다(fused 도 1.0). 반증 조건 "고해상과 fused 차이 < 0.05" 에 해당(차이 0) → '고해상 질감이 클래스를 가른다' 가설은 기각 조건에 든다.
+- [미검증] 해석: GT 객체 마스크 전체로 풀링하면 의미 특징만으로 쌍이 완벽히 갈린다. 따라서 TrafficLight ↔ Other/TrafficSign 혼동은 객체 수준 의미 부족이 아니라 **픽셀 단위 결정**(객체 일부·경계, 64 px 미만 소형 객체 — 이번 프로브에서 제외)에서 생긴다고 보는 것이 맞다. 같은 날 DRN-261020-01 에서 고해상 경로가 TL 예측 전체(TP·FP)를 담당함을 확인.
+- 한계: val 기준(test 아님), 64 px 미만 객체 제외, 단일 시드.
+- 원본: NAS `analysis_logs/a2_hires_ablation_20261104/probe_s821_val/`(objects.npz·csv·probe_auroc.csv·run.json) + 검산 스크립트 `probe_sanity.py`.
 
 ## 원인 해석 (검증 여부 표시)
 - [사실] DELIVER 에서 "마스크는 그렸는데 사물 클래스를 틀린" 손실은 mIoU 약 4 점이다. 그 대부분은 Other·TrafficSign 과 다른 사물(TrafficLight·Static·Pole) 사이의 혼동이다.
@@ -79,5 +93,5 @@ TrafficLight +36.70(+1.47) · Other +22.81(+0.91) · TrafficSign +16.85(+0.67) �
 판정은 method 가 한다.
 
 ## 다음 결정
-- (b) 선형 프로브(H-X2): 특징 추출 훅 코드 작성(워커 위임) 후 실행 — 미착수.
+- (b) 완료. 소형 객체(64 px 미만)·픽셀 단위 결정을 보려면 객체 일부(경계 띠) 풀링 변형을 추가할 수 있다.
 - MUSES 측 A2(4모달) 가 나오면 같은 오라클로 다시 잴 수 있다(덤프 도구·스크립트 준비됨).
