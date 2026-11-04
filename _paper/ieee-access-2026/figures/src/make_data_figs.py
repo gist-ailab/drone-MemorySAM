@@ -126,7 +126,8 @@ def fig_dependence(out):
     ax.set_ylim(-42, 3)
     h, l = ax.get_legend_handles_labels()
     l = [s.replace("DGFusion (reproduced)", "DGFusion (reproduced), test")
-          .replace("Ours w/o high-res", "Ours w/ C2D2, w/o high-res") for s in l]
+          .replace("Ours w/o high-res", "Ours, C2D2 training")
+          .replace("Ours w/o C2D2", "Ours, clean training") for s in l]
     ax.legend(h, l, loc="center left", bbox_to_anchor=(0.01, 0.62), handlelength=2.4, borderaxespad=0.2)
     fig.tight_layout(pad=0.3)
     save(fig, out / "fig_dependence", [src])

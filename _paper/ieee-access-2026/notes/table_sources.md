@@ -93,7 +93,7 @@
 | “All” 열 5개 | 56.73 / 54.77 / 55.79 / 56.59 / 57.74 | 표 IV(b) clean 열과 같은 출처(첫 행 = 공식 가중치, ledger:130) | ✅ |
 | 조건별 6열 | 비어 있음 | analysis 요청 inbox 20261028-183826 #1 | ❌ |
 
-## 표 VI. Ablation (`tab:ablation`) — 시드 821, 40ep, legal v2 test@1024
+## 표 VI. Ablation (`tab:ablation`) — 시드 821, 40ep, legal v2 test@1024 — **원고에서 삭제(2026-11-04 user: C2D2·고해상 행이 tab:abl_robust 와 중복). 55.14 만 5절 본문에 남음**
 | 행 | Clean / EMM | 출처 | 상태 |
 |---|---|---|---|
 | RGB only | 55.14 / – | `judgment-ledger.md:177` (2026-10-28, DRN-261020-08 adopt) | ✅ |
@@ -103,7 +103,6 @@
 | + high-res path (full) | 58.61 / 49.12 | 같은 문서 `:18-19` (A2 시드821) | ✅ |
 | (삭제 2026-11-02, user 결정 inbox 20261102-191138) − sensor-specific LoRA(L1 공유 LoRA) | — | Access 원고에 싣지 않음. RA-L 별개 논문 재료(DRN-261020-09, 판정 대장 176행) | — |
 | − cross-modal attention | 57.76 / 비어 있음 | `judgment-ledger.md:175` (DRN-261020-10; 트렁크 확장도 함께 빠짐) | ✅ / ❌ |
-| − query head and arbiter | 57.89 / 비어 있음 | `judgment-ledger.md:174` (DRN-261020-12) | ✅ / ❌ |
 | − degradation pass / − distillation | 비어 있음 | DRN-261020-13 / -14 평가 대기 | ❌ |
 
 ## 표 VII. Cost (`tab:cost`)
@@ -154,4 +153,18 @@
 | DGFusion DELIVER test | 56.7 → 격차 1.0 | DGFusion 원 논문 Table III p6 (notes/sota_survey.md) | ✅ |
 | 우리 val EMM15 (3시드 평균) | 57.85 | `.claude_logs/tasks/DRN-261019-03/analysis.md` (자체 채점기: native GT, flip 없음) | ⚠️ 원고에는 todo 로만 표기 — 강건성 수치는 벤치 공개 코드 값만 쓴다(user 2026-11-04, 감사 #19·#26). 재측정 후 숫자로 교체 |
 | MAGIC val EMM | 44.97 → 격차 12.9 | arXiv 2503.18445 (원고 Table robust (a)) | ✅ (우리 값 재측정 후 격차 재계산) |
+
+## 표 abl_robust Test 열 추가 (2026-11-04, tab:ablation 삭제에 따름)
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| C2D2 tr. ✓, high-res ✗, test 3시드 | 56.59 | `tasks/DRN-261019-03/analysis.md` R03:17 (Q2 3시드 legal v2 test@1024) | ✅ |
+| C2D2 tr. ✓, high-res ✓, test 3시드 | 57.74 | `headline.yaml` benchmarks.deliver.ours[0] | ✅ |
+| C2D2 ✗, high-res ✗, test 3시드 | 비어 있음 | E1 40ep 3시드 test 평균 정본 위치 미확인 | ❌ |
+
+## 표 thin (`tab:thin`, `sections/6_analysis.tex`, 2026-11-04 user) — DELIVER test, legal v2, 3시드 평균
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| Ours w/o high-res: Pole·TrafficLight·Pedestrian·Static·Thin·mIoU | 51.94 · 41.67 · 76.94 · 33.36 · 50.98 · 56.59 | `.claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv` q2s821/q2s902/q2s903 열 평균(25클래스 평균 56.59 = headline 과 일치) | ✅ |
+| Ours: 같은 열 | 54.08 · 37.52 · 80.74 · 43.71 · 54.02 · 57.74 | 같은 CSV a2s821/a2s902/a2s903 열 평균(25클래스 평균 57.74 일치) | ✅ |
+| CMNeXt·CAFuser·DGFusion (공개 가중치) | 비어 있음 | 전체 예측 덤프에서 클래스별 IoU 계산 요청(analysis) | ❌ |
 

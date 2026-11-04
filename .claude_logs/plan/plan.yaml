@@ -12649,7 +12649,7 @@ items:
   expected_cost: GPU 1장 약 6시간(추론 4회 + 혼동행렬), 학습 없음
   priority: 4
   owner_role: analysis
-  status: queued
+  status: judging
   kind: analysis
   tags:
   - A2
@@ -12657,7 +12657,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261020-01
   created: '2026-10-20'
-  updated: '2026-10-29'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
@@ -13339,7 +13339,7 @@ items:
   expected_cost: GPU 1장 약 4시간(재추론 포함), 나머지 CPU
   priority: 4
   owner_role: analysis
-  status: queued
+  status: judging
   kind: analysis
   tags:
   - cross-bench
@@ -13348,7 +13348,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261022-01
   created: '2026-10-22'
-  updated: '2026-10-29'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
@@ -14161,6 +14161,51 @@ items:
   - leave-one-out
   - paper
   - gpu-fill
+  created: '2026-11-04'
+  updated: '2026-11-04'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261104-02
+  title: '고해상 경로 특징 수준 시각화(학습 0): FPN s4 에서 고해상 경로가 더하는 것이 얇은 구조인지 — 같은 A2 ckpt 로
+    피라미드 세 공급원(SimpleFPN·탭·고해상) 분리 + 추론 시 끄기 짝 비교 + 얇은 클래스 화소 집중도'
+  question: '논문 Fig.(고해상 경로)로 ''세부는 고해상 경로에서만 온다''를 특징 수준에서 보일 수 있는가: 같은 학습된 A2 에서
+    FPN s4 에 더해지는 세 공급원을 따로 그렸을 때 얇은 구조(Pole·TrafficLight·Pedestrian·Static 경계)가 고해상
+    경로 출력에만 나타나고, 그 에너지가 얇은 클래스 화소에 집중되는가'
+  hypothesis: 'H-V1: 고해상 경로 출력 s4 의 채널 노름이 얇은 4클래스 GT 화소에서 그 외 화소보다 ≥1.5배 높다(SimpleFPN
+    s4·탭 s4 는 <1.2배). H-V2: 같은 ckpt 로 추론 시 고해상 경로만 끄면(hires_infer_mode off) 얇은 4클래스
+    IoU 가 다른 20클래스보다 크게 떨어진다(얇은 4 평균 Δ 가 나머지 평균 Δ 의 2배 이상)'
+  falsification: H-V1 비율 <1.2 이거나 H-V2 에서 얇은 4 Δ 가 나머지 Δ 와 같은 수준(2배 미만)이면 '고해상 경로가
+    얇은 구조를 공급한다'는 서술을 철회하고 이득 원인을 미확인으로 둔다
+  change: 학습 없음. 입력은 논문 모델 A2 s821 ckpt 하나(NAS ckpts/a2_s821_20261016_073952/). 비교
+    변수 = 피라미드 공급원(세 개 분리)과 hires_infer_mode on/off
+  baseline: 같은 ckpt 의 SimpleFPN s4·탭 s4(공급원 대조) + Q2 s821(고해상 경로 없이 학습한 짝)의 s4 — Q2
+    는 '학습부터 없던 경우'의 참고 행
+  configs: []
+  launch: null
+  success_criteria: 채택 = H-V1·H-V2 둘 다 충족 → 원고 Fig.(고해상 경로)에 패널 (a)입력 (b)SimpleFPN
+    s4 (c)탭 s4 (d)고해상 s4 (e)합 (f)on/off 예측 을 넣고 본문에 집중도 비율·on/off 얇은 Δ 를 적는다. 하나만
+    충족이면 충족한 쪽만 그림으로, 둘 다 미충족이면 '고해상 경로 이득의 특징 수준 근거 없음' 으로 한계에 적는다
+  sample_basis: 정성 패널은 얇은 클래스가 있는 장면 6장(조건 cloud·night·fog 각 2, tools/viz_features.py
+    --contains 로 선별, 정성 은행 후보와 일치시킴). 정량(H-V1 비율·H-V2 on/off)은 DELIVER test 전수 1,897장,
+    ckpt 1개(s821; 시드 의존은 보지 않음)
+  expected_cost: 'jarvis RTX 4090 1장 × 약 2시간(on/off 전수 평가 2회 + 특징 덤프 6장), 학습 0. 코드:
+    tools/viz_features.py 에 피라미드 공급원 훅(_hires_feats·_p43_taps·self.fpn 출력) 추가 또는 별도
+    tools/viz_hires_pyramid.py'
+  priority: 2
+  owner_role: analysis
+  status: queued
+  kind: analysis
+  tags:
+  - hires
+  - feature-viz
+  - paper
+  - eval-only
+  - figure
+  docs: .claude_logs/tasks/DRN-261104-02
   created: '2026-11-04'
   updated: '2026-11-04'
   closed: null
