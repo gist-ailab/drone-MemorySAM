@@ -12561,7 +12561,7 @@ items:
   expected_cost: GPU 4장×2런, 40ep 각 1.5~2일, 교사 완주 후 기동
   priority: 1
   owner_role: method
-  status: running
+  status: evaluating
   kind: experiment
   tags:
   - muses
@@ -12569,7 +12569,7 @@ items:
   - A2
   docs: .claude_logs/tasks/DRN-261019-02
   created: '2026-10-19'
-  updated: '2026-10-29'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
@@ -12649,7 +12649,7 @@ items:
   expected_cost: GPU 1장 약 6시간(추론 4회 + 혼동행렬), 학습 없음
   priority: 4
   owner_role: analysis
-  status: judging
+  status: done
   kind: analysis
   tags:
   - A2
@@ -12658,11 +12658,22 @@ items:
   docs: .claude_logs/tasks/DRN-261020-01
   created: '2026-10-20'
   updated: '2026-11-04'
-  closed: null
+  closed: '2026-11-04'
   runs: []
   results: []
-  verdict: null
-  analysis: null
+  verdict:
+    decision: adopt
+    summary: 'A2 실패 키 부분 채택: H1(TrafficLight FP = 고해상 경로) — 추론 시 경로 끄기(off)로 FP −95%(s821)·−99%(s902)
+      로 사전 기준(≥50%) 충족. 단 TP 도 −68%/−87%(재현율 0.85→0.27/0.11), mIoU −10.6/−12.1 이라
+      ''경로가 FP 를 만든다''가 아니라 ''TL 예측 경로 자체가 고해상 경로''로 읽는다. off 는 학습 때 없던 결선이라 원인 귀속
+      도구로는 recombine(dense 만 off) 을 병기한다. H2(못 그림 잔여 = FPN 최고해상 수용영역 한계) 미검증(잔여는 0.25
+      패치 미만에 집중, ≥1 패치 결함 0). H3(MUSES 야간 하락 = 열화 패스 과소 표집) 기각: 열화 패스 없는 E1M 도 같은
+      하락. 원고 반영: §6 실패 사례 절은 ''TL 재현율 ↑ 정밀도 ↓'' 로 유지, 야간 하락을 열화 패스 탓으로 쓰지 않는다. 후속은
+      DRN-261104-02(특징 수준 시각화, Pole·Pedestrian 의 off/recombine 포함).'
+    date: '2026-11-04'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261020-01/analysis.md
   superseded_by: null
   problem: PRB-DRN-261020-01
 - id: DRN-261020-02
@@ -13255,10 +13266,11 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261020-14
   created: '2026-10-20'
-  updated: '2026-10-30'
+  updated: '2026-11-04'
   closed: null
   runs:
   - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623
+  - yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd_20261026_2121
   results:
   - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L6nokd_20261028_0623
     split: test
@@ -13279,6 +13291,26 @@ items:
     split: val
     metric: mAcc
     value: 79.23
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd_20261026_2121
+    split: test
+    metric: mIoU
+    value: 56.32
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd_20261026_2121
+    split: test
+    metric: mAcc
+    value: 67.86
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd_20261026_2121
+    split: val
+    metric: mIoU
+    value: 69.83
+    source: pipeline
+  - run_id: yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd_20261026_2121
+    split: val
+    metric: mAcc
+    value: 79.15
     source: pipeline
   verdict: null
   analysis: null
@@ -13339,7 +13371,7 @@ items:
   expected_cost: GPU 1장 약 4시간(재추론 포함), 나머지 CPU
   priority: 4
   owner_role: analysis
-  status: judging
+  status: done
   kind: analysis
   tags:
   - cross-bench
@@ -13349,11 +13381,21 @@ items:
   docs: .claude_logs/tasks/DRN-261022-01
   created: '2026-10-22'
   updated: '2026-11-04'
-  closed: null
+  closed: '2026-11-04'
   runs: []
   results: []
-  verdict: null
-  analysis: null
+  verdict:
+    decision: adopt
+    summary: '벤치 교차 확인 채택: (a) 객체 클래스 오라클(사물판) 여유 DELIVER A2 +4.22·Q2 +4.78, MUSES
+      E1M 3시드 공식 val 1536 +2.18(1024 +1.83, rider 제외 약 +1.35) → 사전 기준 H-X1(DELIVER
+      ≥1.5·MUSES ≥1.0) 두 벤치 충족, 반증 조건 해당 없음. (b) 객체 풀링 선형 프로브 H-X2 는 fused 특징도 AUROC
+      1.0 이라 ''융합 특징은 쌍을 못 가른다(<0.8)'' 전제가 성립하지 않아 판별력 없음(inconclusive; 객체 전체 풀링은
+      의미 특징만으로 쌍이 갈림). 함의: PRB-DRN-261020-01 의 ''클래스 혼동 해소 여유가 두 벤치에 있다'' 조건 충족 →
+      S2(센서별 마스크 헤드) 1런은 RA-L 재료로 진행 가능. Access 원고에는 넣지 않는다(user 11-02).'
+    date: '2026-11-04'
+    by: jemo
+    via: MMSAM | 생각정리
+  analysis: .claude_logs/tasks/DRN-261022-01/analysis.md
   superseded_by: null
   problem: PRB-DRN-261020-01
 - id: DRN-261027-01
@@ -13913,7 +13955,7 @@ items:
   expected_cost: GPU 1장 약 2시간/시드
   priority: 1
   owner_role: analysis
-  status: idea
+  status: queued
   kind: build
   tags:
   - muses
@@ -13921,7 +13963,7 @@ items:
   - paper1
   docs: .claude_logs/tasks/DRN-261029-09
   created: '2026-10-29'
-  updated: '2026-10-29'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
@@ -14144,7 +14186,6 @@ items:
     57.89)
   configs:
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L2meanfusion.yaml
-  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L4nom2f.yaml
   launch: null
   success_criteria: 완주 + legal v2 test 측정 → 표에는 s821 단독 대신 2시드 평균±짝 Δ 병기. 결과가 s821
     과 부호가 다르면 '시드 의존' 으로 표기하고 행 주장을 약화(기준 사전 고정)
@@ -14190,8 +14231,10 @@ items:
     s4 (c)탭 s4 (d)고해상 s4 (e)합 (f)on/off 예측 을 넣고 본문에 집중도 비율·on/off 얇은 Δ 를 적는다. 하나만
     충족이면 충족한 쪽만 그림으로, 둘 다 미충족이면 '고해상 경로 이득의 특징 수준 근거 없음' 으로 한계에 적는다
   sample_basis: 정성 패널은 얇은 클래스가 있는 장면 6장(조건 cloud·night·fog 각 2, tools/viz_features.py
-    --contains 로 선별, 정성 은행 후보와 일치시킴). 정량(H-V1 비율·H-V2 on/off)은 DELIVER test 전수 1,897장,
-    ckpt 1개(s821; 시드 의존은 보지 않음)
+    --contains 로 선별, 정성 은행 후보와 일치시킴). 정량(H-V1 비율·H-V2)은 DELIVER test 전수 1,897장, ckpt
+    1개(s821). H-V2 는 hires_infer_mode off 와 recombine(dense 만 off) 둘 다 측정한다 — off
+    는 학습 때 없던 결선이라 mIoU −10.6 으로 파괴적(DRN-261020-01), 본문에는 얇은 4 Δ 와 나머지 Δ 의 상대 비교만
+    쓴다
   expected_cost: 'jarvis RTX 4090 1장 × 약 2시간(on/off 전수 평가 2회 + 특징 덤프 6장), 학습 0. 코드:
     tools/viz_features.py 에 피라미드 공급원 훅(_hires_feats·_p43_taps·self.fpn 출력) 추가 또는 별도
     tools/viz_hires_pyramid.py'
