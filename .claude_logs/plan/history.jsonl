@@ -1088,3 +1088,5 @@
 {"ts": "2026-11-04T12:39:25.470637+00:00", "id": "DRN-261104-02", "action": "status", "fields": {"status": ["queued", "running"]}, "reason": "시각화·노름 비율 측정", "actor": "jemo", "via": "MMSAM | analysis"}
 {"ts": "2026-11-04T12:39:28.164994+00:00", "id": "DRN-261104-02", "action": "status", "fields": {"status": ["running", "evaluating"]}, "reason": "측정 완료", "actor": "jemo", "via": "MMSAM | analysis"}
 {"ts": "2026-11-04T12:39:30.864969+00:00", "id": "DRN-261104-02", "action": "status", "fields": {"status": ["evaluating", "judging"]}, "reason": "근거 .claude_logs/tasks/DRN-261104-02/analysis.md", "actor": "jemo", "via": "MMSAM | analysis"}
+{"ts": "2026-11-04T16:50:58.921063+00:00", "id": "DRN-261105-01", "action": "add", "fields": {"title": [null, "DELIVER 백본 크기 대조 · DINOv3-B 로 같은 방법(E1-B 교사 clean 40ep → A2-B 두 패스+증류+고해상) s821 — '이득은 큰 백본 덕'이라는 반박 방어"]}, "reason": null, "actor": "jemo", "via": "MMSAM | 생각정리"}
+{"ts": "2026-11-04T16:51:20.240345+00:00", "id": "DRN-261105-01", "action": "task_init", "fields": {"docs": [null, ".claude_logs/tasks/DRN-261105-01"], "created": ["plan.md", "log.md", "analysis.md"]}, "reason": null, "actor": "jemo", "via": "MMSAM | 생각정리"}
