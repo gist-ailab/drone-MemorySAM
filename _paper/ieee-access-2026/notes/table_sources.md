@@ -67,12 +67,12 @@
 | (a) EMM Avg / E(.2) / E(.1) / E(.05) | CMNeXt 37.90/54.46/60.41/63.38 · GeminiFusion 37.07/54.33/60.62/63.77 · MAGIC 44.97/58.66/62.68/64.47 · MAGIC++ 44.85/59.18/63.52/65.50 · StitchFusion 41.98/58.02/63.29/65.80 | 같은 논문 Table 7 | ✅ |
 | (a) RMM Avg r=.75 / .50 / .25 | CMNeXt 42.17/47.49/53.61 · GeminiFusion 39.78/42.41/49.74 · MAGIC 45.30/48.19/51.61 · MAGIC++ 47.06/49.31/53.92 · StitchFusion 45.16/48.33/53.10 | Table 8 / 9 / 10 (mIoU_RMM^Avg) | ✅ |
 | (a) NM Low / Mid / High | CMNeXt 35.23/16.37/2.31 · GeminiFusion 5.52/4.14/3.30 · MAGIC 24.03/13.31/3.98 · MAGIC++ 33.12/18.31/8.70 · StitchFusion 24.91/17.11/9.25 | Table 11, mIoU_NM 행 | ✅ |
-| (b) EQUISeg clean / EMM Avg / E(.10) / RMM r=.50 Avg / NM Low / Mid | 67.90 / 48.22 / 65.75 / 50.96 / 34.87 / 19.13 | arXiv 2509.24505 Table 1 p4 (DeLiVER), 메인 세션이 변환본에서 재확인. 기준선 행이 2503.18445 Table 9(r=0.5)와 같아 RMM 은 r=.50 열. E(.20)·E(.05)·r=.75/.25·NM High 미보고(--) | ✅ |
+| (삭제 2026-11-04: 공개 코드 미확인, user "열려 있는 것만") (b) EQUISeg clean / EMM Avg / E(.10) / RMM r=.50 Avg / NM Low / Mid | 67.90 / 48.22 / 65.75 / 50.96 / 34.87 / 19.13 | arXiv 2509.24505 Table 1 p4 (DeLiVER), 메인 세션이 변환본에서 재확인. 기준선 행이 2503.18445 Table 9(r=0.5)와 같아 RMM 은 r=.50 열. E(.20)·E(.05)·r=.75/.25·NM High 미보고(--) | ✅ |
 | (b) 각주 RMMSS EMM / RMM | 49.93 / 51.90 | arXiv 2505.12861 Table 2 p6 (MiT-B0, r 미표기) — 변환본 378행 "Ours B0 49.93 51.90" 메인 세션 확인 | ✅ |
 | 본문 9.6 | — | 57.85 − 48.22 (EQUISeg) | ✅ 계산 |
 | (c) DGFusion 공식·재학습 (b)·CAFuser (b) | 비어 있음 | analysis inbox 20261102-180010(val 벤치 프로토콜 측정 요청) | ❌ |
-| Ours clean / EMM Avg / RMM .75 .50 .25 | 70.17 / 57.85 / 61.28 63.35 65.53 | `.claude_logs/tasks/DRN-261019-03/analysis.md` val 행(A2 3시드 평균) | ✅ |
-| Ours NM Low / Mid / High | 58.34 / 51.92 / 39.99 | DRN-261102-04 A2 3시드 val, nm_mode bench(2503.18445 식 7). hpca100 ~/SSDb/jemo_maeng/nmbench_20261102/s{821,902,903}_val/val/missing_modality/summary.json (md5 f98fb583·46f6fa86·153b8e3b), 시드별 57.84/59.29/57.88 · 51.52/52.79/51.45 · 39.63/40.21/40.12 평균. 메인 세션 직접 판독 2026-11-04(analysis 보고 전) | ✅ 원본 |
+| (원고에서 todo 로 내림 2026-11-04, user: 벤치 공개 코드와 같은 방식만) Ours clean / EMM Avg / RMM .75 .50 .25 — 자체 채점기(1042 native GT, flip 없음) | 70.17 / 57.85 / 61.28 63.35 65.53 | `.claude_logs/tasks/DRN-261019-03/analysis.md` val 행(A2 3시드 평균) | ✅ |
+| (원고에서 todo 로 내림, 같은 이유) Ours NM Low / Mid / High — 자체 채점기, flip 없음 | 58.34 / 51.92 / 39.99 | DRN-261102-04 A2 3시드 val, nm_mode bench(2503.18445 식 7). hpca100 ~/SSDb/jemo_maeng/nmbench_20261102/s{821,902,903}_val/val/missing_modality/summary.json (md5 f98fb583·46f6fa86·153b8e3b), 시드별 57.84/59.29/57.88 · 51.52/52.79/51.45 · 39.63/40.21/40.12 평균. 메인 세션 직접 판독 2026-11-04(analysis 보고 전) | ✅ 원본 |
 | Ours E(p) | 비어 있음 | inbox 20261102-180010(시드903 만 66.10/68.20/69.09) | ❌ |
 | 본문 58.3/51.9/40.0 vs 35.2/19.1/9.3 | — | 위 Ours NM; 다른 행 최고 = Low CMNeXt 35.23, Mid EQUISeg 19.13, High StitchFusion 9.25 | ✅ 계산 |
 | 본문 수치 12.9 / 61.3~65.5 / 47.1~53.9 / 12.3 / 21~30 | — | 57.85−44.97; ours RMM; 벤치 최고 RMM(.75 47.06, .25 53.92); 70.17−57.85; 벤치 모델 clean−EMM 21.13~29.85 | ✅ 계산 |
@@ -141,3 +141,8 @@
 | CAFuser | 75.01 / 75.01 / 670.8 / 83.1 / 1.57 | 같은 문서 :19 | ✅ |
 | Ours (A2) | 377.05 / 73.98 / 10,135 / 254.5 / 2.47 | 같은 문서 :16 | ✅ |
 | 본문 74.0 / 75.0 / 78.9 / 14.6배 / 2.9배 / 약 4 img/s / 15.2M / 약 2% / 13% | — | 위 값; 고해상 = A2 − Q2(:17, 361.87M·9,922·224.8 ms); 1000/254.5 = 3.9 img/s. 같은 계열(동결 VFM) 공개 비용은 없음: FuseAdapt Table 15(arXiv 2610.21779 부록 D)는 MiT-B0 판만, MM SAM-adapter 는 미보고 | ✅ 계산 |
+
+### 2026-11-04 벤치 공개 코드 대조 (user: 열린 것만, 같은 평가 방식)
+- 공개 저장소 Chenfei-Liao/Multi-Modal-Semantic-Segmentation-Robustness-Benchmark: val_mm_EMM.py·val_mm_RMM.py 는 `preds = model(images)` 단일 forward(sliding=False), val_mm_NM.py 는 `sliding_predict(..., flip=True)`; 셋 다 `get_val_augmentation(IMAGE_SIZE)` 로 라벨까지 1024 Resize 후 Metrics 채점, split 'val'.
+- 우리 자체 채점기(tools/missing_modality_eval.py)는 1042 native GT 채점·flip 없음 → 같은 방식 아님. 주입 위치(정규화 후)·S&P(텐서 max/min)·Gaussian(Event 제외)·RMM(원소 독립 r)·정규화(RGB ImageNet, 나머지 /255)는 같음.
+- 공개 코드: EQUISeg 미확인(검색), RMMSS 공식 코드 미확인(후속 RobustSeg 저장소 표기만) → 표에서 제외.

@@ -132,7 +132,7 @@ Ours & DINOv3-L & RGB-A-D-N & \td \\
 \end{table}
 
 \subsection{Robustness to Missing and Degraded Sensors}
-Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbench2025} on the DELIVER validation set, so that our numbers can be compared directly with the values that benchmark reports. Averaged over the 15 sensor subsets, \ours{} scores 57.85 mIoU when sensors are entirely missing, 12.9 points above the best model in the benchmark (MAGIC, 44.97) and 9.6 points above EQUISeg~\cite{robustseg2025}, the strongest later method reported under the same definition (48.22), and 61.3 to 65.5 mIoU when 75\% to 25\% of a removed sensor's values are missing, against 47.1 to 53.9 for the best benchmark entries. Part of this margin comes from the stronger backbone, which also raises the clean score (70.17 against 68.20 for StitchFusion); the drop from clean to EMM is 12.3 points for \ours{} and 21 to 30 points for the benchmark models. Under the benchmark noise, \ours{} keeps 58.3, 51.9, and 40.0 mIoU at the low, middle, and high levels, while the best other entries reach 35.2, 19.1, and 9.3. \todo{expected values E($p$) and the baselines in (c) (analysis request 20261102-180010 pending)}.
+Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbench2025} on the DELIVER validation set. To compare under identical conditions, we run the public evaluation code of the benchmark on our model and on the baselines whose code and weights are public, and list only such methods. \todo{numbers of \ours{} and of the baselines in (b) under the benchmark code (analysis request, 2026-11-04); the earlier measurement with our own scorer (native-resolution labels, no flip) gave EMM 57.85, RMM 61.28--65.53 and NM 58.34/51.92/39.99 and is kept only in the notes until the re-measurement}.
 % Sources: tasks/DRN-261019-03/analysis.md (val clean 70.17, EMM15 57.85, RMM 65.53/63.35/61.28); 2503.18445 Tables 3, 7-11;
 % drop clean-EMM: ours 70.17-57.85 = 12.32; benchmark models 66.33-37.90 = 28.43 ... 68.20-41.98 = 26.22, MAGIC 66.10-44.97 = 21.13.
 % Removed 2026-11-02 (user): test-split S&P-only noise numbers and the DGFusion test EMM sentences (kept in judgment-ledger).
@@ -149,7 +149,7 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusio
 % (a) arXiv 2503.18445 (MiT-B2): clean = Table 3 RDEL column; EMM Avg and E(p) = Table 7; RMM Avg r=.75/.5/.25 =
 %     Tables 8/9/10; NM Low/Mid/High = Table 11 (mIoU_NM row). Read from the PDF text (notes/missing_bench_survey.md).
 % (b) Methods published after the benchmark with the same definition: notes/missing_bench_survey.md (2026-11-02).
-%     EQUISeg = arXiv 2509.24505 Table 1 p4 (DeLiVER: mIoU 67.90, EMM Avg 48.22, EMM p=0.1 65.75, RMM Avg 50.96,
+%     [removed 2026-11-04, user: open methods only; no public code found] EQUISeg = arXiv 2509.24505 Table 1 p4 (DeLiVER: mIoU 67.90, EMM Avg 48.22, EMM p=0.1 65.75, RMM Avg 50.96,
 %     RMM p=0.1 64.64, NM Low 34.87, Mid 19.13); its baseline rows equal 2503.18445 Table 9 (r=0.5) -> RMM column r=.50.
 %     RMMSS = 2505.12861 Table 2 p6 (MiT-B0, EMM 49.93, RMM 51.90, r not stated) -> footnote only.
 % (c) Baselines measured by us with tools/missing_modality_eval.py on val: analysis inbox 20261102-180010 (pending).
@@ -174,24 +174,21 @@ When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusio
 Method & Backbone & Clean & Avg & E(.20) & E(.10) & E(.05) & $r$=.75 & $r$=.50 & $r$=.25 & Low & Mid & High \\
 \midrule
 \multicolumn{13}{@{}l}{\emph{(a) Reported by the benchmark~\cite{mmssbench2025}}} \\
-CMNeXt~\cite{cmnext2023} & MiT-B2 & 66.33 & 37.90 & 54.46 & 60.41 & 63.38 & 42.17 & 47.49 & 53.61 & \second{35.23} & 16.37 & 2.31 \\
+CMNeXt~\cite{cmnext2023} & MiT-B2 & 66.33 & 37.90 & 54.46 & 60.41 & 63.38 & 42.17 & 47.49 & \second{53.61} & \best{35.23} & 16.37 & 2.31 \\
 GeminiFusion~\cite{geminifusion2024} & MiT-B2 & 66.92 & 37.07 & 54.33 & 60.62 & 63.77 & 39.78 & 42.41 & 49.74 & 5.52 & 4.14 & 3.30 \\
-MAGIC~\cite{magic2024} & MiT-B2 & 66.10 & 44.97 & \second{58.66} & 62.68 & 64.47 & 45.30 & 48.19 & 51.61 & 24.03 & 13.31 & 3.98 \\
-MAGIC++~\cite{magicpp2024} & MiT-B2 & 67.34 & 44.85 & \best{59.18} & \second{63.52} & \second{65.50} & \second{47.06} & 49.31 & \second{53.92} & 33.12 & 18.31 & 8.70 \\
-StitchFusion~\cite{stitchfusion2024} & MiT-B2 & \second{68.20} & 41.98 & 58.02 & 63.29 & \best{65.80} & 45.16 & 48.33 & 53.10 & 24.91 & 17.11 & \second{9.25} \\
+MAGIC~\cite{magic2024} & MiT-B2 & 66.10 & \best{44.97} & \second{58.66} & 62.68 & 64.47 & \second{45.30} & 48.19 & 51.61 & 24.03 & 13.31 & 3.98 \\
+MAGIC++~\cite{magicpp2024} & MiT-B2 & \second{67.34} & \second{44.85} & \best{59.18} & \best{63.52} & \second{65.50} & \best{47.06} & \best{49.31} & \best{53.92} & \second{33.12} & \best{18.31} & \second{8.70} \\
+StitchFusion~\cite{stitchfusion2024} & MiT-B2 & \best{68.20} & 41.98 & 58.02 & \second{63.29} & \best{65.80} & 45.16 & \second{48.33} & 53.10 & 24.91 & \second{17.11} & \best{9.25} \\
 \midrule
-\multicolumn{13}{@{}l}{\emph{(b) Later methods reported under the same definition}} \\
-EQUISeg~\cite{robustseg2025}$^{\ddagger}$ & MiT-B2 & 67.90 & \second{48.22} & -- & \best{65.75} & -- & -- & \second{50.96} & -- & 34.87 & \second{19.13} & -- \\
-\midrule
-\multicolumn{13}{@{}l}{\emph{(c) Evaluated by us with the benchmark protocol}} \\
+\multicolumn{13}{@{}l}{\emph{(b) Evaluated by us with the benchmark code}} \\
 DGFusion (official)$^{\ast}$ & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 DGFusion (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 CAFuser (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 \midrule
-Ours & DINOv3-L & \best{70.17} & \best{57.85} & \td & \td & \td & \best{61.28} & \best{63.35} & \best{65.53} & \best{58.34} & \best{51.92} & \best{39.99} \\
+Ours & DINOv3-L & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 \bottomrule
 \end{tabular*}
-\tabnotewide{Avg: mean over the 15 non-empty sensor subsets; E($p$): expectation when each sensor fails independently with probability $p$; RMM $r$: fraction of a removed sensor's values that are zeroed; NM Low/Mid/High: salt-and-pepper density and Gaussian standard deviation (0.05, 0.1), (0.1, 0.2), (0.2, 0.5). All definitions follow~\cite{mmssbench2025} and Section~\ref{sec:sensors}. Missing values and noise are injected after input normalization, as in the benchmark code, and our input normalization is the same as that of the benchmark models (ImageNet statistics for RGB, scaling to $[0,1]$ for the other sensors); we evaluate without test-time augmentation. $^{\ddagger}$Values reported in its Table~1 (--: not reported); RMMSS~\cite{rmmss2025} reports 49.93 EMM and 51.90 RMM with a MiT-B0 backbone without stating $r$ and is therefore not listed. $^{\ast}$Released weights. $^{\dagger}$Retrained with our synthetic degradation. Ours: mean of three seeds; baselines: single runs. Methods that skip a missing input instead of zero-filling it answer a different question and are not listed.}
+\tabnotewide{Avg: mean over the 15 non-empty sensor subsets; E($p$): expectation when each sensor fails independently with probability $p$; RMM $r$: fraction of a removed sensor's values that are zeroed; NM Low/Mid/High: salt-and-pepper density and Gaussian standard deviation (0.05, 0.1), (0.1, 0.2), (0.2, 0.5). All definitions follow~\cite{mmssbench2025} and Section~\ref{sec:sensors}. All entries are produced with the public evaluation code of the benchmark (single forward pass for EMM and RMM, horizontal-flip averaging for NM, labels resized with the input to $1024\times1024$); only methods with public code and weights are listed. $^{\ast}$Released weights. $^{\dagger}$Retrained with our synthetic degradation. Ours: mean of three seeds; baselines: single runs. Methods that skip a missing input instead of zero-filling it answer a different question and are not listed.}
 \end{table*}
 
 % ---------------------------------------------------------------------------
@@ -200,7 +197,7 @@ Ours & DINOv3-L & \best{70.17} & \best{57.85} & \td & \td & \td & \best{61.28} &
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig_robust.pdf}
-\caption{Robustness on DELIVER. (a) Random-missing sensors on the validation set under the benchmark of~\cite{mmssbench2025}: mIoU averaged over the 15 sensor subsets as the missing ratio $r$ grows (benchmark models: values reported there, MiT-B2). (b) Only one sensor available on the test set (the other three zero-filled), our evaluation. Ours: mean of three seeds; baselines: single runs. \todo{(b) full-model values pending.}}
+\caption{Robustness on DELIVER. (a) Random-missing sensors on the validation set under the benchmark of~\cite{mmssbench2025}: mIoU averaged over the 15 sensor subsets as the missing ratio $r$ grows (benchmark models: values reported there, MiT-B2). (b) Only one sensor available on the test set (the other three zero-filled), our evaluation. Ours: mean of three seeds; baselines: single runs. \todo{(a) our curves: re-measure with the benchmark code; (b) full-model values pending.}}
 \label{fig:robust}
 \end{figure}
 
