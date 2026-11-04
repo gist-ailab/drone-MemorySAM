@@ -12450,12 +12450,13 @@ items:
     2.5~3일/시드(두 패스라 E1Mc 의 약 2배)
   priority: 1
   owner_role: method
-  status: evaluating
+  status: judging
   kind: experiment
   tags:
   - mcubes
   - A2
   - transfer
+  docs: .claude_logs/tasks/DRN-261017-02
   created: '2026-10-17'
   updated: '2026-11-04'
   closed: null
@@ -12563,7 +12564,7 @@ items:
   expected_cost: GPU 4장×2런, 40ep 각 1.5~2일, 교사 완주 후 기동
   priority: 1
   owner_role: method
-  status: evaluating
+  status: judging
   kind: experiment
   tags:
   - muses
@@ -14255,7 +14256,7 @@ items:
     tools/viz_hires_pyramid.py'
   priority: 2
   owner_role: analysis
-  status: queued
+  status: judging
   kind: analysis
   tags:
   - hires
