@@ -146,3 +146,12 @@
 - 공개 저장소 Chenfei-Liao/Multi-Modal-Semantic-Segmentation-Robustness-Benchmark: val_mm_EMM.py·val_mm_RMM.py 는 `preds = model(images)` 단일 forward(sliding=False), val_mm_NM.py 는 `sliding_predict(..., flip=True)`; 셋 다 `get_val_augmentation(IMAGE_SIZE)` 로 라벨까지 1024 Resize 후 Metrics 채점, split 'val'.
 - 우리 자체 채점기(tools/missing_modality_eval.py)는 1042 native GT 채점·flip 없음 → 같은 방식 아님. 주입 위치(정규화 후)·S&P(텐서 max/min)·Gaussian(Event 제외)·RMM(원소 독립 r)·정규화(RGB ImageNet, 나머지 /255)는 같음.
 - 공개 코드: EQUISeg 미확인(검색), RMMSS 공식 코드 미확인(후속 RobustSeg 저장소 표기만) → 표에서 제외.
+
+## 본문 수치 — 서론 Contributions (`sections/1_intro.tex`, user 지시 2026-11-04, lab-inbox 20261104-145821-request-e754448d)
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| 우리 DELIVER test (3시드 평균) | 57.74 | `.claude_logs/experiments/headline.yaml` benchmarks.deliver.ours[0] (A2, legal v2, test@1024) | ✅ |
+| DGFusion DELIVER test | 56.7 → 격차 1.0 | DGFusion 원 논문 Table III p6 (notes/sota_survey.md) | ✅ |
+| 우리 val EMM15 (3시드 평균) | 57.85 | `.claude_logs/tasks/DRN-261019-03/analysis.md` (자체 채점기: native GT, flip 없음) | ⚠️ 원고에는 todo 로만 표기 — 강건성 수치는 벤치 공개 코드 값만 쓴다(user 2026-11-04, 감사 #19·#26). 재측정 후 숫자로 교체 |
+| MAGIC val EMM | 44.97 → 격차 12.9 | arXiv 2503.18445 (원고 Table robust (a)) | ✅ (우리 값 재측정 후 격차 재계산) |
+
