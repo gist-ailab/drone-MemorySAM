@@ -76,3 +76,5 @@
 | [analysis/MUSES_TEST_RESULTS_INDEX.md](analysis/MUSES_TEST_RESULTS_INDEX.md) | **MUSES 공식 test 결과 통합 인덱스(canonical)** — Codabench comp 14005 제출 전체 시간순 표(07-15~08-03) + 출처 링크 |
 | [analysis/p32-verification-p33v2.md](analysis/p32-verification-p33v2.md) | P32 검증 + P33-v2 개정 포인터 문서 — 상세는 옵시디언 볼트, CoRB attn-bias 순손해 확정·지배원인=class-transfer 붕괴 |
 | [analysis/p32-phase0-results.md](analysis/p32-phase0-results.md) | P32 Phase 0 결과 — Corroboration vs Self-Entropy AUROC(무학습 진단), DELIVER test 5조건 |
+
+- [2026-11-04-plan-to-sunday.md](2026-11-04-plan-to-sunday.md) — 일요일(11-08)까지 배치 계획: 원고 칸별 실험·주장별 설계·RA-L 가안 배치·user 결정 4건 (method 11-04)
