@@ -42,11 +42,11 @@
 % --- frozen backbone, one lane per sensor ---
 \draw[frozen, rounded corners=1.5pt] (1.8,0.85) rectangle (5.0,6.15);
 \node[ttl, anchor=north west] at (1.92,6.02) {DINOv3-L};
-\node[sub, anchor=north east] at (4.6,6.0) {frozen, shared};
-\node[sub, anchor=east] at (2.62,5.52) {tap};
+\node[sub, anchor=north west] at (3.0,5.99) {24 blocks, frozen};
+\node[sub, anchor=east] at (3.05,5.52) {after block};
 \foreach \t/\xx in {6/3.25, 12/3.77, 18/4.29, 24/4.81}{ \node[sub] at (\xx,5.52) {\t}; }
 \foreach \s/\c/\yy in {RGB/cRGB/5.15, Depth/cDep/3.9, Event/cEvt/2.65, LiDAR/cLid/1.4}{
-  \draw[draw=\c, fill=\c!14, line width=0.6pt, rounded corners=0.8pt] (1.97,\yy-0.19) rectangle (2.62,\yy+0.19);
+  \draw[draw=\c, fill=\c!7, line width=0.6pt, rounded corners=0.8pt] (1.97,\yy-0.21) rectangle (4.93,\yy+0.21);
   \node[text=\c, font=\sffamily\bfseries\fontsize{5.2}{6}\selectfont, inner sep=0pt] at (2.295,\yy) {LoRA};
   \foreach \k in {0,...,3}{
     \draw[draw=bd, fill=g20, line width=0.35pt] (2.82+0.52*\k,\yy-0.16) rectangle (3.18+0.52*\k,\yy+0.16);
@@ -55,8 +55,9 @@
   \draw[flow] (in\s.east) -- (1.97,\yy);
 }
 
+\node[sub] at (3.4,1.0) {LoRA in every block's QKV};
 % --- per-sensor final-block tokens (input of the fusion) ---
-\node[sub, align=center] at (5.55,5.66) {final\\tokens};
+\node[sub, align=center] at (5.55,5.7) {final tokens\\(stride 16)};
 \foreach \s/\c/\yy in {RGB/cRGB/5.15, Depth/cDep/3.9, Event/cEvt/2.65, LiDAR/cLid/1.4}{
   \draw[draw=\c, fill=\c!20, line width=0.4pt] (5.35,\yy-0.15) rectangle +(0.3,0.3);
   \draw[flow] (5.0,\yy) -- (5.35,\yy);
@@ -64,7 +65,7 @@
 }
 % --- tapped tokens: per-sensor LN + 1x1, summed over sensors, one tap per FPN level ---
 \draw[->, draw=acc, line width=0.55pt] (4.81,5.66) -- (4.81,6.33) -- (9.45,6.33) -- (9.45,5.65);
-\node[sub, anchor=south] at (7.3,6.35) {taps 6/12/18/24: per-sensor projection, summed over sensors, added to FPN levels 1/4--1/32};
+\node[sub, anchor=south] at (7.3,6.35) {intermediate features (blocks 6/12/18/24): per-sensor projection, summed over sensors, resampled from stride 16 to the FPN levels};
 
 % --- cross-modal attention (trained) ---
 \draw[trained, rounded corners=1.5pt] (6.2,1.3) rectangle (8.4,5.65);
@@ -104,9 +105,9 @@
 \draw[trained, rounded corners=1.2pt] (3.8,0.12) rectangle (6.75,0.58);
 \node[text=ink] at (5.275,0.35) {deformable extractors ($\times$6)};
 \draw[->, draw=mut, line width=0.45pt, dash pattern=on 1.4pt off 1pt] (4.35,0.85) -- (4.35,0.58);
-\node[sub, anchor=west] at (4.42,0.72) {samples tap tokens};
+\node[sub, anchor=west] at (4.42,0.72) {samples intermediate features};
 \draw[flow] (6.75,0.35) -| (sum.south);
-\node[sub, anchor=south] at (8.1,0.38) {high-resolution path};
+\node[sub, anchor=north west] at (6.85,0.3) {high-resolution path (raw pixels, strides 4--32)};
 
 % --- heads (trained) ---
 \draw[flow] (10.15,3.2) -- (10.3,3.2) |- (10.5,4.75);
