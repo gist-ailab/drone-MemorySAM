@@ -42,7 +42,7 @@
 % --- frozen backbone, one lane per sensor ---
 \draw[frozen, rounded corners=1.5pt] (1.8,0.85) rectangle (5.0,6.15);
 \node[ttl, anchor=north west] at (1.92,6.02) {DINOv3-L};
-\node[sub, anchor=north east] at (4.88,6.0) {frozen, shared};
+\node[sub, anchor=north east] at (4.6,6.0) {frozen, shared};
 \node[sub, anchor=east] at (2.62,5.52) {tap};
 \foreach \t/\xx in {6/3.25, 12/3.77, 18/4.29, 24/4.81}{ \node[sub] at (\xx,5.52) {\t}; }
 \foreach \s/\c/\yy in {RGB/cRGB/5.15, Depth/cDep/3.9, Event/cEvt/2.65, LiDAR/cLid/1.4}{
@@ -55,14 +55,16 @@
   \draw[flow] (in\s.east) -- (1.97,\yy);
 }
 
-% --- per-sensor token sets ---
-\node[sub] at (5.5,6.0) {tokens};
+% --- per-sensor final-block tokens (input of the fusion) ---
+\node[sub, align=center] at (5.55,5.66) {final\\tokens};
 \foreach \s/\c/\yy in {RGB/cRGB/5.15, Depth/cDep/3.9, Event/cEvt/2.65, LiDAR/cLid/1.4}{
-  \foreach \k in {3,2,1,0}{
-    \draw[draw=\c, fill=\c!20, line width=0.4pt] (5.25+0.06*\k,\yy-0.17+0.06*\k) rectangle +(0.3,0.3);
-  }
-  \coordinate (tok\s) at (5.8,\yy+0.05);
+  \draw[draw=\c, fill=\c!20, line width=0.4pt] (5.35,\yy-0.15) rectangle +(0.3,0.3);
+  \draw[flow] (5.0,\yy) -- (5.35,\yy);
+  \coordinate (tok\s) at (5.65,\yy);
 }
+% --- tapped tokens: per-sensor LN + 1x1, summed over sensors, one tap per FPN level ---
+\draw[->, draw=acc, line width=0.55pt] (4.81,5.66) -- (4.81,6.33) -- (9.45,6.33) -- (9.45,5.65);
+\node[sub, anchor=south] at (7.3,6.35) {taps 6/12/18/24: per-sensor projection, summed over sensors, added to FPN levels 1/4--1/32};
 
 % --- cross-modal attention (trained) ---
 \draw[trained, rounded corners=1.5pt] (6.2,1.3) rectangle (8.4,5.65);
@@ -73,13 +75,13 @@
   \draw[<->, draw=mut!70, line width=0.4pt, >={Stealth[length=1.1mm,width=0.9mm]}, shorten <=1.5mm, shorten >=1.5mm] (n\p) -- (n\q);
 }
 \foreach \s/\c in {RGB/cRGB, Depth/cDep, Event/cEvt, LiDAR/cLid}{ \fill[\c] (n\s) circle (0.1); }
-\node[sub, align=center] at (7.3,1.9) {each sensor attends\\to the other sensors\\2 layers};
+\node[sub, align=center] at (7.3,2.05) {each sensor attends\\to the other sensors\\(2 layers), + residual\\$m_s$ and sensor router};
 \foreach \s/\yy in {RGB/4.85, Depth/3.95, Event/3.05, LiDAR/2.2}{
   \draw[flow] (tok\s) to[out=0, in=180] (6.2,\yy);
 }
 
-% --- SimpleFPN (conventional) ---
-\draw[plain, draw=bd, rounded corners=1.5pt] (8.68,1.7) rectangle (10.15,5.65);
+% --- SimpleFPN (trained) ---
+\draw[trained, rounded corners=1.5pt] (8.68,1.7) rectangle (10.15,5.65);
 \node[ttl] at (9.45,5.38) {SimpleFPN};
 \foreach \lab/\w/\yy in {{1/32}/0.32/4.75, {1/16}/0.44/4.05, {1/8}/0.58/3.2, {1/4}/0.76/2.2}{
   \draw[plain] (9.6-\w/2,\yy-\w/2) rectangle (9.6+\w/2,\yy+\w/2);
@@ -92,12 +94,14 @@
 \node[sub, anchor=west] at (9.78,1.05) {sum per level};
 
 % --- high-resolution path (adopted from the DINOv3 adapter) ---
-\draw[flow] (inLiDAR.south) -- (0.9,0.35) -- (2.05,0.35);
-\node[sub, anchor=north] at (1.47,0.3) {full-res. input};
-\draw[plain, rounded corners=1.2pt] (2.05,0.12) rectangle (3.45,0.58);
-\node[text=ink] at (2.75,0.35) {conv stem};
+\draw[mut, line width=0.45pt] (1.6,5.15) -- (1.6,0.35);
+\foreach \yy in {5.15, 3.9, 2.65, 1.4}{ \fill[mut] (1.6,\yy) circle (0.04); }
+\draw[flow] (1.6,0.35) -- (2.05,0.35);
+\node[sub, anchor=north] at (0.95,0.3) {all sensors, full res.};
+\draw[trained, rounded corners=1.2pt] (2.05,0.12) rectangle (3.45,0.58);
+\node[text=ink] at (2.75,0.35) {shared stem};
 \draw[flow] (3.45,0.35) -- (3.8,0.35);
-\draw[plain, rounded corners=1.2pt] (3.8,0.12) rectangle (6.75,0.58);
+\draw[trained, rounded corners=1.2pt] (3.8,0.12) rectangle (6.75,0.58);
 \node[text=ink] at (5.275,0.35) {deformable extractors ($\times$6)};
 \draw[->, draw=mut, line width=0.45pt, dash pattern=on 1.4pt off 1pt] (4.35,0.85) -- (4.35,0.58);
 \node[sub, anchor=west] at (4.42,0.72) {samples tap tokens};
