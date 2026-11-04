@@ -11,7 +11,8 @@
 
 defaults:
   dataset: deliver
-  columns: [rgb, gt, DGFofficial, CAFb, Q2s821, A2s821]
+  # user 2026-11-04: published baselines with released weights, release order; no ablation column
+  columns: [rgb, gt, CMNeXt, CAFofficial, DGFofficial, A2s821]
   errors: true
 
 figures:
@@ -64,14 +65,14 @@ figures:
       - {label: Pedestrian,   pick: {group: Pedestrian, kind: class, rank: 1}}
       - {label: Static,       pick: {group: Static, kind: class, rank: 1}}
   fig_cases_deliver:              # DELIVER's built-in sensor-failure cases (sequence suffix in the test split)
-    columns: [input, gt, DGFofficial, CAFb, Q2s821, A2s821]
+    columns: [input, gt, CMNeXt, CAFofficial, DGFofficial, A2s821]
     rows:
       - {label: Overexposure,  input: rgb,   pick: {group: overexposure, kind: top, rank: 1}}
       - {label: Motion blur,   input: rgb,   pick: {group: motionblur, kind: top, rank: 1}}
       - {label: LiDAR jitter,  input: lidar, pick: {group: lidarjitter, kind: top, rank: 1}}
       - {label: Event low-res, input: event, pick: {group: eventlowres, kind: top, rank: 1}}
   fig_cases_reverse_deliver:
-    columns: [input, gt, DGFofficial, CAFb, Q2s821, A2s821]
+    columns: [input, gt, CMNeXt, CAFofficial, DGFofficial, A2s821]
     rows:
       - {label: Overexposure,  input: rgb,   pick: {group: overexposure, kind: reverse, rank: 1}}
       - {label: Motion blur,   input: rgb,   pick: {group: motionblur, kind: reverse, rank: 1}}

@@ -37,7 +37,9 @@ datasets:
       - {regex: '^img/([a-z]+)/', group: '\1'}
     sequence_regex: '^img/[a-z]+/[a-z]+/([^/]+)/'   # no two selected scenes from the same sequence
     ours: A2s821
-    compare: [Q2s821, DGFofficial, CAFb]             # delta = ours - max(compare)
+    # user 2026-11-04: figures compare released weights of published baselines, in release order CMNeXt (CVPR 2023),
+    # CAFuser (RA-L 2025), DGFusion (2026); our ablation (Q2s821) and the retrained CAFb are kept in the bank but not compared.
+    compare: [CMNeXt, CAFofficial, DGFofficial]      # delta = ours - max(compare)
     models:
       A2s821:
         label: Ours
@@ -60,7 +62,7 @@ datasets:
         ckpt: "NAS ckpts/hpca100_rescue_q2e1_20261030/Q2_s821_epoch40_67.0.pth (md5 c93de37b389a20a77e3bfd369123734c)"
         expected_miou: 57.73
       DGFofficial:
-        label: DGFusion (official)
+        label: DGFusion
         role: baseline
         status: ready
         source: /home/jemo/.claude/jobs/4ad76b83/tmp/qual_rle/dgf_official/test/pred
@@ -75,6 +77,16 @@ datasets:
         resize_from: 1024
         ckpt: "NAS ckpts/cafuser_b_resume_20261003/model_final.pth (md5 fbae170df640840bfd9c54e05faa4880)"
         expected_miou: 55.77
+      CMNeXt:
+        label: CMNeXt
+        role: baseline
+        status: pending
+        note: "released weights InSAI-Lab/CMNeXt DELIVER/cmnext_b2_deliver_rgbdel.pth (MiT-B2, RGB-D-E-L); download -> NAS ckpts/cmnext_official_deliver/; full test dump: analysis request 2026-11-04"
+      CAFofficial:
+        label: CAFuser
+        role: baseline
+        status: pending
+        note: "released weights (CAFuser README, test 55.80, config cafuser_swin_tiny_bs8_200k_deliver_clde.yaml); NAS ckpts/cafuser_official_deliver/; full test dump: analysis request 2026-11-04"
       DGFb:
         label: DGFusion (retrained)
         role: baseline

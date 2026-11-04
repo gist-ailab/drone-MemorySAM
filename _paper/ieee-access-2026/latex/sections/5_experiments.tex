@@ -140,7 +140,7 @@ Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbenc
 % judgment-ledger:117 (reproduction (a) EMM 31.53, NM .20 5.52; retrained (b) EMM 45.52); current.md (4) CAFuser (b) EMM 46.50;
 % MAGIC 44.97: arXiv 2503.18445 Table 7 (mIoU_EMM^Avg, MiT-B2, val).
 
-When only one sensor is available (Fig.~\ref{fig:robust}b), the official DGFusion weights collapse to 7.5 mIoU with RGB alone and to 1.1 with event or LiDAR alone, while still reaching 43.3 with depth alone. Training with degraded inputs lifts every single-sensor score, most strongly for RGB (49.0 for the re-trained DGFusion and 53.9 for our model without the high-resolution path).
+When only one sensor is available (Fig.~\ref{fig:robust}b), the released DGFusion weights collapse to 7.5 mIoU with RGB alone and to 1.1 with event or LiDAR alone, while still reaching 43.3 with depth alone. Training with degraded inputs lifts every single-sensor score, most strongly for RGB (49.0 for the re-trained DGFusion and 53.9 for our model without the high-resolution path).
 % Sources: judgment-ledger:130 (official weights single-sensor 7.50/43.33/1.13/1.13); judgment-ledger:117 (retrained 49.0/44.5/25.0/25.0; Q2 3 seeds 53.9/46.0/31.0/22.9).
 
 % ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ MAGIC++~\cite{magicpp2024} & MiT-B2 & \second{67.34} & \second{44.85} & \best{59
 StitchFusion~\cite{stitchfusion2024} & MiT-B2 & \best{68.20} & 41.98 & 58.02 & \second{63.29} & \best{65.80} & 45.16 & \second{48.33} & 53.10 & 24.91 & \second{17.11} & \best{9.25} \\
 \midrule
 \multicolumn{13}{@{}l}{\emph{(b) Evaluated by us with the benchmark code}} \\
-DGFusion (official)$^{\ast}$ & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
+DGFusion$^{\ast}$ & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 DGFusion (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 CAFuser (retrained$^{\dagger}$) & Swin-T & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td & \td \\
 \midrule
@@ -209,7 +209,7 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 % -> analysis request inbox 20261027-182054 item 2.
 \begin{figure*}[t]
 \centering
-\phbox{5.2cm}{Fig.~3 when a sensor fails: rows = depth missing / RGB missing / LiDAR+event missing / RGB with heavy noise; columns = affected input, ground truth, DGFusion (official), DGFusion (retrained), CAFuser (retrained), ours; error pixels in one colour}
+\phbox{5.2cm}{Fig.~3 when a sensor fails: rows = depth missing / RGB missing / LiDAR+event missing / RGB with heavy noise; columns = affected input, ground truth, CMNeXt, CAFuser, DGFusion, ours; error pixels in one colour}
 \caption{\todo{caption; state the scene-selection rule (top differences between ours and the best baseline, one scene per condition, no repeated map)}}
 \label{fig:failure_scenarios}
 \end{figure*}
@@ -228,7 +228,7 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 % Fig. MUSES real adverse conditions (same layout as fig:adverse; analysis inbox 20261030-122055 P2).
 \begin{figure*}[t]
 \centering
-\phbox{4.6cm}{MUSES val, all sensors: real night / snow / fog / rain; columns = RGB, ground truth, DGFusion (official), CAFuser (official), ours; same selection rule; waits for the MUSES 4-sensor model}
+\phbox{4.6cm}{MUSES val, all sensors: real night / snow / fog / rain; columns = RGB, ground truth, CMNeXt, CAFuser, DGFusion, ours (released weights, release order); same selection rule; waits for the MUSES 4-sensor model}
 \caption{\todo{MUSES counterpart of Fig.~\ref{fig:adverse}; same rule on the 250 validation images (test labels are not public)}}
 \label{fig:adverse_muses}
 \end{figure*}
@@ -248,13 +248,13 @@ Table~\ref{tab:condition} breaks clean test accuracy down by condition \todo{tex
 \toprule
 Model & Sun & Cloud & Rain & Fog & Night & Low exp. & All \\
 \midrule
-DGFusion (official) & \td & \td & \td & \td & \td & \td & \second{56.73} \\
+DGFusion$^{\ast}$ & \td & \td & \td & \td & \td & \td & \second{56.73} \\
 DGFusion (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 54.77 \\
 CAFuser (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 55.79 \\
 Ours & \td & \td & \td & \td & \td & \td & \best{57.74} \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{\dagger}$Retrained with synthetic degradation. All: same values as Table~\ref{tab:robust}(b) clean column.}
+\tabnote{$^{\ast}$Released weights. $^{\dagger}$Retrained with synthetic degradation. All: same values as Table~\ref{tab:robust}(b) clean column.}
 \end{table}
 
 \subsection{Ablation}

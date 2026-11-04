@@ -67,7 +67,7 @@ TEAL_DARK, TEAL_MID, TEAL_LIGHT = "#004144", "#007d79", "#08bdba"  # teal-80 / t
 DANGER = "#da1e28"                                                # danger role
 # model families: baselines = warm greys (line style separates them); ours = teal ramp, final model darkest
 STYLE = {
-    "DGFusion (official)":   dict(color=BASE, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
+    "DGFusion":   dict(color=BASE, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
     "DGFusion (reproduced)": dict(color=BASE, ls=(0, (1.2, 1.2)), marker="s", mfc="white"),
     "DGFusion (retrained)":  dict(color=BASE, ls="-", marker="o", mfc=BASE),
     "CAFuser (retrained)":   dict(color=FG, ls=(0, (3, 1.5)), marker="s", mfc="white"),
