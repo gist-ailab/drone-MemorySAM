@@ -14153,7 +14153,7 @@ items:
     s/배치), 학습 0
   priority: 1
   owner_role: analysis
-  status: running
+  status: evaluating
   kind: experiment
   tags:
   - robustness
@@ -14162,7 +14162,7 @@ items:
   - eval-only
   docs: .claude_logs/tasks/DRN-261102-04
   created: '2026-11-02'
-  updated: '2026-11-02'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
