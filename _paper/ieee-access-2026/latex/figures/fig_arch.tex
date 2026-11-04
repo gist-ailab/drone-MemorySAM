@@ -76,7 +76,7 @@
   \draw[<->, draw=mut!70, line width=0.4pt, >={Stealth[length=1.1mm,width=0.9mm]}, shorten <=1.5mm, shorten >=1.5mm] (n\p) -- (n\q);
 }
 \foreach \s/\c in {RGB/cRGB, Depth/cDep, Event/cEvt, LiDAR/cLid}{ \fill[\c] (n\s) circle (0.1); }
-\node[sub, align=center] at (7.3,2.05) {each sensor attends\\to the other sensors\\(2 layers), + residual\\$m_s$ and sensor router};
+\node[sub, align=center] at (7.3,1.95) {each sensor attends\\to the other sensors\\(2 layers), + residual $m_s$};
 \foreach \s/\yy in {RGB/4.85, Depth/3.95, Event/3.05, LiDAR/2.2}{
   \draw[flow] (tok\s) to[out=0, in=180] (6.2,\yy);
 }
@@ -89,10 +89,10 @@
   \node[sub, anchor=east] at (9.6-\w/2-0.06,\yy) {\lab};
 }
 \draw[flow] (8.4,3.2) -- (8.68,3.2);
-\node[plus, draw=mut, line width=0.45pt] (sum) at (9.6,1.05) {};
+\node[plus, draw=mut, line width=0.45pt] (sum) at (9.6,0.88) {};
 \draw[mut, line width=0.45pt] (sum.north) -- (sum.south) (sum.west) -- (sum.east);
 \draw[flow] (sum) -- (9.6,1.82);
-\node[sub, anchor=west] at (9.78,1.05) {sum per level};
+\node[sub, anchor=west] at (9.78,0.84) {sum per level};
 
 % --- high-resolution path (adopted from the DINOv3 adapter) ---
 \draw[mut, line width=0.45pt] (1.6,5.15) -- (1.6,0.35);
@@ -126,7 +126,17 @@
 \node[sub, anchor=north west] at (12.45,3.2) {arbiter};
 \node[inner sep=0pt] (pred) at (12.35,1.45) {\includegraphics[width=1.05cm]{figures/fig1_thumbs/pred.png}};
 \draw[ink, line width=0.5pt] (pred.south west) rectangle (pred.north east);
-\draw[tflow] (arb.south) -- (pred.north);
+\node[plus, draw=acc, line width=0.6pt] (rsum) at (12.35,2.3) {};
+\draw[acc, line width=0.6pt] (rsum.north) -- (rsum.south) (rsum.west) -- (rsum.east);
+\draw[tflow] (arb.south) -- (rsum.north);
+\draw[tflow] (rsum.south) -- (pred.north);
+% --- sensor router: a separate branch from the final tokens, joined at the logits ---
+\draw[trained, rounded corners=1.2pt] (10.5,1.98) rectangle (11.95,2.62);
+\node[ttl] at (11.225,2.45) {Router};
+\node[sub] at (11.225,2.17) {+ aux. heads};
+\draw[flow] (5.5,1.25) -- (5.5,1.15) -- (10.3,1.15) |- (10.5,2.3);
+\node[sub, anchor=north] at (7.3,1.13) {final tokens of all sensors};
+\draw[tflow] (11.95,2.3) -- (rsum.west);
 \node[sub, anchor=north] at (pred.south) {prediction};
 
 % ======================= (b) training =======================

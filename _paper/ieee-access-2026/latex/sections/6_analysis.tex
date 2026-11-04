@@ -21,7 +21,7 @@ These measurements suggest that, on DELIVER, the dependence on depth comes mainl
 \end{figure}
 
 \subsection{What the High-Resolution Path Adds}
-The high-resolution path raises clean test mIoU by 1.15 points on average over three seeds (from 56.59 to 57.74 on the test split). Fig.~\ref{fig:thin} shows where the gain comes from. Averaged over the three seeds, Static gains 10.4 points, Pedestrian 3.8, TrafficSign 3.1, and Pole 2.1, and the four thin classes gain 3.0 points together. The gain comes mainly from recall: for Pole the recall rises from 0.75 to 0.78 and for Pedestrian from 0.89 to 0.90 \todo{confirm these recall values (two seeds, NAS analysis\_logs/a2\_thin\_anatomy\_20261018/summary.md) through the analysis session before citing}. Two classes lose: TrafficLight by 4.1 points and RailTrack by 7.2. RailTrack varies strongly between seeds even without the path (58.5, 32.6, and 45.1 for the three seeds), so we do not interpret its change. The TrafficLight loss, in contrast, is systematic and is analysed next.
+The high-resolution path raises clean test mIoU by 1.15 points on average over three seeds (from 56.59 to 57.74 on the test split). Fig.~\ref{fig:thin} shows where the gain comes from. Averaged over the three seeds, Static gains 10.4 points, Pedestrian 3.8, TrafficSign 3.1, and Pole 2.1, and the four thin classes gain 3.0 points together (Table~\ref{tab:thin}). The gain comes mainly from recall: for Pole the recall rises from 0.75 to 0.78 and for Pedestrian from 0.89 to 0.90 \todo{confirm these recall values (two seeds, NAS analysis\_logs/a2\_thin\_anatomy\_20261018/summary.md) through the analysis session before citing}. Two classes lose: TrafficLight by 4.1 points and RailTrack by 7.2. RailTrack varies strongly between seeds even without the path (58.5, 32.6, and 45.1 for the three seeds), so we do not interpret its change. The TrafficLight loss, in contrast, is systematic and is analysed next.
 % Sources: per-class 3-seed CSV .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv (d_mean3 column);
 % thin-4 mean +3.04 and 24-class Δ +1.50: tasks/DRN-261018-01/analysis.md.
 
@@ -33,6 +33,29 @@ The high-resolution path raises clean test mIoU by 1.15 points on average over t
 \caption{Per-class IoU gain from the high-resolution path on the DELIVER test set (full model minus the same model without the path). Bars: mean of three seeds; dots: individual seeds. \todo{add zoomed crops of thin objects (Q2 dumps on yeon).}}
 \label{fig:thin}
 \end{figure}
+
+% Table thin (user 2026-11-04): per-class IoU of the thin classes, DELIVER test, legal v2 test@1024, 3-seed means.
+% Ours rows: .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv (q2* = w/o high-res, a2* = full).
+% Baseline rows: per-class IoU from the released-weight dumps (analysis request 20261104, pending) -> todo.
+\begin{table}[t]
+\caption{Per-class IoU of the thin classes on the DELIVER test set (\%). Thin: mean over the four thin classes.}
+\label{tab:thin}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccccc@{}}
+\toprule
+Method & Pole & Traffic & Pedes- & Static & Thin & mIoU \\
+ & & light & trian & & & \\
+\midrule
+CMNeXt$^{\ast}$~\cite{cmnext2023} & \td & \td & \td & \td & \td & \td \\
+CAFuser$^{\ast}$~\cite{cafuser2025} & \td & \td & \td & \td & \td & \td \\
+DGFusion$^{\ast}$~\cite{dgfusion2026} & \td & \td & \td & \td & \td & \td \\
+\midrule
+Ours w/o high-res & \second{51.94} & \best{41.67} & \second{76.94} & \second{33.36} & \second{50.98} & \second{56.59} \\
+Ours & \best{54.08} & \second{37.52} & \best{80.74} & \best{43.71} & \best{54.02} & \best{57.74} \\
+\bottomrule
+\end{tabular*}
+\tabnote{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Ours: mean of three seeds.}
+\end{table}
 
 \subsection{Failure Case: Posters Read as Traffic Lights}
 With the high-resolution path, the recall of TrafficLight rises (0.80 to 0.85) but its precision falls (0.46 to 0.41) \todo{same confirmation as above}. Fig.~\ref{fig:failure} shows where the extra false positives appear. In the scenes with the largest increase, billboards and posters, labelled as \emph{Other}, are painted as traffic lights, and in one rainy scene a traffic sign is. The two classes share fine structure, a small bright rectangular shape on a pole or a wall, but differ in context. Because the high-resolution features are added to every pyramid level without a gate, fine detail reaches the dense per-pixel classifier directly, and the classifier can follow the detail without enough context. This mechanism is a hypothesis that our measurements are consistent with but do not prove; we discuss a remedy in Section~\ref{sec:conclusion}.

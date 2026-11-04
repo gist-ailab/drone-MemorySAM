@@ -161,3 +161,10 @@
 | C2D2 tr. ✓, high-res ✓, test 3시드 | 57.74 | `headline.yaml` benchmarks.deliver.ours[0] | ✅ |
 | C2D2 ✗, high-res ✗, test 3시드 | 비어 있음 | E1 40ep 3시드 test 평균 정본 위치 미확인 | ❌ |
 
+## 표 thin (`tab:thin`, `sections/6_analysis.tex`, 2026-11-04 user) — DELIVER test, legal v2, 3시드 평균
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| Ours w/o high-res: Pole·TrafficLight·Pedestrian·Static·Thin·mIoU | 51.94 · 41.67 · 76.94 · 33.36 · 50.98 · 56.59 | `.claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv` q2s821/q2s902/q2s903 열 평균(25클래스 평균 56.59 = headline 과 일치) | ✅ |
+| Ours: 같은 열 | 54.08 · 37.52 · 80.74 · 43.71 · 54.02 · 57.74 | 같은 CSV a2s821/a2s902/a2s903 열 평균(25클래스 평균 57.74 일치) | ✅ |
+| CMNeXt·CAFuser·DGFusion (공개 가중치) | 비어 있음 | 전체 예측 덤프에서 클래스별 IoU 계산 요청(analysis) | ❌ |
+
