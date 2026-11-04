@@ -70,6 +70,7 @@ def _unpad_resize_conf(conf, orig_h, orig_w, model_size):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--arch", choices=["reliadino", "cmnext"], default="reliadino")
     ap.add_argument("--cfg", required=True, help="평가 config (val.py 와 동일)")
     ap.add_argument("--model_path", required=True)
     ap.add_argument("--split", required=True, choices=["val", "test"])
@@ -93,6 +94,8 @@ def main():
     ap.add_argument("--hires", choices=["on", "off", "recombine"], default="on",
                     help="추론 전용 고해상 경로: on = 기존 동작 / off = 어댑터 미합산 / recombine = dense는 off, 질의 헤드는 on")
     args = ap.parse_args()
+    if args.arch == "cmnext" and (args.hires != "on" or args.path != "both"):
+        ap.error("--arch cmnext requires --hires on and --path both")
 
     # val.py 는 무거운 top-level import 를 가지므로 여기서 지연 import.
     import val as valmod
@@ -125,13 +128,27 @@ def main():
     loader = DataLoader(dataset, batch_size=args.batch, num_workers=4,
                         pin_memory=False, collate_fn=valmod._collate_fn)
 
-    model = valmod.load_model(cfg, Path(args.model_path), device)
-    model.eval()
-    model.hires_infer_mode = args.hires
-    if args.hires != "on":
-        model._check_hires_infer_mode()
+    if args.arch == "cmnext":
+        # DRN-261027-01 정성 그림용 공개 기준선 가중치를 직접 로드한다.
+        from semseg.models.cmnext import CMNeXt
+        model = CMNeXt(cfg["MODEL"]["BACKBONE"], dataset.n_classes,
+                       cfg["DATASET"]["MODALS"])
+        sd = torch.load(args.model_path, map_location="cpu", weights_only=False)
+        if isinstance(sd, dict):
+            if "model" in sd:
+                sd = sd["model"]
+            elif "state_dict" in sd:
+                sd = sd["state_dict"]
+        model.load_state_dict(sd, strict=True)
+        model = model.to(device).eval()
+    else:
+        model = valmod.load_model(cfg, Path(args.model_path), device)
+        model.eval()
+        model.hires_infer_mode = args.hires
+        if args.hires != "on":
+            model._check_hires_infer_mode()
     print(f"[dump] hires={args.hires}", flush=True)
-    if args.path != "both":
+    if args.arch == "reliadino" and args.path != "both":
         # 진단 전용: dense(conv FPN 헤드)만 / query(M2F 쿼리 헤드)만으로 예측을 낸다.
         # 모델의 기존 추론-시 ablation 플래그를 그대로 쓰며, 모델 쪽 검사가 무의미한
         # 조합(arbiter 없음 등)을 에러로 막는다.
@@ -161,7 +178,10 @@ def main():
     with torch.no_grad():
         for images, labels, metas in tqdm(loader, desc=f"dump ours [{mode}]"):
             images = [x.to(device) for x in images]
-            output, _ = model(images, multimask_output=True)
+            if args.arch == "cmnext":
+                output = model(images)
+            else:
+                output, _ = model(images, multimask_output=True)
             probs = output.softmax(dim=1)                       # [B, C, h, w]
             pred_labels = valmod._argmax_pred(probs, n_classes, None)
             conf_map = probs[:, :n_classes].max(dim=1).values   # [B, h, w]
@@ -222,6 +242,7 @@ def main():
 
     ious, miou = common.global_miou_from_cm(hist)
     summary = {
+        "arch": args.arch,
         "split": mode,
         "model_path": str(args.model_path),
         "cfg": str(args.cfg),

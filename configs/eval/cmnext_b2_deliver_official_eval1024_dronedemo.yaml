@@ -1,0 +1,43 @@
+# 공개 CMNeXt MiT-B2 RGB-D-E-L DELIVER 가중치: HF InSAI-Lab/CMNeXt, md5 e3ba84b58cf38b22117a82adf17c61c6.
+# drone-demo RTX 5090에서 legal v2 덤프용.
+# 원본 전처리(RGB ImageNet 정규화, 나머지 센서 /255, Resize 1024)는 NORM_ALL_MODALS 미설정 시 get_val_augmentation과 같다.
+DEVICE: cuda
+
+MODEL:
+  NAME: CMNeXt
+  BACKBONE: CMNeXt-B2
+
+DATASET:
+  NAME: DELIVER
+  ROOT: '/home/ailab-drone-demo/workspace/jemo_maeng/dset/DELIVER_local'
+  IGNORE_LABEL: 255
+  MODALS: ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT: null
+  THERMAL_SUBROOT: null
+  LIDAR_SUBROOT: null
+  NIGHT_TRANSLATION: false
+  DGFUSION_AUG: true
+  PHYSAUG:
+    ENABLE: false
+    P: 0.40
+    FILTER:
+      ENABLE: true
+      SIGMA_RANGE: [0.0, 1.5]
+      KERNEL_SIZE: 3
+    FOURIER:
+      ENABLE: true
+      GROUPS: [1, 513]
+      PHASES: [0.0, 1.0]
+      GRANULARITY: 256
+      MEAN_STR: 8.0
+      DECAY: 0.3
+
+EVAL:
+  MODEL_PATH: ''
+  IMAGE_SIZE: [1024, 1024]
+  BATCH_SIZE: 1
+
+TEST:
+  MODEL_PATH: ''
+  FILE: '/home/ailab-drone-demo/workspace/jemo_maeng/dset/DELIVER_local'
+  IMAGE_SIZE: [1024, 1024]
