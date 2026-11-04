@@ -12649,7 +12649,7 @@ items:
   expected_cost: GPU 1장 약 6시간(추론 4회 + 혼동행렬), 학습 없음
   priority: 4
   owner_role: analysis
-  status: queued
+  status: judging
   kind: analysis
   tags:
   - A2
@@ -12657,7 +12657,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261020-01
   created: '2026-10-20'
-  updated: '2026-10-29'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
@@ -13339,7 +13339,7 @@ items:
   expected_cost: GPU 1장 약 4시간(재추론 포함), 나머지 CPU
   priority: 4
   owner_role: analysis
-  status: queued
+  status: judging
   kind: analysis
   tags:
   - cross-bench
@@ -13348,7 +13348,7 @@ items:
   - structural-novelty
   docs: .claude_logs/tasks/DRN-261022-01
   created: '2026-10-22'
-  updated: '2026-10-29'
+  updated: '2026-11-04'
   closed: null
   runs: []
   results: []
