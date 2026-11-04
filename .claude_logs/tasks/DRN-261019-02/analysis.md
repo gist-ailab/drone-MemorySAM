@@ -36,8 +36,8 @@
 - 오름: pole +1.85 · traffic light +1.74 · traffic sign +1.24 · bicycle +1.11 · person +0.82 · bus +0.77.
 - 내림: motorcycle −2.48 · rider −2.23 · fence −1.44 · terrain −0.48. rider·motorcycle 은 GT 화소가 적은 클래스라 변동이 크다.
 
-## 정성 은행 덤프(진행)
-- s2 공식 val 250장 전체 예측을 1024·1536 두 해상도로 덤프 중(`tools/muses_dump_preds.py`, `dump_s2_{1024,1536}/pred/<weather>/<tod>/<stem>.png` + gt + hist_cond). 선택 해상도 1536 쪽을 은행 정본으로 쓴다. 완료 후 경로를 paper 에 통지한다.
+## 정성 은행 덤프
+- s2 공식 val 250장 전체 예측 덤프 완료: NAS `analysis_logs/muses_a2m4_official_val_20261104/dump_s2_{1024,1536}/pred/{pred,gt}/<weather>/<tod>/<stem>.png`(각 250+250장, 재현 mIoU 1024 81.4908 · 1536 81.7583 = 공식 평가와 동일) + hist_cond. 선택 해상도 1536 쪽을 은행 정본으로 쓰도록 paper 에 통지(2026-11-04 22:1x).
 
 ## 판정 제안
 판정은 method 가 한다. test 추론 해상도는 사전 규칙상 1536 이나, 차이가 시드 잡음 안이라는 점을 함께 적는다.
