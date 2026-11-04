@@ -67,7 +67,7 @@ TEAL_DARK, TEAL_MID, TEAL_LIGHT = "#004144", "#007d79", "#08bdba"  # teal-80 / t
 DANGER = "#da1e28"                                                # danger role
 # model families: baselines = warm greys (line style separates them); ours = teal ramp, final model darkest
 STYLE = {
-    "DGFusion (official)":   dict(color=BASE, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
+    "DGFusion":   dict(color=BASE, ls=(0, (1.2, 1.2)), marker="o", mfc="white"),
     "DGFusion (reproduced)": dict(color=BASE, ls=(0, (1.2, 1.2)), marker="s", mfc="white"),
     "DGFusion (retrained)":  dict(color=BASE, ls="-", marker="o", mfc=BASE),
     "CAFuser (retrained)":   dict(color=FG, ls=(0, (3, 1.5)), marker="s", mfc="white"),
@@ -126,7 +126,7 @@ def fig_dependence(out):
     ax.set_ylim(-42, 3)
     h, l = ax.get_legend_handles_labels()
     l = [s.replace("DGFusion (reproduced)", "DGFusion (reproduced), test")
-          .replace("Ours w/o high-res", "Ours, C2D2 (w/o high-res)") for s in l]
+          .replace("Ours w/o high-res", "Ours w/ C2D2, w/o high-res") for s in l]
     ax.legend(h, l, loc="center left", bbox_to_anchor=(0.01, 0.62), handlelength=2.4, borderaxespad=0.2)
     fig.tight_layout(pad=0.3)
     save(fig, out / "fig_dependence", [src])

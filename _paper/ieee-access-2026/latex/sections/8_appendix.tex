@@ -4,7 +4,7 @@
 \appendices
 \section{Additional Qualitative Results}
 \label{app:qual}
-Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are the 18 highest-ranked scenes of the six weather and lighting conditions. The candidates are computed over all 1897 test images of every model, so any scene can be replaced without new inference.
+Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are the 18 highest-ranked scenes of the five weather and lighting conditions and under-exposure. The candidates are computed over all 1897 test images of every model, so any scene can be replaced without new inference.
 
 The rule picks scenes in our favour by construction. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each condition, the scene whose gap is closest to that condition's median gap. Note that the median gap is slightly negative (about $-1$ to $-2$ points in every condition): the reference is, per image, the best of three other models, so a single model rarely beats it on a typical image even when it has the highest dataset mIoU.
 

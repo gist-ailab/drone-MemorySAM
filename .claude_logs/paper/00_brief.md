@@ -116,3 +116,6 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 - 원고에 싣는 우리 모델 수치는 **3시드 평균**이다. 최고 시드 행·괄호 표기("3-seed mean", "best seed")는 원고에서 뺀다. 최고 시드 값(DELIVER test 58.61 / val 69.59, 시드 821)은 `_paper/ieee-access-2026/notes/table_sources.md`에 기록만 한다.
 - 실험 절(Implementation Details)과 프로토콜 절(§III)에 "우리 수치는 3시드 평균, ablation(Table 7·8)은 시드 1개"를 명시했다.
 - 결과 표는 열별 최고값 굵게·두 번째 밑줄(`figures/src/mark_best.py`, 빌드마다 재계산).
+
+## 결정 추가(user 2026-11-04) — 이름 통일
+- 모델 이름도 **C2D2** 로 통일한다(`\ours` = C2D2). 옛 이름 ReliaDINO 는 원고에 쓰지 않는다. 그림 1 캡션은 "Overview of C2D2. (a) Model … (b) Training …" 으로 나눴다. 표의 "Ours" 표기는 그대로 둔다.
