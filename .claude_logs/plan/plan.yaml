@@ -14378,6 +14378,53 @@ items:
   verdict: null
   analysis: null
   superseded_by: null
+- id: DRN-261105-02
+  title: 'MCubeS 결측 강건성(학습 0): 논문 모델 C2D2 768 2시드의 EMM15·RMM(0.25/0.5/0.75) test 102
+    — RMMSS(AAAI''26) Table 2 의 MCubeS 기준선(CMNeXt·MAGIC·MAGIC++·AnySeg·RMMSS)과 같은
+    0채움 정의로 비교'
+  question: 'MCubeS 에서도 두 패스 학습의 이득이 강건성으로 나타나는가(clean 은 중립 −0.10). 선행 비교표(RMMSS Table
+    2: EMM MCubeS RMMSS 43.22, MAGIC++ 42.53, MAGIC 42.61, CMNeXt 40.67, AnySeg 39.33
+    / RMM 44.18·44.61·42.25·41.25·42.50)가 있으므로 측정해 Table 4 에 MCubeS 절을 붙일 수 있는가'
+  hypothesis: C2D2 768 2시드 EMM15 평균 ≥ 50(선행 최고 43.22 보다 ≥ +5) 이고 w/o C2D2 768 대비 EMM
+    Δ ≥ +3(DELIVER 에서 E1→Q2 가 +8.05). RMM 도 같은 부호
+  falsification: C2D2 EMM 이 w/o C2D2 보다 낮으면 두 패스 학습의 MCubeS 전이 실패로 적고, DELIVER 전용
+    효과임을 한계에 명시
+  change: 측정만. 입력 = C2D2 768 s827·s828 val-best + w/o C2D2 768 s827·s828(강건성 짝) +
+    E1Mc s827(참고). 변수 없음
+  baseline: RMMSS Table 2 MCubeS 보고값(0채움·15조합 평균, 백본 B0/B2, split 표기 없음 → test 102
+    관행으로 간주하고 각주) + 우리 w/o C2D2 768 같은 시드
+  configs: []
+  launch: null
+  success_criteria: 4모달(image·aolp·dolp·nir) 15조합 정규화 후 0채움(2503.18445 정의, DELIVER
+    와 같은 코드 경로), RMM r=0.25/0.5/0.75, test 102 전수, batch 4·seed 0. 가설 충족 시 Table 4
+    에 MCubeS 절(기준선 = RMMSS 표 인용) + 본문 한 문장. EMM Δ(C2D2 − w/o) < +1 이면 '두 패스 학습은 MCubeS
+    에서 clean·강건성 모두 중립' 으로 적고 숨기지 않는다
+  sample_basis: 논문 모델 2시드 전부 + 짝 2시드, test 102 전수(소표본이라 시드 평균 필수). 선행 표가 1런이라 우리도
+    평균과 시드별 병기
+  expected_cost: 'hpca100 A100 1~2장 × 약 1~2 h(102장 × 15조합 × 4 ckpt + RMM 3비율), 학습
+    0. 선행 조건: tools/mm_eval_v2.py 가 MCubeS 로더·모달명을 지원하는지 확인(degrade.py 는 07d1266 에서
+    image/nir/aolp/dolp 추가됨, mm_eval_v2 는 grep 상 MCubeS 분기 없음 → 필요 시 로더 분기 추가, 동결
+    8파일 아님)'
+  priority: 1
+  owner_role: analysis
+  status: queued
+  kind: analysis
+  tags:
+  - mcubes
+  - robustness
+  - emm
+  - rmm
+  - paper
+  - eval-only
+  docs: .claude_logs/tasks/DRN-261105-02
+  created: '2026-11-05'
+  updated: '2026-11-05'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
