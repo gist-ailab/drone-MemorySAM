@@ -14298,7 +14298,7 @@ items:
     이라 768 이 유일한 공통 크롭). 기동 승인 = 이 결정'
   priority: 1
   owner_role: manager
-  status: queued
+  status: evaluating
   kind: experiment
   tags:
   - mcubes
@@ -14306,7 +14306,7 @@ items:
   - crop-control
   - paper
   created: '2026-11-04'
-  updated: '2026-11-04'
+  updated: '2026-11-05'
   closed: null
   runs: []
   results: []
@@ -14351,8 +14351,29 @@ items:
   created: '2026-11-05'
   updated: '2026-11-05'
   closed: null
-  runs: []
-  results: []
+  runs:
+  - jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307
+  results:
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307
+    split: test
+    metric: mIoU
+    value: 53.8
+    source: pipeline
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307
+    split: test
+    metric: mAcc
+    value: 63.16
+    source: pipeline
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307
+    split: val
+    metric: mIoU
+    value: 63.63
+    source: pipeline
+  - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307
+    split: val
+    metric: mAcc
+    value: 72.47
+    source: pipeline
   verdict: null
   analysis: null
   superseded_by: null
