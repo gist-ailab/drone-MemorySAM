@@ -14341,7 +14341,7 @@ items:
     로 복사(TEACHER_CKPT 경로 고정, strict 가드)
   priority: 2
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - backbone-control

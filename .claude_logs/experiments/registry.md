@@ -198,6 +198,8 @@ updated: 2026-09-18 (본문은 매일 갱신 — 최신 행 기준)
 | jarvis_a2_eval1024_jarvis_20261105_0458_x | unknown | unknown | a2_eval1024_jarvis | test mIoU=57.25; test mAcc=66.83 | unknown | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_0458_x_x | unknown | unknown | a2_eval1024_jarvis | test mIoU=57.88; test mAcc=67.95 | unknown | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_0538 | unknown | unknown | a2_eval1024_jarvis | test mIoU=56.48; test mAcc=65.99 | unknown | unknown |
+| jarvis_a2_eval1024_jarvis_20261105_1354 | unknown | unknown | a2_eval1024_jarvis | test mIoU=58.77; test mAcc=68.21 | unknown | unknown |
+| jarvis_a2_eval1024_jarvis_20261105_1435 | unknown | unknown | a2_eval1024_jarvis | test mIoU=56.32; test mAcc=67.86 | unknown | unknown |
 | jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220 | unknown | unknown | jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly | test mIoU=55.14; test mAcc=62.48; val mIoU=61.78; val mAcc=70.03 | DRN-261020-08 | unknown |
 | jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307 | unknown | unknown | jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B | test mIoU=53.8; test mAcc=63.16; val mIoU=63.63; val mAcc=72.47 | DRN-261105-01 | unknown |
 | jarvis_q2_eval1024_20260928_1034 | unknown | unknown | q2_eval1024 | test mIoU=56.07; test mAcc=65.82 | unknown | unknown |
