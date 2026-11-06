@@ -1,0 +1,11 @@
+--- upstream/val_mm_NM.py
++++ run_upstream/val_mm_NM.py
+@@ -92,7 +92,7 @@
+     metrics = Metrics(n_classes, dataloader.dataset.ignore_label, device)
+     sliding = False
+     for images, labels in tqdm(dataloader):
+-        level = 0 # 0,1,2
++        level = int(os.environ.get('MMSSB_NM_LEVEL', '0')) # 0,1,2  [mmssb] parameter
+         density= [0.05,0.1,0.2]
+         std = [0.1,0.2,0.5]
+         #print(density[level], std[level])
