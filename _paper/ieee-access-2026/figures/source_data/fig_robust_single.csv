@@ -11,7 +11,7 @@ Ours w/o high-res,RGB,53.9,3,.claude_logs/experiments/judgment-ledger.md,"same r
 Ours w/o high-res,Depth,46.0,3,.claude_logs/experiments/judgment-ledger.md,same row
 Ours w/o high-res,Event,31.0,3,.claude_logs/experiments/judgment-ledger.md,same row
 Ours w/o high-res,LiDAR,22.9,3,.claude_logs/experiments/judgment-ledger.md,same row
-Ours,RGB,,3,PENDING,analysis inbox 20261028-183826 item 2 (A2 single-sensor EMM subsets)
-Ours,Depth,,3,PENDING,same request
-Ours,Event,,3,PENDING,same request
-Ours,LiDAR,,3,PENDING,same request
+Ours,RGB,54.25,3,NAS analysis_logs/robust_a2_20261019/s{821,902}/test_emm + a2s903_20261021/test_emm (emm.csv),"present=img row, s821/s902/s903 = 54.99/54.37/53.40, mm_eval_v2 test (same protocol as the Q2 row)"
+Ours,Depth,47.30,3,NAS analysis_logs/robust_a2_20261019/s{821,902}/test_emm + a2s903_20261021/test_emm (emm.csv),"present=depth row, s821/s902/s903 = 47.64/46.91/47.34, mm_eval_v2 test (same protocol as the Q2 row)"
+Ours,Event,30.91,3,NAS analysis_logs/robust_a2_20261019/s{821,902}/test_emm + a2s903_20261021/test_emm (emm.csv),"present=event row, s821/s902/s903 = 29.96/31.82/30.95, mm_eval_v2 test (same protocol as the Q2 row)"
+Ours,LiDAR,21.83,3,NAS analysis_logs/robust_a2_20261019/s{821,902}/test_emm + a2s903_20261021/test_emm (emm.csv),"present=lidar row, s821/s902/s903 = 21.93/21.06/22.49, mm_eval_v2 test (same protocol as the Q2 row)"
