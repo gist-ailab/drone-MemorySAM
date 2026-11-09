@@ -194,12 +194,14 @@ updated: 2026-09-18 (본문은 매일 갱신 — 최신 행 기준)
 | bengio_a2s902_eval1280_bengio_20261017_0027 | unknown | unknown | a2s902_eval1280_bengio | val mIoU=72.41; val mAcc=80.77 | unknown | unknown |
 | bengio_a2s902_eval1536_bengio_20261017_0316 | unknown | unknown | a2s902_eval1536_bengio | val mIoU=73.18; val mAcc=81.26 | unknown | unknown |
 | bengio_a2s902_eval1536_bengio_20261017_1033 | unknown | unknown | a2s902_eval1536_bengio | test mIoU=58.22; test mAcc=67.57 | unknown | unknown |
+| bengio_bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L2meanfusion_20261104_1935 | unknown | unknown | bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L2meanfusion | test mIoU=58.06; test mAcc=67.38; val mIoU=70.4; val mAcc=78.76 | DRN-261104-01 | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_0458 | unknown | unknown | a2_eval1024_jarvis | test mIoU=58.17; test mAcc=67.99 | unknown | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_0458_x | unknown | unknown | a2_eval1024_jarvis | test mIoU=57.25; test mAcc=66.83 | unknown | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_0458_x_x | unknown | unknown | a2_eval1024_jarvis | test mIoU=57.88; test mAcc=67.95 | unknown | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_0538 | unknown | unknown | a2_eval1024_jarvis | test mIoU=56.48; test mAcc=65.99 | unknown | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_1354 | unknown | unknown | a2_eval1024_jarvis | test mIoU=58.77; test mAcc=68.21 | unknown | unknown |
 | jarvis_a2_eval1024_jarvis_20261105_1435 | unknown | unknown | a2_eval1024_jarvis | test mIoU=56.32; test mAcc=67.86 | unknown | unknown |
+| jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2B_20261105_0740 | unknown | unknown | jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2B | test mIoU=53.39; test mAcc=62.76; val mIoU=65.69; val mAcc=74.8 | DRN-261105-01 | unknown |
 | jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly_20261023_0220 | unknown | unknown | jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_B2rgbonly | test mIoU=55.14; test mAcc=62.48; val mIoU=61.78; val mAcc=70.03 | DRN-261020-08 | unknown |
 | jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307 | unknown | unknown | jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B | test mIoU=53.8; test mAcc=63.16; val mIoU=63.63; val mAcc=72.47 | DRN-261105-01 | unknown |
 | jarvis_q2_eval1024_20260928_1034 | unknown | unknown | q2_eval1024 | test mIoU=56.07; test mAcc=65.82 | unknown | unknown |
@@ -216,6 +218,7 @@ updated: 2026-09-18 (본문은 매일 갱신 — 최신 행 기준)
 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_P56C_20260930_2241 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_P56C | test mIoU=57.45; test mAcc=66.3; val mIoU=67.99; val mAcc=76.96 | unknown | unknown |
 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261006_0227 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD | test mIoU=56.32; test mAcc=66.7; val mIoU=69.44; val mAcc=78.8 | DRN-260926-234 | unknown |
 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD_20261016_0548 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2noKD | test mIoU=57.23; test mAcc=67.21; val mIoU=68.72; val mAcc=77.63 | DRN-260926-234 | unknown |
+| yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L4nom2f_20261104_1935 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L4nom2f | test mIoU=58.65; test mAcc=68.42; val mIoU=70.45; val mAcc=79.62 | unknown | unknown |
 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade_20261022_1920 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L5nodegrade | test mIoU=56.63; test mAcc=66.26; val mIoU=70.54; val mAcc=79.1 | DRN-261020-13 | unknown |
 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd_20261026_2121 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L6nokd | test mIoU=56.32; test mAcc=67.86; val mIoU=69.83; val mAcc=79.15 | DRN-261020-14 | unknown |
 | yeon_yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_P56C_20261001_0413 | unknown | unknown | yeon-deliver_rgbdel_P46_c3only_seed20260902_screen40_P56C | test mIoU=57.82; test mAcc=67.32; val mIoU=68.92; val mAcc=77.56 | unknown | unknown |
