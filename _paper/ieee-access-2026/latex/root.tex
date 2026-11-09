@@ -10,6 +10,7 @@
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{pifont}
+\usepackage[section]{placeins}  % user 2026-11-10: floats stay inside their section (no figure of Sec. IV after Sec. V starts)
 \usepackage[hidelinks]{hyperref}
 \definecolor{RED}{rgb}{1,0,0}% running heads may be uppercased, which turns `red' into `RED'
 % model name used throughout; change here only (C2D2 confirmed by the user 2026-11-04)
@@ -55,7 +56,6 @@
 
 \input{sections/1_intro}
 \input{sections/2_related}
-\input{sections/3_sensors}
 \input{sections/4_method}
 \input{sections/5_experiments}
 \input{sections/6_analysis}

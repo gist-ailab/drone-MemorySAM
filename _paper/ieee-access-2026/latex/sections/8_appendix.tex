@@ -2,6 +2,30 @@
 % Figures: figures/src/make_qual_figs.py (scenes chosen in figures/qualbank/selection.yaml from
 % figures/source_data/qualbank/deliver_candidates.csv, built over all 1897 test images by figures/qualbank/qualbank.py)
 \appendices
+\section{Benchmark Details}
+\label{app:bench}
+Table~\ref{tab:benchmarks} lists the sensors, classes, and split sizes of the three benchmarks described in Section~\ref{sec:sensors}.
+
+% Table: benchmark summary. Split sizes: DELIVER 3983/2005/1897 (CMNeXt paper, also recorded in repo
+% research/novelty-and-related-work.md:78); MUSES 1500/250/750 (semseg/datasets/muses.py docstring);
+% MCubeS 302/96/102: Liang et al., CVPR 2022 (mcubes2022), p.7 'Training Details': "Training, validation, and test sets
+% contain 302, 96 and 102 images" (CVF open-access PDF read 2026-10-30). Our list_folder counts not re-checked (yeon/lecun unreachable).
+\begin{table}[t]
+\caption{Benchmarks used in this study: sensors, classes, and split sizes.}
+\label{tab:benchmarks}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
+\toprule
+Benchmark & Sensors & Classes & Train / val / test \\
+\midrule
+DELIVER~\cite{cmnext2023} & RGB, depth, event, LiDAR & 25 & 3983 / 2005 / 1897 \\
+MUSES~\cite{muses2024} & RGB, event, LiDAR, radar & 19 & 1500 / 250 / 750 \\
+MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & 302 / 96 / 102 \\
+\bottomrule
+\end{tabular*}
+\tabnote{MUSES test labels are withheld; test scores come from the official evaluation server.}
+\end{table}
+
 \section{Additional Qualitative Results}
 \label{app:qual}
 Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are the 18 highest-ranked scenes of the five weather and lighting conditions and under-exposure. The candidates are computed over all 1897 test images of every model, so any scene can be replaced without new inference.
