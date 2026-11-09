@@ -168,3 +168,19 @@
 | Ours: 같은 열 | 54.08 · 37.52 · 80.74 · 43.71 · 54.02 · 57.74 | 같은 CSV a2s821/a2s902/a2s903 열 평균(25클래스 평균 57.74 일치) | ✅ |
 | CMNeXt·CAFuser·DGFusion (공개 가중치) | 비어 있음 | 전체 예측 덤프에서 클래스별 IoU 계산 요청(analysis) | ❌ |
 
+
+## 2026-11-09 갱신 — 실험 결과 반영(원고 칸별)
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| Table 5 (tab:robust) Ours: clean · EMM Avg · E(.20/.10/.05) · RMM r=.75/.50/.25 · NM Low/Mid/High | 71.34 · 58.52 · 67.15/69.46/70.45 · 61.92/64.05/66.28 · 58.63/52.00/39.87 | 벤치 공개 코드 그대로(`third_party/mmss_robust_bench`, 53c7a6e), DELIVER val 2005장, A2 s821/s902/s903 평균. NAS `analysis_logs/mmssb_table5_20261109/`, `.claude_logs/tasks/DRN-261027-01/log.md` 2026-11-09 행. 설정 검증: CMNeXt 공개 가중치 66.33/37.90/54.46/60.41/63.38 = 벤치 원문 | ✅ |
+| Table 5 본문 격차 | 13.6 (58.52−44.97) · 낙폭 12.8 (71.34−58.52) vs 벤치 모델 21.1~28.4 | 같은 표 값 | ✅ |
+| Table 3 (tab:muses) Ours val | 81.54 | `.claude_logs/tasks/DRN-261019-02/analysis.md` 공식 val 1536, s2 81.758 / s3 81.311 평균 81.535 (method 판정 전, 사전 규칙상 선택 해상도 1536) | ⚠️ 판정 대기 |
+| Table 4 (tab:mcubes) Ours | 59.78 | `.claude_logs/tasks/DRN-261017-02/analysis.md` C2D2 768 s827 59.80 / s828 59.76, 하네스 재채점 Δ0.00 (판정 대기, test 로 체크포인트 선택은 §3 에 공개) | ⚠️ 판정 대기 |
+| Table 8 (tab:abl_robust) (b) MCubeS w/o C2D2 / C2D2 | 59.89 / 59.78 | DRN-261104-03 lab-plan 이력(s827 59.81, s828 59.96, 학습기 top1 = test 102) / 위 행 | ⚠️ w/o 행은 재채점 요청 중(inbox 20261105-115201) |
+| Table 7 (tab:ablation_loo) L6 (teacher KD 제거) s821 | 58.77 / 49.64 | `.claude_logs/tasks/DRN-261020-14/log.md` 2026-11-05 (EMM 은 pane 로그 49.6407, summary.json 직접 미확인) | ⚠️ |
+| Table 7 L7 (물리 열화 제거) s821 | 58.17 / 48.86 | `.claude_logs/tasks/DRN-261029-01/log.md` 2026-11-05 (EMM 48.8631) | ✅ |
+| Table 7 본문 둘째 시드 | L6 56.32 · L7 57.25 · full 57.09 (s902) | 같은 log.md · A2 s902 test 57.09 (DRN-261019-03 R03:17) | ✅ |
+| Table 10 (tab:thin) 기준선 (Pole·TL·Ped·Static·Thin·mIoU) | CMNeXt 48.39·31.96·76.64·31.26·47.06·52.34 · CAFuser 60.64·46.21·82.93·33.91·55.92·55.78 · DGFusion 55.65·41.14·83.06·38.36·54.55·56.71 | NAS `analysis_logs/baseline_official_dump_20261104/class_iou_official.csv`, analysis report 20261104-185440 (1024 예측 → native GT 최근접, 전역 confusion) | ✅ |
+| Fig.2(a) Ours 곡선 | 71.34 · 66.28 · 64.05 · 61.92 | Table 5 Ours 와 같은 측정. w/o high-res 곡선은 공개 코드 값이 없어 삭제 | ✅ |
+| 초록·서론·결론 MCubeS | 59.8 / 59.78, 격차 2.2 (59.78−57.62) | Table 4 | ⚠️ 판정 대기 |
+| 정성 그림 본문 격차(5절·6절) | top1 3.9~13.0 · 18장 3.4~13.0 · reverse1 8.5~12.9 (DGFusion 4, CAFuser 2) | `figures/source_data/qualbank/deliver_candidates.csv`(비교군 CMNeXt·CAFofficial·DGFofficial, 2026-11-09 재계산) | ✅ |

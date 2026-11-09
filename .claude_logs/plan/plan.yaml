@@ -13661,7 +13661,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런
   priority: 1
   owner_role: manager
-  status: running
+  status: evaluating
   kind: experiment
   tags:
   - ablation
@@ -13670,7 +13670,7 @@ items:
   - contribution
   docs: .claude_logs/tasks/DRN-261029-01
   created: '2026-10-29'
-  updated: '2026-10-31'
+  updated: '2026-11-06'
   closed: null
   runs: []
   results: []
@@ -13890,7 +13890,7 @@ items:
   expected_cost: 4 GPU × 약 1일 × 2런 (+ 평가 묶음)
   priority: 2
   owner_role: manager
-  status: running
+  status: evaluating
   kind: experiment
   tags:
   - ablation
@@ -13899,7 +13899,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261029-07
   created: '2026-10-29'
-  updated: '2026-11-04'
+  updated: '2026-11-06'
   closed: null
   runs: []
   results: []
@@ -14221,7 +14221,8 @@ items:
   created: '2026-11-04'
   updated: '2026-11-04'
   closed: null
-  runs: []
+  runs:
+  - bengio_bengio-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L2meanfusion_20261104_1935
   results: []
   verdict: null
   analysis: null
@@ -14341,7 +14342,7 @@ items:
     로 복사(TEACHER_CKPT 경로 고정, strict 가드)
   priority: 2
   owner_role: manager
-  status: running
+  status: evaluating
   kind: experiment
   tags:
   - backbone-control
@@ -14354,6 +14355,7 @@ items:
   closed: null
   runs:
   - jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307
+  - jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2B_20261105_0740
   results:
   - run_id: jarvis_jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_E1B_20261105_0307
     split: test
