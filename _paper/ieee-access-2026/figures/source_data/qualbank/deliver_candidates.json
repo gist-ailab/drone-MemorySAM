@@ -1,11 +1,13 @@
 {
  "script": "figures/qualbank/qualbank.py candidates",
- "registry_md5": "2432c687d723a387b0fbcf117f8b392c",
+ "registry_md5": "debdad3fc1dcb01fac17c394fae5dc32",
  "scores": {
   "A2s821": "293021263c6528d05d3e89a78bba8617",
   "A2s902": "3d91e0a7ba5f27c82b713d875b491565",
   "Q2s821": "9157861772faae91df97b9b951023e73",
   "DGFofficial": "3316378182cc393026806ae5f1ff6004",
-  "CAFb": "6d71794b08456b6ea47dc1a272f6e748"
+  "CAFb": "6d71794b08456b6ea47dc1a272f6e748",
+  "CMNeXt": "0edd97f3751e028202b71b9772e923a5",
+  "CAFofficial": "734f4fe4b1291a5d74b24bfa5b0f7277"
  }
 }
