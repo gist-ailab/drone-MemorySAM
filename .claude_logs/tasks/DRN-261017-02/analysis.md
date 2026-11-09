@@ -52,6 +52,21 @@
 ## 정성 은행 덤프
 - C2D2 s827·s828, w/o C2D2 s827, E1Mc s827·s828 의 test 102장 전체 예측(학습 ID PNG, 라벨 해상도)과 GT 가 NAS `analysis_logs/mcubes_rescore_20261104/<모델>/{pred,gt}/` 에 있다(pred 510장 = 5×102 확인). image_id = list-file 이름.
 
+## 추가(2026-11-09) — 크롭 교란 제거: w/o C2D2 768 2시드 (inbox 20261105-115201)
+- 대상: w/o C2D2(고해상 경로만, 두 패스·증류 없음) **768 크롭** s827 `epoch186_59.81`(md5 b9078203…) · s828 `epoch150_59.96`(md5 caf9f291…), NAS `ckpts/hpca100_mcubes_wo_c2d2_768_s{827,828}_20261105/`.
+- 하네스: 같은 `tools/qualbank_dump.py`(guard OK, split 'val' = test 102장), bengio GPU4(기동 시 22 MiB·0%), venv `/SSDf/jemo_maeng/venvs/dms`(MMSS_SAM + timm 1.0.30), 데이터 `/SSDf/jemo_maeng/dset/MCubeS`(`--root`). hpca100 은 임대 종료로 접속 불가.
+- 결과: s827 **59.81** · s828 **59.96** — 학습기 top1 과 Δ0.00, missing 0. 원본 NAS `analysis_logs/mcubes_rescore_wo768_20261109/`(pred·gt 각 102장, summary.json, 로그).
+
+| 같은 768 크롭 | s827 | s828 | 2시드 평균 |
+| --- | ---: | ---: | ---: |
+| C2D2 | 59.80 | 59.76 | 59.78 |
+| w/o C2D2 | 59.81 | 59.96 | 59.885 |
+| C2D2 − w/o | −0.01 | −0.20 | **−0.11** |
+
+- [사실] 크롭을 맞추면 C2D2 의 clean test mIoU 이득은 없다(−0.11, 같은 시드끼리 −0.01·−0.20). 11-04 의 −0.49(w/o C2D2 1024 1시드 60.27 대비)는 1024 크롭 쪽이 0.39 높았던 것이 섞인 값이다.
+- 클래스(2시드 평균 Δ, C2D2 − w/o): gravel +3.69 · sand +3.40 · plastic +2.76 · cobblestone +2.40 · concrete +1.66 / fabric −3.43 · brick −3.26 · wood −2.33 · human −2.26 · glass −2.11. sand·gravel 은 시드 간 차이가 8~11점이라 이 Δ 는 시드 분산 안이다.
+- [미검증] C2D2 의 목적은 결측·열화 강건성이다. clean 무이득이 C2D2 의 실패를 뜻하는지는 MCubeS 결측 강건성(DRN-261105-02, 이 4 ckpt 로 측정 예정)을 봐야 판단할 수 있다.
+
 ## 판정 제안
 판정은 method 가 한다.
 
