@@ -21,7 +21,7 @@ These measurements suggest that, on DELIVER, the dependence on depth comes mainl
 \end{figure}
 
 \subsection{What the High-Resolution Path Adds}
-The high-resolution path raises clean test mIoU by 1.15 points on average over three seeds (from 56.59 to 57.74 on the test split). Fig.~\ref{fig:thin} shows where the gain comes from. Averaged over the three seeds, Static gains 10.4 points, Pedestrian 3.8, TrafficSign 3.1, and Pole 2.1, and the four thin classes gain 3.0 points together (Table~\ref{tab:thin}). The gain comes mainly from recall: for Pole the recall rises from 0.75 to 0.78 and for Pedestrian from 0.89 to 0.90 \todo{confirm these recall values (two seeds, NAS analysis\_logs/a2\_thin\_anatomy\_20261018/summary.md) through the analysis session before citing}. Two classes lose: TrafficLight by 4.1 points and RailTrack by 7.2. RailTrack varies strongly between seeds even without the path (58.5, 32.6, and 45.1 for the three seeds), so we do not interpret its change. The TrafficLight loss, in contrast, is systematic and is analysed next.
+The high-resolution path raises clean test mIoU by 1.15 points on average over three seeds (from 56.59 to 57.74 on the test split). Fig.~\ref{fig:thin} shows where the gain comes from. Averaged over the three seeds, Static gains 10.4 points, Pedestrian 3.8, TrafficSign 3.1, and Pole 2.1, and the four thin classes gain 3.0 points together (Table~\ref{tab:thin}). Against the released baselines, however, the path narrows rather than closes the gap: our model is the most accurate on Static and on mIoU, but CAFuser and DGFusion remain higher on Pole, TrafficLight, and Pedestrian, and its mean over the four thin classes (54.02) is below theirs (55.92 and 54.55). The gain comes mainly from recall: for Pole the recall rises from 0.75 to 0.78 and for Pedestrian from 0.89 to 0.90 \todo{confirm these recall values (two seeds, NAS analysis\_logs/a2\_thin\_anatomy\_20261018/summary.md) through the analysis session before citing}. Two classes lose: TrafficLight by 4.1 points and RailTrack by 7.2. RailTrack varies strongly between seeds even without the path (58.5, 32.6, and 45.1 for the three seeds), so we do not interpret its change. The TrafficLight loss, in contrast, is systematic and is analysed next.
 % Sources: per-class 3-seed CSV .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv (d_mean3 column);
 % thin-4 mean +3.04 and 24-class Δ +1.50: tasks/DRN-261018-01/analysis.md.
 
@@ -46,12 +46,13 @@ The high-resolution path raises clean test mIoU by 1.15 points on average over t
 Method & Pole & Traffic & Pedes- & Static & Thin & mIoU \\
  & & light & trian & & & \\
 \midrule
-CMNeXt$^{\ast}$~\cite{cmnext2023} & \td & \td & \td & \td & \td & \td \\
-CAFuser$^{\ast}$~\cite{cafuser2025} & \td & \td & \td & \td & \td & \td \\
-DGFusion$^{\ast}$~\cite{dgfusion2026} & \td & \td & \td & \td & \td & \td \\
+% Baselines: NAS analysis_logs/baseline_official_dump_20261104/class_iou_official.csv (analysis report 20261104-185440).
+CMNeXt$^{\ast}$~\cite{cmnext2023} & 48.39 & 31.96 & 76.64 & 31.26 & 47.06 & 52.34 \\
+CAFuser$^{\ast}$~\cite{cafuser2025} & \best{60.64} & \best{46.21} & \second{82.93} & 33.91 & \best{55.92} & 55.78 \\
+DGFusion$^{\ast}$~\cite{dgfusion2026} & \second{55.65} & 41.14 & \best{83.06} & \second{38.36} & \second{54.55} & \second{56.71} \\
 \midrule
-Ours w/o high-res & \second{51.94} & \best{41.67} & \second{76.94} & \second{33.36} & \second{50.98} & \second{56.59} \\
-Ours & \best{54.08} & \second{37.52} & \best{80.74} & \best{43.71} & \best{54.02} & \best{57.74} \\
+Ours w/o high-res & 51.94 & \second{41.67} & 76.94 & 33.36 & 50.98 & 56.59 \\
+Ours & 54.08 & 37.52 & 80.74 & \best{43.71} & 54.02 & \best{57.74} \\
 \bottomrule
 \end{tabular*}
 \tabnote{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Ours: mean of three seeds.}
@@ -71,7 +72,7 @@ With the high-resolution path, the recall of TrafficLight rises (0.80 to 0.85) b
 \end{figure}
 
 \subsection{Scenes Where a Baseline Is Better}
-Fig.~\ref{fig:reverse} applies the selection rule of Fig.~\ref{fig:adverse} in the opposite direction: for each condition it shows the test scene where another model leads ours by the largest per-image mIoU. In five of the six conditions that model is DGFusion, and the gap is 8.4 to 10.1 points, larger than any gap in our favour among the selected scenes (at most 5.9 points). These scenes are not chosen to be typical; they bound how much a single image can favour a baseline when all sensors are present \todo{describe the error regions once read; check whether the losses share a class (e.g., sidewalk, vegetation boundaries)}.
+Fig.~\ref{fig:reverse} applies the selection rule of Fig.~\ref{fig:adverse} in the opposite direction: for each condition it shows the test scene where another model leads ours by the largest per-image mIoU. In four of the six conditions that model is DGFusion and in two it is CAFuser, and the gap is 8.5 to 12.9 points, similar in size to the largest gaps in our favour (3.9 to 13.0 points in Fig.~\ref{fig:adverse}). These scenes are not chosen to be typical; they bound how much a single image can favour a baseline when all sensors are present \todo{describe the error regions once read; check whether the losses share a class (e.g., sidewalk, vegetation boundaries)}.
 
 \begin{figure*}[p]
 \centering
@@ -82,4 +83,4 @@ Fig.~\ref{fig:reverse} applies the selection rule of Fig.~\ref{fig:adverse} in t
 \end{figure*}
 
 \subsection{Limitations}
-First, DELIVER is synthetic, and its complete depth is the reason the shortcut exists; the size of the effect on real depth sensors remains to be measured, and MUSES does not contain depth. Second, our main runs use a 40-epoch schedule and three seeds, the ablations one seed, and the baselines are single runs, so differences below about one point should not be over-read. Third, whether the high-resolution path, whose convolutional stem sees raw pixels, changes robustness to pixel noise has to be checked under the benchmark noise levels \todo{NM results of Table~\ref{tab:robust} under the benchmark code pending}. Fourth, the frozen ViT-L processes every sensor separately, so inference costs 14.6 times the operations and 2.9 times the latency of DGFusion (Table~\ref{tab:cost}); sharing tokens across sensors or a smaller backbone would reduce this, which we have not evaluated.
+First, DELIVER is synthetic, and its complete depth is the reason the shortcut exists; the size of the effect on real depth sensors remains to be measured, and MUSES does not contain depth. Second, our main runs use a 40-epoch schedule and three seeds, the ablations one seed, and the baselines are single runs, so differences below about one point should not be over-read. Third, whether the high-resolution path, whose convolutional stem sees raw pixels, changes robustness to pixel noise has not been measured: under the benchmark noise our model keeps 58.63, 52.00, and 39.87 mIoU at the three levels (Table~\ref{tab:robust}), but the same measurement without the path is missing. Fourth, the frozen ViT-L processes every sensor separately, so inference costs 14.6 times the operations and 2.9 times the latency of DGFusion (Table~\ref{tab:cost}); sharing tokens across sensors or a smaller backbone would reduce this, which we have not evaluated.

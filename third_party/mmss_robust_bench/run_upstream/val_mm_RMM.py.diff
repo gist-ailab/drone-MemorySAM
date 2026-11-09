@@ -1,0 +1,11 @@
+--- upstream/val_mm_RMM.py
++++ run_upstream/val_mm_RMM.py
+@@ -96,7 +96,7 @@
+     # Define the modal order and the total number of modalities
+     modalities = ['RGB', 'D', 'E', 'L']
+     n_modalities = len(modalities)
+-    r = 0.25
++    r = float(os.environ.get('MMSSB_RMM_R', '0.25'))  # [mmssb] parameter
+     # Store results for each modality combination
+     results = {}
+ 

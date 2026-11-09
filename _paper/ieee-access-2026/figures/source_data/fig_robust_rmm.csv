@@ -11,11 +11,7 @@ StitchFusion,0.00,68.20,1,arXiv 2503.18445,"Table 3, RDEL column"
 StitchFusion,0.25,53.10,1,arXiv 2503.18445,Table 10
 StitchFusion,0.50,48.33,1,arXiv 2503.18445,Table 9
 StitchFusion,0.75,45.16,1,arXiv 2503.18445,Table 8
-Ours w/o high-res,0.00,67.91,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"table 'val clean', Q2 mean of 3 seeds"
-Ours w/o high-res,0.25,64.08,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"'val RMM15 r0.25', Q2 mean"
-Ours w/o high-res,0.50,62.46,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"'val RMM15 r0.5', Q2 mean"
-Ours w/o high-res,0.75,60.69,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"'val RMM15 r0.75', Q2 mean"
-Ours,0.00,70.17,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"table 'val clean', A2 mean of 3 seeds"
-Ours,0.25,65.53,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"'val RMM15 r0.25', A2 mean"
-Ours,0.50,63.35,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"'val RMM15 r0.5', A2 mean"
-Ours,0.75,61.28,3,.claude_logs/tasks/DRN-261019-03/analysis.md,"'val RMM15 r0.75', A2 mean"
+Ours,0.00,71.34,3,NAS analysis_logs/mmssb_table5_20261109,"clean, benchmark public code (third_party/mmss_robust_bench), A2 mean of s821/s902/s903; tasks/DRN-261027-01/log.md 2026-11-09 row"
+Ours,0.25,66.28,3,NAS analysis_logs/mmssb_table5_20261109,"RMM Avg r=0.25, benchmark public code (third_party/mmss_robust_bench), A2 mean of s821/s902/s903; tasks/DRN-261027-01/log.md 2026-11-09 row"
+Ours,0.50,64.05,3,NAS analysis_logs/mmssb_table5_20261109,"RMM Avg r=0.5, benchmark public code (third_party/mmss_robust_bench), A2 mean of s821/s902/s903; tasks/DRN-261027-01/log.md 2026-11-09 row"
+Ours,0.75,61.92,3,NAS analysis_logs/mmssb_table5_20261109,"RMM Avg r=0.75, benchmark public code (third_party/mmss_robust_bench), A2 mean of s821/s902/s903; tasks/DRN-261027-01/log.md 2026-11-09 row"
