@@ -29,6 +29,9 @@ log() { echo "[chain $ID $(date '+%F %T')] $*" | tee -a "$CHAIN_LOG"; }
 
 source /home/jemo_maeng/anaconda3/etc/profile.d/conda.sh && conda activate MMSS_SAM || { echo "conda activate 실패" >&2; exit 1; }
 export CUDA_VISIBLE_DEVICES="$GPUS" OMP_NUM_THREADS=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_DISABLE_XET=1
+# 2026-11-09 yeon 첫 기동: tensorboard proto import 에서 'TypeError: Descriptors cannot be created directly'
+# (protobuf C 구현과 tensorboard 생성 코드 불일치). pip 변경 없이 순수 python 구현으로 우회(B200 때와 같은 처방).
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 ckpt_epoch() {  # last_checkpoint.pth 의 epoch (없으면 0)
   python - "$1" <<'EOF'
