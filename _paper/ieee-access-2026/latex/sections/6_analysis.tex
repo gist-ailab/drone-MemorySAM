@@ -90,8 +90,8 @@ With the high-resolution path, the recall of TrafficLight rises (0.80 to 0.85) b
 \begin{figure}[t]
 \centering
 % Assets: NAS analysis_logs/a2_tl_fp_scenes_20261022 (4 scenes, README.md has the selection rule).
-\phbox{4.2cm}{limitation: posters and signs predicted as traffic light (2 of the 4 recorded scenes; RGB, ground truth, ours, error map)}
-\caption{Failure case of the high-resolution path on the DELIVER test set: posters and signs predicted as traffic lights. Scenes are drawn from the 20 test images where the path adds the most TrafficLight false positives, one per condition. Columns: RGB input, ground truth, ours, and error map.}
+\includegraphics[width=\columnwidth]{figures/fig_tl_deliver.pdf}
+\caption{Failure case of the high-resolution path on the DELIVER test set: posters and signs predicted as traffic lights. Scenes are drawn from the 20 test images where the path adds the most TrafficLight false positives, one per condition. Columns: RGB input, ground truth, our model without and with the path (seed 821 pair). Faded pixels agree with the ground truth; numbers give per-image mIoU (\%); colours follow the key of Fig.~\ref{fig:adverse}.}
 \label{fig:failure}
 \end{figure}
 

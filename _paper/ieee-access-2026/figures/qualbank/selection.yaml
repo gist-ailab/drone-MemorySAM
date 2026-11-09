@@ -78,3 +78,11 @@ figures:
       - {label: Motion blur,   input: rgb,   pick: {group: motionblur, kind: reverse, rank: 1}}
       - {label: LiDAR jitter,  input: lidar, pick: {group: lidarjitter, kind: reverse, rank: 1}}
       - {label: Event low-res, input: event, pick: {group: eventlowres, kind: reverse, rank: 1}}
+  fig_tl_deliver:                 # analysis: TrafficLight false positives added by the high-resolution path
+    # scenes = NAS analysis_logs/a2_tl_fp_scenes_20261022/README.md (top-20 by A2 FP - Q2 FP, one per condition)
+    columns: [rgb, gt, Q2s821, A2s821]
+    rows:
+      - {label: Sun,   image: img/sun/test/MAP_10_point21/002500_rgb_front}
+      - {label: Cloud, image: img/cloud/test/MAP_10_point92/044650_rgb_front}
+      - {label: Night, image: img/night/test/MAP_10_point15/001350_rgb_front}
+      - {label: Rain,  image: img/rain/test/MAP_10_point23_motionblur/097650_rgb_front}

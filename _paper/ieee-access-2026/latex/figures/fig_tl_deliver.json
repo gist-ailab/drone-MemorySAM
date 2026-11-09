@@ -1,0 +1,61 @@
+{
+ "design_source": "carbon@11.84.0 (warm-gray-50/70/80 text and borders, teal-80 for ours); dataset palette for labels",
+ "script": "figures/src/make_qual_figs.py",
+ "errors_mode": true,
+ "columns": [
+  "rgb",
+  "gt",
+  "Q2s821",
+  "A2s821"
+ ],
+ "inputs_md5": {
+  "selection.yaml": "10b606f9244786bfeb17db8bf2c6f252",
+  "registry.yaml": "debdad3fc1dcb01fac17c394fae5dc32",
+  "deliver_candidates.csv": "ce2986075d18bb1bdc9e3f361febf030",
+  "deliver_per_image.csv": "428092846469e504f2503a2583d526f8"
+ },
+ "rows": [
+  [
+   "Sun",
+   "img/sun/test/MAP_10_point21/002500_rgb_front",
+   "-0.0054",
+   "DGFofficial"
+  ],
+  [
+   "Cloud",
+   "img/cloud/test/MAP_10_point92/044650_rgb_front",
+   "-0.0362",
+   "DGFofficial"
+  ],
+  [
+   "Night",
+   "img/night/test/MAP_10_point15/001350_rgb_front",
+   "+0.0193",
+   "CAFofficial"
+  ],
+  [
+   "Rain",
+   "img/rain/test/MAP_10_point23_motionblur/097650_rgb_front",
+   "-0.0282",
+   "DGFofficial"
+  ]
+ ],
+ "tiles": {
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/sun/test/MAP_10_point21/002500_rgb_front.png": "b13fc79af6c19b07b80fc2b0505ddad0",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/gt/img/sun/test/MAP_10_point21/002500_rgb_front.png": "459289278f36330f9546411a444e29b1",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/Q2s821/img/sun/test/MAP_10_point21/002500_rgb_front.png": "2668e4deb5caa9aa50c9b151a7064958",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/A2s821/img/sun/test/MAP_10_point21/002500_rgb_front.png": "bda1faf599fe09cbfc590a37d0b9bf40",
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/cloud/test/MAP_10_point92/044650_rgb_front.png": "01793d019d942ef53c575bf6e7b2f951",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/gt/img/cloud/test/MAP_10_point92/044650_rgb_front.png": "d1301c02d8bfe1840ece54c2267a2e96",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/Q2s821/img/cloud/test/MAP_10_point92/044650_rgb_front.png": "38efff2e14e8bd61605ee6125cc7207c",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/A2s821/img/cloud/test/MAP_10_point92/044650_rgb_front.png": "f2231c1e2f8d342144c04f5a66eacf52",
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/night/test/MAP_10_point15/001350_rgb_front.png": "603a430c1b884184638fc87a2410418a",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/gt/img/night/test/MAP_10_point15/001350_rgb_front.png": "069bea4b58268f4c6be9cefbd6138118",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/Q2s821/img/night/test/MAP_10_point15/001350_rgb_front.png": "06a343a968aaf0e2bf4c497f249c92cd",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/A2s821/img/night/test/MAP_10_point15/001350_rgb_front.png": "4bf61f9e7252112ddf0340e1d79ac8e5",
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/rain/test/MAP_10_point23_motionblur/097650_rgb_front.png": "c2ebbc5509ffb66c5296224ccc806ec1",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/gt/img/rain/test/MAP_10_point23_motionblur/097650_rgb_front.png": "06a185872be12187735d881008a88d14",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/Q2s821/img/rain/test/MAP_10_point23_motionblur/097650_rgb_front.png": "c948b4e674b4bc38469cd8f14141529a",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_test/A2s821/img/rain/test/MAP_10_point23_motionblur/097650_rgb_front.png": "efeba50181910d2efbb8c4e87e277ba3"
+ }
+}
