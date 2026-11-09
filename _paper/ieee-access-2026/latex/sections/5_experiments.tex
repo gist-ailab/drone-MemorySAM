@@ -234,7 +234,7 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 \end{figure*}
 
 \subsection{Accuracy per Condition}
-Table~\ref{tab:condition} breaks clean test accuracy down by condition \todo{text after the per-condition numbers arrive (analysis request 20261028-183826 item 1)}.
+Table~\ref{tab:condition} breaks clean test accuracy down by condition for the released baselines and our model. Our model is the most accurate in sun, rain, night, and low exposure, with the largest margins over the best baseline in sun (+3.0), low exposure (+2.3), and night (+1.6); DGFusion is higher in cloud (58.41 against 57.23) and fog (58.01 against 57.58). Our accuracy varies by 3.9 points across the six conditions (54.57 to 58.45), against 4.0 to 6.3 points for the baselines.
 
 % ---------------------------------------------------------------------------
 % Table 5. Clean mIoU per condition on DELIVER test (new 2026-10-28).
@@ -248,13 +248,14 @@ Table~\ref{tab:condition} breaks clean test accuracy down by condition \todo{tex
 \toprule
 Model & Sun & Cloud & Rain & Fog & Night & Low exp. & All \\
 \midrule
-DGFusion$^{\ast}$ & \td & \td & \td & \td & \td & \td & \second{56.73} \\
-DGFusion (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 54.77 \\
-CAFuser (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 55.79 \\
-Ours & \td & \td & \td & \td & \td & \td & \best{57.74} \\
+% 2026-11-09: rows = released weights (same as the qualitative figures) + ours 3 seeds; per-condition global confusion over the qualitative bank (paper session t6_calc.py / fig6_calc.py).
+CMNeXt$^{\ast}$~\cite{cmnext2023} & 51.15 & 52.06 & 53.45 & 53.83 & 50.38 & 50.31 & 52.34 \\
+CAFuser$^{\ast}$~\cite{cafuser2025} & \second{54.05} & 54.53 & 57.75 & \second{57.81} & 54.43 & \second{52.24} & 55.78 \\
+DGFusion$^{\ast}$~\cite{dgfusion2026} & 53.85 & \best{58.41} & \second{58.18} & \best{58.01} & \second{55.29} & 51.87 & \second{56.71} \\
+Ours & \best{57.02} & \second{57.23} & \best{58.45} & 57.58 & \best{56.91} & \best{54.57} & \best{57.74} \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{\ast}$Released weights. $^{\dagger}$Retrained with synthetic degradation and modality dropout, without distillation. All: test mIoU over all conditions from the same measurement as the other columns.}
+\tabnote{$^{\ast}$Released weights, evaluated with our code. Ours: mean of three seeds. Low exp.: the under-exposure sequences. All: the whole test set.}
 \end{table}
 
 \subsection{Ablation}

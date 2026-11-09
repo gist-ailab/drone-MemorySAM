@@ -6,7 +6,7 @@
 \subsection{Where Sensor Over-Reliance Comes From}
 A fusion model can lean on one sensor because its architecture or supervision favours that sensor, or because the training data make that sensor sufficient. DGFusion~\cite{dgfusion2026} is a useful test case: it adds depth supervision to its fusion, and removing depth costs our reproduction of DGFusion 23 to 37 points depending on the condition (Fig.~\ref{fig:dependence}). If the depth supervision caused this dependence, a model without it should behave differently.
 
-Our model trained on clean inputs, which has no depth supervision, also depends on depth: removing it costs 14.3 to 14.8 points in sun, cloud, rain, and fog, 17.9 at night, and 25.0 at low exposure, less than for DGFusion but growing towards the dark conditions in the same way. Our full model, trained with the C2D2 scheme, loses only 0.4 to 1.3 points in sun, cloud, rain, and fog, 4.7 at night, and 8.9 at low exposure (all on the test split, mean of two seeds). The effect also appears in a second architecture: when we re-train DGFusion with the same synthetic degradation, removing depth entirely costs 4.7 points, whereas it costs 33.3 points for our reproduction trained without degradation and 33.4 for the released weights (test split, our evaluation code; \todo{re-measure with the benchmark code of Table~\ref{tab:robust}}).
+Our model trained on clean inputs, which has no depth supervision, also depends on depth: removing it costs 14.3 to 14.8 points in sun, cloud, rain, and fog, 17.9 at night, and 25.0 at low exposure, less than for DGFusion but growing towards the dark conditions in the same way. Our full model, trained with the C2D2 scheme, loses only 0.6 to 1.5 points in sun, cloud, rain, and fog, 4.3 at night, and 9.6 at low exposure (all on the test split; three seeds for the full model, two for the clean-trained one). The effect also appears in a second architecture: when we re-train DGFusion with the same synthetic degradation, removing depth entirely costs 4.7 points, whereas it costs 33.3 points for our reproduction trained without degradation and 33.4 for the released weights (test split, our evaluation code; \todo{re-measure with the benchmark code of Table~\ref{tab:robust}}).
 % Sources: ours = figures/source_data/fig_dependence.csv (2026-11-09, R1 depth0 dumps vs clean dumps, test); DGFusion reproduction (a) = judgment-ledger:112;
 % judgment-ledger:117 (reproduction (a) -> retrained (b): depth fully missing -33.3 -> -4.7); judgment-ledger:130 (official weights -33.4).
 
@@ -16,7 +16,7 @@ These measurements suggest that, on DELIVER, the dependence on depth comes mainl
 \centering
 % Source numbers and provenance: figures/src/make_data_figs.py (fig_dependence). Full table: sections/supp_tables.tex (Table S1).
 \includegraphics[width=\columnwidth]{figures/fig_dependence.pdf}
-\caption{Dependence on depth across conditions on the DELIVER test set: change in mIoU when the depth input is zero-filled at inference (closer to zero means less dependence). Ours w/o C2D2: clean training, without the high-resolution path; Ours: full model. Our curves are means of two seeds.}
+\caption{Dependence on depth across conditions on the DELIVER test set: change in mIoU when the depth input is zero-filled at inference (closer to zero means less dependence). Ours w/o C2D2: clean training, without the high-resolution path (mean of two seeds); Ours: full model (mean of three seeds).}
 \label{fig:dependence}
 \end{figure}
 

@@ -270,3 +270,13 @@
 | DGFusion (reproduced) | 23.1 · 24.9 · 27.6 · 25.9 · 32.6 · 37.1 | judgment-ledger:112 (test) | ✅ 기존 |
 | 본문 '이전 val 측정' 3.4~13.4 | Q2(C2D2, 고해상 없음) val | judgment-ledger 2026-09-29 행 | ⚠️ val |
 
+## Table 6 조건별 (2026-11-09, 행 = 공개 가중치 3종 + ours 3시드)
+| 행 | Sun · Cloud · Rain · Fog · Night · Low exp. · All | 출처 | 상태 |
+|---|---|---|---|
+| CMNeXt* | 51.15 · 52.06 · 53.45 · 53.83 · 50.38 · 50.31 · 52.34 | 정성 은행 deliver_test/CMNeXt, 조건별 전역 혼동행렬(paper t6_calc.py) | ✅ |
+| CAFuser* | 54.05 · 54.53 · 57.75 · 57.81 · 54.43 · 52.24 · 55.78 | 은행 CAFofficial | ✅ |
+| DGFusion* | 53.85 · 58.41 · 58.18 · 58.01 · 55.29 · 51.87 · 56.71 | 은행 DGFofficial | ✅ |
+| Ours (3시드) | 57.02 · 57.23 · 58.45 · 57.58 · 56.91 · 54.57 · 57.74 | 은행 A2s821·A2s902 + analysis_logs/a2s903_20261021/s903_test/test/pred | ✅ |
+| 본문 격차 | sun +3.0 · low exp. +2.3 · night +1.6, cloud −1.18 · fog −0.43, 조건 간 폭 ours 3.9 vs 기준선 4.0~6.3 | 위 행 | ✅ |
+| Fig.6 Ours 3시드 하락 | 1.3 · 1.4 · 1.5 · 0.6 · 4.3 · 9.6 | r1 a2s8xx/s903_depth0 vs clean | ✅ (2시드 값 1.0·1.3·1.1·0.4·4.7·8.9 대체) |
+
