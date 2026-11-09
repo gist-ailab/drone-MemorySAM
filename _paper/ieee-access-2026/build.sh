@@ -41,4 +41,19 @@ if [ "$1" = "snapshot" ]; then
   cp root.pdf "$out"
   echo "snapshot -> ${out#$HERE/}"
 fi
+# NAS copy for reading from Windows/phone (user 2026-11-10): \\nas_jm\jemo\Paper = /nas_jm/Paper on this hub,
+# laid out as Paper/<project>/<paper folder>/ (project folder 26_MemorySAM+ already holds this project's papers).
+# /nas_jm is sshfs, so every copy has a timeout and a failure never fails the build.
+# Override with PAPER_PDF_NAS=<dir>, or PAPER_PDF_NAS=none to skip.
+nas="${PAPER_PDF_NAS:-/nas_jm/Paper/26_MemorySAM+/$(basename "$HERE")}"
+if [ "$nas" != "none" ] && timeout 10 test -d "$(dirname "$nas")"; then
+  if timeout 20 mkdir -p "$nas" && timeout 60 cp root.pdf "$nas/root.pdf"; then
+    echo "nas -> $nas/root.pdf"
+    if [ "$1" = "snapshot" ]; then
+      timeout 20 mkdir -p "$nas/drafts" && timeout 60 cp root.pdf "$nas/drafts/IEEE-Access-draft_$(date +%F).pdf" && echo "nas snapshot -> $nas/drafts/"
+    fi
+  else
+    echo "nas copy skipped (timeout or error): $nas"
+  fi
+fi
 [ "$errs" = "0" ]
