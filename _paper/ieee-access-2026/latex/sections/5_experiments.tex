@@ -207,8 +207,9 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 % -> analysis request inbox 20261027-182054 item 2.
 \begin{figure*}[t]
 \centering
-\phbox{5.2cm}{Fig.~3 when a sensor fails: rows = depth missing / RGB missing / LiDAR+event missing / RGB with heavy noise; columns = affected input, ground truth, CMNeXt, CAFuser, DGFusion, ours; error pixels in one colour}
-\caption{Qualitative comparison on the DELIVER test set when a sensor fails. Rows: depth missing, RGB missing, LiDAR and event missing, and RGB with heavy noise. Columns: affected input, ground truth, CMNeXt, CAFuser, DGFusion, and ours. Each row shows the scene where ours most exceeds the best other method in per-image mIoU, with no repeated sequence.}
+\includegraphics[width=\textwidth]{figures/fig_failure_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Qualitative comparison on the DELIVER test set when a sensor fails. Rows: depth missing, RGB missing, LiDAR and event missing, and RGB with heavy noise. Columns: RGB input (the clean image, shown for reference), ground truth, CMNeXt, CAFuser, and DGFusion (released weights), and ours. The failure is applied at inference only, after normalization (zero-fill; heavy noise = salt-and-pepper 0.2 followed by Gaussian $\sigma$ 0.5 on RGB, the strongest level of~\cite{mmssbench2025}). Each row shows the scene where ours most exceeds the best other method in per-image mIoU under that failure. Faded pixels agree with the ground truth; numbers give per-image mIoU (\%).}
 \label{fig:failure_scenarios}
 \end{figure*}
 
@@ -226,13 +227,14 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 % Fig. MUSES real adverse conditions (same layout as fig:adverse; analysis inbox 20261030-122055 P2).
 \begin{figure*}[t]
 \centering
-\phbox{4.6cm}{MUSES val, all sensors: real night / snow / fog / rain; columns = RGB, ground truth, CMNeXt, CAFuser, DGFusion, ours (released weights, release order); same selection rule; waits for the MUSES 4-sensor model}
-\caption{\todo{MUSES counterpart of Fig.~\ref{fig:adverse}; same rule on the 250 validation images (test labels are not public)}}
+\includegraphics[width=\textwidth]{figures/fig_adverse_muses.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
+\caption{Qualitative comparison on the MUSES validation set (real recordings, all four sensors) under adverse weather and lighting. Columns: RGB input, ground truth, CAFuser and DGFusion (released weights; no CMNeXt weights are released for MUSES), and ours. Each row shows the scene where ours most exceeds the better of the two baselines in per-image mIoU; the validation set is used because the test labels are not public. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
 \label{fig:adverse_muses}
 \end{figure*}
 
 \subsection{Accuracy per Condition}
-Table~\ref{tab:condition} breaks clean test accuracy down by condition \todo{text after the per-condition numbers arrive (analysis request 20261028-183826 item 1)}.
+Table~\ref{tab:condition} breaks clean test accuracy down by condition for the released baselines and our model. Our model is the most accurate in sun, rain, night, and low exposure, with the largest margins over the best baseline in sun (+3.0), low exposure (+2.3), and night (+1.6); DGFusion is higher in cloud (58.41 against 57.23) and fog (58.01 against 57.58). Our accuracy varies by 3.9 points across the six conditions (54.57 to 58.45), against 4.0 to 6.3 points for the baselines.
 
 % ---------------------------------------------------------------------------
 % Table 5. Clean mIoU per condition on DELIVER test (new 2026-10-28).
@@ -246,13 +248,14 @@ Table~\ref{tab:condition} breaks clean test accuracy down by condition \todo{tex
 \toprule
 Model & Sun & Cloud & Rain & Fog & Night & Low exp. & All \\
 \midrule
-DGFusion$^{\ast}$ & \td & \td & \td & \td & \td & \td & \second{56.73} \\
-DGFusion (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 54.77 \\
-CAFuser (retrained$^{\dagger}$) & \td & \td & \td & \td & \td & \td & 55.79 \\
-Ours & \td & \td & \td & \td & \td & \td & \best{57.74} \\
+% 2026-11-09: rows = released weights (same as the qualitative figures) + ours 3 seeds; per-condition global confusion over the qualitative bank (paper session t6_calc.py / fig6_calc.py).
+CMNeXt$^{\ast}$~\cite{cmnext2023} & 51.15 & 52.06 & 53.45 & 53.83 & 50.38 & 50.31 & 52.34 \\
+CAFuser$^{\ast}$~\cite{cafuser2025} & \second{54.05} & 54.53 & 57.75 & \second{57.81} & 54.43 & \second{52.24} & 55.78 \\
+DGFusion$^{\ast}$~\cite{dgfusion2026} & 53.85 & \best{58.41} & \second{58.18} & \best{58.01} & \second{55.29} & 51.87 & \second{56.71} \\
+Ours & \best{57.02} & \second{57.23} & \best{58.45} & 57.58 & \best{56.91} & \best{54.57} & \best{57.74} \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{\ast}$Released weights. $^{\dagger}$Retrained with synthetic degradation and modality dropout, without distillation. All: test mIoU over all conditions from the same measurement as the other columns.}
+\tabnote{$^{\ast}$Released weights, evaluated with our code. Ours: mean of three seeds. Low exp.: the under-exposure sequences. All: the whole test set.}
 \end{table}
 
 \subsection{Ablation}

@@ -109,10 +109,16 @@ def draw(name, spec, reg, out):
     ds = reg["datasets"][dname]
     bank = qualbank.bank_dir(reg, dname)
     lut, _ = qualbank.palette_of(ds)
-    cand = read_csv(SRC / f"{dname}_candidates.csv")
-    per = {r["image_id"]: r for r in read_csv(SRC / f"{dname}_per_image.csv")}
+    # a row may name its own dataset (same classes and inputs), e.g. one corrupted-input setting per row (Fig. 3)
+    cache = {}
+    def tables(dn):
+        if dn not in cache:
+            cache[dn] = (read_csv(SRC / f"{dn}_candidates.csv"),
+                         {r["image_id"]: r for r in read_csv(SRC / f"{dn}_per_image.csv")},
+                         qualbank.bank_dir(reg, dn))
+        return cache[dn]
     cols = spec["columns"]
-    sel = [(resolve(r, cand), r["label"]) for r in spec["rows"]]
+    sel = [(resolve(r, tables(r.get("dataset", dname))[0]), r["label"]) for r in spec["rows"]]
     nr, nc = len(sel), len(cols)
     gap_w, gap_h, lab_w, head_h = 0.035, 0.15, 0.17, 0.16
     tile = (TEXT_W - lab_w - gap_w * (nc - 1)) / nc
@@ -120,6 +126,7 @@ def draw(name, spec, reg, out):
     fig = plt.figure(figsize=(TEXT_W, fig_h))
     used = {}
     for i, (iid, rname) in enumerate(sel):
+        _, per, bank = tables(spec["rows"][i].get("dataset", dname))
         y0 = fig_h - head_h - i * (tile + gap_h) - tile
         for j, key in enumerate(cols):
             x0 = lab_w + j * (tile + gap_w)

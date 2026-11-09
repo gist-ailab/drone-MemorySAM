@@ -98,22 +98,144 @@ datasets:
         status: pending
         note: "weights and dumps on lab servers (unreachable since 2026-10-30); analysis inbox 20261102-131217"
 
+  # Fig. 3 (sensor failures), DELIVER test with depth removed at inference (tools/baseline_failure/bench_corrupt.py, seed 0);
+  # dumps: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/<model>_depth0/test/pred (analysis report 20261109-173559). Same classes, inputs and grouping as deliver.
+  deliver_s1:
+    split: test
+    n_images: 1897
+    classes_from: semseg/datasets/deliver.py
+    thin_classes: ['Pole', 'TrafficLight', 'Pedestrian', 'Static']
+    gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_test1024_dump_20261016/s902/test/gt
+    input_root: /mnt/HDD1/Workspace/dset/DELIVER
+    inputs:
+      rgb: []
+      depth: [[img/, depth/], [_rgb_, _depth_]]
+      event: [[img/, event/], [_rgb_, _event_]]
+      lidar: [[img/, lidar/], [_rgb_, _lidar_]]
+    group_rules:
+      - {contains: underexposure, group: low_exposure}
+      - {contains: overexposure, group: overexposure}
+      - {contains: motionblur, group: motionblur}
+      - {contains: lidarjitter, group: lidarjitter}
+      - {contains: eventlowres, group: eventlowres}
+      - {regex: '^img/([a-z]+)/', group: '\1'}
+    sequence_regex: '^img/[a-z]+/[a-z]+/([^/]+)/'
+    ours: A2s821
+    compare: [CMNeXt, CAFofficial, DGFofficial]
+    models:
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_depth0/test/pred}
+      CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_depth0/test/pred}
+      CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_depth0/test/pred, resize_from: 1024}
+      DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_depth0/test/pred, resize_from: 1024}
+
+  # Fig. 3 (sensor failures), DELIVER test with RGB removed at inference (tools/baseline_failure/bench_corrupt.py, seed 0);
+  # dumps: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/<model>_rgb0/test/pred (analysis report 20261109-173559). Same classes, inputs and grouping as deliver.
+  deliver_s2:
+    split: test
+    n_images: 1897
+    classes_from: semseg/datasets/deliver.py
+    thin_classes: ['Pole', 'TrafficLight', 'Pedestrian', 'Static']
+    gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_test1024_dump_20261016/s902/test/gt
+    input_root: /mnt/HDD1/Workspace/dset/DELIVER
+    inputs:
+      rgb: []
+      depth: [[img/, depth/], [_rgb_, _depth_]]
+      event: [[img/, event/], [_rgb_, _event_]]
+      lidar: [[img/, lidar/], [_rgb_, _lidar_]]
+    group_rules:
+      - {contains: underexposure, group: low_exposure}
+      - {contains: overexposure, group: overexposure}
+      - {contains: motionblur, group: motionblur}
+      - {contains: lidarjitter, group: lidarjitter}
+      - {contains: eventlowres, group: eventlowres}
+      - {regex: '^img/([a-z]+)/', group: '\1'}
+    sequence_regex: '^img/[a-z]+/[a-z]+/([^/]+)/'
+    ours: A2s821
+    compare: [CMNeXt, CAFofficial, DGFofficial]
+    models:
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_rgb0/test/pred}
+      CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_rgb0/test/pred}
+      CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_rgb0/test/pred, resize_from: 1024}
+      DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_rgb0/test/pred, resize_from: 1024}
+
+  # Fig. 3 (sensor failures), DELIVER test with LiDAR and event removed at inference (tools/baseline_failure/bench_corrupt.py, seed 0);
+  # dumps: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/<model>_lidarevent0/test/pred (analysis report 20261109-173559). Same classes, inputs and grouping as deliver.
+  deliver_s3:
+    split: test
+    n_images: 1897
+    classes_from: semseg/datasets/deliver.py
+    thin_classes: ['Pole', 'TrafficLight', 'Pedestrian', 'Static']
+    gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_test1024_dump_20261016/s902/test/gt
+    input_root: /mnt/HDD1/Workspace/dset/DELIVER
+    inputs:
+      rgb: []
+      depth: [[img/, depth/], [_rgb_, _depth_]]
+      event: [[img/, event/], [_rgb_, _event_]]
+      lidar: [[img/, lidar/], [_rgb_, _lidar_]]
+    group_rules:
+      - {contains: underexposure, group: low_exposure}
+      - {contains: overexposure, group: overexposure}
+      - {contains: motionblur, group: motionblur}
+      - {contains: lidarjitter, group: lidarjitter}
+      - {contains: eventlowres, group: eventlowres}
+      - {regex: '^img/([a-z]+)/', group: '\1'}
+    sequence_regex: '^img/[a-z]+/[a-z]+/([^/]+)/'
+    ours: A2s821
+    compare: [CMNeXt, CAFofficial, DGFofficial]
+    models:
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_lidarevent0/test/pred}
+      CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_lidarevent0/test/pred}
+      CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_lidarevent0/test/pred, resize_from: 1024}
+      DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_lidarevent0/test/pred, resize_from: 1024}
+
+  # Fig. 3 (sensor failures), DELIVER test with RGB with benchmark NM High noise at inference (tools/baseline_failure/bench_corrupt.py, seed 0);
+  # dumps: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/<model>_rgbnmhigh/test/pred (analysis report 20261109-173559). Same classes, inputs and grouping as deliver.
+  deliver_s4:
+    split: test
+    n_images: 1897
+    classes_from: semseg/datasets/deliver.py
+    thin_classes: ['Pole', 'TrafficLight', 'Pedestrian', 'Static']
+    gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/a2_test1024_dump_20261016/s902/test/gt
+    input_root: /mnt/HDD1/Workspace/dset/DELIVER
+    inputs:
+      rgb: []
+      depth: [[img/, depth/], [_rgb_, _depth_]]
+      event: [[img/, event/], [_rgb_, _event_]]
+      lidar: [[img/, lidar/], [_rgb_, _lidar_]]
+    group_rules:
+      - {contains: underexposure, group: low_exposure}
+      - {contains: overexposure, group: overexposure}
+      - {contains: motionblur, group: motionblur}
+      - {contains: lidarjitter, group: lidarjitter}
+      - {contains: eventlowres, group: eventlowres}
+      - {regex: '^img/([a-z]+)/', group: '\1'}
+    sequence_regex: '^img/[a-z]+/[a-z]+/([^/]+)/'
+    ours: A2s821
+    compare: [CMNeXt, CAFofficial, DGFofficial]
+    models:
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_rgbnmhigh/test/pred}
+      CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_rgbnmhigh/test/pred}
+      CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_rgbnmhigh/test/pred, resize_from: 1024}
+      DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_rgbnmhigh/test/pred, resize_from: 1024}
+
   muses:
     split: val                                       # test labels are not public
     n_images: 250
     classes_from: semseg/datasets/muses.py
     thin_classes: [pole, traffic light, traffic sign, person, rider, bicycle, motorcycle]
-    gt_source: null                                  # dataset lives on lab servers only; analysis dumps gt with the preds
-    input_root: null
+    gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/muses_a2m4_official_val_20261104/dump_s2_1536/pred/gt   # native 1080x1920 trainID, 255 ignore
+    input_root: /mnt/SSD2/dset/MUSES/frame_camera/val                     # cache of jarvis /SSDb/jemo_maeng/dset/MUSES (2026-11-09)
+    inputs:
+      rgb: []
     group_rules:
       - {regex: '(clear|fog|rain|snow).*(day|night)', group: '\1_\2'}
     sequence_regex: null
     ours: A2m4
-    compare: [DGFofficial, CAFofficial]
+    compare: [CAFofficial, DGFofficial]            # released weights, release order (no CMNeXt MUSES weights)
     models:
-      A2m4: {label: Ours, role: ours, status: pending, note: "MUSES 4-sensor paper model (DRN-261019-02) still training"}
-      DGFofficial: {label: DGFusion (official), role: baseline, status: pending, note: "analysis inbox 20261102-131217 item 3"}
-      CAFofficial: {label: CAFuser (official), role: baseline, status: pending, note: "same request"}
+      A2m4: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/muses_a2m4_official_val_20261104/dump_s2_1536/pred/pred, expected_miou: 81.76}
+      CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/muses_caf_official_val_20261109/dump/pred, expected_miou: 78.71}
+      DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/muses_dgf_official_val_dump_20261109/dump/pred, expected_miou: 79.72}
 
   mcubes:
     split: test

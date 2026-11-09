@@ -86,3 +86,21 @@ figures:
       - {label: Cloud, image: img/cloud/test/MAP_10_point92/044650_rgb_front}
       - {label: Night, image: img/night/test/MAP_10_point15/001350_rgb_front}
       - {label: Rain,  image: img/rain/test/MAP_10_point23_motionblur/097650_rgb_front}
+  fig_adverse_muses:              # main text: MUSES counterpart of fig_adverse_deliver (official val, real adverse conditions)
+    dataset: muses
+    columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]   # no released CMNeXt MUSES weights
+    rows:
+      - {label: Fog day,     pick: {group: fog_day,     kind: top, rank: 1}}
+      - {label: Fog night,   pick: {group: fog_night,   kind: top, rank: 1}}
+      - {label: Rain night,  pick: {group: rain_night,  kind: top, rank: 1}}
+      - {label: Snow night,  pick: {group: snow_night,  kind: top, rank: 1}}
+  fig_failure_deliver:            # main text Fig. 3: one row per corrupted-input setting (row dataset = deliver_s1..s4)
+    # row scene = the largest per-image gap (ours - best of CMNeXt/CAFuser/DGFusion) over the six weather/lighting groups of that setting
+    dataset: deliver_s1
+    columns: [rgb, gt, CMNeXt, CAFofficial, DGFofficial, A2s821]
+    rows:
+      - {label: "Depth removed", dataset: deliver_s1, image: img/night/test/MAP_7_point15/017700_rgb_front}   # night
+      - {label: "RGB removed", dataset: deliver_s2, image: img/night/test/MAP_7_point85/036400_rgb_front}   # night
+      - {label: "LiDAR+event removed", dataset: deliver_s3, image: img/sun/test/MAP_7_point11/1168350_rgb_front}   # sun
+      - {label: "RGB with heavy noise", dataset: deliver_s4, image: img/rain/test/MAP_7_point33/007950_rgb_front}   # rain (best scene was already the S3 row)
+
