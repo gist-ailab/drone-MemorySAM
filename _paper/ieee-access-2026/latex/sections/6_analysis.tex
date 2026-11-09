@@ -21,7 +21,7 @@ These measurements suggest that, on DELIVER, the dependence on depth comes mainl
 \end{figure}
 
 \subsection{What the High-Resolution Path Adds}
-The high-resolution path raises clean test mIoU by 1.15 points on average over three seeds (from 56.59 to 57.74 on the test split). Fig.~\ref{fig:thin} shows where the gain comes from. Averaged over the three seeds, Static gains 10.4 points, Pedestrian 3.8, TrafficSign 3.1, and Pole 2.1, and the four thin classes gain 3.0 points together (Table~\ref{tab:thin}). Table~\ref{tab:thin} compares every class with the released baselines. Our model is ahead of all three on 16 of the 25 classes, and on 15 of them every one of its three seeds is ahead. The largest margins are on Wall (+11.3 points), TrafficSign (+8.0), Water (+6.8), Truck (+5.5), and Static (+5.4). The stage columns of Table~\ref{tab:thin} show which part of the architecture produces each margin. On TrafficSign, Water, and Truck, the frozen DINOv3-L backbone with RGB alone is already ahead of all three four-sensor baselines (by 4.8, 3.7, and 3.2 points), so these margins come from the foundation features. On Building, Vegetation, Terrain, and Bus, RGB alone is behind the baselines, and adding the other three sensors with cross-modal fusion raises the score by 4.8, 6.1, 4.8, and 4.6 points; on Wall, where RGB alone is only 1.6 points ahead, fusion adds another 10.0. These margins come from the fusion of the sensors on top of the shared backbone. Training with the C2D2 scheme changes the score by less than 1.5 points on 20 of the 25 classes, in both directions, which matches its unchanged mean on clean inputs; its largest per-class gain is on Static (+4.0). On Static, SideWalk, Cars, and GroundRail, the model without the path is behind the best baseline in every seed, and the path turns this into a lead; on Static it adds 10.4 points. This matches what the path changes in the architecture: it computes features at stride 4 from the raw pixels, whereas every other input of the decoder is interpolated from stride-16 tokens (Section~\ref{sec:m_decoder}). Measured on the test set, the magnitude of its stride-4 features is 2.5 times higher on pixels of the four thin classes than on average over the image, against 0.93 for the tapped backbone features at the same level, and switching the path off at inference, a configuration not seen in training, costs the thin classes 2.2 times as much IoU as the other classes \todo{feature-magnitude figure from NAS analysis\_logs/hires\_viz\_a2s821\_20261104 after the verdict of DRN-261104-02; per-class split of the shared part needs the clean-trained and RGB-only models}. The baselines stay ahead on RailTrack, where DGFusion reaches 64.5 and our seeds vary between 26 and 57, and on the thin vertical classes TrafficLight, Pole, and Pedestrian, where CAFuser is best; the high-resolution path narrows the gap on Pole and Pedestrian but does not close it, and it widens the gap on TrafficLight (Section~\ref{sec:failure_tl}). On RailTrack and TrafficLight, RGB alone is ahead of every baseline (67.5 and 49.6) and the scores drop when the other three sensors are fused (51.3 and 38.7), so these two losses come from the fusion stage rather than from the backbone; both classes also vary strongly between seeds, and the RGB-only model has a single seed. The gain comes mainly from recall: for Pole the recall rises from 0.75 to 0.78 and for Pedestrian from 0.89 to 0.90 \todo{confirm these recall values (two seeds, NAS analysis\_logs/a2\_thin\_anatomy\_20261018/summary.md) through the analysis session before citing}. Two classes lose: TrafficLight by 4.1 points and RailTrack by 7.2. RailTrack varies strongly between seeds even without the path (58.5, 32.6, and 45.1 for the three seeds), so we do not interpret its change. The TrafficLight loss, in contrast, is systematic and is analysed next.
+The high-resolution path raises clean test mIoU by 1.15 points on average over three seeds (from 56.59 to 57.74 on the test split). Fig.~\ref{fig:thin} shows where the gain comes from. Averaged over the three seeds, Static gains 10.4 points, Pedestrian 3.8, TrafficSign 3.1, and Pole 2.1, and the four thin classes gain 3.0 points together (Table~\ref{tab:thin}). Table~\ref{tab:thin} compares every class with the released baselines. Our model is ahead of all three on 16 of the 25 classes, and on 15 of them every one of its three seeds is ahead. The largest margins are on Wall (+11.3 points), TrafficSign (+8.0), Water (+6.8), Truck (+5.5), and Static (+5.4). On Wall, TrafficSign, Truck, Water, Building, and Dynamic, the model without the path is already ahead of every baseline in all three seeds, by 9.2, 4.9, 4.4, 2.8, 1.8, and 1.2 points; Appendix~\ref{app:ladder} splits these margins over the stages of the model. On Static, SideWalk, Cars, and GroundRail, the model without the path is behind the best baseline in every seed, and the path turns this into a lead; on Static it adds 10.4 points. This matches what the path changes in the architecture: it computes features at stride 4 from the raw pixels, whereas every other input of the decoder is interpolated from stride-16 tokens (Section~\ref{sec:m_decoder}). Measured on the test set, the magnitude of its stride-4 features is 2.5 times higher on pixels of the four thin classes than on average over the image, against 0.93 for the tapped backbone features at the same level, and switching the path off at inference, a configuration not seen in training, costs the thin classes 2.2 times as much IoU as the other classes \todo{feature-magnitude figure from NAS analysis\_logs/hires\_viz\_a2s821\_20261104 after the verdict of DRN-261104-02; per-class split of the shared part needs the clean-trained and RGB-only models}. The baselines stay ahead on RailTrack, where DGFusion reaches 64.5 and our seeds vary between 26 and 57, and on the thin vertical classes TrafficLight, Pole, and Pedestrian, where CAFuser is best; the high-resolution path narrows the gap on Pole and Pedestrian but does not close it, and it widens the gap on TrafficLight (Section~\ref{sec:failure_tl}). Appendix~\ref{app:ladder} traces both losses to the stage where they appear. The gain comes mainly from recall: for Pole the recall rises from 0.75 to 0.78 and for Pedestrian from 0.89 to 0.90 \todo{confirm these recall values (two seeds, NAS analysis\_logs/a2\_thin\_anatomy\_20261018/summary.md) through the analysis session before citing}. Two classes lose: TrafficLight by 4.1 points and RailTrack by 7.2. RailTrack varies strongly between seeds even without the path (58.5, 32.6, and 45.1 for the three seeds), so we do not interpret its change. The TrafficLight loss, in contrast, is systematic and is analysed next.
 % Sources: per-class 3-seed CSV .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv (d_mean3 column);
 % thin-4 mean +3.04 and 24-class Δ +1.50: tasks/DRN-261018-01/analysis.md.
 
@@ -34,56 +34,53 @@ The high-resolution path raises clean test mIoU by 1.15 points on average over t
 \label{fig:thin}
 \end{figure}
 
-% Table perclass (user 2026-11-09): all 25 classes, DELIVER test, legal v2 axis, with the build-up of our model.
-% Baselines: NAS analysis_logs/baseline_official_dump_20261104/class_iou_official.csv (released weights).
-% RGB only s821 / clean four-sensor E1 s821+s902: NAS analysis_logs/perclass_e1_rgb_20261109/ (global confusion vs native GT, mIoU 55.14 / 55.94 / 56.86).
-% + C2D2 (Q2) and Ours (A2), 3 seeds: .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv.
-% Rows sorted by Delta = Ours - best released baseline; bold/underline = best/second in the row (hand-marked).
-\begin{table*}[t]
-\caption{Per-class IoU on the DELIVER test set (\%) for the released baselines and for each stage of our model, sorted by the margin of ours over the best released baseline (last column).}
+% Table perclass (user 2026-11-09): all 25 classes, DELIVER test, legal v2 axis.
+% Baselines: NAS analysis_logs/baseline_official_dump_20261104/class_iou_official.csv (released weights, 1024 prediction -> native GT nearest).
+% Ours: .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv (a2* = Ours, q2* = w/o high-res), 3-seed means.
+% Rows sorted by Delta = Ours - best released baseline; bold/underline = best/second in the row (hand-marked, not mark_best.py).
+\begin{table}[t]
+\caption{Per-class IoU on the DELIVER test set (\%), sorted by the margin of ours over the best released baseline (last column).}
 \label{tab:thin}
 \centering\tabsetup
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccccccc@{}}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccccc@{}}
 \toprule
- & \multicolumn{3}{c}{Released baselines$^{\ast}$} & \multicolumn{4}{c}{Our model, built up stage by stage} & \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-8}
-Class & CMNeXt & CAFuser & DGFusion & RGB only & + three sensors, & + C2D2 & + high-res & $\Delta$ \\
- & & & & & fusion & training & path (Ours) & \\
+Class & CMNeXt$^{\ast}$ & CAFuser$^{\ast}$ & DGFusion$^{\ast}$ & Ours w/o & Ours & $\Delta$ \\
+ & & & & high-res & & \\
 \midrule
-\multicolumn{9}{@{}l}{\emph{(a) Ours ahead of every released baseline (16 classes)}} \\
-Wall & 3.72 & 2.82 & 4.03 & 5.59 & \best{15.58} & 13.20 & \second{15.31} & +11.28 \\
-TrafficSign & 38.37 & 45.57 & 45.14 & 50.35 & 49.79 & \second{50.46} & \best{53.54} & +7.97 \\
-Water & 2.02 & 0.17 & 0.00 & 5.75 & \second{6.21} & 4.79 & \best{8.80} & +6.77 \\
-Truck & 77.43 & 89.35 & 89.15 & 92.53 & \second{94.48} & 93.73 & \best{94.90} & +5.54 \\
-Static & 31.26 & 33.91 & \second{38.36} & 34.35 & 29.34 & 33.36 & \best{43.71} & +5.36 \\
-TwoWheeler & 61.83 & 68.95 & 65.96 & 64.12 & 67.59 & \second{69.02} & \best{71.69} & +2.75 \\
-Dynamic & 6.78 & 7.28 & 8.55 & 7.42 & 8.61 & \second{9.77} & \best{10.69} & +2.14 \\
-Terrain & 59.75 & 68.96 & 63.59 & 63.57 & 68.41 & \second{69.05} & \best{70.89} & +1.94 \\
-Building & 87.45 & 86.89 & 87.55 & 85.13 & \best{89.91} & \second{89.36} & 89.34 & +1.79 \\
-Road & 96.47 & 96.67 & 96.52 & 96.76 & \second{97.25} & 97.21 & \best{97.67} & +0.99 \\
-RoadLine & 81.42 & 77.08 & 77.50 & 80.99 & 81.64 & \second{82.06} & \best{82.36} & +0.94 \\
-GroundRail & 77.23 & 79.56 & \second{80.59} & 76.82 & 80.20 & 80.23 & \best{81.49} & +0.90 \\
-Bus & 94.34 & 93.69 & 94.18 & 89.64 & 94.25 & \second{94.35} & \best{95.08} & +0.75 \\
-Vegetation & 82.46 & 83.75 & 83.56 & 77.46 & 83.55 & \second{83.86} & \best{84.49} & +0.74 \\
-SideWalk$^{\S}$ & 67.64 & \second{78.49} & 78.06 & 74.75 & 76.04 & 76.11 & \best{78.85} & +0.36 \\
-Cars & 93.74 & 94.40 & \second{94.61} & 90.54 & 93.93 & 93.89 & \best{94.80} & +0.19 \\
+\multicolumn{7}{@{}l}{\emph{(a) Ours ahead of every released baseline (16 classes)}} \\
+Wall & 3.72 & 2.82 & 4.03 & \second{13.20} & \best{15.31} & +11.28 \\
+TrafficSign & 38.37 & 45.57 & 45.14 & \second{50.46} & \best{53.54} & +7.97 \\
+Water & 2.02 & 0.17 & 0.00 & \second{4.79} & \best{8.80} & +6.77 \\
+Truck & 77.43 & 89.35 & 89.15 & \second{93.73} & \best{94.90} & +5.54 \\
+Static & 31.26 & 33.91 & \second{38.36} & 33.36 & \best{43.71} & +5.36 \\
+TwoWheeler & 61.83 & 68.95 & 65.96 & \second{69.02} & \best{71.69} & +2.75 \\
+Dynamic & 6.78 & 7.28 & 8.55 & \second{9.77} & \best{10.69} & +2.14 \\
+Terrain & 59.75 & 68.96 & 63.59 & \second{69.05} & \best{70.89} & +1.94 \\
+Building & 87.45 & 86.89 & 87.55 & \best{89.36} & \second{89.34} & +1.79 \\
+Road & 96.47 & 96.67 & 96.52 & \second{97.21} & \best{97.67} & +0.99 \\
+RoadLine & 81.42 & 77.08 & 77.50 & \second{82.06} & \best{82.36} & +0.94 \\
+GroundRail & 77.23 & 79.56 & \second{80.59} & 80.23 & \best{81.49} & +0.90 \\
+Bus & 94.34 & 93.69 & 94.18 & \second{94.35} & \best{95.08} & +0.75 \\
+Vegetation & 82.46 & 83.75 & 83.56 & \second{83.86} & \best{84.49} & +0.74 \\
+SideWalk$^{\S}$ & 67.64 & \second{78.49} & 78.06 & 76.11 & \best{78.85} & +0.36 \\
+Cars & 93.74 & 94.40 & \second{94.61} & 93.89 & \best{94.80} & +0.19 \\
 \midrule
-\multicolumn{9}{@{}l}{\emph{(b) A released baseline ahead (9 classes)}} \\
-Bridge & \best{0.03} & 0.00 & 0.00 & 0.00 & \best{0.03} & \second{0.02} & 0.01 & $-$0.02 \\
-Sky & 97.15 & \best{98.20} & 97.99 & 95.27 & 97.95 & 97.97 & \second{98.15} & $-$0.05 \\
-Ground & 4.38 & 5.68 & \second{7.24} & 6.31 & 5.67 & \best{7.64} & 6.78 & $-$0.46 \\
-Pedestrian & 76.64 & \second{82.93} & \best{83.06} & 69.14 & 77.36 & 76.94 & 80.74 & $-$2.31 \\
-Fence & 48.04 & \second{52.59} & \best{53.59} & 44.67 & 48.70 & 49.69 & 50.46 & $-$3.13 \\
-Other & 5.76 & \best{7.65} & \second{7.22} & 0.95 & 1.70 & 3.11 & 3.99 & $-$3.67 \\
-Pole & 48.39 & \best{60.64} & \second{55.65} & 49.35 & 51.87 & 51.94 & 54.08 & $-$6.56 \\
-TrafficLight & 31.96 & \second{46.21} & 41.14 & \best{49.59} & 38.72 & 41.67 & 37.52 & $-$8.68 \\
-RailTrack & 34.22 & 33.00 & \second{64.46} & \best{67.49} & 51.28 & 45.41 & 38.25 & $-$26.21 \\
+\multicolumn{7}{@{}l}{\emph{(b) A released baseline ahead (9 classes)}} \\
+Bridge & \best{0.03} & 0.00 & 0.00 & \second{0.02} & 0.01 & $-$0.02 \\
+Sky & 97.15 & \best{98.20} & 97.99 & 97.97 & \second{98.15} & $-$0.05 \\
+Ground & 4.38 & 5.68 & \second{7.24} & \best{7.64} & 6.78 & $-$0.46 \\
+Pedestrian & 76.64 & \second{82.93} & \best{83.06} & 76.94 & 80.74 & $-$2.31 \\
+Fence & 48.04 & \second{52.59} & \best{53.59} & 49.69 & 50.46 & $-$3.13 \\
+Other & 5.76 & \best{7.65} & \second{7.22} & 3.11 & 3.99 & $-$3.67 \\
+Pole & 48.39 & \best{60.64} & \second{55.65} & 51.94 & 54.08 & $-$6.56 \\
+TrafficLight & 31.96 & \best{46.21} & 41.14 & \second{41.67} & 37.52 & $-$8.68 \\
+RailTrack & 34.22 & 33.00 & \best{64.46} & \second{45.41} & 38.25 & $-$26.21 \\
 \midrule
-mIoU & 52.34 & 55.78 & 56.71 & 55.14 & 56.40 & 56.59 & 57.74 & +1.04 \\
+mIoU & 52.34 & 55.78 & 56.71 & 56.59 & 57.74 & +1.04 \\
 \bottomrule
 \end{tabular*}
-\tabnotewide{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Our stages: frozen DINOv3-L with LoRA on RGB only (one seed); all four sensors with cross-modal fusion, clean training (mean of two seeds); the same model trained with the C2D2 scheme (three seeds); and the full model with the high-resolution path (three seeds). In (a), every seed of the full model is ahead of the best baseline except where marked $^{\S}$. Bold: best in the row; underline: second.}
-\end{table*}
+\tabnote{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Ours: mean of three seeds; in (a), every seed of ours is ahead of the best baseline except where marked $^{\S}$. Bold: best in the row; underline: second.}
+\end{table}
 
 \subsection{Failure Case: Posters Read as Traffic Lights}\label{sec:failure_tl}
 With the high-resolution path, the recall of TrafficLight rises (0.80 to 0.85) but its precision falls (0.46 to 0.41) \todo{same confirmation as above}. Fig.~\ref{fig:failure} shows where the extra false positives appear. In the scenes with the largest increase, billboards and posters, labelled as \emph{Other}, are painted as traffic lights, and in one rainy scene a traffic sign is. The two classes share fine structure, a small bright rectangular shape on a pole or a wall, but differ in context. Because the high-resolution features are added to every pyramid level without a gate, fine detail reaches the dense per-pixel classifier directly, and the classifier can follow the detail without enough context. This mechanism is a hypothesis that our measurements are consistent with but do not prove; we discuss a remedy in Section~\ref{sec:conclusion}.

@@ -65,3 +65,58 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \caption{Thin classes on the DELIVER test set: for each of Pole, TrafficLight, Pedestrian, and Static, the image where the class IoU of ours most exceeds that of the best other method (at least 400 ground-truth pixels of the class). Numbers give per-image mIoU over all classes (\%).}
 \label{fig:thin_scenes}
 \end{figure*}
+
+\section{Per-Class Build-Up of Our Model}
+\label{app:ladder}
+Table~\ref{tab:ladder} adds the intermediate stages of our model to Table~\ref{tab:thin} and shows which part of the architecture produces each margin. On TrafficSign, Water, and Truck, the frozen DINOv3-L backbone with RGB alone is already ahead of all three four-sensor baselines (by 4.8, 3.7, and 3.2 points), so these margins come from the foundation features. On Building, Vegetation, Terrain, and Bus, RGB alone is behind the baselines, and adding the other three sensors with cross-modal fusion raises the score by 4.8, 6.1, 4.8, and 4.6 points; on Wall, where RGB alone is only 1.6 points ahead, fusion adds another 10.0. These margins come from the fusion of the sensors on top of the shared backbone. Training with the C2D2 scheme changes the score by less than 1.5 points on 20 of the 25 classes, in both directions, which matches its unchanged mean on clean inputs; its largest per-class gain is on Static (+4.0). On RailTrack and TrafficLight, RGB alone is ahead of every baseline (67.5 and 49.6) and the scores drop when the other three sensors are fused (51.3 and 38.7), so these two losses come from the fusion stage rather than from the backbone. Both classes vary strongly between seeds, and the RGB-only model has a single seed, so these per-stage differences are indicative only.
+
+% Table perclass (user 2026-11-09): all 25 classes, DELIVER test, legal v2 axis, with the build-up of our model.
+% Baselines: NAS analysis_logs/baseline_official_dump_20261104/class_iou_official.csv (released weights).
+% RGB only s821 / clean four-sensor E1 s821+s902: NAS analysis_logs/perclass_e1_rgb_20261109/ (global confusion vs native GT, mIoU 55.14 / 55.94 / 56.86).
+% + C2D2 (Q2) and Ours (A2), 3 seeds: .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv.
+% Rows sorted by Delta = Ours - best released baseline; bold/underline = best/second in the row (hand-marked).
+\begin{table*}[t]
+\caption{Per-class IoU on the DELIVER test set (\%) for the released baselines and for each stage of our model, sorted as in Table~\ref{tab:thin}.}
+\label{tab:ladder}
+\centering\tabsetup
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccccccc@{}}
+\toprule
+ & \multicolumn{3}{c}{Released baselines$^{\ast}$} & \multicolumn{4}{c}{Our model, built up stage by stage} & \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-8}
+Class & CMNeXt & CAFuser & DGFusion & RGB only & + three sensors, & + C2D2 & + high-res & $\Delta$ \\
+ & & & & & fusion & training & path (Ours) & \\
+\midrule
+\multicolumn{9}{@{}l}{\emph{(a) Ours ahead of every released baseline (16 classes)}} \\
+Wall & 3.72 & 2.82 & 4.03 & 5.59 & \best{15.58} & 13.20 & \second{15.31} & +11.28 \\
+TrafficSign & 38.37 & 45.57 & 45.14 & 50.35 & 49.79 & \second{50.46} & \best{53.54} & +7.97 \\
+Water & 2.02 & 0.17 & 0.00 & 5.75 & \second{6.21} & 4.79 & \best{8.80} & +6.77 \\
+Truck & 77.43 & 89.35 & 89.15 & 92.53 & \second{94.48} & 93.73 & \best{94.90} & +5.54 \\
+Static & 31.26 & 33.91 & \second{38.36} & 34.35 & 29.34 & 33.36 & \best{43.71} & +5.36 \\
+TwoWheeler & 61.83 & 68.95 & 65.96 & 64.12 & 67.59 & \second{69.02} & \best{71.69} & +2.75 \\
+Dynamic & 6.78 & 7.28 & 8.55 & 7.42 & 8.61 & \second{9.77} & \best{10.69} & +2.14 \\
+Terrain & 59.75 & 68.96 & 63.59 & 63.57 & 68.41 & \second{69.05} & \best{70.89} & +1.94 \\
+Building & 87.45 & 86.89 & 87.55 & 85.13 & \best{89.91} & \second{89.36} & 89.34 & +1.79 \\
+Road & 96.47 & 96.67 & 96.52 & 96.76 & \second{97.25} & 97.21 & \best{97.67} & +0.99 \\
+RoadLine & 81.42 & 77.08 & 77.50 & 80.99 & 81.64 & \second{82.06} & \best{82.36} & +0.94 \\
+GroundRail & 77.23 & 79.56 & \second{80.59} & 76.82 & 80.20 & 80.23 & \best{81.49} & +0.90 \\
+Bus & 94.34 & 93.69 & 94.18 & 89.64 & 94.25 & \second{94.35} & \best{95.08} & +0.75 \\
+Vegetation & 82.46 & 83.75 & 83.56 & 77.46 & 83.55 & \second{83.86} & \best{84.49} & +0.74 \\
+SideWalk$^{\S}$ & 67.64 & \second{78.49} & 78.06 & 74.75 & 76.04 & 76.11 & \best{78.85} & +0.36 \\
+Cars & 93.74 & 94.40 & \second{94.61} & 90.54 & 93.93 & 93.89 & \best{94.80} & +0.19 \\
+\midrule
+\multicolumn{9}{@{}l}{\emph{(b) A released baseline ahead (9 classes)}} \\
+Bridge & \best{0.03} & 0.00 & 0.00 & 0.00 & \best{0.03} & \second{0.02} & 0.01 & $-$0.02 \\
+Sky & 97.15 & \best{98.20} & 97.99 & 95.27 & 97.95 & 97.97 & \second{98.15} & $-$0.05 \\
+Ground & 4.38 & 5.68 & \second{7.24} & 6.31 & 5.67 & \best{7.64} & 6.78 & $-$0.46 \\
+Pedestrian & 76.64 & \second{82.93} & \best{83.06} & 69.14 & 77.36 & 76.94 & 80.74 & $-$2.31 \\
+Fence & 48.04 & \second{52.59} & \best{53.59} & 44.67 & 48.70 & 49.69 & 50.46 & $-$3.13 \\
+Other & 5.76 & \best{7.65} & \second{7.22} & 0.95 & 1.70 & 3.11 & 3.99 & $-$3.67 \\
+Pole & 48.39 & \best{60.64} & \second{55.65} & 49.35 & 51.87 & 51.94 & 54.08 & $-$6.56 \\
+TrafficLight & 31.96 & \second{46.21} & 41.14 & \best{49.59} & 38.72 & 41.67 & 37.52 & $-$8.68 \\
+RailTrack & 34.22 & 33.00 & \second{64.46} & \best{67.49} & 51.28 & 45.41 & 38.25 & $-$26.21 \\
+\midrule
+mIoU & 52.34 & 55.78 & 56.71 & 55.14 & 56.40 & 56.59 & 57.74 & +1.04 \\
+\bottomrule
+\end{tabular*}
+\tabnotewide{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Our stages: frozen DINOv3-L with LoRA on RGB only (one seed); all four sensors with cross-modal fusion, clean training (mean of two seeds); the same model trained with the C2D2 scheme (three seeds); and the full model with the high-resolution path (three seeds). In (a), every seed of the full model is ahead of the best baseline except where marked $^{\S}$. Bold: best in the row; underline: second.}
+\end{table*}
