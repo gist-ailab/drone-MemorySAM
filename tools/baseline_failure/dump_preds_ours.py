@@ -44,7 +44,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from tools.baseline_failure import common  # noqa: E402
+from tools.baseline_failure import bench_corrupt, common  # noqa: E402
 
 
 def _unpad_resize_conf(conf, orig_h, orig_w, model_size):
@@ -77,6 +77,10 @@ def main():
     ap.add_argument("--out", required=True, help="덤프 루트(<out>/<split>/... 생성)")
     ap.add_argument("--batch", type=int, default=1,
                     help="legal 프로토콜은 BS1 — 기본 1 유지 권장")
+    ap.add_argument("--corrupt", choices=list(bench_corrupt.SETTINGS), default="none",
+                    help="입력 손상 설정 (기본 none)")
+    ap.add_argument("--corrupt-seed", type=int, default=0,
+                    help="입력 손상용 CPU 난수 시드")
     ap.add_argument("--expected-miou", type=float, default=None,
                     help="등록 수치. 주면 ±--tol 밖일 때 exit≠0")
     ap.add_argument("--tol", type=float, default=0.05)
@@ -96,6 +100,8 @@ def main():
     args = ap.parse_args()
     if args.arch == "cmnext" and (args.hires != "on" or args.path != "both"):
         ap.error("--arch cmnext requires --hires on and --path both")
+    if args.corrupt == "rgbnmhigh" and args.batch != 1:
+        ap.error("--corrupt rgbnmhigh requires --batch 1")
 
     # val.py 는 무거운 top-level import 를 가지므로 여기서 지연 import.
     import val as valmod
@@ -174,10 +180,14 @@ def main():
     hist = np.zeros((n_classes, n_classes), dtype=np.int64)
     n_saved = 0
     seen_ids = set()
+    gen = torch.Generator().manual_seed(args.corrupt_seed)
 
     with torch.no_grad():
         for images, labels, metas in tqdm(loader, desc=f"dump ours [{mode}]"):
             images = [x.to(device) for x in images]
+            if args.corrupt != "none":
+                images = bench_corrupt.apply_normalized(
+                    images, cfg["DATASET"]["MODALS"], args.corrupt, gen)
             if args.arch == "cmnext":
                 output = model(images)
             else:
@@ -246,6 +256,8 @@ def main():
         "split": mode,
         "model_path": str(args.model_path),
         "cfg": str(args.cfg),
+        "corrupt": args.corrupt,
+        "corrupt_seed": args.corrupt_seed,
         "hires_infer_mode": args.hires,
         "num_images": n_saved,
         "expected_count": common.EXPECTED_COUNTS.get(mode),
