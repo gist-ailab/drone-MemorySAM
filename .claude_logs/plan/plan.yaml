@@ -14470,6 +14470,76 @@ items:
   verdict: null
   analysis: null
   superseded_by: null
+- id: DRN-261109-01
+  title: MUSES 2센서 RGB+LiDAR C2D2(보충자료) — MM SAM-adapter 동일 센서 비교, 교사 clean 100ep
+    → C2D2 100ep, s2
+  question: 같은 두 센서(RGB+LiDAR)에서 우리 방법(동결 DINOv3-L+센서별 LoRA+교차 모달+고해상 경로, C2D2 학습)이
+    MM SAM-adapter(RGB+LiDAR test 81.07)와 비교해 어떤가
+  hypothesis: 4센서 C2D2 가 test 80.01 이므로 RGB+LiDAR 2센서도 MM SAM-adapter 81.07 근처 이상
+  falsification: test < 81.07 − 1.0 이면 4센서 우위가 센서 수 덕분이라는 반론을 인정하고 보충자료에 명시
+  change: DATASET.MODALS = [img, lidar] (4센서 논문 모델 대비 센서만 2개로), EPOCHS 100(MM SAM-adapter
+    학습 조건 arXiv 2509.10408 p9 §3.3.2 에 맞춤, user 2026-11-09)
+  baseline: MM SAM-adapter RGB+LiDAR MUSES test 81.07 (arXiv 2509.10408 Table 6·8,
+    공식 서버)
+  configs: []
+  launch: null
+  success_criteria: MUSES 공식 test(user 제출) 값을 보충자료 표에 보고. test ≥ 81.07 이면 같은 센서에서도
+    우위, 미만이면 그대로 보고
+  sample_basis: 1시드(s2) — 본문 4센서 test 제출과 같은 방식, 공식 서버 1회 제출
+  expected_cost: yeon 교사 clean 100ep(DDP) + C2D2 100ep(DDP), 조합당 약 3~4일(24GB 카드, 768
+    크롭 학생)
+  priority: 1
+  owner_role: manager
+  status: running
+  kind: experiment
+  tags:
+  - muses
+  - supplementary
+  - 2sensor
+  - rgbl
+  created: '2026-11-09'
+  updated: '2026-11-09'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261109-02
+  title: MUSES 2센서 RGB+Event C2D2(보충자료) — MM SAM-adapter 동일 센서 비교, 교사 clean 100ep
+    → C2D2 100ep, s2
+  question: 같은 두 센서(RGB+Event)에서 우리 방법(동결 DINOv3-L+센서별 LoRA+교차 모달+고해상 경로, C2D2 학습)이
+    MM SAM-adapter(RGB+Event test 79.92)와 비교해 어떤가
+  hypothesis: 4센서 C2D2 가 test 80.01 이므로 RGB+Event 2센서도 MM SAM-adapter 79.92 근처 이상
+  falsification: test < 79.92 − 1.0 이면 4센서 우위가 센서 수 덕분이라는 반론을 인정하고 보충자료에 명시
+  change: DATASET.MODALS = [img, event] (4센서 논문 모델 대비 센서만 2개로), EPOCHS 100(MM SAM-adapter
+    학습 조건 arXiv 2509.10408 p9 §3.3.2 에 맞춤, user 2026-11-09)
+  baseline: MM SAM-adapter RGB+Event MUSES test 79.92 (arXiv 2509.10408 Table 6·8,
+    공식 서버)
+  configs: []
+  launch: null
+  success_criteria: MUSES 공식 test(user 제출) 값을 보충자료 표에 보고. test ≥ 79.92 이면 같은 센서에서도
+    우위, 미만이면 그대로 보고
+  sample_basis: 1시드(s2) — 본문 4센서 test 제출과 같은 방식, 공식 서버 1회 제출
+  expected_cost: yeon 교사 clean 100ep(DDP) + C2D2 100ep(DDP), 조합당 약 3~4일(24GB 카드, 768
+    크롭 학생)
+  priority: 1
+  owner_role: manager
+  status: running
+  kind: experiment
+  tags:
+  - muses
+  - supplementary
+  - 2sensor
+  - rgbe
+  created: '2026-11-09'
+  updated: '2026-11-09'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
