@@ -14452,7 +14452,7 @@ items:
     8파일 아님)'
   priority: 1
   owner_role: analysis
-  status: queued
+  status: evaluating
   kind: analysis
   tags:
   - mcubes
@@ -14463,7 +14463,7 @@ items:
   - eval-only
   docs: .claude_logs/tasks/DRN-261105-02
   created: '2026-11-05'
-  updated: '2026-11-05'
+  updated: '2026-11-09'
   closed: null
   runs: []
   results: []
