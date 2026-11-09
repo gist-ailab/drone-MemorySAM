@@ -217,3 +217,11 @@
 | TrafficLight · 31.96 · 46.21 · 41.14 · 41.67 · 37.52 · -8.68 |
 | RailTrack · 34.22 · 33.00 · 64.46 · 45.41 · 38.25 · -26.21 |
 | mIoU · 52.34 · 55.78 · 56.71 · 56.59 · 57.74 · +1.04 |
+
+## 6절 클래스별 구조 해석 문장 (2026-11-09 user)
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| 고해상 경로 없이도 3시드 모두 앞선 클래스와 격차 | Wall 9.2 · TrafficSign 4.9 · Truck 4.4 · Water 2.8 · Building 1.8 · Dynamic 1.2 (Ours w/o high-res 3시드 평균 − 기준선 최고) | tab:thin 열 계산(paper 세션 decomp.py, 기준선 CSV + DRN-261018-01 CSV) | ✅ |
+| 고해상 경로가 앞서게 만든 클래스 | Static·SideWalk·Cars·GroundRail (w/o 는 3시드 모두 기준선 아래, 경로 추가 후 평균이 기준선 위), Static +10.36 | 같은 계산 | ✅ |
+| 특징 크기 집중도 · 끄기 비율 | (d) 고해상 2.52 vs (c) 탭 0.93 · 얇은4 Δ20.45 / 나머지 9.24 = 2.21 | `.claude_logs/tasks/DRN-261104-02/analysis.md` H-V1·H-V2 (A2 s821, test 1897) | ⚠️ 판정 대기(method) |
+
