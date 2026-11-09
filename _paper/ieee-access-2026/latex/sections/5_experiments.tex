@@ -207,8 +207,9 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 % -> analysis request inbox 20261027-182054 item 2.
 \begin{figure*}[t]
 \centering
-\phbox{5.2cm}{Fig.~3 when a sensor fails: rows = depth missing / RGB missing / LiDAR+event missing / RGB with heavy noise; columns = affected input, ground truth, CMNeXt, CAFuser, DGFusion, ours; error pixels in one colour}
-\caption{Qualitative comparison on the DELIVER test set when a sensor fails. Rows: depth missing, RGB missing, LiDAR and event missing, and RGB with heavy noise. Columns: affected input, ground truth, CMNeXt, CAFuser, DGFusion, and ours. Each row shows the scene where ours most exceeds the best other method in per-image mIoU, with no repeated sequence.}
+\includegraphics[width=\textwidth]{figures/fig_failure_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Qualitative comparison on the DELIVER test set when a sensor fails. Rows: depth missing, RGB missing, LiDAR and event missing, and RGB with heavy noise. Columns: RGB input (the clean image, shown for reference), ground truth, CMNeXt, CAFuser, and DGFusion (released weights), and ours. The failure is applied at inference only, after normalization (zero-fill; heavy noise = salt-and-pepper 0.2 followed by Gaussian $\sigma$ 0.5 on RGB, the strongest level of~\cite{mmssbench2025}). Each row shows the scene where ours most exceeds the best other method in per-image mIoU under that failure. Faded pixels agree with the ground truth; numbers give per-image mIoU (\%).}
 \label{fig:failure_scenarios}
 \end{figure*}
 

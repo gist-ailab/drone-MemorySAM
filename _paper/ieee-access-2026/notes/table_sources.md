@@ -262,3 +262,11 @@
 |---|---|---|---|
 | Ours test | 80.01 (80.012) | 공식 평가 서버, user 제출 2026-11-09. zip NAS `submission_muses/muses_A2m4_s2_1536_20261109.zip`(md5 287e04e1…, s2 epoch40_80.56, 1536). 조건별: clear 79.86 · fog 79.23 · rain 79.34 · snow 78.84 · day 81.97 · night 75.83 | ✅ (1회 제출, 시드 s2) |
 
+## Fig.6 depth 의존도 재측정 (2026-11-09, 모든 곡선 test)
+| 곡선 | Sun·Cloud·Rain·Fog·Night·Low exp. 하락 | 출처 | 상태 |
+|---|---|---|---|
+| Ours w/o C2D2 (E1 40ep clean, 고해상 없음, s821·s902 평균) | 14.6 · 14.8 · 14.3 · 14.4 · 17.9 · 25.0 | NAS r1_corrupt_dump_20261109/e1s8xx_depth0 vs perclass_e1_rgb_20261109 clean, 조건별 전역 혼동행렬(paper fig6_calc.py) | ✅ |
+| Ours (A2 전체 모델, s821·s902 평균) | 1.0 · 1.3 · 1.1 · 0.4 · 4.7 · 8.9 | r1 a2s8xx_depth0 vs 정성 은행 A2s821·A2s902 clean | ✅ (s903 clean 덤프 은행에 없음 → 2시드) |
+| DGFusion (reproduced) | 23.1 · 24.9 · 27.6 · 25.9 · 32.6 · 37.1 | judgment-ledger:112 (test) | ✅ 기존 |
+| 본문 '이전 val 측정' 3.4~13.4 | Q2(C2D2, 고해상 없음) val | judgment-ledger 2026-09-29 행 | ⚠️ val |
+

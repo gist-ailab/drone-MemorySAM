@@ -123,7 +123,7 @@ datasets:
     ours: A2s821
     compare: [CMNeXt, CAFofficial, DGFofficial]
     models:
-      A2s821: {label: Ours, role: ours, status: pending, note: "analysis R1 (levine), ETA 2026-11-09 19:15"}
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_depth0/test/pred}
       CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_depth0/test/pred}
       CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_depth0/test/pred, resize_from: 1024}
       DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_depth0/test/pred, resize_from: 1024}
@@ -153,7 +153,7 @@ datasets:
     ours: A2s821
     compare: [CMNeXt, CAFofficial, DGFofficial]
     models:
-      A2s821: {label: Ours, role: ours, status: pending, note: "analysis R1 (levine), ETA 2026-11-09 19:15"}
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_rgb0/test/pred}
       CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_rgb0/test/pred}
       CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_rgb0/test/pred, resize_from: 1024}
       DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_rgb0/test/pred, resize_from: 1024}
@@ -183,7 +183,7 @@ datasets:
     ours: A2s821
     compare: [CMNeXt, CAFofficial, DGFofficial]
     models:
-      A2s821: {label: Ours, role: ours, status: pending, note: "analysis R1 (levine), ETA 2026-11-09 19:15"}
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_lidarevent0/test/pred}
       CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_lidarevent0/test/pred}
       CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_lidarevent0/test/pred, resize_from: 1024}
       DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_lidarevent0/test/pred, resize_from: 1024}
@@ -213,7 +213,7 @@ datasets:
     ours: A2s821
     compare: [CMNeXt, CAFofficial, DGFofficial]
     models:
-      A2s821: {label: Ours, role: ours, status: pending, note: "analysis R1 (levine), ETA 2026-11-09 19:15"}
+      A2s821: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/a2s821_rgbnmhigh/test/pred}
       CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/cmnext_rgbnmhigh/test/pred}
       CAFofficial: {label: CAFuser, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/caf_rgbnmhigh/test/pred, resize_from: 1024}
       DGFofficial: {label: DGFusion, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/r1_corrupt_dump_20261109/dgf_rgbnmhigh/test/pred, resize_from: 1024}
