@@ -1,0 +1,42 @@
+# 공개 CMNeXt MiT-B2 RGB-D-E-L DELIVER 가중치(md5 e3ba84b58cf38b22117a82adf17c61c6) legal v2 덤프 — levine(RTX 3090) 2026-11-09. 원본 = configs/eval/cmnext_b2_deliver_official_eval1024_dronedemo.yaml, 바뀐 키 = DATASET.ROOT/TEST.FILE.
+# 원본 전처리(RGB ImageNet 정규화, 나머지 센서 /255, Resize 1024)는 NORM_ALL_MODALS 미설정 시 get_val_augmentation과 같다.
+DEVICE: cuda
+
+MODEL:
+  NAME: CMNeXt
+  BACKBONE: CMNeXt-B2
+
+DATASET:
+  NAME: DELIVER
+  ROOT: '/SSDe/jemo_maeng/dset/DELIVER'
+  IGNORE_LABEL: 255
+  MODALS: ['img', 'depth', 'event', 'lidar']
+  RGB_SUBROOT: null
+  THERMAL_SUBROOT: null
+  LIDAR_SUBROOT: null
+  NIGHT_TRANSLATION: false
+  DGFUSION_AUG: true
+  PHYSAUG:
+    ENABLE: false
+    P: 0.40
+    FILTER:
+      ENABLE: true
+      SIGMA_RANGE: [0.0, 1.5]
+      KERNEL_SIZE: 3
+    FOURIER:
+      ENABLE: true
+      GROUPS: [1, 513]
+      PHASES: [0.0, 1.0]
+      GRANULARITY: 256
+      MEAN_STR: 8.0
+      DECAY: 0.3
+
+EVAL:
+  MODEL_PATH: ''
+  IMAGE_SIZE: [1024, 1024]
+  BATCH_SIZE: 1
+
+TEST:
+  MODEL_PATH: ''
+  FILE: '/SSDe/jemo_maeng/dset/DELIVER'
+  IMAGE_SIZE: [1024, 1024]

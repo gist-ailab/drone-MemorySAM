@@ -16,6 +16,9 @@ from pycocotools import mask as mask_utils
 PRED = sys.argv[1]
 GT_ROOT = sys.argv[2]          # .../muses/gt_semantic
 OUT = sys.argv[3]
+# (선택) 4번째 인자 = 예측·GT PNG 저장 루트. tools/muses_dump_preds.py 와 같은 배치:
+#   <SAVE>/pred/<weather>/<tod>/<stem>.png · <SAVE>/gt/<weather>/<tod>/<stem>.png (trainID uint8, 빈 화소 255).
+SAVE = sys.argv[4] if len(sys.argv) > 4 else None
 
 CLASSES = ["road", "sidewalk", "building", "wall", "fence", "pole", "traffic light", "traffic sign",
            "vegetation", "terrain", "sky", "person", "rider", "car", "truck", "bus", "train",
@@ -56,6 +59,11 @@ for fn in sorted(by_img):
     hc = hist_cond.setdefault(cond, np.zeros((N, N), dtype=np.int64))
     hc += h[:, :N]
     n_cond[cond] += 1
+    if SAVE:
+        for sub, arr in (("pred", pred), ("gt", gt)):
+            d = os.path.join(SAVE, sub, weather, tod)
+            os.makedirs(d, exist_ok=True)
+            Image.fromarray(arr.astype(np.uint8)).save(os.path.join(d, stem + ".png"))
 
 
 def per_class(h):
