@@ -256,3 +256,9 @@
 | RailTrack · 34.22 · 33.00 · 64.46 · 67.49 · 51.28 · 45.41 · 38.25 · -26.21 |
 | mIoU · 52.34 · 55.78 · 56.71 · 55.14 · 56.40 · 56.59 · 57.74 |
 출처: RGB only = NAS analysis_logs/perclass_e1_rgb_20261109/RGBs821 (1시드, jarvis B2rgbonly epoch30 ckpt md5 a0ce0dec…), +3센서 융합 = 같은 폴더 E1s821·E1s902 평균(md5 e69d7deb… / 7e9b36e9…), 전역 혼동행렬은 paper 세션 perclass_e1.py(정성 은행 gt 대비, mIoU 55.14/55.94/56.86 = 덤프 도구 값과 일치).
+
+## Table 3 MUSES Ours test (2026-11-09)
+| 칸 | 값 | 출처 | 상태 |
+|---|---|---|---|
+| Ours test | 80.01 (80.012) | 공식 평가 서버, user 제출 2026-11-09. zip NAS `submission_muses/muses_A2m4_s2_1536_20261109.zip`(md5 287e04e1…, s2 epoch40_80.56, 1536). 조건별: clear 79.86 · fog 79.23 · rain 79.34 · snow 78.84 · day 81.97 · night 75.83 | ✅ (1회 제출, 시드 s2) |
+
