@@ -1,0 +1,9 @@
+{
+ "script": "figures/qualbank/qualbank.py candidates",
+ "registry_md5": "84afe832fad94e0fa145aded6c703988",
+ "scores": {
+  "A2m4": "044f7a3da86cb1210bfc78416dfebd6f",
+  "CAFofficial": "ed156af1d85bddb851afe3ce4b9d3765",
+  "DGFofficial": "3cfb00e0c43658bf0e74d601a1ea4fbe"
+ }
+}

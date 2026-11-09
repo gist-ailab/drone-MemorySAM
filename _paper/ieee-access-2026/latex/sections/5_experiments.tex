@@ -226,8 +226,9 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 % Fig. MUSES real adverse conditions (same layout as fig:adverse; analysis inbox 20261030-122055 P2).
 \begin{figure*}[t]
 \centering
-\phbox{4.6cm}{MUSES val, all sensors: real night / snow / fog / rain; columns = RGB, ground truth, CMNeXt, CAFuser, DGFusion, ours (released weights, release order); same selection rule; waits for the MUSES 4-sensor model}
-\caption{\todo{MUSES counterpart of Fig.~\ref{fig:adverse}; same rule on the 250 validation images (test labels are not public)}}
+\includegraphics[width=\textwidth]{figures/fig_adverse_muses.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
+\caption{Qualitative comparison on the MUSES validation set (real recordings, all four sensors) under adverse weather and lighting. Columns: RGB input, ground truth, CAFuser and DGFusion (released weights; no CMNeXt weights are released for MUSES), and ours. Each row shows the scene where ours most exceeds the better of the two baselines in per-image mIoU; the validation set is used because the test labels are not public. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
 \label{fig:adverse_muses}
 \end{figure*}
 

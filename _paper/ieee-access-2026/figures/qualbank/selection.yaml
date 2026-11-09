@@ -86,3 +86,11 @@ figures:
       - {label: Cloud, image: img/cloud/test/MAP_10_point92/044650_rgb_front}
       - {label: Night, image: img/night/test/MAP_10_point15/001350_rgb_front}
       - {label: Rain,  image: img/rain/test/MAP_10_point23_motionblur/097650_rgb_front}
+  fig_adverse_muses:              # main text: MUSES counterpart of fig_adverse_deliver (official val, real adverse conditions)
+    dataset: muses
+    columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]   # no released CMNeXt MUSES weights
+    rows:
+      - {label: Fog day,     pick: {group: fog_day,     kind: top, rank: 1}}
+      - {label: Fog night,   pick: {group: fog_night,   kind: top, rank: 1}}
+      - {label: Rain night,  pick: {group: rain_night,  kind: top, rank: 1}}
+      - {label: Snow night,  pick: {group: snow_night,  kind: top, rank: 1}}
