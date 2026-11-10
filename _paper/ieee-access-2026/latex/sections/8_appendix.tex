@@ -36,7 +36,9 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 
 Fig.~\ref{fig:failure_reverse} is the counterpart of Fig.~\ref{fig:failure_scenarios}: for each corrupted-input setting, the scene of the six weather and lighting conditions where another method leads ours the most. With depth removed, no scene of these conditions favours another method by more than 0.7 points of per-image mIoU, while with RGB removed, LiDAR and event removed, or RGB under heavy noise the largest deficits are 11.7, 9.9, and 8.6 points.
 
-Figs.~\ref{fig:supp_muses} and~\ref{fig:reverse_muses} extend Fig.~\ref{fig:adverse_muses} on the MUSES validation set: the top scene of the four conditions not shown there, and the scene of each adverse condition where a baseline leads ours the most. The deficits in Fig.~\ref{fig:reverse_muses} (13.7 to 25.2 points) are larger than the margins of Fig.~\ref{fig:adverse_muses} (5.9 to 18.9 points), a reminder that single-image gaps on MUSES, with 25 to 33 images per adverse condition, say little about the mean. \todo{MCubeS scenes once the MCubeS predictions are in the qualitative bank}
+Figs.~\ref{fig:supp_muses} and~\ref{fig:reverse_muses} extend Fig.~\ref{fig:adverse_muses} on the MUSES validation set: the top scene of the four conditions not shown there, and the scene of each adverse condition where a baseline leads ours the most. The deficits in Fig.~\ref{fig:reverse_muses} (13.7 to 25.2 points) are larger than the margins of Fig.~\ref{fig:adverse_muses} (5.9 to 18.9 points), a reminder that single-image gaps on MUSES, with 25 to 33 images per adverse condition, say little about the mean.
+
+Fig.~\ref{fig:mcubes} shows MCubeS test scenes against the two fusion models that release MCubeS weights, CMNeXt~\cite{cmnext2023} and MMSFormer~\cite{mmsformer2023}; both reproduce their published test mIoU (51.54 and 53.11) with our evaluation code. Our model leads the better of the two on 88 of the 102 test images, with a median per-image gap of 4.0 points. The two top scenes gain 18.9 points, one of them a night scene whose RGB image is nearly black; the scene nearest the median gap and the largest deficit (5.5 points) are shown in the last two rows.
 
 \begin{figure*}[p]
 \centering
@@ -116,6 +118,14 @@ Figs.~\ref{fig:supp_muses} and~\ref{fig:reverse_muses} extend Fig.~\ref{fig:adve
 \includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
 \caption{Failure cases on the MUSES validation set: for each adverse condition of Fig.~\ref{fig:adverse_muses}, the scene where a baseline most exceeds ours. Display as in Fig.~\ref{fig:adverse_muses}.}
 \label{fig:reverse_muses}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_mcubes.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_mcubes.pdf}
+\caption{Qualitative comparison on the MCubeS test set (RGB, AoLP, DoLP, and NIR inputs). Columns: RGB input, ground truth, CMNeXt and MMSFormer (released weights, the only fusion models with released MCubeS weights), and ours. Rows: the two scenes where ours most exceeds the better baseline in per-image mIoU (one per sequence), the scene closest to the median gap, and the scene where a baseline most exceeds ours. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
+\label{fig:mcubes}
 \end{figure*}
 
 \section{Per-Class Build-Up of Our Model}

@@ -128,3 +128,11 @@ figures:
       - {label: Fog night,   pick: {group: fog_night,   kind: reverse, rank: 1}}
       - {label: Rain night,  pick: {group: rain_night,  kind: reverse, rank: 1}}
       - {label: Snow night,  pick: {group: snow_night,  kind: reverse, rank: 1}}
+  fig_mcubes:                     # appendix: MCubeS test, released-weight baselines (analysis report inbox 20261111-001754)
+    dataset: mcubes
+    columns: [rgb, gt, CMNeXt, MMSFormer, A2c2d2s827]
+    rows:
+      - {label: "Top #1",   pick: {group: outscene, kind: top, rank: 1}}
+      - {label: "Top #2",   pick: {group: outscene, kind: top, rank: 2}}
+      - {label: "Typical",  pick: {group: outscene, kind: typical, rank: 1}}
+      - {label: "Reverse",  pick: {group: outscene, kind: reverse, rank: 1}}

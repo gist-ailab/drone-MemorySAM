@@ -244,12 +244,16 @@ datasets:
     thin_classes: []
     gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/mcubes_rescore_20261104/c2d2_768_s827/gt   # trainID png written by tools/qualbank_dump.py
     input_root: /mnt/HDD1/Workspace/dset/MCubeS
+    inputs:
+      rgb: [[outscene, polL_color/outscene]]        # 1224x1024 RGB, squashed to the square tile like the 1024x1024 labels
     group_rules:
       - {regex: '^(\w+?)\d', group: '\1'}
     sequence_regex: '^(\w+_\d+)_'
     ours: A2c2d2s827
-    compare: []                                     # released-weight baselines: analysis inbox 20261110-164944 (no ablation columns, user 2026-11-04)
+    compare: [CMNeXt, MMSFormer]                   # released weights, release order (analysis report inbox 20261111-001754; StitchFusion has no MCubeS weights)
     models:
       A2c2d2s827: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/mcubes_rescore_20261104/c2d2_768_s827/pred, expected_miou: 59.8}   # epoch122 top1, tools/qualbank_dump.py
+      CMNeXt: {label: CMNeXt, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/mcubes_cmnext_official_dump_20261111/pred, expected_miou: 51.54}   # HF InSAI-Lab/CMNeXt MCubeS, ckpt md5 57bb9258...
+      MMSFormer: {label: MMSFormer, role: baseline, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/mcubes_mmsformer_official_dump_20261111/pred, expected_miou: 53.11}   # github csiplab/MMSFormer, ckpt md5 6a98f704...
       woC2D2s827: {label: Ours w/o C2D2, role: ablation, status: pending, note: "DRN-261031-01 epoch180_60.27 on hpca100; analysis inbox 20261102-131217 item 4"}
       E1Mcs827: {label: Ours w/o C2D2 and high-res, role: ablation, status: pending, note: "E1Mc s20260827 epoch114_58.94 (NAS)"}

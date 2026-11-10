@@ -1,0 +1,20 @@
+# rule: delta = image mIoU(A2c2d2s827) - max(CMNeXt, MMSFormer); image mIoU over GT-present classes (tools/baseline_failure/common.per_image_iou). top/reverse/typical per group, one scene per sequence; class = thin-class IoU gain (>= 400 GT px). bank: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test
+kind,group,rank,image_id,sequence,class_delta,delta,mIoU_A2c2d2s827,mIoU_CMNeXt,mIoU_MMSFormer
+top,outscene,1,outscene1208_7_0000000625,outscene1208_7,,+0.1891,0.6176,0.4285,0.4258
+top,outscene,2,outscene1212_11_0000000070,outscene1212_11,,+0.1881,0.5891,0.3714,0.4010
+top,outscene,3,outscene1210_13_0000000003,outscene1210_13,,+0.1615,0.4818,0.2754,0.3203
+top,outscene,4,outscene1209_11_0000000000,outscene1209_11,,+0.1246,0.5288,0.3748,0.4042
+top,outscene,5,outscene1208_3_0000000910,outscene1208_3,,+0.1188,0.6957,0.5290,0.5769
+top,outscene,6,outscene1208_2_0000000270,outscene1208_2,,+0.1113,0.5957,0.4482,0.4843
+top,outscene,7,outscene1208_9_0000000040,outscene1208_9,,+0.1110,0.4619,0.3068,0.3509
+top,outscene,8,outscene1210_11_0000001350,outscene1210_11,,+0.1105,0.5766,0.4661,0.4199
+top,outscene,9,outscene1209_16_0000000140,outscene1209_16,,+0.0958,0.5094,0.4134,0.4136
+top,outscene,10,outscene1212_3_0000000002,outscene1212_3,,+0.0852,0.5174,0.4322,0.3837
+reverse,outscene,1,outscene1208_3_0000001120,outscene1208_3,,-0.0546,0.5189,0.5640,0.5735
+reverse,outscene,2,outscene1208_9_0000000280,outscene1208_9,,-0.0396,0.3299,0.3695,0.3286
+reverse,outscene,3,outscene1209_3_0000001160,outscene1209_3,,-0.0341,0.3857,0.3463,0.4198
+reverse,outscene,4,outscene1209_17_0000001000,outscene1209_17,,-0.0246,0.4610,0.4856,0.4370
+reverse,outscene,5,outscene1210_11_0000001320,outscene1210_11,,-0.0239,0.4423,0.3888,0.4662
+typical,outscene,1,outscene1208_7_0000000565,outscene1208_7,,+0.0383,0.4734,0.4101,0.4351
+typical,outscene,2,outscene1212_11_0000000220,outscene1212_11,,+0.0396,0.4757,0.4361,0.3939
+typical,outscene,3,outscene1208_2_0000000210,outscene1208_2,,+0.0382,0.5439,0.4913,0.5057

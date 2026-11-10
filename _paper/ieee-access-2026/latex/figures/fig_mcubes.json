@@ -1,0 +1,66 @@
+{
+ "design_source": "carbon@11.84.0 (warm-gray-50/70/80 text and borders, teal-80 for ours); dataset palette for labels",
+ "script": "figures/src/make_qual_figs.py",
+ "errors_mode": true,
+ "columns": [
+  "rgb",
+  "gt",
+  "CMNeXt",
+  "MMSFormer",
+  "A2c2d2s827"
+ ],
+ "inputs_md5": {
+  "selection.yaml": "d927d45c2b060ee18d6bed124e5dc576",
+  "registry.yaml": "f5bdba26b92d725e2b9f5b8678adc914",
+  "mcubes_candidates.csv": "5c8ea8614b03218cc004036c2929b9fb",
+  "mcubes_per_image.csv": "bf6368dc219d3dd82bb76a693979c5b9"
+ },
+ "rows": [
+  [
+   "Top #1",
+   "outscene1208_7_0000000625",
+   "+0.1891",
+   "CMNeXt"
+  ],
+  [
+   "Top #2",
+   "outscene1212_11_0000000070",
+   "+0.1881",
+   "MMSFormer"
+  ],
+  [
+   "Typical",
+   "outscene1208_7_0000000565",
+   "+0.0383",
+   "MMSFormer"
+  ],
+  [
+   "Reverse",
+   "outscene1208_3_0000001120",
+   "-0.0546",
+   "MMSFormer"
+  ]
+ ],
+ "tiles": {
+  "/mnt/HDD1/Workspace/dset/MCubeS/polL_color/outscene1208_7_0000000625.png": "bb367d6b62f5ddbe9fa2ae160283006f",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/gt/outscene1208_7_0000000625.png": "66a1c744a4a60d674c4384edc3acdd71",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/CMNeXt/outscene1208_7_0000000625.png": "9d7daeed47e4593d4bae88b25b517427",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/MMSFormer/outscene1208_7_0000000625.png": "6805691623b594476ec7afa3e61c5e1f",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/A2c2d2s827/outscene1208_7_0000000625.png": "981e560aca1bf45cacecd6c928a5ace2",
+  "/mnt/HDD1/Workspace/dset/MCubeS/polL_color/outscene1212_11_0000000070.png": "3e1f923e033923c1edcc6c1d21f62d6a",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/gt/outscene1212_11_0000000070.png": "dc9cea51550fe1fd1533a582d103b263",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/CMNeXt/outscene1212_11_0000000070.png": "ed44a0abb792b4b46795a7fcc7cba058",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/MMSFormer/outscene1212_11_0000000070.png": "f64896a97eee3e55b0817836ff0b0611",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/A2c2d2s827/outscene1212_11_0000000070.png": "e0be94dcf8b4a438a14f1eb590e5e058",
+  "/mnt/HDD1/Workspace/dset/MCubeS/polL_color/outscene1208_7_0000000565.png": "bfe11496f9e54ebf83c31ab7febd7a3e",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/gt/outscene1208_7_0000000565.png": "791049c6b7e134ef321590f5b0a2ad67",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/CMNeXt/outscene1208_7_0000000565.png": "c5ad0112dc5440d07b7e98e61d0d630b",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/MMSFormer/outscene1208_7_0000000565.png": "ef4e72189241fd88fc2cac3d567d3808",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/A2c2d2s827/outscene1208_7_0000000565.png": "a4b14469e969462e8f1fe42b16f3ee3c",
+  "/mnt/HDD1/Workspace/dset/MCubeS/polL_color/outscene1208_3_0000001120.png": "803115da8831e1c338d32e8ef99e724c",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/gt/outscene1208_3_0000001120.png": "cde17861add482307cfff2b9397a0b1c",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/CMNeXt/outscene1208_3_0000001120.png": "eaa0bfb89ccb5bb1fde47946323e526b",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/MMSFormer/outscene1208_3_0000001120.png": "7bf99ec07c703cd68a3e46020f45642b",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/mcubes_test/A2c2d2s827/outscene1208_3_0000001120.png": "6c2cf79bbcd46451d64b3e9c2b3b5211"
+ }
+}

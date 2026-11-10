@@ -10,8 +10,8 @@
   "A2m4"
  ],
  "inputs_md5": {
-  "selection.yaml": "add80becf63662ae9153ce0655b70a24",
-  "registry.yaml": "06c0825611e1bb61d3b2efde35598333",
+  "selection.yaml": "d927d45c2b060ee18d6bed124e5dc576",
+  "registry.yaml": "f5bdba26b92d725e2b9f5b8678adc914",
   "muses_candidates.csv": "d5b5147705524dcb7b142af314d7f831",
   "muses_per_image.csv": "ebb1e08c5b49c6832f5b138d88435adc"
  },
