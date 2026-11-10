@@ -226,6 +226,8 @@ Ours & DINOv3-L & \best{71.34} & \best{58.52} & \best{67.15} & \best{69.46} & \b
 \subsection{Qualitative Results}
 Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown (3.4 to 13.0 points over the 18 scenes of Appendix~\ref{app:qual}), while the opposite selection, the scene of each condition where another model leads ours the most (Fig.~\ref{fig:reverse}), gives gaps of 8.5 to 12.9 points; single scenes can therefore favour either side by a similar amount when every sensor works. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk.
 
+On MUSES, where CAFuser and DGFusion are the direct comparison, Figs.~\ref{fig:normal_muses} and~\ref{fig:adverse_muses} apply the same rule to their released weights, evaluated with our code on the validation set. In clear weather the largest per-image margins are 6.8 and 6.7 points by day and 10.7 points at night; under fog, rain, and snow they are 5.9 to 18.9 points. These scenes are the most favourable ones by construction. Per image, our model leads the better of the two baselines on 75 of the 250 validation images (DGFusion alone on 92), and the median per-image gap is $-2.6$ points, although its dataset-level mIoU is 2.0 points above that of DGFusion for the run shown (81.76 against 79.72). The dataset-level margin therefore comes from a minority of images with large gains and from pixels pooled over the whole set, not from a uniform per-image advantage. \todo{MUSES sensor-failure scenes and missing-sensor curve after DRN-261111-01}
+
 % Fig. sensor-failure scenarios (main qualitative figure). Needs per-image predictions of
 % DGFusion (official), DGFusion/CAFuser (retrained) and ours under missing/noisy sensors
 % -> analysis request inbox 20261027-182054 item 2.
@@ -246,6 +248,15 @@ Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by 
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
 \caption{Qualitative comparison on the DELIVER test set under six conditions with all four sensors. Columns: RGB input, ground truth, CMNeXt, CAFuser, and DGFusion (released weights), and ours. Each row shows the scene where ours most exceeds the best of the other three methods in per-image mIoU, with no two scenes from the same sequence. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%). More scenes are in Appendix~\ref{app:qual}.}
 \label{fig:adverse}
+\end{figure*}
+
+% Fig. MUSES clear weather (user 2026-11-11: normal conditions where ours leads; same rule and layout as fig:adverse_muses).
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_normal_muses.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
+\caption{Qualitative comparison on the MUSES validation set in clear weather (real recordings, all four sensors). Columns: RGB input, ground truth, CAFuser and DGFusion (released weights; no CMNeXt weights are released for MUSES), and ours. Rows: the two clear-day scenes and the clear-night scene where ours most exceeds the better of the two baselines in per-image mIoU. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
+\label{fig:normal_muses}
 \end{figure*}
 
 % Fig. MUSES real adverse conditions (same layout as fig:adverse; analysis inbox 20261030-122055 P2).

@@ -112,14 +112,20 @@ figures:
       - {label: "RGB removed", dataset: deliver_s2, image: img/rain/test/MAP_7_point3/015450_rgb_front}   # rain, -11.7
       - {label: "LiDAR+event removed", dataset: deliver_s3, image: img/cloud/test/MAP_7_point82/051750_rgb_front}   # cloud, -9.9
       - {label: "RGB with heavy noise", dataset: deliver_s4, image: img/rain/test/MAP_10_point93/065200_rgb_front}   # rain, -8.6
-  fig_supp_muses:                 # appendix: the four MUSES conditions not in the main figure
+  fig_normal_muses:               # main text (user 2026-11-11): MUSES clear weather, where ours leads the most
     dataset: muses
     columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
     rows:
-      - {label: Clear day,   pick: {group: clear_day,   kind: top, rank: 1}}
-      - {label: Clear night, pick: {group: clear_night, kind: top, rank: 1}}
-      - {label: Rain day,    pick: {group: rain_day,    kind: top, rank: 1}}
-      - {label: Snow day,    pick: {group: snow_day,    kind: top, rank: 1}}
+      - {label: "Clear day #1",   pick: {group: clear_day,   kind: top, rank: 1}}
+      - {label: "Clear day #2",   pick: {group: clear_day,   kind: top, rank: 2}}
+      - {label: "Clear night #1", pick: {group: clear_night, kind: top, rank: 1}}
+  fig_supp_muses:                 # appendix: MUSES scenes not in the two main figures
+    dataset: muses
+    columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
+    rows:
+      - {label: "Clear night #2", pick: {group: clear_night, kind: top, rank: 2}}
+      - {label: Rain day,         pick: {group: rain_day,    kind: top, rank: 1}}
+      - {label: Snow day,         pick: {group: snow_day,    kind: top, rank: 1}}
   fig_reverse_muses:              # appendix: MUSES scenes where a baseline leads ours the most
     dataset: muses
     columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
