@@ -106,15 +106,21 @@ CAFuser-CAA~\cite{cafuser2025} & Swin-T & RGB-L-R-E & -- & 78.5 \\
 DGFusion~\cite{dgfusion2026} & Swin-T & RGB-L-R-E & -- & 79.5 \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{(c) Fewer sensors}} \\
-FuseAdapt~\cite{fuseadapt2026} & DINOv2-S & RGB-L-E & \second{77.28} & -- \\
+FuseAdapt~\cite{fuseadapt2026} & DINOv2-S & RGB-L-E & 77.28 & -- \\
 MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-E & -- & 79.92 \\
 MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & -- & \best{81.07} \\
 \midrule
 % Ours val: tasks/DRN-261019-02/analysis.md (official val, s2 81.758 / s3 81.311 at 1536, 2-seed mean 81.535); test 80.012 = official server, s2 only, submitted by the user 2026-11-09 (zip NAS submission_muses/muses_A2m4_s2_1536_20261109.zip).
-Ours & DINOv3-L & RGB-L-R-E & \best{81.54} & \second{80.01} \\
+% Ours RGB-E / RGB-L (user 2026-11-10: in Table 2, same sensors as MM SAM-adapter): DRN-261109-02 / -01, s2, teacher clean 100ep -> C2D2 100ep
+%   (MM SAM-adapter training length, arXiv 2509.10408 p9 3.3.2); val = official val at the 4-sensor protocol (1024 or 1536, higher), test = user submission.
+%   RGB-L: epoch95_81.58_top1 (md5 a0deaeea...), official val 1024 82.2899 / 1536 82.1699 -> 1024; yeon /SSDe/jemo_maeng/analysis_logs/muses_rgbl_a2_s2_20261110;
+%   test zip drone_nas .../submission_muses/muses_A2rgbl_s2_1024_20261110.zip (md5 fd11b768..., verify_submission PASS), submitted by the user (pending).
+Ours & DINOv3-L & RGB-E & \td & \td \\
+Ours & DINOv3-L & RGB-L & \best{82.29} & \td \\
+Ours & DINOv3-L & RGB-L-R-E & \second{81.54} & \second{80.01} \\
 \bottomrule
 \end{tabular*}
-\tabnote{R: radar. $^{a}$As measured by the CAFuser authors~\cite{cafuser2025} (Table~II). Ours: validation, mean of two seeds; test, one submission (seed with the higher validation score).}
+\tabnote{R: radar. $^{a}$As measured by the CAFuser authors~\cite{cafuser2025} (Table~II). Ours, four sensors: validation, mean of two seeds; test, one submission (seed with the higher validation score). Ours, two sensors: one seed, trained for 100 epochs as MM SAM-adapter~\cite{mmsamadapter2025}.}
 \end{table}
 
 % ---------------------------------------------------------------------------
