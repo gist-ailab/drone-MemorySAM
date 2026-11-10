@@ -218,7 +218,7 @@ Ours & DINOv3-L & \best{71.34} & \best{58.52} & \best{67.15} & \best{69.46} & \b
 \end{figure}
 
 \subsection{Qualitative Results}
-Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown (3.4 to 13.0 points over the 18 scenes of Appendix~\ref{app:qual}), while the opposite selection, the scene of each condition where another model leads ours the most (Fig.~\ref{fig:reverse}), gives gaps of 8.5 to 12.9 points; single scenes can therefore favour either side by a similar amount when every sensor works \todo{describe the visible error regions; sensor-failure scenes (Fig.~\ref{fig:failure_scenarios}) pending}.
+Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown (3.4 to 13.0 points over the 18 scenes of Appendix~\ref{app:qual}), while the opposite selection, the scene of each condition where another model leads ours the most (Fig.~\ref{fig:reverse}), gives gaps of 8.5 to 12.9 points; single scenes can therefore favour either side by a similar amount when every sensor works. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk.
 
 % Fig. sensor-failure scenarios (main qualitative figure). Needs per-image predictions of
 % DGFusion (official), DGFusion/CAFuser (retrained) and ours under missing/noisy sensors
@@ -277,7 +277,7 @@ Ours & \best{57.02} & \second{57.23} & \best{58.45} & 57.58 & \best{56.91} & \be
 \end{table}
 
 \subsection{Ablation}
-Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, over three seeds, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model with one seed. A frozen DINOv3-L with LoRA on RGB alone already reaches 55.14 mIoU on the test set (one seed), within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. On the test set, the high-resolution path raises mIoU from 56.59 to 57.74 \todo{effect of C2D2 alone: three-seed test mean of the clean-trained model}. Removing cross-modal attention costs 0.85 points. The rows without the teacher distillation (58.77) and without the sensor-specific degradations (58.17) differ from the full model by less than the spread between seeds (Section~\ref{sec:sensors}), and their order reverses in a second seed (56.32 and 57.25 against 57.09), so we do not interpret them from one seed \todo{row without the degraded pass (L5); second-seed means before the final version}.
+Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, over three seeds, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model with one seed. A frozen DINOv3-L with LoRA on RGB alone already reaches 55.14 mIoU on the test set (one seed), within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. On the test set, training with the C2D2 scheme changes clean mIoU only slightly (56.40 for clean training, two seeds, against 56.59), and the high-resolution path raises it to 57.74 \todo{third seed of the clean-trained model}. Removing cross-modal attention costs 0.85 points. The rows without the teacher distillation (58.77) and without the sensor-specific degradations (58.17) differ from the full model by less than the spread between seeds (Section~\ref{sec:sensors}), and their order reverses in a second seed (56.32 and 57.25 against 57.09), so we do not interpret them from one seed \todo{row without the degraded pass (L5); second-seed means before the final version}.
 % Sources: judgment-ledger 2026-10-28 rows DRN-261020-08/-09/-10/-12 (seed 821, legal v2 test@1024);
 % E1 screen s821 55.94: status/current.md (4); Q2/A2 s821 57.73/58.61: tasks/DRN-261019-03/analysis.md.
 
@@ -334,7 +334,7 @@ C2D2 & High- & Test & \multicolumn{5}{c}{Validation} \\
 tr. & res & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \midrule
 \multicolumn{8}{@{}l}{\emph{(a) DELIVER, mean of 3 seeds}} \\
-\xmark & \xmark & \td & \td & \td & \td & \td & \td \\
+\xmark & \xmark & 56.40$^{\ddagger}$ & \td & \td & \td & \td & \td \\
 \cmark & \xmark & \second{56.59} & \second{67.91} & \second{56.87} & \second{60.69} & \second{62.46} & \second{64.08} \\
 \cmark & \cmark & \best{57.74} & \best{70.17} & \best{57.85} & \best{61.28} & \best{63.35} & \best{65.53} \\
 \midrule
@@ -344,7 +344,7 @@ tr. & res & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \cmark & \cmark & \second{59.78} & & & & & \\
 \bottomrule
 \end{tabular*}
-\tabnote{C2D2 tr.: trained with the C2D2 scheme (clean pass, degraded pass, and teacher distillation). Test: test-set mIoU with all sensors. The validation columns of (a) use our own scorer (native-resolution labels, no flip) until the re-measurement with the benchmark code of Table~\ref{tab:robust}; EMM and RMM are averages over the 15 sensor subsets.}
+\tabnote{$^{\ddagger}$Mean of two seeds. C2D2 tr.: trained with the C2D2 scheme (clean pass, degraded pass, and teacher distillation). Test: test-set mIoU with all sensors. The validation columns of (a) use our own scorer (native-resolution labels, no flip) until the re-measurement with the benchmark code of Table~\ref{tab:robust}; EMM and RMM are averages over the 15 sensor subsets.}
 \end{table}
 
 \subsection{Computational Cost}

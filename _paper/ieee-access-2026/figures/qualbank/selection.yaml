@@ -103,4 +103,28 @@ figures:
       - {label: "RGB removed", dataset: deliver_s2, image: img/night/test/MAP_7_point85/036400_rgb_front}   # night
       - {label: "LiDAR+event removed", dataset: deliver_s3, image: img/sun/test/MAP_7_point11/1168350_rgb_front}   # sun
       - {label: "RGB with heavy noise", dataset: deliver_s4, image: img/rain/test/MAP_7_point33/007950_rgb_front}   # rain (best scene was already the S3 row)
-
+  fig_failure_reverse_deliver:    # appendix: counterpart of fig_failure_deliver, scene where a baseline leads ours the most per setting
+    # row scene = most negative delta over the six weather/lighting groups (reverse, rank 1); S3 takes its next scene because the S2 scene repeats
+    dataset: deliver_s1
+    columns: [rgb, gt, CMNeXt, CAFofficial, DGFofficial, A2s821]
+    rows:
+      - {label: "Depth removed", dataset: deliver_s1, image: img/rain/test/MAP_7_point53/067650_rgb_front}   # rain, delta -0.7
+      - {label: "RGB removed", dataset: deliver_s2, image: img/rain/test/MAP_7_point3/015450_rgb_front}   # rain, -11.7
+      - {label: "LiDAR+event removed", dataset: deliver_s3, image: img/cloud/test/MAP_7_point82/051750_rgb_front}   # cloud, -9.9
+      - {label: "RGB with heavy noise", dataset: deliver_s4, image: img/rain/test/MAP_10_point93/065200_rgb_front}   # rain, -8.6
+  fig_supp_muses:                 # appendix: the four MUSES conditions not in the main figure
+    dataset: muses
+    columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
+    rows:
+      - {label: Clear day,   pick: {group: clear_day,   kind: top, rank: 1}}
+      - {label: Clear night, pick: {group: clear_night, kind: top, rank: 1}}
+      - {label: Rain day,    pick: {group: rain_day,    kind: top, rank: 1}}
+      - {label: Snow day,    pick: {group: snow_day,    kind: top, rank: 1}}
+  fig_reverse_muses:              # appendix: MUSES scenes where a baseline leads ours the most
+    dataset: muses
+    columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
+    rows:
+      - {label: Fog day,     pick: {group: fog_day,     kind: reverse, rank: 1}}
+      - {label: Fog night,   pick: {group: fog_night,   kind: reverse, rank: 1}}
+      - {label: Rain night,  pick: {group: rain_night,  kind: reverse, rank: 1}}
+      - {label: Snow night,  pick: {group: snow_night,  kind: reverse, rank: 1}}

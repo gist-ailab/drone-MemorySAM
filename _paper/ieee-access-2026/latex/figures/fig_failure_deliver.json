@@ -11,7 +11,7 @@
   "A2s821"
  ],
  "inputs_md5": {
-  "selection.yaml": "a89763b829de349456b1e538b3e41400",
+  "selection.yaml": "add80becf63662ae9153ce0655b70a24",
   "registry.yaml": "06c0825611e1bb61d3b2efde35598333",
   "deliver_s1_candidates.csv": "c0c9f0a210b01d767db22807a019d888",
   "deliver_s1_per_image.csv": "65a7359a3de3ab6673cb3f590b716fbc"

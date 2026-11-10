@@ -32,7 +32,11 @@ Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes 
 
 The rule picks scenes in our favour by construction. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each condition, the scene whose gap is closest to that condition's median gap. Note that the median gap is slightly negative (about $-1$ to $-2$ points in every condition): the reference is, per image, the best of three other models, so a single model rarely beats it on a typical image even when it has the highest dataset mIoU.
 
-The DELIVER test split also contains sequences with a built-in sensor fault (over-exposure, motion blur, LiDAR jitter, low-resolution events). Figs.~\ref{fig:cases} and~\ref{fig:cases_reverse} show the scene of each fault with the largest gap in our favour and against us; the second column is the affected sensor. Fig.~\ref{fig:thin_scenes} ranks scenes by the gain on one thin class instead of the image mIoU. \todo{MUSES and MCubeS scenes; DELIVER missing-sensor scenes}
+The DELIVER test split also contains sequences with a built-in sensor fault (over-exposure, motion blur, LiDAR jitter, low-resolution events). Figs.~\ref{fig:cases} and~\ref{fig:cases_reverse} show the scene of each fault with the largest gap in our favour and against us; the second column is the affected sensor. Fig.~\ref{fig:thin_scenes} ranks scenes by the gain on one thin class instead of the image mIoU.
+
+Fig.~\ref{fig:failure_reverse} is the counterpart of Fig.~\ref{fig:failure_scenarios}: for each corrupted-input setting, the scene of the six weather and lighting conditions where another method leads ours the most. With depth removed, no scene of these conditions favours another method by more than 0.7 points of per-image mIoU, while with RGB removed, LiDAR and event removed, or RGB under heavy noise the largest deficits are 11.7, 9.9, and 8.6 points.
+
+Figs.~\ref{fig:supp_muses} and~\ref{fig:reverse_muses} extend Fig.~\ref{fig:adverse_muses} on the MUSES validation set: the top scene of the four conditions not shown there, and the scene of each adverse condition where a baseline leads ours the most. The deficits in Fig.~\ref{fig:reverse_muses} (13.7 to 25.2 points) are larger than the margins of Fig.~\ref{fig:adverse_muses} (5.9 to 18.9 points), a reminder that single-image gaps on MUSES, with 25 to 33 images per adverse condition, say little about the mean. \todo{MCubeS scenes once the MCubeS predictions are in the qualitative bank}
 
 \begin{figure*}[p]
 \centering
@@ -88,6 +92,30 @@ The DELIVER test split also contains sequences with a built-in sensor fault (ove
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
 \caption{Thin classes on the DELIVER test set: for each of Pole, TrafficLight, Pedestrian, and Static, the image where the class IoU of ours most exceeds that of the best other method (at least 400 ground-truth pixels of the class). Numbers give per-image mIoU over all classes (\%).}
 \label{fig:thin_scenes}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_failure_reverse_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Failure cases on the DELIVER test set when a sensor fails: for each corrupted-input setting, the scene where another method most exceeds ours in per-image mIoU. Settings and display as in Fig.~\ref{fig:failure_scenarios}.}
+\label{fig:failure_reverse}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_muses.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
+\caption{Additional scenes on the MUSES validation set (all four sensors): the scene where ours most exceeds the better of the two baselines, for the four conditions not shown in Fig.~\ref{fig:adverse_muses}. Display as in Fig.~\ref{fig:adverse_muses}.}
+\label{fig:supp_muses}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_reverse_muses.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
+\caption{Failure cases on the MUSES validation set: for each adverse condition of Fig.~\ref{fig:adverse_muses}, the scene where a baseline most exceeds ours. Display as in Fig.~\ref{fig:adverse_muses}.}
+\label{fig:reverse_muses}
 \end{figure*}
 
 \section{Per-Class Build-Up of Our Model}

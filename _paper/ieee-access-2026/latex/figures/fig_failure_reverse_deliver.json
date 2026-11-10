@@ -1,0 +1,71 @@
+{
+ "design_source": "carbon@11.84.0 (warm-gray-50/70/80 text and borders, teal-80 for ours); dataset palette for labels",
+ "script": "figures/src/make_qual_figs.py",
+ "errors_mode": true,
+ "columns": [
+  "rgb",
+  "gt",
+  "CMNeXt",
+  "CAFofficial",
+  "DGFofficial",
+  "A2s821"
+ ],
+ "inputs_md5": {
+  "selection.yaml": "add80becf63662ae9153ce0655b70a24",
+  "registry.yaml": "06c0825611e1bb61d3b2efde35598333",
+  "deliver_s1_candidates.csv": "c0c9f0a210b01d767db22807a019d888",
+  "deliver_s1_per_image.csv": "65a7359a3de3ab6673cb3f590b716fbc"
+ },
+ "rows": [
+  [
+   "Depth removed",
+   "img/rain/test/MAP_7_point53/067650_rgb_front",
+   "+0.0364",
+   "CAFofficial"
+  ],
+  [
+   "RGB removed",
+   "img/rain/test/MAP_7_point3/015450_rgb_front",
+   "-0.0494",
+   "CAFofficial"
+  ],
+  [
+   "LiDAR+event removed",
+   "img/cloud/test/MAP_7_point82/051750_rgb_front",
+   "-0.0392",
+   "CAFofficial"
+  ],
+  [
+   "RGB with heavy noise",
+   "img/rain/test/MAP_10_point93/065200_rgb_front",
+   "-0.0859",
+   "DGFofficial"
+  ]
+ ],
+ "tiles": {
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/rain/test/MAP_7_point53/067650_rgb_front.png": "b606d87df37cf4df6ea9d3832854ea12",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s1_test/gt/img/rain/test/MAP_7_point53/067650_rgb_front.png": "2aa3f0786fef6d2a80aeb2d05808182e",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s1_test/CMNeXt/img/rain/test/MAP_7_point53/067650_rgb_front.png": "084b8a418f1c0e9fc6f1e567ab5fa448",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s1_test/CAFofficial/img/rain/test/MAP_7_point53/067650_rgb_front.png": "0b94a505da66d212699c644a62ab7914",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s1_test/DGFofficial/img/rain/test/MAP_7_point53/067650_rgb_front.png": "c804ec1d60b9d2a52504f53ae6a62b56",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s1_test/A2s821/img/rain/test/MAP_7_point53/067650_rgb_front.png": "4509df81b8c12ca94f31c0455d74894c",
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/rain/test/MAP_7_point3/015450_rgb_front.png": "934610cff930b7583c6b9604c794d4dc",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s2_test/gt/img/rain/test/MAP_7_point3/015450_rgb_front.png": "7436bc065529cd5be2e46e5521d6c764",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s2_test/CMNeXt/img/rain/test/MAP_7_point3/015450_rgb_front.png": "f990aa62b2c4f15fc35de2148dca7117",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s2_test/CAFofficial/img/rain/test/MAP_7_point3/015450_rgb_front.png": "45e4fb8c936625b62e3c319b3f09065b",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s2_test/DGFofficial/img/rain/test/MAP_7_point3/015450_rgb_front.png": "2e10be59c152245331cd94322c16ff4d",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s2_test/A2s821/img/rain/test/MAP_7_point3/015450_rgb_front.png": "0f69503191ed6bca4e4e4fda9a6673fc",
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/cloud/test/MAP_7_point82/051750_rgb_front.png": "6f1cd4aefdabc3a0e739f18bcb661dc0",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s3_test/gt/img/cloud/test/MAP_7_point82/051750_rgb_front.png": "b47e69478740dae70d072945d07d3efb",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s3_test/CMNeXt/img/cloud/test/MAP_7_point82/051750_rgb_front.png": "0a304080a4fe13095122d210627b0f76",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s3_test/CAFofficial/img/cloud/test/MAP_7_point82/051750_rgb_front.png": "fabaca4d8999ee31cfab4570ad4d5ee9",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s3_test/DGFofficial/img/cloud/test/MAP_7_point82/051750_rgb_front.png": "3e6234e277a3eed0331bfa4831eb0ab6",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s3_test/A2s821/img/cloud/test/MAP_7_point82/051750_rgb_front.png": "b5f1ee1f8dbe1042c7d10f13f6bd5d23",
+  "/mnt/HDD1/Workspace/dset/DELIVER/img/rain/test/MAP_10_point93/065200_rgb_front.png": "7c2fc507d1cbd8bf93a42a20ad218d72",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s4_test/gt/img/rain/test/MAP_10_point93/065200_rgb_front.png": "7c565b3e2671226e6e558b60ffc17533",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s4_test/CMNeXt/img/rain/test/MAP_10_point93/065200_rgb_front.png": "53a8731c1339e4cb874ed2ed7c73098d",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s4_test/CAFofficial/img/rain/test/MAP_10_point93/065200_rgb_front.png": "0f9f3279bf34bc911c822779a135f0a3",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s4_test/DGFofficial/img/rain/test/MAP_10_point93/065200_rgb_front.png": "fb7c34f649e096eaa26576b7efff4a78",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/paper_qualbank/deliver_s4_test/A2s821/img/rain/test/MAP_10_point93/065200_rgb_front.png": "852d9b8a02e202cb2185703a209c7356"
+ }
+}
