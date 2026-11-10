@@ -242,14 +242,14 @@ datasets:
     n_images: 102
     classes_from: semseg/datasets/mcubes.py
     thin_classes: []
-    gt_source: null                                  # GT on the hub: /mnt/HDD1/Workspace/dset/MCubeS/GT (needs train-ID check on ingest)
+    gt_source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/mcubes_rescore_20261104/c2d2_768_s827/gt   # trainID png written by tools/qualbank_dump.py
     input_root: /mnt/HDD1/Workspace/dset/MCubeS
     group_rules:
       - {regex: '^(\w+?)\d', group: '\1'}
     sequence_regex: '^(\w+_\d+)_'
     ours: A2c2d2s827
-    compare: [woC2D2s827, E1Mcs827]
+    compare: []                                     # released-weight baselines: analysis inbox 20261110-164944 (no ablation columns, user 2026-11-04)
     models:
-      A2c2d2s827: {label: Ours, role: ours, status: pending, note: "DRN-261017-02 C2D2 run training on hpca100 (768 crop)"}
+      A2c2d2s827: {label: Ours, role: ours, status: ready, source: /drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/mcubes_rescore_20261104/c2d2_768_s827/pred, expected_miou: 59.8}   # epoch122 top1, tools/qualbank_dump.py
       woC2D2s827: {label: Ours w/o C2D2, role: ablation, status: pending, note: "DRN-261031-01 epoch180_60.27 on hpca100; analysis inbox 20261102-131217 item 4"}
       E1Mcs827: {label: Ours w/o C2D2 and high-res, role: ablation, status: pending, note: "E1Mc s20260827 epoch114_58.94 (NAS)"}
