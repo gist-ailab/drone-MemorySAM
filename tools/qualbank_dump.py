@@ -55,6 +55,9 @@ def main():
     ap.add_argument('--expected-miou', type=float, default=None)
     ap.add_argument('--tol', type=float, default=0.05)
     ap.add_argument('--root', default=None, help='override DATASET.ROOT (e.g. the same data on another machine)')
+    ap.add_argument('--arch', choices=['reliadino', 'cmnext'], default='reliadino',
+                    help='cmnext = released CMNeXt weights (semseg.models.cmnext, MODEL.BACKBONE e.g. CMNeXt-B2), '
+                         'loaded strictly; used for public-baseline qualitative dumps (DRN-261027-01)')
     a = ap.parse_args()
     cfg = yaml.safe_load(open(a.cfg, encoding='utf-8'))
     dcfg, ecfg = cfg['DATASET'], cfg['EVAL']
@@ -64,9 +67,16 @@ def main():
     ds = eval(dcfg['NAME'])(dcfg['ROOT'], a.split, tf, dcfg['MODALS'])
     dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=2)
     dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = build_reliadino(cfg, ds.n_classes)
     ck = torch.load(a.model_path, map_location='cpu')
-    res = model.load_state_dict(ck.get('model_state_dict', ck), strict=False)
+    if a.arch == 'cmnext':
+        from semseg.models.cmnext import CMNeXt
+        model = CMNeXt(cfg['MODEL']['BACKBONE'], ds.n_classes, dcfg['MODALS'])
+        sd = ck.get('model', ck.get('state_dict', ck)) if isinstance(ck, dict) else ck
+        res = model.load_state_dict(sd, strict=True)
+        ck = {}
+    else:
+        model = build_reliadino(cfg, ds.n_classes)
+        res = model.load_state_dict(ck.get('model_state_dict', ck), strict=False)
     print(f'[load] missing={len(res.missing_keys)} unexpected={len(res.unexpected_keys)} epoch={ck.get("epoch")}')
     model.to(dev).eval()
     out = Path(a.out)
@@ -80,7 +90,7 @@ def main():
         for i, (images, labels) in enumerate(tqdm(dl, desc='dump')):
             images = [x.to(dev) for x in images]
             labels = labels.to(dev)
-            logits, _ = model(images, True)
+            logits = model(images) if a.arch == 'cmnext' else model(images, True)[0]
             metrics.update(logits.softmax(dim=1), labels)
             pred = logits.argmax(1)[0].byte().cpu().numpy()
             gt = labels[0].cpu().numpy().astype(np.int64)
@@ -95,7 +105,7 @@ def main():
     summ = {'cfg': a.cfg, 'model_path': a.model_path, 'epoch': ck.get('epoch'), 'split': a.split,
             'n_images': n, 'dataset_len': len(ds), 'miou': miou, 'ious': ious,
             'missing_keys': len(res.missing_keys), 'unexpected_keys': len(res.unexpected_keys),
-            'script': 'tools/qualbank_dump.py'}
+            'arch': a.arch, 'script': 'tools/qualbank_dump.py'}
     json.dump(summ, open(out / 'summary.json', 'w'), indent=1)
     print(f'[dump] {n}/{len(ds)} images, mIoU {miou:.2f} -> {out}')
     assert n == len(ds), 'image count mismatch (flattened ids?)'

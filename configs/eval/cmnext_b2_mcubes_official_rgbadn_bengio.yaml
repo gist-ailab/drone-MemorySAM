@@ -1,0 +1,19 @@
+# 공개 CMNeXt MiT-B2 RGB-A-D-N MCubeS 가중치(HF InSAI-Lab/CMNeXt MCubeS/cmnext_b2_mcubes_rgbadn.pth, md5 57bb925865c87586c6dd537a40d3c2b2, README mIoU 51.54)
+# 정성 그림용 test 102장 덤프 — tools/qualbank_dump.py --arch cmnext --split val (MCubeS 로더 'val' = list_folder/test.txt). bengio 2026-11-11.
+# MCubeS 로더가 자체 FixScaleCrop(1024)+Normalize 를 쓰므로 EVAL.IMAGE_SIZE 는 기록용이다. inbox 20261110-164944.
+DEVICE: cuda
+
+MODEL:
+  NAME: CMNeXt
+  BACKBONE: CMNeXt-B2
+
+DATASET:
+  NAME: MCubeS
+  ROOT: '/SSDf/jemo_maeng/dset/MCubeS'
+  IGNORE_LABEL: 255
+  MODALS: ['image', 'aolp', 'dolp', 'nir']
+
+EVAL:
+  MODEL_PATH: ''
+  IMAGE_SIZE: [1024, 1024]
+  BATCH_SIZE: 1
