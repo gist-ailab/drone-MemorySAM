@@ -294,7 +294,7 @@ Ours & \best{57.02} & \second{57.23} & \best{58.45} & 57.58 & \best{56.91} & \be
 \end{table}
 
 \subsection{Ablation}
-Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, over three seeds, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model with one seed. A frozen DINOv3-L with LoRA on RGB alone already reaches 55.14 mIoU on the test set (one seed), within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. On the test set, training with the C2D2 scheme changes clean mIoU only slightly (56.40 for clean training, two seeds, against 56.59), and the high-resolution path raises it to 57.74; the third seed of the clean-trained model was not kept, so this row has two seeds. Removing cross-modal attention costs 0.85 points. The rows without the teacher distillation (58.77) and without the sensor-specific degradations (58.17) differ from the full model by less than the spread between seeds (Section~\ref{sec:sensors}), and their order reverses in a second seed (56.32 and 57.25 against 57.09), so we do not interpret them from one seed. Removing the degraded pass is different: clean mIoU stays within the spread between seeds (57.42 against 58.61, and 56.63 against 57.09 in the second seed), but the EMM average falls from 49.12 to 39.53 (39.40 in the second seed), the largest change in the table. Without cross-modal attention, EMM falls only slightly (49.08).
+Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, over three seeds, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model (mean of two seeds). A frozen DINOv3-L with LoRA on RGB alone already reaches 55.14 mIoU on the test set (one seed), within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. On the test set, training with the C2D2 scheme changes clean mIoU only slightly (56.40 for clean training, two seeds, against 56.59), and the high-resolution path raises it to 57.74; the third seed of the clean-trained model was not kept, so this row has two seeds. In Table~\ref{tab:ablation_loo}, removing the degraded pass leaves clean mIoU within the spread between seeds (57.03 against 57.85) but lowers the EMM average by 9.4 points (39.47 against 48.85), in both seeds; this is the largest change in the table, and the robustness of C2D2 comes from this pass. Removing the teacher distillation, the sensor-specific degradations, or the sensor router changes clean mIoU or EMM in opposite directions across the two seeds (by up to 2.1 points for the router and 1.2 for the distillation), or, for the degradations, by less than 0.5 points; their contributions cannot be separated from seed variance, and we do not claim them. Removing cross-modal attention (one seed) costs 0.85 points of clean mIoU and little EMM (49.08 against 49.12 for the same seed).
 % Sources: judgment-ledger 2026-10-28 rows DRN-261020-08/-09/-10/-12 (seed 821, legal v2 test@1024);
 % E1 screen s821 55.94: status/current.md (4); Q2/A2 s821 57.73/58.61: tasks/DRN-261019-03/analysis.md.
 
@@ -314,26 +314,28 @@ Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme 
 % Table 6b. Leave one component out of the full model (one seed, 40 epochs). Sources as Table 6 comment above;
 % L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
 \begin{table}[t]
-\caption{Leave-one-out ablation on the DELIVER test set (mIoU, \%). Each row removes one component from the full model (last row).}
+\caption{Leave-one-out ablation on the DELIVER test set (mIoU, \%, mean of two seeds). Each row removes one component from the full model (last row).}
 \label{tab:ablation_loo}
 \centering\tabsetup
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccccc@{}}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
 \toprule
-Cross- & Degr. & Phys. & Teacher & Clean & EMM \\
-modal & pass & degr. & KD & & \\
+Cross- & Degr. & Phys. & Teacher & Router & Clean & EMM \\
+modal & pass & degr. & KD & & & \\
 \midrule
-% L5 s821 (md5 79f992c0...): analysis inbox 20261111-094302 (clean 57.42, EMM15 39.53; s902 56.63 / 39.40).
-\cmark & \xmark & \xmark & \cmark & 57.42 & 39.53 \\
-% L6 s821: tasks/DRN-261020-14/log.md 2026-11-05 (clean 58.77, EMM 49.6407 from the pane log).
-\cmark & \cmark & \cmark & \xmark & \best{58.77} & \best{49.64} \\
-% L7 s821: tasks/DRN-261029-01/log.md 2026-11-05 (clean 58.17, EMM 48.8631).
-\cmark & \cmark & \xmark & \cmark & 58.17 & 48.86 \\
-% L2 s821 EMM15 49.08 (md5 b2d46b05..., epoch35_70.16): analysis inbox 20261111-094302.
-\xmark$^{*}$ & \cmark & \cmark & \cmark & 57.76 & 49.08 \\
-\cmark & \cmark & \cmark & \cmark & \second{58.61} & \second{49.12} \\
+% Two-seed means (s821, s902), DELIVER test, legal v2 @1024, EMM15 = tools/mm_eval_v2.py --split test --protocol emm --seed 0.
+% L5: analysis inbox 20261111-094302 (57.42/39.53, 56.63/39.40). L6: tasks/DRN-261020-14/log.md (58.77/49.6407, 56.32/47.3357; s902 val-best ep30).
+% L7: tasks/DRN-261029-01/log.md (58.17/48.8631, 57.25/48.4557). L8 no router: tasks/DRN-261029-07/log.md (56.4823/47.9399, 57.8809/49.0793).
+% L2 (s821 only): 57.76 / 49.08. Full A2: s821 58.61/49.12, s902 57.09/48.57 (tasks/DRN-261019-03/analysis.md).
+% Verdicts 2026-11-11 (method, inbox 20261111-132936): L5 adopt, L6 inconclusive, L7 reject, L8 reject.
+\cmark & \xmark & \xmark & \cmark & \cmark & 57.03 & 39.47 \\
+\cmark & \cmark & \cmark & \xmark & \cmark & 57.55$^{\S}$ & 48.49$^{\S}$ \\
+\cmark & \cmark & \xmark & \cmark & \cmark & \second{57.71} & \second{48.66} \\
+\cmark & \cmark & \cmark & \cmark & \xmark & 57.18 & 48.51 \\
+\xmark$^{*}$ & \cmark & \cmark & \cmark & \cmark & 57.76$^{\dagger}$ & 49.08$^{\dagger}$ \\
+\cmark & \cmark & \cmark & \cmark & \cmark & \best{57.85} & \best{48.85} \\
 \bottomrule
 \end{tabular*}
-\tabnote{All rows keep the high-resolution path. Degr.\ pass: the second, degraded forward pass of the C2D2 scheme. Phys.\ degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass. $^{*}$Token averaging; also removes the sensor-specific residual $m_s$ of Eq.~(2).}
+\tabnote{All rows keep the high-resolution path. Degr.\ pass: the second, degraded forward pass of the C2D2 scheme. Phys.\ degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass. $^{*}$Token averaging; also removes the sensor-specific residual $m_s$ of Eq.~(2). $^{\dagger}$One seed (49.12 EMM and 58.61 clean for the full model with the same seed). $^{\S}$Second seed: checkpoint of epoch 30, the best on validation. Router: the sensor router of Section~\ref{sec:m_router}.}
 \end{table}
 
 % Table 6c. Robustness ablation, 3 seeds, DELIVER val, benchmark protocol (user 2026-11-02).

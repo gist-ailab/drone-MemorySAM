@@ -1,0 +1,24 @@
+{
+ "source": "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels",
+ "scenes": [
+  [
+   "Night",
+   "img/night/test/MAP_10_point5/001200_rgb_front"
+  ],
+  [
+   "Cloud",
+   "img/cloud/test/MAP_10_point12/013150_rgb_front"
+  ]
+ ],
+ "inputs_md5": {
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/night/test/MAP_10_point5/001200_rgb_front/rgb.png": "542b820b537fa9e70bc8e8a04d3619e5",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/night/test/MAP_10_point5/001200_rgb_front/gt.png": "9accfbfa1ad0ae9916720cd9efdabb48",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/night/test/MAP_10_point5/001200_rgb_front/c_norm.png": "687595a47977446ce6e34bd148d0a2c0",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/night/test/MAP_10_point5/001200_rgb_front/d_norm.png": "1b8fd0ac6e11cd360af66b8229dae74f",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/cloud/test/MAP_10_point12/013150_rgb_front/rgb.png": "10cd1d32c3bdcd4281d5a3ce568d3733",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/cloud/test/MAP_10_point12/013150_rgb_front/gt.png": "35490ef7730e2181a47f12701f5840f3",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/cloud/test/MAP_10_point12/013150_rgb_front/c_norm.png": "8a8c5708e3a122cdf2371a5b3294ca1d",
+  "/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels/img/cloud/test/MAP_10_point12/013150_rgb_front/d_norm.png": "c5ea738a52502a91a20db56707e78071"
+ },
+ "design_source": "carbon@11.84.0"
+}
