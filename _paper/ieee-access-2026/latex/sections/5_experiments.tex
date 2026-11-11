@@ -115,9 +115,11 @@ MM SAM-adapter~\cite{mmsamadapter2025} & SAM ViT-L & RGB-L & -- & \best{81.07} \
 %   (MM SAM-adapter training length, arXiv 2509.10408 p9 3.3.2); val = official val at the 4-sensor protocol (1024 or 1536, higher), test = user submission.
 %   RGB-L: epoch95_81.58_top1 (md5 a0deaeea...), official val 1024 82.2899 / 1536 82.1699 -> 1024; yeon /SSDe/jemo_maeng/analysis_logs/muses_rgbl_a2_s2_20261110;
 %   test zip drone_nas .../submission_muses/muses_A2rgbl_s2_1024_20261110.zip (md5 fd11b768..., verify_submission PASS), submitted by the user 2026-11-11: overall 80.459 (clear 80.55, fog 74.00, rain 79.15, snow 80.07, day 81.53, night 77.56).
-Ours & DINOv3-L & RGB-E & \td & \td \\
+% RGB-E: epoch85_80.37_top1 (md5 de40bf34...), official val 1024 81.4639 / 1536 81.6358 -> 1536; yeon /SSDe/jemo_maeng/analysis_logs/muses_rgbe_a2_s2_20261111;
+%   test zip drone_nas .../submission_muses/muses_A2rgbe_s2_1536_20261111.zip (md5 5ebffda1..., verify_submission PASS), user submission pending.
+Ours & DINOv3-L & RGB-E & \second{81.64} & \td \\
 Ours & DINOv3-L & RGB-L & \best{82.29} & \second{80.46} \\
-Ours & DINOv3-L & RGB-L-R-E & \second{81.54} & 80.01 \\
+Ours & DINOv3-L & RGB-L-R-E & 81.54 & 80.01 \\
 \bottomrule
 \end{tabular*}
 \tabnote{R: radar. $^{a}$As measured by the CAFuser authors~\cite{cafuser2025} (Table~II). Ours, four sensors: validation, mean of two seeds; test, one submission (seed with the higher validation score). Ours, two sensors: one seed, trained for 100 epochs as MM SAM-adapter~\cite{mmsamadapter2025}.}
