@@ -14625,6 +14625,52 @@ items:
   verdict: null
   analysis: null
   superseded_by: null
+- id: DRN-261111-02
+  title: '교사 증류의 기여 축 찾기(최우선): L6(증류 제거) vs A2 를 clean·EMM 밖의 사전 지정 5축에서 비교 + L6 셋째
+    시드 s903 학습'
+  question: 교사 증류(열화 입력 학생 ↔ clean 입력 교사 KL)가 clean·EMM15 test 에서는 시드 잡음 안이었다(DRN-261020-14).
+    증류가 실제로 기여하는 축이 있는가
+  hypothesis: 증류는 '입력이 조금 망가졌을 때 clean 예측을 유지'하게 하므로, 센서가 통째로 빠지는 EMM 이 아니라 (1) 부분
+    결측 RMM (2) 학습에 없던 노이즈 NM (3) clean↔열화 예측 일치도 (4) 보정(ECE)에서 A2 > L6 이다. 라벨 CE 만으로는
+    열화 입력에서 과신·불일치가 남는다
+  falsification: 5축 모두 미충족이면 증류의 독립 기여 없음으로 확정 → 방법 틀을 '열화 두 번째 패스' 로 바꾸고 제목에서 Distillation
+    을 내린다(안 A)
+  change: 측정만(학습 0) + L6 s903 1런. 비교 변수 = 증류 유무(A2 vs L6), 같은 시드 짝 821·902(·903)
+  baseline: 'A2 같은 시드 기존 측정: test RMM(robust_a2_20261019 s821·s902), NM 벤치 정의 val·test(DRN-261102-04
+    3시드), val EMM15·RMM. 없는 축(일치도·ECE)은 A2 도 같은 코드로 새로 잰다. 참고 행 L5(열화 패스 제거)·L7(물리
+    열화 제거)도 같은 축으로'
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260903_screen40_A2L6nokd.yaml
+  launch: null
+  success_criteria: '사전 지정 5축(이 밖의 축은 보지 않는다): ① test RMM 15조합 평균 r=.25/.5/.75 ② NM
+    벤치 정의 test Low/Mid/High ③ val EMM15·val RMM ④ 예측 일치도 = clean 입력 예측과 열화 입력(EMM
+    15조합·NM Mid) 예측의 화소 일치율(test) ⑤ clean test ECE(15 bin)와 NM Mid 에서의 ECE. 한 축에서
+    ''증류 기여 인정'' = A2 − L6 의 2시드 평균이 mIoU 축 ≥ +1.0 / 일치율 ≥ +1.0%p / ECE ≥ 상대 10% 개선이고
+    두 시드 부호 일치(s903 완주 시 3시드 중 3 일치). 인정된 축만 원고 주장에 쓰고, 본 축 수(5)와 미충족 축을 표·본문에 모두
+    적는다(선택 보고 금지)'
+  sample_basis: L6 2시드(s821·s902 ckpt 보유, s902 는 val-best ep30) + s903 추가 학습으로 3시드.
+    축 5개를 미리 고정해 다중 비교에 따른 사후 선택을 막는다
+  expected_cost: '평가: jarvis/yeon 4090·3090 2~4장 × 약 반나절(RMM·NM 은 mm_eval_v2 기존 프로토콜,
+    일치도·ECE 는 덤프 기반 집계 스크립트 신규 — tools/, 동결 파일 밖). 학습: L6 s903 4 GPU × 약 1일'
+  priority: 1
+  owner_role: analysis
+  status: queued
+  kind: analysis
+  tags:
+  - kd
+  - ablation
+  - robustness
+  - paper
+  - top-priority
+  docs: .claude_logs/tasks/DRN-261111-02
+  created: '2026-11-11'
+  updated: '2026-11-11'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
