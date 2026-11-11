@@ -92,7 +92,7 @@ figures:
     rows:
       - {label: Fog day,     pick: {group: fog_day,     kind: top, rank: 1}}
       - {label: Fog night,   pick: {group: fog_night,   kind: top, rank: 1}}
-      - {label: Rain night,  pick: {group: rain_night,  kind: top, rank: 1}}
+      - {label: Rain day,    image: rain/day/REC0088_frame_275845_frame_camera}   # user 2026-11-11 'large visible difference': largest error-area gain (muses_area_gain.csv: ours 4.0% vs 18.0/18.4% wrong pixels)
       - {label: Snow night,  pick: {group: snow_night,  kind: top, rank: 1}}
   fig_failure_deliver:            # main text Fig. 3: one row per corrupted-input setting (row dataset = deliver_s1..s4)
     # row scene = the largest per-image gap (ours - best of CMNeXt/CAFuser/DGFusion) over the six weather/lighting groups of that setting
@@ -124,7 +124,7 @@ figures:
     columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
     rows:
       - {label: "Clear night #2", pick: {group: clear_night, kind: top, rank: 2}}
-      - {label: Rain day,         pick: {group: rain_day,    kind: top, rank: 1}}
+      - {label: Rain night,       pick: {group: rain_night,  kind: top, rank: 1}}
       - {label: Snow day,         pick: {group: snow_day,    kind: top, rank: 1}}
   fig_reverse_muses:              # appendix: MUSES scenes where a baseline leads ours the most
     dataset: muses

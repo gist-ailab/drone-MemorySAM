@@ -226,7 +226,7 @@ Ours & DINOv3-L & \best{71.34} & \best{58.52} & \best{67.15} & \best{69.46} & \b
 \subsection{Qualitative Results}
 Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown (3.4 to 13.0 points over the 18 scenes of Appendix~\ref{app:qual}), while the opposite selection, the scene of each condition where another model leads ours the most (Fig.~\ref{fig:reverse}), gives gaps of 8.5 to 12.9 points; single scenes can therefore favour either side by a similar amount when every sensor works. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk.
 
-On MUSES, where CAFuser and DGFusion are the direct comparison, Figs.~\ref{fig:normal_muses} and~\ref{fig:adverse_muses} apply the same rule to their released weights, evaluated with our code on the validation set. In clear weather the largest per-image margins are 6.8 and 6.7 points by day and 10.7 points at night; under fog, rain, and snow they are 5.9 to 18.9 points. These scenes are the most favourable ones by construction. Per image, our model leads the better of the two baselines on 75 of the 250 validation images (DGFusion alone on 92), and the median per-image gap is $-2.6$ points, although its dataset-level mIoU is 2.0 points above that of DGFusion for the run shown (81.76 against 79.72). The dataset-level margin therefore comes from a minority of images with large gains and from pixels pooled over the whole set, not from a uniform per-image advantage. \todo{MUSES sensor-failure scenes and missing-sensor curve after DRN-261111-01}
+On MUSES, where CAFuser and DGFusion are the direct comparison, Figs.~\ref{fig:normal_muses} and~\ref{fig:adverse_muses} apply the same rule to their released weights, evaluated with our code on the validation set. In clear weather the largest per-image margins are 6.8 and 6.7 points by day and 10.7 points at night; under fog and snow they are 11.4 to 18.9 points, and the rain-by-day scene, chosen by the largest difference in wrongly labelled area, has a 4.1-point gap in mIoU but 14 percentage points fewer wrong pixels. These scenes are the most favourable ones by construction. Per image, our model leads the better of the two baselines on 75 of the 250 validation images (DGFusion alone on 92), and the median per-image gap is $-2.6$ points, although its dataset-level mIoU is 2.0 points above that of DGFusion for the run shown (81.76 against 79.72). The dataset-level margin therefore comes from a minority of images with large gains and from pixels pooled over the whole set, not from a uniform per-image advantage. \todo{MUSES sensor-failure scenes and missing-sensor curve after DRN-261111-01}
 
 % Fig. sensor-failure scenarios (main qualitative figure). Needs per-image predictions of
 % DGFusion (official), DGFusion/CAFuser (retrained) and ours under missing/noisy sensors
@@ -264,7 +264,7 @@ On MUSES, where CAFuser and DGFusion are the direct comparison, Figs.~\ref{fig:n
 \centering
 \includegraphics[width=\textwidth]{figures/fig_adverse_muses.pdf}\\[3pt]
 \includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
-\caption{Qualitative comparison on the MUSES validation set (real recordings, all four sensors) under adverse weather and lighting. Columns: RGB input, ground truth, CAFuser and DGFusion (released weights; no CMNeXt weights are released for MUSES), and ours. Each row shows the scene where ours most exceeds the better of the two baselines in per-image mIoU; the validation set is used because the test labels are not public. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
+\caption{Qualitative comparison on the MUSES validation set (real recordings, all four sensors) under adverse weather and lighting. Columns: RGB input, ground truth, CAFuser and DGFusion (released weights; no CMNeXt weights are released for MUSES), and ours. Each row shows the scene where ours most exceeds the better of the two baselines in per-image mIoU, except Rain day, the scene with the largest difference in wrongly labelled area (18.0\% of the labelled pixels for the better baseline against 4.0\% for ours); the validation set is used because the test labels are not public. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
 \label{fig:adverse_muses}
 \end{figure*}
 
@@ -294,7 +294,7 @@ Ours & \best{57.02} & \second{57.23} & \best{58.45} & 57.58 & \best{56.91} & \be
 \end{table}
 
 \subsection{Ablation}
-Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, over three seeds, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model with one seed. A frozen DINOv3-L with LoRA on RGB alone already reaches 55.14 mIoU on the test set (one seed), within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. On the test set, training with the C2D2 scheme changes clean mIoU only slightly (56.40 for clean training, two seeds, against 56.59), and the high-resolution path raises it to 57.74 \todo{third seed of the clean-trained model}. Removing cross-modal attention costs 0.85 points. The rows without the teacher distillation (58.77) and without the sensor-specific degradations (58.17) differ from the full model by less than the spread between seeds (Section~\ref{sec:sensors}), and their order reverses in a second seed (56.32 and 57.25 against 57.09), so we do not interpret them from one seed \todo{row without the degraded pass (L5); second-seed means before the final version}.
+Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, over three seeds, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model with one seed. A frozen DINOv3-L with LoRA on RGB alone already reaches 55.14 mIoU on the test set (one seed), within 1.6 points of DGFusion with four sensors, so a large part of the accuracy comes from the foundation model. On the test set, training with the C2D2 scheme changes clean mIoU only slightly (56.40 for clean training, two seeds, against 56.59), and the high-resolution path raises it to 57.74; the third seed of the clean-trained model was not kept, so this row has two seeds. Removing cross-modal attention costs 0.85 points. The rows without the teacher distillation (58.77) and without the sensor-specific degradations (58.17) differ from the full model by less than the spread between seeds (Section~\ref{sec:sensors}), and their order reverses in a second seed (56.32 and 57.25 against 57.09), so we do not interpret them from one seed. Removing the degraded pass is different: clean mIoU stays within the spread between seeds (57.42 against 58.61, and 56.63 against 57.09 in the second seed), but the EMM average falls from 49.12 to 39.53 (39.40 in the second seed), the largest change in the table. Without cross-modal attention, EMM falls only slightly (49.08).
 % Sources: judgment-ledger 2026-10-28 rows DRN-261020-08/-09/-10/-12 (seed 821, legal v2 test@1024);
 % E1 screen s821 55.94: status/current.md (4); Q2/A2 s821 57.73/58.61: tasks/DRN-261019-03/analysis.md.
 
@@ -322,12 +322,14 @@ Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme 
 Cross- & Degr. & Phys. & Teacher & Clean & EMM \\
 modal & pass & degr. & KD & & \\
 \midrule
-\cmark & \xmark & \xmark & \cmark & \td & \td \\
+% L5 s821 (md5 79f992c0...): analysis inbox 20261111-094302 (clean 57.42, EMM15 39.53; s902 56.63 / 39.40).
+\cmark & \xmark & \xmark & \cmark & 57.42 & 39.53 \\
 % L6 s821: tasks/DRN-261020-14/log.md 2026-11-05 (clean 58.77, EMM 49.6407 from the pane log).
 \cmark & \cmark & \cmark & \xmark & \best{58.77} & \best{49.64} \\
 % L7 s821: tasks/DRN-261029-01/log.md 2026-11-05 (clean 58.17, EMM 48.8631).
 \cmark & \cmark & \xmark & \cmark & 58.17 & 48.86 \\
-\xmark$^{*}$ & \cmark & \cmark & \cmark & 57.76 & \td \\
+% L2 s821 EMM15 49.08 (md5 b2d46b05..., epoch35_70.16): analysis inbox 20261111-094302.
+\xmark$^{*}$ & \cmark & \cmark & \cmark & 57.76 & 49.08 \\
 \cmark & \cmark & \cmark & \cmark & \second{58.61} & \second{49.12} \\
 \bottomrule
 \end{tabular*}
@@ -365,7 +367,7 @@ tr. & res & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \end{table}
 
 \subsection{Computational Cost}
-The C2D2 training scheme changes only how the model is trained: the second, degraded pass and the frozen teacher are used during training and removed afterwards, so the deployed model is the same network with or without this scheme. Its cost therefore comes from the architecture, which Table~\ref{tab:cost} reports at inference. The backbone is frozen, and our model has about as many trainable parameters as the baselines (74.0M against 75.0M and 78.9M). Because every sensor passes through the frozen ViT-L, however, it needs 14.6 times the operations and 2.9 times the latency of DGFusion, about four images per second for four sensors at $1024\times1024$ on one RTX 4090. The high-resolution path adds 15.2M parameters, about 2\% of the operations, and 13\% of the latency. \todo{add the DINOv3-B operating point (DRN-261102-01/-02) to show the accuracy--cost trade-off of a smaller backbone}
+The C2D2 training scheme changes only how the model is trained: the second, degraded pass and the frozen teacher are used during training and removed afterwards, so the deployed model is the same network with or without this scheme. Its cost therefore comes from the architecture, which Table~\ref{tab:cost} reports at inference. The backbone is frozen, and our model has about as many trainable parameters as the baselines (74.0M against 75.0M and 78.9M). Because every sensor passes through the frozen ViT-L, however, it needs 14.6 times the operations and 2.9 times the latency of DGFusion, about four images per second for four sensors at $1024\times1024$ on one RTX 4090. The high-resolution path adds 15.2M parameters, about 2\% of the operations, and 13\% of the latency. With a DINOv3-B backbone instead, the same model needs 40\% of the operations and half the latency (129.6 ms) but reaches 53.39 test mIoU (one seed), 4.4 points below the DINOv3-L model and below DGFusion; the accuracy of our model depends on the larger backbone.
 % Source: .claude_logs/tasks/DRN-261027-02/analysis.md table (l.14-19), verdict adopt 2026-11-03; raw NAS analysis_logs/cost_table_20261104{,b,c}/.
 % Ratios: 10135/695.6 = 14.57; 254.5/88.9 = 2.86; high-res = A2 - Q2: 377.05-361.87 = 15.18M, (10135-9922)/9922 = 2.1%, 254.5/224.8 = 1.13.
 
@@ -384,6 +386,8 @@ Model & Params & Trainable & GFLOPs & Latency & Memory \\
 DGFusion~\cite{dgfusion2026} & 78.88 & 78.88 & 695.6 & 88.9 & 1.83 \\
 CAFuser~\cite{cafuser2025} & 75.01 & 75.01 & 670.8 & 83.1 & 1.57 \\
 Ours & 377.05 & 73.98 & 10{,}135 & 254.5 & 2.47 \\
+% DINOv3-B: analysis inbox 20261111-094302 (A2-B md5 0cb40266..., same conditions; legal v2 test 53.39, one seed).
+Ours (DINOv3-B) & 138.21 & 52.57 & 4{,}011 & 129.6 & 1.43 \\
 \bottomrule
 \end{tabular*}
 \end{table}
