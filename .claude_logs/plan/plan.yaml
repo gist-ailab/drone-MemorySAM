@@ -14483,8 +14483,8 @@ items:
     공식 서버)
   configs: []
   launch: null
-  success_criteria: MUSES 공식 test(user 제출) 값을 보충자료 표에 보고. test ≥ 81.07 이면 같은 센서에서도
-    우위, 미만이면 그대로 보고
+  success_criteria: MUSES 공식 test(user 제출) 값을 본문 Table 2(MUSES)에 RGB-L 행으로 보고(user
+    2026-11-10 결정, 보충자료→본문). test ≥ 81.07 이면 같은 센서에서도 우위, 미만이면 그대로 보고
   sample_basis: 1시드(s2) — 본문 4센서 test 제출과 같은 방식, 공식 서버 1회 제출
   expected_cost: yeon 교사 clean 100ep(DDP) + C2D2 100ep(DDP), 조합당 약 3~4일(24GB 카드, 768
     크롭 학생)
@@ -14498,7 +14498,7 @@ items:
   - 2sensor
   - rgbl
   created: '2026-11-09'
-  updated: '2026-11-09'
+  updated: '2026-11-10'
   closed: null
   runs: []
   results: []
@@ -14518,8 +14518,8 @@ items:
     공식 서버)
   configs: []
   launch: null
-  success_criteria: MUSES 공식 test(user 제출) 값을 보충자료 표에 보고. test ≥ 79.92 이면 같은 센서에서도
-    우위, 미만이면 그대로 보고
+  success_criteria: MUSES 공식 test(user 제출) 값을 본문 Table 2(MUSES)에 RGB-E 행으로 보고(user
+    2026-11-10 결정, 보충자료→본문). test ≥ 79.92 이면 같은 센서에서도 우위, 미만이면 그대로 보고
   sample_basis: 1시드(s2) — 본문 4센서 test 제출과 같은 방식, 공식 서버 1회 제출
   expected_cost: yeon 교사 clean 100ep(DDP) + C2D2 100ep(DDP), 조합당 약 3~4일(24GB 카드, 768
     크롭 학생)
@@ -14533,7 +14533,45 @@ items:
   - 2sensor
   - rgbe
   created: '2026-11-09'
-  updated: '2026-11-09'
+  updated: '2026-11-10'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261111-01
+  title: 'MUSES 결측·노이즈 강건성(평가만): CAFuser·DGFusion 공개 가중치 vs C2D2 4센서 — EMM 15조합·RMM
+    곡선·RGB 노이즈 + 고장 4설정 예측 덤프(정성 그림)'
+  question: 직접 비교군(CAFuser·DGFusion)이 쓰는 실측 벤치 MUSES 에서도 센서 결측·노이즈 시 C2D2 가 공개 기준선보다
+    덜 무너지는가(DELIVER Table 4·Fig.2 의 MUSES 판)
+  hypothesis: C2D2 4센서(A2m4 s2)는 MUSES val EMM15 평균과 RMM 곡선 전 구간에서 CAFuser·DGFusion
+    공개 가중치보다 높다(DELIVER EMM val +7.9 vs RMMSS 와 같은 방향)
+  falsification: EMM15 평균이 두 기준선 중 나은 쪽보다 낮거나, RMM r=0.5 에서 낮으면 'MUSES 에서는 결측 강건성
+    우위 없음'으로 원고에 그대로 보고
+  change: '평가 입력만 바꿈(학습 없음): 센서 zero-fill(정규화 후, DELIVER 벤치 프로토콜과 동일) EMM 15 부분집합,
+    RMM r=0.25/0.5/0.75, RGB 노이즈 NM Low/Mid/High; 모델 3종 고정'
+  baseline: 'CAFuser·DGFusion 공개 MUSES 가중치(qualbank muses 등록본: 공식 val 78.71·79.72
+    재현), 우리 A2m4 s2 epoch40_80.56(공식 val 81.76 @1536)'
+  configs: []
+  launch: null
+  success_criteria: 원고 본문에 MUSES 결측 곡선(또는 표) 1개 + 센서 고장 정성 그림 1개(행 = RGB 제거, LiDAR
+    제거, LiDAR+event 제거, RGB 강노이즈; 열 = CAFuser·DGFusion·ours). 수치는 유불리와 관계없이 보고
+  sample_basis: MUSES 공식 val 250장 전체(조건별 25~50장), 모델당 1 체크포인트(공개 가중치는 1개뿐, ours 는
+    test 제출 시드 s2) — 시드 반복 없음을 원고에 명시
+  expected_cost: 학습 0. 평가 (15+3+3)조합 × 3모델 × 250장, 5090/4090 1장 기준 패스당 약 2~4분 → 약
+    3~4 GPU시간 + 덤프 4설정
+  priority: 1
+  owner_role: analysis
+  status: idea
+  kind: experiment
+  tags:
+  - muses
+  - robustness
+  - paper
+  - qual
+  created: '2026-11-11'
+  updated: '2026-11-11'
   closed: null
   runs: []
   results: []
