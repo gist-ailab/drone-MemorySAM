@@ -168,6 +168,26 @@ Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbenc
 % judgment-ledger:117 (reproduction (a) EMM 31.53, NM .20 5.52; retrained (b) EMM 45.52); current.md (4) CAFuser (b) EMM 46.50;
 % MAGIC 44.97: arXiv 2503.18445 Table 7 (mIoU_EMM^Avg, MiT-B2, val).
 
+Exposing existing fusion models to the same synthetic degradation and sensor dropout during training does not close the gap (Table~\ref{tab:retrained}): re-trained with our degradation curriculum, DGFusion and CAFuser gain robustness but stay below our model on both clean accuracy and the EMM average of the test set. The re-trained baselines see the degradation as single-pass augmentation, without the clean pass and the teacher of C2D2, so this comparison concerns the architecture (frozen foundation backbone, sensor-specific adapters, and high-resolution path) rather than the training scheme.
+
+% Retrained (b): DGFusion judgment-ledger 2026-09-23 (test 54.77) / :117 (EMM 45.52); CAFuser status/current.md (4) (55.79 / 46.50); one run each.
+% Ours 57.74 / 48.66: headline 3 seeds; test EMM15 tasks/DRN-261019-03/analysis.md:19. Same harness (legal v2 test@1024, mm_eval_v2 EMM15).
+\begin{table}[t]
+\caption{Fusion models re-trained with the same synthetic degradation and sensor dropout, on the DELIVER test set (mIoU, \%).}
+\label{tab:retrained}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
+\toprule
+Method & Backbone & Clean & EMM Avg \\
+\midrule
+DGFusion$^{\dagger}$~\cite{dgfusion2026} & Swin-T & 54.77 & 45.52 \\
+CAFuser$^{\dagger}$~\cite{cafuser2025} & Swin-T & \second{55.79} & \second{46.50} \\
+Ours & DINOv3-L & \best{57.74} & \best{48.66} \\
+\bottomrule
+\end{tabular*}
+\tabnote{$^{\dagger}$Re-trained by us with the degradation curriculum of C2D2 applied as single-pass augmentation (no clean pass, no teacher); one run each. Ours: mean of three seeds. EMM Avg: mean over the 15 non-empty sensor subsets with the others zero-filled, test set, same evaluation code for all rows.}
+\end{table}
+
 When only one sensor is available (Fig.~\ref{fig:robust}b), the released DGFusion weights collapse to 7.5 mIoU with RGB alone and to 1.1 with event or LiDAR alone, while still reaching 43.3 with depth alone. Training with degraded inputs lifts every single-sensor score, most strongly for RGB (49.0 for the re-trained DGFusion and 53.9 for our model without the high-resolution path).
 % Sources: judgment-ledger:130 (official weights single-sensor 7.50/43.33/1.13/1.13); judgment-ledger:117 (retrained 49.0/44.5/25.0/25.0; Q2 3 seeds 53.9/46.0/31.0/22.9).
 
@@ -357,7 +377,8 @@ C2D2 & High- & Test & \multicolumn{5}{c}{Validation} \\
 tr. & res & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \midrule
 \multicolumn{8}{@{}l}{\emph{(a) DELIVER, mean of 3 seeds}} \\
-\xmark & \xmark & 56.40$^{\ddagger}$ & \td & \td & \td & \td & \td \\
+% E1 val (2 seeds, s903 checkpoint missing): analysis inbox 20261111-174724, NAS analysis_logs/fill_20261111/a3_e1_val/a3_summary.json (s821 68.57/47.90/56.74/60.30/63.06, s902 67.09/46.33/52.95/57.22/61.33).
+\xmark & \xmark & 56.40$^{\ddagger}$ & 67.83$^{\ddagger}$ & 47.12$^{\ddagger}$ & 54.85$^{\ddagger}$ & 58.76$^{\ddagger}$ & 62.20$^{\ddagger}$ \\
 \cmark & \xmark & \second{56.59} & \second{67.91} & \second{56.87} & \second{60.69} & \second{62.46} & \second{64.08} \\
 \cmark & \cmark & \best{57.74} & \best{70.17} & \best{57.85} & \best{61.28} & \best{63.35} & \best{65.53} \\
 \midrule
