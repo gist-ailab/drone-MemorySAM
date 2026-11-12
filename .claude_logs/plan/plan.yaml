@@ -14671,6 +14671,98 @@ items:
   verdict: null
   analysis: null
   superseded_by: null
+- id: DRN-261112-01
+  title: MUSES 4모달 A2 세 번째 시드(s4) — DRN-261019-02 와 같은 config·40ep, 자원 남을 때(user 2026-11-12)
+  question: MUSES 4모달 논문 모델의 val 평균·조건별 값을 DELIVER 처럼 3시드로 보고할 수 있는가
+  hypothesis: s4 val 이 s2·s3(81.76·81.31 @1536) 범위 안이면 3시드 평균은 81.5±0.3 근처
+  falsification: s4 val 이 두 시드 평균에서 1.0 넘게 벗어나면 원고 MUSES val 을 범위와 함께 보고하고 시드 민감성을
+    명시
+  change: SEED 만 다름(s4); 나머지는 DRN-261019-02 yeon 768 크롭 config 그대로, 교사 E1M4 동일
+  baseline: DRN-261019-02 s2·s3 공식 val 81.758 / 81.311 (@1536)
+  configs: []
+  launch: null
+  success_criteria: 공식 val(1024·1536, 4센서 규칙대로 해상도 선택) 3시드 평균·조건별 평균을 원고 Table 2 val
+    칸과 MUSES 조건 서술에 반영. test 는 추가 제출하지 않음(1회 제출 규칙 유지)
+  sample_basis: 3번째 시드 = DELIVER 본문 3시드 관행과 맞춤(MUSES 시드 std 약 0.7)
+  expected_cost: 24GB 카드 2장 DDP 40ep 약 1.5~2일 + 공식 val 2해상도 약 10분
+  priority: 2
+  owner_role: manager
+  status: queued
+  kind: experiment
+  tags:
+  - muses
+  - paper
+  - seed
+  created: '2026-11-12'
+  updated: '2026-11-12'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261112-02
+  title: MUSES 2센서 C2D2 추가 시드 — RGB+LiDAR·RGB+Event 각 s3·s4 학생(기존 100ep 교사 재사용), 자원
+    남을 때(user 2026-11-12)
+  question: 같은 두 센서로 학습했을 때 MM SAM-adapter 대비 조건별 차이(밤 +2.6/+1.9, 낮 -1.8/-0.7, 안개
+    RGB-E +3.6)가 시드를 바꿔도 유지되는가(val 조건별로 확인)
+  hypothesis: 추가 2시드에서도 val 밤 조건 mIoU 가 s2 대비 ±1 안에 있고, 낮-밤 차이의 방향이 유지된다
+  falsification: 추가 시드에서 val 조건별 순위·밤 우위가 뒤집히면 원고의 조건별 대비 문장을 '한 런 관찰'로 낮추거나 삭제
+  change: 학생 SEED 만 다름(s3, s4); 교사는 DRN-261109-01/-02 의 100ep clean 교사(E1M) 그대로 재사용,
+    나머지 config 동일
+  baseline: 'DRN-261109-01 RGB-L s2: val 82.29 / test 80.46 · DRN-261109-02 RGB-E
+    s2: val 81.64 / test 79.91 (MM SAM-adapter test 81.07 / 79.92)'
+  configs: []
+  launch: null
+  success_criteria: 공식 val 3시드 평균·조건별 평균(밤·낮·안개 등)을 원고 Table 2 2센서 행 val 과 조건별 대비
+    문장에 반영. test 는 추가 제출하지 않음(s2 1회 제출 유지)
+  sample_basis: 조건별 대비 주장(밤 +2.6 등)이 한 런 관찰이라 시드 3개로 방향 일관성 확인; 교사 재사용이므로 분산은 학생 시드
+    분산만 반영(원고에 명시)
+  expected_cost: 학생 4런 × 100ep, 24GB 2장 DDP 런당 약 30시간(RGB-E s2 실측 10:37→16:30) → 서버
+    2곳 병렬 시 약 2.5일
+  priority: 2
+  owner_role: manager
+  status: queued
+  kind: experiment
+  tags:
+  - muses
+  - paper
+  - seed
+  - 2sensor
+  created: '2026-11-12'
+  updated: '2026-11-12'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261112-03
+  title: MUSES 2센서 C2D2 학생 시드 s3·s4(RGB-L·RGB-E, 교사 재사용)
+  question: null
+  hypothesis: null
+  falsification: null
+  change: 학생 SEED s3·s4
+  baseline: null
+  configs: []
+  launch: null
+  success_criteria: val 3시드 평균·조건별
+  sample_basis: null
+  expected_cost: null
+  priority: 2
+  owner_role: manager
+  status: withdrawn
+  kind: experiment
+  tags:
+  - 2sensor
+  created: '2026-11-12'
+  updated: '2026-11-12'
+  closed: '2026-11-12'
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
