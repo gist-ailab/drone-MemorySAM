@@ -7,10 +7,6 @@ period: 2026-07-01 ~ 2026-12-31
 > **역할**: 2026 하반기(2026-07-01~) 역시간순 진행 로그. **새 진행 엔트리는 이 파일 최상단(이 안내 블록 바로 아래)에 추가**한다.
 > 현재 상태는 [current.md](current.md), 2026-06-30 이전 이력은 [history-2026H1.md](history-2026H1.md) 참조.
 
-## 2026-11-12 — MUSES 4센서 기준선 강건 평가 실행기 복원
-- jarvis `dgfusion` Python 경로·import 경로·자동 패치·CAFuser 설정 배포·분산 포트를 실행기에 반영했다. CAFuser `_BASE_` 두 파일은 staged DGFusion 사본에서 확인했다.
-- MUSES 강건 평가 리포트 내부 격자 키와 히스토그램 파일명을 실제 side로 기록한다. 프로토콜 테스트 5건, 문법 검사, staged `train_net.py` 패치 dry-run, 법적 평가 하네스 가드 통과. GPU 평가는 실행하지 않았다.
-
 ## 2026-10-22 — ReliaDINO RGB 단일 모달 항등 융합 수정
 - `semseg/models/reliadino/fusion.py`에서 단일 센서의 교차주의·veto·라우터를 우회하고 `feats[0]`을 반환한다. 4모달 계산은 빈 `others`·veto 조건 가드 외에 그대로 유지한다.
 - CPU 스모크 `tools/smoke_fusion_single_modal.py`: E1 기반 단일 모달 eval 출력·train 역전파/LoRA gradient 및 4모달 eval 확인. 지정 명령에서 `SMOKE OK`.
