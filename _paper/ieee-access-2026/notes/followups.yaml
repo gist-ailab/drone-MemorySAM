@@ -120,3 +120,30 @@ items:
     branches:
       done: "판정 수치로 채움. FU-03 분해 표와 수치가 겹치면 한쪽으로 모음."
     status: open
+
+  - id: FU-10
+    title: 2×2(C2D2 × 고해상 경로) 빈칸과 쌓아 올리기 표의 '+ 고해상 경로' 단계
+    depends_on: [DRN-261112-04]
+    where:
+      - latex/sections/5_experiments.tex — Table abl_robust(tab:abl_robust) 의 '✗ C2D2 · ✓ 고해상' 행(DELIVER), Ablation 절 본문
+      - 쌓아 올리기 표(신설 또는 tab:abl_robust 확장): RGB만 → 평균 융합 → 교차 attention·query head → + 고해상 경로 → + C2D2, 각 행 clean·EMM 두 열
+    now: "고해상 경로 이득(+1.15)은 'C2D2 를 쓴 모델 위에서 측정'이라고만 쓴다. C2D2 는 clean 을 시드 폭 안으로 유지하고 EMM 을 올린다(+9.75, 고해상 없는 모델)는 측정만 쓴다."
+    branches:
+      adopt: "고해상 단독 clean 이득 ≥ +0.8(세 시드 부호 일치) → '고해상 경로가 정확도를, C2D2 가 강건성을 맡는다'를 2×2 표로 주장. 쌓아 올리기 표 완성."
+      reject: "고해상 단독 이득 < +0.3 → '+1.15 는 C2D2 와 결합할 때 나온다'로 서술 수정. A2 − 이 런 clean ≤ −0.5 면 'C2D2 가 고해상 모델 clean 을 깎는다'를 한계 절에."
+      inconclusive: "표에 수치만 싣고 해석은 시드 폭 안이라고 명시."
+    status: open
+
+  - id: FU-11
+    title: C2D2 가 '그냥 augmentation' 과 다른가 → 기여 ①·제목
+    depends_on: [DRN-261112-05]
+    where:
+      - latex/sections/1_intro.tex 기여 ①, 0_abstract.tex 방법 문장, root.tex \title
+      - latex/sections/4_method.tex — C2D2 소절 마지막 문단(측정된 효과)
+      - latex/sections/5_experiments.tex — tab:ablation_loo 에 'single-pass augmentation' 행, tab:retrained 서술(백본 교란 명시)
+    now: "C2D2 의 측정된 효과는 열화 패스(L5: EMM −9.4)뿐이라고 쓴다. 증류(L6 결론 없음)·물리 열화(L7 기각)·router(L8 기각)의 효과는 주장하지 않는다. 'augmentation 과 다르다'는 문장은 쓰지 않는다. 제목(Clean-Teacher Distillation …)은 증류를 앞세우므로 이 결과 뒤 재검토(user 2026-11-12 토론)."
+    branches:
+      adopt: "두 패스가 단일 패스 augmentation 보다 clean 또는 EMM 에서 유의하게 좋음 → 기여 ①을 '같은 샘플의 원본·손상본 짝 학습은 단일 패스 augmentation 과 달리 정확도를 지키며 강건성을 얻는다'로, 제목 후보 'Paired Clean and Corrupted Training …' 계열 검토(method·user 판단)."
+      reject: "차이 없음 → 두 패스 구조를 차별점으로 주장하지 않고 '강한 센서 손상 학습'으로 서술. 제목에서 증류·두 패스를 내리고 모델(동결 파운데이션 백본 + 강건 학습) 중심 제목 검토. 기여 문장 재작성은 method 브리프 갱신 뒤."
+      inconclusive: "ablation 행만 싣고 주장 없음, 한계 절에 한 줄."
+    status: open
