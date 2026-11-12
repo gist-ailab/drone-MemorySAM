@@ -19,7 +19,9 @@
 items:
   - id: FU-01
     title: router 를 무엇이라 서술하는가
-    depends_on: [DRN-261029-06, DRN-261029-07, DRN-261029-08]
+    # 2026-11-12(user): 의존을 L8(DRN-261029-07, 판정 reject)로 한정. -06(추론 시 끄기)·-08(게이트·AUROC 판독)은
+    # L8 로 답이 나서 기다리지 않는다.
+    depends_on: [DRN-261029-07]
     where:
       - latex/sections/4_method.tex — Symmetric Cross-Modal Fusion 절 마지막 문장(router TODO)과 "no gate … no external reliability signal"
       - latex/figures/fig_arch.tex — Fig.1 에 router 블록 유무
@@ -29,7 +31,10 @@ items:
       adopt: "-07(L8) adopt = router 를 빼면 조건별 적응(야간 −RGB 완화) 또는 clean/EMM 이 유의하게 떨어짐 → 방법 절에 '라벨 없는 신뢰도 router: 두 패스 학습으로 센서 확신도가 정답과 같은 방향이 된다(-08 AUROC)' 로 역할 주장, Table 6 에 − router 행, 기여 문장 후보에 포함 검토(method 판정)."
       reject: "-07 reject = 기여 없음 → 구조 설명 한두 문장 + Table 6 − router 행 수치만. 역할 주장 없음."
       inconclusive: "구조 설명 + 수치만, 한계 절에 '역할 미확정' 한 줄."
-    status: open
+    # done 확인(2026-11-12, discussion): L8 reject 분기가 이미 원고에 반영됨 — 4_method.tex:25-30 router 소절은 구조 설명 +
+    # "removing it changes accuracy only within the spread between training runs" 뿐(적응 주장·'no reliability signal' 없음),
+    # 5_experiments.tex tab:ablation_loo 에 Router 열(L8 2시드). 반영 커밋 bfb678d(paper).
+    status: done
 
   - id: FU-02
     title: 융합 뒤 센서별 정적 게이트 tanh(γ_s) 와 '주 센서 없음' 서술
