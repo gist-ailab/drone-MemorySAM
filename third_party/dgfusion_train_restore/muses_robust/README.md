@@ -32,7 +32,11 @@ The ReliaDINO runner masks tensors returned by the MUSES val transform, after
 `Normalize`. DGFusion and CAFuser normalize each raw `batched_input[modality]`
 using `model.pixel_mean[3*i:3*i+3]` and the corresponding standard deviation.
 The hook fills a missing raw sensor with that exact mean slice, giving normalized
-zero. RMM selects raw pixels or the mean slice per element. Camera changes are
+zero. For RMM, our runner multiplies each normalized element by a Bernoulli
+keep mask (`tools/missing_modality_eval.py:96-111`). The detectron2 hook selects
+the raw value or `pixel_mean` per element. Both therefore use independent
+Bernoulli drops at rate `r` and produce normalized zero at dropped elements;
+their random draws are not bit-identical across the two code bases. Camera changes are
 also written to the duplicate `image` key. The hook reads `model.modalities`
 to get the actual buffer order and checks that the four MUSES modalities and 12
 mean/std entries are present. For RGB NM it normalizes raw RGB with those same
@@ -41,25 +45,32 @@ These are the same interventions at the model input. The models' LiDAR/Radar
 projections, resize, and learned preprocessing differ; those upstream inputs
 are not made identical by zero fill.
 
-## Install on jarvis or bengio
+## Install on jarvis
 
 Copy this `muses_robust/` directory to
-`/SSDb/jemo_maeng/dgfusion_train/muses_robust/`, then from that repo run:
-
-```bash
-patch --dry-run -p1 < muses_robust/train_net_muses_robust.patch
-patch -p1 < muses_robust/train_net_muses_robust.patch
-```
+`/SSDb/jemo_maeng/dgfusion_train/muses_robust/`. The runner adds this folder's
+parent to `PYTHONPATH`, so `muses_robust.muses_robust_hook` resolves even when
+the runner is invoked from another directory. Before the first evaluation it
+dry-runs and applies `train_net_muses_robust.patch` if the hook marker is absent.
+The patch is applied once; subsequent invocations reuse it.
 
 The patch targets the staged `train_net.py` at
 `/mnt/SSD2/stage_drn261111/dgf_src/train_net.py`, which already has the prior
-DELIVER hooks. The MUSES hook is inactive when `MUSES_ROBUST_PROTOCOL` is unset.
+DELIVER hooks. The MUSES hook is a no-op when `MUSES_ROBUST_PROTOCOL` is unset
+or `clean`, so other users of that repo are unaffected. The bundled CAFuser
+config is copied to `configs/muses/swin/` if absent; an existing different
+file stops the runner. Its `_BASE_` chain is
+`configs/muses/oneformer_R50_bs8_90k_muses.yaml` →
+`configs/muses/Base-MUSES-UnifiedSegmentation.yaml`, both present in the staged
+jarvis repo copy. The runner checks both files before evaluation.
 The runners require `datasets/muses` to link to `/SSDb/jemo_maeng/dset/MUSES`,
-the `dgfusion` conda environment at the path in the common runner, and the
-matching public MUSES config/weights. The CAFuser config must exist at
-`configs/muses/swin/cafuser_swin_tiny_bs8_180k_muses_clre.yaml` on the server.
+the `dgfusion` Python at `/home/jemo_maeng/miniconda3/envs/dgfusion/bin/python`
+(or set `DGF_PYTHON` to an executable), and matching public weights. The
+runner exports the repo's `OneFormer` and root import paths plus the hook path.
 Each runner refuses a GPU with memory use over 2000 MiB or utilization over
-10%. It runs `score_dgf_muses.py` after each detectron2 inference and writes
+10%. Each evaluation uses a random localhost detectron2 dist port to avoid
+collisions between parallel GPU runs. It runs `score_dgf_muses.py` after each
+detectron2 inference and writes
 `report.json`, `hist_full.npy`, per-condition `hist_*.npy`, and native trainID
 uint8 predictions at `<case_out>/pred/<weather>/<tod>/<stem>_frame_camera.png`.
 For a single setting, `<case_out>` is exactly the runner's `OUT` argument.

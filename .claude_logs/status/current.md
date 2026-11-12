@@ -46,7 +46,7 @@ last_updated: 2026-11-02 (기준선 원문 표 값으로 정정: DGFusion 56.7·
 
 1. hpca100 공유볼륨 89%(여유 244G, [artifact-locations](../infra/artifact-locations.md) 2b).
 2. ISSUE-036 legal 재샘플 편차 — v2 채택 완료, 래퍼 가드 등재 잔여.
-3. **기준선 강건 측정 완료**(DGFusion 공식·(b) 10-01, CAFuser (b) 10-04, 61케이스): Q2 3시드가 결측·depth 부분·노이즈 축 우위, RGB 부분 축은 CAFuser (b) 와 동률.
+3. **기준선 강건 측정 완료**(DGFusion 공식·(b) 10-01, CAFuser (b) 10-04, 61케이스): Q2 3시드가 결측·depth 부분·노이즈 축 우위, RGB 부분 축은 CAFuser (b) 와 동률. MUSES 4센서 DGFusion·CAFuser 평가 실행기 복원 검증 완료(11-12, GPU 평가는 미실행).
 4. ISSUE-034·035 후속 정리 대기. RGB-only 융합 크래시 수정(10-22, 스모크 통과).
 5. jarvis `/ailab_mat2` 금지(sshfs 정지). lecun·jarvis GPU0 금지 09-30 해제.
 

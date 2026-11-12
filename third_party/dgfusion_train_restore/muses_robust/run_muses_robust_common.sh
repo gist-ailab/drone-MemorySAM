@@ -8,11 +8,36 @@ protocol=$4
 setting=$5
 gpu=$6
 repo=/SSDb/jemo_maeng/dgfusion_train
-python_bin=/home/jemo_maeng/anaconda3/envs/dgfusion/bin/python
+python_bin=${DGF_PYTHON:-/home/jemo_maeng/miniconda3/envs/dgfusion/bin/python}
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
+[[ -x "$python_bin" ]] || { echo "DGFusion Python is not executable: $python_bin (set DGF_PYTHON to the dgfusion environment's Python)" >&2; exit 2; }
 [[ -f "$weights" ]] || { echo "Weights missing: $weights" >&2; exit 2; }
 [[ -d "$repo/datasets/muses" ]] || { echo "MUSES dataset link missing: $repo/datasets/muses" >&2; exit 2; }
+export PYTHONPATH="$repo/OneFormer:$repo:$(dirname "$script_dir")${PYTHONPATH:+:$PYTHONPATH}"
+
+caf_source="$script_dir/configs/cafuser_swin_tiny_bs8_180k_muses_clre.yaml"
+caf_target="$repo/configs/muses/swin/cafuser_swin_tiny_bs8_180k_muses_clre.yaml"
+[[ -f "$caf_source" ]] || { echo "Bundled CAFuser config missing: $caf_source" >&2; exit 2; }
+if [[ -e "$caf_target" || -L "$caf_target" ]]; then
+  cmp -s "$caf_source" "$caf_target" || { echo "CAFuser config differs from bundled file; refusing to overwrite: $caf_target" >&2; exit 2; }
+else
+  mkdir -p "$(dirname "$caf_target")"
+  cp "$caf_source" "$caf_target"
+fi
+for base in "$repo/configs/muses/oneformer_R50_bs8_90k_muses.yaml" "$repo/configs/muses/Base-MUSES-UnifiedSegmentation.yaml"; do
+  [[ -f "$base" ]] || { echo "CAFuser config base missing: $base" >&2; exit 2; }
+done
+
+patch_file="$script_dir/train_net_muses_robust.patch"
+[[ -f "$repo/train_net.py" ]] || { echo "DGFusion train_net.py missing: $repo/train_net.py" >&2; exit 2; }
+if ! grep -Fq '_install_muses_robust' "$repo/train_net.py"; then
+  if ! (cd "$repo" && patch -p1 --dry-run < "$patch_file" && patch -p1 < "$patch_file"); then
+    echo "Failed to apply MUSES robustness patch to $repo/train_net.py" >&2
+    exit 2
+  fi
+fi
+
 check_gpu() {
   local gpu_state mem util
   gpu_state=$(nvidia-smi -i "$gpu" --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits)
@@ -67,6 +92,7 @@ for case_name in "${settings[@]}"; do
   mkdir -p "$case_out"
   cd "$repo"
   "$python_bin" train_net.py --config-file "$cfg" --eval-only --num-gpus 1 \
+    --dist-url "tcp://127.0.0.1:$((50000 + RANDOM % 10000))" \
     MODEL.IS_TRAIN False MODEL.WEIGHTS "$weights" OUTPUT_DIR "$case_out" \
     DATASETS.TEST_PANOPTIC "('muses_panoptic_val',)" \
     MODEL.TEST.PANOPTIC_ON True MODEL.TEST.SEMANTIC_ON True MODEL.TEST.DEPTH_ON False \

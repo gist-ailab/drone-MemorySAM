@@ -78,7 +78,7 @@ def accumulate(hist, gt, pred, n):
     hist += torch.bincount(flat, minlength=n * n).reshape(n, n).double()
 
 
-def evaluate_case(name, apply, model, loader, n, class_names, device, args, geometry, out, epoch):
+def evaluate_case(name, apply, model, loader, n, class_names, device, args, geometry, side, out, epoch):
     hist_full = torch.zeros(n, n, dtype=torch.double, device=device)
     hist_small = torch.zeros_like(hist_full)
     hist_cond = OrderedDict()
@@ -120,7 +120,7 @@ def evaluate_case(name, apply, model, loader, n, class_names, device, args, geom
                   'per_class': {c: None if np.isnan(v) else round(float(v), 4)
                                 for c, v in zip(class_names, full_iou)},
                   'classes_absent_in_gt': [c for c, p in zip(class_names, present) if not p]},
-              'internal_letterbox_1024': {'mIoU_present_classes': round(small_p, 4),
+              f'internal_letterbox_{side}': {'mIoU_present_classes': round(small_p, 4),
                                           'mIoU_all19_nan_as_0': round(small_all, 4),
                                           'per_class': {c: None if np.isnan(v) else round(float(v), 4)
                                                         for c, v in zip(class_names, small_iou)}},
@@ -134,7 +134,7 @@ def evaluate_case(name, apply, model, loader, n, class_names, device, args, geom
                           for c, v in zip(class_names, iou)}}
         np.save(out / f"hist_{cond.replace('/', '_')}.npy", hist.cpu().numpy())
     np.save(out / 'hist_full.npy', hist_full.cpu().numpy())
-    np.save(out / 'hist_1024.npy', hist_small.cpu().numpy())
+    np.save(out / f'hist_{side}.npy', hist_small.cpu().numpy())
     (out / 'report.json').write_text(json.dumps(report, indent=2))
     return report
 
@@ -181,7 +181,7 @@ def main():
     for name, apply in evaluations:
         out = Path(args.out) if len(evaluations) == 1 else Path(args.out) / name
         report = evaluate_case(name, apply, model, loader, ds.n_classes, ds.CLASSES,
-                               device, args, geometry, out, ck.get('epoch'))
+                               device, args, geometry, side, out, ck.get('epoch'))
         rows.append({'subset': name, 'mIoU': report['official_native_1080x1920']['mIoU_present_classes'],
                      **{k: v['mIoU_present_classes'] for k, v in report['per_condition_official'].items()}})
     if args.protocol in ('emm', 'rmm') and len(rows) > 1:
