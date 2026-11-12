@@ -1,0 +1,9 @@
+--- a/train_net.py
++++ b/train_net.py
+@@ -568,6 +568,8 @@
+         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+             cfg.MODEL.WEIGHTS, resume=args.resume
+         )
++        from muses_robust.muses_robust_hook import install as _install_muses_robust
++        _install_muses_robust(model)
+         # [baseline_failure D4/6·A7·A11·A12] BF_ZERO_MODAL 이 있으면 해당 모달 입력 텐서를
