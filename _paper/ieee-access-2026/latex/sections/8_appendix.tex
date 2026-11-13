@@ -26,6 +26,61 @@ MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & 302 / 96 / 102 \\
 \tabnote{MUSES test labels are withheld; test scores come from the official evaluation server.}
 \end{table}
 
+\section{Training Configurations}
+\label{app:train}
+Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks, taken from the configuration files of the reported runs (one representative seed per benchmark; the other seeds differ only in the random seed). Training ran on 24\,GB GPUs (RTX 3090 and RTX 4090) or on one 40\,GB A100, with one to four GPUs per run; gradient accumulation keeps the effective batch size at 16 regardless of the number of GPUs. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table. The configuration files of every run are part of the code release.
+
+% Sources (paper session 2026-11-13, yaml load of the files below; key names in parentheses):
+%   DELIVER configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml (seeds 20260821/20260902/20260903),
+%     teacher configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_E1_confirm200.yaml;
+%   MUSES configs/yeon-muses_rgbelr_P39_1_physaugoff_taps_screen40_A2_s2_768.yaml (seeds 20260902/20260903), teacher *_full200_E1M4.yaml (1024 crop);
+%     two-sensor rows: configs/yeon-muses_rgb{l,e}_P39_1_physaugoff_taps_full100_A2_s2_768.yaml (100 epochs, teachers *_full100_E1M.yaml);
+%   MCubeS configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed20260827_A2c2d2_768.yaml (seeds 20260827/20260828; TRAIN_CROP 768, eval 1024),
+%     seed-matched E1Mc teachers. Effective batch: train_reliadino.py:395 accum = ceil(16 / (BS x world)). Warm-up unit = epochs (train_reliadino.py:473).
+\begin{table*}[t]
+\caption{Training configuration of our model per benchmark. Values shared by all three benchmarks are written once.}
+\label{tab:train}
+\centering\tabsetup
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllll@{}}
+\toprule
+Group & Setting & DELIVER & MUSES & MCubeS \\
+\midrule
+Data & Sensors & RGB, depth, event, LiDAR & RGB, LiDAR, event, radar & RGB, AoLP, DoLP, NIR \\
+ & Training crop & $768\times768$ & $768\times768$ & $768\times768$ \\
+ & Colour augmentation & DGFusion~\cite{dgfusion2026} (SSD photometric) & colour jitter & colour jitter \\
+\midrule
+Backbone & Encoder & \multicolumn{3}{l}{DINOv3 ViT-L/16, frozen; LoRA rank 8 on query and value, one set per sensor} \\
+ & Tapped blocks & \multicolumn{3}{l}{6, 12, 18, 24 (sensor-specific projection, summed over sensors)} \\
+\midrule
+Fusion & Cross-modal attention & \multicolumn{3}{l}{2 layers, 8 heads, MLP ratio 4; sensor-specific residual $m_s$} \\
+ & Sensor router & \multicolumn{3}{l}{per-class, hidden width 64; auxiliary heads 256 wide, loss weight 0.5} \\
+\midrule
+Decoder & SimpleFPN & \multicolumn{3}{l}{256 channels} \\
+ & High-res.\ path & \multicolumn{3}{l}{shared stem (64), width 512, deformable extractors with 8 heads and 4 points, 4+2 extractors} \\
+ & Query head & \multicolumn{3}{l}{100 queries, 6 layers, width 256, 8 heads; class/mask/dice weights 2/5/5, 12{,}544 sampled points} \\
+\midrule
+Optimization & Optimizer & \multicolumn{3}{l}{AdamW, learning rate $6\times10^{-4}$, weight decay 0.01} \\
+ & Schedule & poly 0.9, 10-epoch warm-up & poly 0.9, 15-epoch warm-up & poly 0.9, 15-epoch warm-up \\
+ & Epochs & 40 & 40 & 200 \\
+ & Batch & \multicolumn{3}{l}{1 image per GPU, effective batch 16 by gradient accumulation; bfloat16} \\
+\midrule
+Losses & Segmentation & \multicolumn{3}{l}{online hard-example cross-entropy; query head 0.5 with deep supervision; router 0.4 and regularizer 0.01} \\
+ & Regularizers & variance 0.1, covariance 0.01; & variance 0.1, & variance 0.1, \\
+ & & class prototypes 0.1 & covariance 0.01 & covariance 0.01 \\
+\midrule
+C2D2 & Degraded pass & \multicolumn{3}{l}{each sensor corrupted with probability 0.5, one fifth of those removed (zero-filled)} \\
+ & Severity curriculum & 0.3/0.6/1.0 from epoch 0/10/20 & 0.3/0.6/1.0 from epoch 0/10/20 & 0.3/0.6/1.0 from epoch 0/50/100 \\
+ & Distillation & \multicolumn{3}{l}{KL to the frozen teacher, weight 0.5, temperature 2} \\
+ & Teacher & 200 epochs, $768\times768$ & 200 epochs, $1024\times1024$ & 200 epochs, $1024\times1024$, same seed \\
+\midrule
+Evaluation & Checkpoint & best validation score & best official validation score & best test score (no validation split) \\
+ & Resolution & $1024\times1024$, test set & 1024 or 1536 (higher val.), letterboxed & $1024\times1024$, test set \\
+ & Runs & 3 & 2 (four sensors), 1 (two sensors) & 2 \\
+\bottomrule
+\end{tabular*}
+\tabnotewide{The two-sensor MUSES models of Table~\ref{tab:muses} use the MUSES column with 100 epochs and teachers trained for 100 epochs on the same two sensors. The variance and covariance regularizers act on the per-sensor tokens with weight 1.0 for LiDAR and 0.25 for the other sensors.}
+\end{table*}
+
 \section{Additional Qualitative Results}
 \label{app:qual}
 Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are the 18 highest-ranked scenes of the five weather and lighting conditions and under-exposure. The candidates are computed over all 1897 test images of every model, so any scene can be replaced without new inference.
@@ -70,6 +125,15 @@ Fig.~\ref{fig:mcubes} shows MCubeS test scenes against the two fusion models tha
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
 \caption{Typical scenes on the DELIVER test set: for each condition, the image whose per-image mIoU gap between ours and the best other method is closest to the median gap. Display as in Fig.~\ref{fig:supp1}.}
 \label{fig:typical}
+\end{figure*}
+
+% moved from Section V (2026-11-13): main-text layout, see 6_analysis.tex Fig. reverse reference.
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_reverse_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Failure cases on the DELIVER test set with all four sensors. Each row shows the scene where the best of the other three methods most exceeds ours in per-image mIoU, with no two scenes from the same sequence. Display as in Fig.~\ref{fig:adverse}.}
+\label{fig:reverse}
 \end{figure*}
 
 \begin{figure*}[p]
