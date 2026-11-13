@@ -1,8 +1,16 @@
 % Method: draft notes/draft_method_abstract_review_2026-10-29.md §1 (inbox 20261029-194129), code facts in §0 of that file.
 \section{Method}\label{sec:method}
+
+\begin{figure*}[t]
+\centering
+% Source: figures/src/fig_arch_standalone.tex + latex/figures/fig_arch.tex (TikZ), built by build.sh; natural size (13.3 cm), not scaled.
+\includegraphics{figures/fig_arch.pdf}
+\caption{Network of our model. Each sensor passes through the same frozen DINOv3-L with its own LoRA adapter; the final-block tokens of the sensors are fused by cross-modal attention, while intermediate features of blocks 6, 12, 18, and 24 (all at stride 16) are projected per sensor, summed over sensors, and resampled to the levels of a SimpleFPN that also receives a high-resolution path computed from all sensors. A dense head and a query head are combined by an arbiter; a per-class sensor router, a separate branch on the final-block tokens of each sensor, adds routed logits of per-sensor auxiliary heads to this output. Teal outlines mark the trained components we introduce, grey solid outlines the trained high-resolution path adopted from the DINOv3 adapter, and dashed boxes frozen weights; dots on a line mark where it branches.}
+\label{fig:arch}
+\end{figure*}
 % Facts verified against the code on 2026-10-29: see notes/draft_method_abstract_review_2026-10-29.md §0.
 
-We propose Clean-to-Degraded Two-Pass Distillation (C2D2), a training scheme for multi-sensor segmentation, and apply it to a fusion model built on a frozen vision foundation backbone (Fig.~\ref{fig:arch}). We also call the resulting model C2D2. We first describe the model (Sections~\ref{sec:m_backbone}--\ref{sec:m_heads}) and then the training scheme (Section~\ref{sec:m_c2d2}).
+We propose Clean-to-Degraded Two-Pass Distillation (C2D2), a training scheme for multi-sensor segmentation, and apply it to a fusion model built on a frozen vision foundation backbone (Fig.~\ref{fig:arch}); Fig.~\ref{fig:overview} summarizes the training. We also call the resulting model C2D2. We first describe the model (Sections~\ref{sec:m_backbone}--\ref{sec:m_heads}) and then the training scheme (Section~\ref{sec:m_c2d2}).
 
 
 \subsection{Sensors and Their Failure Modes}\label{sec:m_sensors}
@@ -40,7 +48,7 @@ Like CAFuser~\cite{cafuser2025} and DGFusion~\cite{dgfusion2026}, which use a On
 with a learned per-class weight $\lambda_k$. During training, each step uses the dense head, the query head, or both, with probabilities 0.25, 0.25, and 0.5; at inference both are used.
 
 \subsection{Clean-to-Degraded Two-Pass Distillation}\label{sec:m_c2d2}
-C2D2 uses every training batch $(x, y)$ twice.
+C2D2 uses every training batch $(x, y)$ twice (Fig.~\ref{fig:overview}).
 
 \emph{Clean pass.} The model sees the clean inputs $x$ and is trained with the segmentation loss $\mathcal{L}_{\mathrm{clean}}$, which combines online hard-example cross-entropy~\cite{ohem2016} on $\ell$ with the losses of the query head, the auxiliary sensor heads, and the router, and two regularizers listed in Section~\ref{sec:exp}.
 
