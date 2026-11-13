@@ -152,3 +152,14 @@ items:
       reject: "차이 없음 → 두 패스 구조를 차별점으로 주장하지 않고 '강한 센서 손상 학습'으로 서술. 제목에서 증류·두 패스를 내리고 모델(동결 파운데이션 백본 + 강건 학습) 중심 제목 검토. 기여 문장 재작성은 method 브리프 갱신 뒤."
       inconclusive: "ablation 행만 싣고 주장 없음, 한계 절에 한 줄."
     status: open
+
+  - id: FU-12
+    title: 제목 확정 — H1·L9·증류 축 세 결과가 모두 나오면 (user 2026-11-13 "세 결과 나오면 제목 확정하자")
+    depends_on: [DRN-261113-01, DRN-261112-05, DRN-261111-02]
+    where:
+      - latex/root.tex — \title, \markboth 짧은 제목
+      - latex/sections/0_abstract.tex·1_intro.tex — 방법 지칭이 제목과 같은 용어인지
+    now: "현재 제목 'Clean-Teacher Distillation on Corrupted Sensor Inputs for Robust Multi-Sensor Semantic Segmentation' 유지. 제목은 user 가 discussion 세션에서 세 결과를 보고 확정한다 — paper 세션은 통지를 받으면 결과 요약만 정리해 user 에 올리고, 제목을 스스로 바꾸지 않는다."
+    branches:
+      done: "결과 조합별 후보(2026-11-13 discussion): ① H1(DRN-261113-01) 채택 → 고해상 경로를 제목에(T4 'High-Resolution Multi-Sensor Semantic Segmentation Robust to Missing Sensors via Clean and Corrupted Two-Pass Training' 계열), 기각 → 제목에서 뺌. ② DRN-261111-02 가 증류 효과 축을 찾음 → 증류를 제목에 둘 수 있음(현재 제목 또는 A 'Teacher-Guided Training on Clean and Corrupted Sensor Inputs for Robust Multi-Sensor Semantic Segmentation'), 못 찾음 → 증류 빼기(B 'Training on Clean and Corrupted Sensor Inputs for Robust Multi-Sensor Semantic Segmentation'). ③ L9(DRN-261112-05) 채택 → '두 패스(원본·손상본 짝)'를 제목에 드러낼 근거, 기각 → 두 패스·증류를 제목 주어로 쓰지 않음. 세 결과를 합쳐 discussion 에서 user 가 최종 선택."
+    status: open
