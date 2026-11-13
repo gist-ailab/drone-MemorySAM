@@ -1,0 +1,226 @@
+# MUSES official test server output, pasted by the user into the paper session (zip A2rgbe_s2_1536_20261111). Copied verbatim.
+STEP 2: Computing metrics for each condition
+============================================================
+
+
+Evaluating: Full Test Set (all)
+Using 750 images
+mIoU: 79.913
+IoU                 road: 97.17
+IoU             sidewalk: 87.14
+IoU             building: 93.01
+IoU                 wall: 78.73
+IoU                fence: 64.12
+IoU                 pole: 65.58
+IoU        traffic light: 71.56
+IoU         traffic sign: 73.00
+IoU           vegetation: 88.57
+IoU              terrain: 76.43
+IoU                  sky: 96.52
+IoU               person: 73.11
+IoU                rider: 62.28
+IoU                  car: 94.38
+IoU                truck: 77.63
+IoU                  bus: 95.70
+IoU                train: 94.43
+IoU           motorcycle: 58.81
+IoU              bicycle: 70.19
+------------------------------------
+
+Evaluating: Clear Weather (clear)
+Using 225 images
+mIoU: 80.897
+IoU                 road: 98.48
+IoU             sidewalk: 93.25
+IoU             building: 94.60
+IoU                 wall: 78.48
+IoU                fence: 52.37
+IoU                 pole: 67.46
+IoU        traffic light: 71.72
+IoU         traffic sign: 78.07
+IoU           vegetation: 88.91
+IoU              terrain: 78.16
+IoU                  sky: 97.95
+IoU               person: 74.36
+IoU                rider: 65.18
+IoU                  car: 93.78
+IoU                truck: 73.04
+IoU                  bus: 95.13
+IoU                train: 93.90
+IoU           motorcycle: 67.96
+IoU              bicycle: 74.25
+------------------------------------
+
+Evaluating: Fog Weather (fog)
+Using 175 images
+mIoU: 72.519
+IoU                 road: 96.60
+IoU             sidewalk: 78.52
+IoU             building: 89.86
+IoU                 wall: 47.21
+IoU                fence: 74.18
+IoU                 pole: 67.56
+IoU        traffic light: 89.06
+IoU         traffic sign: 63.32
+IoU           vegetation: 85.11
+IoU              terrain: 79.15
+IoU                  sky: 95.04
+IoU               person: 78.73
+IoU                rider: 32.09
+IoU                  car: 91.89
+IoU                truck: 91.98
+IoU                  bus: 97.27
+IoU                train: 0.00
+IoU           motorcycle: 39.50
+IoU              bicycle: 80.79
+------------------------------------
+
+Evaluating: Rain Weather (rain)
+Using 175 images
+mIoU: 78.597
+IoU                 road: 96.63
+IoU             sidewalk: 87.84
+IoU             building: 93.90
+IoU                 wall: 80.03
+IoU                fence: 65.85
+IoU                 pole: 65.77
+IoU        traffic light: 67.62
+IoU         traffic sign: 78.30
+IoU           vegetation: 90.71
+IoU              terrain: 71.97
+IoU                  sky: 96.12
+IoU               person: 72.69
+IoU                rider: 62.18
+IoU                  car: 94.45
+IoU                truck: 60.80
+IoU                  bus: 93.29
+IoU                train: 94.53
+IoU           motorcycle: 52.50
+IoU              bicycle: 68.16
+------------------------------------
+
+Evaluating: Snow Weather (snow)
+Using 175 images
+mIoU: 77.909
+IoU                 road: 96.51
+IoU             sidewalk: 83.38
+IoU             building: 91.01
+IoU                 wall: 85.21
+IoU                fence: 64.08
+IoU                 pole: 60.63
+IoU        traffic light: 69.57
+IoU         traffic sign: 67.02
+IoU           vegetation: 89.46
+IoU              terrain: 69.22
+IoU                  sky: 96.55
+IoU               person: 71.23
+IoU                rider: 51.42
+IoU                  car: 95.37
+IoU                truck: 76.84
+IoU                  bus: 97.28
+IoU                train: 94.57
+IoU           motorcycle: 57.99
+IoU              bicycle: 62.93
+------------------------------------
+
+Evaluating: Daytime (day)
+Using 450 images
+mIoU: 82.684
+IoU                 road: 97.46
+IoU             sidewalk: 86.94
+IoU             building: 94.03
+IoU                 wall: 79.23
+IoU                fence: 67.89
+IoU                 pole: 68.34
+IoU        traffic light: 77.57
+IoU         traffic sign: 71.25
+IoU           vegetation: 91.82
+IoU              terrain: 79.90
+IoU                  sky: 97.74
+IoU               person: 78.18
+IoU                rider: 64.88
+IoU                  car: 94.06
+IoU                truck: 80.41
+IoU                  bus: 97.22
+IoU                train: 96.89
+IoU           motorcycle: 67.35
+IoU              bicycle: 79.83
+------------------------------------
+
+Evaluating: Nighttime (night)
+Using 300 images
+mIoU: 74.273
+IoU                 road: 96.71
+IoU             sidewalk: 87.43
+IoU             building: 91.55
+IoU                 wall: 78.20
+IoU                fence: 57.15
+IoU                 pole: 60.85
+IoU        traffic light: 62.15
+IoU         traffic sign: 75.32
+IoU           vegetation: 80.31
+IoU              terrain: 69.42
+IoU                  sky: 89.88
+IoU               person: 65.85
+IoU                rider: 60.13
+IoU                  car: 94.72
+IoU                truck: 48.13
+IoU                  bus: 84.98
+IoU                train: 93.55
+IoU           motorcycle: 55.78
+IoU              bicycle: 59.09
+------------------------------------
+
+Evaluating: Clear Day (clear_day)
+Using 150 images
+mIoU: 83.153
+------------------------------------
+
+Evaluating: Clear Night (clear_night)
+Using 75 images
+mIoU: 74.447
+------------------------------------
+
+Evaluating: Fog Day (fog_day)
+Using 100 images
+mIoU: 74.328
+------------------------------------
+
+Evaluating: Fog Night (fog_night)
+Using 75 images
+mIoU: 64.405
+------------------------------------
+
+Evaluating: Rain Day (rain_day)
+Using 100 images
+mIoU: 79.827
+------------------------------------
+
+Evaluating: Rain Night (rain_night)
+Using 75 images
+mIoU: 72.649
+------------------------------------
+
+Evaluating: Snow Day (snow_day)
+Using 100 images
+mIoU: 72.723
+------------------------------------
+
+Evaluating: Snow Night (snow_night)
+Using 75 images
+mIoU: 71.999
+------------------------------------
+
+============================================================
+FINAL RESULTS SUMMARY
+============================================================
+Overall mIoU: 79.913
+
+Condition-specific mIoU scores:
+  Clear Weather: 80.897
+  Fog Weather: 72.519
+  Rain Weather: 78.597
+  Snow Weather: 77.909
+  Daytime: 82.684
+  Nighttime: 74.273
+
