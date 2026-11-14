@@ -3,20 +3,22 @@
 #   bash build.sh            -> build/root.pdf
 #   bash build.sh snapshot   -> also copy to drafts/IEEE-Access-draft_<YYYY-MM-DD>.pdf (commit that file)
 # The build runs in build/ so that LaTeX by-products never touch the versioned sources.
-# Fig. 1 is TikZ; ieeeaccess.cls conflicts with pgf, so it is compiled first as a standalone PDF
-# (figures/src/fig_arch_standalone.tex -> latex/figures/fig_arch.pdf, versioned).
+# Figs. 1 and 2 are TikZ; ieeeaccess.cls conflicts with pgf, so they are compiled first as standalone PDFs
+# (figures/src/fig_{c2d2,arch}_standalone.tex -> latex/figures/fig_{c2d2,arch}.pdf, versioned).
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$HERE/build/fig"
-# 1) Fig. 1 standalone
+# 1) TikZ figures as standalone PDFs: Fig. 1 = C2D2 training overview (fig_c2d2), Fig. 2 = network (fig_arch)
 rsync -a "$HERE/latex/figures/" "$HERE/build/fig/figures/"
-cp "$HERE/figures/src/fig_arch_standalone.tex" "$HERE/build/fig/"
-( cd "$HERE/build/fig" && pdflatex -interaction=nonstopmode fig_arch_standalone.tex > /dev/null 2>&1 ) || true
-if [ -s "$HERE/build/fig/fig_arch_standalone.pdf" ]; then
-  cp "$HERE/build/fig/fig_arch_standalone.pdf" "$HERE/latex/figures/fig_arch.pdf"
-else
-  echo "Fig. 1 standalone build failed: see build/fig/fig_arch_standalone.log"; exit 1
-fi
+for f in fig_c2d2 fig_arch; do
+  cp "$HERE/figures/src/${f}_standalone.tex" "$HERE/build/fig/"
+  ( cd "$HERE/build/fig" && pdflatex -interaction=nonstopmode ${f}_standalone.tex > /dev/null 2>&1 ) || true
+  if [ -s "$HERE/build/fig/${f}_standalone.pdf" ]; then
+    cp "$HERE/build/fig/${f}_standalone.pdf" "$HERE/latex/figures/${f}.pdf"
+  else
+    echo "${f} standalone build failed: see build/fig/${f}_standalone.log"; exit 1
+  fi
+done
 # 2) manuscript (best value per column bold, second underlined: figures/src/mark_best.py, idempotent)
 python3 "$HERE/figures/src/mark_best.py" > /dev/null
 rsync -a --delete --exclude 'root.pdf' "$HERE/latex/" "$HERE/build/src/"

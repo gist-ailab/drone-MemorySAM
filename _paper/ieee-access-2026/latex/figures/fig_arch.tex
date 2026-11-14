@@ -32,9 +32,8 @@
   dot/.style={circle, fill=mut, inner sep=0pt, minimum size=1.0mm},
 ]
 \newcommand{\plussign}[2]{\draw[#2, line width=0.55pt] (#1.north) -- (#1.south) (#1.west) -- (#1.east);}
-% ======================= (a) inference =======================
-\node[plab] at (0.0,7.55) {(a)};
-\node[ttl, anchor=west] at (0.5,7.55) {Inference: one frozen backbone, sensor-specific adapters, cross-modal fusion};
+% ======================= network architecture (Fig. 2; the training panel moved to fig_c2d2.tex, user 2026-11-13) =======================
+\node[ttl, anchor=west] at (0.0,7.55) {One frozen backbone, sensor-specific adapters, cross-modal fusion};
 
 % --- sensor thumbnails ---
 \foreach \s/\f/\c/\yy in {RGB/rgb/cRGB/5.0, Depth/depth/cDep/3.85, Event/event/cEvt/2.7, LiDAR/lidar/cLid/1.55}{
@@ -143,45 +142,4 @@
 \draw[tflow] (rsum.south) -- (12.45,2.075);
 \node[sub, anchor=east] at (11.9,1.6) {prediction};
 
-% ======================= (b) training =======================
-\draw[bd, line width=0.4pt] (13.35,0.15) -- (13.35,7.4);
-\node[plab] at (13.45,7.55) {(b)};
-\node[ttl, anchor=west] at (13.95,7.55) {Training: clean and degraded passes};
-
-% clean stack: four sensors, RGB in front
-\foreach \f/\c/\k in {lidar/cLid/3, event/cEvt/2, depth/cDep/1, rgb/cRGB/0}{
-  \node[inner sep=0pt] (c\k) at (14.35+0.13*\k,5.75+0.13*\k) {\includegraphics[width=0.85cm]{figures/fig1_thumbs/\f.png}};
-  \draw[\c, line width=0.6pt] (c\k.south west) rectangle (c\k.north east);
-}
-\node[sub, anchor=north] at (14.5,5.3) {clean, all sensors};
-% degraded stack: depth dropped (empty, crossed), RGB degraded
-\foreach \f/\c/\k in {lidar/cLid/3, event/cEvt/2}{
-  \node[inner sep=0pt] (d\k) at (14.35+0.13*\k,3.45+0.13*\k) {\includegraphics[width=0.85cm]{figures/fig1_thumbs/\f.png}};
-  \draw[\c, line width=0.6pt] (d\k.south west) rectangle (d\k.north east);
-}
-\draw[cDep, line width=0.6pt, fill=white] (14.48-0.425,3.58-0.425) rectangle (14.48+0.425,3.58+0.425);
-\draw[cDep!60, line width=0.45pt] (14.48-0.425,3.58-0.425) -- (14.48+0.425,3.58+0.425);
-\node[inner sep=0pt] (d0) at (14.35,3.45) {\includegraphics[width=0.85cm]{figures/fig1_thumbs/rgb_degraded.png}};
-\draw[cRGB, line width=0.6pt] (d0.south west) rectangle (d0.north east);
-\node[sub, anchor=north, align=center] at (14.5,3.0) {degraded: blur,\\exposure, noise,\\sensor dropout};
-
-\draw[trained, rounded corners=1.5pt] (15.45,3.05) rectangle (16.75,6.4);
-\node[ttl] at (16.1,4.95) {Model (a)};
-\node[sub, align=center] at (16.1,4.5) {same weights,\\two passes};
-\draw[flow] (15.2,5.85) -- (15.45,5.85);
-\draw[flow] (15.2,3.55) -- (15.45,3.55);
-
-\draw[frozen, rounded corners=1.5pt] (15.45,0.6) rectangle (16.75,1.75);
-\node[ttl] at (16.1,1.42) {Teacher};
-\node[sub, align=center] at (16.1,0.98) {frozen,\\clean-trained};
-\draw[flow] (c0.west) -- (13.5,5.75) |- (15.45,1.17);
-
-\node[anchor=west, text=ink, inner sep=1pt] (ce1) at (17.15,5.85) {$\mathcal{L}_{\mathrm{CE}}$};
-\node[anchor=west, text=ink, inner sep=1pt] (ce2) at (17.15,3.85) {$\mathcal{L}_{\mathrm{CE}}$};
-\node[anchor=west, text=acc, inner sep=1pt] (kd) at (17.15,3.0) {$\mathcal{L}_{\mathrm{KD}}$};
-\draw[flow] (16.75,5.85) -- (ce1.west);
-\draw[flow] (16.75,3.55) -- (16.95,3.55) |- (ce2.west);
-\draw[flow] (16.95,3.55) |- (kd.west);
-\draw[->, draw=acc, line width=0.55pt, dash pattern=on 1.4pt off 1pt] (16.75,1.17) -| (kd.south);
-\node[sub, anchor=west, align=left] at (17.5,1.75) {soft\\targets\\$T{=}2$};
 \end{tikzpicture}

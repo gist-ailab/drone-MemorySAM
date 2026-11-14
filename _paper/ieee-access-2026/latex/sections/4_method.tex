@@ -1,8 +1,16 @@
 % Method: draft notes/draft_method_abstract_review_2026-10-29.md §1 (inbox 20261029-194129), code facts in §0 of that file.
 \section{Method}\label{sec:method}
+
+\begin{figure*}[t]
+\centering
+% Source: figures/src/fig_arch_standalone.tex + latex/figures/fig_arch.tex (TikZ), built by build.sh; natural size (13.3 cm), not scaled.
+\includegraphics{figures/fig_arch.pdf}
+\caption{Network of our model. Each sensor passes through the same frozen DINOv3-L with its own LoRA adapter; the final-block tokens of the sensors are fused by cross-modal attention, while intermediate features of blocks 6, 12, 18, and 24 (all at stride 16) are projected per sensor, summed over sensors, and resampled to the levels of a SimpleFPN that also receives a high-resolution path computed from all sensors. A dense head and a query head are combined by an arbiter; a per-class sensor router, a separate branch on the final-block tokens of each sensor, adds routed logits of per-sensor auxiliary heads to this output. Teal outlines mark the trained components we introduce, grey solid outlines the trained high-resolution path adopted from the DINOv3 adapter, and dashed boxes frozen weights; dots on a line mark where it branches.}
+\label{fig:arch}
+\end{figure*}
 % Facts verified against the code on 2026-10-29: see notes/draft_method_abstract_review_2026-10-29.md §0.
 
-We propose Clean-to-Degraded Two-Pass Distillation (C2D2), a training scheme for multi-sensor segmentation, and apply it to a fusion model built on a frozen vision foundation backbone (Fig.~\ref{fig:arch}). We also call the resulting model C2D2. We first describe the model (Sections~\ref{sec:m_backbone}--\ref{sec:m_heads}) and then the training scheme (Section~\ref{sec:m_c2d2}).
+We propose Clean-to-Degraded Two-Pass Distillation (C2D2), a training scheme for multi-sensor segmentation, and apply it to a fusion model built on a frozen vision foundation backbone (Fig.~\ref{fig:arch}); Fig.~\ref{fig:overview} summarizes the training. We also call the resulting model C2D2. We first describe the model (Sections~\ref{sec:m_backbone}--\ref{sec:m_heads}) and then the training scheme (Section~\ref{sec:m_c2d2}).
 
 
 \subsection{Sensors and Their Failure Modes}\label{sec:m_sensors}
@@ -30,7 +38,7 @@ w_{s,k}(p) = \operatorname{softmax}_{s}\big( h_{s,k}(T_s)(p) + \kappa\, r_s(p) \
 where $\kappa=1$, $r_s = 1 - H(\sigma(A_s))/\log K$ is the normalized confidence of the auxiliary prediction of sensor $s$ (with gradients stopped), $K$ is the number of classes, and $h_s$ is a small network whose last layer is initialized at zero, so that routing starts from confidence alone. The routed logits $R_k=\sum_s w_{s,k} A_{s,k}$ are added to the final prediction with a learned scale $\alpha$ initialized at zero (Section~\ref{sec:m_heads}). The router is supervised with cross-entropy on $R$ and with a regularizer that favours decisive per-pixel weights. The router thus mixes the sensor-wise auxiliary predictions into the output as a residual; removing it changes accuracy only within the spread between training runs, in opposite directions for two runs (Table~\ref{tab:ablation_loo}).
 
 \subsection{Decoder with a High-Resolution Path}\label{sec:m_decoder}
-A SimpleFPN~\cite{vitadapter2023} turns $F$ into a feature pyramid at strides 4, 8, 16, and 32. Because every level is interpolated from stride-16 tokens, structures thinner than a token are poorly represented. We therefore add a high-resolution path that follows the adapter of the official DINOv3 segmentation code~\cite{dinov3_2025,vitadapter2023}. A convolutional stem shared across sensors, followed by sensor-specific $1\times1$ projections, extracts features at strides 4, 8, 16, and 32 from the raw inputs. Deformable-attention extractors, one for each of the four blocks above and two more after the last, let these convolutional features sample semantic evidence from the intermediate features. Unlike the original adapter, nothing is injected back into the backbone, which stays untouched. The output of the path is added to the FPN levels, as are the four intermediate features of Section~\ref{sec:m_backbone}, resampled from stride 16 to strides 4, 8, 16, and 32 from the shallowest to the deepest block. Only the high-resolution path carries information finer than a token.
+A SimpleFPN~\cite{vitadapter2023} turns $F$ into a feature pyramid at strides 4, 8, 16, and 32. Because every level is interpolated from stride-16 tokens, structures thinner than a token are poorly represented. We therefore add a high-resolution path that adopts the adapter of the official DINOv3 segmentation code~\cite{dinov3_2025} and extends it to several sensors. As in that adapter, a convolutional stem extracts features at strides 4, 8, 16, and 32 from the raw inputs, deformable-attention extractors, one for each of the four blocks above and two more after the last, let these convolutional features sample semantic evidence from the intermediate features, and, unlike ViT-Adapter~\cite{vitadapter2023}, nothing is injected back into the backbone. Our extension is the handling of several sensors: the stem is shared across sensors and its multi-scale features are projected per sensor and summed, and the intermediate features of all sensors are projected and summed before the extractors sample them. The output of the path is added to the FPN levels, as are the four intermediate features of Section~\ref{sec:m_backbone}, resampled from stride 16 to strides 4, 8, 16, and 32 from the shallowest to the deepest block. Only the high-resolution path carries information finer than a token.
 
 \subsection{Dense and Query Heads}\label{sec:m_heads}
 Like CAFuser~\cite{cafuser2025} and DGFusion~\cite{dgfusion2026}, which use a OneFormer-style query head, we combine a dense convolutional head, which gives per-pixel logits $D$ at stride 4, with a Mask2Former-style query head~\cite{mask2former2022} (100 queries, the first $K$ tied to the $K$ classes, six decoder layers over the tokens of all sensors), whose class and mask predictions give per-pixel class scores $Q$. The final logits are
@@ -40,7 +48,7 @@ Like CAFuser~\cite{cafuser2025} and DGFusion~\cite{dgfusion2026}, which use a On
 with a learned per-class weight $\lambda_k$. During training, each step uses the dense head, the query head, or both, with probabilities 0.25, 0.25, and 0.5; at inference both are used.
 
 \subsection{Clean-to-Degraded Two-Pass Distillation}\label{sec:m_c2d2}
-C2D2 uses every training batch $(x, y)$ twice.
+C2D2 uses every training batch $(x, y)$ twice (Fig.~\ref{fig:overview}).
 
 \emph{Clean pass.} The model sees the clean inputs $x$ and is trained with the segmentation loss $\mathcal{L}_{\mathrm{clean}}$, which combines online hard-example cross-entropy~\cite{ohem2016} on $\ell$ with the losses of the query head, the auxiliary sensor heads, and the router, and two regularizers listed in Section~\ref{sec:exp}.
 
