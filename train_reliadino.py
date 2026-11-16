@@ -293,6 +293,13 @@ def _qaf_kd_kl(teacher_logits, student_logits, T):
     return kl.mean() * (T * T)
 
 
+def _qaf_pass_plan(enable: bool, single_pass: bool) -> tuple[bool, bool, bool]:
+    """Return (degrade main input, run extra degraded pass, allow teacher)."""
+    if single_pass and not enable:
+        raise ValueError("TRAIN.QAF.SINGLE_PASS=true requires TRAIN.QAF.ENABLE=true")
+    return (single_pass, enable and not single_pass, enable and not single_pass)
+
+
 def main(cfg, gpu, save_dir, logger):
     start = time.time()
     device = torch.device(cfg['DEVICE'])
@@ -760,8 +767,8 @@ def main(cfg, gpu, save_dir, logger):
 
     # ── [P54-QAF] 품질 인지 융합 두 패스 학습 세팅 ────────────────────────────
     # MODEL.QAF.ENABLE 만 켜고 TRAIN.QAF.ENABLE 은 꺼도 된다(품질 헤드는 forward
-    # 에서 항등 손실만 생성). TRAIN.QAF.ENABLE 이 켜지면 매 스텝 clean 패스(기존
-    # 경로) + 열화 패스(Degrader → CE + KD + 품질 손실)를 함께 돈다.
+    # 에서 항등 손실만 생성). TRAIN.QAF.ENABLE 이 켜지면 기본은 clean + 열화
+    # 두 패스이고, SINGLE_PASS 는 열화된 주 패스 하나에 모든 주 손실을 건다.
     from semseg.datasets.degrade import Degrader, OP_NAMES as _QAF_OP_NAMES  # [P54] import 만
     _qaf_conf_idx = (_QAF_OP_NAMES.index('region_conflict'),
                      _QAF_OP_NAMES.index('specular_glare'))          # [P56-A] 충돌 op 인덱스
@@ -769,6 +776,8 @@ def main(cfg, gpu, save_dir, logger):
     _qaf_tc = train_cfg.get('QAF', {}) or {}
     qaf_model_on = bool(_qaf_mc.get('ENABLE', False))
     qaf_two_pass = bool(_qaf_tc.get('ENABLE', False))
+    qaf_single_pass, qaf_extra_pass, qaf_use_teacher = _qaf_pass_plan(
+        qaf_two_pass, bool(_qaf_tc.get('SINGLE_PASS', False)))
     # 항등 손실 가중: 두 패스면 TRAIN.QAF.IDENTITY_W, 단일 패스면 MODEL.QAF.IDENTITY_W.
     qaf_id_w = float(_qaf_tc.get('IDENTITY_W', _qaf_mc.get('IDENTITY_W', 0.1))
                      if qaf_two_pass else _qaf_mc.get('IDENTITY_W', 0.1))
@@ -790,7 +799,12 @@ def main(cfg, gpu, save_dir, logger):
                                      'conflict_glare_frac': qaf_conf_glare},
                                 seed=int(_qaf_tc.get('SEED', 0)))
         _tck = str(_qaf_tc.get('TEACHER_CKPT', '') or '')
-        if _tck and os.path.isfile(_tck):
+        if qaf_single_pass and is_rank0:
+            logger.info("[QAF] SINGLE_PASS=true: one forward on degraded inputs, "
+                        "all losses on it, no clean pass, no teacher")
+            if _tck:
+                logger.info(f"[QAF] SINGLE_PASS=true: ignoring TEACHER_CKPT={_tck}")
+        if qaf_use_teacher and _tck and os.path.isfile(_tck):
             # [QAF-T 2026-10-21] L1/L2/L4 학생 ablation 설정은 E1 교사에 전파하지 않는다.
             _tcfg = build_teacher_cfg(cfg, _qaf_tc)
             if is_rank0:
@@ -815,9 +829,9 @@ def main(cfg, gpu, save_dir, logger):
                     f"[QAF-T] teacher 아키텍처가 체크포인트와 불일치: missing={_ld.missing_keys[:5]}... "
                     f"unexpected={_ld.unexpected_keys[:5]}... — TEACHER_CKPT 가 E1(per_modal LoRA, "
                     f"QAF/RangeBias/P55 off) 체크포인트인지, TRAIN.QAF.TEACHER_LORA_MODE 가 맞는지 확인")
-        elif _tck and is_rank0:
+        elif qaf_use_teacher and _tck and is_rank0:
             logger.info(f"[QAF-T] TEACHER_CKPT={_tck} 파일 없음 — KD 항 0 으로 진행")
-        if is_rank0:
+        if is_rank0 and qaf_extra_pass:
             logger.info(f"[QAF-T] two-pass on — degrade_p={_qaf_tc.get('DEGRADE_P', 0.5)} "
                         f"missing_frac={_qaf_tc.get('MISSING_FRAC', 0.2)} kd_w={qaf_kd_w} "
                         f"kd_t={qaf_kd_t} q_w={qaf_q_w} id_w={qaf_id_w} "
@@ -885,8 +899,27 @@ def main(cfg, gpu, save_dir, logger):
             _sync_ctx = (model.no_sync() if (window_pareto and ddp_enable)
                          else contextlib.nullcontext())
             with _sync_ctx:
+                if qaf_single_pass:
+                    qaf_step_n += 1
+                    _cap = _qaf_sev_cap(qaf_sev_sched, epoch)
+                    _clean = [s.detach() for s in sample]
+                    sample, _qlab = qaf_degrader(_clean, modals)
+                    sample, _qlab = _qaf_apply_cap(_clean, sample, _qlab, _cap)
+                    with torch.no_grad():
+                        _dg = float(((_qlab['severity'] > 0)
+                                     | (_qlab['presence'] < 0.5)).float().mean())
+                        _cf = float(((_qlab['op'] == _qaf_conf_idx[0])
+                                     | (_qlab['op'] == _qaf_conf_idx[1]))
+                                    .any(dim=1).float().mean())
+                    qaf_deg_sum += _dg; qaf_deg_n += 1
+                    qaf_conf_sum += _cf; qaf_conf_n += 1
+                    del _clean
                 with autocast(enabled=train_cfg['AMP'], dtype=AMP_DTYPE):
-                    logits, m_feat, aux = model(sample, True, gt_mask=lbl)
+                    if qaf_single_pass:
+                        logits, m_feat, aux = model(sample, True, gt_mask=lbl,
+                                                    qaf_labels=_qlab)
+                    else:
+                        logits, m_feat, aux = model(sample, True, gt_mask=lbl)
                     loss_seg = loss_fn(logits, lbl)
                     _zero = logits.new_zeros(())
                     cal_loss = aux.get('rbma_cal_loss', _zero)
@@ -999,7 +1032,7 @@ def main(cfg, gpu, save_dir, logger):
                     # window_pareto 가 아니면 이 블록을 건너뛰고, autocast 종료 후
                     # "패스별 backward"(clean → 열화 순차)로 처리해 두 패스의
                     # 활성화 그래프가 동시에 살지 않게 한다(peak 메모리 절반).
-                    if qaf_two_pass and window_pareto:
+                    if qaf_extra_pass and window_pareto:
                         if is_rank0 and not _qaf_pareto_warned:
                             logger.info("[QAF-T] QAF 두 패스 + MMPareto 는 "
                                         "단일 backward 경로")
@@ -1047,8 +1080,11 @@ def main(cfg, gpu, save_dir, logger):
                         del _dlogits, _daux, _deg, _clean, _qlab
                     if qaf_model_on:
                         qaf_id_accum += float(aux.get('qaf_identity_loss', _zero))
+                    if qaf_single_pass:
+                        qaf_dce_accum += float(loss_seg)
+                        qaf_q_accum += float(qaf_q_main)
                     loss = total / accumulation_steps
-                if qaf_two_pass and not window_pareto:
+                if qaf_extra_pass and not window_pareto:
                     # ── [P54-QAF] 패스별 backward (peak 메모리 절반) ─────────────
                     # (1) clean 패스: 이미 계산된 `total`(clean 손실)을 먼저
                     #     backward → clean 활성화 그래프가 해제된 뒤 (3) 열화

@@ -316,6 +316,7 @@ class ReliaDINO(nn.Module):
                  hires_deform_ratio: float = 0.5,
                  hires_cffn_ratio: float = 0.25,
                  hires_extra_extractors: int = 2,
+                 hires_modals: Optional[Sequence[str]] = None,
                  # [P54-QAF] 품질 인지 융합 (default OFF → 융합이 QualityHead·self-attn
                  # 층을 만들지 않아 forward·state_dict 가 QAF 미도입본과 byte-동일).
                  qaf_enable: bool = False,
@@ -1094,7 +1095,8 @@ class ReliaDINO(nn.Module):
                 tap_in_dim=dim, dim=hires_dim, stem_dim=hires_stem_dim,
                 mode=hires_mode, n_heads=hires_n_heads, n_points=hires_n_points,
                 deform_ratio=hires_deform_ratio, cffn_ratio=hires_cffn_ratio,
-                extra_extractors=hires_extra_extractors)
+                extra_extractors=hires_extra_extractors,
+                modal_names=self.modalities, modals=hires_modals)
 
         # [E-LORA] 학습가능 파라미터 수 보고(plan.md "파라미터 수 보고"). LoRA 항은
         # qkv 래퍼 안의 어댑터 텐서(.base 제외)만 센다. rank0 에서 한 줄만 출력한다.
@@ -1112,6 +1114,9 @@ class ReliaDINO(nn.Module):
                   f"tau={float(self.boundary_refine.tau):.2f} params={_bp:,}",
                   flush=True)
         if _rank0 and self.hires is not None:
+            if hires_modals is not None:
+                print(f"[HIRES] MODALS={list(hires_modals)} "
+                      f"(indices {list(self.hires.modal_indices)})", flush=True)
             _hp = sum(p.numel() for p in self.hires.parameters())
             print(f"[HIRES] dim={hires_dim} mode={hires_mode} "
                   f"n_heads={hires_n_heads} n_points={hires_n_points} "
@@ -1270,7 +1275,7 @@ class ReliaDINO(nn.Module):
             # (summing in place avoids materializing a stacked (M,B,C,h,w)).
             if collect and self.encoder.last_taps:
                 lt = self.encoder.last_taps
-                if self.hires is not None:
+                if self.hires is not None and i in self.hires.modal_indices:
                     # [HIRES] 센서 raw 탭을 즉시 DIM 투영해 슬롯별 합산을 누적한다
                     # (raw 1024ch 를 센서 수만큼 들고 있지 않기 위해 — 다음 센서
                     # forward 에서 last_taps 가 덮인다). 기존 taps_proj_permodal 과
@@ -2649,6 +2654,7 @@ def build_reliadino(cfg: dict, num_classes: int) -> nn.Module:
         hires_deform_ratio=hires.get('DEFORM_RATIO', 0.5),
         hires_cffn_ratio=hires.get('CFFN_RATIO', 0.25),
         hires_extra_extractors=hires.get('EXTRA_EXTRACTORS', 2),
+        hires_modals=hires.get('MODALS', None),
         # [P54-QAF] 품질 인지 융합 (기본 OFF → 키 없으면 byte-동일)
         qaf_enable=qaf.get('ENABLE', False),
         qaf_mask_modals=qaf.get('MASK_MODALS', ['depth', 'lidar']),

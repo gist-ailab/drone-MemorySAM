@@ -20,7 +20,7 @@ CUDA 확장은 쓰지 않는다(서버별 컴파일 실패 전례). MSDeformAttn
 from __future__ import annotations
 
 import math
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
@@ -159,12 +159,15 @@ class SpatialPrior(nn.Module):
          per_modal   : 스템도 센서별. 센서별 레벨 특징은 TAPS per_modal 과 같은 방식으로 합산."""
 
     def __init__(self, dim: int, stem_dim: int = 64, mode: str = 'shared_stem',
-                 num_modalities: int = 4, norm: str = 'gn'):
+                 num_modalities: int = 4, norm: str = 'gn',
+                 modal_indices: Optional[Sequence[int]] = None):
         super().__init__()
         self.mode = str(mode).lower()
         if self.mode not in ('shared_stem', 'per_modal'):
             raise ValueError(f"[HIRES] MODE 는 shared_stem|per_modal 이어야 한다 (got {mode!r}).")
         self.num_modalities = int(num_modalities)
+        self.modal_indices = (tuple(range(self.num_modalities)) if modal_indices is None
+                              else tuple(modal_indices))
         c = int(stem_dim)
         self._level_in = (c, 2 * c, 4 * c, 4 * c)
 
@@ -185,7 +188,7 @@ class SpatialPrior(nn.Module):
             raise ValueError(f"[HIRES] SPM 모달 수 불일치: 입력 {len(x_list)} vs "
                              f"num_modalities {self.num_modalities}.")
         acc: List = [None, None, None, None]
-        for m in range(self.num_modalities):
+        for m in self.modal_indices:
             stem = self.stems[m] if self.mode == 'per_modal' else self.stem
             raws = stem(x_list[m])
             for k in range(4):
@@ -309,7 +312,9 @@ class HiResAdapter(nn.Module):
                  tap_in_dim: int = 1024, dim: int = 512, stem_dim: int = 64,
                  mode: str = 'shared_stem', n_heads: int = 8, n_points: int = 4,
                  deform_ratio: float = 0.5, cffn_ratio: float = 0.25,
-                 extra_extractors: int = 2, norm: str = 'gn'):
+                 extra_extractors: int = 2, norm: str = 'gn',
+                 modal_names: Optional[Sequence[str]] = None,
+                 modals: Optional[Sequence[str]] = None):
         super().__init__()
         if num_taps != 4:
             raise ValueError(f"[HIRES] 4 상호작용 블록 설계이므로 탭 4개가 필요하다 "
@@ -317,9 +322,21 @@ class HiResAdapter(nn.Module):
         self.dim = int(dim)
         self.num_taps = int(num_taps)
         self.num_modalities = int(num_modalities)
+        if modals is None:
+            self.modal_indices = tuple(range(self.num_modalities))
+        else:
+            if (not isinstance(modals, (list, tuple)) or not modals
+                    or modal_names is None or len(modal_names) != self.num_modalities
+                    or any(name not in modal_names for name in modals)):
+                raise ValueError(f"[HIRES] MODALS must be a nonempty list of sensor names "
+                                 f"from {list(modal_names) if modal_names is not None else None}; "
+                                 f"got {modals!r}")
+            self.modal_indices = tuple(i for i, name in enumerate(modal_names)
+                                       if name in modals)
 
         self.spm = SpatialPrior(dim, stem_dim=stem_dim, mode=mode,
-                                num_modalities=num_modalities, norm=norm)
+                                num_modalities=num_modalities, norm=norm,
+                                modal_indices=self.modal_indices)
         # 탭 투영: 센서별·슬롯별 LN2d + 1×1 (tap_in_dim → dim). 기존 경로와 별개.
         self.tap_proj = nn.ModuleList(
             nn.ModuleList(
