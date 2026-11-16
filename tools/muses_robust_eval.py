@@ -34,12 +34,19 @@ MODALS = ('img', 'lidar', 'event', 'radar')
 LEVELS = {'low': (0.05, 0.1), 'mid': (0.1, 0.2), 'high': (0.2, 0.5)}
 
 
-def rgb_noise(images, level, generator):
-    """DELIVER Table 4 NM, restricted to RGB; S&P then Gaussian in normalized space."""
+def rgb_noise(images, level, generator, scope='all'):
+    """Public NM bench (2503.18445, DELIVER val_mm_NM.py): S&P then Gaussian in normalized space.
+
+    scope='all' (default, matches the benchmark): every sensor gets S&P, every sensor except
+    event gets Gaussian. scope='rgb': RGB only (qualitative failure figure).
+    """
     density, std = LEVELS[level]
     out = list(images)
-    out[0] = bench_sp_noise(out[0], density, generator)
-    out[0] = out[0] + torch.randn(out[0].shape, generator=generator).to(out[0].device) * std
+    targets = [0] if scope == 'rgb' else range(len(out))
+    for i in targets:
+        out[i] = bench_sp_noise(out[i], density, generator)
+        if MODALS[i] != 'event':
+            out[i] = out[i] + torch.randn(out[i].shape, generator=generator).to(out[i].device) * std
     return out
 
 
@@ -68,7 +75,7 @@ def cases(args):
     if args.protocol == 'nm':
         levels = [args.level] if args.level else list(LEVELS)
         return [(level, lambda base, lev=level, g=torch.Generator().manual_seed(args.seed):
-                 rgb_noise(base, lev, g)) for level in levels]
+                 rgb_noise(base, lev, g, args.nm_scope)) for level in levels]
     return [('clean', lambda base: list(base))]
 
 
@@ -150,6 +157,8 @@ def main():
     ap.add_argument('--subset')
     ap.add_argument('--ratio', type=float)
     ap.add_argument('--level', choices=tuple(LEVELS))
+    ap.add_argument('--nm-scope', dest='nm_scope', choices=('all', 'rgb'), default='all',
+                    help='NM target sensors: all (public benchmark, default) or rgb only')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--dump', action='store_true')
     ap.add_argument('--limit', type=int)

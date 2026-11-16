@@ -59,11 +59,14 @@ def install(model):
     else:
         level = os.environ['MUSES_ROBUST_LEVEL'].lower()
         density, sigma = LEVELS[level]
+        nm_scope = os.environ.get('MUSES_ROBUST_NM_SCOPE', 'all').lower()  # all = public bench, rgb = RGB only
+        if nm_scope not in ('all', 'rgb'):
+            raise ValueError('MUSES_ROBUST_NM_SCOPE must be all or rgb')
 
     def hook(_module, inputs):
         for sample in inputs[0]:
             for name in model.modalities:
-                if protocol == 'nm' and name != 'CAMERA':
+                if protocol == 'nm' and nm_scope == 'rgb' and name != 'CAMERA':
                     continue
                 if protocol in ('emm', 'rmm') and name not in missing:
                     continue
@@ -79,7 +82,8 @@ def install(model):
                 else:
                     normalized = (raw.float() - mu) / sd
                     noisy = bench_sp_noise(normalized.unsqueeze(0), density, generator)[0]
-                    noisy = noisy + torch.randn(noisy.shape, generator=generator).to(noisy.device) * sigma
+                    if name != 'EVENT_CAMERA':  # bench: no Gaussian on event
+                        noisy = noisy + torch.randn(noisy.shape, generator=generator).to(noisy.device) * sigma
                     result = noisy * sd + mu
                 sample[name] = result
                 if name == 'CAMERA':
