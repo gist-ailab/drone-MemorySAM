@@ -14856,7 +14856,9 @@ items:
     기동'
   baseline: A2 같은 시드(s821·s902, C2D2 = 두 패스+증류) 와 C2D2 없음(clean 학습), legal v2 test@1024
     + EMM15 test·val + NM — L5·L6·L7·L8 과 같은 평가 묶음
-  configs: []
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L9singlepass.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L9singlepass.yaml
   launch: null
   success_criteria: 채택(C2D2 ≠ augmentation) = 2시드 짝 Δ(A2 − L9) 평균이 test clean ≥ +0.5
     또는 test EMM15 ≥ +1.0 이고 그 지표에서 두 시드 부호 일치
@@ -14897,7 +14899,9 @@ items:
     [''img'']) 추가 — off 계약(기본값 = 전 센서 = A2 byte 동일) 스모크·검수 후 develop 병합'
   baseline: A2 같은 시드(s821 58.61 · s902 57.09), legal v2 test@1024, 얇은 4클래스 IoU, 조건별
     clean(Table 6 축), EMM15 test
-  configs: []
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hiresH1rgbonly.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2hiresH1rgbonly.yaml
   launch: null
   success_criteria: 채택(멀티센서 확장 기여) = 2시드 짝 Δ(A2 − H1) 평균이 얇은 4클래스 평균 ≥ +1.0 또는 test
     clean ≥ +0.5 이고 그 지표에서 두 시드 부호 일치
