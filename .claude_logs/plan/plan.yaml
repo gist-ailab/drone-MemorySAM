@@ -15062,17 +15062,22 @@ items:
     교사 학습 길이 40ep(현 교사 200ep, ep140) 차이를 병기'
   baseline: A2 같은 시드(s821 58.61·s902 57.09, E1 교사) 와 L6(교사 없음, 58.77·56.32), legal
     v2 test@1024 + EMM15 test + 얇은 4클래스 IoU
-  configs: []
+  configs:
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2T1hiresteacher.yaml
+  - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2T1hiresteacher.yaml
   launch: null
   success_criteria: 채택(고해상 교사로 증류가 기여) = 2시드 짝 Δ(T1 − L6) 평균이 test clean ≥ +0.5 또는
     얇은 4클래스 ≥ +1.0 또는 EMM15 ≥ +1.0 이고 그 지표에서 두 시드 부호 일치. 채택 시 논문 모델 교체 여부는 별도 결정(교체하면
     DELIVER 3시드·MUSES·MCubeS 메인 표 재학습 + 각 벤치 고해상 교사 필요)
-  sample_basis: L5~L9 과 같은 2시드, 시드별 짝 Δ·부호 일치
+  sample_basis: 'L5~L9 과 같은 2시드(s821·s902), 시드별 짝 Δ·부호 일치. 비교는 세 짝을 모두 적는다: T1 − L6(증류
+    유무, 교사 = 고해상), T1 − A2(교사 교체 효과), A2 − L6(기존). 교란 2개 병기: ① 교사 학습 길이 40ep vs 현
+    교사 200ep(ep140) ② L6 s902 는 val-best ep30. 교사 clean test 값(2×2 런 legal v2)도 표에
+    함께'
   expected_cost: 교사 = DRN-261112-04 체크포인트 재사용(추가 학습 없음, 단 그 런 완주 필요) · 학생 4 GPU ×
     약 1일 × 2런 + 평가 묶음
   priority: 1
   owner_role: manager
-  status: idea
+  status: queued
   kind: experiment
   tags:
   - ablation
