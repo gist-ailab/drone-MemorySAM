@@ -17,7 +17,7 @@ from PIL import Image
 HERE = Path(__file__).resolve().parents[2]
 SRC = Path("/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs/hires_viz_a2s821_20261104/panels")
 SCENES = [("Night", "img/night/test/MAP_10_point5/001200_rgb_front"),
-          ("Cloud", "img/cloud/test/MAP_10_point12/013150_rgb_front")]
+          ("Fog", "img/fog/test/MAP_7_point84/011250_rgb_front")]  # user 2026-11-16: the cloud scene (013150) looked like night (64% of DELIVER cloud test images have a dark sky)
 COLS = [("rgb", "RGB input"), ("gt", "Ground truth"), ("c_norm", "Taps (stride 16)"), ("d_norm", "High-res. path")]
 TEXT_W = 7.0
 FG, EDGE = "#3C3838", "#8F8B8B"   # carbon@11.84.0 warm-gray-80 / warm-gray-50 (design-source: carbon@11.84.0)
