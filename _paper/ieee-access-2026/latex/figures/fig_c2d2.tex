@@ -23,8 +23,8 @@
   frozen/.style={draw=mut, dash pattern=on 1.6pt off 1.2pt, line width=0.45pt, fill=sf},
   trained/.style={draw=acc, line width=0.7pt, fill=white},
   plain/.style={draw=mut, line width=0.45pt, fill=white},
-  ttl/.style={font=\sffamily\bfseries\fontsize{6.8}{8}\selectfont, text=ink},
-  sub/.style={text=mut, font=\sffamily\fontsize{5.6}{6.6}\selectfont},
+  ttl/.style={font=\sffamily\bfseries\fontsize{6.8}{8.8}\selectfont, text=ink},
+  sub/.style={text=mut, font=\sffamily\fontsize{5.6}{7.4}\selectfont},
   plab/.style={font=\sffamily\bfseries\fontsize{8}{9}\selectfont, text=ink, anchor=west},
   dot/.style={circle, fill=mut, inner sep=0pt, minimum size=1.0mm},
 ]
@@ -52,10 +52,10 @@
 
 % ---------- degradation ----------
 \draw[flow] (0.75,3.3) -- (0.75,1.6);
-\draw[plain, rounded corners=1.2pt] (2.3,1.35) rectangle (5.8,3.65);
+\draw[plain, rounded corners=1.2pt] (2.3,1.2) rectangle (5.8,3.65);
 \node[ttl, anchor=north west] at (2.42,3.57) {Sensor-specific degradation};
 \node[sub, anchor=north west, align=left] at (2.42,3.24) {each sensor corrupted with $p=0.5$;\\one in five corrupted sensors removed\\(zero-filled), else one operator:};
-\node[sub, anchor=north west, align=left] at (2.42,2.54) {%
+\node[sub, anchor=north west, align=left] at (2.42,2.42) {%
 \textcolor{cRGB}{RGB}: blur, gain, colour shift\\
 \textcolor{cDep}{depth}: holes, scale change\\
 \textcolor{cLid}{LiDAR}: dropped and jittered beams\\
@@ -84,7 +84,7 @@
 \draw[flow] (1.9,1.1) -- (6.2,1.1);
 % shared weights
 \draw[<->, draw=acc, line width=0.55pt, dash pattern=on 1.4pt off 1pt] (7.45,4.15) -- (7.45,1.65);
-\node[sub, fill=white, inner sep=1.2pt, text=acc, align=center] at (7.45,2.9) {same weights,\\same batch};
+\node[sub, text=acc, align=left, anchor=west] at (7.6,2.9) {same weights,\\same batch};
 
 % ---------- losses ----------
 \node[anchor=west, text=ink, inner sep=1pt] (lc) at (9.2,4.7) {$\mathcal{L}_{\mathrm{clean}} = \mathcal{L}_{\mathrm{CE}}\big(\ell(x), y\big) + \text{aux.}$};

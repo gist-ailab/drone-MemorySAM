@@ -25,8 +25,8 @@
   frozen/.style={draw=mut, dash pattern=on 1.6pt off 1.2pt, line width=0.45pt, fill=sf},
   trained/.style={draw=acc, line width=0.7pt, fill=white},
   plain/.style={draw=mut, line width=0.45pt, fill=white},
-  ttl/.style={font=\sffamily\bfseries\fontsize{6.8}{8}\selectfont, text=ink},
-  sub/.style={text=mut, font=\sffamily\fontsize{5.6}{6.6}\selectfont},
+  ttl/.style={font=\sffamily\bfseries\fontsize{6.8}{8.8}\selectfont, text=ink},
+  sub/.style={text=mut, font=\sffamily\fontsize{5.6}{7.4}\selectfont},
   plab/.style={font=\sffamily\bfseries\fontsize{8}{9}\selectfont, text=ink, anchor=west},
   plus/.style={circle, inner sep=0pt, minimum size=2.6mm, fill=white},
   dot/.style={circle, fill=mut, inner sep=0pt, minimum size=1.0mm},
@@ -60,7 +60,7 @@
 \node[sub] at (3.4,1.12) {LoRA on Q, V of every block};
 
 % --- per-sensor final-block tokens T_s, a bus to the router, straight lines into the fusion ---
-\node[sub, align=center] at (5.5,5.5) {$T_s$\\[-1pt](stride 16)};
+\node[sub, align=center] at (5.5,5.5) {$T_s$\\(stride 16)};
 \foreach \s/\c/\yy in {RGB/cRGB/5.0, Depth/cDep/3.85, Event/cEvt/2.7, LiDAR/cLid/1.55}{
   \draw[mut, line width=0.45pt] (5.0,\yy) -- (5.3,\yy);
   \draw[draw=\c, fill=\c!20, line width=0.4pt] (5.3,\yy-0.14) rectangle +(0.28,0.28);
