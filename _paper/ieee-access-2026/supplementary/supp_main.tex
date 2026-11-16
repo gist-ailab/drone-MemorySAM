@@ -9,6 +9,7 @@
 \usepackage{booktabs,graphicx,xcolor,amsmath,caption}
 \usepackage[hidelinks]{hyperref}
 \captionsetup{font=small,labelfont=bf}
+\graphicspath{{../latex/}}
 \renewcommand{\thetable}{S\arabic{table}}
 \renewcommand{\thefigure}{S\arabic{figure}}
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
@@ -23,7 +24,7 @@
 This document complements the main paper with tables that are too detailed for the main text. Table and figure numbers without the prefix S refer to the main paper. All numbers of our model are the mean over the training runs stated in the main paper unless a caption says otherwise.
 
 \section{Missing sensors per subset on DELIVER}
-Table~\ref{tab:s_emm} expands the entire-missing average of Table~5 (benchmark protocol) into the 15 subsets of removed sensors, measured with the public benchmark code on the validation set. The released CMNeXt weights reproduce the benchmark's reported values, and the averages in the last rows are those of Table~5. CMNeXt collapses whenever depth is removed (22.9 with depth alone missing, 3.2 or less with depth and RGB missing), whereas our model keeps at least 24.9 in every subset and matches or exceeds its clean score when event, LiDAR, or both are removed (71.5 to 72.0 against 71.3).
+Table~\ref{tab:s_emm} expands the entire-missing average of Table~4 (benchmark protocol) into the 15 subsets of removed sensors, measured with the public benchmark code on the validation set. The released CMNeXt weights reproduce the benchmark's reported values, and the averages in the last rows are those of Table~4. CMNeXt collapses whenever depth is removed (22.9 with depth alone missing, 3.2 or less with depth and RGB missing), whereas our model keeps at least 24.9 in every subset and matches or exceeds its clean score when event, LiDAR, or both are removed (71.5 to 72.0 against 71.3).
 
 \section{MUSES test results per condition and class}
 Table~\ref{tab:s_muses_cond} gives the official test scores of our three MUSES models per condition, next to the per-condition results that MM SAM-adapter reports for the same two-sensor settings. Table~\ref{tab:s_muses_cls} gives the per-class scores of the same submissions. Each of our entries is one submission (the run with the higher validation score), so differences of about one point between models or conditions are within what a different training run could change.
@@ -34,6 +35,99 @@ Table~\ref{tab:s_mcubes_cls} compares, per material class, our full model with t
 \section{Dependence on depth per condition}
 Table~\ref{tab:s_depth} lists the per-condition drops plotted in Fig.~7 of the main paper.
 
+
+\section{Additional qualitative results}
+These figures were part of the appendix of an earlier draft and are kept here for reference; the selection rules are those of the main paper.
+Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked DELIVER scenes of every condition under the rule of Fig.~10 of the main paper; together with that figure they are the 18 highest-ranked scenes of the five weather and lighting conditions and under-exposure (gaps of 3.4 to 13.0 points of per-image mIoU).
+The DELIVER test split also contains sequences with a built-in sensor fault (over-exposure, motion blur, LiDAR jitter, low-resolution events); Figs.~\ref{fig:cases} and~\ref{fig:cases_reverse} show the scene of each fault with the largest gap in our favour and against us.
+Fig.~\ref{fig:failure_reverse} is the counterpart of Fig.~4 of the main paper: for each corrupted-input setting, the scene where another method leads ours the most. With depth removed, no scene of the six weather and lighting conditions favours another method by more than 0.7 points, while with RGB removed, LiDAR and event removed, or RGB under heavy noise the largest deficits are 11.7, 9.9, and 8.6 points.
+Figs.~\ref{fig:supp_muses} and~\ref{fig:reverse_muses} extend Figs.~5 and~6 of the main paper on the MUSES validation set. The deficits in Fig.~\ref{fig:reverse_muses} (13.7 to 25.2 points) are larger than the margins of Fig.~6 (4.1 to 18.9 points); with 25 to 33 images per adverse condition, single-image gaps on MUSES say little about the mean.
+Fig.~\ref{fig:thin} shows the per-class gain of the high-resolution path with the individual runs (the means are in Table~10 of the main paper).
+
+\clearpage
+% ==== fig:thin
+\begin{figure}[!htbp]
+\centering
+% Source: .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv (3 seeds, legal v2 test 1024);
+% plot: figures/src/make_data_figs.py (fig_thin).
+\includegraphics[width=\columnwidth]{figures/fig_thin.pdf}
+\caption{Per-class IoU gain from the high-resolution path on the DELIVER test set (full model minus the same model without the path). Bars: mean of three seeds; dots: individual seeds. Scenes with thin objects are shown in Fig.~13 of the main paper.}
+\label{fig:thin}
+\end{figure}
+
+% ==== fig:supp1
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_1.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Additional qualitative results on the DELIVER test set for sun and cloud: the second- and third-ranked scenes under the selection rule of Fig.~10 of the main paper. Faded pixels agree with the ground truth; numbers give per-image mIoU (\%).}
+\label{fig:supp1}
+\end{figure*}
+
+% ==== fig:supp2
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_2.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Additional qualitative results for rain and fog. Display as in Fig.~\ref{fig:supp1}.}
+\label{fig:supp2}
+\end{figure*}
+
+% ==== fig:supp3
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_deliver_3.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Additional qualitative results for night and low exposure. Display as in Fig.~\ref{fig:supp1}.}
+\label{fig:supp3}
+\end{figure*}
+
+% ==== fig:cases
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_cases_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Qualitative results on DELIVER test sequences with a built-in sensor fault: for each fault, the scene with the largest per-image mIoU gap in favor of ours. The second column shows the affected sensor (RGB for exposure and blur, LiDAR, or event). Display as in Fig.~\ref{fig:supp1}.}
+\label{fig:cases}
+\end{figure*}
+
+% ==== fig:cases_reverse
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_cases_reverse_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Failure cases on DELIVER test sequences with a built-in sensor fault: for each fault, the scene where another method most exceeds ours. Display as in Fig.~\ref{fig:cases}.}
+\label{fig:cases_reverse}
+\end{figure*}
+
+% ==== fig:failure_reverse
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_failure_reverse_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Failure cases on the DELIVER test set when a sensor fails: for each corrupted-input setting, the scene where another method most exceeds ours in per-image mIoU. Settings and display as in Fig.~4 of the main paper.}
+\label{fig:failure_reverse}
+\end{figure*}
+
+% ==== fig:supp_muses
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_supp_muses.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
+\caption{Additional scenes on the MUSES validation set (all four sensors): the second-ranked clear-night scene and the top scenes of rain by night and snow by day, under the rule of Figs.~5 and~6 of the main paper. Display as in Fig.~6 of the main paper.}
+\label{fig:supp_muses}
+\end{figure*}
+
+% ==== fig:reverse_muses
+\begin{figure*}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_reverse_muses.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
+\caption{Failure cases on the MUSES validation set: for each adverse condition of Fig.~6 of the main paper, the scene where a baseline most exceeds ours. Display as in Fig.~6 of the main paper.}
+\label{fig:reverse_muses}
+\end{figure*}
+
+\clearpage
 \section{Planned for revision: C2D2 on other fusion architectures}
 \todo{Only if reviewers ask (lab-plan DRN-261029-02/03, revision reserve). Apply the full C2D2 scheme (clean pass, degraded pass, frozen clean teacher) to DGFusion and CAFuser and report clean mIoU, EMM average, and the per-condition depth drop next to their single-pass re-training of Table~\ref{tab:s_depth} and of the re-trained comparison in the main paper.}
 

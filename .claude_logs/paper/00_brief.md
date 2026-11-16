@@ -128,3 +128,4 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
   2. 시스템: 동결 비전 기반 모델 하나 + 센서별 LoRA + DINOv3 고해상 어댑터의 멀티센서 확장. DELIVER(57.74, +1.0)·MUSES(test 80.01, +0.5)·MCubeS(59.78, +2.2) test 에서 4센서 최고, 공개 결측 벤치 최고. H1·H2(DRN-261113-01·02) 결과에 따라 "extended to several sensors" 의 근거 문장 확정.
   3. 통제된 분석: 같은 손상으로 재학습한 기준선, 공개 가중치의 단일 코드 재채점, 조건별 센서 의존, 고해상 경로가 되살리는 얇은 구조(특징 집중도 2.52 대 0.93), 실패 사례, 그리고 음성 결과(증류·물리 열화·router).
 - **제목**: 증류를 앞세운 현 제목은 증거와 어긋난다. method 권고 = "C2D2: Clean-to-Degraded Paired Training for Accurate and Robust Multi-Sensor Semantic Segmentation with a Frozen Vision Foundation Model"(약어 유지, Distillation 제거). L9 가 채택되면 그대로, 기각되면 학습 방식을 제목에서 내리고 시스템·분석형 제목으로. 최종은 user.
+- **서술 원칙(user 2026-11-16, discussion 경유)**: 설계 선택을 "보고한 모델이 이 설정으로 학습돼서 남겼다"는 식으로 정당화하지 않는다. 각 구성요소는 설계 동기(왜 넣었는가)와 측정 결과(효과가 있었는가)를 따로 적는다. 효과가 측정되지 않은 요소(증류·물리 열화·router)는 동기 + "측정된 독립 효과 없음"으로 쓴다. 교사에 고해상 경로가 없는 이유·교사의 역할은 T1(DRN-261116-02) 결과로 답한다.

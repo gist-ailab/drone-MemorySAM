@@ -7,17 +7,26 @@ val split (250 images, native 1080×1920, 19 train IDs).
 ## Protocol
 
 The sensor order is RGB (`img`/`CAMERA`), LiDAR, Event (`EVENT_CAMERA`), Radar.
-EMM evaluates all 15 nonempty present subsets. The full set is clean. A missing
-sensor is zero **after** model normalization. RMM evaluates the same 15 subsets
-at each `r` in 0.25, 0.5, 0.75. For sensors outside the present subset, each
-channel and pixel independently becomes zero when a seeded uniform draw is less
-than `r`; the full-set case is clean. The `mean15` row is the arithmetic average
-of the 15 mIoUs, including clean. Each setting uses a fresh CPU Torch generator
-with the specified seed (default 0), so separate runner processes reproduce the
-same setting. NM corrupts **RGB only** at Low/Mid/High strengths: salt-and-pepper
-density and additive Gaussian standard deviation `(0.05, 0.1)`, `(0.1, 0.2)`,
-`(0.2, 0.5)` in normalized space. The S&P operation samples independent tensor
-coordinates with replacement, then applies Gaussian noise.
+All corruptions are applied in the **public benchmark input space** (DELIVER
+`augmentations_mm.Normalize` @b3a76c3, used by arXiv 2503.18445): RGB is
+ImageNet-normalized, the other sensors are raw 0-255 floats. EMM evaluates all 15
+nonempty present subsets; the full set is clean; a missing sensor is 0 in that
+space (RGB -> channel mean, LiDAR/Event/Radar -> raw 0). RMM evaluates the same 15
+subsets at each `r` in 0.25, 0.5, 0.75: for sensors outside the present subset each
+element becomes 0 (same space) when a seeded uniform draw is less than `r`. The
+`mean15` row is the arithmetic average of the 15 mIoUs, including clean. Each setting
+uses a fresh CPU Torch generator with the specified seed (default 0).
+NM (default `--nm-scope all` / `MUSES_ROBUST_NM_SCOPE=all`, changed 2026-11-16 by user
+decision to follow prior work) follows upstream `val_mm_NM.py:64-84,104-113` exactly:
+salt-and-pepper on every sensor first (per-tensor max/min, coordinates with
+replacement, batch 1), then additive Gaussian on every sensor except Event, with
+(density, sigma) = (0.05, 0.1) / (0.1, 0.2) / (0.2, 0.5); sigma is in normalized units
+for RGB and raw 0-255 units for the other sensors. Radar is not in the upstream code
+(DELIVER has no radar) and is treated like LiDAR. `rgb` scope = RGB only (figure dump).
+`python tools/verify_muses_nm.py [--cfg <muses cfg>]` checks both our runner and this
+hook against the verbatim upstream functions (same seed -> max abs diff 0 / <=1.5e-5).
+Note: the version before 2026-11-16 drew non-RGB Gaussian noise in our loader units
+(raw/255 for ReliaDINO, normalized for this hook), i.e. far stronger than upstream.
 
 Definitions reproduced from the read-only benchmark:
 
@@ -28,15 +37,10 @@ Definitions reproduced from the read-only benchmark:
 - `tools/missing_modality_eval.py:64-111,155-175,252-286`: present subset
   enumeration, seeded CPU mask, and the S&P/Gaussian order used here.
 
-The ReliaDINO runner masks tensors returned by the MUSES val transform, after
-`Normalize`. DGFusion and CAFuser normalize each raw `batched_input[modality]`
-using `model.pixel_mean[3*i:3*i+3]` and the corresponding standard deviation.
-The hook fills a missing raw sensor with that exact mean slice, giving normalized
-zero. For RMM, our runner multiplies each normalized element by a Bernoulli
-keep mask (`tools/missing_modality_eval.py:96-111`). The detectron2 hook selects
-the raw value or `pixel_mean` per element. Both therefore use independent
-Bernoulli drops at rate `r` and produce normalized zero at dropped elements;
-their random draws are not bit-identical across the two code bases. Camera changes are
+The ReliaDINO runner receives RGB normalized and other sensors as raw/255
+(`NORM_ALL_MODALS` false, asserted) and converts non-RGB to raw 0-255 before
+corrupting. DGFusion and CAFuser receive raw 0-255 tensors; the hook normalizes only
+the camera with `model.pixel_mean/std[0:3]`, corrupts, and maps back. Camera changes are
 also written to the duplicate `image` key. The hook reads `model.modalities`
 to get the actual buffer order and checks that the four MUSES modalities and 12
 mean/std entries are present. For RGB NM it normalizes raw RGB with those same

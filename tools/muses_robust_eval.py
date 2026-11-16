@@ -34,13 +34,48 @@ MODALS = ('img', 'lidar', 'event', 'radar')
 LEVELS = {'low': (0.05, 0.1), 'mid': (0.1, 0.2), 'high': (0.2, 0.5)}
 
 
-def rgb_noise(images, level, generator):
-    """DELIVER Table 4 NM, restricted to RGB; S&P then Gaussian in normalized space."""
+def to_bench_space(x, modal):
+    """Our MUSES loader -> public NM bench input space (DELIVER augmentations_mm.Normalize @b3a76c3).
+
+    RGB: ImageNet-normalized in both, unchanged. Non-RGB: our loader gives raw/255
+    (DATASET.NORM_ALL_MODALS false), the bench feeds raw 0-255 floats -> multiply by 255.
+    """
+    return x if modal == 'img' else x * 255.0
+
+
+def from_bench_space(x, modal):
+    return x if modal == 'img' else x / 255.0
+
+
+def bench_nm(images, level, generator, scope='all'):
+    """Public NM bench (arXiv 2503.18445, upstream val_mm_NM.py:64-84 and 104-113), applied in
+    the bench's input space and in the bench's draw order: salt-and-pepper on every target
+    sensor first (sensor order img, lidar, event, radar), then additive Gaussian on every
+    target sensor except event. With the same seed this reproduces the upstream functions
+    bit for bit (tools/verify_muses_nm.py). Radar is not in the upstream code (DELIVER has
+    no radar); it is treated like LiDAR (S&P + Gaussian).
+    scope='rgb' restricts both noises to RGB (qualitative failure figure only).
+    """
     density, std = LEVELS[level]
-    out = list(images)
-    out[0] = bench_sp_noise(out[0], density, generator)
-    out[0] = out[0] + torch.randn(out[0].shape, generator=generator).to(out[0].device) * std
-    return out
+    targets = [0] if scope == 'rgb' else list(range(len(images)))
+    out = [to_bench_space(x, MODALS[i]) for i, x in enumerate(images)]
+    for i in targets:
+        out[i] = bench_sp_noise(out[i], density, generator)
+    for i in targets:
+        if MODALS[i] != 'event':
+            out[i] = out[i] + (torch.randn(out[i].size(), generator=generator) * std + 0.0).to(out[i].device)
+    return [from_bench_space(x, MODALS[i]) for i, x in enumerate(out)]
+
+
+def nm_config(level, scope, seed):
+    density, std = LEVELS[level]
+    targets = ['img'] if scope == 'rgb' else list(MODALS)
+    return {'definition': 'public NM bench arXiv 2503.18445, upstream val_mm_NM.py @53c7a6e',
+            'level': level, 'scope': scope, 'seed': seed, 'sp_density': density, 'gauss_std': std,
+            'sp_sensors': targets, 'gauss_sensors': [m for m in targets if m != 'event'],
+            'space': {'img': 'ImageNet-normalized (sigma in normalized units)',
+                      'non_rgb': 'raw 0-255 float (sigma in raw units), as upstream DELIVER loader'},
+            'order': 'S&P all target sensors, then Gaussian', 'sp_extremes': 'per-tensor max/min (batch 1)'}
 
 
 def cases(args):
@@ -68,7 +103,7 @@ def cases(args):
     if args.protocol == 'nm':
         levels = [args.level] if args.level else list(LEVELS)
         return [(level, lambda base, lev=level, g=torch.Generator().manual_seed(args.seed):
-                 rgb_noise(base, lev, g)) for level in levels]
+                 bench_nm(base, lev, g, args.nm_scope)) for level in levels]
     return [('clean', lambda base: list(base))]
 
 
@@ -76,6 +111,18 @@ def accumulate(hist, gt, pred, n):
     valid = (gt != 255) & (gt < n) & (pred < n)
     flat = gt[valid].long() * n + pred[valid].long()
     hist += torch.bincount(flat, minlength=n * n).reshape(n, n).double()
+
+
+def git_commit():
+    try:
+        import subprocess
+        repo = Path(__file__).resolve().parents[1]
+        head = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+        dirty = subprocess.run(['git', '-C', str(repo), 'status', '--porcelain', 'tools/muses_robust_eval.py'],
+                               capture_output=True, text=True).stdout.strip()
+        return (head or 'unknown') + ('+dirty' if dirty else '')
+    except Exception:
+        return 'unknown'
 
 
 def evaluate_case(name, apply, model, loader, n, class_names, device, args, geometry, side, out, epoch):
@@ -114,7 +161,10 @@ def evaluate_case(name, apply, model, loader, n, class_names, device, args, geom
     full_iou, full_p, full_all, present = iou_from_hist(hist_full)
     small_iou, small_p, small_all, _ = iou_from_hist(hist_small)
     report = {'ckpt': str(args.ckpt), 'epoch': epoch, 'n_images': n_done, 'protocol': args.protocol,
-              'setting': name, 'geometry': geometry,
+              'setting': name, 'geometry': geometry, 'tool_git_commit': git_commit(),
+              'tool_md5': {f: __import__('hashlib').md5((Path(__file__).resolve().parents[1] / f).read_bytes()).hexdigest()
+                           for f in ('tools/muses_robust_eval.py', 'tools/missing_modality_eval.py')},
+              'nm_config': nm_config(name, args.nm_scope, args.seed) if args.protocol == 'nm' else None,
               'official_native_1080x1920': {
                   'mIoU_present_classes': round(full_p, 4), 'mIoU_all19_nan_as_0': round(full_all, 4),
                   'per_class': {c: None if np.isnan(v) else round(float(v), 4)
@@ -150,6 +200,8 @@ def main():
     ap.add_argument('--subset')
     ap.add_argument('--ratio', type=float)
     ap.add_argument('--level', choices=tuple(LEVELS))
+    ap.add_argument('--nm-scope', dest='nm_scope', choices=('all', 'rgb'), default='all',
+                    help='NM target sensors: all (public benchmark, default) or rgb only')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--dump', action='store_true')
     ap.add_argument('--limit', type=int)
@@ -158,6 +210,8 @@ def main():
     dcfg = cfg['DATASET']
     if dcfg['NAME'].upper() != 'MUSES' or tuple(dcfg['MODALS']) != MODALS:
         raise ValueError('Expected four-sensor MUSES config in img,lidar,event,radar order')
+    if dcfg.get('NORM_ALL_MODALS', False):
+        raise ValueError('bench_nm assumes non-RGB inputs are raw/255 (NORM_ALL_MODALS false)')
     if args.dataset_root:
         dcfg['ROOT'] = args.dataset_root
     if args.side:

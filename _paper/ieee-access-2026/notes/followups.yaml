@@ -173,3 +173,16 @@ items:
     branches:
       done: "결과 조합별 후보(2026-11-13 discussion): ① H1(DRN-261113-01) 채택 → 고해상 경로를 제목에(T4 'High-Resolution Multi-Sensor Semantic Segmentation Robust to Missing Sensors via Clean and Corrupted Two-Pass Training' 계열), 기각 → 제목에서 뺌. ② DRN-261111-02 가 증류 효과 축을 찾음 → 증류를 제목에 둘 수 있음(현재 제목 또는 A 'Teacher-Guided Training on Clean and Corrupted Sensor Inputs for Robust Multi-Sensor Semantic Segmentation'), 못 찾음 → 증류 빼기(B 'Training on Clean and Corrupted Sensor Inputs for Robust Multi-Sensor Semantic Segmentation'). ③ L9(DRN-261112-05) 채택 → '두 패스(원본·손상본 짝)'를 제목에 드러낼 근거, 기각 → 두 패스·증류를 제목 주어로 쓰지 않음. 세 결과를 합쳐 discussion 에서 user 가 최종 선택."
     status: open
+
+  - id: FU-13
+    title: 고해상 교사 증류(T1) 결과 → 교사 서술(Q1 왜 교사에 고해상 경로가 없나·Q2 교사의 역할)과 논문 모델 교체 여부
+    depends_on: [DRN-261116-02]
+    where:
+      - latex/sections/4_method.tex — C2D2 소절(교사 정의·설계 동기·측정 결과), Fig.1 교사 상자·캡션
+      - latex/sections/5_experiments.tex — tab:ablation_loo 에 'teacher with high-res path' 행
+    now: "교사는 설계 동기(손상 입력 예측을 clean 예측에 붙잡기, AnySeg·RMMSS 의 clean-teacher 증류를 따름)로만 서술. '보고 모델이 이 설정으로 학습돼서 남겼다' 류 문장 금지(user 2026-11-16). Q1 답은 T1 전까지 todo."
+    branches:
+      adopt: "T1 − L6 이 기준 충족 → '교사가 학생과 같은 고해상 경로를 가질 때 증류가 기여한다'를 방법 절·ablation 에 주장, Q1·Q2 동시 해소. 논문 모델을 고해상 교사판으로 바꿀지는 user 결정(바꾸면 DELIVER 3시드·MUSES·MCubeS 메인 표 재학습 + 각 벤치 고해상 교사 필요)."
+      reject: "전 지표 |Δ| < 0.3 → '교사 구조와 무관하게 우리 설정에서 증류는 독립 기여가 없다'를 ablation 에 명시. Q1 은 '고해상 경로를 넣은 교사도 시험했고 차이가 없었다'로 답한다."
+      inconclusive: "ablation 행만 싣고 주장 없음."
+    status: open
