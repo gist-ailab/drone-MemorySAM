@@ -119,3 +119,12 @@ A2 하나. 정의·그림: artifact https://claude.ai/artifact/Am5i5hF7CuPQCRuJW
 
 ## 결정 추가(user 2026-11-04) — 이름 통일
 - 모델 이름도 **C2D2** 로 통일한다(`\ours` = C2D2). 옛 이름 ReliaDINO 는 원고에 쓰지 않는다. 그림 1 캡션은 "Overview of C2D2. (a) Model … (b) Training …" 으로 나눴다. 표의 "Ours" 표기는 그대로 둔다.
+
+## 🔴 2026-11-16 갱신 — 기여 틀 "시스템 + 학습 방식 + 분석" (이 절이 기여 문장의 정본, 이전 절의 기여 문장 대체)
+근거 판정: L5 adopt(손상 패스 제거 시 EMM −9.4) · L6 inconclusive + 증류 5축 DRN-261111-02 reject(독립 기여 없음) · L7 reject(물리 열화 ≈ 결측 0채움) · L8 reject(router 역할 없음) · 고해상 특징 근거 DRN-261104-02 adopt · MUSES DRN-261019-02 adopt(val 81.54 / test 80.01) · MCubeS DRN-261017-02 adopt(59.78).
+- **주장하지 않는 것**: 증류가 정확도·강건성을 올린다 / 센서별 물리 열화가 결측만 쓰는 것보다 낫다 / router 가 조건에 적응한다 / 학습 방식이 clean 을 올린다(3시드 56.40→56.59, MCubeS −0.11) / val 1위 / 고해상 경로가 새 구조다(DINOv3 공식 어댑터의 멀티센서 확장).
+- **기여 불릿(측정된 사실만)**
+  1. 학습 방식: 매 배치를 원본 입력과 센서 손상 입력(센서 제거 + 센서별 열화)으로 두 번 쓴다. 조건 라벨이 필요 없고 추론 비용이 없다. 전 센서 정확도를 시드 변동 안에서 유지하면서 결측 평균(val EMM)을 +9.8 올리고, 손상 패스를 빼면 이 이득이 사라진다(test EMM −9.4, 2시드). 교사 증류는 방법 기술에 남기되 "측정된 독립 효과 없음(5축)"을 적는다. L9(단일 패스 augmentation 대조, DRN-261112-05) 결과에 따라 "unlike single-pass augmentation" 구절 추가 여부 결정.
+  2. 시스템: 동결 비전 기반 모델 하나 + 센서별 LoRA + DINOv3 고해상 어댑터의 멀티센서 확장. DELIVER(57.74, +1.0)·MUSES(test 80.01, +0.5)·MCubeS(59.78, +2.2) test 에서 4센서 최고, 공개 결측 벤치 최고. H1·H2(DRN-261113-01·02) 결과에 따라 "extended to several sensors" 의 근거 문장 확정.
+  3. 통제된 분석: 같은 손상으로 재학습한 기준선, 공개 가중치의 단일 코드 재채점, 조건별 센서 의존, 고해상 경로가 되살리는 얇은 구조(특징 집중도 2.52 대 0.93), 실패 사례, 그리고 음성 결과(증류·물리 열화·router).
+- **제목**: 증류를 앞세운 현 제목은 증거와 어긋난다. method 권고 = "C2D2: Clean-to-Degraded Paired Training for Accurate and Robust Multi-Sensor Semantic Segmentation with a Frozen Vision Foundation Model"(약어 유지, Distillation 제거). L9 가 채택되면 그대로, 기각되면 학습 방식을 제목에서 내리고 시스템·분석형 제목으로. 최종은 user.
