@@ -1,5 +1,6 @@
 # [DRN-261112-04 2×2 빈칸 2026-11-16, manager · user '빈 GPU에 남은 대기 실험도 띄워줘'] 고해상 경로 있음 + C2D2 없음(clean 학습만), 시드 20260821.
 #   원본 = configs/yeon-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml(A2 같은 시드). 바뀐 키 = TRAIN.QAF.ENABLE true→false 하나 · SAVE_DIR · jarvis 경로(ROOT/FILE/TEACHER_CKPT — QAF off 라 교사 미사용).
+#   [2026-11-16 추가] jarvis NVML 고장으로 2GPU DDP 가 NCCL 초기화에서 실패 → TRAIN.DDP false, GPU 1장(python 직접 실행). 실험 변수 아님(인프라).
 # [A2 yeon 이전 2026-10-13] lecun 판에서 SAVE_DIR 만 yeon 으로 변경(데이터·교사 경로 /SSDb 동일).
 #   lecun 은 스왑·공유 GPU 로 5.9 s/it(40ep 약 5.4일) — user 승인(2026-10-13 "응 진행해도되") 하에 이전.
 # [A2 2026-10-12] 고해상 경로(HiRes Adapter) 스크린 — 원본 = configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_Q2.yaml
@@ -236,7 +237,7 @@ TRAIN:
   SAVE_TEST_CKPT : false            # [스크린] test 상위 체크포인트 미보관(평가·로그는 유지)
   AMP           : true
   AMP_DTYPE     : bfloat16
-  DDP           : true
+  DDP           : false   # [jarvis 1GPU] NVML 고장(2026-11-14~)으로 NCCL 초기화 불가 → 분산 없이 GPU 1장, accum 으로 eff-batch 16 유지
   GRADIENT_CHECKPOINT : false
 
   # ═══ [P54-QAF] 두 패스 학습(대조군 T′ — 품질 헤드 없이 KD·두 패스만) ═══
