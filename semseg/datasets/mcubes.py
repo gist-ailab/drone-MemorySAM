@@ -47,7 +47,9 @@ class MCubeS(Dataset):
     # [A2-24GB 2026-10-27] 학습 전용 크롭 옵션(기본 1024 = 기존 동일), 평가 경로 불변 — 하네스 재동결 필요
     def __init__(self, root: str = 'data/MCubeS/multimodal_dataset', split: str = 'train', transform = None, modals = ['image', 'aolp', 'dolp', 'nir'], case = None, *, train_crop: int = 1024, train_base: Optional[int] = None) -> None:
         super().__init__()
-        assert split in ['train', 'val']
+        # [DRN-261117-03 2026-11-17, user 직접 동의] 'val96'(list_folder/val.txt 96장)·'test102'(test.txt 102장) 추가.
+        #   기존 'val' → test.txt 매핑은 그대로 둔다(옛 평가·재현 경로 불변). 'test' 는 여전히 허용하지 않는다.
+        assert split in ['train', 'val', 'val96', 'test102']
         self.split = split
         self.root = root
         self.transform = transform
@@ -109,7 +111,7 @@ class MCubeS(Dataset):
 
         if self.split == "train":
             sample = self.transform_tr(sample)
-        elif self.split == 'val':
+        elif self.split in ('val', 'val96', 'test102'):
             sample = self.transform_val(sample)
         elif self.split == 'test':
             sample = self.transform_val(sample)
@@ -138,8 +140,10 @@ class MCubeS(Dataset):
         return composed_transforms(sample)
 
     def _get_file_names(self, split_name):
-        assert split_name in ['train', 'val']
-        source = os.path.join(self.root, 'list_folder/test.txt') if split_name == 'val' else os.path.join(self.root, 'list_folder/train.txt')
+        assert split_name in ['train', 'val', 'val96', 'test102']
+        # 'val'(옛 이름)과 'test102' 는 같은 test.txt, 'val96' 은 val.txt(96장), 'train' 은 train.txt
+        listfile = {'train': 'train.txt', 'val': 'test.txt', 'test102': 'test.txt', 'val96': 'val.txt'}[split_name]
+        source = os.path.join(self.root, 'list_folder', listfile)
         file_names = []
         with open(source) as f:
             files = f.readlines()

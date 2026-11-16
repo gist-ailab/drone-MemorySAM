@@ -345,11 +345,17 @@ def main(cfg, gpu, save_dir, logger):
     trainset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'train', traintransform, dataset_cfg['MODALS'], **ds_kwargs)
     if is_rank0 and dataset_cfg.get('NAME') == 'MCubeS':
         logger.info(f"[MCubeS] train_crop={trainset.crop_size} base={trainset.base_size}")
-    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'val', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
+    # [DRN-261117-03 2026-11-17] 선택(val)·보고(test) split 이름을 config 로 지정할 수 있게 한다.
+    # 기본값 'val'/'test' = 기존 동작 그대로. MCubeS 재학습은 VAL_SPLIT 'val96'(96장, 체크포인트 선택) · TEST_SPLIT 'test102'(보고용).
+    val_split = dataset_cfg.get('VAL_SPLIT', 'val')
+    test_split = dataset_cfg.get('TEST_SPLIT', 'test')
+    valset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], val_split, valtransform, dataset_cfg['MODALS'], **ds_kwargs)
+    if is_rank0 and (val_split != 'val' or test_split != 'test'):
+        logger.info(f"[SPLIT] val(선택)={val_split} n={len(valset)} · test(보고)={test_split}")
     testset = None
     if dataset_cfg.get('NAME') != 'MULTIAQUA':
         try:
-            testset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], 'test', valtransform, dataset_cfg['MODALS'], **ds_kwargs)
+            testset = eval(dataset_cfg['NAME'])(dataset_cfg['ROOT'], test_split, valtransform, dataset_cfg['MODALS'], **ds_kwargs)
         except Exception as e:
             print(f"[INFO] Test set not available: {e}")
     class_names = trainset.CLASSES
