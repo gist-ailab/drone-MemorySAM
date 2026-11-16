@@ -79,6 +79,7 @@ figures:
       - {label: LiDAR jitter,  input: lidar, pick: {group: lidarjitter, kind: reverse, rank: 1}}
       - {label: Event low-res, input: event, pick: {group: eventlowres, kind: reverse, rank: 1}}
   fig_tl_deliver:                 # analysis: TrafficLight false positives added by the high-resolution path
+    width_in: 3.36                # placed with \columnwidth: draw at column width so labels stay 6.5/7 pt
     # scenes = NAS analysis_logs/a2_tl_fp_scenes_20261022/README.md (top-20 by A2 FP - Q2 FP, one per condition)
     columns: [rgb, gt, Q2s821, A2s821]
     rows:

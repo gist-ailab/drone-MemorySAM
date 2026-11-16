@@ -118,19 +118,22 @@ def draw(name, spec, reg, out):
                          qualbank.bank_dir(reg, dn))
         return cache[dn]
     cols = spec["columns"]
+    # figure width: two-column text width by default; `width_in` per figure (e.g. 3.36 for a column figure)
+    # so the 6.5/7 pt labels keep their size when placed with \columnwidth (user 2026-11-16 detail audit)
+    W = float(spec.get("width_in", TEXT_W))
     sel = [(resolve(r, tables(r.get("dataset", dname))[0]), r["label"]) for r in spec["rows"]]
     nr, nc = len(sel), len(cols)
     gap_w, gap_h, lab_w, head_h = 0.035, 0.15, 0.17, 0.16
-    tile = (TEXT_W - lab_w - gap_w * (nc - 1)) / nc
+    tile = (W - lab_w - gap_w * (nc - 1)) / nc
     fig_h = head_h + nr * (tile + gap_h)
-    fig = plt.figure(figsize=(TEXT_W, fig_h))
+    fig = plt.figure(figsize=(W, fig_h))
     used = {}
     for i, (iid, rname) in enumerate(sel):
         _, per, bank = tables(spec["rows"][i].get("dataset", dname))
         y0 = fig_h - head_h - i * (tile + gap_h) - tile
         for j, key in enumerate(cols):
             x0 = lab_w + j * (tile + gap_w)
-            ax = fig.add_axes([x0 / TEXT_W, y0 / fig_h, tile / TEXT_W, tile / fig_h])
+            ax = fig.add_axes([x0 / W, y0 / fig_h, tile / W, tile / fig_h])
             gt = bank / "gt" / f"{iid}.png"
             if key in ("rgb", "input"):                # "input" = the row's `input` sensor (default rgb)
                 p = input_path(ds, iid, "rgb" if key == "rgb" else spec["rows"][i].get("input", "rgb"))
@@ -157,7 +160,7 @@ def draw(name, spec, reg, out):
                         fontsize=6.5, color=OURS if ours else FG, fontweight="bold" if ours else "normal")
         if "input" in cols and spec["rows"][i].get("input", "rgb") != "rgb":
             rname = f"{rname} ({spec['rows'][i]['input']})"
-        fig.text(0.02 / TEXT_W, (y0 + tile / 2) / fig_h, rname, rotation=90, ha="left", va="center",
+        fig.text(0.02 / W, (y0 + tile / 2) / fig_h, rname, rotation=90, ha="left", va="center",
                  fontsize=7, color=FG)
     stem = out / name
     fig.savefig(f"{stem}.pdf", dpi=300, pad_inches=0.01)
