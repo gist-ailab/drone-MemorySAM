@@ -14829,6 +14829,7 @@ items:
   - factorial
   - hires
   - paper
+  docs: .claude_logs/tasks/DRN-261112-04
   created: '2026-11-12'
   updated: '2026-11-16'
   closed: null
@@ -14859,7 +14860,9 @@ items:
   configs:
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2L9singlepass.yaml
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2L9singlepass.yaml
-  launch: null
+  launch: s821 yeon GPU1,2 2GPU(configs/jarvis-..._seed20260821_..._A2L9singlepass.yaml)
+    12:00 · s902 amphibious 5090 1GPU(configs/amphibious-..._seed20260902_..._A2L9singlepass_1gpu.yaml,
+    9b7e0ba) — yeon 1GPU epoch1 체크포인트(md5 48d364f9)에서 AUTO_RESUME 13:20, 3.49 it/s
   success_criteria: 채택(C2D2 ≠ augmentation) = 2시드 짝 Δ(A2 − L9) 평균이 test clean ≥ +0.5
     또는 test EMM15 ≥ +1.0 이고 그 지표에서 두 시드 부호 일치
   sample_basis: L5·L6·L7·L8 과 같은 2시드, 시드별 짝 Δ·부호 일치 요구
@@ -14867,13 +14870,14 @@ items:
     약 0.6일 × 2런(forward 1회) + 평가 묶음'
   priority: 1
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - ablation
   - augmentation-control
   - paper
   - contribution
+  docs: .claude_logs/tasks/DRN-261112-05
   created: '2026-11-12'
   updated: '2026-11-16'
   closed: null
@@ -14902,20 +14906,23 @@ items:
   configs:
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hiresH1rgbonly.yaml
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2hiresH1rgbonly.yaml
-  launch: null
+  launch: s821 lecun GPU0,4 2GPU 12:53(2.64 s/it) · s902 drone-demo 5090 1GPU(configs/drone-demo-..._seed20260902_..._A2hiresH1rgbonly_1gpu.yaml,
+    9b7e0ba) 13:14, 1.24 it/s — lecun 1GPU(2.42 s/it)에서 이관, 처음부터. 교사 md5 c648f925
+    = jarvis 원본
   success_criteria: 채택(멀티센서 확장 기여) = 2시드 짝 Δ(A2 − H1) 평균이 얇은 4클래스 평균 ≥ +1.0 또는 test
     clean ≥ +0.5 이고 그 지표에서 두 시드 부호 일치
   sample_basis: L5~L9 과 같은 2시드, 시드별 짝 Δ·부호 일치
   expected_cost: 코드 소폭(워커 위임·스모크·검수) + 4 GPU × 약 1일 × 2런 + 평가 묶음
   priority: 1
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - ablation
   - hires
   - multi-sensor
   - paper
+  docs: .claude_logs/tasks/DRN-261113-01
   created: '2026-11-13'
   updated: '2026-11-16'
   closed: null
@@ -14955,6 +14962,7 @@ items:
   - hires
   - multi-sensor
   - paper
+  docs: .claude_logs/tasks/DRN-261113-02
   created: '2026-11-13'
   updated: '2026-11-16'
   closed: null
@@ -15001,6 +15009,85 @@ items:
   analysis: null
   superseded_by: null
   problem: PRB-DRN-261016-01
+- id: DRN-261116-01
+  title: DELIVER 표 1 빈 칸 공개 가중치 재평가 — (b) val 만 보고한 9개 방법의 test + DGFusion 공개 가중치의
+    val(논문 미보고, README 66.51)
+  question: val 만 보고한 융합 방법들도 같은 평가 코드로 DELIVER test 에서 재면 우리 모델(test 57.74)과 직접 비교할
+    수 있는가(공개 가중치가 있는 방법만)
+  hypothesis: 공개 가중치가 있는 방법은 우리 평가 코드로 val 이 보고값과 ±0.5 안에서 재현되고, 그 test 값은 DGFusion
+    56.7 이하다
+  falsification: 공개 가중치의 val 이 보고값에서 1점 넘게 벗어나면 그 방법은 프로토콜 불일치로 표에 test 를 싣지 않고 사유를
+    각주에 적는다. test 가 57.74 를 넘는 방법이 나오면 원고의 'best four-sensor' 주장을 고친다
+  change: '평가만(학습 없음): 각 방법의 공개 DELIVER 4센서 가중치를 우리 legal v2 하네스(test 1897장, native
+    GT)와 같은 조건으로 val·test 채점'
+  baseline: 표 1(a) 의 test 값(DGFusion 56.7 최고), 우리 3시드 57.74; 각 방법의 논문 val 보고값
+  configs: []
+  launch: null
+  success_criteria: 공개 가중치가 있는 방법마다 val(재현 확인)·test 값과 ckpt 출처 URL·md5 를 원고 표 1 에
+    '공개 가중치, 우리 평가' 표시로 기재. 가중치가 없는 방법은 '-- (가중치 미공개)' 로 남김. 결과가 불리해도 그대로 기재
+  sample_basis: 방법당 공개 체크포인트 1개(시드 반복 불가), test 1897장 전수
+  expected_cost: 학습 0. 방법당 val 2005장 + test 1897장 추론, 24GB GPU 1장 기준 방법당 약 0.5~1시간
+    + 각 저장소 env 구성(SAM2 계열은 우리 repo semseg/models/sam2 재사용 가능)
+  priority: 1
+  owner_role: analysis
+  status: withdrawn
+  kind: experiment
+  tags:
+  - deliver
+  - baselines
+  - paper
+  - test-eval
+  created: '2026-11-16'
+  updated: '2026-11-16'
+  closed: '2026-11-16'
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+- id: DRN-261116-02
+  title: Ablation T1 · 고해상 경로가 있는 clean 교사로 증류(TEACHER_CKPT = 2×2 빈칸 런 DRN-261112-04
+    체크포인트) 2시드 — 증류가 효과 없던 이유가 '교사가 학생보다 약해서'인가
+  question: '현재 교사(E1, 고해상 경로 없음, clean 200ep)는 학생 A2 보다 약하고 특히 얇은 구조에서 뒤진다(고해상 경로
+    +3.0). 증류의 독립 효과가 없었던 것(L6 결론 없음, DRN-261111-02 reject)이 ''약한 교사가 학생보다 못한 예측을
+    가르쳐서''인지 확인한다. 고해상 경로가 있는 clean 교사로 바꾸면 증류가 clean·결측 평균·얇은 구조에서 기여하는가. 리뷰어 예상
+    질문 ''teacher 에는 왜 고해상 경로가 없나·teacher 의 역할은?''에 실험으로 답한다(user 2026-11-16: 당연히 고해상
+    교사를 학습해야 한다)'
+  hypothesis: 고해상 교사를 쓰면 증류가 L6(교사 없음) 대비 얇은 4클래스 또는 clean 을 올린다(교사가 학생과 같은 세부 정보를
+    가르치므로)
+  falsification: 모든 지표 |Δ(T1 − L6)| < 0.3 이면 '교사가 약해서'가 아니라 우리 설정에서 증류 자체가 기여하지 않음
+    → 원고에 교사 선택과 무관하게 증류 효과 없음을 명시(Q1·Q2 동시 해소)
+  change: 'TRAIN.QAF.TEACHER_CKPT: E1_s1_epoch140.pth → DRN-261112-04(고해상 O·C2D2 X·clean
+    40ep) 같은 시드 val-best 체크포인트, TEACHER_CFG 도 고해상 경로 포함 구조로. 나머지 A2 config 동일. 주의:
+    교사 학습 길이 40ep(현 교사 200ep, ep140) 차이를 병기'
+  baseline: A2 같은 시드(s821 58.61·s902 57.09, E1 교사) 와 L6(교사 없음, 58.77·56.32), legal
+    v2 test@1024 + EMM15 test + 얇은 4클래스 IoU
+  configs: []
+  launch: null
+  success_criteria: 채택(고해상 교사로 증류가 기여) = 2시드 짝 Δ(T1 − L6) 평균이 test clean ≥ +0.5 또는
+    얇은 4클래스 ≥ +1.0 또는 EMM15 ≥ +1.0 이고 그 지표에서 두 시드 부호 일치. 채택 시 논문 모델 교체 여부는 별도 결정(교체하면
+    DELIVER 3시드·MUSES·MCubeS 메인 표 재학습 + 각 벤치 고해상 교사 필요)
+  sample_basis: L5~L9 과 같은 2시드, 시드별 짝 Δ·부호 일치
+  expected_cost: 교사 = DRN-261112-04 체크포인트 재사용(추가 학습 없음, 단 그 런 완주 필요) · 학생 4 GPU ×
+    약 1일 × 2런 + 평가 묶음
+  priority: 1
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - ablation
+  - teacher
+  - distillation
+  - paper
+  created: '2026-11-16'
+  updated: '2026-11-16'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
 problems:
 - id: PRB-DRN-261016-01
   title: 얇은 객체(Pole·Pedestrian 등)를 찾고도 못 그림 — 동결 ViT 16px 토큰 해상도 한계
