@@ -58,7 +58,8 @@ items:
       adopt: "-01(L7) adopt = 물리 열화가 결측만보다 유의하게 좋음 → 기여 문장: 'sensor-specific degradation with a curriculum, distilled from a clean teacher, is complementary: each part alone gives little, together they raise clean accuracy and robustness' + 분해 표 본문. 'Our point is not a new loss' 삭제."
       reject: "-01 reject → 기여를 '증류와 결측 학습의 상호작용'으로 축소, 센서별 열화를 차별점으로 쓰지 않음. 분해 표는 유지."
       inconclusive: "분해 표만 싣고 차별점 문장은 한계 절로."
-    status: open
+    # done 확인(2026-11-16, discussion): paper bfb678d 가 L5·L6·L7 판정대로 기여 ①·4_method.tex:55 반영.
+    status: done
 
   - id: FU-04
     title: clean 이득이 우리 구조(동결 VFM + LoRA)에서만 생기는가
@@ -70,7 +71,9 @@ items:
       adopt: "둘 다 adopt → '이득은 동결 파운데이션 백본과 결합할 때 생긴다' 주장 + 표 본문. 기제 설명은 가설로 표시."
       reject: "하나라도 reject(기준선도 +0.8 이상) → 범용 레시피로 서술, A2 고유 기여 주장 삭제, 선행 대비 차이는 FU-03 결과로만."
       inconclusive: "표만 싣고 주장은 하지 않음."
-    status: open
+    # done(2026-11-16): user 2026-11-13 'FU-04 불필요' — paper 3c4e026 이 구조 의존성 todo 를 '두 구조(우리·재학습 DGFusion)' 근거로
+    # 해소하고 타 구조 이식은 future work 로. DRN-261029-02·03 은 리비전 대응용 보류.
+    status: done
 
   - id: FU-05
     title: 조건별 적응(조건 감독 없이 센서 의존을 옮긴다) 주장과 조건별 표
@@ -81,7 +84,9 @@ items:
     now: "Table 5·S1 은 값 대기. 'val/test 혼합' caveat 유지."
     branches:
       done: "test 로 통일된 표가 오면 숫자 교체 + caveat 삭제. A2 가 야간·저노출에서 −RGB 완화가 DGFusion 공식보다 크면 '조건 라벨·depth 감독 없이 상황에 따라 센서 의존을 옮긴다' 를 분석 절 주장으로(E1 도 비슷하면 공은 구조, 학습만의 공이라고 쓰지 않음). event·LiDAR 는 자연 열악 조건이 아니라 센서 고장 시(센서 하나만·EMM)에 기여한다고 쓴다."
-    status: open
+    # done 확인(2026-11-16): Table 6 조건별(paper 1908f5c)·Fig.6 전 곡선 test 재측정(c688ea8)으로 val/test 혼합 해소.
+    # 의존 inbox 두 건(20261028-183826, 20261029-174230)은 open 으로 남아 있으나 내용은 반영됨.
+    status: done
 
   - id: FU-06
     title: 지금 바로 고칠 수치·라벨 오류
@@ -98,7 +103,8 @@ items:
 
   - id: FU-07
     title: 논문 범위 — 전 모달 정확도가 주, 결측 강건성은 보조
-    depends_on: [FU-03, FU-04, FU-05]
+    # 2026-11-16: FU-03·04·05 는 반영 완료. 남은 조건 = method 의 브리프 기여 문장 갱신(inbox 20261113-121921, user 11-13 요청).
+    depends_on: ["20261113-121921-request-fbc28dc8"]
     where:
       - latex/sections/0_abstract.tex, 1_intro.tex, 7_conclusion.tex
     now: "제목 변경(user 2026-11-04, 지도교수 피드백 '제목만 보고 무슨 연구인지 알 수 없다'): 'Clean-Teacher Distillation on Corrupted Sensor Inputs for Robust Multi-Sensor Semantic Segmentation'(약어·센서별 열화·고해상 경로는 제목에 넣지 않음). 10-29 제목 'C2D2: Clean-to-Degraded …' 은 폐기. C2D2 = 방법(두 패스 학습) 이름, 본문 첫 등장 시 풀이 병기. 초록·서론은 확정 수치(DELIVER test 57.74, A2 강건성)와 확정 설계만. 4모달 필요성은 방어하지 않는다(벤치 설정, 센서 결손 시 도움). '기존 모델은 clean 으로만 학습' 표현 금지(기준선도 데이터셋의 열악 조건을 학습함) → 'without synthetic sensor degradation' 으로. 기존 방법 = 조건 토큰(CAFuser)·depth 감독(DGFusion)으로 조건을 인식."
@@ -124,7 +130,8 @@ items:
     now: "todo 유지."
     branches:
       done: "판정 수치로 채움. FU-03 분해 표와 수치가 겹치면 한쪽으로 모음."
-    status: open
+    # done 확인(2026-11-16, discussion): tab:ablation_loo 에 L5·L6 행과 EMM 열(paper 112ee3b·bfb678d).
+    status: done
 
   - id: FU-10
     title: 2×2(C2D2 × 고해상 경로) 빈칸과 쌓아 올리기 표의 '+ 고해상 경로' 단계
