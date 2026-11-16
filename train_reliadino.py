@@ -85,7 +85,10 @@ def build_teacher_cfg(cfg: dict, qaf_tc: dict) -> dict:
     teacher_model.pop('LORA_ROUTER', None)
     teacher_model.setdefault('FUSION', {}).setdefault('RANGE_BIAS', {})['ENABLE'] = False
     teacher_model.setdefault('P55', {})['ENABLE'] = False
-    teacher_model.setdefault('HIRES_ADAPTER', {})['ENABLE'] = False
+    # [T1 2026-11-16] 기본은 교사 고해상 경로 off(E1 교사). TRAIN.QAF.TEACHER_HIRES=true 이면
+    # TEACHER_CFG 의 HIRES_ADAPTER 설정을 그대로 둔다(고해상 경로가 있는 clean 교사, DRN-261116-02).
+    if not bool(qaf_tc.get('TEACHER_HIRES', False)):
+        teacher_model.setdefault('HIRES_ADAPTER', {})['ENABLE'] = False
     return teacher_cfg
 
 
