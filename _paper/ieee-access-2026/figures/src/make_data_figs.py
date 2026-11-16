@@ -112,7 +112,7 @@ def save(fig, stem, inputs):
 def fig_dependence(out):
     src = DATA / "fig_dependence.csv"
     dep = read_long(src, "model", "condition", "drop_without_depth")
-    fig, ax = plt.subplots(figsize=(COL_W, 1.9))
+    fig, ax = plt.subplots(figsize=(COL_W, 2.05))
     x = np.arange(len(CONDITIONS))
     for name, by_cond in dep.items():
         st = dict(STYLE[name]); lw = st.pop("lw", 1.2)
@@ -126,9 +126,11 @@ def fig_dependence(out):
     ax.set_ylim(-42, 3)
     h, l = ax.get_legend_handles_labels()
     names = {"DGFusion (reproduced)": "DGFusion (reproduced)", "Ours": "Ours",
-             "Ours w/o C2D2": "Ours w/o C2D2 (clean training)", "Ours w/o high-res": "Ours w/o high-res"}
+             "Ours w/o C2D2": "Ours, clean training", "Ours w/o high-res": "Ours w/o high-res"}
     l = [names.get(s, s) for s in l]
-    ax.legend(h, l, loc="center left", bbox_to_anchor=(0.01, 0.62), handlelength=2.4, borderaxespad=0.2)
+    # legend above the axes in one row (user 2026-11-16: the in-axes legend covered the clean-training curve)
+    ax.legend(h, l, loc="lower center", bbox_to_anchor=(0.5, 1.01), ncol=len(l), handlelength=1.5,
+              columnspacing=0.7, handletextpad=0.4, borderaxespad=0.0, frameon=False)
     fig.tight_layout(pad=0.3)
     save(fig, out / "fig_dependence", [src])
 
