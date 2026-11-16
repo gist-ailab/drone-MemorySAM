@@ -162,6 +162,8 @@ def evaluate_case(name, apply, model, loader, n, class_names, device, args, geom
     small_iou, small_p, small_all, _ = iou_from_hist(hist_small)
     report = {'ckpt': str(args.ckpt), 'epoch': epoch, 'n_images': n_done, 'protocol': args.protocol,
               'setting': name, 'geometry': geometry, 'tool_git_commit': git_commit(),
+              'tool_md5': {f: __import__('hashlib').md5((Path(__file__).resolve().parents[1] / f).read_bytes()).hexdigest()
+                           for f in ('tools/muses_robust_eval.py', 'tools/missing_modality_eval.py')},
               'nm_config': nm_config(name, args.nm_scope, args.seed) if args.protocol == 'nm' else None,
               'official_native_1080x1920': {
                   'mIoU_present_classes': round(full_p, 4), 'mIoU_all19_nan_as_0': round(full_all, 4),
