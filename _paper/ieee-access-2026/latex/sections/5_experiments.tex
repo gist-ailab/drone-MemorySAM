@@ -8,7 +8,7 @@ MCubeS~\cite{mcubes2022} is a real material-segmentation dataset with RGB, angle
 \emph{Clean accuracy.} We report mean intersection over union (mIoU). On DELIVER and MUSES, we keep the checkpoint with the best validation score of each training run and report its test score. On DELIVER we evaluate at $1024\times1024$ with batch size one against the native-resolution labels, and resample labels with nearest-exact interpolation. This detail matters: floor-aligned nearest resampling shifts predictions by half a pixel and lowered DELIVER test mIoU by 1.2 to 1.3 points in our measurements, with larger losses on thin classes, whereas center-aligned resampling reproduces the scores of the baselines' own conversion code. We therefore use center-aligned resampling for every model.
 % Source: repo .claude_logs/issues/issues-and-fixes.md ISSUE-036 (v1 55.18 -> v2 56.39, +1.21; E1 seed1 54.63 -> 55.97, +1.34;
 % DGFusion predictions 52.34 nearest vs 53.68 nearest-exact).
-Comparison tables list published numbers. To check that our evaluation code matches the published protocol, we evaluated the released DGFusion weights: they give 56.73 test mIoU against the published 56.7, so we do not list such re-evaluations separately. Released weights are evaluated by us only where a paper reports no number, as for the robustness settings in Table~\ref{tab:robust} and the per-condition scores in Table~\ref{tab:condition}. MUSES is scored by its official evaluation, and MCubeS on its 102-image test split, which we also use to select checkpoints. For our model we report the mean over three training seeds, because single runs on these benchmarks vary by up to 1.5 points.
+Comparison tables list published numbers. To check that our evaluation code matches the published protocol, we evaluated the released DGFusion weights: they give 56.73 test mIoU against the published 56.7, so we do not list such re-evaluations separately. Released weights are evaluated by us only where a paper reports no number, as for the robustness settings in Table~\ref{tab:robust} and the per-condition scores of Section~\ref{sec:condition}. MUSES is scored by its official evaluation, and MCubeS on its 102-image test split, which we also use to select checkpoints. For our model we report the mean over three training seeds, because single runs on these benchmarks vary by up to 1.5 points.
 % User decision 2026-10-30: option (b) "관행대로 test로 고르고 원고에 명시". Evidence: our loader semseg/datasets/mcubes.py:142 and
 % CMNeXt public code github.com/jamycheung/DELIVER semseg/datasets/mcubes.py:140 (split 'val' -> list_folder/test.txt), checked 2026-10-30.
 
@@ -22,7 +22,7 @@ Methods that skip a missing input instead of zero-filling it~\cite{anyseg2024,rm
 All sensors are converted to three-channel images as in CMNeXt~\cite{cmnext2023}. We train for 40 epochs with AdamW (learning rate $6\times10^{-4}$, weight decay 0.01), a polynomial schedule with power 0.9, and a 10-epoch warm-up, on $768\times768$ crops with an effective batch size of 16 obtained by gradient accumulation. We use the data augmentation of DGFusion~\cite{dgfusion2026} so that both models see the same augmented images. The clean-pass loss combines online hard-example cross-entropy~\cite{ohem2016} on the final logits with the set-prediction loss of the query head (weight 0.5, with deep supervision), the auxiliary sensor heads (0.5), the router (cross-entropy 0.4 and regularizer 0.01), a class-prototype contrastive term on DELIVER (0.1), and a variance-covariance regularizer on the per-sensor tokens (variance weight 0.1 and covariance weight 0.01, scaled by 1.0 for LiDAR and 0.25 for the other sensors). These terms are inherited from earlier versions of our model; we list them for reproducibility and do not ablate them. The frozen teacher is the same architecture without the high-resolution path, trained for 200 epochs on clean data. All results of our model are the mean of three training runs with different seeds, unless a table states otherwise; the leave-one-out ablation in Table~\ref{tab:ablation_loo} uses two seeds, and its row without cross-modal attention one. Appendix~\ref{app:train} lists the full training configuration for each benchmark.
 
 \subsection{Comparison with Prior Fusion Models}
-Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. Part~(a) lists methods with a reported test-split result, which is the split we compare on; part~(b) lists methods that report only validation results, which come from different training and evaluation settings and are shown for completeness. \ours{} reaches 57.74 test mIoU, 1.0 point above the published DGFusion result (56.7). Its margin over MM SAM-adapter, which uses only RGB and depth, is 0.4 points (our three-seed mean). On the validation set, \ours{} scores 70.17 on average, 1.6 points above CAFuser-CAA (68.6); StitchFusion with a Swin-T backbone reports 70.3 without naming the split, so our validation result is not the highest published one. Tables~\ref{tab:muses} and~\ref{tab:mcubes} report the same model on the real MUSES and MCubeS benchmarks. On MUSES, it reaches 80.01 mIoU on the test set of the official server, 0.5 points above DGFusion (79.5), the best published four-sensor result, and 81.54 on the validation set (mean of two seeds); MM SAM-adapter reports 81.07 with RGB and LiDAR only. Trained on the same two sensors and for the same 100 epochs, our model reaches 80.46 on the test set with RGB and LiDAR (one run; 82.29 on the validation set), 0.6 points below MM SAM-adapter, and 79.91 with RGB and events, against 79.92. The gap depends on the condition: at night our model is ahead by 2.6 points with LiDAR and 1.9 with events (77.56 against 74.97 and 74.27 against 72.38), and in fog with events by 3.6, whereas by day it is behind by 1.8 and 0.7 points, where MM SAM-adapter, built on an RGB foundation model, is strongest. Its test score is also above that of our four-sensor model (80.01); the four-sensor model was trained for 40 epochs, so the two differ in training length as well as in sensors, and the comparison does not show whether event and radar help on MUSES. On MCubeS, it reaches 59.78, 2.2 points above the best published result (FuseAdapt, 57.62); on this benchmark the C2D2 scheme leaves the clean accuracy unchanged (59.89 without it, Table~\ref{tab:abl_robust}).
+Table~\ref{tab:deliver} compares \ours{} with fusion models on DELIVER. Part~(a) lists methods with a reported test-split result, which is the split we compare on; part~(b) lists methods that report only validation results, which come from different training and evaluation settings and are shown for completeness. \ours{} reaches 57.74 test mIoU, 1.0 point above the published DGFusion result (56.7). Its margin over MM SAM-adapter, which uses only RGB and depth, is 0.4 points (our three-seed mean). On the validation set, \ours{} scores 70.17 on average, 1.6 points above CAFuser-CAA (68.6); StitchFusion with a Swin-T backbone reports 70.3 without naming the split, so our validation result is not the highest published one. Tables~\ref{tab:muses} and~\ref{tab:mcubes} report the same model on the real MUSES and MCubeS benchmarks. On MUSES, it reaches 80.01 mIoU on the test set of the official server, 0.5 points above DGFusion (79.5), the best published four-sensor result, and 81.54 on the validation set (mean of two seeds); MM SAM-adapter reports 81.07 with RGB and LiDAR only. Trained on the same two sensors and for the same 100 epochs, our model reaches 80.46 on the test set with RGB and LiDAR (one run; 82.29 on the validation set), 0.6 points below MM SAM-adapter, and 79.91 with RGB and events, against 79.92. The gap depends on the condition: at night our model is ahead by 2.6 points with LiDAR and 1.9 with events (77.56 against 74.97 and 74.27 against 72.38), and in fog with events by 3.6, whereas by day it is behind by 1.8 and 0.7 points, where MM SAM-adapter, built on an RGB foundation model, is strongest. Its test score is also above that of our four-sensor model (80.01); the four-sensor model was trained for 40 epochs, so the two differ in training length as well as in sensors, and the comparison does not show whether event and radar help on MUSES. On MCubeS, it reaches 59.78, 2.2 points above the best published result (FuseAdapt, 57.62); on this benchmark the C2D2 scheme leaves the clean accuracy unchanged (59.89 without it, Table~\ref{tab:abl_robust}); qualitative examples are in Appendix~\ref{app:qual}.
 % Sources: headline.yaml deliver.ours[0] (57.74 = 3-seed mean; best seed 58.61 is recorded in notes/table_sources.md, not shown: user 2026-11-02). Published DGFusion test = 56.7 (DGFusion Table III p6, notes/sota_survey.md):
 %   gap +1.04 (text rounds to 1.0). CAFuser-CAA val 68.6 (CAFuser Table III p6) -> +1.57.
 %   68.79 (old draft) has no source and was removed (sota_survey.md 0). StitchFusion Swin-T 70.3: StitchFusion Table 1 p6.
@@ -171,24 +171,6 @@ Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbenc
 
 Exposing existing fusion models to the same synthetic degradation and sensor dropout during training does not close the gap (Table~\ref{tab:retrained}): re-trained with our degradation curriculum, DGFusion and CAFuser gain robustness but stay below our model on both clean accuracy and the EMM average of the test set. The re-trained baselines see the degradation as single-pass augmentation, without the clean pass and the teacher of C2D2, so this comparison concerns the architecture (frozen foundation backbone, sensor-specific adapters, and high-resolution path) rather than the training scheme.
 
-% Retrained (b): DGFusion judgment-ledger 2026-09-23 (test 54.77) / :117 (EMM 45.52); CAFuser status/current.md (4) (55.79 / 46.50); one run each.
-% Ours 57.74 / 48.66: headline 3 seeds; test EMM15 tasks/DRN-261019-03/analysis.md:19. Same harness (legal v2 test@1024, mm_eval_v2 EMM15).
-\begin{table}[t]
-\caption{Fusion models re-trained with the same synthetic degradation and sensor dropout, on the DELIVER test set (mIoU, \%).}
-\label{tab:retrained}
-\centering\tabsetup
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
-\toprule
-Method & Backbone & Clean & EMM Avg \\
-\midrule
-DGFusion$^{\dagger}$~\cite{dgfusion2026} & Swin-T & 54.77 & 45.52 \\
-CAFuser$^{\dagger}$~\cite{cafuser2025} & Swin-T & \second{55.79} & \second{46.50} \\
-Ours & DINOv3-L & \best{57.74} & \best{48.66} \\
-\bottomrule
-\end{tabular*}
-\tabnote{$^{\dagger}$Re-trained by us with the degradation curriculum of C2D2 applied as single-pass augmentation (no clean pass, no teacher); one run each. Ours: mean of three seeds. EMM Avg: mean over the 15 non-empty sensor subsets with the others zero-filled, test set, same evaluation code for all rows.}
-\end{table}
-
 When only one sensor is available (Fig.~\ref{fig:robust}b), the released DGFusion weights collapse to 7.5 mIoU with RGB alone and to 1.1 with event or LiDAR alone, while still reaching 43.3 with depth alone. Training with degraded inputs lifts every single-sensor score, most strongly for RGB (49.0 for the re-trained DGFusion and 53.9 for our model without the high-resolution path).
 % Sources: judgment-ledger:130 (official weights single-sensor 7.50/43.33/1.13/1.13); judgment-ledger:117 (retrained 49.0/44.5/25.0/25.0; Q2 3 seeds 53.9/46.0/31.0/22.9).
 
@@ -236,6 +218,24 @@ Ours & DINOv3-L & \best{71.34} & \best{58.52} & \best{67.15} & \best{69.46} & \b
 \tabnotewide{Avg: mean over the 15 non-empty sensor subsets; E($p$): expectation when each sensor fails independently with probability $p$; RMM $r$: fraction of a removed sensor's values that are zeroed; NM Low/Mid/High: salt-and-pepper density and Gaussian standard deviation (0.05, 0.1), (0.1, 0.2), (0.2, 0.5). All definitions follow~\cite{mmssbench2025} and Section~\ref{sec:sensors}. All entries are produced with the public evaluation code of the benchmark (single forward pass, labels resized with the input to $1024\times1024$); run on the released CMNeXt weights, it reproduces the clean, EMM Avg, and E($p$) values reported in~\cite{mmssbench2025} to two decimals. Ours: mean of three seeds. Methods that skip a missing input instead of zero-filling it answer a different question and are not listed.}
 \end{table*}
 
+% Retrained (b): DGFusion judgment-ledger 2026-09-23 (test 54.77) / :117 (EMM 45.52); CAFuser status/current.md (4) (55.79 / 46.50); one run each.
+% Ours 57.74 / 48.66: headline 3 seeds; test EMM15 tasks/DRN-261019-03/analysis.md:19. Same harness (legal v2 test@1024, mm_eval_v2 EMM15).
+\begin{table}[t]
+\caption{Fusion models re-trained with the same synthetic degradation and sensor dropout, on the DELIVER test set (mIoU, \%).}
+\label{tab:retrained}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
+\toprule
+Method & Backbone & Clean & EMM Avg \\
+\midrule
+DGFusion$^{\dagger}$~\cite{dgfusion2026} & Swin-T & 54.77 & 45.52 \\
+CAFuser$^{\dagger}$~\cite{cafuser2025} & Swin-T & \second{55.79} & \second{46.50} \\
+Ours & DINOv3-L & \best{57.74} & \best{48.66} \\
+\bottomrule
+\end{tabular*}
+\tabnote{$^{\dagger}$Re-trained by us with the degradation curriculum of C2D2 applied as single-pass augmentation (no clean pass, no teacher); one run each. Ours: mean of three seeds. EMM Avg: mean over the 15 non-empty sensor subsets with the others zero-filled, test set, same evaluation code for all rows.}
+\end{table}
+
 % ---------------------------------------------------------------------------
 % Fig. robust (data plot). Source numbers and provenance: figures/src/make_data_figs.py (fig_robust).
 % ---------------------------------------------------------------------------
@@ -246,8 +246,8 @@ Ours & DINOv3-L & \best{71.34} & \best{58.52} & \best{67.15} & \best{69.46} & \b
 \label{fig:robust}
 \end{figure}
 
-\subsection{Qualitative Results}
-Figs.~\ref{fig:failure_scenarios} and~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown (3.4 to 13.0 points over the 18 scenes of Appendix~\ref{app:qual}), while the opposite selection, the scene of each condition where another model leads ours the most (Fig.~\ref{fig:reverse}), gives gaps of 8.5 to 12.9 points; single scenes can therefore favour either side by a similar amount when every sensor works. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk.
+\subsection{Qualitative Results}\label{sec:qual}
+Fig.~\ref{fig:failure_scenarios} and, in Appendix~\ref{app:qual}, Fig.~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown, while the opposite selection, the scene of each condition where another model leads ours the most (Fig.~\ref{fig:reverse}), gives gaps of 8.5 to 12.9 points; single scenes can therefore favour either side by a similar amount when every sensor works. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk.
 
 On MUSES, where CAFuser and DGFusion are the direct comparison, Figs.~\ref{fig:normal_muses} and~\ref{fig:adverse_muses} apply the same rule to their released weights, evaluated with our code on the validation set. In clear weather the largest per-image margins are 6.8 and 6.7 points by day and 10.7 points at night; under fog and snow they are 11.4 to 18.9 points, and the rain-by-day scene, chosen by the largest difference in wrongly labelled area, has a 4.1-point gap in mIoU but 14 percentage points fewer wrong pixels. These scenes are the most favourable ones by construction. Per image, our model leads the better of the two baselines on 75 of the 250 validation images (DGFusion alone on 92), and the median per-image gap is $-2.6$ points, although its dataset-level mIoU is 2.0 points above that of DGFusion for the run shown (81.76 against 79.72). The dataset-level margin therefore comes from a minority of images with large gains and from pixels pooled over the whole set, not from a uniform per-image advantage. \todo{MUSES sensor-failure scenes and missing-sensor curve after DRN-261111-01}
 
@@ -260,17 +260,6 @@ On MUSES, where CAFuser and DGFusion are the direct comparison, Figs.~\ref{fig:n
 \includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
 \caption{Qualitative comparison on the DELIVER test set when a sensor fails. Rows: depth missing, RGB missing, LiDAR and event missing, and RGB with heavy noise. Columns: RGB input (the clean image, shown for reference), ground truth, CMNeXt, CAFuser, and DGFusion (released weights), and ours. The failure is applied at inference only, after normalization (zero-fill; heavy noise = salt-and-pepper 0.2 followed by Gaussian $\sigma$ 0.5 on RGB, the strongest level of~\cite{mmssbench2025}). Each row shows the scene where ours most exceeds the best other method in per-image mIoU under that failure. Faded pixels agree with the ground truth; numbers give per-image mIoU (\%).}
 \label{fig:failure_scenarios}
-\end{figure*}
-
-% Fig. adverse conditions with all sensors present, DELIVER (synthetic) + MUSES (real).
-% DELIVER dumps exist: NAS analysis_logs/native_axis_baseline_20261016/{dgfusion,cafuserb}_test1024,
-% a2_test1024_dump_20261016/s821 -> analysis request inbox 20261027-182054 item 1. MUSES: item 3.
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_adverse_deliver.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Qualitative comparison on the DELIVER test set under six conditions with all four sensors. Columns: RGB input, ground truth, CMNeXt, CAFuser, and DGFusion (released weights), and ours. Each row shows the scene where ours most exceeds the best of the other three methods in per-image mIoU, with no two scenes from the same sequence. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%). More scenes are in Appendix~\ref{app:qual}.}
-\label{fig:adverse}
 \end{figure*}
 
 % Fig. MUSES clear weather (user 2026-11-11: normal conditions where ours leads; same rule and layout as fig:adverse_muses).
@@ -291,7 +280,7 @@ On MUSES, where CAFuser and DGFusion are the direct comparison, Figs.~\ref{fig:n
 \label{fig:adverse_muses}
 \end{figure*}
 
-\subsection{Accuracy per Condition}
+\subsection{Accuracy per Condition}\label{sec:condition}
 Table~\ref{tab:condition} breaks clean test accuracy down by condition for the released baselines and our model. Our model is the most accurate in sun, rain, night, and low exposure, with the largest margins over the best baseline in sun (+3.0), low exposure (+2.3), and night (+1.6); DGFusion is higher in cloud (58.41 against 57.23) and fog (58.01 against 57.58). Our accuracy varies by 3.9 points across the six conditions (54.57 to 58.45), against 4.0 to 6.3 points for the baselines.
 
 % ---------------------------------------------------------------------------

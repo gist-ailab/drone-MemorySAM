@@ -2,6 +2,7 @@
 % Figures: figures/src/make_qual_figs.py (scenes chosen in figures/qualbank/selection.yaml from
 % figures/source_data/qualbank/deliver_candidates.csv, built over all 1897 test images by figures/qualbank/qualbank.py)
 \appendices
+\let\origFloatBarrier\FloatBarrier\renewcommand{\FloatBarrier}{}\setcounter{dbltopnumber}{2}\renewcommand{\dbltopfraction}{0.95}\renewcommand{\floatpagefraction}{0.6}\renewcommand{\dblfloatpagefraction}{0.6}% appendix floats may cross appendix sections (user 2026-11-16: no table-only pages)
 \section{Benchmark Details}
 \label{app:bench}
 Table~\ref{tab:benchmarks} lists the sensors, classes, and split sizes of the three benchmarks described in Section~\ref{sec:sensors}.
@@ -26,6 +27,61 @@ MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & 302 / 96 / 102 \\
 \tabnote{MUSES test labels are withheld; test scores come from the official evaluation server.}
 \end{table}
 
+\section{Additional Qualitative Results}
+\label{app:qual}
+This appendix collects the qualitative figures that the main text refers to. All scenes are selected by fixed rules over every test image of every model, so any scene can be replaced without new inference.
+
+Fig.~\ref{fig:adverse}, discussed in Section~\ref{sec:qual}, shows the DELIVER scene of each weather and lighting condition with the largest gap in our favour. This selection rule, also used in Fig.~\ref{fig:adverse_muses}, picks scenes in our favour by construction. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each DELIVER condition, the scene whose gap is closest to that condition's median gap. The median gap is slightly negative (about $-1$ to $-2$ points in every condition): the reference is, per image, the best of three other models, so a single model rarely beats it on a typical image even when it has the highest dataset mIoU. Fig.~\ref{fig:reverse}, discussed in Section~\ref{sec:reverse}, applies the rule in the opposite direction.
+
+% moved from Section IV (2026-11-16, main-text float load)
+% Fig. adverse conditions with all sensors present, DELIVER (synthetic) + MUSES (real).
+% DELIVER dumps exist: NAS analysis_logs/native_axis_baseline_20261016/{dgfusion,cafuserb}_test1024,
+% a2_test1024_dump_20261016/s821 -> analysis request inbox 20261027-182054 item 1. MUSES: item 3.
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_adverse_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Qualitative comparison on the DELIVER test set under six conditions with all four sensors. Columns: RGB input, ground truth, CMNeXt, CAFuser, and DGFusion (released weights), and ours. Each row shows the scene where ours most exceeds the best of the other three methods in per-image mIoU, with no two scenes from the same sequence. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%). Scenes near the median gap of each condition are shown in Fig.~\ref{fig:typical}.}
+\label{fig:adverse}
+\end{figure*}
+
+Fig.~\ref{fig:thin_scenes} ranks scenes by the gain on one thin class instead of the image mIoU, for the four classes of Table~\ref{tab:thin}.
+
+Fig.~\ref{fig:mcubes} shows MCubeS test scenes against the two fusion models that release MCubeS weights, CMNeXt~\cite{cmnext2023} and MMSFormer~\cite{mmsformer2023}; both reproduce their published test mIoU (51.54 and 53.11) with our evaluation code. Our model leads the better of the two on 88 of the 102 test images, with a median per-image gap of 4.0 points. The two top scenes gain 18.9 points, one of them a night scene whose RGB image is nearly black; the scene nearest the median gap and the largest deficit (5.5 points) are shown in the last two rows.
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_typical_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Typical scenes on the DELIVER test set: for each condition, the image whose per-image mIoU gap between ours and the best other method is closest to the median gap. Display as in Fig.~\ref{fig:adverse}.}
+\label{fig:typical}
+\end{figure*}
+
+% moved from Section V (2026-11-13): main-text layout, see 6_analysis.tex Fig. reverse reference.
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_reverse_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Failure cases on the DELIVER test set with all four sensors. Each row shows the scene where the best of the other three methods most exceeds ours in per-image mIoU, with no two scenes from the same sequence. Display as in Fig.~\ref{fig:adverse}.}
+\label{fig:reverse}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_thin_deliver.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
+\caption{Thin classes on the DELIVER test set: for each of Pole, TrafficLight, Pedestrian, and Static, the image where the class IoU of ours most exceeds that of the best other method (at least 400 ground-truth pixels of the class). Numbers give per-image mIoU over all classes (\%).}
+\label{fig:thin_scenes}
+\end{figure*}
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_mcubes.pdf}\\[3pt]
+\includegraphics[width=\textwidth]{figures/fig_class_legend_mcubes.pdf}
+\caption{Qualitative comparison on the MCubeS test set (RGB, AoLP, DoLP, and NIR inputs). Columns: RGB input, ground truth, CMNeXt and MMSFormer (released weights, the only fusion models with released MCubeS weights), and ours. Rows: the two scenes where ours most exceeds the better baseline in per-image mIoU (one per sequence), the scene closest to the median gap, and the scene where a baseline most exceeds ours. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
+\label{fig:mcubes}
+\end{figure*}
+
 \section{Training Configurations}
 \label{app:train}
 Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks, taken from the configuration files of the reported runs (one representative seed per benchmark; the other seeds differ only in the random seed). Training ran on 24\,GB GPUs (RTX 3090 and RTX 4090) or on one 40\,GB A100, with one to four GPUs per run; gradient accumulation keeps the effective batch size at 16 regardless of the number of GPUs. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table. The configuration files of every run are part of the code release.
@@ -37,7 +93,7 @@ Table~\ref{tab:train} lists the training configuration of our model on the three
 %     two-sensor rows: configs/yeon-muses_rgb{l,e}_P39_1_physaugoff_taps_full100_A2_s2_768.yaml (100 epochs, teachers *_full100_E1M.yaml);
 %   MCubeS configs/hpca100-mcubes_rgbadn_P39_1_rank_E1Mc_seed20260827_A2c2d2_768.yaml (seeds 20260827/20260828; TRAIN_CROP 768, eval 1024),
 %     seed-matched E1Mc teachers. Effective batch: train_reliadino.py:395 accum = ceil(16 / (BS x world)). Warm-up unit = epochs (train_reliadino.py:473).
-\begin{table*}[t]
+\begin{table*}[p]
 \caption{Training configuration of our model per benchmark. Values shared by all three benchmarks are written once.}
 \label{tab:train}
 \centering\tabsetup
@@ -81,127 +137,13 @@ Evaluation & Checkpoint & best validation score & best official validation score
 \tabnotewide{The two-sensor MUSES models of Table~\ref{tab:muses} use the MUSES column with 100 epochs and teachers trained for 100 epochs on the same two sensors. The variance and covariance regularizers act on the per-sensor tokens with weight 1.0 for LiDAR and 0.25 for the other sensors.}
 \end{table*}
 
-\section{Additional Qualitative Results}
-\label{app:qual}
-Figs.~\ref{fig:supp1}--\ref{fig:supp3} show the second- and third-ranked scenes of every condition under the rule of Fig.~\ref{fig:adverse} (largest per-image mIoU gap between our model and the best of the other three models; no two scenes of a condition from the same sequence). Together with Fig.~\ref{fig:adverse} they are the 18 highest-ranked scenes of the five weather and lighting conditions and under-exposure. The candidates are computed over all 1897 test images of every model, so any scene can be replaced without new inference.
-
-The rule picks scenes in our favour by construction. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each condition, the scene whose gap is closest to that condition's median gap. Note that the median gap is slightly negative (about $-1$ to $-2$ points in every condition): the reference is, per image, the best of three other models, so a single model rarely beats it on a typical image even when it has the highest dataset mIoU.
-
-The DELIVER test split also contains sequences with a built-in sensor fault (over-exposure, motion blur, LiDAR jitter, low-resolution events). Figs.~\ref{fig:cases} and~\ref{fig:cases_reverse} show the scene of each fault with the largest gap in our favour and against us; the second column is the affected sensor. Fig.~\ref{fig:thin_scenes} ranks scenes by the gain on one thin class instead of the image mIoU.
-
-Fig.~\ref{fig:failure_reverse} is the counterpart of Fig.~\ref{fig:failure_scenarios}: for each corrupted-input setting, the scene of the six weather and lighting conditions where another method leads ours the most. With depth removed, no scene of these conditions favours another method by more than 0.7 points of per-image mIoU, while with RGB removed, LiDAR and event removed, or RGB under heavy noise the largest deficits are 11.7, 9.9, and 8.6 points.
-
-Figs.~\ref{fig:supp_muses} and~\ref{fig:reverse_muses} extend Figs.~\ref{fig:normal_muses} and~\ref{fig:adverse_muses} on the MUSES validation set: further top scenes (the second clear-night scene, the top rain-by-night scene, and the top snow-by-day scene), and the scene of each adverse condition where a baseline leads ours the most. The deficits in Fig.~\ref{fig:reverse_muses} (13.7 to 25.2 points) are larger than the margins of Fig.~\ref{fig:adverse_muses} (4.1 to 18.9 points), a reminder that single-image gaps on MUSES, with 25 to 33 images per adverse condition, say little about the mean.
-
-Fig.~\ref{fig:mcubes} shows MCubeS test scenes against the two fusion models that release MCubeS weights, CMNeXt~\cite{cmnext2023} and MMSFormer~\cite{mmsformer2023}; both reproduce their published test mIoU (51.54 and 53.11) with our evaluation code. Our model leads the better of the two on 88 of the 102 test images, with a median per-image gap of 4.0 points. The two top scenes gain 18.9 points, one of them a night scene whose RGB image is nearly black; the scene nearest the median gap and the largest deficit (5.5 points) are shown in the last two rows.
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_supp_deliver_1.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Additional qualitative results on the DELIVER test set for sun and cloud: the second- and third-ranked scenes under the selection rule of Fig.~\ref{fig:adverse}. Faded pixels agree with the ground truth; numbers give per-image mIoU (\%).}
-\label{fig:supp1}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_supp_deliver_2.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Additional qualitative results for rain and fog. Display as in Fig.~\ref{fig:supp1}.}
-\label{fig:supp2}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_supp_deliver_3.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Additional qualitative results for night and low exposure. Display as in Fig.~\ref{fig:supp1}.}
-\label{fig:supp3}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_typical_deliver.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Typical scenes on the DELIVER test set: for each condition, the image whose per-image mIoU gap between ours and the best other method is closest to the median gap. Display as in Fig.~\ref{fig:supp1}.}
-\label{fig:typical}
-\end{figure*}
-
-% moved from Section V (2026-11-13): main-text layout, see 6_analysis.tex Fig. reverse reference.
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_reverse_deliver.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Failure cases on the DELIVER test set with all four sensors. Each row shows the scene where the best of the other three methods most exceeds ours in per-image mIoU, with no two scenes from the same sequence. Display as in Fig.~\ref{fig:adverse}.}
-\label{fig:reverse}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_cases_deliver.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Qualitative results on DELIVER test sequences with a built-in sensor fault: for each fault, the scene with the largest per-image mIoU gap in favor of ours. The second column shows the affected sensor (RGB for exposure and blur, LiDAR, or event). Display as in Fig.~\ref{fig:supp1}.}
-\label{fig:cases}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_cases_reverse_deliver.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Failure cases on DELIVER test sequences with a built-in sensor fault: for each fault, the scene where another method most exceeds ours. Display as in Fig.~\ref{fig:cases}.}
-\label{fig:cases_reverse}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_thin_deliver.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Thin classes on the DELIVER test set: for each of Pole, TrafficLight, Pedestrian, and Static, the image where the class IoU of ours most exceeds that of the best other method (at least 400 ground-truth pixels of the class). Numbers give per-image mIoU over all classes (\%).}
-\label{fig:thin_scenes}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_failure_reverse_deliver.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_deliver.pdf}
-\caption{Failure cases on the DELIVER test set when a sensor fails: for each corrupted-input setting, the scene where another method most exceeds ours in per-image mIoU. Settings and display as in Fig.~\ref{fig:failure_scenarios}.}
-\label{fig:failure_reverse}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_supp_muses.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
-\caption{Additional scenes on the MUSES validation set (all four sensors): the second-ranked clear-night scene and the top scenes of rain by night and snow by day, under the rule of Figs.~\ref{fig:normal_muses} and~\ref{fig:adverse_muses}. Display as in Fig.~\ref{fig:adverse_muses}.}
-\label{fig:supp_muses}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_reverse_muses.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_muses.pdf}
-\caption{Failure cases on the MUSES validation set: for each adverse condition of Fig.~\ref{fig:adverse_muses}, the scene where a baseline most exceeds ours. Display as in Fig.~\ref{fig:adverse_muses}.}
-\label{fig:reverse_muses}
-\end{figure*}
-
-\begin{figure*}[p]
-\centering
-\includegraphics[width=\textwidth]{figures/fig_mcubes.pdf}\\[3pt]
-\includegraphics[width=\textwidth]{figures/fig_class_legend_mcubes.pdf}
-\caption{Qualitative comparison on the MCubeS test set (RGB, AoLP, DoLP, and NIR inputs). Columns: RGB input, ground truth, CMNeXt and MMSFormer (released weights, the only fusion models with released MCubeS weights), and ours. Rows: the two scenes where ours most exceeds the better baseline in per-image mIoU (one per sequence), the scene closest to the median gap, and the scene where a baseline most exceeds ours. Faded pixels agree with the ground truth, so colored pixels are errors; numbers give per-image mIoU (\%).}
-\label{fig:mcubes}
-\end{figure*}
-
-\section{Per-Class Build-Up of Our Model}
-\label{app:ladder}
-Table~\ref{tab:ladder} adds the intermediate stages of our model to Table~\ref{tab:thin} and shows which part of the architecture produces each margin. On TrafficSign, Water, and Truck, the frozen DINOv3-L backbone with RGB alone is already ahead of all three four-sensor baselines (by 4.8, 3.7, and 3.2 points), so these margins come from the foundation features. On Building, Vegetation, Terrain, and Bus, RGB alone is behind the baselines, and adding the other three sensors with cross-modal fusion raises the score by 4.8, 6.1, 4.8, and 4.6 points; on Wall, where RGB alone is only 1.6 points ahead, fusion adds another 10.0. These margins come from the fusion of the sensors on top of the shared backbone. Training with the C2D2 scheme changes the score by less than 1.5 points on 20 of the 25 classes, in both directions, which matches its unchanged mean on clean inputs; its largest per-class gain is on Static (+4.0). On RailTrack and TrafficLight, RGB alone is ahead of every baseline (67.5 and 49.6) and the scores drop when the other three sensors are fused (51.3 and 38.7), so these two losses come from the fusion stage rather than from the backbone. Both classes vary strongly between seeds, and the RGB-only model has a single seed, so these per-stage differences are indicative only.
-
+% Table ladder (Appendix D) placed right after Table train (Appendix C): double-column floats print in source order, after the figures of Appendix B
 % Table perclass (user 2026-11-09): all 25 classes, DELIVER test, legal v2 axis, with the build-up of our model.
 % Baselines: NAS analysis_logs/baseline_official_dump_20261104/class_iou_official.csv (released weights).
 % RGB only s821 / clean four-sensor E1 s821+s902: NAS analysis_logs/perclass_e1_rgb_20261109/ (global confusion vs native GT, mIoU 55.14 / 55.94 / 56.86).
 % + C2D2 (Q2) and Ours (A2), 3 seeds: .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv.
 % Rows sorted by Delta = Ours - best released baseline; bold/underline = best/second in the row (hand-marked).
-\begin{table*}[t]
+\begin{table*}[p]
 \caption{Per-class IoU on the DELIVER test set (\%) for the released baselines and for each stage of our model, sorted as in Table~\ref{tab:thin}.}
 \label{tab:ladder}
 \centering\tabsetup
@@ -246,3 +188,9 @@ mIoU & 52.34 & 55.78 & 56.71 & 55.14 & 56.40 & 56.59 & 57.74 & +1.04 \\
 \end{tabular*}
 \tabnotewide{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Our stages: frozen DINOv3-L with LoRA on RGB only (one seed); all four sensors with cross-modal fusion, clean training (mean of two seeds); the same model trained with the C2D2 scheme (three seeds); and the full model with the high-resolution path (three seeds). In (a), every seed of the full model is ahead of the best baseline except where marked $^{\S}$. Bold: best in the row; underline: second.}
 \end{table*}
+
+\section{Per-Class Build-Up of Our Model}
+\label{app:ladder}
+Table~\ref{tab:ladder} adds the intermediate stages of our model to Table~\ref{tab:thin} and shows which part of the architecture produces each margin. On TrafficSign, Water, and Truck, the frozen DINOv3-L backbone with RGB alone is already ahead of all three four-sensor baselines (by 4.8, 3.7, and 3.2 points), so these margins come from the foundation features. On Building, Vegetation, Terrain, and Bus, RGB alone is behind the baselines, and adding the other three sensors with cross-modal fusion raises the score by 4.8, 6.1, 4.8, and 4.6 points; on Wall, where RGB alone is only 1.6 points ahead, fusion adds another 10.0. These margins come from the fusion of the sensors on top of the shared backbone. Training with the C2D2 scheme changes the score by less than 1.5 points on 20 of the 25 classes, in both directions, which matches its unchanged mean on clean inputs; its largest per-class gain is on Static (+4.0). On RailTrack and TrafficLight, RGB alone is ahead of every baseline (67.5 and 49.6) and the scores drop when the other three sensors are fused (51.3 and 38.7), so these two losses come from the fusion stage rather than from the backbone. Both classes vary strongly between seeds, and the RGB-only model has a single seed, so these per-stage differences are indicative only.
+
+\origFloatBarrier
