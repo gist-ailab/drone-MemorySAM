@@ -27,9 +27,9 @@ def bench_sp_noise(x, density, generator):
     import math
     count = math.ceil(density * x.numel() * 0.5)
     out = x.clone()
-    salt = tuple(torch.randint(0, size, (count,), generator=generator) for size in x.shape)
+    salt = tuple(torch.randint(0, size, (count,), generator=generator).to(x.device) for size in x.shape)
     out[salt] = x.max()
-    pepper = tuple(torch.randint(0, size, (count,), generator=generator) for size in x.shape)
+    pepper = tuple(torch.randint(0, size, (count,), generator=generator).to(x.device) for size in x.shape)
     out[pepper] = x.min()
     return out
 
@@ -63,32 +63,55 @@ def install(model):
         if nm_scope not in ('all', 'rgb'):
             raise ValueError('MUSES_ROBUST_NM_SCOPE must be all or rgb')
 
+    # Public bench input space (DELIVER augmentations_mm.Normalize @b3a76c3): RGB is
+    # ImageNet-normalized, other sensors are raw 0-255 floats. "Missing" = 0 in that space
+    # (RGB -> channel mean, others -> raw 0), NM noise is drawn in that space and in the
+    # upstream order (S&P on every target sensor, then Gaussian except event).
+    def to_bench(name, raw, mu, sd):
+        return (raw.float() - mu) / sd if name == 'CAMERA' else raw.float()
+
+    def from_bench(name, x, mu, sd):
+        return x * sd + mu if name == 'CAMERA' else x
+
     def hook(_module, inputs):
         for sample in inputs[0]:
-            for name in model.modalities:
-                if protocol == 'nm' and nm_scope == 'rgb' and name != 'CAMERA':
-                    continue
-                if protocol in ('emm', 'rmm') and name not in missing:
-                    continue
+            names = [n for n in model.modalities
+                     if not (protocol == 'nm' and nm_scope == 'rgb' and n != 'CAMERA')
+                     and not (protocol in ('emm', 'rmm') and n not in missing)]
+            bench = {}
+            for name in names:
                 raw = sample[name]
                 if raw.ndim != 3 or raw.shape[0] != 3:
                     raise RuntimeError(f'{name}: expected 3,H,W raw tensor, got {tuple(raw.shape)}')
                 mu, sd = (v.to(device=raw.device, dtype=torch.float32) for v in stats[name])
-                if protocol == 'emm':
-                    result = mu.expand_as(raw).clone()
-                elif protocol == 'rmm':
-                    keep = (torch.rand(raw.shape, generator=generator) >= ratio).to(raw.device)
-                    result = torch.where(keep, raw, mu.expand_as(raw))
-                else:
-                    normalized = (raw.float() - mu) / sd
-                    noisy = bench_sp_noise(normalized.unsqueeze(0), density, generator)[0]
+                bench[name] = (to_bench(name, raw, mu, sd).unsqueeze(0), mu, sd)  # batch 1, as upstream
+            if protocol == 'emm':
+                for name in names:
+                    x, mu, sd = bench[name]
+                    bench[name] = (torch.zeros_like(x), mu, sd)
+            elif protocol == 'rmm':
+                for name in names:
+                    x, mu, sd = bench[name]
+                    keep = (torch.rand(x.shape, generator=generator) >= ratio).to(x.device)
+                    bench[name] = (torch.where(keep, x, torch.zeros_like(x)), mu, sd)
+            else:
+                for name in names:
+                    x, mu, sd = bench[name]
+                    bench[name] = (bench_sp_noise(x, density, generator), mu, sd)
+                for name in names:
                     if name != 'EVENT_CAMERA':  # bench: no Gaussian on event
-                        noisy = noisy + torch.randn(noisy.shape, generator=generator).to(noisy.device) * sigma
-                    result = noisy * sd + mu
+                        x, mu, sd = bench[name]
+                        bench[name] = (x + (torch.randn(x.size(), generator=generator) * sigma + 0.0).to(x.device), mu, sd)
+            for name in names:
+                x, mu, sd = bench[name]
+                result = from_bench(name, x[0], mu, sd)
                 sample[name] = result
                 if name == 'CAMERA':
                     sample['image'] = result
         return inputs
 
     model.register_forward_pre_hook(hook)
-    print(f'[muses_robust] protocol={protocol} modalities={model.modalities} seed={seed}', flush=True)
+    print(f'[muses_robust] protocol={protocol} modalities={model.modalities} seed={seed} '
+          f"nm_scope={os.environ.get('MUSES_ROBUST_NM_SCOPE', 'all')} level={os.environ.get('MUSES_ROBUST_LEVEL')} "
+          f"subset={os.environ.get('MUSES_ROBUST_SUBSET')} ratio={os.environ.get('MUSES_ROBUST_RATIO')} "
+          'space=bench(RGB normalized, others raw 0-255)', flush=True)
