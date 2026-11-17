@@ -72,6 +72,8 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--nm_only", action="store_true",
+                        help="clean + NM Mid 만 평가(EMM14 생략; EMM 값은 NM 정의와 무관)")
     parser.add_argument("--limit", type=int, default=0, help="앞 N장만 평가 (0=전체)")
     parser.add_argument("--subset_every", type=int, default=1,
                         help="데이터셋 순서에서 k장마다 1장 (1=전체)")
@@ -94,6 +96,8 @@ def main():
     if not has_gt:
         raise ValueError(f"{args.split} split has no GT")
     modal_names = list(dataset_cfg["MODALS"])
+    if dataset_cfg.get("NORM_ALL_MODALS", False):
+        raise ValueError("mme.bench_noise 는 비-RGB 입력이 raw/255 라고 가정한다(NORM_ALL_MODALS false)")
     if len(modal_names) != 4:
         raise ValueError(f"Expected four DELIVER modalities, got {modal_names}")
     n_classes = dataset.n_classes
@@ -113,6 +117,8 @@ def main():
                   mme.missing_of(present, 4)) for present in present_subsets]
     if len(emm_cases) != 14:
         raise RuntimeError("Expected 14 non-clean EMM subsets")
+    if args.nm_only:
+        emm_cases = []
     settings = ["clean"] + [name for name, _ in emm_cases] + [NM_ID]
     agree = {name: 0 for name in settings[1:]}
     total_valid = {name: 0 for name in settings}
@@ -194,7 +200,8 @@ def main():
         "n_images": n_images,
         "settings": settings,
         "agreement": agreement,
-        "agreement_emm14_mean": sum(agreement[name] for name, _ in emm_cases) / 14,
+        "agreement_emm14_mean": (sum(agreement[name] for name, _ in emm_cases) / 14) if emm_cases else None,
+        "nm_only": bool(args.nm_only),
         "pixel_acc": pixel_acc,
         "ece": {name: pair[0] for name, pair in ece_pairs.items()},
         "ece_bins": {name: pair[1] for name, pair in ece_pairs.items()},
@@ -209,7 +216,8 @@ def main():
     (out / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
                                       encoding="utf-8")
     print(f"[pred-consistency] {args.split}: {n_images} images, clean mIoU={clean_miou:.4f}%")
-    print(f"[pred-consistency] EMM14 agreement={summary['agreement_emm14_mean']:.3f}%, "
+    emm14 = summary['agreement_emm14_mean']
+    print(f"[pred-consistency] EMM14 agreement={'skipped' if emm14 is None else f'{emm14:.3f}%'}, "
           f"NM Mid agreement={agreement[NM_ID]:.3f}%")
     print(f"[pred-consistency] ECE clean={summary['ece']['clean']:.3f}%, "
           f"NM Mid={summary['ece'][NM_ID]:.3f}% -> {out / 'summary.json'}")

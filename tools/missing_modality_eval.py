@@ -165,14 +165,23 @@ def bench_sp_noise(x, density, generator):
     return out
 
 
-def bench_noise(base_list, modal_names, density, std, generator):
-    """정규화 공간에서 모든 센서 S&P 후 Event 이외에 가법 Gaussian 적용."""
-    out = [bench_sp_noise(x, density, generator) for x in base_list]
+def bench_noise(base_list, modal_names, density, std, generator, nonrgb_scale=255.0):
+    """공개 NM 벤치(arXiv 2503.18445, upstream val_mm_NM.py:64-84·104-113)를 원본 입력 공간에서 적용.
+
+    원본 DELIVER 로더(augmentations_mm.Normalize @b3a76c3)는 RGB 만 ImageNet 정규화하고 나머지
+    센서는 raw 0-255 float 로 둔다. 우리 로더는 비-RGB 를 raw/255 로 주므로(NORM_ALL_MODALS false),
+    비-RGB 를 nonrgb_scale(255)배 해 원본 공간으로 옮긴 뒤 원본 순서(모든 센서 S&P → Event 제외
+    Gaussian)로 노이즈를 넣고 되돌린다. 같은 시드에서 원본 함수와 비트 단위로 같다
+    (tools/verify_muses_nm.py). 2026-11-17 이전 판은 비-RGB Gaussian 을 raw/255 단위에서 더해
+    원본보다 255배 강했다.
+    """
+    space = [x if name.lower() == "img" else x * nonrgb_scale for x, name in zip(base_list, modal_names)]
+    out = [bench_sp_noise(x, density, generator) for x in space]
     for i, name in enumerate(modal_names):
         if name.lower() != "event":
-            noise = torch.randn(out[i].size(), generator=generator).to(out[i].device)
-            out[i] = out[i] + noise * std
-    return out
+            noise = torch.randn(out[i].size(), generator=generator) * std + 0.0
+            out[i] = out[i] + noise.to(out[i].device)
+    return [x if name.lower() == "img" else x / nonrgb_scale for x, name in zip(out, modal_names)]
 
 
 def parse_nm_bench_levels(spec):
@@ -631,6 +640,8 @@ def main():
                   "무시 — 벤치마크(off)로 진행")
 
     modal_names = list(dataset_cfg["MODALS"])
+    if args.nm_mode == "bench" and dataset_cfg.get("NORM_ALL_MODALS", False):
+        raise ValueError("bench_noise 는 비-RGB 입력이 raw/255 라고 가정한다(NORM_ALL_MODALS false)")
     M = len(modal_names)
     n_classes = base_dataset.n_classes
     ignore = base_dataset.ignore_label

@@ -117,6 +117,28 @@ def check_d2_hook(sp, gauss, seed):
     return out
 
 
+def check_deliver_bench_noise(sp, gauss, seed):
+    """tools/missing_modality_eval.bench_noise (DELIVER, sensors img/depth/event/lidar) vs upstream order
+    val_mm_NM.py:104-113 (S&P RGB, D, E, L; Gaussian RGB, D, L) in the upstream input space."""
+    from tools.missing_modality_eval import bench_noise
+    names = ['img', 'depth', 'event', 'lidar']
+    g = torch.Generator().manual_seed(11)
+    base = [torch.randn(2, 3, 40, 56, generator=g)] + [torch.rand(2, 3, 40, 56, generator=g) for _ in names[1:]]
+    out = {}
+    for level, (d, s_) in LEVELS.items():
+        torch.manual_seed(seed)
+        up = [base[0].clone()] + [x * 255.0 for x in base[1:]]
+        up = [sp(x, density=d) for x in up]
+        for i, n in enumerate(names):
+            if n != 'event':
+                up[i] = gauss(up[i], mean=0.0, std=s_)
+        ref = [up[0]] + [x / 255.0 for x in up[1:]]
+        ours = bench_noise(base, names, d, s_, torch.Generator().manual_seed(seed))
+        out[level] = {n: float(((a - b) * (1.0 if n == 'img' else 255.0)).abs().max())
+                      for n, a, b in zip(names, ref, ours)}
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cfg')
@@ -147,6 +169,9 @@ def main():
                 entry[level] = compare(images, level, a.seed + k, sp, gauss)
             result['muses'].append(entry)
     result['d2_hook'] = check_d2_hook(sp, gauss, a.seed)
+    result['deliver_bench_noise'] = check_deliver_bench_noise(sp, gauss, a.seed)
+    deliver_worst = max(v for lv in result['deliver_bench_noise'].values() for v in lv.values())
+    result['deliver_bench_noise_worst_max_abs_diff'] = deliver_worst
     hook_worst = max(v for lv in result['d2_hook']['nm'].values() for v in lv.values())
     worst = max(v['max_abs_diff_vs_upstream_bench_units']
                 for block in [result['synthetic']] + result['muses']
@@ -154,7 +179,7 @@ def main():
     result['worst_max_abs_diff'] = worst
     result['d2_hook_worst_max_abs_diff'] = hook_worst
     emm = result['d2_hook']['emm']['img_only']
-    result['pass'] = worst <= 1e-4 and hook_worst <= 1e-3 and emm['camera_unchanged'] and emm['others_raw_zero']
+    result['pass'] = worst <= 1e-4 and deliver_worst <= 1e-3 and hook_worst <= 1e-3 and emm['camera_unchanged'] and emm['others_raw_zero']
     text = json.dumps(result, indent=1)
     if a.out:
         Path(a.out).write_text(text)
