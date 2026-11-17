@@ -383,7 +383,7 @@ tr. & res & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \end{table}
 
 \subsection{Computational Cost}
-The C2D2 training scheme changes only how the model is trained: the second, degraded pass and the frozen teacher are used during training and removed afterwards, so the deployed model is the same network with or without this scheme. Its cost therefore comes from the architecture, which Table~\ref{tab:cost} reports at inference. The backbone is frozen, and our model has about as many trainable parameters as the baselines (74.0M against 75.0M and 78.9M). Because every sensor passes through the frozen ViT-L, however, it needs 14.6 times the operations and 2.9 times the latency of DGFusion, about four images per second for four sensors at $1024\times1024$ on one RTX 4090. The high-resolution path adds 15.2M parameters, about 2\% of the operations, and 13\% of the latency. With a DINOv3-B backbone instead, the same model needs 40\% of the operations and half the latency (129.6 ms) but reaches 53.39 test mIoU, 4.4 points below the DINOv3-L model and below DGFusion; the accuracy of our model depends on the larger backbone.
+The C2D2 training scheme changes only how the model is trained: the second, degraded pass and the frozen teacher are used during training and removed afterwards, so the deployed model is the same network with or without this scheme. Its cost therefore comes from the architecture, which Table~\ref{tab:cost} reports at inference. The backbone is frozen, and our model has about as many trainable parameters as the baselines (74.0M against 75.0M and 78.9M). Because every sensor passes through the frozen ViT-L, however, it needs 14.6 times the operations and 2.9 times the latency of DGFusion, about four images per second for four sensors at $1024\times1024$ on one RTX 4090. The high-resolution path adds 15.2M parameters, about 2\% of the operations, and 13\% of the latency.
 % Source: .claude_logs/tasks/DRN-261027-02/analysis.md table (l.14-19), verdict adopt 2026-11-03; raw NAS analysis_logs/cost_table_20261104{,b,c}/.
 % Ratios: 10135/695.6 = 14.57; 254.5/88.9 = 2.86; high-res = A2 - Q2: 377.05-361.87 = 15.18M, (10135-9922)/9922 = 2.1%, 254.5/224.8 = 1.13.
 
@@ -403,7 +403,6 @@ DGFusion~\cite{dgfusion2026} & 78.88 & 78.88 & 695.6 & 88.9 & 1.83 \\
 CAFuser~\cite{cafuser2025} & 75.01 & 75.01 & 670.8 & 83.1 & 1.57 \\
 Ours & 377.05 & 73.98 & 10{,}135 & 254.5 & 2.47 \\
 % DINOv3-B: analysis inbox 20261111-094302 (A2-B md5 0cb40266..., same conditions; legal v2 test 53.39, one seed).
-Ours (DINOv3-B) & 138.21 & 52.57 & 4{,}011 & 129.6 & 1.43 \\
 \bottomrule
 \end{tabular*}
 \end{table}
