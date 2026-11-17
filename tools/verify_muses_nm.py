@@ -1,21 +1,30 @@
-"""Verify tools/muses_robust_eval.bench_nm against the public NM benchmark code, bit for bit.
+"""Verify our NM (noisy-modality) implementations against the public benchmark code, bit for bit.
 
-The two noise functions are taken verbatim from the byte-identical upstream copy
-third_party/mmss_robust_bench/upstream/val_mm_NM.py (Chenfei-Liao/Multi-Modal-Semantic-
-Segmentation-Robustness-Benchmark @53c7a6e, md5 b677d2dfbaa4b5d998597f0d2d2d650d) and
-called in the upstream order (val_mm_NM.py:104-113: S&P on every sensor, then Gaussian on
-every sensor except event) on tensors in the upstream input space (RGB ImageNet-normalized,
-other sensors raw 0-255). Radar is appended to the S&P and Gaussian lists like LiDAR.
+Nothing about the benchmark is re-typed here: the input space and the noise come from the
+byte-identical upstream copies in third_party/mmss_robust_bench/
+  - upstream/val_mm_NM.py (benchmark repo @53c7a6e): add_salt_and_pepper_noise,
+    add_gaussian_noise, called in the upstream order of val_mm_NM.py:104-113
+    (S&P on every sensor, then Gaussian on every sensor except event)
+  - bench_upstream/augmentations_mm.py (DELIVER @b3a76c3): Normalize, which defines the space the
+    noise is added in (RGB /255 + ImageNet normalization, other sensors /255).
+Checks
+  1. space: upstream Normalize == our semseg Normalize (NORM_ALL_MODALS false) on raw uint8 inputs
+  2. DELIVER  tools/missing_modality_eval.bench_noise   (img, depth, event, lidar)
+  3. MUSES    tools/muses_robust_eval.bench_nm          (img, lidar, event, radar; radar like LiDAR)
+  4. d2 hook  third_party/dgfusion_train_restore/muses_robust/muses_robust_hook (raw 0-255 inputs)
+     for NM, and EMM fill (= 0 in the upstream space)
+Each noise check runs upstream Normalize on the same raw tensors, applies the upstream functions
+with torch.manual_seed(seed), and compares with ours using torch.Generator().manual_seed(seed).
 
-Usage:
-  python tools/verify_muses_nm.py                       # synthetic tensors only
-  python tools/verify_muses_nm.py --cfg <muses cfg> --n 3   # also real MUSES val samples
-Writes a JSON summary with --out.
+Usage: python tools/verify_muses_nm.py [--out result.json]
 """
 import argparse
 import ast
 import hashlib
+import importlib
+import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -24,62 +33,107 @@ import torch
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from tools.muses_robust_eval import LEVELS, MODALS, bench_nm  # noqa: E402
+BENCH = REPO / 'third_party/mmss_robust_bench'
+FILES = {'upstream/val_mm_NM.py': 'b677d2dfbaa4b5d998597f0d2d2d650d',
+         'bench_upstream/augmentations_mm.py': '35ee0b7e9b99c68a9d275af95cb0350e'}
+LEVELS = {'low': (0.05, 0.1), 'mid': (0.1, 0.2), 'high': (0.2, 0.5)}
+IMNET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+IMNET_STD = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
 
-UPSTREAM = REPO / 'third_party/mmss_robust_bench/upstream/val_mm_NM.py'
-UPSTREAM_MD5 = 'b677d2dfbaa4b5d998597f0d2d2d650d'
+
+def md5(path):
+    return hashlib.md5(path.read_bytes()).hexdigest()
 
 
 def load_upstream():
-    src = UPSTREAM.read_bytes()
-    md5 = hashlib.md5(src).hexdigest()
-    if md5 != UPSTREAM_MD5:
-        raise RuntimeError(f'upstream copy changed: {md5}')
-    tree = ast.parse(src.decode())
-    keep = [n for n in tree.body if isinstance(n, ast.FunctionDef)
+    for rel, want in FILES.items():
+        got = md5(BENCH / rel)
+        if got != want:
+            raise RuntimeError(f'{rel} changed: {got}')
+    src = (BENCH / 'upstream/val_mm_NM.py').read_text()
+    keep = [n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef)
             and n.name in ('add_salt_and_pepper_noise', 'add_gaussian_noise')]
     ns = {'np': np, 'torch': torch, 'cfg': {'DEVICE': 'cpu'}}
-    exec(compile(ast.Module(body=keep, type_ignores=[]), str(UPSTREAM), 'exec'), ns)
-    return ns['add_salt_and_pepper_noise'], ns['add_gaussian_noise'], md5
+    exec(compile(ast.Module(body=keep, type_ignores=[]), 'upstream/val_mm_NM.py', 'exec'), ns)
+    spec = importlib.util.spec_from_file_location('bench_aug', BENCH / 'bench_upstream/augmentations_mm.py')
+    aug = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(aug)
+    return ns['add_salt_and_pepper_noise'], ns['add_gaussian_noise'], aug.Normalize()
 
 
-def upstream_nm(images, level, seed, sp, gauss):
-    density, std = LEVELS[level]
+def raw_sample(names, seed, shape=(3, 40, 56)):
+    g = torch.Generator().manual_seed(seed)
+    return {n: torch.randint(0, 256, shape, generator=g, dtype=torch.uint8) for n in names}
+
+
+def upstream_space(norm, raw):
+    """Upstream Normalize (key 'img' = RGB) on a copy of the raw sample."""
+    return norm({k: v.clone() for k, v in raw.items()})
+
+
+def upstream_noise(space, names, level, seed, sp, gauss):
+    d, s = LEVELS[level]
     torch.manual_seed(seed)
-    up = [x.clone() if m == 'img' else x * 255.0 for x, m in zip(images, MODALS)]
-    for i in range(len(up)):
-        up[i] = sp(up[i], density=density)
-    for i, m in enumerate(MODALS):
-        if m != 'event':
-            up[i] = gauss(up[i], mean=0.0, std=std)
-    return [x if m == 'img' else x / 255.0 for x, m in zip(up, MODALS)]
+    x = [space[n].unsqueeze(0).clone() for n in names]   # batch 1, as our runners
+    x = [sp(t, density=d) for t in x]
+    for i, n in enumerate(names):
+        if n != 'event':
+            x[i] = gauss(x[i], mean=0.0, std=s)
+    return x
 
 
-def compare(images, level, seed, sp, gauss):
-    ref = upstream_nm(images, level, seed, sp, gauss)
-    ours = bench_nm(images, level, torch.Generator().manual_seed(seed), 'all')
-    rec = {}
-    for m, x, a, b in zip(MODALS, images, ref, ours):
-        scale = 1.0 if m == 'img' else 255.0  # report in bench units
-        d = (b - x) * scale
-        rec[m] = {'max_abs_diff_vs_upstream_bench_units': float(((a - b) * scale).abs().max()),
-                  'changed_fraction': float((d != 0).float().mean()),
-                  'noise_std_bench_units': float(d.std())}
-    return rec
+def maxdiff(a, b):
+    return float((a - b).abs().max())
 
 
-def check_d2_hook(sp, gauss, seed):
-    """Same comparison for the detectron2 input hook used for DGFusion/CAFuser (raw 0-255 inputs)."""
-    import importlib, os
-    hook_mod = importlib.import_module('third_party.dgfusion_train_restore.muses_robust.muses_robust_hook')
-    names = ('CAMERA', 'LIDAR', 'EVENT_CAMERA', 'RADAR')
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--out')
+    a = ap.parse_args()
+    sp, gauss, up_norm = load_upstream()
+    res = {'upstream_md5': {k: md5(BENCH / k) for k in FILES}}
+
+    # 1. space
+    from semseg.augmentations_mm import Normalize as OurNormalize
+    names_d = ['img', 'depth', 'event', 'lidar']
+    raw = raw_sample(names_d, 1)
+    up = upstream_space(up_norm, raw)
+    ours = OurNormalize(norm_all_modals=False)({k: v.clone() for k, v in raw.items()})
+    res['space_max_abs_diff'] = {n: maxdiff(up[n], ours[n]) for n in names_d}
+    res['space_nonrgb_range'] = [float(up['depth'].min()), float(up['depth'].max())]
+
+    # 2. DELIVER bench_noise
+    from tools.missing_modality_eval import bench_noise
+    res['deliver'] = {}
+    for level, (d, s) in LEVELS.items():
+        ref = upstream_noise(up, names_d, level, a.seed, sp, gauss)
+        got = bench_noise([up[n].unsqueeze(0) for n in names_d], names_d, d, s,
+                          torch.Generator().manual_seed(a.seed))
+        res['deliver'][level] = {n: maxdiff(r, g) for n, r, g in zip(names_d, ref, got)}
+
+    # 3. MUSES bench_nm (radar handled like LiDAR: upstream functions applied to it too)
+    from tools.muses_robust_eval import bench_nm
+    names_m = ['img', 'lidar', 'event', 'radar']
+    raw_m = raw_sample(names_m, 2)
+    up_m = upstream_space(up_norm, raw_m)
+    res['muses'] = {}
+    for level in LEVELS:
+        ref = upstream_noise(up_m, names_m, level, a.seed, sp, gauss)
+        got = bench_nm([up_m[n].unsqueeze(0) for n in names_m], level,
+                       torch.Generator().manual_seed(a.seed), 'all')
+        res['muses'][level] = {n: maxdiff(r, g) for n, r, g in zip(names_m, ref, got)}
+
+    # 4. detectron2 hook: raw 0-255 inputs, camera pixel_mean/std = ImageNet * 255
+    hook = importlib.import_module('third_party.dgfusion_train_restore.muses_robust.muses_robust_hook')
+    d2 = ('CAMERA', 'LIDAR', 'EVENT_CAMERA', 'RADAR')
     mean = torch.tensor([123.675, 116.28, 103.53, 20., 21., 22., 64., 64., 64., 5., 6., 7.])
     std = torch.tensor([58.395, 57.12, 57.375, 30., 31., 32., 50., 50., 50., 15., 16., 17.])
 
     class Fake(torch.nn.Module):
         def __init__(self):
             super().__init__()
-            self.modalities = list(names)
+            self.modalities = list(d2)
             self.register_buffer('pixel_mean', mean.view(-1, 1, 1))
             self.register_buffer('pixel_std', std.view(-1, 1, 1))
             self.got = None
@@ -88,103 +142,43 @@ def check_d2_hook(sp, gauss, seed):
             self.got = batch
             return batch
 
-    g = torch.Generator().manual_seed(7)
-    raw = {n: torch.randint(0, 256, (3, 48, 64), generator=g).float() for n in names}
-    out = {'nm': {}, 'emm': {}}
-    for level in LEVELS:
-        os.environ.update(MUSES_ROBUST_PROTOCOL='nm', MUSES_ROBUST_LEVEL=level, MUSES_ROBUST_SEED=str(seed),
-                          MUSES_ROBUST_NM_SCOPE='all')
+    def run_hook(env):
+        os.environ.update(env)
         m = Fake()
-        hook_mod.install(m)
-        m([{n: raw[n].clone() for n in names}])
-        mu, sd = mean[:3].view(3, 1, 1), std[:3].view(3, 1, 1)
-        ours_space = [((raw['CAMERA'] - mu) / sd).unsqueeze(0)] + [(raw[n] / 255.0).unsqueeze(0) for n in names[1:]]
-        ref = upstream_nm(ours_space, level, seed, sp, gauss)
-        diffs = {}
-        for i, n in enumerate(names):
-            got = m.got[0][n]
-            got_b = (got - mu) / sd if n == 'CAMERA' else got
-            ref_b = ref[i][0] if n == 'CAMERA' else ref[i][0] * 255.0
-            diffs[n] = float((got_b - ref_b).abs().max())
-        out['nm'][level] = diffs
-    os.environ.update(MUSES_ROBUST_PROTOCOL='emm', MUSES_ROBUST_SUBSET='img')
-    m = Fake()
-    hook_mod.install(m)
-    m([{n: raw[n].clone() for n in names}])
-    out['emm']['img_only'] = {
-        'camera_unchanged': bool(torch.equal(m.got[0]['CAMERA'], raw['CAMERA'])),
-        'others_raw_zero': all(bool((m.got[0][n] == 0).all()) for n in names[1:])}
-    return out
+        hook.install(m)
+        m([{n: raw_m[k].float() for n, k in zip(d2, names_m)}])
+        return m.got[0]
 
+    def to_up_space(x, key):
+        x = x.float() / 255.0
+        return (x - IMNET_MEAN) / IMNET_STD if key == 'img' else x
 
-def check_deliver_bench_noise(sp, gauss, seed):
-    """tools/missing_modality_eval.bench_noise (DELIVER, sensors img/depth/event/lidar) vs upstream order
-    val_mm_NM.py:104-113 (S&P RGB, D, E, L; Gaussian RGB, D, L) in the upstream input space."""
-    from tools.missing_modality_eval import bench_noise
-    names = ['img', 'depth', 'event', 'lidar']
-    g = torch.Generator().manual_seed(11)
-    base = [torch.randn(2, 3, 40, 56, generator=g)] + [torch.rand(2, 3, 40, 56, generator=g) for _ in names[1:]]
-    out = {}
-    for level, (d, s_) in LEVELS.items():
-        torch.manual_seed(seed)
-        up = [base[0].clone()] + [x * 255.0 for x in base[1:]]
-        up = [sp(x, density=d) for x in up]
-        for i, n in enumerate(names):
-            if n != 'event':
-                up[i] = gauss(up[i], mean=0.0, std=s_)
-        ref = [up[0]] + [x / 255.0 for x in up[1:]]
-        ours = bench_noise(base, names, d, s_, torch.Generator().manual_seed(seed))
-        out[level] = {n: float(((a - b) * (1.0 if n == 'img' else 255.0)).abs().max())
-                      for n, a, b in zip(names, ref, ours)}
-    return out
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--cfg')
-    ap.add_argument('--n', type=int, default=3)
-    ap.add_argument('--seed', type=int, default=0)
-    ap.add_argument('--out')
-    a = ap.parse_args()
-    sp, gauss, md5 = load_upstream()
-    result = {'upstream': str(UPSTREAM.relative_to(REPO)), 'upstream_md5': md5, 'synthetic': {}, 'muses': []}
-    g = torch.Generator().manual_seed(123)
-    synth = [torch.randn(1, 3, 64, 96, generator=g)] + \
-            [torch.rand(1, 3, 64, 96, generator=g) * 0.4 for _ in MODALS[1:]]
+    res['d2_hook'] = {'nm': {}}
     for level in LEVELS:
-        result['synthetic'][level] = compare(synth, level, a.seed, sp, gauss)
-    if a.cfg:
-        import yaml
-        from tools.eval_muses_official import MUSES, get_val_augmentation
-        cfg = yaml.safe_load(Path(a.cfg).read_text())
-        d = cfg['DATASET']
-        ds = MUSES(d['ROOT'], 'val', get_val_augmentation(cfg['EVAL']['IMAGE_SIZE'], dataset_cfg=d),
-                   d['MODALS'], return_meta=True, proj_dir=d.get('PROJ_DIR', 'projected_to_rgb'))
-        for k in range(a.n):
-            sample = ds[k]
-            images = [x.unsqueeze(0) for x in sample[0]]
-            entry = {'index': k, 'input_range': {m: [float(x.min()), float(x.max())]
-                                                 for m, x in zip(MODALS, images)}}
-            for level in LEVELS:
-                entry[level] = compare(images, level, a.seed + k, sp, gauss)
-            result['muses'].append(entry)
-    result['d2_hook'] = check_d2_hook(sp, gauss, a.seed)
-    result['deliver_bench_noise'] = check_deliver_bench_noise(sp, gauss, a.seed)
-    deliver_worst = max(v for lv in result['deliver_bench_noise'].values() for v in lv.values())
-    result['deliver_bench_noise_worst_max_abs_diff'] = deliver_worst
-    hook_worst = max(v for lv in result['d2_hook']['nm'].values() for v in lv.values())
-    worst = max(v['max_abs_diff_vs_upstream_bench_units']
-                for block in [result['synthetic']] + result['muses']
-                for lv, mods in block.items() if lv in LEVELS for v in mods.values())
-    result['worst_max_abs_diff'] = worst
-    result['d2_hook_worst_max_abs_diff'] = hook_worst
-    emm = result['d2_hook']['emm']['img_only']
-    result['pass'] = worst <= 1e-4 and deliver_worst <= 1e-3 and hook_worst <= 1e-3 and emm['camera_unchanged'] and emm['others_raw_zero']
-    text = json.dumps(result, indent=1)
+        out = run_hook(dict(MUSES_ROBUST_PROTOCOL='nm', MUSES_ROBUST_LEVEL=level,
+                            MUSES_ROBUST_SEED=str(a.seed), MUSES_ROBUST_NM_SCOPE='all'))
+        ref = upstream_noise(up_m, names_m, level, a.seed, sp, gauss)
+        res['d2_hook']['nm'][level] = {n: maxdiff(to_up_space(out[n], k), ref[i][0])
+                                       for i, (n, k) in enumerate(zip(d2, names_m))}
+    out = run_hook(dict(MUSES_ROBUST_PROTOCOL='emm', MUSES_ROBUST_SUBSET='img'))
+    res['d2_hook']['emm_img_only'] = {
+        'camera_unchanged': bool(torch.equal(out['CAMERA'], raw_m['img'].float())),
+        'others_zero_in_bench_space': all(bool((out[n] == 0).all()) for n in d2[1:])}
+
+    worst = {'space': max(res['space_max_abs_diff'].values()),
+             'deliver': max(v for lv in res['deliver'].values() for v in lv.values()),
+             'muses': max(v for lv in res['muses'].values() for v in lv.values()),
+             'd2_hook': max(v for lv in res['d2_hook']['nm'].values() for v in lv.values())}
+    res['worst'] = worst
+    emm = res['d2_hook']['emm_img_only']
+    res['pass'] = (worst['space'] <= 1e-6 and worst['deliver'] <= 1e-6 and worst['muses'] <= 1e-6
+                   and worst['d2_hook'] <= 1e-4 and emm['camera_unchanged']
+                   and emm['others_zero_in_bench_space'])
+    text = json.dumps(res, indent=1)
     if a.out:
         Path(a.out).write_text(text)
     print(text)
-    sys.exit(0 if result['pass'] else 1)
+    sys.exit(0 if res['pass'] else 1)
 
 
 if __name__ == '__main__':

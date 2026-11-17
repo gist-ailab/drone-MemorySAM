@@ -35,16 +35,16 @@ LEVELS = {'low': (0.05, 0.1), 'mid': (0.1, 0.2), 'high': (0.2, 0.5)}
 
 
 def to_bench_space(x, modal):
-    """Our MUSES loader -> public NM bench input space (DELIVER augmentations_mm.Normalize @b3a76c3).
+    """Our MUSES loader -> public NM bench input space (DELIVER augmentations_mm.Normalize @b3a76c3, :34-40).
 
-    RGB: ImageNet-normalized in both, unchanged. Non-RGB: our loader gives raw/255
-    (DATASET.NORM_ALL_MODALS false), the bench feeds raw 0-255 floats -> multiply by 255.
+    Both give RGB as /255 + ImageNet-normalized and other sensors as raw/255
+    (DATASET.NORM_ALL_MODALS false), so the spaces are identical.
     """
-    return x if modal == 'img' else x * 255.0
+    return x
 
 
 def from_bench_space(x, modal):
-    return x if modal == 'img' else x / 255.0
+    return x
 
 
 def bench_nm(images, level, generator, scope='all'):
@@ -73,8 +73,8 @@ def nm_config(level, scope, seed):
     return {'definition': 'public NM bench arXiv 2503.18445, upstream val_mm_NM.py @53c7a6e',
             'level': level, 'scope': scope, 'seed': seed, 'sp_density': density, 'gauss_std': std,
             'sp_sensors': targets, 'gauss_sensors': [m for m in targets if m != 'event'],
-            'space': {'img': 'ImageNet-normalized (sigma in normalized units)',
-                      'non_rgb': 'raw 0-255 float (sigma in raw units), as upstream DELIVER loader'},
+            'space': {'img': '/255 + ImageNet-normalized (sigma in normalized units)',
+                      'non_rgb': 'raw/255 (sigma in raw/255 units), as upstream DELIVER loader'},
             'order': 'S&P all target sensors, then Gaussian', 'sp_extremes': 'per-tensor max/min (batch 1)'}
 
 
@@ -211,7 +211,7 @@ def main():
     if dcfg['NAME'].upper() != 'MUSES' or tuple(dcfg['MODALS']) != MODALS:
         raise ValueError('Expected four-sensor MUSES config in img,lidar,event,radar order')
     if dcfg.get('NORM_ALL_MODALS', False):
-        raise ValueError('bench_nm assumes non-RGB inputs are raw/255 (NORM_ALL_MODALS false)')
+        raise ValueError('bench_nm assumes non-RGB inputs are raw/255 like the upstream loader (NORM_ALL_MODALS false)')
     if args.dataset_root:
         dcfg['ROOT'] = args.dataset_root
     if args.side:

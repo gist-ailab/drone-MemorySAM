@@ -8,8 +8,8 @@ val split (250 images, native 1080×1920, 19 train IDs).
 
 The sensor order is RGB (`img`/`CAMERA`), LiDAR, Event (`EVENT_CAMERA`), Radar.
 All corruptions are applied in the **public benchmark input space** (DELIVER
-`augmentations_mm.Normalize` @b3a76c3, used by arXiv 2503.18445): RGB is
-ImageNet-normalized, the other sensors are raw 0-255 floats. EMM evaluates all 15
+`augmentations_mm.Normalize` @b3a76c3 :34-40, used by arXiv 2503.18445): RGB is
+/255 + ImageNet-normalized, the other sensors are raw/255. EMM evaluates all 15
 nonempty present subsets; the full set is clean; a missing sensor is 0 in that
 space (RGB -> channel mean, LiDAR/Event/Radar -> raw 0). RMM evaluates the same 15
 subsets at each `r` in 0.25, 0.5, 0.75: for sensors outside the present subset each
@@ -21,12 +21,14 @@ decision to follow prior work) follows upstream `val_mm_NM.py:64-84,104-113` exa
 salt-and-pepper on every sensor first (per-tensor max/min, coordinates with
 replacement, batch 1), then additive Gaussian on every sensor except Event, with
 (density, sigma) = (0.05, 0.1) / (0.1, 0.2) / (0.2, 0.5); sigma is in normalized units
-for RGB and raw 0-255 units for the other sensors. Radar is not in the upstream code
+for RGB and raw/255 units for the other sensors. Radar is not in the upstream code
 (DELIVER has no radar) and is treated like LiDAR. `rgb` scope = RGB only (figure dump).
-`python tools/verify_muses_nm.py [--cfg <muses cfg>]` checks both our runner and this
-hook against the verbatim upstream functions (same seed -> max abs diff 0 / <=1.5e-5).
-Note: the version before 2026-11-16 drew non-RGB Gaussian noise in our loader units
-(raw/255 for ReliaDINO, normalized for this hook), i.e. far stronger than upstream.
+`python tools/verify_muses_nm.py` checks the input space (upstream Normalize == ours) and
+our runner, the DELIVER tool and this hook against the verbatim upstream functions
+(same seed -> max abs diff 0 / 1e-6 for the hook).
+History: the hook before 2026-11-16 corrupted non-camera sensors in d2-normalized units and
+filled missing ones with the channel mean (not upstream); a 2026-11-17 morning version wrongly
+used raw 0-255 for non-RGB (255x weaker noise) and was reverted the same day.
 
 Definitions reproduced from the read-only benchmark:
 
@@ -37,10 +39,10 @@ Definitions reproduced from the read-only benchmark:
 - `tools/missing_modality_eval.py:64-111,155-175,252-286`: present subset
   enumeration, seeded CPU mask, and the S&P/Gaussian order used here.
 
-The ReliaDINO runner receives RGB normalized and other sensors as raw/255
-(`NORM_ALL_MODALS` false, asserted) and converts non-RGB to raw 0-255 before
-corrupting. DGFusion and CAFuser receive raw 0-255 tensors; the hook normalizes only
-the camera with `model.pixel_mean/std[0:3]`, corrupts, and maps back. Camera changes are
+The ReliaDINO runner receives exactly the upstream space (RGB normalized, other sensors
+raw/255; `NORM_ALL_MODALS` false, asserted) and corrupts it directly. DGFusion and CAFuser
+receive raw 0-255 tensors; the hook maps the camera with `model.pixel_mean/std[0:3]` and the
+other sensors with /255, corrupts, and maps back. Camera changes are
 also written to the duplicate `image` key. The hook reads `model.modalities`
 to get the actual buffer order and checks that the four MUSES modalities and 12
 mean/std entries are present. For RGB NM it normalizes raw RGB with those same
