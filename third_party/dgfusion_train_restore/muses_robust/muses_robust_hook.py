@@ -63,15 +63,15 @@ def install(model):
         if nm_scope not in ('all', 'rgb'):
             raise ValueError('MUSES_ROBUST_NM_SCOPE must be all or rgb')
 
-    # Public bench input space (DELIVER augmentations_mm.Normalize @b3a76c3): RGB is
-    # ImageNet-normalized, other sensors are raw 0-255 floats. "Missing" = 0 in that space
+    # Public bench input space (DELIVER augmentations_mm.Normalize @b3a76c3, :34-40): RGB is
+    # ImageNet-normalized, other sensors are raw/255. "Missing" = 0 in that space
     # (RGB -> channel mean, others -> raw 0), NM noise is drawn in that space and in the
     # upstream order (S&P on every target sensor, then Gaussian except event).
     def to_bench(name, raw, mu, sd):
-        return (raw.float() - mu) / sd if name == 'CAMERA' else raw.float()
+        return (raw.float() - mu) / sd if name == 'CAMERA' else raw.float() / 255.0
 
     def from_bench(name, x, mu, sd):
-        return x * sd + mu if name == 'CAMERA' else x
+        return x * sd + mu if name == 'CAMERA' else x * 255.0
 
     def hook(_module, inputs):
         for sample in inputs[0]:
@@ -114,4 +114,4 @@ def install(model):
     print(f'[muses_robust] protocol={protocol} modalities={model.modalities} seed={seed} '
           f"nm_scope={os.environ.get('MUSES_ROBUST_NM_SCOPE', 'all')} level={os.environ.get('MUSES_ROBUST_LEVEL')} "
           f"subset={os.environ.get('MUSES_ROBUST_SUBSET')} ratio={os.environ.get('MUSES_ROBUST_RATIO')} "
-          'space=bench(RGB normalized, others raw 0-255)', flush=True)
+          'space=bench(RGB normalized, others raw/255)', flush=True)
