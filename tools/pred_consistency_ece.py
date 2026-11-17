@@ -94,6 +94,8 @@ def main():
     if not has_gt:
         raise ValueError(f"{args.split} split has no GT")
     modal_names = list(dataset_cfg["MODALS"])
+    if dataset_cfg.get("NORM_ALL_MODALS", False):
+        raise ValueError("mme.bench_noise 는 비-RGB 입력이 raw/255 라고 가정한다(NORM_ALL_MODALS false)")
     if len(modal_names) != 4:
         raise ValueError(f"Expected four DELIVER modalities, got {modal_names}")
     n_classes = dataset.n_classes
