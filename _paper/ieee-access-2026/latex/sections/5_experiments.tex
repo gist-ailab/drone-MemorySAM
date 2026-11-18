@@ -348,7 +348,7 @@ modal & pass & degr. & KD & & & \\
 \cmark & \cmark & \cmark & \cmark & \cmark & \best{57.85} & \best{48.85} \\
 \bottomrule
 \end{tabular*}
-\tabnote{All rows keep the high-resolution path. Degr.\ pass: the second, degraded forward pass of the C2D2 scheme. Phys.\ degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass. $^{*}$Token averaging; also removes the sensor-specific residual $m_s$ of Eq.~(2). $^{\dagger}$Single run; the full model trained with the same seed scores 58.61 and 49.12. Router: the sensor router of Section~\ref{sec:m_router}.}
+\tabnote{All rows keep the high-resolution path. Degr.\ pass: the second, degraded forward pass of the C2D2 scheme. Phys.\ degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass; without the degraded pass (first row), the second pass sees an undegraded copy, to which this term still applies. $^{*}$Token averaging; also removes the sensor-specific residual $m_s$ of Eq.~(2). $^{\dagger}$Single run; the full model trained with the same seed scores 58.61 and 49.12. Router: the sensor router of Section~\ref{sec:m_router}.}
 \end{table}
 
 % Table 6c. Robustness ablation, 3 seeds, DELIVER val, benchmark protocol (user 2026-11-02).

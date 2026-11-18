@@ -38,6 +38,14 @@ The high-resolution path raises clean test mIoU by 1.15 points (from 56.59 to 57
 % Baselines: NAS analysis_logs/baseline_official_dump_20261104/class_iou_official.csv (released weights, 1024 prediction -> native GT nearest).
 % Ours: .claude_logs/experiments/analysis/DRN-261018-01/a2_vs_q2_perclass_3seed.csv (a2* = Ours, q2* = w/o high-res), 3-seed means.
 % Rows sorted by Delta = Ours - best released baseline; bold/underline = best/second in the row (hand-marked, not mark_best.py).
+\begin{figure}[t]
+\centering
+% Assets: NAS analysis_logs/a2_tl_fp_scenes_20261022 (4 scenes, README.md has the selection rule).
+\includegraphics[width=\columnwidth]{figures/fig_tl_deliver.pdf}
+\caption{Failure case of the high-resolution path on the DELIVER test set: posters and signs predicted as traffic lights. Scenes are drawn from the 20 test images where the path adds the most TrafficLight false positives, one per condition. Columns: RGB input, ground truth, our model without and with the path (same training seed). Faded pixels agree with the ground truth; numbers give per-image mIoU (\%); colours follow the key of Fig.~\ref{fig:adverse}.}
+\label{fig:failure}
+\end{figure}
+
 \begin{table}[t]
 \caption{Per-class IoU on the DELIVER test set (\%), sorted by the margin of ours over the best released baseline (last column).}
 \label{tab:thin}
@@ -88,13 +96,6 @@ With the high-resolution path, the recall of TrafficLight rises (0.80 to 0.85) b
 % Source: NAS analysis_logs/a2_tl_fp_scenes_20261022/README.md (4 scenes; A2 vs Q2 TrafficLight FP pixels
 % 15258 vs 3620, 13705 vs 3752, 10304 vs 2008, 12229 vs 9008; selection rule: top-20 by A2 FP - Q2 FP, no repeated condition).
 
-\begin{figure}[t]
-\centering
-% Assets: NAS analysis_logs/a2_tl_fp_scenes_20261022 (4 scenes, README.md has the selection rule).
-\includegraphics[width=\columnwidth]{figures/fig_tl_deliver.pdf}
-\caption{Failure case of the high-resolution path on the DELIVER test set: posters and signs predicted as traffic lights. Scenes are drawn from the 20 test images where the path adds the most TrafficLight false positives, one per condition. Columns: RGB input, ground truth, our model without and with the path (same training seed). Faded pixels agree with the ground truth; numbers give per-image mIoU (\%); colours follow the key of Fig.~\ref{fig:adverse}.}
-\label{fig:failure}
-\end{figure}
 
 \subsection{Scenes Where a Baseline Is Better}\label{sec:reverse}
 Fig.~\ref{fig:reverse} in Appendix~\ref{app:qual} applies the selection rule of Fig.~\ref{fig:adverse} in the opposite direction: for each condition it shows the test scene where another model leads ours by the largest per-image mIoU. In four of the six conditions that model is DGFusion and in two it is CAFuser, and the gap is 8.5 to 12.9 points. These scenes are not chosen to be typical; they bound how much a single image can favour a baseline when all sensors are present. The losses fall into two groups. In sun and cloud, small signs are labelled as traffic lights and parts of buildings as poles, the failure of the high-resolution path discussed in Section~\ref{sec:failure_tl}. Under low exposure, night, and fog, large regions take a wrong class: a building is read as sky at low exposure, a fence as a wall at night, and a static object as a truck in fog. In rain the loss is spread along the boundary between vegetation and terrain.
