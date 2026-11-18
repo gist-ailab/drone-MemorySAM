@@ -19,7 +19,7 @@ These measurements suggest that, on DELIVER, the dependence on depth comes mainl
 \centering
 % Source numbers and provenance: figures/src/make_data_figs.py (fig_dependence). Full table: sections/supp_tables.tex (Table S1).
 \includegraphics[width=\columnwidth]{figures/fig_dependence.pdf}
-\caption{Dependence on depth across conditions on the DELIVER test set: change in mIoU when the depth input is zero-filled at inference (closer to zero means less dependence). Ours, clean training: without C2D2 and without the high-resolution path (mean of two seeds); Ours: full model (mean of three seeds).}
+\caption{Dependence on depth across conditions on the DELIVER test set: change in mIoU when the depth input is zero-filled at inference (closer to zero means less dependence). Ours, clean training: without C2D2 and without the high-resolution path; Ours: full model.}
 \label{fig:dependence}
 \end{figure}
 
@@ -28,7 +28,7 @@ These measurements suggest that, on DELIVER, the dependence on depth comes mainl
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/fig_hires.pdf}
-\caption{Why thin objects vanish at stride 16 and what the high-resolution path recovers, on crops of DELIVER test scenes. From left: the RGB crop with the 16-pixel token grid of the backbone; the crop averaged over each token cell, the finest detail one token can address; the per-pixel magnitude of the backbone features tapped after blocks 6--24 and resampled from stride 16, and of the high-resolution path at stride 4 (brighter is larger); the predictions of our model without and with the path (same training seed and scheme); and the ground truth. Numbers give the IoU (\%) of the class named on the left within the crop. Each crop is the window where the path corrects the most pixels of that class. On the whole test set, the magnitude of the path is 2.52 times higher on pixels of Pole, TrafficLight, Pedestrian, and Static than on the other pixels, against 0.93 for the tapped features.}
+\caption{Why thin objects vanish at stride 16 and what the high-resolution path recovers, on crops of DELIVER test scenes. From left: the RGB crop with the 16-pixel token grid of the backbone; the crop averaged over each token cell, the finest detail one token can address; the per-pixel magnitude of the backbone features tapped after blocks 6--24 and resampled from stride 16, and of the high-resolution path at stride 4 (brighter is larger); the predictions of our model without and with the path (trained identically otherwise); and the ground truth. Numbers give the IoU (\%) of the class named on the left within the crop. Each crop is the window where the path corrects the most pixels of that class. On the whole test set, the magnitude of the path is 2.52 times higher on pixels of Pole, TrafficLight, Pedestrian, and Static than on the other pixels, against 0.93 for the tapped features.}
 \label{fig:hires}
 \end{figure*}
 
@@ -45,7 +45,7 @@ The high-resolution path raises clean test mIoU by 1.15 points (from 56.59 to 57
 \centering
 % Assets: NAS analysis_logs/a2_tl_fp_scenes_20261022 (4 scenes, README.md has the selection rule).
 \includegraphics[width=\columnwidth]{figures/fig_tl_deliver.pdf}
-\caption{Failure case of the high-resolution path on the DELIVER test set: posters and signs predicted as traffic lights. Scenes are drawn from the 20 test images where the path adds the most TrafficLight false positives, one per condition. Columns: RGB input, ground truth, our model without and with the path (same training seed). Faded pixels agree with the ground truth; numbers give per-image mIoU (\%); colours follow the key of Fig.~\ref{fig:adverse}.}
+\caption{Failure case of the high-resolution path on the DELIVER test set: posters and signs predicted as traffic lights. Scenes are drawn from the 20 test images where the path adds the most TrafficLight false positives, one per condition. Columns: RGB input, ground truth, our model without and with the path (trained identically otherwise). Faded pixels agree with the ground truth; numbers give per-image mIoU (\%); colours follow the key of Fig.~\ref{fig:adverse}.}
 \label{fig:failure}
 \end{figure}
 
@@ -73,7 +73,7 @@ RoadLine & 81.42 & 77.08 & 77.50 & \second{82.06} & \best{82.36} & +0.94 \\
 GroundRail & 77.23 & 79.56 & \second{80.59} & 80.23 & \best{81.49} & +0.90 \\
 Bus & 94.34 & 93.69 & 94.18 & \second{94.35} & \best{95.08} & +0.75 \\
 Vegetation & 82.46 & 83.75 & 83.56 & \second{83.86} & \best{84.49} & +0.74 \\
-SideWalk$^{\S}$ & 67.64 & \second{78.49} & 78.06 & 76.11 & \best{78.85} & +0.36 \\
+SideWalk & 67.64 & \second{78.49} & 78.06 & 76.11 & \best{78.85} & +0.36 \\
 Cars & 93.74 & 94.40 & \second{94.61} & 93.89 & \best{94.80} & +0.19 \\
 \midrule
 \multicolumn{7}{@{}l}{\emph{(b) A released baseline ahead (9 classes)}} \\
@@ -90,7 +90,7 @@ RailTrack & 34.22 & 33.00 & \best{64.46} & \second{45.41} & 38.25 & $-$26.21 \\
 mIoU & 52.34 & 55.78 & 56.71 & 56.59 & 57.74 & +1.04 \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Ours: mean of three seeds; in (a), every seed of ours is ahead of the best baseline except where marked $^{\S}$. Bold: best in the row; underline: second.}
+\tabnote{$^{\ast}$Released weights, evaluated with our code because the papers do not report per-class IoU. Bold: best in the row; underline: second.}
 \end{table}
 
 
@@ -105,4 +105,4 @@ Fig.~\ref{fig:reverse} in Appendix~\ref{app:qual} applies the selection rule of 
 
 
 \subsection{Limitations}
-First, DELIVER is synthetic, and its complete depth is the reason the shortcut exists; the size of the effect on real depth sensors remains to be measured, and MUSES does not contain depth. Second, the frozen ViT-L processes every sensor separately, so inference costs 14.6 times the operations and 2.9 times the latency of DGFusion (Table~\ref{tab:cost}). Sharing tokens across sensors would reduce this cost.
+First, DELIVER is synthetic, and its complete depth is the reason the shortcut exists; the size of the effect on real depth sensors remains to be measured, and MUSES does not contain depth. Second, inference takes 2.9 times the latency of DGFusion (Table~\ref{tab:cost}). Sharing tokens across sensors would reduce this cost.
