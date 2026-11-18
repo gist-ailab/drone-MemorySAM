@@ -120,6 +120,15 @@ figures:
       - {label: "Clear day #1",   pick: {group: clear_day,   kind: top, rank: 1}}
       - {label: "Clear day #2",   pick: {group: clear_day,   kind: top, rank: 2}}
       - {label: "Clear night #1", pick: {group: clear_night, kind: top, rank: 1}}
+  fig_muses:                      # main text (user 2026-11-18): fig_normal_muses + fig_adverse_muses merged into one figure
+    dataset: muses
+    columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
+    rows:
+      - {label: "Clear day",   pick: {group: clear_day,   kind: top, rank: 1}}
+      - {label: "Clear night", pick: {group: clear_night, kind: top, rank: 1}}
+      - {label: Fog night,     pick: {group: fog_night,   kind: top, rank: 1}}
+      - {label: Rain day,      image: rain/day/REC0088_frame_275845_frame_camera}   # user 2026-11-11: largest error-area gain
+      - {label: Snow night,    pick: {group: snow_night,  kind: top, rank: 1}}
   fig_supp_muses:                 # appendix: MUSES scenes not in the two main figures
     dataset: muses
     columns: [rgb, gt, CAFofficial, DGFofficial, A2m4]
