@@ -1,13 +1,6 @@
 % Introduction: draft notes/draft_abstract_intro_2026-10-29.md (inbox 20261029-183827), P2/P4 aligned with the
 % revised abstract (inbox 20261029-194129 item 3). Numbers: see notes/table_sources.md 'numbers in text'.
 \section{Introduction}\label{sec:intro}
-\begin{figure*}[t]
-\centering
-% Source: figures/src/fig_c2d2_standalone.tex + latex/figures/fig_c2d2.tex (TikZ), built by build.sh (user 2026-11-13: training and network in two figures).
-\includegraphics[width=\textwidth]{figures/fig_c2d2.pdf}
-\caption{Training with C2D2. Every batch is used twice by the same model (Fig.~\ref{fig:arch}): a clean pass on the original samples, and a degraded pass on a copy in which each sensor is corrupted with probability 0.5, either removed (zero-filled) or degraded by a sensor-specific operator. The degraded pass is supervised by the labels and distilled from a frozen teacher that sees the clean input; a curriculum raises the degradation severity during the first epochs. Only the model is used at test time, in one pass. Teal outlines mark trained components and dashed boxes frozen weights.}
-\label{fig:overview}
-\end{figure*}
 
 \PARstart{A}{utonomous} vehicles and mobile robots carry several sensors because each one fails in different conditions. A camera loses contrast at night and in fog, a depth estimate develops holes on reflective surfaces, an event camera goes silent on static scenes, and LiDAR returns thin out in rain and with distance. Multimodal semantic segmentation fuses these sensors so that the scene is still understood when one of them degrades.
 
