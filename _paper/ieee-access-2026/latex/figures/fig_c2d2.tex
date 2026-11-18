@@ -1,5 +1,7 @@
 % Fig. 1 — C2D2 training overview (TikZ). Split from the architecture figure on the user's request (2026-11-13):
 % Fig. 1 = how the model is trained (this file), Fig. 2 = the network (fig_arch.tex).
+% 2026-11-18c (user): operator list kept in the box; the probability sentence shortened to "each sensor, p" on the connector; p, removal, T, beta in the caption.
+% 2026-11-18: operator list matched to semseg/datasets/degrade.py:159-164 (blur and patch dropout on every sensor), texts shortened (user via discussion).
 % Facts follow Section III-G (4_method.tex) and configs (TRAIN.QAF): each sensor corrupted with p = 0.5, one fifth of the
 % corrupted sensors removed (zero-filled), one sensor-specific operator otherwise; curriculum x + c(x~ - x), c = 0.3/0.6/1.0
 % from epochs 0/10/20 (DELIVER, MUSES); teacher = same architecture without the high-resolution path, trained on clean
@@ -52,14 +54,15 @@
 
 % ---------- degradation ----------
 \draw[flow] (0.75,3.3) -- (0.75,1.6);
-\draw[plain, rounded corners=1.2pt] (2.3,1.2) rectangle (5.8,3.65);
-\node[ttl, anchor=north west] at (2.42,3.57) {Sensor-specific degradation};
-\node[sub, anchor=north west, align=left] at (2.42,3.24) {each sensor corrupted with $p=0.5$;\\one in five corrupted sensors removed\\(zero-filled), else one operator:};
-\node[sub, anchor=north west, align=left] at (2.42,2.42) {%
-\textcolor{cRGB}{RGB}: blur, gain, colour shift\\
-\textcolor{cDep}{depth}: holes, scale change\\
-\textcolor{cLid}{LiDAR}: dropped and jittered beams\\
-\textcolor{cEvt}{event}: resolution loss; all: patch dropout};
+\draw[plain, rounded corners=1.2pt] (2.3,1.3) rectangle (5.75,3.12);
+\node[ttl, anchor=north west] at (2.42,2.98) {Sensor-specific degradation};
+\node[sub, anchor=north west, align=left] at (2.42,2.62) {%
+all: patch dropout, blur\\
+\textcolor{cRGB}{RGB}: gain, colour shift\\
+\textcolor{cDep}{depth}: gain, holes\\
+\textcolor{cLid}{LiDAR}: beam drop, jitter\\
+\textcolor{cEvt}{event}: lower resolution};
+\node[sub, anchor=south] at (1.52,2.52) {each sensor, $p$};
 \draw[mut, line width=0.45pt] (0.75,2.5) -- (2.3,2.5);
 \node[dot] at (0.75,2.5) {};
 
@@ -67,7 +70,7 @@
 % teacher (frozen) on top, fed by the clean batch
 \draw[frozen, rounded corners=1.5pt] (6.2,5.65) rectangle (8.7,6.8);
 \node[ttl] at (7.45,6.52) {Teacher $g$};
-\node[sub, align=center] at (7.45,6.0) {frozen, clean-trained,\\no high-res.\ path};
+\node[sub, align=center] at (7.45,6.0) {frozen, clean-trained};
 \draw[mut, line width=0.45pt] (2.4,4.7) -- (2.4,6.25);
 \node[dot] at (2.4,4.7) {};
 \draw[flow] (2.4,6.25) -- (6.2,6.25);
@@ -95,7 +98,7 @@
 \draw[flow] (8.95,1.1) |- (lk.west);
 \node[sub, anchor=south west] at (9.2,1.6) {$\mathcal{L}_{\mathrm{deg}}$ (labels and teacher)};
 \draw[->, draw=acc, line width=0.55pt, dash pattern=on 1.4pt off 1pt] (8.7,6.25) -- (12.75,6.25) |- (lk.east);
-\node[sub, anchor=south, text=acc] at (10.7,6.27) {soft targets, $T=2$, $\beta=0.5$};
+\node[sub, anchor=south, text=acc] at (10.7,6.27) {soft targets};
 \node[ttl, anchor=west] at (9.2,3.0) {$\mathcal{L} = \mathcal{L}_{\mathrm{clean}} + \mathcal{L}_{\mathrm{deg}}$};
 \node[sub, anchor=west, align=left] at (9.2,2.55) {no condition or degradation labels};
 

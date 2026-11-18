@@ -29,9 +29,9 @@ MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & 302 / 96 / 102 \\
 
 \section{Additional Qualitative Results}
 \label{app:qual}
-This appendix collects the qualitative figures that the main text refers to. All scenes are selected by fixed rules over every test image of every model, so any scene can be replaced without new inference.
+This appendix collects the qualitative figures that the main text refers to. All scenes are selected by fixed rules over every test image of every model.
 
-Fig.~\ref{fig:adverse}, discussed in Section~\ref{sec:qual}, shows the DELIVER scene of each weather and lighting condition with the largest gap in our favour. This selection rule, also used in Fig.~\ref{fig:adverse_muses}, picks scenes in our favour by construction. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each DELIVER condition, the scene whose gap is closest to that condition's median gap. The reference is, per image, the best of three other models. Fig.~\ref{fig:reverse}, discussed in Section~\ref{sec:reverse}, applies the rule in the opposite direction.
+Fig.~\ref{fig:adverse}, discussed in Section~\ref{sec:qual}, shows the DELIVER scene of each weather and lighting condition with the largest gap in our favour. This selection rule, also used in Fig.~\ref{fig:muses}, picks scenes in our favour by construction. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each DELIVER condition, the scene whose gap is closest to that condition's median gap. The reference is, per image, the best of three other models. Fig.~\ref{fig:reverse}, discussed in Section~\ref{sec:reverse}, applies the rule in the opposite direction.
 
 % moved from Section IV (2026-11-16, main-text float load)
 % Fig. adverse conditions with all sensors present, DELIVER (synthetic) + MUSES (real).
@@ -84,7 +84,7 @@ Fig.~\ref{fig:mcubes} shows MCubeS test scenes against the two fusion models tha
 
 \section{Training Configurations}
 \label{app:train}
-Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks, taken from the configuration files of the reported runs (the runs of each benchmark differ only in the random seed). Training ran on 24\,GB GPUs (RTX 3090 and RTX 4090) or on one 40\,GB A100, with one to four GPUs per run; gradient accumulation keeps the effective batch size at 16 regardless of the number of GPUs. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table. The configuration files of every run are part of the code release.
+Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks; the runs of each benchmark differ only in the random seed, and gradient accumulation keeps the effective batch size at 16. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table.
 
 % Sources (paper session 2026-11-13, yaml load of the files below; key names in parentheses):
 %   DELIVER configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml (seeds 20260821/20260902/20260903),

@@ -1,4 +1,12 @@
 \section{Related Work}\label{sec:related}
+% Fig. 1 defined here so that it floats to the top of page 3, after Related Work starts (user 2026-11-18).
+\begin{figure*}[t]
+\centering
+% Source: figures/src/fig_c2d2_standalone.tex + latex/figures/fig_c2d2.tex (TikZ), built by build.sh (user 2026-11-13: training and network in two figures).
+\includegraphics[width=\textwidth]{figures/fig_c2d2.pdf}
+\caption{Training with C2D2. Every batch is used twice by the same model (Fig.~\ref{fig:arch}): a clean pass on the original samples, and a degraded pass on a copy in which each sensor is corrupted with probability $p$, either removed (zero-filled) or degraded by a sensor-specific operator. The degraded pass is supervised by the labels $y$ and by the soft targets of a frozen teacher that sees the clean input (Section~\ref{sec:m_c2d2}); a curriculum raises the degradation severity during the first epochs. Only the model is used at test time, in one pass. Teal outlines mark trained components and dashed boxes frozen weights.}
+\label{fig:overview}
+\end{figure*}
 % Comparison table and audit for this section: repo .claude_logs/research/novelty-and-related-work.md and
 % research/2026-10-20-structural-novelty-audit.md. Bibliography checked 2026-10-28 (notes/reference_check.md).
 
