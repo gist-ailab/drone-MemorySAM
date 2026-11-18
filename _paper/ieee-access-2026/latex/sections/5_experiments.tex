@@ -250,7 +250,7 @@ Ours & DINOv3-L & \best{57.74} & \best{48.66} \\
 \subsection{Qualitative Results}\label{sec:qual}
 Fig.~\ref{fig:failure_scenarios} and, in Appendix~\ref{app:qual}, Fig.~\ref{fig:adverse} show scenes selected by a fixed rule: among all test images, those where the gap between our model and the best of the other models is largest, with no two scenes from the same sequence. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk.
 
-On MUSES, where CAFuser and DGFusion are the direct comparison, Fig.~\ref{fig:muses} applies the same rule to their released weights, evaluated with our code on the validation set. In clear weather the largest per-image margins are 6.8 points by day and 10.7 points at night; in fog and snow at night they are 18.9 and 11.4 points, and the rain-by-day scene, chosen by the largest difference in wrongly labelled area, has a 4.1-point gap in mIoU but 14 percentage points fewer wrong pixels. These scenes are the most favourable ones by construction. \todo{MUSES sensor-failure scenes and missing-sensor curve after DRN-261111-01}
+On MUSES, where CAFuser and DGFusion are the direct comparison, Fig.~\ref{fig:muses} applies the same rule to their released weights, evaluated with our code on the validation set. In clear weather the largest per-image margins are 6.8 points by day and 10.7 points at night; in fog at night it is 18.9 points, and the rain-by-day scene, chosen by the largest difference in wrongly labelled area, has a 4.1-point gap in mIoU but 14 percentage points fewer wrong pixels. These scenes are the most favourable ones by construction. \todo{MUSES sensor-failure scenes and missing-sensor curve after DRN-261111-01}
 
 % Fig. sensor-failure scenarios (main qualitative figure). Needs per-image predictions of
 % DGFusion (official), DGFusion/CAFuser (retrained) and ours under missing/noisy sensors
@@ -317,7 +317,7 @@ Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme 
 
 % Table 6b. Leave one component out of the full model (one seed, 40 epochs). Sources as Table 6 comment above;
 % L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
-\begin{table}[t]
+\begin{table}[tb]
 \caption{Leave-one-out ablation on the DELIVER test set (mIoU, \%, mean of two seeds). Each row removes one component from the full model (last row).}
 \label{tab:ablation_loo}
 \centering\tabsetup
@@ -350,7 +350,7 @@ attention & pass & degr. & KD & router & & \\
 % w/o C2D2 and high-res = E1 40-ep screen 3 seeds, EMM 40.01 (judgment-ledger 2026-10-01 row);
 % w/o high-res = Q2 3 seeds, full = A2 3 seeds: tasks/DRN-261019-03/analysis.md (moved from Table robust (b)).
 % MCubeS rows: DRN-261031-01 (w/o C2D2, legal eval pending) and DRN-261017-02 (C2D2, training).
-\begin{table}[t]
+\begin{table}[tb]
 \caption{Effect of the C2D2 training scheme and the high-resolution path on accuracy and robustness (mIoU, \%, mean of three seeds).}
 \label{tab:abl_robust}
 \centering\tabsetup
@@ -384,7 +384,7 @@ The C2D2 training scheme changes only how the model is trained: the second, degr
 % ---------------------------------------------------------------------------
 % Table 7. Cost on DELIVER at 1024, same GPU. DRN-261027-02 (adopted; notes/table_sources.md cost rows).
 % ---------------------------------------------------------------------------
-\begin{table}[t]
+\begin{table}[tb]
 \caption{Inference cost on DELIVER with four sensors ($1024\times1024$ input, batch size 1, one RTX 4090, bf16). Trainable: parameters updated during training. The C2D2 training scheme adds no inference cost.}
 \label{tab:cost}
 \centering\tabsetup
