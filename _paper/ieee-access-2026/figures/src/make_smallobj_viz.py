@@ -32,9 +32,11 @@ MPL_PAPER = {"font.family": "sans-serif", "font.sans-serif": ["TeX Gyre Heros", 
 TEXT_W = 6.99  # inch, IEEE Access two-column text width
 BANK = NAS / "paper_qualbank" / "deliver_test"
 CLS = {"TrafficSign": 11, "Pole": 4, "Pedestrian": 3, "Static": 18, "TrafficLight": 17}
+# 2026-11-18: picked from 18 rendered candidates (classes with the largest A2s821 - Q2s821 IoU gain, one per sequence;
+# panels hires_viz_a2s821_20261118) for a clearly thin object and a visible recovery in the crop
 DEFAULT = ["img/fog/test/MAP_7_point84/011250_rgb_front:Pole",
-           "img/cloud/test/MAP_10_point62/042100_rgb_front:TrafficLight",
-           "img/cloud/test/MAP_10_point12/013150_rgb_front:Pedestrian"]
+           "img/fog/test/MAP_7_point54/009800_rgb_front:TrafficLight",
+           "img/rain/test/MAP_7_point73/071100_rgb_front:TrafficSign"]
 W_CROP = 176          # crop side in native pixels (~11 tokens)
 TOKEN = 1042 / 64     # model input 1024 -> 64x64 tokens; panels are at native 1042 px
 
