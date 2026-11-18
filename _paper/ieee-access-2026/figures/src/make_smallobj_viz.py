@@ -26,7 +26,10 @@ sys.path.insert(0, str(PAPER / "figures" / "qualbank"))
 import qualbank  # noqa: E402
 
 NAS = Path("/drone_nas/drone/personal/jemo_maeng/src/Project/drone/drone-MemorySAM/analysis_logs")
-PANELS = NAS / "hires_viz_a2s821_20261104" / "panels"
+PANEL_ROOTS = [NAS / "hires_viz_a2s821_20261118" / "panels", NAS / "hires_viz_a2s821_20261104" / "panels"]
+MPL_PAPER = {"font.family": "sans-serif", "font.sans-serif": ["TeX Gyre Heros", "Nimbus Sans", "Liberation Sans", "DejaVu Sans"],
+             "pdf.fonttype": 42, "font.size": 7}
+TEXT_W = 6.99  # inch, IEEE Access two-column text width
 BANK = NAS / "paper_qualbank" / "deliver_test"
 CLS = {"TrafficSign": 11, "Pole": 4, "Pedestrian": 3, "Static": 18, "TrafficLight": 17}
 DEFAULT = ["img/fog/test/MAP_7_point84/011250_rgb_front:Pole",
@@ -52,6 +55,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--scene", nargs="*", default=DEFAULT)
+    ap.add_argument("--paper", action="store_true", help="two-column paper size, 7 pt text, PDF")
     a = ap.parse_args()
     reg = qualbank.load_reg()
     lut, _ = qualbank.palette_of(reg["datasets"]["deliver"])
@@ -61,12 +65,20 @@ def main():
         out[m == 255] = 0
         return out
 
-    titles = ["(a) RGB + 16-px token grid", "(b) what one token sees", "(c) ViT features, stride 16",
-              "(d) high-res path, stride 4", "(e) w/o high-res path", "(f) with high-res path", "(g) ground truth"]
-    fig, axs = plt.subplots(len(a.scene), 7, figsize=(14, 2.15 * len(a.scene)), squeeze=False)
+    if a.paper:
+        plt.rcParams.update(MPL_PAPER)
+        titles = ["RGB, 16-px\ntoken grid", "Token\naverage", "Backbone features\n(stride 16)",
+                  "High-res. path\n(stride 4)", "Without\nhigh-res. path", "With\nhigh-res. path", "Ground\ntruth"]
+        fs_t, fs_l, fs_x = 7, 7, 6.5
+        fig, axs = plt.subplots(len(a.scene), 7, figsize=(TEXT_W, 1.08 * len(a.scene) + 0.32), squeeze=False)
+    else:
+        titles = ["(a) RGB + 16-px token grid", "(b) what one token sees", "(c) ViT features, stride 16",
+                  "(d) high-res path, stride 4", "(e) w/o high-res path", "(f) with high-res path", "(g) ground truth"]
+        fs_t, fs_l, fs_x = 8, 8, 7
+        fig, axs = plt.subplots(len(a.scene), 7, figsize=(14, 2.15 * len(a.scene)), squeeze=False)
     for r, spec in enumerate(a.scene):
         sid, cname = spec.split(":"); k = CLS[cname]
-        P = PANELS / sid
+        P = next(r_ / sid for r_ in PANEL_ROOTS if (r_ / sid / "d_norm.png").exists())
         rgb = np.array(Image.open(P / "rgb.png").convert("RGB"))
         cn = np.array(Image.open(P / "c_norm.png").convert("RGB"))
         dn = np.array(Image.open(P / "d_norm.png").convert("RGB"))
@@ -91,15 +103,16 @@ def main():
                     ax.axvline(g - 0.5, color="w", lw=0.5, alpha=0.7)
                 for g in np.arange(np.ceil(y / TOKEN) * TOKEN - y, W_CROP, TOKEN):
                     ax.axhline(g - 0.5, color="w", lw=0.5, alpha=0.7)
-                ax.set_ylabel(f"{sid.split('/')[1]}\n{cname}", fontsize=8)
+                ax.set_ylabel(f"{sid.split('/')[1].capitalize()}\n{cname}", fontsize=fs_l)
             if j in (4, 5):
-                ax.set_xlabel(f"{cname} IoU in crop {iou(q2 if j == 4 else a2):.2f}", fontsize=7)
+                v = iou(q2 if j == 4 else a2)
+                ax.set_xlabel(f"IoU {100 * v:.0f}" if a.paper else f"{cname} IoU in crop {v:.2f}", fontsize=fs_x, labelpad=1.5)
             if r == 0:
-                ax.set_title(titles[j], fontsize=8)
+                ax.set_title(titles[j], fontsize=fs_t, pad=3)
         print(f"{sid} {cname}: crop y{y} x{x}, {n} recovered px")
-    fig.tight_layout(pad=0.4)
+    fig.tight_layout(pad=0.2, w_pad=0.25, h_pad=0.3)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(a.out, dpi=200)
+    fig.savefig(a.out, dpi=300 if a.paper else 200)
     print("saved", a.out)
 
 
