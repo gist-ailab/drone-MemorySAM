@@ -15,3 +15,5 @@
 | [related-work-raw.md](related-work-raw.md) | deep-research 원시 로그(시계열) — novelty 문서의 근거 | 10 |
 
 > ⚠️ 미결(2026-08-08): 구경로 `research_vault/architecture/P34_ReliaDINO_design_20260712.md`가 이관 누락된 채 잔존(트리 내 참조 0). NAS 볼트 원본 존재 여부 확인 후 처리 — 손이관 금지(볼트 규약).
+
+- [2026-11-19-clean-teacher-degraded-student-prior-art/report.md](2026-11-19-clean-teacher-degraded-student-prior-art/report.md) — 손상 입력 + clean 교사 증류 구조의 선행연구 조사(교수님 피드백 대응): 구조는 처음이 아님, 최근접 11편 A~F 일치표, 방어 가능한 주장 범위 (method 11-19, 원시 노트 notes/)
