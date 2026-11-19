@@ -48,3 +48,7 @@
 - `full-report.md` = 보고서 작성 에이전트가 노트 4개를 종합한 상세판(16편 일치표, 주장마다 검증 수준·링크). 이 요약과 결론은 같다.
 - 상세판이 더한 것: PFS(arXiv 2603.05623, 센서별 독립 손상 + 커리큘럼, 증류 없음, 요약만 확인) · 공백을 깨뜨릴 최대 위험 = MLE-SAM·FPT 가 학습 때 잡음을 주입하는지 미확인(센서 고장 벤치 표 1 에 NM 대응 방법으로 표시) · SDSTrack(RMMSS 가 "noisy inputs" 근거로 인용) 미확인.
 - "to our knowledge, the first …" 문구를 쓰려면 MLE-SAM·FPT·SDSTrack·Compass·CVPR 2026 RobustSeg 본문과 인용 그래프 확인이 선행돼야 한다.
+
+## user 확인(2026-11-19)
+- A-SKD(arXiv 2209.14498)·CD-FKD(arXiv 2603.16439)는 우리 연구실 논문이 맞다. 둘 다 단일 모달이고(멀티모달 증류 아님) 손상 방식도 우리와 다르다(저해상 / ImageNet-C 계열 영상 손상 대 센서 제거·센서별 열화).
+- 따라서 이 둘은 "같은 방법"이 아니라 "같은 계보(clean 교사 → 손상 입력 학생)"의 단일 모달 선례로 인용한다. 멀티센서에서의 직접 선행은 RMMSS·AnySeg·FuseAdapt·CRM 이다.
