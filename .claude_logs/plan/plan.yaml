@@ -14906,9 +14906,9 @@ items:
   configs:
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hiresH1rgbonly.yaml
   - configs/jarvis-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2hiresH1rgbonly.yaml
-  launch: s821 lecun GPU0,4 2GPU 12:53(2.64 s/it) · s902 drone-demo 5090 1GPU(configs/drone-demo-..._seed20260902_..._A2hiresH1rgbonly_1gpu.yaml,
-    9b7e0ba) 13:14, 1.24 it/s — lecun 1GPU(2.42 s/it)에서 이관, 처음부터. 교사 md5 c648f925
-    = jarvis 원본
+  launch: 's821: lecun ep19 체크포인트로 amphibious-demo 5090 이어 학습(11-17 18:15, 정본). lecun
+    중복 런은 user 지시(''동일한거 돌리고있는건 끄고'')로 11-17 18:5x 종료. s902 drone-demo. 두 시드 완주 시
+    h1_post_chain.sh 로 legal v2 val·test + EMM test 자동(각 서버 ~/workspace/jemo_maeng/analysis_logs/h1_s{821,902}_post_20261117/)'
   success_criteria: 채택(멀티센서 확장 기여) = 2시드 짝 Δ(A2 − H1) 평균이 얇은 4클래스 평균 ≥ +1.0 또는 test
     clean ≥ +0.5 이고 그 지표에서 두 시드 부호 일치
   sample_basis: L5~L9 과 같은 2시드, 시드별 짝 Δ·부호 일치
@@ -14924,7 +14924,7 @@ items:
   - paper
   docs: .claude_logs/tasks/DRN-261113-01
   created: '2026-11-13'
-  updated: '2026-11-16'
+  updated: '2026-11-17'
   closed: null
   runs: []
   results: []
@@ -15077,7 +15077,7 @@ items:
     약 1일 × 2런 + 평가 묶음
   priority: 1
   owner_role: manager
-  status: queued
+  status: running
   kind: experiment
   tags:
   - ablation
@@ -15085,7 +15085,287 @@ items:
   - distillation
   - paper
   created: '2026-11-16'
+  updated: '2026-11-17'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261116-03
+  title: 평가만 · DELIVER A2-B(DINOv3-B) 결측 벤치(EMM·RMM·NM, val) — FuseAdapt(DINOv2-B)와
+    같은 B급 백본 비교
+  question: 결측 표(tab:robust)에서 우리(DINOv3-L) 58.52 를 MiT-B2 계열(최고 44.97)과 비교하면 백본 체급
+    차이로 읽힌다(user 걱정). 같은 B급 백본인 FuseAdapt(DINOv2-B, DELIVER val EMM 56.22, 결측 센서 마스킹)와
+    가까운 비교를 위해 이미 학습된 A2-B(DRN-261105-01, DINOv3-B, 같은 방법) 체크포인트로 결측 벤치만 잰다
+  hypothesis: A2-B 도 B급 foundation 백본 계열에서 결측 강건성이 높다(EMM Avg ≥ FuseAdapt 56.22 −
+    2, 처리 방식 차이 병기)
+  falsification: 해당 없음(측정)
+  change: '없음(평가만): A2-B val-best 체크포인트(md5 0cb40266…)를 tab:robust 와 같은 결측 벤치 도구·split(DELIVER
+    val, 2503.18445 정의 0채움 15조합 + RMM + NM)로 측정'
+  baseline: tab:robust 의 Ours(DINOv3-L) 58.52 · MiT-B2 계열(MAGIC 44.97 등) · FuseAdapt
+    DINOv2-B 56.22(마스킹, 원문 Tab.6, 평균 계산 주의 — missing_bench_survey.md §2)
+  configs: []
+  launch: null
+  success_criteria: '측정 기록(판정 없음): EMM Avg·E(p)·RMM·NM 전 열, clean val. 표 배치는 user·method
+    판단'
+  sample_basis: A2-B 1시드(학습된 것 전부)
+  expected_cost: GPU 1장 × 수 시간(평가만)
+  priority: 2
+  owner_role: analysis
+  status: idea
+  kind: experiment
+  tags:
+  - eval-only
+  - robustness
+  - backbone
+  - paper
+  created: '2026-11-16'
   updated: '2026-11-16'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261116-04
+  title: 평가만 · MCubeS B급 백본 C2D2 결측 강건성(EMM 15조합 등) — C2D2-B(DINOv3-B, DRN-261102-02)
+    즉시 + C2D2-B2(DINOv2-B, DRN-261115-01) 완주 후, FuseAdapt MCubeS 결측 52.89 와 비교
+  question: 'MCubeS(Table 3 의 벤치)에서 FuseAdapt(DINOv2-B)는 clean 57.62·결측 평균 52.89 를
+    보고한다. 우리 B급 백본 판의 clean 은 C2D2-B 56.68/56.29(DINOv3-B, DRN-261102-02)로 FuseAdapt
+    아래이고, 결측 강건성은 MCubeS 에서 아직 재지 않았다. 결측 트랙에서 같은 B급(가능하면 같은 DINOv2-B) 백본으로 FuseAdapt
+    와 비교한다(user 2026-11-16: DINOv3-B 비교는 FuseAdapt 와 결측 트랙에서)'
+  hypothesis: C2D2 학습 덕에 B급 백본에서도 MCubeS 결측 평균이 FuseAdapt 52.89 이상
+  falsification: 해당 없음(측정)
+  change: '없음(평가만): DRN-261102-02 C2D2-B 2시드 체크포인트, DRN-261115-01 C2D2-B2 2시드(완주 후)를
+    MCubeS 15조합 EMM(0채움)·RMM 로 평가. FuseAdapt 는 결측 센서 마스킹이라 처리 방식 차이 병기'
+  baseline: FuseAdapt DINOv2-B MCubeS 결측 52.89·clean 57.62(원문), 우리 DINOv3-L MCubeS
+    59.78(결측 미측정이면 함께 측정)
+  configs: []
+  launch: null
+  success_criteria: '측정 기록(판정 없음): 시드별 EMM Avg·RMM, clean. 결측 트랙 표에 B급 행으로 넣을지는 user·method
+    판단'
+  sample_basis: 학습된 B급 체크포인트 전부(각 2시드)
+  expected_cost: GPU 1장 × 체크포인트당 1~2시간(MCubeS test 102장·val), 평가만
+  priority: 2
+  owner_role: analysis
+  status: idea
+  kind: experiment
+  tags:
+  - eval-only
+  - robustness
+  - backbone
+  - mcubes
+  - paper
+  created: '2026-11-16'
+  updated: '2026-11-16'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261117-01
+  title: 모의리뷰 2.7 대응 · DELIVER depth 없이(RGB·event·LiDAR 3센서) 우리 모델 학습 2시드 — DGFusion
+    CLE 51.6 과 같은 입력 비교, 'depth 지름길' 해석 검증
+  question: '모의 리뷰 2.7: 0채움 depth 제거 하락(23~37점)은 학습·시험 불일치를 잴 뿐 depth 가 얼마나 필요한지를
+    재지 않는다. DGFusion 원문 Table III 은 depth 없이(CLE) 51.6, 있을 때 56.7 이다. 우리 모델을 depth
+    없이 처음부터 학습하면 정확도를 얼마나 유지하는가, DGFusion CLE 51.6 대비 어떤가. 유지하면 ''depth 에 기대는 것은 입력
+    정보량 때문이지 구조적 지름길이 아니다/우리 모델은 depth 없이도 강하다''를 측정으로 말할 수 있다'
+  hypothesis: depth 없는 우리 모델은 DGFusion CLE 51.6 보다 높고(동결 VFM + 고해상 경로), 4센서 A2 와의
+    차는 DGFusion 의 CLE→CLDE 차(5.1)보다 작다
+  falsification: 2시드 평균 < 51.6 이면 depth 없는 설정에서의 우위는 주장하지 않고, 원고의 'depth 지름길' 서술을
+    '정보량이 큰 입력에 의존' 으로만 낮춘다
+  change: DATASET.MODALS ['img','depth','event','lidar'] → ['img','event','lidar']
+    (나머지 A2 구조·C2D2 동일). 교사는 같은 3센서 구성이어야 하므로 (a) E1-RGBEL clean 교사를 먼저 학습하거나 (b)
+    교사 없이(L6 처럼 KD_W 0) — L6 에서 증류가 중립이었으므로 (b) 를 기본안으로 제안, 방식은 method 판단
+  baseline: DGFusion CLE 51.6(원문 Table III, test) · DGFusion CLDE 56.7 · 우리 A2 4센서
+    57.74(3시드)·L6(교사 없음) 2시드, legal v2 test@1024
+  configs:
+  - '[configs/lecun-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2noDepth.yaml'
+  - configs/lecun-deliver_rgbdel_P46_c3only_seed20260902_screen40_A2noDepth_1gpu.yaml]
+  launch: 'user 승인(2026-11-17), 설계 (b) 교사 없음 = L6(KD 0)에서 MODALS 만 depth 제거. s902:
+    lecun GPU4 → user 지시로 11-18 07:17 drone-demo 5090 이어 학습(md5 0120d0ea, ep8~). s821:
+    lecun GPU0,1 2GPU 런이 11-18 14:17 ep16 시작 직후 OOM(타 사용자 GPU1 점유) → 19:20 amphibious-demo
+    5090 1GPU 로 ep15 last_checkpoint(md5 9715e5ff) 이어 학습(configs/amphibious-..._A2noDepth_resume1gpu.yaml,
+    2a71d6c). 검증 Resumed epoch 15 missing=0, teacher=no, iteration 전진'
+  success_criteria: '측정 기록 + 해석 기준(사전): 2시드 평균 test ≥ 51.6 + 1.0 이면 ''depth 없이도 DGFusion
+    CLE 를 넘는다'' 주장, (A2 − 이 런) < 5.1 이면 ''depth 의존이 DGFusion 보다 작다'' 주장'
+  sample_basis: 2시드(s821·s902), 시드별 값 병기
+  expected_cost: '(b) 교사 없음: 4 GPU × 약 0.8일 × 2런 / (a) 교사 포함 시 E1-RGBEL 40ep 2런 추가'
+  priority: 2
+  owner_role: manager
+  status: running
+  kind: experiment
+  tags:
+  - mock-review
+  - depth
+  - ablation
+  - paper
+  created: '2026-11-17'
+  updated: '2026-11-18'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261117-02
+  title: 평가만 · 모의리뷰 2.3(iv) 대응 — 학습에서 보지 않은 결측 표현(평균값 채움·가우시안 노이즈 대체·부분 시야 손실·상수값)으로
+    DELIVER 결측 15조합 재평가
+  question: C2D2 는 결측을 0채움으로 학습하고 EMM 도 0채움으로 재므로 EMM 은 우리 모델에 분포 안 시험이다(모의 리뷰 2.3
+    iv). 학습에서 보지 않은 결측 표현으로 바꿔도 강건성이 유지되는지, 기준선(공개 DGFusion·CAFuser, 재학습 (b))보다 여전히
+    높은지 잰다
+  hypothesis: 평균값 채움·노이즈 대체·부분 시야 손실에서도 우리 모델의 15조합 평균이 0채움 대비 크게 떨어지지 않고(≤ 5점) 기준선보다
+    높다
+  falsification: 해당 없음(측정)
+  change: '없음(평가만): 결측 센서 입력을 0 대신 (1) 학습셋 채널 평균값 (2) N(0,1) 노이즈 (3) 상수(정규화 공간 +1)
+    로 대체, (4) 부분 시야 손실(센서 입력의 무작위 50% 영역만 0) — 15조합 평균. 대상 = A2 3시드, E1(clean 학습)
+    2시드, DGFusion 공개·(b), CAFuser (b). 이전 프레임 대체는 DELIVER 에 연속 프레임이 없으면 제외(확인 필요).
+    도구는 mm_eval_v2 확장(코드 소폭)'
+  baseline: 같은 모델의 0채움 EMM15(test, tab:retrained 와 같은 하네스)
+  configs: []
+  launch: null
+  success_criteria: '측정 기록(판정 없음): 표현별 15조합 평균·모델별. 원고 결측 절에 ''unseen missing representations''
+    소절로 넣을지는 결과 보고 method·user 판단'
+  sample_basis: 학습된 체크포인트 전부
+  expected_cost: 도구 소폭 확장 + GPU 1장 × 모델당 수 시간(평가만)
+  priority: 2
+  owner_role: analysis
+  status: idea
+  kind: experiment
+  tags:
+  - eval-only
+  - mock-review
+  - robustness
+  - paper
+  created: '2026-11-17'
+  updated: '2026-11-17'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261117-03
+  title: MCubeS 검증 분할 바로잡기 + 재학습 4런 — 로더에 val 96장 split 추가(평가 하네스 동결 파일 수정, user 동의)
+    후 C2D2 768·w/o C2D2 768 각 s827·s828 200ep, val-best 선택
+  question: MCubeS 로더(semseg/datasets/mcubes.py:50,141-142)가 split 'val' 을 test 102장으로
+    매핑해 학습 중 선택이 전부 test 기준이었고 val 96장은 한 번도 평가되지 않았다(monitoring 2026-11-17 확인). 모의
+    리뷰 2.6 의 test 선택 지적을 해소하고, 판정에 쓴 C2D2 768 s827 59.80 체크포인트가 NAS 에 없는 원본 누락도 함께
+    해소한다. val 96장 기준으로 고른 체크포인트의 test mIoU 는 얼마인가
+  hypothesis: val-best 선택으로 바꿔도 test mIoU 는 시드 폭 안(±1)에서 유지되고 FuseAdapt 57.62 대비 우위가
+    남는다
+  falsification: 2시드 평균 test ≤ 57.62 이면 MCubeS '최고 공개 결과 초과' 주장 삭제
+  change: '로더: val 96장(list_folder/val.txt)을 읽는 split 추가, 학습 중 평가·체크포인트 선택은 val 96,
+    test 102 는 보고용(eval_harness_guard --freeze 절차). 학습: DRN-261017-02(C2D2 768)·DRN-261104-03(w/o
+    C2D2 768) config 를 같은 시드로 재학습, 체크포인트 val-best top1 보존 + md5 NAS 보관. E1Mc 교사를 같은
+    규칙으로 맞출지는 method 판단'
+  baseline: '기존 test 선택값: C2D2 768 59.80/59.76(평균 59.78), w/o C2D2 768 59.81/59.96
+    · FuseAdapt 57.62'
+  configs: []
+  launch: '4런 모두 기동(1GPU, DDP false, VAL_SPLIT val96·TEST_SPLIT test102): w/o C2D2
+    s827 bengio GPU5 11-17 01:57 · C2D2 s827 jarvis GPU0 14:12 · w/o C2D2 s828 jarvis
+    GPU4 14:13 · C2D2 s828 jarvis GPU2 14:17. 코드 트리 jarvis /SSDb/jemo_maeng/src/Project/Drone24/detection/mcubes_val96_20261117/repo,
+    bengio /SSDc/jemo_maeng/src/Project/Drone24/detection/mcubes_val96_20261117/repo.
+    교사 md5 s827 bc83178e · s828 4dbdbc94 = NAS 원본. hinton TITAN RTX 는 C2D2 OOM 으로
+    제외'
+  success_criteria: '측정 기록: 시드별 val-best 에폭·val mIoU·test mIoU. 원고 Table 3·초록·tab:abl_robust(b)
+    를 val 선택값으로 교체. 해석 기준(사전): 2시드 평균 test 가 FuseAdapt 57.62 초과면 우위 주장 유지'
+  sample_basis: 기존과 같은 2시드(s827·s828) × 2조건
+  expected_cost: 로더 수정·가드 재동결(코드 소폭, 검수) + 24GB GPU 런당 약 1~1.5일 × 4런(병렬 약 1.5일)
+  priority: 1
+  owner_role: manager
+  status: running
+  kind: experiment
+  tags:
+  - mock-review
+  - mcubes
+  - protocol
+  - paper
+  created: '2026-11-17'
+  updated: '2026-11-17'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261118-01
+  title: 백본 종류 대조 · DELIVER 동결 DINOv2-L 로 같은 구조(네 센서·교차 attention·고해상 경로, C2D2 없음
+    clean 40ep) 2시드 — DINOv3-L 선택의 근거
+  question: '왜 DINOv3-L 인가를 실험으로 답한다: 같은 구조에서 백본만 DINOv2-L 로 바꾸면 clean 정확도와 얇은 구조가
+    달라지는가. MCubeS B 크기에서는 DINOv2-B 56.66 ≈ DINOv3-B 56.49(test 선택값)로 차이가 없었다. 결과를
+    원고에 넣을지는 결과를 본 뒤 user 가 정한다(2026-11-18)'
+  hypothesis: DINOv3-L 이 DINOv2-L 보다 DELIVER test clean 과 얇은 4클래스에서 높다(DINOv3 의 dense
+    특징 개선 주장과 일치)
+  falsification: DINOv2-L 이 두 시드 모두 +0.5 이상 높으면 DINOv3 선택의 정확도 근거 없음 — 원고에서 DINOv3
+    우위를 쓰지 않는다
+  change: MODEL.BACKBONE_TIMM vit_large_patch16_dinov3 → vit_large_patch14_dinov2.lvd142m(MCubeS
+    B2 와 같은 계열·register 없음, 패치 14). 구조는 2×2 의 '고해상 있음·C2D2 없음'(DRN-261112-04 config,
+    TRAIN.QAF off) 그대로 — 교사가 필요 없어 한 단계로 끝난다. 패치 14 라 크롭·평가 해상도의 토큰 격자 처리(768·1024
+    가 14 배수가 아님)는 MCubeS B2 런과 같은 방식을 쓰고 차이를 기록
+  baseline: DRN-261112-04 같은 시드(DINOv3-L, 고해상 있음·C2D2 없음, 3시드 평균 57.43), legal v2
+    test@1024 + 얇은 4클래스 IoU
+  configs: []
+  launch: null
+  success_criteria: '측정 기록 + 해석 기준(사전): 2시드 짝 Δ(DINOv3-L − DINOv2-L) 평균 clean ≥ +0.5
+    이고 두 시드 부호 일치면 ''백본 선택이 정확도에 기여'' 근거. |Δ| < 0.5 면 백본 종류는 설계 선택으로만 서술. 원고 게재 여부는
+    user 결정'
+  sample_basis: 2시드(s821·s902), 시드별 짝 Δ
+  expected_cost: 4 GPU × 약 0.6~1일 × 2런(두 패스 없음) + 평가; DINOv2-L 가중치 캐시 필요
+  priority: 2
+  owner_role: manager
+  status: idea
+  kind: experiment
+  tags:
+  - backbone
+  - ablation
+  - paper
+  created: '2026-11-18'
+  updated: '2026-11-18'
+  closed: null
+  runs: []
+  results: []
+  verdict: null
+  analysis: null
+  superseded_by: null
+  problem: PRB-DRN-261020-01
+- id: DRN-261118-02
+  title: 비용 측정(학습 없음) · MM SAM-adapter 공개 코드·가중치로 파라미터·학습 파라미터·GFLOPs·지연·메모리 — 비용표에
+    foundation 백본 비교 행 추가
+  question: '원고 비용표(tab:cost)의 비교 대상이 Swin-T 모델(DGFusion·CAFuser)뿐이라 격차가 가장 크게 보인다.
+    대형 foundation 백본을 쓰는 MM SAM-adapter 의 비용을 같은 조건(DRN-261027-02 측정 절차: DELIVER 1024×1024,
+    같은 GPU, batch 1)으로 재면 같은 체급 비교 행이 생긴다'
+  hypothesis: MM SAM-adapter 의 지연·GFLOPs 는 Swin-T 기준선보다 우리 모델에 가깝다(대형 ViT 인코더)
+  falsification: 가중치 링크 사망·환경 구축 불가 시 측정 불가로 기록하고 중단(대체 수치를 지어내지 않는다)
+  change: '없음(측정만): 공개 저장소 github.com/iacopo97/Multimodal-SAM-Adapter(MMSegmentation
+    v0.20.2, torch 1.9·cuda 11.1 요구)와 README 의 Google Drive DELIVER 가중치(RGB+Depth
+    57.35 우선)로 tab:cost 와 같은 5개 지표 측정. 환경 구축은 별도 venv/conda(서버 공유 환경 변경 금지)'
+  baseline: 'tab:cost 기존 행: DGFusion 78.88M/695.6 GFLOPs/88.9ms/1.83GB, CAFuser, Ours
+    377.05M(학습 73.98M)/10,135/254.5ms/2.47GB — DRN-261027-02 와 같은 GPU·절차'
+  configs: []
+  launch: null
+  success_criteria: '측정 기록(판정 없음): 5개 지표 + 재현 mIoU(57.35 와 일치 확인으로 가중치·코드 검증). 표에
+    넣을 때 2센서 모델임을 행에 표기'
+  sample_basis: 공개 가중치 1개(RGB+Depth), 가능하면 RGB+LiDAR 도
+  expected_cost: 환경 구축 수 시간 + GPU 1장 1시간 내외
+  priority: 3
+  owner_role: analysis
+  status: idea
+  kind: experiment
+  tags:
+  - cost
+  - eval-only
+  - paper
+  created: '2026-11-18'
+  updated: '2026-11-18'
   closed: null
   runs: []
   results: []
