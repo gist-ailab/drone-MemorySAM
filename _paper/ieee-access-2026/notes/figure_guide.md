@@ -1,6 +1,6 @@
 # 그림 안내서: IEEE Access 원고 (2026-10-27 작성, 2026-10-29 목표 저널을 IEEE Sensors Journal → IEEE Access 로 변경)
 
-원고 위치: `../latex/` (빌드 `bash ../build.sh`). 디자인 출처: `carbon@11.84.0` (`~/labdesign/build/py/carbon_palette.py`).
+원고 위치: `../latex/` (빌드 `bash ../build.sh`). 디자인 출처: `carbon@11.84.0` (`~/cl-jemo/labdesign/build/py/carbon_palette.py`).
 
 ## 1. 공통 규칙 (모든 그림)
 

@@ -7,7 +7,7 @@
 
 ### 0. 기록 규칙 — 전역 작업 사이클 계약을 따른다 (2026-10-16)
 
-**어디에 무엇을 기록하는지는 이 파일이 정하지 않는다.** 정본은 `~/lab-status/SPEC-cycle.md`(작업 사이클 계약)·`~/.claude/LABSTANDARD.md`·역할 카드 `~/.claude/lab-roles/<역할>.md`이고, 이 프로젝트의 역할 배정·범위·예외는 `.claude_logs/meta/roles.md` 한 곳에만 둔다. 핵심만:
+**어디에 무엇을 기록하는지는 이 파일이 정하지 않는다.** 정본은 `~/cl-jemo/lab-status/SPEC-cycle.md`(작업 사이클 계약)·`~/.claude/LABSTANDARD.md`·역할 카드 `~/.claude/lab-roles/<역할>.md`이고, 이 프로젝트의 역할 배정·범위·예외는 `.claude_logs/meta/roles.md` 한 곳에만 둔다. 핵심만:
 - **판정(채택·기각·상태 변경)은 `lab-plan verdict <id> --decision … --summary … --analysis <근거 문서> --via "<세션 이름>"` 한 곳에만 남긴다.** `experiments/judgment-ledger.md`·카드 문서 §5·`decisions/cards/`·`research/hypothesis-ledger.md`는 근거 서술이거나 생성 블록(손편집 금지)이다.
 - **세션 하나 = 작업 항목 하나(또는 판정 하나).** 작업 기록은 `.claude_logs/tasks/<항목 id>/`(plan.md·log.md·analysis.md). 끝나면 정본 기록 → 작업 폴더 갱신 → 넘길 것은 inbox → 세션을 닫는다.
 - **세션 간 기록 전달은 `lab-inbox`만 쓴다.** SendMessage는 실시간 대화용이며 기록으로 치지 않는다.

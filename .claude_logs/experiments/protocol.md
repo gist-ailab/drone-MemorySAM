@@ -39,5 +39,5 @@ updated: 2026-10-16
 - 시드 3개 이상 mean±std 병기. 단일 런 최고만 인용하지 않는다. 무작위 시드 런(56.99 런)은 재현 안 되는 상단 꼬리로 취급.
 - 실험 약어(E1·E13·N6·G4 등)는 쓸 때마다 같은 행에 풀어 쓴다(user 지시 2026-09-17) — 풀이 정본 [../meta/experiment-glossary.md](../meta/experiment-glossary.md).
 - 진행보고 포맷 = user auto-memory `progress-report-format`(서버별 현황 표 + 남은 run 배치 + 벤치 baseline 표 2블록).
-- 판정 주체 = method 세션("MMSAM | 생각정리", `meta/roles.md`)이 이 문서의 기준으로 판정하고 `lab-plan verdict <id> --decision … --summary … --analysis <근거 문서> --via "<세션 이름>"` 한 곳에 기록한다. 최종 확인은 사용자. 기록 흐름은 `~/lab-status/SPEC-cycle.md` §4.
+- 판정 주체 = method 세션("MMSAM | 생각정리", `meta/roles.md`)이 이 문서의 기준으로 판정하고 `lab-plan verdict <id> --decision … --summary … --analysis <근거 문서> --via "<세션 이름>"` 한 곳에 기록한다. 최종 확인은 사용자. 기록 흐름은 `~/cl-jemo/lab-status/SPEC-cycle.md` §4.
 - 모든 학습·평가 전 GPU 가용성 확인(빈 GPU = memory ≤2000MiB·util ≤10%)·lecun 배치 금지 — CLAUDE.md 주의사항 참조.

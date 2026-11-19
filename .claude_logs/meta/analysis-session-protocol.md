@@ -2,7 +2,7 @@
 created: 2026-09-18
 author: opus 서브에이전트(판정 세션 "MMSAM | 생각정리" 의뢰) — 출처는 seg-analysis 스킬·tools/README_seg_analysis.md·카드 §0/§0-1/§0-2/§5-31b/§5-34·status/current.md·infra/artifact-locations.md·각 도구 docstring
 status: 상시 규약. 분석 세션은 세션 시작 직후 이 문서 하나를 끝까지 읽고 그대로 따른다.
-revised: 2026-10-16 — 전역 작업 사이클 계약(~/lab-status/SPEC-cycle.md) 정합: 판정 위치(lab-plan verdict), 보고 수단(lab-inbox), 분석 문서 위치(tasks/<항목 id>/analysis.md). 측정 절차(§1~§3, §6)는 바꾸지 않았다.
+revised: 2026-10-16 — 전역 작업 사이클 계약(~/cl-jemo/lab-status/SPEC-cycle.md) 정합: 판정 위치(lab-plan verdict), 보고 수단(lab-inbox), 분석 문서 위치(tasks/<항목 id>/analysis.md). 측정 절차(§1~§3, §6)는 바꾸지 않았다.
 ---
 
 # 분석 세션 프로토콜 — 새 체크포인트를 받았을 때 무엇을 재고, 어떻게 보고하는가

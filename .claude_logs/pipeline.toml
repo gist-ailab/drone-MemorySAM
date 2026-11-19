@@ -1,4 +1,4 @@
-# lab-status 파이프라인 어댑터 (명세: ~/lab-status/SPEC-pipeline.md 절 2)
+# lab-status 파이프라인 어댑터 (명세: ~/cl-jemo/lab-status/SPEC-pipeline.md 절 2)
 # 학습 종료 감지 → val-best top1 ckpt 선택 → legal v2 평가(test·val) → NAS 저장 → 알림
 # 규칙 근거: .claude_logs/experiments/protocol.md §1(val-best top1, test-best 금지), ISSUE-036(legal v2)
 

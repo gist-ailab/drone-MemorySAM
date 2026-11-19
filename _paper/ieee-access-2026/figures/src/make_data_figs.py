@@ -24,7 +24,7 @@ How each figure is drawn:
   fig_thin:       one bar per class = mean of the three seed differences (d821, d902, d903), black dots =
                   the three single-seed differences; classes sorted by the mean; thin classes in bold.
 
-Colours: carbon@11.84.0 teal ramp + warm grey (~/labdesign/tokens/carbon.tokens.json; user choice 2026-11-02). Fonts: TeX Gyre Heros (Helvetica clone).
+Colours: carbon@11.84.0 teal ramp + warm grey (~/cl-jemo/labdesign/tokens/carbon.tokens.json; user choice 2026-11-02). Fonts: TeX Gyre Heros (Helvetica clone).
 Width: IEEE Access single column 3.36 in (242.7 pt, measured in the class on 2026-10-29).
 
 Usage (from the paper folder _paper/ieee-access-2026 in the repo):
@@ -59,7 +59,7 @@ mpl.rcParams.update({
     "legend.frameon": False, "lines.linewidth": 1.2, "lines.markersize": 3.5,
 })
 
-# carbon@11.84.0 palette tokens (~/labdesign/tokens/carbon.tokens.json), chosen by the user 2026-11-02
+# carbon@11.84.0 palette tokens (~/cl-jemo/labdesign/tokens/carbon.tokens.json), chosen by the user 2026-11-02
 # (candidate A of the palette survey: teal ramp for our models, warm grey for baselines).
 FG, MUTED = "#3c3838", "#565151"                                  # warm-gray-80 / warm-gray-70
 BASE = "#8f8b8b"                                                  # warm-gray-50
