@@ -43,3 +43,8 @@
 
 ## 조사 한계
 - 갈래당 도구 호출 25~44회, Semantic Scholar 인용 그래프 미순회. MLE-SAM·MAGIC++·DGFusion·CAFuser 학습 절, CVPR 2026 RobustSeg 본문, SDSTrack·MetaBEV·RoboFusion·UniBEV 미확인. 학회명 일부는 기억에 의존(노트에 표시).
+
+## 추가(같은 날): 상세판
+- `full-report.md` = 보고서 작성 에이전트가 노트 4개를 종합한 상세판(16편 일치표, 주장마다 검증 수준·링크). 이 요약과 결론은 같다.
+- 상세판이 더한 것: PFS(arXiv 2603.05623, 센서별 독립 손상 + 커리큘럼, 증류 없음, 요약만 확인) · 공백을 깨뜨릴 최대 위험 = MLE-SAM·FPT 가 학습 때 잡음을 주입하는지 미확인(센서 고장 벤치 표 1 에 NM 대응 방법으로 표시) · SDSTrack(RMMSS 가 "noisy inputs" 근거로 인용) 미확인.
+- "to our knowledge, the first …" 문구를 쓰려면 MLE-SAM·FPT·SDSTrack·Compass·CVPR 2026 RobustSeg 본문과 인용 그래프 확인이 선행돼야 한다.
