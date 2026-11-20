@@ -298,7 +298,7 @@ Ours & \best{57.02} & \second{57.23} & \best{58.45} & 57.58 & \best{56.91} & \be
 \end{table}
 
 \subsection{Ablation}\label{sec:ablation}
-Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model. With all four sensors and the same frozen backbone, the model without the high-resolution path and without C2D2 reaches 56.40 test mIoU, on par with DGFusion (56.7, Table~\ref{tab:abl_robust}). The high-resolution path raises clean test mIoU by about one point whether or not the model is trained with C2D2 (from 56.40 to 57.43 without it and from 56.59 to 57.74 with it), and C2D2 keeps the clean accuracy in both cases while raising the EMM average on the validation set from 47.12 to 56.87 for the model without the path. In Table~\ref{tab:ablation_loo}, removing the degraded pass lowers the EMM average by 9.4 points (39.47 against 48.85) while clean mIoU changes little (57.03 against 57.85); this is the largest change in the table, and the robustness of C2D2 comes from this pass. Removing the teacher distillation, the sensor-specific degradations, or the sensor router changes clean mIoU by 0.1 to 0.7 points and the EMM average by 0.2 to 0.4 points. Removing cross-modal attention costs 0.85 points of clean mIoU, with the EMM average almost unchanged (49.08 against 49.12).
+Table~\ref{tab:abl_robust} measures the two additions, the C2D2 training scheme and the high-resolution path, and Table~\ref{tab:ablation_loo} removes one component at a time from the full model. With all four sensors and the same frozen backbone, the model without the high-resolution path and without C2D2 reaches 56.40 test mIoU (Table~\ref{tab:abl_robust}), on par with DGFusion (56.7, Table~\ref{tab:deliver}). The high-resolution path raises clean test mIoU by about one point whether or not the model is trained with C2D2 (from 56.40 to 57.43 without it and from 56.59 to 57.74 with it), and C2D2 keeps the clean accuracy in both cases while raising the EMM average on the validation set from 47.12 to 56.87 for the model without the path. In Table~\ref{tab:ablation_loo}, removing the degraded pass lowers the EMM average by 9.4 points (39.47 against 48.85) while clean mIoU changes little (57.03 against 57.85); this is the largest change in the table, and the robustness of C2D2 comes from this pass. Removing the teacher distillation, the sensor-specific degradations, or the sensor router changes clean mIoU by 0.1 to 0.7 points and the EMM average by 0.2 to 0.4 points. Removing cross-modal attention costs 0.85 points of clean mIoU, with the EMM average almost unchanged (49.08 against 49.12).
 % Sources: judgment-ledger 2026-10-28 rows DRN-261020-08/-09/-10/-12 (seed 821, legal v2 test@1024);
 % E1 screen s821 55.94: status/current.md (4); Q2/A2 s821 57.73/58.61: tasks/DRN-261019-03/analysis.md.
 
@@ -361,8 +361,6 @@ C2D2 & High-res. & Test & \multicolumn{5}{c}{Validation} \\
 training & path & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \midrule
 \multicolumn{8}{@{}l}{\emph{(a) DELIVER}} \\
-\multicolumn{2}{@{}l}{DGFusion~\cite{dgfusion2026}} & 56.7 & & & & & \\
-\multicolumn{2}{@{}l}{Mean fusion$^{b}$} & \multicolumn{6}{c}{\todo{DRN-261020-07}} \\
 % E1 val (2 seeds, s903 checkpoint missing): analysis inbox 20261111-174724, NAS analysis_logs/fill_20261111/a3_e1_val/a3_summary.json (s821 68.57/47.90/56.74/60.30/63.06, s902 67.09/46.33/52.95/57.22/61.33).
 \xmark & \xmark & 56.40 & 67.83 & 47.12 & 54.85 & 58.76 & 62.20 \\
 \xmark & \cmark & \second{57.43} & \best{70.64} & 48.22 & 57.62 & 61.13 & \second{64.34} \\
@@ -377,7 +375,7 @@ training & path & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \cmark & \cmark & \second{59.15} & & \best{51.69} & \best{52.46} & \best{53.56} & \best{54.67} \\
 \bottomrule
 \end{tabular*}
-\tabnote{$^{a}$MCubeS: checkpoints selected on the 96-image validation list; EMM and RMM measured on the test set. $^{b}$Without C2D2 and the high-res.\ path, sensor tokens averaged instead of cross-modal attention. DGFusion: published test score. C2D2 training and high-res.\ path as in Table~\ref{tab:ablation_loo}; C2D2 training comprises the degraded pass, the sensor-specific degradation, and teacher KD. Test: test-set mIoU with all sensors. The validation columns of (a) are scored against native-resolution labels without flipping, so they differ slightly from Table~\ref{tab:robust}; EMM and RMM are averages over the 15 sensor subsets.}
+\tabnote{$^{a}$MCubeS: checkpoints selected on the 96-image validation list; EMM and RMM measured on the test set. C2D2 training and high-res.\ path as in Table~\ref{tab:ablation_loo}; C2D2 training comprises the degraded pass, the sensor-specific degradation, and teacher KD. Test: test-set mIoU with all sensors. The validation columns of (a) are scored against native-resolution labels without flipping, so they differ slightly from Table~\ref{tab:robust}; EMM and RMM are averages over the 15 sensor subsets.}
 \end{table}
 
 \subsection{Computational Cost}
