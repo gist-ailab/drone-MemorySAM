@@ -243,7 +243,7 @@ Ours & DINOv3-L & \best{57.74} & \best{48.66} \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig_robust.pdf}
-\caption{Robustness on DELIVER. (a) Random-missing sensors on the validation set: mIoU averaged over the 15 sensor subsets as the missing ratio $r$ grows. Benchmark models (MiT-B2) are taken from~\cite{mmssbench2025}; our curve is measured with the same public code. (b) A single available sensor on the test set, with the other three zero-filled.}
+\caption{Robustness on DELIVER. (a) Random-missing sensors on the validation set: mIoU averaged over the 15 sensor subsets as the missing ratio $r$ grows. MAGIC++, the strongest model of the benchmark~\cite{mmssbench2025} at every missing ratio (MiT-B2, reported values; Table~\ref{tab:robust} lists all models); our curve is measured with the same public code. (b) A single available sensor on the test set, with the other three zero-filled.}
 \label{fig:robust}
 \end{figure}
 
@@ -365,11 +365,12 @@ training & path & Clean & Clean & EMM & RMM .75 & .50 & .25 \\
 \multicolumn{2}{@{}l}{Mean fusion$^{b}$} & \multicolumn{6}{c}{\todo{DRN-261020-07}} \\
 % E1 val (2 seeds, s903 checkpoint missing): analysis inbox 20261111-174724, NAS analysis_logs/fill_20261111/a3_e1_val/a3_summary.json (s821 68.57/47.90/56.74/60.30/63.06, s902 67.09/46.33/52.95/57.22/61.33).
 \xmark & \xmark & 56.40 & 67.83 & 47.12 & 54.85 & 58.76 & 62.20 \\
-\xmark & \cmark & \second{57.43} & \multicolumn{5}{c}{\todo{val: DRN-261112-04}} \\
-\cmark & \xmark & 56.59 & \second{67.91} & \second{56.87} & \second{60.69} & \second{62.46} & \second{64.08} \\
-\cmark & \cmark & \best{57.74} & \best{70.17} & \best{57.85} & \best{61.28} & \best{63.35} & \best{65.53} \\
+\xmark & \cmark & \second{57.43} & \best{70.64} & 48.22 & 57.62 & 61.13 & \second{64.34} \\
+\cmark & \xmark & 56.59 & 67.91 & \second{56.87} & \second{60.69} & \second{62.46} & 64.08 \\
+\cmark & \cmark & \best{57.74} & \second{70.17} & \best{57.85} & \best{61.28} & \best{63.35} & \best{65.53} \\
 \midrule
 \multicolumn{8}{@{}l}{\emph{(b) MCubeS$^{a}$, $768\times768$ training crops}} \\
+% High-res w/o C2D2 row: DRN-261112-04, 3 runs, NAS analysis_logs/hnc_A2hiresNoC2D2_20261117/ (analysis inbox 20261119-164247).
 % MCubeS val96-selected checkpoints (DRN-261117-03, manager inbox 20261118-174026/-194020; NAS analysis_logs/robust_mcubes_L_val96_20261118/):
 %   C2D2 s827 59.26/52.70, s828 59.05/50.69; w/o s827 59.71/42.58, s828 59.00/41.54 (clean/EMM15, test 102); RMM .25/.5/.75 C2D2 54.67/53.56/52.46, w/o 53.91/52.23/50.82.
 \xmark & \cmark & \best{59.35} & & \second{42.06} & \second{50.82} & \second{52.23} & \second{53.91} \\

@@ -136,21 +136,28 @@ def fig_dependence(out):
 
 
 def fig_robust(out):
+    # 2026-11-20 (user): (a) only the strongest benchmark method per r is kept (MAGIC++; the three benchmark curves
+    # overlapped within ~2 points) and the y axis starts at 40 so the gap is readable; each panel gets its own legend
+    # drawn with the mark it uses (lines for (a), bar patches for (b)).
     src_a = DATA / "fig_robust_rmm.csv"
     src_b = DATA / "fig_robust_single.csv"
     rmm = read_long(src_a, "model", "missing_ratio", "miou")
     single = read_long(src_b, "model", "sensor_left", "miou")
-    fig, (a, b) = plt.subplots(1, 2, figsize=(COL_W, 2.45), gridspec_kw=dict(width_ratios=[1, 1.15]))
-    for name, by_r in rmm.items():
+    keep_a = ["MAGIC++", "Ours"]
+    fig, (a, b) = plt.subplots(1, 2, figsize=(COL_W, 2.2), gridspec_kw=dict(width_ratios=[1, 1.15]))
+    lab_a = {"MAGIC++": "MAGIC++ (benchmark best)", "Ours": "Ours"}
+    for name in keep_a:
+        by_r = rmm[name]
         st = dict(STYLE[name]); lw = st.pop("lw", 1.2)
         xs = [float(k) for k in by_r]
-        a.plot(xs, list(by_r.values()), lw=lw, markeredgecolor=st["color"], **st, zorder=3)
+        a.plot(xs, list(by_r.values()), lw=lw, markeredgecolor=st["color"], label=lab_a[name], **st, zorder=3)
     ticks = sorted({float(k) for d in rmm.values() for k in d})
     a.set_xticks(ticks, ["clean" if t == 0 else f"{t:.2f}".lstrip("0") for t in ticks])
     a.set_xlabel("Missing ratio $r$ (RMM)")
     a.set_ylabel("mIoU (%)")
-    a.set_ylim(0, 75)
-    a.set_xlim(-0.04, 0.79)
+    a.set_ylim(40, 75)
+    a.set_xlim(-0.06, 0.81)
+    a.legend(loc="lower left", handlelength=2.0, borderaxespad=0.2)
     label_axes(a, "a")
 
     names = list(single.keys())
@@ -158,30 +165,23 @@ def fig_robust(out):
     xs = np.arange(len(SENSORS))
     for i, name in enumerate(names):
         st = STYLE[name]
-        for j, s in enumerate(SENSORS):
+        for j, s_ in enumerate(SENSORS):
             xx = xs[j] + (i - (len(names) - 1) / 2) * w
-            v = single[name].get(s)
-            if v is None:   # not measured yet: red dashed stub, never a value
-                b.bar(xx, 4, w * 0.9, color="white", edgecolor=DANGER, lw=0.6, ls=(0, (1.5, 1)), zorder=2)
-                continue
+            v = single[name].get(s_)
             face = "white" if st["mfc"] == "white" else st["color"]
             b.bar(xx, v, w * 0.9, color=face, edgecolor=st["color"], lw=0.6, zorder=2)
-    b.set_xticks(xs, [f"{s}\nonly" for s in SENSORS])
-    b.set_ylim(0, 75)
-    b.set_yticklabels([])
-    b.tick_params(axis="y", left=False)
+    b.set_xticks(xs, [f"{s_}\nonly" for s_ in SENSORS])
+    b.set_ylim(0, 92)
+    b.set_yticks([0, 20, 40, 60])
+    b.set_ylabel("mIoU (%)")
     label_axes(b, "b")
-    legend_names = list(OrderedDict.fromkeys([n for n in rmm if n not in single] + names))
-    handles = [mpl.lines.Line2D([], [], color=STYLE[n]["color"], ls=STYLE[n]["ls"], marker=STYLE[n]["marker"],
-                                mfc=STYLE[n]["mfc"], mec=STYLE[n]["color"], lw=STYLE[n].get("lw", 1.2))
-               for n in legend_names]
-    labels = list(legend_names)
-    if any(v is None for d in single.values() for v in d.values()):
-        handles.append(mpl.patches.Patch(facecolor="white", edgecolor=DANGER, lw=0.6, ls=(0, (1.5, 1))))
-        labels.append("Ours, pending")
-    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.02),
-               handlelength=2.2, columnspacing=1.2)
-    fig.tight_layout(pad=0.3, rect=(0, 0.27, 1, 1))
+    lab_b = {"DGFusion": "DGFusion (released)", "DGFusion (retrained)": "DGFusion (retrained)",
+             "Ours w/o high-res": "Ours w/o high-res.", "Ours": "Ours"}
+    patches = [mpl.patches.Patch(facecolor=("white" if STYLE[n]["mfc"] == "white" else STYLE[n]["color"]),
+                                 edgecolor=STYLE[n]["color"], lw=0.6, label=lab_b.get(n, n)) for n in names]
+    b.legend(handles=patches, loc="upper right", handlelength=1.2, handleheight=0.8, borderaxespad=0.2,
+             labelspacing=0.3)
+    fig.tight_layout(pad=0.3, w_pad=0.8)
     save(fig, out / "fig_robust", [src_a, src_b])
 
 
