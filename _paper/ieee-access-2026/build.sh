@@ -24,6 +24,21 @@ python3 "$HERE/figures/src/mark_best.py" > /dev/null
 rsync -a --delete --exclude 'root.pdf' "$HERE/latex/" "$HERE/build/src/"
 cd "$HERE/build/src"
 latexmk -pdf -interaction=nonstopmode -quiet root.tex > /dev/null 2>&1 || true
+# 3) supplementary material (user 2026-11-20: the appendix is a separate supplementary PDF). Cross-references in both
+#    directions use xr: the supplementary reads root.aux (prefix M-), the manuscript reads supp_main.aux (prefix S-),
+#    so the manuscript is compiled once more after the supplementary.
+mkdir -p "$HERE/build/supp"
+cp "$HERE/supplementary/supp_main.tex" root.aux references.bib IEEEabrv.bib IEEEtran.bst "$HERE/build/supp/"
+( cd "$HERE/build/supp" && pdflatex -interaction=nonstopmode supp_main.tex > /dev/null 2>&1; bibtex supp_main > /dev/null 2>&1; \
+  pdflatex -interaction=nonstopmode supp_main.tex > /dev/null 2>&1; pdflatex -interaction=nonstopmode supp_main.tex > /dev/null 2>&1 ) || true
+cp "$HERE/build/supp/supp_main.aux" .
+pdflatex -interaction=nonstopmode root.tex > /dev/null 2>&1 || true
+pdflatex -interaction=nonstopmode root.tex > /dev/null 2>&1 || true
+cp root.aux "$HERE/build/supp/"
+( cd "$HERE/build/supp" && pdflatex -interaction=nonstopmode supp_main.tex > /dev/null 2>&1 ) || true
+cp "$HERE/build/supp/supp_main.pdf" "$HERE/build/supplementary.pdf"
+serrs=$(grep -c '^!' "$HERE/build/supp/supp_main.log" || true)
+echo "supplementary errors: $serrs  pages: $(pdfinfo "$HERE/build/supplementary.pdf" | awk '/Pages/{print $2}')  -> build/supplementary.pdf"
 errs=$(grep -c '^!' root.log || true)
 cp root.pdf "$HERE/build/root.pdf"
 echo "errors: $errs  pages: $(pdfinfo root.pdf | awk '/Pages/{print $2}')  -> build/root.pdf"
@@ -35,7 +50,7 @@ case "$HERE" in
     main="${HERE%%/.claude/worktrees/*}/${HERE#*/.claude/worktrees/*/}"
     mirror="${PAPER_PDF_MIRROR:-$main/build/root.pdf}"
     if [ "$mirror" != "none" ] && [ -d "$(dirname "$(dirname "$mirror")")" ]; then
-      mkdir -p "$(dirname "$mirror")" && cp root.pdf "$mirror" && echo "mirror -> $mirror"
+      mkdir -p "$(dirname "$mirror")" && cp root.pdf "$mirror" && cp "$HERE/build/supplementary.pdf" "$(dirname "$mirror")/supplementary.pdf" && echo "mirror -> $mirror (+ supplementary.pdf)"
     fi ;;
 esac
 if [ "$1" = "snapshot" ]; then
@@ -50,7 +65,8 @@ fi
 nas="${PAPER_PDF_NAS:-/nas_jm/Paper/26_MemorySAM+/$(basename "$HERE")}"
 if [ "$nas" != "none" ] && timeout 10 test -d "$(dirname "$nas")"; then
   if timeout 20 mkdir -p "$nas" && timeout 60 cp root.pdf "$nas/root.pdf"; then
-    echo "nas -> $nas/root.pdf"
+    timeout 60 cp "$HERE/build/supplementary.pdf" "$nas/supplementary.pdf" || true
+    echo "nas -> $nas/root.pdf (+ supplementary.pdf)"
     if [ "$1" = "snapshot" ]; then
       timeout 20 mkdir -p "$nas/drafts" && timeout 60 cp root.pdf "$nas/drafts/IEEE-Access-draft_$(date +%F).pdf" && echo "nas snapshot -> $nas/drafts/"
     fi
