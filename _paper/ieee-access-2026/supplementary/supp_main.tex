@@ -121,7 +121,7 @@ Fig.~\ref{fig:reverse} applies the selection rule of Fig.~\ref{fig:adverse} in t
 
 \section{Training Configurations}
 \label{app:train}
-Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks; the runs of each benchmark differ only in the random seed, and gradient accumulation keeps the effective batch size at 16. Results of our model in the main text are means over the runs listed in the table (three on DELIVER, two on MUSES and MCubeS), with these exceptions: the model trained without C2D2 and without the high-resolution path (Table~\ref{M-tab:abl_robust}, Fig.~\ref{M-fig:dependence}) and the leave-one-out ablation (Table~\ref{M-tab:ablation_loo}) use two runs, and the row of that ablation without cross-modal attention uses one run, compared there with the full model of the same run; the MUSES test score comes from the run with the higher validation score, and the two-sensor MUSES models are single runs. The re-trained and released baselines are single models. Single runs of our model vary by up to 1.5 points on these benchmarks. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table.
+Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks; the runs of each benchmark differ only in the random seed, and gradient accumulation keeps the effective batch size at 16. Results of our model in the main text are means over the runs listed in the table (three on DELIVER, two on MUSES and MCubeS), with these exceptions: the model trained without C2D2 and without the high-resolution path (Table~\ref{M-tab:abl_robust}, Fig.~\ref{M-fig:dependence}) and the leave-one-out ablation (Table~\ref{tab:ablation_loo}) use two runs, and the row of that ablation without cross-modal attention uses one run, compared there with the full model of the same run; the MUSES test score comes from the run with the higher validation score, and the two-sensor MUSES models are single runs. The re-trained and released baselines are single models. Single runs of our model vary by up to 1.5 points on these benchmarks. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table.
 
 % Sources (paper session 2026-11-13, yaml load of the files below; key names in parentheses):
 %   DELIVER configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml (seeds 20260821/20260902/20260903),
@@ -229,6 +229,40 @@ mIoU & 52.34 & 55.78 & 56.71 & 55.14 & 56.40 & 56.59 & 57.74 & +1.04 \\
 \section{Per-Class Build-Up of Our Model}
 \label{app:ladder}
 Table~\ref{tab:ladder} adds the intermediate stages of our model to Table~\ref{M-tab:thin} and shows which part of the architecture produces each margin. On TrafficSign, Water, and Truck, the frozen DINOv3-L backbone with RGB alone is already ahead of all three four-sensor baselines (by 4.8, 3.7, and 3.2 points), so these margins come from the foundation features. On Building, Vegetation, Terrain, and Bus, RGB alone is behind the baselines, and adding the other three sensors with cross-modal fusion raises the score by 4.8, 6.1, 4.8, and 4.6 points; on Wall, where RGB alone is only 1.6 points ahead, fusion adds another 10.0. These margins come from the fusion of the sensors on top of the shared backbone. Training with the C2D2 scheme changes the score by less than 1.5 points on 20 of the 25 classes, in both directions, which matches its unchanged mean on clean inputs; its largest per-class gain is on Static (+4.0). On RailTrack and TrafficLight, RGB alone is ahead of every baseline (67.5 and 49.6) and the scores drop when the other three sensors are fused (51.3 and 38.7), so these two losses come from the fusion stage rather than from the backbone. Both classes vary strongly between training runs, so these per-stage differences are indicative.
+
+\section{Leave-One-Out Ablation}
+\label{app:loo}
+Table~\ref{tab:ablation_loo} removes one component at a time from the full model, which keeps the high-resolution path in every row, and reports clean mIoU and the EMM average (15 sensor subsets with the others zero-filled) on the DELIVER test set. Removing the degraded pass of C2D2 lowers the EMM average by 9.4 points (39.47 against 48.85) while clean mIoU changes little (57.03 against 57.85); this is the largest change in the table, so the robustness of C2D2 comes from this pass. Removing the teacher distillation changes clean mIoU by 0.30 and the EMM average by 0.36 points, and replacing the sensor-specific degradations by zero-filling only, at the same missing-sensor rate, changes them by 0.14 and 0.19 points. Removing the sensor router changes clean mIoU by 0.67 and the EMM average by 0.34 points. Replacing cross-modal attention by averaging the sensor tokens costs 0.85 points of clean mIoU against the full model of the same training run (58.61), with the EMM average almost unchanged (49.08 against 49.12).
+
+% Table 6b. Leave one component out of the full model (one seed, 40 epochs). Sources as Table 6 comment above;
+% L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
+\begin{table}[!htbp]
+\caption{Leave-one-out ablation on the DELIVER test set (mIoU, \%). Each row removes one component from the full model (last row).}
+\label{tab:ablation_loo}
+\centering\tabsetup
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
+\toprule
+ & \multicolumn{3}{c}{C2D2 training} & & & \\
+\cmidrule(lr){2-4}
+Cross-modal & Degraded & Sensor & Teacher & Sensor & Clean & EMM \\
+attention & pass & degr. & KD & router & & \\
+\midrule
+% Two-seed means (s821, s902), DELIVER test, legal v2 @1024, EMM15 = tools/mm_eval_v2.py --split test --protocol emm --seed 0.
+% L5: analysis inbox 20261111-094302 (57.42/39.53, 56.63/39.40). L6: tasks/DRN-261020-14/log.md (58.77/49.6407, 56.32/47.3357; s902 val-best ep30).
+% L7: tasks/DRN-261029-01/log.md (58.17/48.8631, 57.25/48.4557). L8 no router: tasks/DRN-261029-07/log.md (56.4823/47.9399, 57.8809/49.0793).
+% L2 (s821 only): 57.76 / 49.08. Full A2: s821 58.61/49.12, s902 57.09/48.57 (tasks/DRN-261019-03/analysis.md).
+% Verdicts 2026-11-11 (method, inbox 20261111-132936): L5 adopt, L6 inconclusive, L7 reject, L8 reject.
+\cmark & \xmark & \xmark & \cmark & \cmark & 57.03 & 39.47 \\
+\cmark & \cmark & \cmark & \xmark & \cmark & 57.55 & 48.49 \\
+\cmark & \cmark & \xmark & \cmark & \cmark & \second{57.71} & \second{48.66} \\
+\cmark & \cmark & \cmark & \cmark & \xmark & 57.18 & 48.51 \\
+\xmark$^{*}$ & \cmark & \cmark & \cmark & \cmark & 57.76$^{\dagger}$ & 49.08$^{\dagger}$ \\
+\cmark & \cmark & \cmark & \cmark & \cmark & \best{57.85} & \best{48.85} \\
+\bottomrule
+\end{tabular*}
+\tabnote{All rows keep the high-res.\ path. C2D2 training consists of the degraded pass, the sensor-specific degradation, and teacher KD. Degraded pass: the second, degraded forward pass. Sensor degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass; without the degraded pass (first row), the second pass sees an undegraded copy, to which this term still applies. $^{*}$Token averaging; also removes the sensor-specific residual $m_s$ of Eq.~(2) of the main paper. $^{\dagger}$Compared with the full model of the same training run: 58.61 clean, 49.12 EMM (Section~\ref{app:train}). Sensor router: Section~\ref{M-sec:m_router}.}
+\end{table}
+
 
 \section{Failure Case of the High-Resolution Path}
 \label{app:failure}
