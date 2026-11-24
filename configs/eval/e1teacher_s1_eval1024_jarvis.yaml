@@ -85,7 +85,7 @@ MODEL:
   P55: {ENABLE: false}
 DATASET:
   NAME: DELIVER
-  ROOT: /SSDb/jemo_maeng/dset/DELIVER
+  ROOT: '/SSDb/jemo_maeng/dset/DELIVER'
   IGNORE_LABEL: 255
   MODALS: [img, depth, event, lidar]
   RGB_SUBROOT: null
@@ -151,6 +151,6 @@ EVAL:
 WANDB: {ENABLE: false, PROJECT: MemorySAM}
 TEST:
   MODEL_PATH: ''
-  FILE: /SSDb/jemo_maeng/dset/DELIVER
+  FILE: '/SSDb/jemo_maeng/dset/DELIVER'
   IMAGE_SIZE: [1024, 1024]
   OVERLAY: false
