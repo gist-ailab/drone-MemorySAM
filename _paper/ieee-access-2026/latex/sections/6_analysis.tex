@@ -15,6 +15,11 @@ Our model trained on clean inputs, which has no depth supervision, also depends 
 
 These measurements suggest that, on DELIVER, the dependence on depth comes mainly from training without degraded sensors rather than from a particular fusion design or supervision, since it appears in two architectures and falls in both when degraded inputs enter training (Fig.~\ref{fig:dependence} and the re-trained DGFusion above). A plausible reason is that DELIVER renders depth without noise or holes, so training on complete inputs finds a shortcut that real depth sensors would not offer. The comparison has one caveat: our two curves differ in training and also in the high-resolution path, which only the full model has; on the validation split, the C2D2-trained model without the path loses 3.4 to 13.4 points, so most of the reduction comes from the training.
 
+Zero-filling a sensor at test time measures how much a trained model relies on it, not how much accuracy the sensor adds. To measure the latter, we train our model from the start without depth, on RGB, events, and LiDAR (Supplementary Section~\ref{S-app:train}). It reaches 55.5 test mIoU, 3.9 points above DGFusion with the same three sensors (51.6~\cite{dgfusion2026}), and adding depth raises our accuracy by about two points, against 5.1 points for DGFusion (from 51.6 to 56.7~\cite{dgfusion2026}). Our model therefore stays accurate when depth is never available and gains less from it.
+% Sources: DRN-261117-01, legal v2 test @1024 (manager inbox 20261123-135716, eval1024.sh): s821 55.99, s902 55.03, mean 55.51;
+% four-sensor model with the same recipe (no teacher KD, L6) same seeds 58.77/56.32, mean 57.55 -> +2.04; full model 3 seeds 57.74 -> +2.23.
+% DGFusion: arXiv 2509.09828 Table III (DELIVER test): CLE 51.6, CLDE 56.7.
+
 \begin{figure}[t]
 \centering
 % Source numbers and provenance: figures/src/make_data_figs.py (fig_dependence). Full table: sections/supp_tables.tex (Table S1).

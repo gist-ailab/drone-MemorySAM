@@ -40,7 +40,12 @@ fi
 
 check_gpu() {
   local gpu_state mem util
-  gpu_state=$(nvidia-smi -i "$gpu" --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits)
+  if ! gpu_state=$(nvidia-smi -i "$gpu" --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits 2>/dev/null); then
+    # jarvis: NVML 고장 — torch 로 사용 메모리만 확인(2026-11-24, analysis)
+    mem=$(CUDA_VISIBLE_DEVICES="$gpu" "$python_bin" -c "import torch; f,t=torch.cuda.mem_get_info(0); print(int((t-f)/2**20))" 2>/dev/null) || { echo "GPU $gpu check failed" >&2; exit 3; }
+    (( mem > 2000 )) && { echo "GPU $gpu is busy (memory=${mem}MiB via torch)." >&2; exit 3; }
+    return 0
+  fi
   IFS=',' read -r mem util <<< "$gpu_state"
   mem=${mem//[[:space:]]/}
   util=${util//[[:space:]]/}
