@@ -182,9 +182,9 @@ items:
       - latex/sections/4_method.tex — C2D2 소절. 교사 첫 등장 문장(이유 없는 '고해상 경로 없음·longer schedule' 삭제)과 손실 문단 다음의 교사 문단(정의, 역할, 공간 세부는 레이블이 감독, 교사에 경로를 넣어도 학생이 좋아지지 않음)
       - supplementary/supp_main.tex — Leave-One-Out 절 문장과 tab:ablation_loo 의 'teacher with high-res path' 행(57.45 / 48.60), 캡션 'removes or changes'
       - latex/references.bib — cho2019efficacy(서지 확인 뒤)
-    now: "2026-11-26 user 동의로 지금 반영한다. 논리 네 단계·문장 초안·수치 출처는 paper inbox 20261126-130916-request-5f18cad3 에 있다. 주장 수위는 '교사에 경로를 넣어도 학생이 좋아지지 않는다'까지다(DELIVER test, 같은 두 시드: 교사 55.97 → 57.79, 학생 clean 57.85 → 57.45, EMM 48.85 → 48.60). '경로 없는 교사가 더 좋다'·신호등 이득·학습 비용 절감·시드 언급은 쓰지 않는다. '보고 모델이 이 설정으로 학습돼서 남겼다' 류 문장 금지(user 2026-11-16)."
+    now: "2026-11-26 user 동의로 지금 반영한다. 논리 네 단계·문장 초안·수치 출처는 paper inbox 20261126-130916-request-5f18cad3 에 있다. 주장 수위는 '교사에 경로를 넣어도 학생이 좋아지지 않는다'까지다(DELIVER test, 같은 두 시드: 교사 55.97 → 57.79, 학생 clean 57.85 → 57.45, EMM 48.85 → 48.60). '경로 없는 교사가 더 좋다'·신호등 이득·학습 비용 절감·시드 언급은 쓰지 않는다. '보고 모델이 이 설정으로 학습돼서 남겼다' 류 문장 금지(user 2026-11-16). 반영 이력: 8e33c75 에서 세 곳 반영, 7e7a167 에서 본문 넷째 문장을 'The teacher therefore does not need the path: a teacher equipped with it gives the student no further gain'으로 줄였다(user 2026-11-26, paper 세션 직접 지시: '논문에는 설계를 이러한 이유로 이렇게 했다만 적어야지. 거짓말을 할 필요는 없지만 불필요하게 불리한 스토리텔링을 다 적지는 말아줘'). 본문에는 설계와 이유, 보충 자료 참조만 두고, 교사 자신의 정확도 변화(55.97 → 57.79)와 학생 수치는 보충 자료에만 둔다."
     branches:
-      adopt: "T1 − L6 이 사전 기준을 충족(현재 수치 clean −1.55 / +1.36, EMM −1.24 / +1.46 으로는 해당 없음) → 교사 문단의 'does not improve the student'와 충돌한다. 문장을 고치지 말고 user 결정을 discussion 세션에 올린다."
+      adopt: "T1 − L6 이 사전 기준을 충족(현재 수치 clean −1.55 / +1.36, EMM −1.24 / +1.46 으로는 해당 없음) → 교사 문단의 'gives the student no further gain'과 충돌한다. 문장을 고치지 말고 user 결정을 discussion 세션에 올린다."
       reject: "교사 문단과 보충 자료 문장·표 행이 inbox 20261126-130916 대로 반영돼 있는지, 수치가 판정 요약과 같은지 대조한 뒤 done."
       inconclusive: "reject 와 같다. 문장은 '교사에 경로를 넣어도 학생이 좋아지지 않는다'까지만 말하므로 판정이 결론 없음이어도 그대로 선다."
     status: open
@@ -193,11 +193,11 @@ items:
     title: 고해상 교사 학생의 나머지 벤치(MUSES·MCubeS) 결과가 교사 문단과 맞는가
     depends_on: [DRN-261123-01, DRN-261123-02]
     where:
-      - latex/sections/4_method.tex — C2D2 소절 교사 문단의 'does not improve the student'
+      - latex/sections/4_method.tex — C2D2 소절 교사 문단의 'a teacher equipped with it gives the student no further gain'
       - supplementary/supp_main.tex — Leave-One-Out 절의 고해상 교사 문장
     now: "교사 문단의 근거는 DELIVER 2시드다(FU-13). MUSES 는 한 쌍만 나왔다(s2 공식 val 81.34 대 81.76, test 79.514 대 80.012). MUSES 세 번째 시드와 MCubeS 2시드는 학습 중이다."
     branches:
       adopt: "사전 기준 '두 시드 모두 clean·EMM15 +0.5 이상(고해상 교사가 학생을 개선)'이 어느 벤치에서든 충족 → 문장을 고치지 말고 먼저 user 결정(논문 모델·교사 서술)을 discussion 세션에 올린다."
-      reject: "사전 기준 '교사 선택에 둔감' 또는 '해롭다' → 문장 유지. 보충 자료 문장에 벤치 수치를 한 구절 더할지는 paper 판단."
+      reject: "사전 기준 '교사 선택에 둔감' 또는 '해롭다' → 문장 유지. 본문에는 더하지 않는다(설계와 이유만, user 2026-11-26). 보충 자료 문장에 벤치 수치를 한 구절 더할지는 paper 판단."
       inconclusive: "문장 유지."
     status: open
