@@ -7,7 +7,7 @@
 % (path + md5 in the figure source note) and the selection rule is stated in the caption.
 
 \subsection{Where Sensor Over-Reliance Comes From}
-A fusion model can lean on one sensor because its architecture or supervision favours that sensor, or because the training data make that sensor sufficient. DGFusion~\cite{dgfusion2026} is a useful test case: it adds depth supervision to its fusion, and removing depth costs our reproduction of DGFusion 23 to 37 points depending on the condition (Fig.~\ref{fig:dependence}). If the depth supervision caused this dependence, a model without it should behave differently.
+A fusion model can lean on one sensor because its architecture or supervision favours that sensor, or because the training data make that sensor sufficient. DGFusion~\cite{dgfusion2026} is a useful test case: it adds depth supervision to its fusion, and removing depth costs the released DGFusion model 26 to 41 points depending on the condition (Fig.~\ref{fig:dependence}). If the depth supervision caused this dependence, a model without it should behave differently.
 
 Our model trained on clean inputs, which has no depth supervision, also depends on depth: removing it costs 14.3 to 14.8 points in sun, cloud, rain, and fog, 17.9 at night, and 25.0 at low exposure, less than for DGFusion but growing towards the dark conditions in the same way. Our full model, trained with the C2D2 scheme, loses only 0.6 to 1.5 points in sun, cloud, rain, and fog, 4.3 at night, and 9.6 at low exposure (all on the test split). The effect also appears in a second architecture: when we re-train DGFusion with the same synthetic degradation, removing depth entirely costs 4.7 points, whereas it costs 33.3 points for our reproduction trained without degradation and 33.4 for the released weights (test split, our evaluation code).
 % Sources: ours = figures/source_data/fig_dependence.csv (2026-11-09, R1 depth0 dumps vs clean dumps, test); DGFusion reproduction (a) = judgment-ledger:112;
@@ -24,7 +24,7 @@ Zero-filling a sensor at test time measures how much a trained model relies on i
 \centering
 % Source numbers and provenance: figures/src/make_data_figs.py (fig_dependence). Full table: sections/supp_tables.tex (Table S1).
 \includegraphics[width=\columnwidth]{figures/fig_dependence.pdf}
-\caption{Dependence on depth across conditions on the DELIVER test set: change in mIoU when the depth input is zero-filled at inference (closer to zero means less dependence). Ours, clean training: without C2D2 and without the high-resolution path; Ours: full model.}
+\caption{Dependence on depth across conditions on the DELIVER test set: change in mIoU when the depth input is zero-filled at inference (closer to zero means less dependence). DGFusion: released weights, evaluated with our code. Ours, clean training: without C2D2 and without the high-resolution path; Ours: full model.}
 \label{fig:dependence}
 \end{figure}
 

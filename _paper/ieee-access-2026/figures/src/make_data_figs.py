@@ -123,9 +123,9 @@ def fig_dependence(out):
     ax.set_xticks(x, CONDITIONS)
     ax.axhline(0, color=MUTED, lw=0.6, zorder=1)
     ax.set_ylabel("Change in mIoU\nwithout depth (points)")
-    ax.set_ylim(-42, 3)
+    ax.set_ylim(-44, 3)
     h, l = ax.get_legend_handles_labels()
-    names = {"DGFusion (reproduced)": "DGFusion (reproduced)", "Ours": "Ours",
+    names = {"DGFusion": "DGFusion", "Ours": "Ours",
              "Ours w/o C2D2": "Ours, clean training", "Ours w/o high-res": "Ours w/o high-res"}
     l = [names.get(s, s) for s in l]
     # legend above the axes in one row (user 2026-11-16: the in-axes legend covered the clean-training curve)
