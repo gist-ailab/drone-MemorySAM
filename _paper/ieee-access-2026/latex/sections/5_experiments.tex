@@ -187,7 +187,7 @@ Ours & DINOv3-L & \best{71.34} & \best{58.52} & \best{67.15} & \best{69.46} & \b
 \end{table*}
 
 \subsection{Robustness to Missing and Degraded Sensors}
-Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbench2025} on the DELIVER validation set. To compare under identical conditions, we run the public evaluation code of the benchmark on our model; the other rows are the values reported by the benchmark. Our model scores highest in every column: its mIoU averaged over the 15 sensor subsets is 58.52, 13.6 points above the best method reported by the benchmark (MAGIC, 44.97), and its drop from the clean score under entire missing sensors is 12.8 points, against 21.1 to 28.4 points for the benchmark models. Under the strongest noise, it keeps 39.87 mIoU, while the benchmark models fall below 10. Our model uses a larger backbone (DINOv3-L against MiT-B2), so part of this margin comes from the backbone; Table~\ref{tab:abl_robust} isolates the share of training with degraded inputs.
+Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbench2025} on the DELIVER validation set. To compare under identical conditions, we run the public evaluation code of the benchmark on our model; the other rows are the values reported by the benchmark. Our model scores highest in every column: its mIoU averaged over the 15 sensor subsets is 58.52, 13.6 points above the best method reported by the benchmark (MAGIC, 44.97), and its drop from the clean score under entire missing sensors is 12.8 points, against 21.1 to 29.9 points for the benchmark models. Under the strongest noise, it keeps 39.87 mIoU, while the benchmark models fall below 10. Our model uses a larger backbone (DINOv3-L against MiT-B2), so part of this margin comes from the backbone; Table~\ref{tab:abl_robust} isolates the share of training with degraded inputs.
 % Sources: tasks/DRN-261019-03/analysis.md (val clean 70.17, EMM15 57.85, RMM 65.53/63.35/61.28); 2503.18445 Tables 3, 7-11;
 % drop clean-EMM: ours 70.17-57.85 = 12.32; benchmark models 66.33-37.90 = 28.43 ... 68.20-41.98 = 26.22, MAGIC 66.10-44.97 = 21.13.
 % Removed 2026-11-02 (user): test-split S&P-only noise numbers and the DGFusion test EMM sentences (kept in judgment-ledger).
@@ -197,7 +197,7 @@ Table~\ref{tab:robust} evaluates robustness with the benchmark of~\cite{mmssbenc
 
 Exposing existing fusion models to the same synthetic degradation and sensor dropout during training does not close the gap (Table~\ref{tab:retrained}): re-trained with our degradation curriculum, DGFusion and CAFuser gain robustness but stay below our model on both clean accuracy and the EMM average of the test set. The re-trained baselines see the degradation as single-pass augmentation, without the clean pass and the teacher of C2D2, so this comparison concerns the architecture (frozen foundation backbone, sensor-specific adapters, and high-resolution path) rather than the training scheme.
 
-When only one sensor is available (Fig.~\ref{fig:robust}b), the released DGFusion weights collapse to 7.5 mIoU with RGB alone and to 1.1 with event or LiDAR alone, while still reaching 43.3 with depth alone. Training with degraded inputs lifts every single-sensor score, most strongly for RGB (49.0 for the re-trained DGFusion and 53.9 for our model without the high-resolution path).
+When only one sensor is available (Fig.~\ref{fig:robust}b), the released DGFusion weights collapse to 7.5 mIoU with RGB alone and to 1.1 with event or LiDAR alone, while still reaching 43.3 with depth alone. Training with degraded inputs lifts every single-sensor score, most strongly for RGB (49.0 for the re-trained DGFusion and 54.3 for our model).
 % Sources: judgment-ledger:130 (official weights single-sensor 7.50/43.33/1.13/1.13); judgment-ledger:117 (retrained 49.0/44.5/25.0/25.0; Q2 3 seeds 53.9/46.0/31.0/22.9).
 
 % ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ On MUSES, where CAFuser and DGFusion are the direct comparison, Fig.~\ref{fig:mu
 \end{figure*}
 
 \subsection{Accuracy per Condition}\label{sec:condition}
-Table~\ref{tab:condition} breaks clean test accuracy down by condition for the released baselines and our model. Our model is the most accurate in sun, rain, night, and low exposure, with the largest margins over the best baseline in sun (+3.0), low exposure (+2.3), and night (+1.6); DGFusion is higher in cloud (58.41 against 57.23) and fog (58.01 against 57.58). Our accuracy varies by 3.9 points across the six conditions (54.57 to 58.45), against 4.0 to 6.3 points for the baselines.
+Table~\ref{tab:condition} breaks clean test accuracy down by condition for the released baselines and our model. Our model is the most accurate in sun, rain, night, and low exposure, with the largest margins over the best baseline in sun (+3.0), low exposure (+2.3), and night (+1.6); DGFusion is higher in cloud (58.41 against 57.23) and fog (58.01 against 57.58).
 
 % ---------------------------------------------------------------------------
 % Table 5. Clean mIoU per condition on DELIVER test (new 2026-10-28).
