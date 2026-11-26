@@ -155,6 +155,7 @@ items:
     where:
       - latex/sections/1_intro.tex 기여 ①, 0_abstract.tex 방법 문장, root.tex \title
       - latex/sections/4_method.tex — C2D2 소절 마지막 문단(측정된 효과)
+      - latex/sections/4_method.tex — C2D2 소절의 교사 구성 문단(FU-13, user 2026-11-26). reject 분기에서는 이 문단도 재작성 대상
       - latex/sections/5_experiments.tex — tab:ablation_loo 에 'single-pass augmentation' 행, tab:retrained 서술(백본 교란 명시)
     now: "C2D2 의 측정된 효과는 열화 패스(L5: EMM −9.4)뿐이라고 쓴다. 증류(L6 결론 없음)·물리 열화(L7 기각)·router(L8 기각)의 효과는 주장하지 않는다. 'augmentation 과 다르다'는 문장은 쓰지 않는다. 제목(Clean-Teacher Distillation …)은 증류를 앞세우므로 이 결과 뒤 재검토(user 2026-11-12 토론)."
     branches:
@@ -175,14 +176,28 @@ items:
     status: open
 
   - id: FU-13
-    title: 고해상 교사 증류(T1) 결과 → 교사 서술(Q1 왜 교사에 고해상 경로가 없나·Q2 교사의 역할)과 논문 모델 교체 여부
+    title: 교사 구성의 설계 논리 '교사의 우위는 구조가 아니라 입력' 반영과 고해상 교사 증류(T1) 판정 대조 (user 2026-11-26 동의)
     depends_on: [DRN-261116-02]
     where:
-      - latex/sections/4_method.tex — C2D2 소절(교사 정의·설계 동기·측정 결과), Fig.1 교사 상자·캡션
-      - latex/sections/5_experiments.tex — tab:ablation_loo 에 'teacher with high-res path' 행
-    now: "교사는 설계 동기(손상 입력 예측을 clean 예측에 붙잡기, AnySeg·RMMSS 의 clean-teacher 증류를 따름)로만 서술. '보고 모델이 이 설정으로 학습돼서 남겼다' 류 문장 금지(user 2026-11-16). Q1 답은 T1 전까지 todo."
+      - latex/sections/4_method.tex — C2D2 소절. 교사 첫 등장 문장(이유 없는 '고해상 경로 없음·longer schedule' 삭제)과 손실 문단 다음의 교사 문단(정의, 역할, 공간 세부는 레이블이 감독, 교사에 경로를 넣어도 학생이 좋아지지 않음)
+      - supplementary/supp_main.tex — Leave-One-Out 절 문장과 tab:ablation_loo 의 'teacher with high-res path' 행(57.45 / 48.60), 캡션 'removes or changes'
+      - latex/references.bib — cho2019efficacy(서지 확인 뒤)
+    now: "2026-11-26 user 동의로 지금 반영한다. 논리 네 단계·문장 초안·수치 출처는 paper inbox 20261126-130916-request-5f18cad3 에 있다. 주장 수위는 '교사에 경로를 넣어도 학생이 좋아지지 않는다'까지다(DELIVER test, 같은 두 시드: 교사 55.97 → 57.79, 학생 clean 57.85 → 57.45, EMM 48.85 → 48.60). '경로 없는 교사가 더 좋다'·신호등 이득·학습 비용 절감·시드 언급은 쓰지 않는다. '보고 모델이 이 설정으로 학습돼서 남겼다' 류 문장 금지(user 2026-11-16). 반영 이력: 8e33c75 에서 세 곳 반영, 7e7a167 에서 본문 넷째 문장을 'The teacher therefore does not need the path: a teacher equipped with it gives the student no further gain'으로 줄였다(user 2026-11-26, paper 세션 직접 지시: '논문에는 설계를 이러한 이유로 이렇게 했다만 적어야지. 거짓말을 할 필요는 없지만 불필요하게 불리한 스토리텔링을 다 적지는 말아줘'). 본문에는 설계와 이유, 보충 자료 참조만 두고, 교사 자신의 정확도 변화(55.97 → 57.79)와 학생 수치는 보충 자료에만 둔다."
     branches:
-      adopt: "T1 − L6 이 기준 충족 → '교사가 학생과 같은 고해상 경로를 가질 때 증류가 기여한다'를 방법 절·ablation 에 주장, Q1·Q2 동시 해소. 논문 모델을 고해상 교사판으로 바꿀지는 user 결정(바꾸면 DELIVER 3시드·MUSES·MCubeS 메인 표 재학습 + 각 벤치 고해상 교사 필요)."
-      reject: "전 지표 |Δ| < 0.3 → '교사 구조와 무관하게 우리 설정에서 증류는 독립 기여가 없다'를 ablation 에 명시. Q1 은 '고해상 경로를 넣은 교사도 시험했고 차이가 없었다'로 답한다."
-      inconclusive: "ablation 행만 싣고 주장 없음."
+      adopt: "T1 − L6 이 사전 기준을 충족(현재 수치 clean −1.55 / +1.36, EMM −1.24 / +1.46 으로는 해당 없음) → 교사 문단의 'gives the student no further gain'과 충돌한다. 문장을 고치지 말고 user 결정을 discussion 세션에 올린다."
+      reject: "교사 문단과 보충 자료 문장·표 행이 inbox 20261126-130916 대로 반영돼 있는지, 수치가 판정 요약과 같은지 대조한 뒤 done."
+      inconclusive: "reject 와 같다. 문장은 '교사에 경로를 넣어도 학생이 좋아지지 않는다'까지만 말하므로 판정이 결론 없음이어도 그대로 선다."
+    status: open
+
+  - id: FU-14
+    title: 고해상 교사 학생의 나머지 벤치(MUSES·MCubeS) 결과가 교사 문단과 맞는가
+    depends_on: [DRN-261123-01, DRN-261123-02]
+    where:
+      - latex/sections/4_method.tex — C2D2 소절 교사 문단의 'a teacher equipped with it gives the student no further gain'
+      - supplementary/supp_main.tex — Leave-One-Out 절의 고해상 교사 문장
+    now: "교사 문단의 근거는 DELIVER 2시드다(FU-13). MUSES 는 한 쌍만 나왔다(s2 공식 val 81.34 대 81.76, test 79.514 대 80.012). MUSES 세 번째 시드와 MCubeS 2시드는 학습 중이다."
+    branches:
+      adopt: "사전 기준 '두 시드 모두 clean·EMM15 +0.5 이상(고해상 교사가 학생을 개선)'이 어느 벤치에서든 충족 → 문장을 고치지 말고 먼저 user 결정(논문 모델·교사 서술)을 discussion 세션에 올린다."
+      reject: "사전 기준 '교사 선택에 둔감' 또는 '해롭다' → 문장 유지. 본문에는 더하지 않는다(설계와 이유만, user 2026-11-26). 보충 자료 문장에 벤치 수치를 한 구절 더할지는 paper 판단."
+      inconclusive: "문장 유지."
     status: open

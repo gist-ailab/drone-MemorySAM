@@ -26,7 +26,7 @@
 \newcommand{\tabnotewide}[1]{\par\vspace{3pt}\parbox{\textwidth}{\raggedright\scriptsize #1}}
 \setcounter{topnumber}{3}\renewcommand{\topfraction}{0.95}\renewcommand{\textfraction}{0.05}\renewcommand{\floatpagefraction}{0.7}
 
-\title{Supplementary Material\\[4pt]\large Clean-Teacher Distillation on Corrupted Sensor Inputs for Robust Multimodal Semantic Segmentation}
+\title{Supplementary Material\\[4pt]\large Clean-Teacher Distillation on Corrupted Sensor Inputs for Robust Multi-Sensor Semantic Segmentation}
 \author{Jemo Maeng and Kyoobin Lee}
 \date{}
 
@@ -66,7 +66,7 @@ MCubeS~\cite{mcubes2022} & RGB, AoLP, DoLP, NIR & 20 & 302 / 96 / 102 \\
 \label{app:qual}
 This section collects the qualitative figures that the main paper refers to. All scenes are selected by fixed rules over every test image of every model.
 
-Fig.~\ref{fig:adverse}, discussed in Section~\ref{M-sec:qual}, shows the DELIVER scene of each weather and lighting condition with the largest gap in our favour. This selection rule, also used in Fig.~\ref{M-fig:muses}, picks scenes in our favour by construction. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each DELIVER condition, the scene whose gap is closest to that condition's median gap. The reference is, per image, the best of three other models. 
+Fig.~\ref{fig:adverse}, discussed in Section~\ref{M-sec:qual}, shows the DELIVER scene of each weather and lighting condition with the largest gap in our favour. With all sensors present (Fig.~\ref{fig:adverse}), this gap is 3.9 to 13.0 points of per-image mIoU on the six scenes shown. In the scenes of Fig.~\ref{fig:adverse}, the largest differences come from regions that the baselines assign to another class: traffic signs read as trucks (sun, fog, night), road, terrain, or vegetation read as sidewalk (sun, low exposure), vegetation and building swapped and two-wheelers read as cars (cloud). The errors that remain in our predictions lie mostly on the boundary between vegetation and terrain, with one exception: at night a patch of terrain is read as sidewalk. To show what an ordinary scene looks like, Fig.~\ref{fig:typical} takes, for each DELIVER condition, the scene whose gap is closest to that condition's median gap. The reference is, per image, the best of three other models. 
 
 % moved from Section IV (2026-11-16, main-text float load)
 % Fig. adverse conditions with all sensors present, DELIVER (synthetic) + MUSES (real).
@@ -121,7 +121,7 @@ Fig.~\ref{fig:reverse} applies the selection rule of Fig.~\ref{fig:adverse} in t
 
 \section{Training Configurations}
 \label{app:train}
-Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks; the runs of each benchmark differ only in the random seed, and gradient accumulation keeps the effective batch size at 16. Results of our model in the main text are means over the runs listed in the table (three on DELIVER, two on MUSES and MCubeS), with these exceptions: the model trained without C2D2 and without the high-resolution path (Table~\ref{M-tab:abl_robust}, Fig.~\ref{M-fig:dependence}) and the leave-one-out ablation (Table~\ref{tab:ablation_loo}) use two runs, and the row of that ablation without cross-modal attention uses one run, compared there with the full model of the same run; the MUSES test score comes from the run with the higher validation score, and the two-sensor MUSES models are single runs. The re-trained and released baselines are single models. Single runs of our model vary by up to 1.5 points on these benchmarks. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table. The three-sensor DELIVER model of Section~\ref{M-sec:analysis} (RGB, events, and LiDAR, no depth) uses the DELIVER configuration without teacher distillation, since the teacher sees depth; it is the mean of two runs (55.99 and 55.03 test mIoU), and the four-sensor model trained the same way reaches 57.55 on the same runs.
+Table~\ref{tab:train} lists the training configuration of our model on the three benchmarks; the runs of each benchmark differ only in the random seed, and gradient accumulation keeps the effective batch size at 16. Results of our model in the main text are means over the runs listed in the table (three on DELIVER, two on MUSES and MCubeS), with these exceptions: the model trained without C2D2 and without the high-resolution path (Table~\ref{M-tab:abl_robust}, Fig.~\ref{M-fig:dependence}) and the leave-one-out ablation (Table~\ref{tab:ablation_loo}) use two runs, and the row of that ablation without cross-modal attention uses one run, compared there with the full model of the same run; the MUSES test score comes from the run with the higher validation score, and the two-sensor MUSES models are single runs. The re-trained and released baselines are single models. Single runs of our model vary by up to 1.5 points on these benchmarks. The teacher of each benchmark has the same configuration without the high-resolution path and without C2D2, trained on clean inputs for the number of epochs given in the table. The three-sensor DELIVER model of Section~\ref{M-sec:analysis} (RGB, events, and LiDAR, no depth) uses the DELIVER configuration without teacher distillation, since the teacher sees depth; it is the mean of two runs (55.99 and 55.03 test mIoU), and the four-sensor model trained the same way reaches 57.54 on the same runs.
 
 % Sources (paper session 2026-11-13, yaml load of the files below; key names in parentheses):
 %   DELIVER configs/bengio-deliver_rgbdel_P46_c3only_seed20260821_screen40_A2hires.yaml (seeds 20260821/20260902/20260903),
@@ -194,30 +194,30 @@ Class & CMNeXt & CAFuser & DGFusion & RGB only & + three sensors, & + C2D2 & + h
 \multicolumn{9}{@{}l}{\emph{(a) Ours ahead of every released baseline (16 classes)}} \\
 Wall & 3.72 & 2.82 & 4.03 & 5.59 & \best{15.58} & 13.20 & \second{15.31} & +11.28 \\
 TrafficSign & 38.37 & 45.57 & 45.14 & 50.35 & 49.79 & \second{50.46} & \best{53.54} & +7.97 \\
-Water & 2.02 & 0.17 & 0.00 & 5.75 & \second{6.21} & 4.79 & \best{8.80} & +6.77 \\
-Truck & 77.43 & 89.35 & 89.15 & 92.53 & \second{94.48} & 93.73 & \best{94.90} & +5.54 \\
-Static & 31.26 & 33.91 & \second{38.36} & 34.35 & 29.34 & 33.36 & \best{43.71} & +5.36 \\
+Water & 2.02 & 0.17 & 0.00 & 5.75 & \second{6.21} & 4.79 & \best{8.79} & +6.77 \\
+Truck & 77.43 & 89.35 & 89.15 & 92.53 & \second{94.48} & 93.73 & \best{94.89} & +5.54 \\
+Static & 31.26 & 33.91 & \second{38.36} & 34.35 & 29.34 & 33.36 & \best{43.71} & +5.35 \\
 TwoWheeler & 61.83 & 68.95 & 65.96 & 64.12 & 67.59 & \second{69.02} & \best{71.69} & +2.75 \\
-Dynamic & 6.78 & 7.28 & 8.55 & 7.42 & 8.61 & \second{9.77} & \best{10.69} & +2.14 \\
+Dynamic & 6.78 & 7.28 & 8.55 & 7.42 & 8.61 & \second{9.77} & \best{10.68} & +2.14 \\
 Terrain & 59.75 & 68.96 & 63.59 & 63.57 & 68.41 & \second{69.05} & \best{70.89} & +1.94 \\
 Building & 87.45 & 86.89 & 87.55 & 85.13 & \best{89.91} & \second{89.36} & 89.34 & +1.79 \\
 Road & 96.47 & 96.67 & 96.52 & 96.76 & \second{97.25} & 97.21 & \best{97.67} & +0.99 \\
 RoadLine & 81.42 & 77.08 & 77.50 & 80.99 & 81.64 & \second{82.06} & \best{82.36} & +0.94 \\
-GroundRail & 77.23 & 79.56 & \second{80.59} & 76.82 & 80.20 & 80.23 & \best{81.49} & +0.90 \\
+GroundRail & 77.23 & 79.56 & \second{80.59} & 76.82 & 80.20 & 80.23 & \best{81.48} & +0.90 \\
 Bus & 94.34 & 93.69 & 94.18 & 89.64 & 94.25 & \second{94.35} & \best{95.08} & +0.75 \\
 Vegetation & 82.46 & 83.75 & 83.56 & 77.46 & 83.55 & \second{83.86} & \best{84.49} & +0.74 \\
-SideWalk$^{\S}$ & 67.64 & \second{78.49} & 78.06 & 74.75 & 76.04 & 76.11 & \best{78.85} & +0.36 \\
+SideWalk$^{\S}$ & 67.64 & \second{78.49} & 78.06 & 74.75 & 76.04 & 76.11 & \best{78.85} & +0.37 \\
 Cars & 93.74 & 94.40 & \second{94.61} & 90.54 & 93.93 & 93.89 & \best{94.80} & +0.19 \\
 \midrule
 \multicolumn{9}{@{}l}{\emph{(b) A released baseline ahead (9 classes)}} \\
-Bridge & \best{0.03} & 0.00 & 0.00 & 0.00 & \best{0.03} & \second{0.02} & 0.01 & $-$0.02 \\
+Bridge & \best{0.03} & 0.00 & 0.00 & 0.00 & \best{0.03} & \second{0.02} & \second{0.02} & $-$0.02 \\
 Sky & 97.15 & \best{98.20} & 97.99 & 95.27 & 97.95 & 97.97 & \second{98.15} & $-$0.05 \\
 Ground & 4.38 & 5.68 & \second{7.24} & 6.31 & 5.67 & \best{7.64} & 6.78 & $-$0.46 \\
-Pedestrian & 76.64 & \second{82.93} & \best{83.06} & 69.14 & 77.36 & 76.94 & 80.74 & $-$2.31 \\
-Fence & 48.04 & \second{52.59} & \best{53.59} & 44.67 & 48.70 & 49.69 & 50.46 & $-$3.13 \\
+Pedestrian & 76.64 & \second{82.93} & \best{83.06} & 69.14 & 77.36 & 76.94 & 80.74 & $-$2.32 \\
+Fence & 48.04 & \second{52.59} & \best{53.59} & 44.67 & 48.70 & 49.70 & 50.46 & $-$3.13 \\
 Other & 5.76 & \best{7.65} & \second{7.22} & 0.95 & 1.70 & 3.11 & 3.99 & $-$3.67 \\
 Pole & 48.39 & \best{60.64} & \second{55.65} & 49.35 & 51.87 & 51.94 & 54.08 & $-$6.56 \\
-TrafficLight & 31.96 & \second{46.21} & 41.14 & \best{49.59} & 38.72 & 41.67 & 37.52 & $-$8.68 \\
+TrafficLight & 31.96 & \second{46.21} & 41.14 & \best{49.59} & 38.72 & 41.67 & 37.52 & $-$8.69 \\
 RailTrack & 34.22 & 33.00 & \second{64.46} & \best{67.49} & 51.28 & 45.41 & 38.25 & $-$26.21 \\
 \midrule
 mIoU & 52.34 & 55.78 & 56.71 & 55.14 & 56.40 & 56.59 & 57.74 & +1.04 \\
@@ -228,16 +228,16 @@ mIoU & 52.34 & 55.78 & 56.71 & 55.14 & 56.40 & 56.59 & 57.74 & +1.04 \\
 
 \section{Per-Class Build-Up of Our Model}
 \label{app:ladder}
-Table~\ref{tab:ladder} compares every class with the released baselines and adds the intermediate stages of our model; it shows which part of the architecture produces each margin. On TrafficSign, Water, and Truck, the frozen DINOv3-L backbone with RGB alone is already ahead of all three four-sensor baselines (by 4.8, 3.7, and 3.2 points), so these margins come from the foundation features. On Building, Vegetation, Terrain, and Bus, RGB alone is behind the baselines, and adding the other three sensors with cross-modal fusion raises the score by 4.8, 6.1, 4.8, and 4.6 points; on Wall, where RGB alone is only 1.6 points ahead, fusion adds another 10.0. These margins come from the fusion of the sensors on top of the shared backbone. Training with the C2D2 scheme changes the score by less than 1.5 points on 20 of the 25 classes, in both directions, which matches its unchanged mean on clean inputs; its largest per-class gain is on Static (+4.0). On RailTrack and TrafficLight, RGB alone is ahead of every baseline (67.5 and 49.6) and the scores drop when the other three sensors are fused (51.3 and 38.7), so these two losses come from the fusion stage rather than from the backbone. Both classes vary strongly between training runs, so these per-stage differences are indicative.
+Table~\ref{tab:ladder} compares every class with the released baselines and adds the intermediate stages of our model; it shows which part of the architecture produces each margin. On TrafficSign, Water, and Truck, the frozen DINOv3-L backbone with RGB alone is already ahead of all three four-sensor baselines (by 4.8, 3.7, and 3.2 points), so these margins come from the foundation features. On Building, Vegetation, Terrain, and Bus, RGB alone is behind the baselines, and adding the other three sensors with cross-modal fusion raises the score by 4.8, 6.1, 4.8, and 4.6 points; on Wall, where RGB alone is only 1.6 points ahead, fusion adds another 10.0. These margins come from the fusion of the sensors on top of the shared backbone. Training with the C2D2 scheme changes the score by less than 1.5 points on 20 of the 25 classes, in both directions, which matches its unchanged mean on clean inputs; its largest per-class gain is on Static (+4.0). On RailTrack and TrafficLight, RGB alone is ahead of every baseline (67.5 and 49.6) and the scores drop when the other three sensors are fused (51.3 and 38.7), so these two losses come from the fusion stage rather than from the backbone. Both classes vary strongly between training runs, so these per-stage differences are indicative. With the high-resolution path, the baselines remain ahead on RailTrack, where DGFusion reaches 64.5, and on the thin vertical classes TrafficLight, Pole, and Pedestrian, where CAFuser is best; the path narrows the gap on Pole and Pedestrian and widens it on TrafficLight (Section~\ref{app:failure}). The path lowers two classes, TrafficLight by 4.1 points and RailTrack by 7.2. Switching the path off at inference costs the thin classes 2.2 times as much IoU as the other classes, and 1.4 times when it is switched off for the dense head only.
 
 \section{Leave-One-Out Ablation}
 \label{app:loo}
-Table~\ref{tab:ablation_loo} removes one component at a time from the full model, which keeps the high-resolution path in every row, and reports clean mIoU and the EMM average (15 sensor subsets with the others zero-filled) on the DELIVER test set. Removing the degraded pass of C2D2 lowers the EMM average by 9.4 points (39.47 against 48.85) while clean mIoU changes little (57.03 against 57.85); this is the largest change in the table, so the robustness of C2D2 comes from this pass. Removing the teacher distillation changes clean mIoU by 0.30 and the EMM average by 0.36 points, and replacing the sensor-specific degradations by zero-filling only, at the same missing-sensor rate, changes them by 0.14 and 0.19 points. Removing the sensor router changes clean mIoU by 0.67 and the EMM average by 0.34 points. Replacing cross-modal attention by averaging the sensor tokens costs 0.85 points of clean mIoU against the full model of the same training run (58.61), with the EMM average almost unchanged (49.08 against 49.12).
+Table~\ref{tab:ablation_loo} removes one component at a time from the full model, which keeps the high-resolution path in every row, and reports clean mIoU and the EMM average (15 sensor subsets with the others zero-filled) on the DELIVER test set. Removing the degraded pass of C2D2 lowers the EMM average by 9.4 points (39.47 against 48.84) while clean mIoU changes little (57.03 against 57.85); this is the largest change in the table, so the robustness of C2D2 comes from this pass. Removing the teacher distillation changes clean mIoU by 0.31 and the EMM average by 0.36 points, and replacing the sensor-specific degradations by zero-filling only, at the same missing-sensor rate, changes them by 0.14 and 0.19 points. Giving the teacher the high-resolution path raises the teacher's own test mIoU from 55.97 to 57.79 but changes the student's clean mIoU by 0.40 and its EMM average by 0.24 points. Removing the sensor router changes clean mIoU by 0.67 and the EMM average by 0.34 points. Replacing cross-modal attention by averaging the sensor tokens costs 0.85 points of clean mIoU against the full model of the same training run (58.61), with the EMM average almost unchanged (49.08 against 49.12).
 
 % Table 6b. Leave one component out of the full model (one seed, 40 epochs). Sources as Table 6 comment above;
 % L5 DRN-261020-13 (evaluating), L6 -14 (judging), L7 DRN-261029-01 (running) -> todo until verdicts.
 \begin{table}[!htbp]
-\caption{Leave-one-out ablation on the DELIVER test set (mIoU, \%). Each row removes one component from the full model (last row).}
+\caption{Leave-one-out ablation on the DELIVER test set (mIoU, \%). Each row removes or changes one component of the full model (last row).}
 \label{tab:ablation_loo}
 \centering\tabsetup
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}ccccccc@{}}
@@ -253,14 +253,17 @@ attention & pass & degr. & KD & router & & \\
 % L2 (s821 only): 57.76 / 49.08. Full A2: s821 58.61/49.12, s902 57.09/48.57 (tasks/DRN-261019-03/analysis.md).
 % Verdicts 2026-11-11 (method, inbox 20261111-132936): L5 adopt, L6 inconclusive, L7 reject, L8 reject.
 \cmark & \xmark & \xmark & \cmark & \cmark & 57.03 & 39.47 \\
-\cmark & \cmark & \cmark & \xmark & \cmark & 57.55 & 48.49 \\
+\cmark & \cmark & \cmark & \xmark & \cmark & 57.54 & 48.49 \\
+% Teacher with the high-res path (T1, DRN-261116-02): NAS analysis_logs/eval_20261124_bengio/T1_s{821,902} legal v2 test 57.225/57.677, EMM15 48.405/48.798;
+% teacher itself: E1_s1 55.97 (same folder), high-res clean teacher 57.94/57.64 (hnc_A2hiresNoC2D2_20261117/README.md).
+\cmark & \cmark & \cmark & \cmark$^{\ddagger}$ & \cmark & 57.45 & 48.60 \\
 \cmark & \cmark & \xmark & \cmark & \cmark & \second{57.71} & \second{48.66} \\
 \cmark & \cmark & \cmark & \cmark & \xmark & 57.18 & 48.51 \\
 \xmark$^{*}$ & \cmark & \cmark & \cmark & \cmark & 57.76$^{\dagger}$ & 49.08$^{\dagger}$ \\
-\cmark & \cmark & \cmark & \cmark & \cmark & \best{57.85} & \best{48.85} \\
+\cmark & \cmark & \cmark & \cmark & \cmark & \best{57.85} & \best{48.84} \\
 \bottomrule
 \end{tabular*}
-\tabnote{All rows keep the high-res.\ path. C2D2 training consists of the degraded pass, the sensor-specific degradation, and teacher KD. Degraded pass: the second, degraded forward pass. Sensor degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass; without the degraded pass (first row), the second pass sees an undegraded copy, to which this term still applies. $^{*}$Token averaging; also removes the sensor-specific residual $m_s$ of Eq.~(2) of the main paper. $^{\dagger}$Compared with the full model of the same training run: 58.61 clean, 49.12 EMM (Section~\ref{app:train}). Sensor router: Section~\ref{M-sec:m_router}.}
+\tabnote{All rows keep the high-res.\ path. C2D2 training consists of the degraded pass, the sensor-specific degradation, and teacher KD. Degraded pass: the second, degraded forward pass. Sensor degr.: sensor-specific degradations (blur, exposure, depth holes, beam drop, event down-sampling) instead of zero-filling only, with the same missing-sensor rate. Teacher KD: the distillation term on the degraded pass; without the degraded pass (first row), the second pass sees an undegraded copy, to which this term still applies. $^{*}$Token averaging; also removes the sensor-specific residual $m_s$ of Eq.~(2) of the main paper. $^{\dagger}$Compared with the full model of the same training run: 58.61 clean, 49.12 EMM (Section~\ref{app:train}). Sensor router: Section~\ref{M-sec:m_router}. $^{\ddagger}$The teacher includes the high-res.\ path.}
 \end{table}
 
 
