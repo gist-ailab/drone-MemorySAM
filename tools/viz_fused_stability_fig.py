@@ -111,9 +111,15 @@ def make_panel_fig(image_id, a_dir, b_dir, rows, palette, out_dir, name_a, name_
                   f"{name_a} pred", "GT"]
     gt = colorize_label(_load_label(b_panel / "gt.png"), palette)
     n_rows = len(rows)
-    fig, axes = plt.subplots(n_rows, 5, figsize=(5 * 2.6, n_rows * 2.6), squeeze=False)
+    rgb_in = _load_rgb(b_panel / "rgb.png") if (b_panel / "rgb.png").exists() else None
+    row_names = {"clean": "All sensors", "no_img": "RGB removed", "no_depth": "Depth removed",
+                 "no_event": "Event removed", "no_lidar": "LiDAR removed"}
+    titles = ["RGB input (reference)", f"{name_b}: fused feature (PCA)", f"{name_a}: fused feature (PCA)",
+              f"{name_b}: prediction", f"{name_a}: prediction", "GT"]
+    fig, axes = plt.subplots(n_rows, 6, figsize=(6 * 2.6, n_rows * 2.6), squeeze=False)
     for r, setting in enumerate(rows):
         cells = [
+            rgb_in if rgb_in is not None else np.ones((8, 8, 3)),
             _load_rgb(b_panel / f"pca_{setting}.png"),
             _load_rgb(a_panel / f"pca_{setting}.png"),
             colorize_label(_load_label(b_panel / f"pred_{setting}.png"), palette),
@@ -126,9 +132,9 @@ def make_panel_fig(image_id, a_dir, b_dir, rows, palette, out_dir, name_a, name_
             ax.set_xticks([])
             ax.set_yticks([])
             if c == 0:
-                ax.set_ylabel(setting, fontsize=11)
+                ax.set_ylabel(row_names.get(setting, setting), fontsize=11)
             if r == 0:
-                ax.set_title(image_id if c == 4 else col_titles[c], fontsize=10)
+                ax.set_title(titles[c], fontsize=10)
     fig.tight_layout()
     safe = _safe_id(image_id)
     png = Path(out_dir) / f"panel_{safe}.png"
